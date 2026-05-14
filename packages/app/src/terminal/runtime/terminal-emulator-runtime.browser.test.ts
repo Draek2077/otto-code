@@ -1,5 +1,6 @@
 import { page } from "@vitest/browser/context";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TerminalInputModeState } from "@server/shared/terminal-input-mode";
 import { TerminalEmulatorRuntime } from "./terminal-emulator-runtime";
 
 vi.mock("@xterm/addon-webgl", () => ({
@@ -15,6 +16,14 @@ interface TerminalSize {
   cols: number;
 }
 
+interface TerminalKeyRecord {
+  key: string;
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
 type BrowserTerminal = TerminalSize & {
   refresh: (start: number, end: number) => void;
   reset: () => void;
@@ -26,6 +35,8 @@ interface MountedTerminal {
   runtime: TerminalEmulatorRuntime;
   inputs: string[];
   sizes: TerminalSize[];
+  terminalKeys: TerminalKeyRecord[];
+  inputModeChanges: TerminalInputModeState[];
 }
 
 const mountedTerminals: MountedTerminal[] = [];
@@ -67,6 +78,8 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
 
   const sizes: TerminalSize[] = [];
   const inputs: string[] = [];
+  const terminalKeys: TerminalKeyRecord[] = [];
+  const inputModeChanges: TerminalInputModeState[] = [];
   const runtime = new TerminalEmulatorRuntime();
   runtime.setCallbacks({
     callbacks: {
@@ -75,6 +88,12 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
       },
       onResize: (size) => {
         sizes.push(size);
+      },
+      onTerminalKey: (key) => {
+        terminalKeys.push(key);
+      },
+      onInputModeChange: (state) => {
+        inputModeChanges.push(state);
       },
     },
   });
@@ -89,7 +108,7 @@ function createTerminalHost(input: { width: number; height: number }): MountedTe
     },
   });
 
-  const mounted = { host, root, runtime, inputs, sizes };
+  const mounted = { host, root, runtime, inputs, sizes, terminalKeys, inputModeChanges };
   mountedTerminals.push(mounted);
   return mounted;
 }
@@ -108,6 +127,32 @@ function getBrowserTerminal(): BrowserTerminal {
     throw new Error("Expected xterm to be exposed for browser test inspection");
   }
   return terminal;
+}
+
+function dispatchTerminalKey(input: {
+  host: HTMLElement;
+  key: string;
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+}): boolean {
+  const textarea = input.host.querySelector<HTMLTextAreaElement>("textarea");
+  if (!textarea) {
+    throw new Error("Expected xterm textarea to be mounted");
+  }
+  textarea.focus();
+  return textarea.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: input.key,
+      shiftKey: input.shiftKey ?? false,
+      ctrlKey: input.ctrlKey ?? false,
+      altKey: input.altKey ?? false,
+      metaKey: input.metaKey ?? false,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 }
 
 afterEach(() => {
@@ -160,6 +205,73 @@ describe("terminal emulator runtime in a real browser", () => {
 
     await waitFor({ predicate: () => refreshCalls.length > 0 });
     expect(refreshCalls.at(-1)).toEqual([0, terminal.rows - 1]);
+  });
+
+  it("intercepts Shift+Enter only after enhanced terminal input mode is active", async () => {
+    await page.viewport(900, 600);
+    const mounted = createTerminalHost({ width: 720, height: 360 });
+
+    await waitFor({ predicate: () => mounted.sizes.length > 0 });
+
+    dispatchTerminalKey({
+      host: mounted.host,
+      key: "Enter",
+      shiftKey: true,
+    });
+    await nextFrame();
+
+    expect(mounted.terminalKeys).toEqual([]);
+
+    mounted.runtime.write({ text: "\x1b[>7u" });
+    await waitFor({
+      predicate: () =>
+        mounted.inputModeChanges.some(
+          (state) => state.kittyKeyboardFlags === 7 && !state.win32InputMode,
+        ),
+    });
+
+    dispatchTerminalKey({
+      host: mounted.host,
+      key: "Enter",
+      shiftKey: true,
+    });
+    await nextFrame();
+
+    expect(mounted.terminalKeys).toEqual([
+      {
+        key: "Enter",
+        ctrl: false,
+        shift: true,
+        alt: false,
+        meta: false,
+      },
+    ]);
+
+    mounted.terminalKeys.length = 0;
+    mounted.runtime.write({ text: "\x1b[=0;0u\x1b[?9001h" });
+    await waitFor({
+      predicate: () =>
+        mounted.inputModeChanges.some(
+          (state) => state.kittyKeyboardFlags === 0 && state.win32InputMode,
+        ),
+    });
+
+    dispatchTerminalKey({
+      host: mounted.host,
+      key: "Enter",
+      shiftKey: true,
+    });
+    await nextFrame();
+
+    expect(mounted.terminalKeys).toEqual([
+      {
+        key: "Enter",
+        ctrl: false,
+        shift: true,
+        alt: false,
+        meta: false,
+      },
+    ]);
   });
 
   it.each([

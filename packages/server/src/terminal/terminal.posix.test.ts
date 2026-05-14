@@ -234,6 +234,7 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
     });
 
     expect(resolvedEnv.TERM).toBe("xterm-256color");
+    expect(resolvedEnv.TERM_PROGRAM).toBe("kitty");
     expect(resolvedEnv.PASEO_ZSH_ZDOTDIR).toBe("/tmp/paseo-zdotdir");
     expect(resolvedEnv.ZDOTDIR).not.toBe("/tmp/paseo-zdotdir");
     expect(existsSync(join(resolvedEnv.ZDOTDIR, ".zshenv"))).toBe(true);

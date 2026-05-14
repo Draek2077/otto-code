@@ -457,6 +457,29 @@ function sendRawTerminalInput(ws: WebSocket, slot: number, data: string): void {
   );
 }
 
+function createInputModeProbeOptions(): { command: string; args: string[] } {
+  return {
+    command: process.execPath,
+    args: [
+      "-e",
+      `
+process.stdin.setRawMode?.(true);
+process.stdin.resume();
+process.stdin.on("data", (chunk) => {
+  const text = chunk.toString("utf8");
+  if (text.includes("e")) {
+    process.stdout.write("\\x1b[>7uKITTY\\n");
+  }
+  if (text.includes("w")) {
+    process.stdout.write("\\x1b[?9001hWIN32\\n");
+  }
+});
+setInterval(() => {}, 1000);
+`,
+    ],
+  };
+}
+
 async function repeatRawTerminalInput(input: {
   ws: WebSocket;
   slot: number;
@@ -943,6 +966,84 @@ test("disconnect and reconnect both receive the current snapshot", async () => {
   expect(extractStateText(await snapshotPromise)).toContain("while-detached");
 
   rmSync(cwd, { recursive: true, force: true });
+}, 30000);
+
+test("reconnected terminal streams replay active input modes after the snapshot", async () => {
+  const cwd = tmpCwd();
+  const created = await ctx.client.createTerminal(cwd, "input-mode-probe", undefined, {
+    ...createInputModeProbeOptions(),
+  });
+  const terminalId = created.terminal!.id;
+  const firstWs = await connectRawWebSocket(ctx.daemon.port);
+
+  try {
+    const firstSlot = await subscribeRawTerminal(firstWs, terminalId, "sub-input-mode-first");
+    await waitForRawBinaryFrame(
+      firstWs,
+      (frame) => frame.slot === firstSlot && frame.opcode === TerminalStreamOpcode.Snapshot,
+    );
+    sendRawTerminalInput(firstWs, firstSlot, "e");
+    await waitForRawBinaryFrame(
+      firstWs,
+      (frame) =>
+        frame.slot === firstSlot &&
+        frame.opcode === TerminalStreamOpcode.Output &&
+        getFrameText(frame).includes("KITTY"),
+    );
+    sendRawTerminalInput(firstWs, firstSlot, "w");
+    await waitForRawBinaryFrame(
+      firstWs,
+      (frame) =>
+        frame.slot === firstSlot &&
+        frame.opcode === TerminalStreamOpcode.Output &&
+        getFrameText(frame).includes("WIN32"),
+    );
+  } finally {
+    await closeWebSocket(firstWs);
+  }
+
+  const secondWs = await connectRawWebSocket(ctx.daemon.port);
+  try {
+    const secondSlot = await subscribeRawTerminal(secondWs, terminalId, "sub-input-mode-second");
+    await waitForRawBinaryFrame(
+      secondWs,
+      (frame) => frame.slot === secondSlot && frame.opcode === TerminalStreamOpcode.Snapshot,
+    );
+    const replay = await waitForRawBinaryFrame(
+      secondWs,
+      (frame) =>
+        frame.slot === secondSlot &&
+        frame.opcode === TerminalStreamOpcode.Output &&
+        getFrameText(frame).includes("\x1b[=7;1u"),
+    );
+
+    expect(getFrameText(replay)).toContain("\x1b[=7;1u");
+    expect(getFrameText(replay)).toContain("\x1b[?9001h");
+  } finally {
+    await closeWebSocket(secondWs);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}, 30000);
+
+test("reconnected terminal streams do not replay input modes before they are enabled", async () => {
+  const cwd = tmpCwd();
+  const created = await ctx.client.createTerminal(cwd, "input-mode-inactive-probe", undefined, {
+    ...createInputModeProbeOptions(),
+  });
+  const terminalId = created.terminal!.id;
+  const ws = await connectRawWebSocket(ctx.daemon.port);
+
+  try {
+    const slot = await subscribeRawTerminal(ws, terminalId, "sub-input-mode-inactive");
+    await waitForRawBinaryFrame(
+      ws,
+      (frame) => frame.slot === slot && frame.opcode === TerminalStreamOpcode.Snapshot,
+    );
+    await waitForNoRawBinaryFrame(ws, 300);
+  } finally {
+    await closeWebSocket(ws);
+    rmSync(cwd, { recursive: true, force: true });
+  }
 }, 30000);
 
 test("fast output to a slow websocket client falls back to a snapshot", async () => {

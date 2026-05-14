@@ -681,7 +681,13 @@ export class TerminalSessionController {
       return;
     }
 
-    if (!this.terminalManager?.getTerminal(activeStream.terminalId)) {
+    const terminalManager = this.terminalManager;
+    if (!terminalManager) {
+      this.detachStream(activeStream.terminalId, { emitExit: true });
+      return;
+    }
+    const terminal = terminalManager.getTerminal(activeStream.terminalId);
+    if (!terminal) {
       this.detachStream(activeStream.terminalId, { emitExit: true });
       return;
     }
@@ -689,7 +695,7 @@ export class TerminalSessionController {
     activeStream.outputCoalescer.flush();
     activeStream.snapshotInFlight = true;
     try {
-      const snapshot = await this.terminalManager.getTerminalState(activeStream.terminalId);
+      const snapshot = await terminalManager.getTerminalState(activeStream.terminalId);
       if (this.activeStreams.get(activeStream.slot) !== activeStream) {
         return;
       }
@@ -705,6 +711,11 @@ export class TerminalSessionController {
           payload: encodeTerminalSnapshotPayload(snapshot.state),
         }),
       );
+
+      const replayPreamble = terminal.getReplayPreamble();
+      if (replayPreamble.length > 0) {
+        activeStream.outputCoalescer.handle(replayPreamble);
+      }
 
       const bufferedOutputs = activeStream.bufferedOutputs.splice(
         0,

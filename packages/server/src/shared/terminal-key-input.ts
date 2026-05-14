@@ -1,3 +1,5 @@
+import type { TerminalInputModeState } from "./terminal-input-mode.js";
+
 export interface TerminalKeyInput {
   key: string;
   ctrl?: boolean;
@@ -6,6 +8,14 @@ export interface TerminalKeyInput {
   meta?: boolean;
 }
 
+export interface TerminalKeyInputEncodingOptions {
+  inputMode?: TerminalInputModeState;
+}
+
+const WIN32_LEFT_ALT_PRESSED = 0x0002;
+const WIN32_LEFT_CTRL_PRESSED = 0x0008;
+const WIN32_SHIFT_PRESSED = 0x0010;
+
 function modifierParam(input: TerminalKeyInput): number {
   let value = 1;
   if (input.shift) value += 1;
@@ -13,6 +23,40 @@ function modifierParam(input: TerminalKeyInput): number {
   if (input.ctrl) value += 4;
   if (input.meta) value += 8;
   return value;
+}
+
+function win32ControlKeyState(input: TerminalKeyInput): number {
+  let value = 0;
+  if (input.shift) value += WIN32_SHIFT_PRESSED;
+  if (input.ctrl) value += WIN32_LEFT_CTRL_PRESSED;
+  if (input.alt) value += WIN32_LEFT_ALT_PRESSED;
+  return value;
+}
+
+function shouldUseWin32InputMode(
+  input: TerminalKeyInput,
+  options: TerminalKeyInputEncodingOptions,
+): boolean {
+  if (!options.inputMode?.win32InputMode) {
+    return false;
+  }
+  return Boolean(input.shift || input.ctrl || input.alt);
+}
+
+function shouldUseKittyKeyboardMode(
+  input: TerminalKeyInput,
+  options: TerminalKeyInputEncodingOptions,
+): boolean {
+  if ((options.inputMode?.kittyKeyboardFlags ?? 0) <= 0) {
+    return false;
+  }
+  return Boolean(input.shift || input.ctrl || input.alt || input.meta);
+}
+
+function encodeWin32EnterKeyInput(input: TerminalKeyInput): string {
+  const controlKeyState = win32ControlKeyState(input);
+  // ConPTY Win32 input mode: CSI Vk;Sc;Uc;Kd;Cs;Rc _
+  return `\x1b[13;28;13;1;${controlKeyState};1_`;
 }
 
 function applyAltLikePrefix(sequence: string, input: TerminalKeyInput): string {
@@ -144,7 +188,10 @@ function encodeNavigationKey(key: string, input: TerminalKeyInput): string | nul
   }
 }
 
-export function encodeTerminalKeyInput(input: TerminalKeyInput): string {
+export function encodeTerminalKeyInput(
+  input: TerminalKeyInput,
+  options: TerminalKeyInputEncodingOptions = {},
+): string {
   const key = input.key;
   if (!key) {
     return "";
@@ -157,7 +204,10 @@ export function encodeTerminalKeyInput(input: TerminalKeyInput): string {
   switch (key) {
     case "Enter": {
       const mod = modifierParam(input);
-      if (mod > 1) {
+      if (mod > 1 && shouldUseWin32InputMode(input, options)) {
+        return encodeWin32EnterKeyInput(input);
+      }
+      if (mod > 1 && shouldUseKittyKeyboardMode(input, options)) {
         return `\x1b[13;${mod}u`;
       }
       return "\r";

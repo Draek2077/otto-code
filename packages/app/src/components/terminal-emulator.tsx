@@ -17,6 +17,7 @@ import { useDOMImperativeHandle, type DOMImperativeFactory } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
+import type { TerminalInputModeState } from "@server/shared/terminal-input-mode";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
@@ -129,6 +130,7 @@ interface TerminalEmulatorProps {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
+  onInputModeChange?: (state: TerminalInputModeState) => Promise<void> | void;
   onRendererReadyChange?: (change: TerminalRendererReadyChange) => void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
@@ -194,6 +196,7 @@ export default function TerminalEmulator({
   onResize,
   onTerminalKey,
   onPendingModifiersConsumed,
+  onInputModeChange,
   onRendererReadyChange,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
@@ -219,12 +222,14 @@ export default function TerminalEmulator({
     onResize,
     onTerminalKey,
     onPendingModifiersConsumed,
+    onInputModeChange,
   });
   mountCallbacksRef.current = {
     onInput,
     onResize,
     onTerminalKey,
     onPendingModifiersConsumed,
+    onInputModeChange,
   };
   const initialSnapshotRef = useRef(initialSnapshot);
   initialSnapshotRef.current = initialSnapshot;
@@ -444,10 +449,11 @@ export default function TerminalEmulator({
         onResize,
         onTerminalKey,
         onPendingModifiersConsumed,
+        onInputModeChange,
         onOpenExternalUrl: openExternalUrl,
       },
     });
-  }, [onInput, onPendingModifiersConsumed, onResize, onTerminalKey]);
+  }, [onInput, onInputModeChange, onPendingModifiersConsumed, onResize, onTerminalKey]);
 
   useEffect(() => {
     runtimeRef.current?.setPendingModifiers({ pendingModifiers });

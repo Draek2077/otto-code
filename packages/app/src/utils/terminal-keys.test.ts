@@ -95,7 +95,7 @@ describe("terminal key helpers", () => {
     ).toBe(true);
   });
 
-  it("intercepts Enter with DOM shift modifier for CSI u encoding", () => {
+  it("does not intercept modified Enter before enhanced input mode is active", () => {
     expect(
       shouldInterceptDomTerminalKey({
         key: "Enter",
@@ -105,10 +105,10 @@ describe("terminal key helpers", () => {
         metaKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("intercepts Enter with any DOM modifier for CSI u encoding", () => {
+  it("intercepts Enter with any DOM modifier after enhanced input mode is active", () => {
     expect(
       shouldInterceptDomTerminalKey({
         key: "Enter",
@@ -117,6 +117,7 @@ describe("terminal key helpers", () => {
         altKey: false,
         metaKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
+        enhancedInputActive: true,
       }),
     ).toBe(true);
     expect(
@@ -127,6 +128,7 @@ describe("terminal key helpers", () => {
         altKey: true,
         metaKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
+        enhancedInputActive: true,
       }),
     ).toBe(true);
     expect(
@@ -137,6 +139,7 @@ describe("terminal key helpers", () => {
         altKey: false,
         metaKey: true,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
+        enhancedInputActive: true,
       }),
     ).toBe(true);
   });

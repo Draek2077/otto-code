@@ -2,6 +2,7 @@ import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import type { TerminalState } from "../shared/messages.js";
+import { TerminalInputModeTracker } from "../shared/terminal-input-mode.js";
 import type {
   ClientMessage,
   ServerMessage,
@@ -43,6 +44,7 @@ interface PendingRequest {
 interface WorkerTerminalRecord {
   info: WorkerTerminalInfo;
   state: TerminalState;
+  inputModeTracker: TerminalInputModeTracker;
   exitInfo: TerminalExitInfo | null;
   messageListeners: Set<(msg: ServerMessage) => void>;
   exitListeners: Set<(info: TerminalExitInfo) => void>;
@@ -169,6 +171,7 @@ export function createWorkerTerminalManager(
     const record: WorkerTerminalRecord = {
       info: cloneTerminalInfo(input.info),
       state: input.state,
+      inputModeTracker: new TerminalInputModeTracker(),
       exitInfo: null,
       messageListeners: new Set(),
       exitListeners: new Set(),
@@ -247,6 +250,9 @@ export function createWorkerTerminalManager(
           revision: 0,
         };
       },
+      getReplayPreamble(): string {
+        return record.inputModeTracker.getPreamble();
+      },
       getTitle(): string | undefined {
         return record.info.title;
       },
@@ -301,6 +307,9 @@ export function createWorkerTerminalManager(
     }
     if (message.message.type === "snapshot") {
       record.state = message.message.state;
+    }
+    if (message.message.type === "output") {
+      record.inputModeTracker.feed(message.message.data);
     }
     for (const listener of Array.from(record.messageListeners)) {
       listener(message.message);
