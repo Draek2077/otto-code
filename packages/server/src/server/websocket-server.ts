@@ -1295,7 +1295,9 @@ export class VoiceAssistantWebSocketServer {
           payload: {
             requestId: requestInfo.requestId,
             requestType: requestInfo.requestType,
-            error: isUnknownSchema ? "Unknown request schema" : "Invalid message",
+            error: isUnknownSchema
+              ? `Unknown request, try upgrading the daemon (currently v${this.daemonVersion})`
+              : "Invalid message",
             code: isUnknownSchema ? "unknown_schema" : "invalid_message",
           },
         }),
