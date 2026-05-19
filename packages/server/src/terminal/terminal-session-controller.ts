@@ -4,6 +4,7 @@ import type {
   CreateTerminalRequest,
   KillTerminalRequest,
   ListTerminalsRequest,
+  RenameTerminalRequest,
   SessionInboundMessage,
   SessionOutboundMessage,
   SubscribeTerminalRequest,
@@ -64,7 +65,8 @@ type TerminalDispatchableMessage =
   | UnsubscribeTerminalRequest
   | TerminalInput
   | KillTerminalRequest
-  | CaptureTerminalRequest;
+  | CaptureTerminalRequest
+  | RenameTerminalRequest;
 
 const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> = new Set([
   "subscribe_terminals_request",
@@ -76,6 +78,7 @@ const TERMINAL_MESSAGE_TYPES: ReadonlySet<TerminalDispatchableMessage["type"]> =
   "terminal_input",
   "kill_terminal_request",
   "capture_terminal_request",
+  "terminal.rename.request",
 ]);
 
 export class TerminalSessionController {
@@ -145,6 +148,8 @@ export class TerminalSessionController {
         return this.handleKillTerminalRequest(msg);
       case "capture_terminal_request":
         return this.handleCaptureTerminalRequest(msg);
+      case "terminal.rename.request":
+        return this.handleRenameTerminalRequest(msg);
       default:
         return undefined;
     }
@@ -428,6 +433,32 @@ export class TerminalSessionController {
         },
       });
     }
+  }
+
+  private async handleRenameTerminalRequest(msg: RenameTerminalRequest): Promise<void> {
+    const respond = (success: boolean, error: string | null): void => {
+      this.emit({
+        type: "terminal.rename.response",
+        payload: { requestId: msg.requestId, success, error },
+      });
+    };
+
+    const title = msg.title.trim();
+    if (title.length === 0) {
+      respond(false, "Title is required");
+      return;
+    }
+    if (title.length > 200) {
+      respond(false, "Title is too long");
+      return;
+    }
+    if (!this.terminalManager) {
+      respond(false, "Terminal manager not available");
+      return;
+    }
+
+    const renamed = this.terminalManager.setTerminalTitle(msg.terminalId, title);
+    respond(renamed, renamed ? null : "Terminal not found");
   }
 
   private async handleSubscribeTerminalRequest(msg: SubscribeTerminalRequest): Promise<void> {

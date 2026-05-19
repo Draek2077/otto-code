@@ -68,9 +68,8 @@ import type { AgentAttachment } from "@server/shared/messages";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import type { OpenFileDisposition } from "@/workspace/file-open";
 import { getMarkdownListMarker, getMarkdownNextSiblingType } from "@/utils/markdown-list";
-import type { ToastApi } from "@/components/toast-host";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import { formatDuration, formatMessageTimestamp } from "@/utils/time";
@@ -92,12 +91,11 @@ import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
 import {
   AssistantInlineCodePathLink,
-  classifyAssistantFileLink,
   type AssistantFileLinkSource,
   AssistantMarkdownCodeLink,
   AssistantMarkdownLink,
   type InlinePathTarget,
-  useAssistantFileLinkResolver,
+  useAssistantFileLinkActions,
 } from "@/assistant-file-links";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
@@ -717,11 +715,9 @@ export const LiveElapsed = memo(function LiveElapsed({
 interface AssistantMessageProps {
   message: string;
   timestamp: number;
-  onInlinePathPress?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
   workspaceRoot?: string;
   serverId?: string;
   client?: DaemonClient | null;
-  toast?: ToastApi | null;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
 }
 
@@ -1563,11 +1559,9 @@ function MarkdownListView({ baseStyle, marginBottom, children }: MarkdownListVie
 export const AssistantMessage = memo(function AssistantMessage({
   message,
   timestamp: _timestamp,
-  onInlinePathPress,
   workspaceRoot,
   serverId,
   client,
-  toast,
   spacing = "default",
 }: AssistantMessageProps) {
   const markdownParser = useMemo(() => {
@@ -1583,35 +1577,13 @@ export const AssistantMessage = memo(function AssistantMessage({
     return parser;
   }, []);
 
-  const fileLinkResolver = useAssistantFileLinkResolver({
-    client,
-    serverId,
-    workspaceRoot,
-    onOpenWorkspaceFile: onInlinePathPress,
-    toast,
+  const fileLinkActions = useAssistantFileLinkActions();
+  const handleMarkdownLinkPress = useStableEvent((url: string) => {
+    fileLinkActions.open({ href: url }, "main");
+    // react-native-markdown-display opens the link itself when this returns true.
+    // We already handled it above, so return false to avoid duplicate opens.
+    return false;
   });
-
-  const handleLinkPress = useCallback(
-    (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => {
-      fileLinkResolver.open({ source, disposition });
-    },
-    [fileLinkResolver],
-  );
-  const handleLinkPrefetch = useCallback(
-    (source: AssistantFileLinkSource) => {
-      fileLinkResolver.prefetch({ source });
-    },
-    [fileLinkResolver],
-  );
-  const handleMarkdownLinkPress = useCallback(
-    (url: string) => {
-      fileLinkResolver.open({ source: { href: url }, disposition: "main" });
-      // react-native-markdown-display opens the link itself when this returns true.
-      // We already handled it above, so return false to avoid duplicate opens.
-      return false;
-    },
-    [fileLinkResolver],
-  );
 
   const markdownRules = useMemo<RenderRules>(() => {
     return {
@@ -1684,12 +1656,13 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) => {
         const content = node.content ?? "";
         const isLinkedInlineCode = nodeHasParentType(parent, "link");
-        const inlineCodeFileLink = classifyAssistantFileLink(content, { workspaceRoot });
+        const inlineCodeSource: AssistantFileLinkSource = {
+          href: content,
+          text: content,
+          sourceType: "inline-code",
+        };
         const shouldResolveInlinePath =
-          onInlinePathPress &&
-          !isLinkedInlineCode &&
-          inlineCodeFileLink &&
-          inlineCodeFileLink.kind !== "external";
+          !isLinkedInlineCode && fileLinkActions.canResolveFile(inlineCodeSource);
 
         if (shouldResolveInlinePath) {
           return (
@@ -1699,9 +1672,6 @@ export const AssistantMessage = memo(function AssistantMessage({
               inheritedStyles={inheritedStyles}
               codeInlineStyle={styles.code_inline}
               linkStyle={styles.link}
-              onPress={handleLinkPress}
-              onPrefetch={handleLinkPrefetch}
-              workspaceRoot={workspaceRoot}
             />
           );
         }
@@ -1719,9 +1689,6 @@ export const AssistantMessage = memo(function AssistantMessage({
               inheritedStyles={inheritedStyles}
               codeInlineStyle={styles.code_inline}
               linkStyle={styles.link}
-              onPress={handleLinkPress}
-              onPrefetch={handleLinkPrefetch}
-              workspaceRoot={workspaceRoot}
             >
               {content}
             </AssistantMarkdownCodeLink>
@@ -1800,9 +1767,6 @@ export const AssistantMessage = memo(function AssistantMessage({
           key={node.key}
           source={getMarkdownLinkSource(node)}
           style={styles.link}
-          onPress={handleLinkPress}
-          onPrefetch={handleLinkPrefetch}
-          workspaceRoot={workspaceRoot}
         >
           {Children.map(children, (child) => {
             if (!isValidElement(child)) return child;
@@ -1841,15 +1805,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         );
       },
     };
-  }, [
-    client,
-    handleLinkPrefetch,
-    handleLinkPress,
-    markdownParser,
-    onInlinePathPress,
-    serverId,
-    workspaceRoot,
-  ]);
+  }, [client, fileLinkActions, markdownParser, serverId, workspaceRoot]);
 
   const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
   const keyedBlocks = useMemo(

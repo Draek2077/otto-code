@@ -5,7 +5,9 @@ import {
   AgentCreatedStatusPayloadSchema,
   AgentRefreshedStatusPayloadSchema,
   AgentResumedStatusPayloadSchema,
+  CheckoutRenameBranchResponseSchema,
   parseServerInfoStatusPayload,
+  RenameTerminalResponseSchema,
   RestartRequestedStatusPayloadSchema,
   ShutdownRequestedStatusPayloadSchema,
   SessionInboundMessageSchema,
@@ -60,6 +62,8 @@ import type {
   GetProvidersSnapshotResponseMessage,
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
+  DaemonGetStatusResponse,
+  DaemonGetPairingOfferResponse,
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
@@ -285,6 +289,7 @@ type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["pay
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
 type CheckoutSwitchBranchPayload = CheckoutSwitchBranchResponse["payload"];
+export type RenameBranchResult = z.infer<typeof CheckoutRenameBranchResponseSchema>["payload"];
 type StashSavePayload = StashSaveResponse["payload"];
 type StashPopPayload = StashPopResponse["payload"];
 type StashListPayload = StashListResponse["payload"];
@@ -317,6 +322,8 @@ type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
 type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
+type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
+type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type ReadProjectConfigPayload = Extract<
   SessionOutboundMessage,
   { type: "read_project_config_response" }
@@ -351,6 +358,7 @@ type DictationFinishAcceptedPayload = Extract<
 type AgentPermissionResolvedPayload = AgentPermissionResolvedMessage["payload"];
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
+export type RenameTerminalResult = z.infer<typeof RenameTerminalResponseSchema>["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type CloseItemsPayload = CloseItemsResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
@@ -612,6 +620,16 @@ export interface UpdateScheduleOptions {
   newAgentConfig?: UpdateScheduleNewAgentConfig;
   maxRuns?: number | null;
   expiresAt?: string | null;
+  requestId?: string;
+}
+export interface RenameBranchInput {
+  cwd: string;
+  branch: string;
+  requestId?: string;
+}
+export interface RenameTerminalInput {
+  terminalId: string;
+  title: string;
   requestId?: string;
 }
 type ListAvailableEditorsPayload = ListAvailableEditorsResponseMessage["payload"];
@@ -2929,6 +2947,19 @@ export class DaemonClient {
     });
   }
 
+  async renameBranch(input: RenameBranchInput): Promise<RenameBranchResult> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "checkout.rename_branch.request",
+        cwd: input.cwd,
+        branch: input.branch,
+      },
+      responseType: "checkout.rename_branch.response",
+      timeout: 30000,
+    });
+  }
+
   async stashSave(
     cwd: string,
     options?: { branch?: string },
@@ -3298,6 +3329,28 @@ export class DaemonClient {
     });
   }
 
+  async getDaemonStatus(requestId?: string): Promise<DaemonStatusPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.get_status.request",
+      },
+      responseType: "daemon.get_status.response",
+      timeout: 10000,
+    });
+  }
+
+  async getDaemonPairingOffer(requestId?: string): Promise<DaemonPairingOfferPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.get_pairing_offer.request",
+      },
+      responseType: "daemon.get_pairing_offer.response",
+      timeout: 10000,
+    });
+  }
+
   async patchDaemonConfig(
     config: MutableDaemonConfigPatch,
     requestId?: string,
@@ -3632,6 +3685,19 @@ export class DaemonClient {
       responseType: "create_terminal_response",
       timeout: 10000,
       options: { skipQueue: true },
+    });
+  }
+
+  async renameTerminal(input: RenameTerminalInput): Promise<RenameTerminalResult> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "terminal.rename.request",
+        terminalId: input.terminalId,
+        title: input.title,
+      },
+      responseType: "terminal.rename.response",
+      timeout: 10000,
     });
   }
 

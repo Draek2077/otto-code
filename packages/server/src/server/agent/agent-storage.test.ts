@@ -321,6 +321,42 @@ describe("AgentStorage", () => {
     );
   });
 
+  test("setGeneratedTitleIfUnset aborts when a user title is already set", async () => {
+    const agentId = "agent-generated-title-race";
+    await storage.applySnapshot(createManagedAgent({ id: agentId }));
+    await storage.setTitle(agentId, "User title");
+
+    const result = await storage.setGeneratedTitleIfUnset(agentId, "Generated title");
+
+    expect(result).toBeNull();
+    const record = await storage.get(agentId);
+    expect(record?.title).toBe("User title");
+  });
+
+  test("setGeneratedTitleIfUnset with concurrent writes does not corrupt state", async () => {
+    const agentId = "agent-generated-title-concurrent";
+    await storage.applySnapshot(createManagedAgent({ id: agentId }));
+
+    await Promise.all([
+      storage.setGeneratedTitleIfUnset(agentId, "Title A"),
+      storage.setGeneratedTitleIfUnset(agentId, "Title B"),
+    ]);
+
+    const record = await storage.get(agentId);
+    expect(["Title A", "Title B"]).toContain(record?.title);
+  });
+
+  test("setGeneratedTitleIfUnset writes the generated title only when title is empty", async () => {
+    const agentId = "agent-generated-title-empty";
+    await storage.applySnapshot(createManagedAgent({ id: agentId }));
+
+    const written = await storage.setGeneratedTitleIfUnset(agentId, "Generated title");
+
+    expect(written?.title).toBe("Generated title");
+    const record = await storage.get(agentId);
+    expect(record?.title).toBe("Generated title");
+  });
+
   test("applySnapshot accepts explicit title overrides", async () => {
     const agentId = "agent-override";
     await storage.applySnapshot(createManagedAgent({ id: agentId }), { title: "Provided Title" });

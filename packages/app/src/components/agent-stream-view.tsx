@@ -74,7 +74,10 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./use-bottom-anchor-controller";
-import { normalizeInlinePathTarget } from "@/assistant-file-links";
+import {
+  AssistantFileLinkResolverProvider,
+  normalizeInlinePathTarget,
+} from "@/assistant-file-links";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -83,6 +86,7 @@ import {
 } from "@/workspace/file-open";
 import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 
@@ -322,7 +326,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setExpandedInlineToolCallIds(new Set());
     }, [agentId]);
 
-    const handleInlinePathPress = useCallback(
+    const handleInlinePathPress = useStableEvent(
       (target: InlinePathTarget, disposition: OpenFileDisposition) => {
         if (!target.path) {
           return;
@@ -377,25 +381,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           checkout,
         });
       },
-      [
-        agent.cwd,
-        agent.projectPlacement?.checkout?.isGit,
-        isMobile,
-        openFileExplorerForCheckout,
-        onOpenWorkspaceFile,
-        requestDirectoryListing,
-        resolvedServerId,
-        setExplorerTabForCheckout,
-        workspaceId,
-      ],
     );
 
-    const handleToolCallOpenFile = useCallback(
-      (filePath: string) => {
-        handleInlinePathPress({ raw: filePath, path: filePath }, "main");
-      },
-      [handleInlinePathPress],
-    );
+    const handleToolCallOpenFile = useStableEvent((filePath: string) => {
+      handleInlinePathPress({ raw: filePath, path: filePath }, "main");
+    });
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
@@ -510,19 +500,25 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           belowItem,
         });
         return (
-          <AssistantMessage
-            message={item.text}
-            timestamp={item.timestamp.getTime()}
-            onInlinePathPress={handleInlinePathPress}
-            workspaceRoot={workspaceRoot}
-            serverId={serverId}
+          <AssistantFileLinkResolverProvider
             client={client}
+            serverId={resolvedServerId}
+            workspaceRoot={workspaceRoot}
+            onOpenWorkspaceFile={handleInlinePathPress}
             toast={toast}
-            spacing={spacing}
-          />
+          >
+            <AssistantMessage
+              message={item.text}
+              timestamp={item.timestamp.getTime()}
+              workspaceRoot={workspaceRoot}
+              serverId={resolvedServerId}
+              client={client}
+              spacing={spacing}
+            />
+          </AssistantFileLinkResolverProvider>
         );
       },
-      [handleInlinePathPress, streamRenderStrategy, workspaceRoot, serverId, client, toast],
+      [client, handleInlinePathPress, resolvedServerId, streamRenderStrategy, toast, workspaceRoot],
     );
 
     const renderThoughtItem = useCallback(

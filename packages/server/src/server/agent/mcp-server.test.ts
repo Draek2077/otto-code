@@ -117,7 +117,9 @@ function buildAgentManagerSpies() {
     createAgent: vi.fn(),
     waitForAgentEvent: vi.fn(),
     recordUserMessage: vi.fn(),
-    setAgentMode: vi.fn(),
+    setAgentMode: vi.fn().mockResolvedValue(undefined),
+    setAgentModel: vi.fn().mockResolvedValue(undefined),
+    setAgentThinkingOption: vi.fn().mockResolvedValue(undefined),
     setAgentFeature: vi.fn().mockResolvedValue(undefined),
     setLabels: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
@@ -446,7 +448,7 @@ describe("create_agent MCP tool", () => {
 
     const missingTitle = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       initialPrompt: "test",
     });
@@ -455,7 +457,7 @@ describe("create_agent MCP tool", () => {
 
     const tooLong = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       title: "x".repeat(61),
       initialPrompt: "test",
@@ -465,7 +467,7 @@ describe("create_agent MCP tool", () => {
 
     const ok = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       title: "Short title",
       initialPrompt: "test",
@@ -479,7 +481,7 @@ describe("create_agent MCP tool", () => {
     const tool = registeredTool(server, "create_agent");
     const parsed = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       title: "Short title",
     });
@@ -510,7 +512,7 @@ describe("create_agent MCP tool", () => {
       provider: "codex/gpt-5.4",
       initialPrompt: "Do work",
       background: true,
-      features: { fast_mode: true },
+      settings: { features: { fast_mode: true } },
     };
 
     const parsed = await tool.inputSchema.safeParseAsync(input);
@@ -536,7 +538,7 @@ describe("create_agent MCP tool", () => {
 
     const missingProvider = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       title: "Short title",
       initialPrompt: "test",
     });
@@ -549,7 +551,7 @@ describe("create_agent MCP tool", () => {
 
     const providerWithoutModel = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       title: "Short title",
       provider: "codex",
       initialPrompt: "test",
@@ -558,7 +560,7 @@ describe("create_agent MCP tool", () => {
 
     const providerWithEmptyModel = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       title: "Short title",
       provider: "codex/",
       initialPrompt: "test",
@@ -567,7 +569,7 @@ describe("create_agent MCP tool", () => {
 
     const providerWithEmptyProvider = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
-      mode: "default",
+      settings: { modeId: "default" },
       title: "Short title",
       provider: "/gpt-5.4",
       initialPrompt: "test",
@@ -577,7 +579,7 @@ describe("create_agent MCP tool", () => {
     await expect(
       tool.handler({
         cwd: existingCwd,
-        mode: "default",
+        settings: { modeId: "default" },
         title: "Short title",
         provider: "codex/gpt-5.4",
         model: "gpt-5.4",
@@ -722,10 +724,9 @@ describe("create_agent MCP tool", () => {
     await tool.handler({
       cwd: existingCwd,
       title: "Config test",
-      mode: "auto",
       initialPrompt: "Do work",
       provider: "codex/gpt-5.4",
-      thinking: "think-hard",
+      settings: { modeId: "auto", thinkingOptionId: "think-hard" },
       labels: { source: "mcp" },
     });
 
@@ -1269,7 +1270,7 @@ describe("create_agent MCP tool", () => {
     const parsed = await tool.inputSchema.safeParseAsync({
       cwd: existingCwd,
       title: "Custom provider agent",
-      mode: "default",
+      settings: { modeId: "default" },
       provider: "zai/custom-model",
       initialPrompt: "Do work",
     });
@@ -1360,7 +1361,7 @@ describe("create_agent MCP tool", () => {
       provider: "codex/gpt-5.4",
       initialPrompt: "Do work",
       background: true,
-      features: { fast_mode: true },
+      settings: { features: { fast_mode: true } },
     };
 
     const parsed = await tool.inputSchema.safeParseAsync(input);
@@ -1403,7 +1404,7 @@ describe("create_agent MCP tool", () => {
     await tool.handler({
       cwd: existingCwd,
       title: "Injected config test",
-      mode: "auto",
+      settings: { modeId: "auto" },
       provider: "codex/gpt-5.4",
       initialPrompt: "Do work",
     });
@@ -1428,7 +1429,7 @@ describe("create_agent MCP tool", () => {
         cwd: existingCwd,
         title: "Bad mode",
         provider: "opencode/gpt-5.4",
-        mode: "bypassPermissions",
+        settings: { modeId: "bypassPermissions" },
         initialPrompt: "Do work",
       }),
     ).rejects.toThrow(
@@ -1567,7 +1568,7 @@ describe("create_agent MCP tool", () => {
     await tool.handler({
       title: "Child",
       provider: "opencode/gpt-5.4",
-      mode: "build",
+      settings: { modeId: "build" },
       initialPrompt: "Do work",
     });
 
@@ -1579,17 +1580,31 @@ describe("create_agent MCP tool", () => {
   });
 });
 
-describe("set_agent_feature MCP tool", () => {
+describe("update_agent MCP tool", () => {
   const logger = createTestLogger();
 
-  it("sets a provider feature on an existing agent", async () => {
-    const { agentManager, agentStorage, spies } = createTestDeps();
+  it("does not register the replaced feature-specific MCP tool", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
-    const tool = registeredTool(server, "set_agent_feature");
+
+    expect(lookupTool(server, "set_agent_feature")).toBeUndefined();
+  });
+
+  it("updates runtime settings before metadata", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentStorage.get.mockResolvedValue(createStoredRecord({ id: "agent-1" }));
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    const tool = registeredTool(server, "update_agent");
     const input = {
       agentId: "agent-1",
-      featureId: "fast_mode",
-      value: true,
+      name: "Updated agent",
+      labels: { role: "worker" },
+      settings: {
+        modeId: "full-access",
+        model: "gpt-5.4",
+        thinkingOptionId: "high",
+        features: { fast_mode: true },
+      },
     };
 
     const parsed = await tool.inputSchema.safeParseAsync(input);
@@ -1597,8 +1612,38 @@ describe("set_agent_feature MCP tool", () => {
 
     const response = await tool.handler(input);
 
+    expect(spies.agentManager.setAgentMode).toHaveBeenCalledWith("agent-1", "full-access");
+    expect(spies.agentManager.setAgentModel).toHaveBeenCalledWith("agent-1", "gpt-5.4");
+    expect(spies.agentManager.setAgentThinkingOption).toHaveBeenCalledWith("agent-1", "high");
     expect(spies.agentManager.setAgentFeature).toHaveBeenCalledWith("agent-1", "fast_mode", true);
+    expect(spies.agentStorage.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-1",
+        title: "Updated agent",
+      }),
+    );
+    expect(spies.agentManager.setLabels).toHaveBeenCalledWith("agent-1", { role: "worker" });
     expect(response.structuredContent).toEqual({ success: true });
+  });
+
+  it("does not update metadata when runtime settings fail", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.setAgentFeature.mockRejectedValue(new Error("unsupported feature"));
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    const tool = registeredTool(server, "update_agent");
+
+    await expect(
+      tool.handler({
+        agentId: "agent-1",
+        name: "Should not persist",
+        labels: { role: "worker" },
+        settings: { features: { fast_mode: true } },
+      }),
+    ).rejects.toThrow("unsupported feature");
+
+    expect(spies.agentStorage.get).not.toHaveBeenCalled();
+    expect(spies.agentStorage.upsert).not.toHaveBeenCalled();
+    expect(spies.agentManager.setLabels).not.toHaveBeenCalled();
   });
 });
 
@@ -2033,10 +2078,17 @@ describe("provider listing MCP tool", () => {
   });
 });
 
-describe("model listing MCP tool", () => {
+describe("provider MCP tools", () => {
   const logger = createTestLogger();
 
-  it("lists provider features for a draft agent configuration", async () => {
+  it("does not register the replaced feature-specific provider discovery MCP tool", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+
+    expect(lookupTool(server, "list_provider_features")).toBeUndefined();
+  });
+
+  it("inspects provider features for a draft agent configuration", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.listDraftFeatures.mockResolvedValue([
       {
@@ -2046,19 +2098,29 @@ describe("model listing MCP tool", () => {
         value: false,
       },
     ]);
+    const providerRegistry = {
+      codex: createProviderDefinition({
+        id: "codex",
+        label: "Codex",
+        description: "OpenAI coding agent",
+        modes: [{ id: "full-access", label: "Full Access", description: "Can edit files" }],
+      }),
+    };
     const server = await createAgentMcpServer({
       agentManager,
       agentStorage,
+      providerRegistry,
       logger,
     });
-    const tool = registeredTool(server, "list_provider_features");
+    const tool = registeredTool(server, "inspect_provider");
     const input = {
-      provider: "codex",
+      provider: "codex/gpt-5.4",
       cwd: "~/repo",
-      modeId: "full-access",
-      model: "gpt-5.4",
-      thinkingOptionId: "high",
-      featureValues: { fast_mode: true },
+      settings: {
+        modeId: "full-access",
+        thinkingOptionId: "high",
+        features: { fast_mode: true },
+      },
     };
 
     const parsed = await tool.inputSchema.safeParseAsync(input);
@@ -2076,6 +2138,12 @@ describe("model listing MCP tool", () => {
     });
     expect(response.structuredContent).toEqual({
       provider: "codex",
+      label: "Codex",
+      description: "OpenAI coding agent",
+      enabled: true,
+      status: "available",
+      modes: [{ id: "full-access", label: "Full Access", description: "Can edit files" }],
+      selectedModel: "gpt-5.4",
       features: [
         {
           type: "toggle",
@@ -2114,6 +2182,38 @@ describe("model listing MCP tool", () => {
     const tool = registeredTool(server, "list_models");
 
     await expect(tool.handler({ provider: "codex" })).rejects.toThrow(
+      "Provider 'codex' is disabled",
+    );
+    expect(fetchModels).not.toHaveBeenCalled();
+  });
+
+  it("inspect_provider rejects disabled providers without fetching models", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const fetchModels = vi.fn().mockResolvedValue([
+      {
+        provider: "codex",
+        id: "gpt-5.4",
+        label: "GPT-5.4",
+      },
+    ]);
+    const providerRegistry = {
+      codex: createProviderDefinition({
+        id: "codex",
+        label: "Codex",
+        enabled: false,
+        fetchModels,
+      }),
+    };
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerRegistry,
+      logger,
+    });
+    const tool = registeredTool(server, "inspect_provider");
+
+    await expect(tool.handler({ provider: "codex", cwd: "~/repo" })).rejects.toThrow(
       "Provider 'codex' is disabled",
     );
     expect(fetchModels).not.toHaveBeenCalled();

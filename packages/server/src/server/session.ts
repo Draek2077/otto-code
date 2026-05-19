@@ -20,6 +20,7 @@ import {
   type FileExplorerRequest,
   type FileDownloadTokenRequest,
   type GitSetupOptions,
+  type CheckoutRenameBranchRequest,
   type StartWorkspaceScriptRequest,
   type CloseItemsRequest,
   type SubscribeCheckoutDiffRequest,
@@ -47,6 +48,8 @@ import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js"
 import { maybePersistTtsDebugAudio } from "./agent/tts-debug.js";
 import { isPaseoDictationDebugEnabled } from "./agent/recordings-debug.js";
 import { listAvailableEditorTargets, openInEditorTarget } from "./editor-targets.js";
+import { getPidLockInfo } from "./pid-lock.js";
+import { generateLocalPairingOffer } from "./pairing-offer.js";
 import {
   DictationStreamManager,
   type DictationStreamOutboundMessage,
@@ -192,7 +195,9 @@ import {
   pullCurrentBranch,
   pushCurrentBranch,
   createPullRequest,
+  renameCurrentBranch,
 } from "../utils/checkout-git.js";
+import { validateBranchSlug } from "../utils/branch-slug.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
@@ -306,8 +311,8 @@ type GitMutationRefreshReason =
   | "disable-pr-auto-merge"
   | "create-pr"
   | "switch-branch"
-  | "create-branch"
   | "rename-branch"
+  | "create-branch"
   | "stash-push"
   | "stash-pop"
   | "create-worktree";
@@ -429,6 +434,7 @@ type ProcessingPhase = "idle" | "transcribing";
 
 interface WorkspaceGitWatchTarget {
   cwd: string;
+  workspaceId: string;
   watchers: FSWatcher[];
   debounceTimer: ReturnType<typeof setTimeout> | null;
   refreshPromise: Promise<void> | null;
@@ -595,6 +601,18 @@ export interface SessionOptions {
   agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
   isDev?: boolean;
+  serverId?: string;
+  daemonVersion?: string;
+  daemonRuntimeConfig?: {
+    listen: string | null;
+    relay: {
+      enabled: boolean;
+      endpoint: string;
+      publicEndpoint: string;
+      useTls: boolean;
+      publicUseTls: boolean;
+    } | null;
+  };
 }
 
 export type SessionLifecycleIntent =
@@ -805,6 +823,9 @@ export class Session {
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly providerOverrides: Record<string, ProviderOverride> | undefined;
   private readonly isDev: boolean;
+  private readonly serverId: string | undefined;
+  private readonly daemonVersion: string | undefined;
+  private readonly daemonRuntimeConfig: SessionOptions["daemonRuntimeConfig"];
   private voiceModeAgentId: string | null = null;
   private voiceModeBaseConfig: VoiceModeBaseConfig | null = null;
 
@@ -850,6 +871,9 @@ export class Session {
       agentProviderRuntimeSettings,
       providerOverrides,
       isDev,
+      serverId,
+      daemonVersion,
+      daemonRuntimeConfig,
     } = options;
     this.clientId = clientId;
     this.appVersion = appVersion ?? null;
@@ -901,6 +925,9 @@ export class Session {
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
     this.providerOverrides = providerOverrides;
     this.isDev = isDev === true;
+    this.serverId = serverId;
+    this.daemonVersion = daemonVersion;
+    this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.abortController = new AbortController();
     this.workspaceDirectory = new WorkspaceDirectory({
       logger: this.sessionLogger,
@@ -1864,6 +1891,10 @@ export class Session {
           payload: { requestId: msg.requestId, config: this.daemonConfigStore.get() },
         });
         return undefined;
+      case "daemon.get_status.request":
+        return this.handleDaemonGetStatusRequest(msg);
+      case "daemon.get_pairing_offer.request":
+        return this.handleDaemonGetPairingOfferRequest(msg);
       case "set_daemon_config_request":
         this.emit({
           type: "set_daemon_config_response",
@@ -2019,12 +2050,8 @@ export class Session {
         return undefined;
       case "checkout_switch_branch_request":
         return this.handleCheckoutSwitchBranchRequest(msg);
-      case "stash_save_request":
-        return this.handleStashSaveRequest(msg);
-      case "stash_pop_request":
-        return this.handleStashPopRequest(msg);
-      case "stash_list_request":
-        return this.handleStashListRequest(msg);
+      case "checkout.rename_branch.request":
+        return this.handleCheckoutRenameBranchRequest(msg);
       case "checkout_commit_request":
         return this.handleCheckoutCommitRequest(msg);
       case "checkout_merge_request":
@@ -2047,6 +2074,12 @@ export class Session {
         return this.handlePullRequestTimelineRequest(msg);
       case "github_search_request":
         return this.handleGitHubSearchRequest(msg);
+      case "stash_save_request":
+        return this.handleStashSaveRequest(msg);
+      case "stash_pop_request":
+        return this.handleStashPopRequest(msg);
+      case "stash_list_request":
+        return this.handleStashListRequest(msg);
       default:
         return undefined;
     }
@@ -3813,6 +3846,86 @@ export class Session {
     }
   }
 
+  private async handleDaemonGetStatusRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.get_status.request" }>,
+  ): Promise<void> {
+    try {
+      const pidInfo = await getPidLockInfo(this.paseoHome);
+      const providers = (await this.agentManager.listProviderAvailability()).map((p) => ({
+        provider: p.provider,
+        available: p.available,
+        error: p.error ?? null,
+      }));
+      this.emit({
+        type: "daemon.get_status.response",
+        payload: {
+          requestId: msg.requestId,
+          serverId: this.serverId ?? "",
+          version: this.daemonVersion ?? null,
+          pid: process.pid,
+          nodePath: process.execPath,
+          startedAt: pidInfo?.startedAt ?? null,
+          listen: this.daemonRuntimeConfig?.listen ?? null,
+          relay: this.daemonRuntimeConfig?.relay ?? null,
+          providers,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "Failed to handle daemon status request");
+      this.emit({
+        type: "daemon.get_status.response",
+        payload: {
+          requestId: msg.requestId,
+          serverId: this.serverId ?? "",
+          version: this.daemonVersion ?? null,
+          pid: process.pid,
+          nodePath: process.execPath,
+          startedAt: null,
+          listen: null,
+          relay: null,
+          providers: [],
+        },
+      });
+    }
+  }
+
+  private async handleDaemonGetPairingOfferRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.get_pairing_offer.request" }>,
+  ): Promise<void> {
+    try {
+      const relay = this.daemonRuntimeConfig?.relay;
+      const pairing = await generateLocalPairingOffer({
+        paseoHome: this.paseoHome,
+        relayEnabled: relay?.enabled ?? true,
+        relayEndpoint: relay?.endpoint,
+        relayPublicEndpoint: relay?.publicEndpoint,
+        relayUseTls: relay?.useTls,
+        relayPublicUseTls: relay?.publicUseTls,
+        includeQr: true,
+        logger: this.sessionLogger,
+      });
+      this.emit({
+        type: "daemon.get_pairing_offer.response",
+        payload: {
+          requestId: msg.requestId,
+          url: pairing.url ?? "",
+          qr: pairing.qr ?? null,
+          relayEnabled: pairing.relayEnabled,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "Failed to handle daemon pairing offer request");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: "daemon.get_pairing_offer.request",
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
   private async handleListAvailableProvidersRequest(
     msg: Extract<SessionInboundMessage, { type: "list_available_providers_request" }>,
   ): Promise<void> {
@@ -4826,16 +4939,35 @@ export class Session {
     target.lastBranchName = workspace?.name ?? null;
   }
 
+  private handleWorkspaceGitBranchSnapshot(cwd: string, branchName: string | null): void {
+    const target = this.workspaceGitWatchTargets.get(normalizePersistedWorkspaceId(cwd));
+    if (!target) {
+      return;
+    }
+
+    const previousBranchName = target.lastBranchName;
+    if (branchName === previousBranchName) {
+      return;
+    }
+
+    target.lastBranchName = branchName;
+    this.onBranchChanged?.(target.workspaceId, previousBranchName, branchName);
+  }
+
   private syncWorkspaceGitObservers(workspaces: Iterable<WorkspaceDescriptorPayload>): void {
     for (const workspace of workspaces) {
       this.syncWorkspaceGitObserver(workspace.workspaceDirectory, {
         isGit: workspace.projectKind === "git",
+        workspaceId: workspace.id,
       });
       this.rememberWorkspaceGitDescriptorState(workspace.workspaceDirectory, workspace);
     }
   }
 
-  private syncWorkspaceGitObserver(cwd: string, options: { isGit: boolean }): void {
+  private syncWorkspaceGitObserver(
+    cwd: string,
+    options: { isGit: boolean; workspaceId: string },
+  ): void {
     const normalizedCwd = normalizePersistedWorkspaceId(cwd);
     if (!options.isGit) {
       this.removeWorkspaceGitSubscription(normalizedCwd);
@@ -4846,9 +4978,22 @@ export class Session {
       return;
     }
 
+    const target: WorkspaceGitWatchTarget = {
+      cwd: normalizedCwd,
+      workspaceId: options.workspaceId,
+      watchers: [],
+      debounceTimer: null,
+      refreshPromise: null,
+      refreshQueued: false,
+      latestDescriptorStateKey: null,
+      lastBranchName: null,
+    };
+    this.workspaceGitWatchTargets.set(normalizedCwd, target);
+
     const subscription = this.workspaceGitService.registerWorkspace(
       { cwd: normalizedCwd },
       (snapshot) => {
+        this.handleWorkspaceGitBranchSnapshot(normalizedCwd, snapshot.git.currentBranch ?? null);
         void this.emitWorkspaceUpdateForCwd(normalizedCwd);
         this.emitCheckoutStatusUpdate(normalizedCwd, snapshot);
       },
@@ -4948,6 +5093,58 @@ export class Session {
           cwd,
           success: false,
           branch,
+          error: toCheckoutError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleCheckoutRenameBranchRequest(msg: CheckoutRenameBranchRequest): Promise<void> {
+    const { cwd, branch, requestId } = msg;
+    const validation = validateBranchSlug(branch);
+
+    if (!validation.valid) {
+      this.emit({
+        type: "checkout.rename_branch.response",
+        payload: {
+          cwd,
+          success: false,
+          currentBranch: null,
+          error: toCheckoutError(new Error(validation.error ?? "Invalid branch name")),
+          requestId,
+        },
+      });
+      return;
+    }
+
+    try {
+      const result = await renameCurrentBranch(cwd, branch);
+      await this.notifyGitMutation(cwd, "rename-branch", { invalidateGithub: true });
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
+      this.handleWorkspaceGitBranchSnapshot(cwd, result.currentBranch);
+
+      // Push a workspace_update immediately so the sidebar/header reflect
+      // the new branch name without waiting for the background git watcher.
+      await this.emitWorkspaceUpdateForCwd(cwd);
+
+      this.emit({
+        type: "checkout.rename_branch.response",
+        payload: {
+          cwd,
+          success: true,
+          currentBranch: result.currentBranch,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "checkout.rename_branch.response",
+        payload: {
+          cwd,
+          success: false,
+          currentBranch: null,
           error: toCheckoutError(error),
           requestId,
         },
@@ -6672,7 +6869,10 @@ export class Session {
 
   private async emitWorkspaceUpdateForCwd(
     cwd: string,
-    options?: { skipReconcile?: boolean; dedupeGitState?: boolean },
+    options?: {
+      skipReconcile?: boolean;
+      dedupeGitState?: boolean;
+    },
   ): Promise<void> {
     const workspaces = await this.workspaceRegistry.list();
     const workspaceId = this.resolveRegisteredWorkspaceIdForCwd(cwd, workspaces);

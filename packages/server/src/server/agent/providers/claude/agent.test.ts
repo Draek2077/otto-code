@@ -1461,4 +1461,64 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(timelineEvents).toEqual([]);
     expect(events.some((event) => event.type === "turn_completed")).toBe(true);
   });
+
+  test("result.result is not duplicated when assistant text already streamed with zero token usage", async () => {
+    const queryFactory = createQueryFactoryForTurns([
+      [
+        {
+          type: "system",
+          subtype: "init",
+          session_id: "session-third-party",
+          permissionMode: "default",
+        },
+        {
+          type: "assistant",
+          message: {
+            id: "assistant-third-party-1",
+            role: "assistant",
+            content: [{ type: "text", text: "Here is the answer." }],
+            usage: {
+              input_tokens: 0,
+              output_tokens: 0,
+            },
+          },
+          session_id: "session-third-party",
+          uuid: "assistant-third-party-event-1",
+        },
+        {
+          type: "result",
+          subtype: "success",
+          result: "Here is the answer.",
+          is_error: false,
+          duration_ms: 100,
+          duration_api_ms: 80,
+          num_turns: 1,
+          stop_reason: null,
+          total_cost_usd: 0.01,
+          usage: {
+            input_tokens: 10,
+            cache_read_input_tokens: 0,
+            output_tokens: 0,
+          },
+          permission_denials: [],
+          uuid: "result-third-party-1",
+          session_id: "session-third-party",
+        },
+      ],
+    ]);
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const result = await session.run("turn");
+    await session.close();
+
+    expect(result.timeline).toEqual([{ type: "assistant_message", text: "Here is the answer." }]);
+  });
 });

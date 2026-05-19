@@ -1568,6 +1568,7 @@ class ClaudeAgentSession implements AgentSession {
   private pendingInterruptAbort = false;
   private lastForegroundPromptText: string | null = null;
   private foregroundHasVisibleActivity = false;
+  private activeTurnHasAssistantText = false;
   private lastContextWindowUsedTokens: number | undefined;
   private lastContextWindowMaxTokens: number | undefined;
   private lastStreamRequestInputTokens: number | undefined;
@@ -1692,6 +1693,7 @@ class ClaudeAgentSession implements AgentSession {
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
+    this.activeTurnHasAssistantText = false;
     this.transitionTurnState("foreground", "foreground turn started");
     this.clearRecentStderr();
 
@@ -2630,6 +2632,7 @@ class ClaudeAgentSession implements AgentSession {
     this.activeForegroundTurnId = null;
     this.lastForegroundPromptText = null;
     this.cancelCurrentTurn = null;
+    this.activeTurnHasAssistantText = false;
     this.syncTurnState("foreground turn terminal");
   }
 
@@ -2645,9 +2648,11 @@ class ClaudeAgentSession implements AgentSession {
         this.activeForegroundTurnId = null;
         this.lastForegroundPromptText = null;
         this.cancelCurrentTurn = null;
+        this.activeTurnHasAssistantText = false;
         this.syncTurnState("foreground turn terminal");
       } else if (this.autonomousTurn) {
         this.autonomousTurn = null;
+        this.activeTurnHasAssistantText = false;
         this.syncTurnState("autonomous turn terminal");
       }
     }
@@ -2660,6 +2665,7 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
+    this.activeTurnHasAssistantText = false;
     this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
@@ -2670,6 +2676,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
+    this.activeTurnHasAssistantText = false;
     this.syncTurnState("autonomous turn completed");
   }
 
@@ -2898,7 +2905,6 @@ class ClaudeAgentSession implements AgentSession {
     if (events.length === 0) {
       return;
     }
-
     if (
       this.pendingInterruptAbort &&
       message.type === "result" &&
@@ -2908,6 +2914,11 @@ class ClaudeAgentSession implements AgentSession {
       this.pendingInterruptAbort = false;
       this.logger.debug("Suppressing stale Claude interrupt terminal result");
       return;
+    }
+    if (
+      events.some((event) => event.type === "timeline" && event.item.type === "assistant_message")
+    ) {
+      this.activeTurnHasAssistantText = true;
     }
     if (
       this.activeForegroundTurnId &&
@@ -3231,12 +3242,12 @@ class ClaudeAgentSession implements AgentSession {
     if (message.subtype === "success") {
       // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
       // run client-side in the Claude CLI with no model turn — output_tokens
-      // is 0 and the user-visible text is carried in `result`. Surface it as
-      // an assistant message so the turn doesn't end silently. Normal turns
-      // have output_tokens > 0 and their text is already in the stream.
+      // is 0 and the user-visible text is carried in `result`. Surface it only
+      // when the turn has not already emitted assistant text so zero-token
+      // accounting from provider gateways does not duplicate streamed output.
       const resultText = typeof message.result === "string" ? message.result.trim() : "";
       const outputTokens = message.usage?.output_tokens;
-      if (resultText.length > 0 && outputTokens === 0) {
+      if (resultText.length > 0 && outputTokens === 0 && !this.activeTurnHasAssistantText) {
         events.push({
           type: "timeline",
           provider: "claude",
