@@ -1020,6 +1020,24 @@ function parseDigit(event: KeyboardEvent): number | null {
   return null;
 }
 
+function matchesKeyOrCode(combo: KeyCombo, event: KeyboardEvent): boolean {
+  if (combo.key === undefined) {
+    return event.code === combo.code;
+  }
+  const eventKey = event.key.toLowerCase();
+  if (eventKey === combo.key) return true;
+  if (combo.shift === true && combo.shiftedKey !== undefined && eventKey === combo.shiftedKey) {
+    return true;
+  }
+  // macOS rewrites event.key when Option is held (Option+T -> "†",
+  // Option+[ -> "“"), so Alt-bound letter / bracket bindings can only
+  // match by event.code. Stay key-first for non-Alt bindings so Dvorak
+  // keeps its logical-character matching (e.g. Cmd+V on physical Period
+  // must paste, not trigger Cmd+.).
+  if (combo.alt === true && event.code === combo.code) return true;
+  return combo.codeFallback === true && event.code === combo.code;
+}
+
 function matchesCombo(combo: KeyCombo, event: KeyboardEvent, isMac: boolean): boolean {
   if (combo.mod) {
     if (isMac) {
@@ -1040,18 +1058,7 @@ function matchesCombo(combo: KeyCombo, event: KeyboardEvent, isMac: boolean): bo
   if (combo.code === "Digit") {
     return parseDigit(event) !== null;
   }
-
-  if (combo.key !== undefined) {
-    const eventKey = event.key.toLowerCase();
-    if (eventKey === combo.key) return true;
-    if (combo.shift === true && combo.shiftedKey !== undefined && eventKey === combo.shiftedKey) {
-      return true;
-    }
-    return combo.codeFallback === true && event.code === combo.code;
-  }
-
-  const codeMatch = event.code === combo.code;
-  return codeMatch;
+  return matchesKeyOrCode(combo, event);
 }
 
 function matchesWhen(when: ShortcutWhen | undefined, context: KeyboardShortcutContext): boolean {
