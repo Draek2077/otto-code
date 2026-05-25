@@ -41,6 +41,7 @@ import {
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "../provider-runner.js";
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
+import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 
 import {
@@ -191,6 +192,15 @@ interface PersistedTimelineEntry {
   timestamp?: string;
 }
 
+interface ClaudeRewindTurnAnchor {
+  userMessageId: string;
+  assistantMessageId: string | null;
+}
+
+type ClaudeConversationRewindTarget =
+  | { kind: "fresh-session" }
+  | { kind: "fork"; messageId: string };
+
 const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
@@ -198,6 +208,9 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
+  supportsRewindConversation: true,
+  supportsRewindFiles: true,
+  supportsRewindBoth: true,
 };
 
 const DEFAULT_MODES: AgentMode[] = [
@@ -1046,7 +1059,7 @@ class TimelineAssembler {
       !isClaudeTranscriptNoiseText(nextAssistantText)
     ) {
       state.emittedAssistantLength = state.assistantText.length;
-      items.push({ type: "assistant_message", text: nextAssistantText });
+      items.push({ type: "assistant_message", text: nextAssistantText, messageId: state.id });
     }
 
     const nextReasoningText = state.reasoningText.slice(state.emittedReasoningLength);
@@ -1157,7 +1170,25 @@ function isSyntheticUserEntry(entry: unknown): boolean {
   if (!candidate) {
     return false;
   }
-  return candidate.isSynthetic === true || candidate.isMeta === true;
+  return (
+    candidate.isSynthetic === true || candidate.isMeta === true || Boolean(candidate.toolUseResult)
+  );
+}
+
+function isToolResultUserEntry(entry: unknown): boolean {
+  const candidate = toObjectRecord(entry);
+  if (!candidate) {
+    return false;
+  }
+  const message = toObjectRecord(candidate.message);
+  const content = message?.content;
+  return (
+    Array.isArray(content) && content.some((block) => toObjectRecord(block)?.type === "tool_result")
+  );
+}
+
+function isSyntheticHistoryUserEntry(entry: Record<string, unknown>): boolean {
+  return isSyntheticUserEntry(entry);
 }
 
 function firstTrimmedString(sources: readonly unknown[]): string | null {
@@ -1170,6 +1201,15 @@ function firstTrimmedString(sources: readonly unknown[]): string | null {
   return null;
 }
 
+function readTranscriptUuid(message: SDKMessage): string | null {
+  const root = toObjectRecord(message) ?? {};
+  const messageType = readTrimmedString(root.type);
+  if (messageType !== "user" && messageType !== "assistant") {
+    return null;
+  }
+  return firstTrimmedString([root.uuid]);
+}
+
 export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
   const root = toObjectRecord(message) ?? {};
   const messageType = readTrimmedString(root.type);
@@ -1177,7 +1217,10 @@ export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
   const streamEventMessage = toObjectRecord(streamEvent?.message);
   const messageContainer = toObjectRecord(root.message);
 
-  const messageIdFromUuid = messageType === "user" ? root.uuid : undefined;
+  const messageIdFromUuid =
+    messageType === "user" || messageType === "assistant" || messageType === "system"
+      ? root.uuid
+      : undefined;
 
   return {
     taskId: firstTrimmedString([
@@ -1566,7 +1609,6 @@ class ClaudeAgentSession implements AgentSession {
   private queryPumpPromise: Promise<void> | null = null;
   private queryRestartNeeded = false;
   private pendingInterruptAbort = false;
-  private lastForegroundPromptText: string | null = null;
   private foregroundHasVisibleActivity = false;
   private activeTurnHasAssistantText = false;
   private lastContextWindowUsedTokens: number | undefined;
@@ -1574,6 +1616,9 @@ class ClaudeAgentSession implements AgentSession {
   private lastStreamRequestInputTokens: number | undefined;
   private lastStreamRequestOutputTokens: number | undefined;
   private userMessageIds: string[] = [];
+  private readonly emittedUserMessageIds = new Set<string>();
+  private readonly rewindTurnAnchors: ClaudeRewindTurnAnchor[] = [];
+  private pendingFreshSessionId: string | null = null;
   private recentStderr = "";
   private closed = false;
 
@@ -1689,7 +1734,9 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const sdkMessage = this.toSdkUserMessage(prompt);
-    this.lastForegroundPromptText = this.extractPromptText(prompt);
+    const sdkUserMessageId =
+      typeof sdkMessage.uuid === "string" && sdkMessage.uuid.length > 0 ? sdkMessage.uuid : null;
+    this.rememberRewindUserAnchor(sdkUserMessageId);
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
@@ -1727,6 +1774,11 @@ class ClaudeAgentSession implements AgentSession {
       }
       this.startQueryPump();
       this.input.push(sdkMessage);
+      setTimeout(() => {
+        if (this.activeForegroundTurnId === turnId) {
+          this.emitSubmittedUserMessage(sdkMessage, turnId);
+        }
+      }, 0);
     } catch (error) {
       this.finishForegroundTurn(
         this.buildTurnFailedEvent(error instanceof Error ? error.message : "Claude stream failed"),
@@ -2004,6 +2056,36 @@ class ClaudeAgentSession implements AgentSession {
     return Array.from(commandMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  async revertConversation(input: { messageId: string }): Promise<void> {
+    const target = this.resolveConversationRewindTarget(input.messageId);
+    if (target.kind === "fresh-session") {
+      this.startFreshConversationSession();
+      return;
+    }
+    await revertClaudeConversation({
+      sdk: realClaudeRewindSdk,
+      sessionId: this.claudeSessionId,
+      messageId: target.messageId,
+      resolveMessageId: (messageId) => this.resolveClaudeMessageId(messageId),
+      setSessionId: (sessionId) => {
+        this.rebindConversationSession(sessionId);
+      },
+    });
+  }
+
+  async revertFiles(input: { messageId: string }): Promise<void> {
+    const messageId = await this.resolveClaudeMessageId(input.messageId);
+    await revertClaudeFiles({
+      query: await this.ensureQuery(),
+      messageId,
+    });
+  }
+
+  async revertBoth(input: { messageId: string }): Promise<void> {
+    await this.revertFiles(input);
+    await this.revertConversation(input);
+  }
+
   private resolveSlashCommandInvocation(prompt: AgentPromptInput): SlashCommandInvocation | null {
     if (typeof prompt !== "string") {
       return null;
@@ -2150,10 +2232,6 @@ class ClaudeAgentSession implements AgentSession {
       }
     };
 
-    const historyIds = this.readUserMessageIdsFromHistoryFile();
-    for (let idx = historyIds.length - 1; idx >= 0; idx -= 1) {
-      pushUnique(historyIds[idx]);
-    }
     for (let idx = this.persistedHistory.length - 1; idx >= 0; idx -= 1) {
       const entry = this.persistedHistory[idx];
       if (entry?.item.type === "user_message") {
@@ -2167,33 +2245,47 @@ class ClaudeAgentSession implements AgentSession {
     return candidates;
   }
 
-  private readUserMessageIdsFromHistoryFile(): string[] {
-    if (!this.claudeSessionId) {
-      return [];
+  private rebindConversationSession(sessionId: string): void {
+    const oldSessionId = this.claudeSessionId;
+    this.claudeSessionId = sessionId;
+    this.pendingFreshSessionId = null;
+    this.persistence = null;
+    this.cachedRuntimeInfo = null;
+    this.queryRestartNeeded = true;
+    this.persistedHistory = [];
+    this.historyPending = false;
+    this.userMessageIds = [];
+    this.emittedUserMessageIds.clear();
+    this.rewindTurnAnchors.length = 0;
+    this.loadPersistedHistory(sessionId);
+    if (oldSessionId && oldSessionId !== sessionId) {
+      this.dispatchEvents([
+        {
+          type: "timeline",
+          provider: "claude",
+          item: this.createClaudeSessionChangedNotice(oldSessionId, sessionId),
+        },
+        {
+          type: "thread_started",
+          provider: "claude",
+          sessionId,
+        },
+      ]);
     }
-    const historyPath = this.resolveHistoryPath(this.claudeSessionId);
-    if (!historyPath || !fs.existsSync(historyPath)) {
-      return [];
-    }
-    try {
-      const ids: string[] = [];
-      const content = fs.readFileSync(historyPath, "utf8");
-      for (const line of content.split(/\n+/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const entry = JSON.parse(trimmed);
-          if (entry?.type === "user" && typeof entry.uuid === "string") {
-            ids.push(entry.uuid);
-          }
-        } catch {
-          // ignore malformed lines
-        }
-      }
-      return ids;
-    } catch {
-      return [];
-    }
+  }
+
+  private startFreshConversationSession(): void {
+    const sessionId = randomUUID();
+    this.claudeSessionId = sessionId;
+    this.pendingFreshSessionId = sessionId;
+    this.persistence = null;
+    this.cachedRuntimeInfo = null;
+    this.queryRestartNeeded = true;
+    this.persistedHistory = [];
+    this.historyPending = false;
+    this.userMessageIds = [];
+    this.emittedUserMessageIds.clear();
+    this.rewindTurnAnchors.length = 0;
   }
 
   private rememberUserMessageId(messageId: string | null | undefined): void {
@@ -2205,6 +2297,92 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.userMessageIds.push(messageId);
+  }
+
+  private rememberEmittedUserMessageId(messageId: string | null | undefined): void {
+    if (typeof messageId !== "string" || messageId.length === 0) {
+      return;
+    }
+    this.emittedUserMessageIds.add(messageId);
+  }
+
+  private rememberRewindUserAnchor(userMessageId: string | null | undefined): void {
+    if (typeof userMessageId !== "string" || userMessageId.length === 0) {
+      return;
+    }
+    if (this.rewindTurnAnchors.some((anchor) => anchor.userMessageId === userMessageId)) {
+      return;
+    }
+    this.rewindTurnAnchors.push({
+      userMessageId,
+      assistantMessageId: null,
+    });
+  }
+
+  private rememberRewindAssistantAnchor(assistantMessageId: string | null | undefined): void {
+    if (typeof assistantMessageId !== "string" || assistantMessageId.length === 0) {
+      return;
+    }
+    for (let index = this.rewindTurnAnchors.length - 1; index >= 0; index -= 1) {
+      const anchor = this.rewindTurnAnchors[index];
+      if (!anchor) {
+        continue;
+      }
+      anchor.assistantMessageId = assistantMessageId;
+      return;
+    }
+  }
+
+  private rememberTranscriptProgress(message: SDKMessage, messageId: string | null): void {
+    if (!messageId) {
+      return;
+    }
+    if (
+      message.type === "user" &&
+      !isSyntheticUserEntry(message) &&
+      !isToolResultUserEntry(message)
+    ) {
+      this.rememberRewindUserAnchor(messageId);
+      return;
+    }
+    if (message.type === "assistant") {
+      this.rememberRewindAssistantAnchor(messageId);
+      return;
+    }
+    if (message.type === "stream_event") {
+      const event = toObjectRecord(message.event) ?? {};
+      const eventType = readTrimmedString(event.type);
+      if (eventType === "message_start") {
+        this.rememberRewindAssistantAnchor(messageId);
+      }
+      return;
+    }
+  }
+
+  private resolveClaudeMessageId(messageId: string): string {
+    return messageId;
+  }
+
+  private resolveConversationRewindTarget(messageId: string): ClaudeConversationRewindTarget {
+    const targetUserMessageId = this.resolveClaudeMessageId(messageId);
+    const index = this.rewindTurnAnchors.findIndex(
+      (anchor) => anchor.userMessageId === targetUserMessageId,
+    );
+    if (index < 0) {
+      throw new Error(`Claude rewind target ${messageId} is not in the tracked conversation`);
+    }
+
+    if (index === 0) {
+      return { kind: "fresh-session" };
+    }
+
+    const previousTurn = this.rewindTurnAnchors[index - 1];
+    if (!previousTurn?.assistantMessageId) {
+      throw new Error(
+        `Claude rewind cannot preserve turn ${index} because its assistant response id was not observed`,
+      );
+    }
+    return { kind: "fork", messageId: previousTurn.assistantMessageId };
   }
 
   private async ensureQuery(): Promise<Query> {
@@ -2353,6 +2531,13 @@ class ClaudeAgentSession implements AgentSession {
       },
       "Resolved Claude executable",
     );
+    const sessionBinding: Pick<ClaudeOptions, "resume" | "sessionId"> = {};
+    if (this.pendingFreshSessionId) {
+      sessionBinding.sessionId = this.pendingFreshSessionId;
+    } else if (this.claudeSessionId) {
+      sessionBinding.resume = this.claudeSessionId;
+    }
+
     const base: ClaudeOptions = {
       cwd: this.config.cwd,
       includePartialMessages: true,
@@ -2380,7 +2565,7 @@ class ClaudeAgentSession implements AgentSession {
       enableFileCheckpointing: true,
       // If we have a session ID from a previous query (e.g., after interrupt),
       // resume that session to continue the conversation history.
-      ...(this.claudeSessionId ? { resume: this.claudeSessionId } : {}),
+      ...sessionBinding,
       ...(thinking ? { thinking } : {}),
       ...(effort ? { effort } : {}),
       ...extraClaudeOptions,
@@ -2396,7 +2581,7 @@ class ClaudeAgentSession implements AgentSession {
       base.model = this.config.model;
     }
     this.lastOptionsModel = base.model ?? null;
-    if (this.claudeSessionId) {
+    if (this.claudeSessionId && !this.pendingFreshSessionId) {
       base.resume = this.claudeSessionId;
     }
     if (this.runtimeSettings?.disallowedTools?.length) {
@@ -2559,16 +2744,6 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
-  private extractPromptText(prompt: AgentPromptInput): string | null {
-    if (typeof prompt === "string") {
-      return prompt;
-    }
-    const textParts = prompt
-      .filter((block): block is { type: "text"; text: string } => block.type === "text")
-      .map((block) => block.text);
-    return textParts.length > 0 ? textParts.join("\n") : null;
-  }
-
   private async executeRewindTurn(
     _turnId: string,
     invocation: SlashCommandInvocation,
@@ -2630,7 +2805,6 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.notifySubscribers(event);
     this.activeForegroundTurnId = null;
-    this.lastForegroundPromptText = null;
     this.cancelCurrentTurn = null;
     this.activeTurnHasAssistantText = false;
     this.syncTurnState("foreground turn terminal");
@@ -2646,7 +2820,6 @@ class ClaudeAgentSession implements AgentSession {
     if (terminalSeen) {
       if (this.activeForegroundTurnId) {
         this.activeForegroundTurnId = null;
-        this.lastForegroundPromptText = null;
         this.cancelCurrentTurn = null;
         this.activeTurnHasAssistantText = false;
         this.syncTurnState("foreground turn terminal");
@@ -2808,18 +2981,6 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private isEchoedForegroundUserMessage(event: AgentStreamEvent): boolean {
-    if (
-      event.type !== "timeline" ||
-      event.item.type !== "user_message" ||
-      !this.activeForegroundTurnId ||
-      !this.lastForegroundPromptText
-    ) {
-      return false;
-    }
-    return event.item.text.trim() === this.lastForegroundPromptText.trim();
-  }
-
   private shouldSuppressStaleResult(message: SDKMessage): boolean {
     // Suppress stale results from interrupted requests. The cancel path already
     // emitted the terminal event; this result is leftover from the killed API
@@ -2862,6 +3023,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const turnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id ?? null;
     const identifiers = readEventIdentifiers(message);
+    this.rememberTranscriptProgress(message, readTranscriptUuid(message));
 
     this.logger.trace(
       {
@@ -2895,12 +3057,7 @@ class ClaudeAgentSession implements AgentSession {
           }) satisfies AgentStreamEvent,
       );
 
-    // User message dedup: suppress echoed user messages that match the foreground prompt
-    const filteredMessageEvents = messageEvents.filter(
-      (event) => !this.isEchoedForegroundUserMessage(event),
-    );
-
-    const events = [...filteredMessageEvents, ...assistantTimelineEvents];
+    const events = [...messageEvents, ...assistantTimelineEvents];
 
     if (events.length === 0) {
       return;
@@ -3013,20 +3170,22 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const events: AgentStreamEvent[] = [];
-    const sessionCapture = this.captureSessionIdFromMessage(message);
-    if (sessionCapture.notice) {
-      events.push({
-        type: "timeline",
-        provider: "claude",
-        item: sessionCapture.notice,
-      });
-    }
-    if (sessionCapture.threadStartedSessionId) {
-      events.push({
-        type: "thread_started",
-        provider: "claude",
-        sessionId: sessionCapture.threadStartedSessionId,
-      });
+    if (message.type !== "system") {
+      const sessionCapture = this.captureSessionIdFromMessage(message);
+      if (sessionCapture.notice) {
+        events.push({
+          type: "timeline",
+          provider: "claude",
+          item: sessionCapture.notice,
+        });
+      }
+      if (sessionCapture.threadStartedSessionId) {
+        events.push({
+          type: "thread_started",
+          provider: "claude",
+          sessionId: sessionCapture.threadStartedSessionId,
+        });
+      }
     }
 
     switch (message.type) {
@@ -3057,6 +3216,25 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     return events;
+  }
+
+  private emitSubmittedUserMessage(
+    message: Extract<SDKMessage, { type: "user" }>,
+    turnId: string,
+  ): void {
+    const events: AgentStreamEvent[] = [];
+    this.appendUserMessageEvents(message, events);
+    if (events.length === 0) {
+      return;
+    }
+    this.foregroundHasVisibleActivity = true;
+    for (const event of events) {
+      if (event.type === "timeline") {
+        this.notifySubscribers({ ...event, turnId });
+      } else {
+        this.notifySubscribers(event);
+      }
+    }
   }
 
   private appendSystemMessageEvents(
@@ -3162,7 +3340,11 @@ class ClaudeAgentSession implements AgentSession {
     }
     const messageId =
       typeof message.uuid === "string" && message.uuid.length > 0 ? message.uuid : undefined;
+    if (messageId && this.emittedUserMessageIds.has(messageId)) {
+      return;
+    }
     this.rememberUserMessageId(messageId);
+    this.rememberEmittedUserMessageId(messageId);
     const content = message.message?.content;
     const taskNotificationItem = mapTaskNotificationUserContentToToolCall({
       content,
@@ -3293,10 +3475,12 @@ class ClaudeAgentSession implements AgentSession {
     }
     if (this.claudeSessionId === null) {
       this.claudeSessionId = sessionId;
+      this.pendingFreshSessionId = null;
       this.persistence = null;
       return { threadStartedSessionId: sessionId, notice: null };
     }
     if (this.claudeSessionId === sessionId) {
+      this.pendingFreshSessionId = null;
       return { threadStartedSessionId: null, notice: null };
     }
     const oldSessionId = this.claudeSessionId;
@@ -3308,6 +3492,7 @@ class ClaudeAgentSession implements AgentSession {
       "Claude session ID changed in message; accepting new session",
     );
     this.claudeSessionId = sessionId;
+    this.pendingFreshSessionId = null;
     this.persistence = null;
     return {
       threadStartedSessionId: sessionId,
@@ -3338,9 +3523,11 @@ class ClaudeAgentSession implements AgentSession {
 
     if (existingSessionId === null) {
       this.claudeSessionId = newSessionId;
+      this.pendingFreshSessionId = null;
       threadStartedSessionId = newSessionId;
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID set for the first time");
     } else if (existingSessionId === newSessionId) {
+      this.pendingFreshSessionId = null;
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID unchanged (same value)");
     } else {
       // Session ID changed in an init message (e.g. a hook restarted Claude
@@ -3350,6 +3537,7 @@ class ClaudeAgentSession implements AgentSession {
         "Claude session ID changed in init message; accepting new session",
       );
       this.claudeSessionId = newSessionId;
+      this.pendingFreshSessionId = null;
       threadStartedSessionId = newSessionId;
       notice = this.createClaudeSessionChangedNotice(existingSessionId, newSessionId);
     }
@@ -3703,12 +3891,22 @@ class ClaudeAgentSession implements AgentSession {
     if (entry.isSidechain) {
       return;
     }
-    if (entry.type === "user" && typeof entry.uuid === "string") {
-      this.rememberUserMessageId(entry.uuid);
-    }
 
     const historyTimestamp = normalizeProviderReplayTimestamp(entry.timestamp);
     const items = this.convertHistoryEntry(entry);
+    const isVisibleUserEntry =
+      entry.type === "user" &&
+      typeof entry.uuid === "string" &&
+      !isSyntheticHistoryUserEntry(entry) &&
+      !isToolResultUserEntry(entry);
+    if (isVisibleUserEntry && typeof entry.uuid === "string") {
+      this.rememberUserMessageId(entry.uuid);
+      this.rememberRewindUserAnchor(entry.uuid);
+    }
+    if (entry.type === "assistant" && typeof entry.uuid === "string") {
+      this.rememberRewindAssistantAnchor(entry.uuid);
+    }
+
     if (items.length > 0) {
       timeline.push(
         ...items.map((item) => ({
@@ -3722,10 +3920,25 @@ class ClaudeAgentSession implements AgentSession {
   private resolveHistoryPath(sessionId: string): string | null {
     const cwd = this.config.cwd;
     if (!cwd) return null;
-    const sanitized = sanitizeClaudeProjectPath(cwd);
     const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
-    const dir = path.join(configDir, "projects", sanitized);
-    return path.join(dir, `${sessionId}.jsonl`);
+    const candidates = [cwd];
+    try {
+      const realCwd = fs.realpathSync(cwd);
+      if (realCwd !== cwd) {
+        candidates.push(realCwd);
+      }
+    } catch {
+      // Fall back to the configured cwd when the path has already disappeared.
+    }
+    for (const candidate of candidates) {
+      const sanitized = sanitizeClaudeProjectPath(candidate);
+      const historyPath = path.join(configDir, "projects", sanitized, `${sessionId}.jsonl`);
+      if (fs.existsSync(historyPath)) {
+        return historyPath;
+      }
+    }
+    const sanitized = sanitizeClaudeProjectPath(cwd);
+    return path.join(configDir, "projects", sanitized, `${sessionId}.jsonl`);
   }
 
   private convertHistoryEntry(entry: ClaudeHistoryEntry): AgentTimelineItem[] {
@@ -4409,6 +4622,25 @@ interface ClaudeHistoryEntry {
   [key: string]: unknown;
 }
 
+function mapAssistantHistoryBlocksWithMessageId(
+  entry: ClaudeHistoryEntry,
+  content: string | ClaudeContentChunk[],
+  mapBlocks: (content: string | ClaudeContentChunk[]) => AgentTimelineItem[],
+): AgentTimelineItem[] {
+  const items = mapBlocks(content);
+  const assistantMessageId =
+    typeof entry.uuid === "string" && entry.uuid.length > 0 ? entry.uuid : null;
+  if (!assistantMessageId) {
+    return items;
+  }
+  for (const item of items) {
+    if (item.type === "assistant_message" && !item.messageId) {
+      item.messageId = assistantMessageId;
+    }
+  }
+  return items;
+}
+
 function convertClaudeHistoryEntryPreamble(
   entry: ClaudeHistoryEntry,
 ): { shortCircuit: AgentTimelineItem[] } | { proceed: { content: unknown } } {
@@ -4504,7 +4736,7 @@ export function convertClaudeHistoryEntry(
   }
 
   if (entry.type === "assistant" && contentValue) {
-    return mapBlocks(contentValue);
+    return mapAssistantHistoryBlocksWithMessageId(entry, contentValue, mapBlocks);
   }
 
   return timeline;

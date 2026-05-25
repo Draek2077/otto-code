@@ -41,9 +41,13 @@ import {
   resolveBinaryVersion,
   toDiagnosticErrorMessage,
 } from "../diagnostic-utils.js";
-import { streamPiHistory } from "./history-mapper.js";
+import {
+  getUserMessageText,
+  streamPiHistory,
+  type PiCapturedUserMessageEntry,
+} from "./history-mapper.js";
 import { PiCliRuntime } from "./cli-runtime.js";
-import { listPiPersistedAgents } from "./session-descriptor.js";
+import { revertPiConversation } from "./rewind.js";
 import type { PiRuntime, PiRuntimeSession } from "./runtime.js";
 import type {
   PiAgentSessionEvent,
@@ -68,6 +72,11 @@ import {
 const PI_PROVIDER = "pi";
 const DEFAULT_PI_THINKING_LEVEL: PiThinkingLevel = "medium";
 const PI_BINARY_COMMAND = process.env.PI_COMMAND ?? process.env.PI_ACP_PI_COMMAND ?? "pi";
+const PASEO_PI_TREE_EXTENSION_COMMAND = "paseo_tree";
+const PASEO_PI_CAPTURE_EXTENSION_COMMAND = "paseo_capture_entries";
+const PASEO_PI_ENTRY_CAPTURE_MARKER = "PASEO_ENTRY_CAPTURE";
+const PASEO_PI_COMMAND_RESULT_MARKER = "PASEO_COMMAND_RESULT";
+const PASEO_PI_EXTENSION_RESULT_TIMEOUT_MS = 10_000;
 
 const PI_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -76,6 +85,9 @@ const PI_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
+  supportsRewindConversation: true,
+  supportsRewindFiles: false,
+  supportsRewindBoth: false,
 };
 
 const PI_THINKING_OPTIONS: ReadonlyArray<{
@@ -147,6 +159,26 @@ interface PiMcpServerConfig {
 interface PiMcpConfigFile {
   path: string;
   cleanup: () => void;
+}
+
+interface PiTempFile {
+  path: string;
+  cleanup: () => void;
+}
+
+interface PiCapturedEntry extends PiCapturedUserMessageEntry {
+  parentId: string | null;
+}
+
+interface PendingPiUserMessage {
+  text: string;
+  turnId: string | undefined;
+}
+
+interface PendingExtensionResult {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
 }
 
 function normalizePiModelLabel(label: string): string {
@@ -359,6 +391,109 @@ function createPiMcpConfigFile(servers: Record<string, McpServerConfig>): PiMcpC
   };
 }
 
+function createPiPaseoExtensionFile(): PiTempFile {
+  const dir = mkdtempSync(join(tmpdir(), "paseo-pi-extension-"));
+  const filePath = join(dir, "paseo-integration.mjs");
+  writeFileSync(
+    filePath,
+    `
+	function decodePayload(encoded) {
+	  return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+	}
+
+	function readTextContent(content) {
+	  if (typeof content === "string") {
+	    return content;
+	  }
+	  if (!Array.isArray(content)) {
+	    return "";
+	  }
+	  return content
+	    .filter((part) => part && part.type === "text" && typeof part.text === "string")
+	    .map((part) => part.text)
+	    .join("\\n\\n");
+	}
+
+	function getCapturedUserEntries(ctx) {
+	  return ctx.sessionManager
+	    .getEntries()
+	    .filter((entry) => entry.type === "message" && entry.message?.role === "user")
+	    .map((entry) => ({
+	      id: entry.id,
+	      parentId: entry.parentId ?? null,
+	      text: readTextContent(entry.message.content),
+	    }));
+	}
+
+	function emitEntryCapture(ctx, reason, requestId) {
+	  ctx.ui.notify(
+	    "${PASEO_PI_ENTRY_CAPTURE_MARKER} " +
+	      JSON.stringify({ reason, requestId, entries: getCapturedUserEntries(ctx) }),
+	    "info",
+	  );
+	}
+
+	function emitCommandResult(ctx, requestId, result) {
+	  ctx.ui.notify(
+	    "${PASEO_PI_COMMAND_RESULT_MARKER} " + JSON.stringify({ requestId, ...result }),
+	    result.ok ? "info" : "error",
+	  );
+	}
+	
+	export default function paseoIntegration(pi) {
+	  pi.on("session_start", async (_event, ctx) => {
+	    emitEntryCapture(ctx, "session_start");
+	  });
+
+	  pi.on("turn_end", async (_event, ctx) => {
+	    emitEntryCapture(ctx, "turn_end");
+	  });
+
+	  pi.registerCommand("${PASEO_PI_CAPTURE_EXTENSION_COMMAND}", {
+	    description: "Internal Paseo entry capture bridge",
+	    handler: async (args, ctx) => {
+	      const payload = decodePayload(args.trim());
+	      emitEntryCapture(ctx, "command", payload.requestId);
+	    },
+	  });
+
+	  pi.registerCommand("${PASEO_PI_TREE_EXTENSION_COMMAND}", {
+	    description: "Internal Paseo tree navigation bridge",
+	    handler: async (args, ctx) => {
+	      const payload = decodePayload(args.trim());
+	      try {
+	        const result = await ctx.navigateTree(payload.targetId, { summarize: false });
+	        emitEntryCapture(ctx, "tree_navigation");
+	        emitCommandResult(ctx, payload.requestId, { ok: true, result });
+	      } catch (error) {
+	        const message = error instanceof Error ? error.message : String(error);
+	        emitCommandResult(ctx, payload.requestId, { ok: false, error: message });
+	        throw error;
+	      }
+	    },
+	  });
+	}
+`.trimStart(),
+    "utf8",
+  );
+  return {
+    path: filePath,
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+function combineCleanup(cleanups: Array<(() => void) | undefined>): (() => void) | undefined {
+  const activeCleanups = cleanups.filter((cleanup): cleanup is () => void => Boolean(cleanup));
+  if (activeCleanups.length === 0) {
+    return undefined;
+  }
+  return () => {
+    for (const cleanup of activeCleanups) {
+      cleanup();
+    }
+  };
+}
+
 function isPiMcpAdapterCommand(command: PiRpcSlashCommand): boolean {
   if (command.source !== "extension" || !/^mcp(?::\d+)?$/.test(command.name)) {
     return false;
@@ -396,11 +531,43 @@ function modelToId(model: PiModel | null | undefined): string | null {
   return model?.provider && model.id ? `${model.provider}/${model.id}` : null;
 }
 
+function piAssistantText(message: Extract<PiAgentMessage, { role: "assistant" }>): string | null {
+  const text = message.content
+    .flatMap((part) => {
+      if (part.type === "text") {
+        return [part.text];
+      }
+      if (part.type === "thinking") {
+        return [part.thinking];
+      }
+      return [];
+    })
+    .join("\n\n")
+    .trim();
+  return text.length > 0 ? text : null;
+}
+
+function formatPiErrorMessage(message: Extract<PiAgentMessage, { role: "assistant" }>): string {
+  const headline = message.errorMessage?.trim() || "Pi turn failed";
+  const details = [
+    message.stopReason ? `stopReason=${message.stopReason}` : null,
+    message.provider && message.model ? `model=${message.provider}/${message.model}` : null,
+    message.responseModel ? `responseModel=${message.responseModel}` : null,
+    message.responseId ? `responseId=${message.responseId}` : null,
+  ].filter((detail): detail is string => detail !== null);
+  const partialText = piAssistantText(message);
+  if (partialText) {
+    details.push(`partial=${JSON.stringify(partialText.slice(0, 500))}`);
+  }
+  return details.length > 0 ? `${headline} (${details.join(", ")})` : headline;
+}
+
 function latestPiErrorMessage(messages: PiAgentMessage[]): string | null {
   const latestAssistant = messages.findLast((message) => message.role === "assistant");
-  return latestAssistant && "errorMessage" in latestAssistant
-    ? (latestAssistant.errorMessage ?? null)
-    : null;
+  if (!latestAssistant || !latestAssistant.errorMessage?.trim()) {
+    return null;
+  }
+  return formatPiErrorMessage(latestAssistant);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -409,6 +576,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function parseExtensionMarkerPayload(
+  message: string,
+  marker: string,
+): Record<string, unknown> | null {
+  const prefix = `${marker} `;
+  if (!message.startsWith(prefix)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(message.slice(prefix.length)) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseCapturedEntries(value: unknown): PiCapturedEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry): PiCapturedEntry[] => {
+    if (!isRecord(entry)) {
+      return [];
+    }
+    const id = optionalString(entry.id)?.trim();
+    const text = optionalString(entry.text);
+    if (!id || text === undefined) {
+      return [];
+    }
+    const parentId = entry.parentId === null ? null : optionalString(entry.parentId)?.trim();
+    return [
+      {
+        id,
+        parentId: parentId || null,
+        text,
+      },
+    ];
+  });
 }
 
 function mapExtensionUiRequestToPermission(
@@ -533,6 +740,12 @@ export class PiRpcAgentSession implements AgentSession {
   private readonly pendingExtensionUiRequests = new Map<string, AgentPermissionRequest>();
   private activeTurnId: string | null = null;
   private lastKnownThinkingOptionId: string | null;
+  currentLeafOverrideId: string | null | undefined;
+  private readonly capturedUserEntries: PiCapturedEntry[] = [];
+  private readonly capturedUserEntriesById = new Map<string, PiCapturedEntry>();
+  private readonly seenUserEntryIds = new Set<string>();
+  private readonly pendingUserMessages: PendingPiUserMessage[] = [];
+  private readonly pendingExtensionResults = new Map<string, PendingExtensionResult>();
   private state: PiSessionState;
   private closed = false;
 
@@ -612,7 +825,12 @@ export class PiRpcAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
-    yield* streamPiHistory(PI_PROVIDER, await this.runtimeSession.getMessages());
+    await this.requestEntryCapture("history");
+    yield* streamPiHistory(
+      PI_PROVIDER,
+      await this.runtimeSession.getMessages(),
+      this.capturedUserEntries,
+    );
   }
 
   async getRuntimeInfo(): Promise<AgentRuntimeInfo> {
@@ -683,6 +901,35 @@ export class PiRpcAgentSession implements AgentSession {
     await this.runtimeSession.abort();
   }
 
+  async revertConversation(input: { messageId: string }): Promise<void> {
+    if (this.activeTurnId) {
+      throw new Error("Cannot rewind the Pi conversation while a Pi turn is active");
+    }
+    await this.refreshState().catch(() => undefined);
+    await this.requestEntryCapture("rewind");
+    const targetEntry = this.capturedUserEntriesById.get(input.messageId);
+    if (!targetEntry) {
+      throw new Error(`Pi rewind target ${input.messageId} was not found in captured tree entries`);
+    }
+    await revertPiConversation({
+      messageId: input.messageId,
+      navigator: {
+        navigateTree: (treeEntryId) => this.runPiTreeExtensionCommand(treeEntryId),
+      },
+    });
+    // Pi keeps all tree nodes, so selecting the previous leaf later reverses this rewind.
+    this.currentLeafOverrideId = targetEntry.parentId;
+    this.activeToolCalls.clear();
+  }
+
+  private async runPiTreeExtensionCommand(targetId: string): Promise<unknown> {
+    const requestId = randomUUID();
+    const resultPromise = this.waitForExtensionResult(requestId);
+    const payload = Buffer.from(JSON.stringify({ targetId, requestId })).toString("base64url");
+    await this.runtimeSession.prompt(`/${PASEO_PI_TREE_EXTENSION_COMMAND} ${payload}`);
+    return await resultPromise;
+  }
+
   async close(): Promise<void> {
     if (this.closed) {
       return;
@@ -691,6 +938,7 @@ export class PiRpcAgentSession implements AgentSession {
     try {
       await this.runtimeSession.close();
     } finally {
+      this.rejectAllExtensionResults(new Error("Pi session closed"));
       this.cleanup?.();
     }
   }
@@ -742,9 +990,128 @@ export class PiRpcAgentSession implements AgentSession {
     return this.activeTurnId ?? undefined;
   }
 
+  private async requestEntryCapture(reason: string): Promise<void> {
+    const requestId = randomUUID();
+    const resultPromise = this.waitForExtensionResult(requestId);
+    const payload = Buffer.from(JSON.stringify({ requestId, reason })).toString("base64url");
+    await this.runtimeSession.prompt(`/${PASEO_PI_CAPTURE_EXTENSION_COMMAND} ${payload}`);
+    await resultPromise;
+  }
+
+  private waitForExtensionResult(requestId: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingExtensionResults.delete(requestId);
+        reject(new Error(`Pi extension result timed out for request ${requestId}`));
+      }, PASEO_PI_EXTENSION_RESULT_TIMEOUT_MS);
+      this.pendingExtensionResults.set(requestId, { resolve, reject, timer });
+    });
+  }
+
+  private resolveExtensionResult(requestId: string, result: unknown): void {
+    const pending = this.pendingExtensionResults.get(requestId);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingExtensionResults.delete(requestId);
+    pending.resolve(result);
+  }
+
+  private rejectExtensionResult(requestId: string, error: Error): void {
+    const pending = this.pendingExtensionResults.get(requestId);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingExtensionResults.delete(requestId);
+    pending.reject(error);
+  }
+
+  private rejectAllExtensionResults(error: Error): void {
+    for (const requestId of this.pendingExtensionResults.keys()) {
+      this.rejectExtensionResult(requestId, error);
+    }
+  }
+
+  private recordCapturedUserEntries(entries: PiCapturedEntry[]): void {
+    const previouslySeenEntryIds = new Set(this.seenUserEntryIds);
+    this.capturedUserEntries.splice(0, this.capturedUserEntries.length, ...entries);
+    this.capturedUserEntriesById.clear();
+    for (const entry of entries) {
+      this.capturedUserEntriesById.set(entry.id, entry);
+    }
+    this.flushPendingUserMessages(previouslySeenEntryIds);
+    for (const entry of entries) {
+      this.seenUserEntryIds.add(entry.id);
+    }
+  }
+
+  private flushPendingUserMessages(previouslySeenEntryIds: Set<string>): void {
+    for (let index = 0; index < this.pendingUserMessages.length; index += 1) {
+      const pending = this.pendingUserMessages[index]!;
+      const entry = this.capturedUserEntries.find(
+        (candidate) => !previouslySeenEntryIds.has(candidate.id),
+      );
+      if (!entry) {
+        continue;
+      }
+      previouslySeenEntryIds.add(entry.id);
+      this.pendingUserMessages.splice(index, 1);
+      index -= 1;
+      this.emit({
+        type: "timeline",
+        provider: PI_PROVIDER,
+        turnId: pending.turnId,
+        item: {
+          type: "user_message",
+          text: pending.text,
+          messageId: entry.id,
+        },
+      });
+    }
+  }
+
+  private handleEntryCaptureMarker(message: string): boolean {
+    const payload = parseExtensionMarkerPayload(message, PASEO_PI_ENTRY_CAPTURE_MARKER);
+    if (!payload) {
+      return false;
+    }
+    const entries = parseCapturedEntries(payload.entries);
+    this.recordCapturedUserEntries(entries);
+    if (typeof payload.requestId === "string") {
+      this.resolveExtensionResult(payload.requestId, entries);
+    }
+    return true;
+  }
+
+  private handleCommandResultMarker(message: string): boolean {
+    const payload = parseExtensionMarkerPayload(message, PASEO_PI_COMMAND_RESULT_MARKER);
+    if (!payload) {
+      return false;
+    }
+    if (typeof payload.requestId !== "string") {
+      return true;
+    }
+    if (payload.ok === true) {
+      this.resolveExtensionResult(payload.requestId, payload.result);
+      return true;
+    }
+    const error = typeof payload.error === "string" ? payload.error : "Pi extension command failed";
+    this.rejectExtensionResult(payload.requestId, new Error(error));
+    return true;
+  }
+
   private handleExtensionUiRequest(
     event: Extract<PiRuntimeEvent, { type: "extension_ui_request" }>,
   ): void {
+    const message = optionalString(event.message);
+    if (event.method === "notify" && message) {
+      if (this.handleEntryCaptureMarker(message) || this.handleCommandResultMarker(message)) {
+        return;
+      }
+    }
+
     const request = mapExtensionUiRequestToPermission(event);
     if (!request) {
       return;
@@ -772,6 +1139,7 @@ export class PiRpcAgentSession implements AgentSession {
   }
 
   private handleProcessExit(error: string): void {
+    this.rejectAllExtensionResults(new Error(error));
     if (!this.activeTurnId) {
       return;
     }
@@ -802,6 +1170,11 @@ export class PiRpcAgentSession implements AgentSession {
           provider: PI_PROVIDER,
           turnId,
         });
+        return;
+      case "message_start":
+        return;
+      case "message_end":
+        this.handleMessageEnd(event, turnId);
         return;
       case "message_update":
         this.handleMessageUpdate(event, turnId);
@@ -896,6 +1269,29 @@ export class PiRpcAgentSession implements AgentSession {
     }
   }
 
+  private handleMessageEnd(
+    event: Extract<PiAgentSessionEvent, { type: "message_end" }>,
+    turnId: string | undefined,
+  ): void {
+    if (event.message.role !== "user") {
+      return;
+    }
+    const text = getUserMessageText(event.message.content);
+    if (!text) {
+      return;
+    }
+    this.pendingUserMessages.push({ text, turnId });
+    void this.requestEntryCapture("message_end").catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit({
+        type: "turn_failed",
+        provider: PI_PROVIDER,
+        turnId,
+        error: message,
+      });
+    });
+  }
+
   private emitToolCallEvent(
     toolCallId: string,
     toolCall: PiTrackedToolCall,
@@ -981,6 +1377,7 @@ export class PiRpcAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
     const mcpConfig = await this.prepareMcpConfig(config.cwd, config.mcpServers);
+    const paseoExtension = createPiPaseoExtensionFile();
     let runtimeSession: PiRuntimeSession;
     try {
       runtimeSession = await this.runtime.startSession({
@@ -994,9 +1391,11 @@ export class PiRpcAgentClient implements AgentClient {
         ),
         env: launchContext?.env,
         mcpConfigPath: mcpConfig?.path,
+        extensionPaths: [paseoExtension.path],
       });
     } catch (error) {
       mcpConfig?.cleanup();
+      paseoExtension.cleanup();
       throw error;
     }
     try {
@@ -1005,11 +1404,12 @@ export class PiRpcAgentClient implements AgentClient {
         config,
         initialState: await runtimeSession.getState(),
         capabilities: withPiMcpCapability(mcpConfig !== null),
-        cleanup: mcpConfig?.cleanup,
+        cleanup: combineCleanup([mcpConfig?.cleanup, paseoExtension.cleanup]),
       });
     } catch (error) {
       await runtimeSession.close().catch(() => undefined);
       mcpConfig?.cleanup();
+      paseoExtension.cleanup();
       throw error;
     }
   }
@@ -1028,6 +1428,7 @@ export class PiRpcAgentClient implements AgentClient {
     const resumeConfig = buildResumeConfig(persistenceMetadata, overrides);
 
     const mcpConfig = await this.prepareMcpConfig(resumeConfig.cwd, resumeConfig.config.mcpServers);
+    const paseoExtension = createPiPaseoExtensionFile();
     let runtimeSession: PiRuntimeSession;
     try {
       runtimeSession = await this.runtime.startSession({
@@ -1040,9 +1441,11 @@ export class PiRpcAgentClient implements AgentClient {
           resumeConfig.config.daemonAppendSystemPrompt,
         ),
         mcpConfigPath: mcpConfig?.path,
+        extensionPaths: [paseoExtension.path],
       });
     } catch (error) {
       mcpConfig?.cleanup();
+      paseoExtension.cleanup();
       throw error;
     }
     try {
@@ -1051,11 +1454,12 @@ export class PiRpcAgentClient implements AgentClient {
         config: resumeConfig.config,
         initialState: await runtimeSession.getState(),
         capabilities: withPiMcpCapability(mcpConfig !== null),
-        cleanup: mcpConfig?.cleanup,
+        cleanup: combineCleanup([mcpConfig?.cleanup, paseoExtension.cleanup]),
       });
     } catch (error) {
       await runtimeSession.close().catch(() => undefined);
       mcpConfig?.cleanup();
+      paseoExtension.cleanup();
       throw error;
     }
   }
@@ -1074,12 +1478,9 @@ export class PiRpcAgentClient implements AgentClient {
   }
 
   async listPersistedAgents(
-    options?: ListPersistedAgentsOptions,
+    _options?: ListPersistedAgentsOptions,
   ): Promise<PersistedAgentDescriptor[]> {
-    return await listPiPersistedAgents({
-      ...options,
-      runtimeSettings: this.runtimeSettings,
-    });
+    return [];
   }
 
   async isAvailable(): Promise<boolean> {

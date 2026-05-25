@@ -67,6 +67,7 @@ import {
   type OpenCodeServerAcquisition,
 } from "./opencode/runtime.js";
 import { normalizeProviderReplayTimestamp } from "../provider-history-timestamps.js";
+import { revertOpenCodeConversationAndFiles } from "./opencode/rewind.js";
 
 const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -75,6 +76,9 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
+  supportsRewindConversation: false,
+  supportsRewindFiles: false,
+  supportsRewindBoth: true,
 };
 
 const OPENCODE_BUILD_MODE_ID = "build";
@@ -700,6 +704,24 @@ function buildOpenCodePromptParts(
   return output;
 }
 
+function buildOpenCodeUserTimelineText(prompt: AgentPromptInput): string {
+  if (typeof prompt === "string") {
+    return prompt;
+  }
+  return prompt
+    .map((part) => {
+      if (part.type === "text") {
+        return part.text;
+      }
+      if (part.type === "image") {
+        return "[Image]";
+      }
+      return renderPromptAttachmentAsText(part);
+    })
+    .filter((text) => text.trim().length > 0)
+    .join("\n");
+}
+
 async function collectOpenCodePersistedAgentsFromSdk(
   client: Pick<OpencodeClient, "experimental" | "session">,
   options?: ListPersistedAgentsOptions,
@@ -845,7 +867,7 @@ async function readOpenCodeSessionMessagesFromSdk(
     return [];
   }
 
-  return response.data;
+  return filterOpenCodeRevertedMessages(response.data, session.revert);
 }
 
 function buildOpenCodeSessionTimeline(
@@ -854,6 +876,20 @@ function buildOpenCodeSessionTimeline(
   return messages.flatMap((message) =>
     buildOpenCodeReplayTimelineEvents(message).map((event) => event.item),
   );
+}
+
+function filterOpenCodeRevertedMessages(
+  messages: ReadonlyArray<OpenCodeSessionMessage>,
+  revert: OpenCodePersistedSession["revert"] | null | undefined,
+): OpenCodeSessionMessage[] {
+  if (!revert?.messageID || revert.partID) {
+    return [...messages];
+  }
+  const revertIndex = messages.findIndex((message) => message.info.id === revert.messageID);
+  if (revertIndex < 0) {
+    return [...messages];
+  }
+  return messages.slice(0, revertIndex);
 }
 
 function resolveOpenCodePersistedSessionModeId(
@@ -1352,6 +1388,8 @@ export interface OpenCodeEventTranslationState {
   sessionId: string;
   cwd?: string;
   messageRoles: Map<string, OpenCodeMessageRole>;
+  pendingUserMessageText?: string | null;
+  emittedUserMessageIds?: Set<string>;
   accumulatedUsage: AgentUsage;
   sessionTotalCostUsd?: number;
   streamedPartKeys: Set<string>;
@@ -1969,6 +2007,10 @@ function appendOpenCodeMessageUpdated(
     return;
   }
   state.messageRoles.set(info.id, info.role);
+  if (info.role === "user") {
+    appendOpenCodeUserMessageUpdated(info, state, events);
+    return;
+  }
   if (info.role !== "assistant") {
     return;
   }
@@ -1991,6 +2033,23 @@ function appendOpenCodeMessageUpdated(
     type: "timeline",
     provider: "opencode",
     item: { type: "assistant_message", text },
+  });
+}
+
+function appendOpenCodeUserMessageUpdated(
+  info: Extract<OpenCodeMessage, { role: "user" }>,
+  state: OpenCodeEventTranslationState,
+  events: AgentStreamEvent[],
+): void {
+  const text = state.pendingUserMessageText;
+  if (!text || text.trim().length === 0 || state.emittedUserMessageIds?.has(info.id)) {
+    return;
+  }
+  state.emittedUserMessageIds?.add(info.id);
+  events.push({
+    type: "timeline",
+    provider: "opencode",
+    item: { type: "user_message", text, messageId: info.id },
   });
 }
 
@@ -2322,6 +2381,8 @@ class OpenCodeAgentSession implements AgentSession {
   private mcpSetupPromise: Promise<void> | null = null;
   /** Tracks the role of each message by ID to distinguish user from assistant messages */
   private messageRoles = new Map<string, OpenCodeMessageRole>();
+  private pendingUserMessageText: string | null = null;
+  private emittedUserMessageIds = new Set<string>();
   /** Tracks streamed textual part IDs to suppress final full-text echoes from OpenCode. */
   private streamedPartKeys = new Set<string>();
   /** Tracks assistant messages already emitted from structured payloads. */
@@ -2432,6 +2493,15 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
+  async revertBoth(input: { messageId: string }): Promise<void> {
+    await revertOpenCodeConversationAndFiles({
+      client: this.client,
+      sessionId: this.sessionId,
+      cwd: this.config.cwd,
+      messageId: input.messageId,
+    });
+  }
+
   private beginSessionAbort(turnId: string | null, reason: string): Promise<void> {
     const abortPromise = this.client.session
       .abort({
@@ -2492,6 +2562,7 @@ class OpenCodeAgentSession implements AgentSession {
     this.accumulatedUsage = contextWindowMaxTokens !== undefined ? { contextWindowMaxTokens } : {};
 
     const parts = buildOpenCodePromptParts(prompt);
+    this.pendingUserMessageText = buildOpenCodeUserTimelineText(prompt);
     const model = this.parseModel(this.config.model);
     const thinkingOptionId = this.config.thinkingOptionId;
     const effectiveVariant = thinkingOptionId ?? undefined;
@@ -2856,6 +2927,7 @@ class OpenCodeAgentSession implements AgentSession {
     } else {
       this.runningToolCalls.clear();
     }
+    this.pendingUserMessageText = null;
     this.activeForegroundTurnId = null;
     this.abortController = null;
     this.notifySubscribers(event, turnId);
@@ -2934,6 +3006,10 @@ class OpenCodeAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    const sessionResponse = await this.client.session.get({
+      sessionID: this.sessionId,
+      directory: this.config.cwd,
+    });
     const response = await this.client.session.messages({
       sessionID: this.sessionId,
       directory: this.config.cwd,
@@ -2943,7 +3019,11 @@ class OpenCodeAgentSession implements AgentSession {
       return;
     }
 
-    for (const message of response.data) {
+    const messages = filterOpenCodeRevertedMessages(
+      response.data,
+      sessionResponse.error ? null : sessionResponse.data?.revert,
+    );
+    for (const message of messages) {
       for (const event of buildOpenCodeReplayTimelineEvents(message)) {
         yield event;
       }
@@ -3215,6 +3295,8 @@ class OpenCodeAgentSession implements AgentSession {
       sessionId: this.sessionId,
       cwd: this.config.cwd,
       messageRoles: this.messageRoles,
+      pendingUserMessageText: this.pendingUserMessageText,
+      emittedUserMessageIds: this.emittedUserMessageIds,
       accumulatedUsage: this.accumulatedUsage,
       sessionTotalCostUsd: this.sessionTotalCostUsd,
       streamedPartKeys: this.streamedPartKeys,

@@ -15,12 +15,20 @@ import type {
   AgentStreamEvent,
 } from "../agent-sdk-types.js";
 import {
-  __codexAppServerInternals,
+  buildCodexAppServerEnv,
   CodexAppServerAgentClient,
+  CodexAppServerAgentSession,
   codexAppServerTurnInputFromPrompt,
+  listCodexSkills,
+  mapCodexPatchNotificationToToolCall,
+  mapCodexPlanToToolCall,
+  normalizeCodexOutputSchema,
+  toAgentUsage,
 } from "./codex-app-server-agent.js";
+import { CodexAppServerClient } from "./codex/app-server-transport.js";
 import {
   createFakeCodexAppServer,
+  type FakeCodexAppServer,
   waitForNextPermission,
 } from "./codex/test-utils/fake-app-server.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
@@ -76,7 +84,7 @@ function createSession(
   configOverrides: Partial<AgentSessionConfig> = {},
   options: { goalsEnabled?: boolean; autoReviewEnabled?: boolean } = {},
 ): CodexTestSession {
-  const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+  const session = new CodexAppServerAgentSession(
     createConfig(configOverrides),
     null,
     createTestLogger(),
@@ -104,6 +112,25 @@ function markdownImageSource(markdown: string): string {
     throw new Error(`Expected markdown image, got: ${markdown}`);
   }
   return match[1].replace(/\\\)/g, ")");
+}
+
+function emitCodexUserMessage(
+  appServer: FakeCodexAppServer,
+  input: { id: string; text: string; threadId?: string },
+): void {
+  appServer.child.stdout.write(
+    `${JSON.stringify({
+      method: "item/started",
+      params: {
+        threadId: input.threadId ?? "thread-1",
+        item: {
+          type: "userMessage",
+          id: input.id,
+          content: [{ type: "text", text: input.text }],
+        },
+      },
+    })}\n`,
+  );
 }
 
 type CapturedFakeCodexRecord = Record<string, unknown>;
@@ -380,7 +407,7 @@ describe("Codex app-server provider", () => {
       },
     };
 
-    const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+    const session = new CodexAppServerAgentSession(
       createConfig({ thinkingOptionId: "medium" }),
       null,
       createTestLogger(),
@@ -411,7 +438,7 @@ describe("Codex app-server provider", () => {
       },
     };
 
-    const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+    const session = new CodexAppServerAgentSession(
       createConfig({ thinkingOptionId: "medium" }),
       null,
       createTestLogger(),
@@ -437,7 +464,7 @@ describe("Codex app-server provider", () => {
     child.exitCode = null;
     child.signalCode = null;
     child.kill = vi.fn(() => true) as ChildProcessWithoutNullStreams["kill"];
-    const client = new __codexAppServerInternals.CodexAppServerClient(child, createTestLogger());
+    const client = new CodexAppServerClient(child, createTestLogger());
 
     try {
       const disposePromise = client.dispose();
@@ -459,7 +486,7 @@ describe("Codex app-server provider", () => {
       "collaborationMode/list": () => ({ data: [] }),
       "skills/list": () => ({ data: [] }),
     });
-    const session = new __codexAppServerInternals.CodexAppServerAgentSession(
+    const session = new CodexAppServerAgentSession(
       createConfig({ cwd: "/workspace/project" }),
       null,
       createTestLogger(),
@@ -502,6 +529,32 @@ describe("Codex app-server provider", () => {
 
     await expect(appServer.waitForCommandApprovalDecision("exec-approval-1")).resolves.toEqual({
       decision: "accept",
+    });
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
+  test("rewinds the conversation to a freshly emitted Codex user message id", async () => {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.startTurn("remember first");
+    emitCodexUserMessage(appServer, { id: "codex-first", text: "remember first" });
+    appServer.completeTurn();
+    await session.startTurn("remember second");
+    emitCodexUserMessage(appServer, { id: "codex-second", text: "remember second" });
+    appServer.completeTurn();
+
+    await session.revertConversation({ messageId: "codex-first" });
+
+    expect(appServer.recordedRollbacks).toEqual([{ threadId: "forked-thread", numTurns: 2 }]);
+    await expect(session.getRuntimeInfo()).resolves.toMatchObject({
+      sessionId: "forked-thread",
     });
     appServer.assertNoErrors();
     await session.close();
@@ -557,7 +610,7 @@ describe("Codex app-server provider", () => {
       },
       "thread/resume": () => {
         threadRequests.push("thread/resume");
-        return Promise.reject(new Error("no rollout found for thread id archived-thread-id"));
+        return Promise.reject(new Error("no tool-call found for thread id archived-thread-id"));
       },
       "thread/start": () => {
         threadRequests.push("thread/start");
@@ -604,7 +657,7 @@ describe("Codex app-server provider", () => {
           (error) => {
             expect(error).toBeInstanceOf(Error);
             expect((error as Error).message).toContain(
-              "no rollout found for thread id archived-thread-id",
+              "no tool-call found for thread id archived-thread-id",
             );
             return "rejected" as const;
           },
@@ -637,9 +690,7 @@ describe("Codex app-server provider", () => {
     };
 
     try {
-      await expect(
-        __codexAppServerInternals.listCodexSkills(cwd, workspaceGitService),
-      ).resolves.toContainEqual({
+      await expect(listCodexSkills(cwd, workspaceGitService)).resolves.toContainEqual({
         name: "shipper",
         description: "Ship changes carefully.",
         argumentHint: "",
@@ -654,7 +705,7 @@ describe("Codex app-server provider", () => {
 
   test("extracts context window usage from snake_case token payloads", () => {
     expect(
-      __codexAppServerInternals.toAgentUsage({
+      toAgentUsage({
         model_context_window: 200000,
         last: {
           total_tokens: 50000,
@@ -674,7 +725,7 @@ describe("Codex app-server provider", () => {
 
   test("extracts context window usage from camelCase token payloads", () => {
     expect(
-      __codexAppServerInternals.toAgentUsage({
+      toAgentUsage({
         modelContextWindow: 200000,
         last: {
           totalTokens: 50000,
@@ -694,7 +745,7 @@ describe("Codex app-server provider", () => {
 
   test("keeps existing usage behavior when context window fields are missing", () => {
     expect(
-      __codexAppServerInternals.toAgentUsage({
+      toAgentUsage({
         last: {
           inputTokens: 30000,
           cachedInputTokens: 5000,
@@ -710,7 +761,7 @@ describe("Codex app-server provider", () => {
 
   test("excludes invalid context window values", () => {
     expect(
-      __codexAppServerInternals.toAgentUsage({
+      toAgentUsage({
         model_context_window: Number.NaN,
         modelContextWindow: "200000",
         last: {
@@ -748,7 +799,7 @@ describe("Codex app-server provider", () => {
       required: ["overall"],
     };
 
-    const normalized = __codexAppServerInternals.normalizeCodexOutputSchema(input);
+    const normalized = normalizeCodexOutputSchema(input);
 
     expect(normalized).toEqual({
       type: "object",
@@ -1013,7 +1064,7 @@ describe("Codex app-server provider", () => {
   });
 
   test("maps patch notifications with array-style changes and alias diff keys", () => {
-    const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
+    const item = mapCodexPatchNotificationToToolCall({
       callId: "patch-array-alias",
       changes: [
         {
@@ -1036,7 +1087,7 @@ describe("Codex app-server provider", () => {
   });
 
   test("maps Codex plan markdown to a synthetic plan tool call", () => {
-    const item = __codexAppServerInternals.mapCodexPlanToToolCall({
+    const item = mapCodexPlanToToolCall({
       callId: "plan-turn-1",
       text: "### Login Screen\n- Build layout\n- Add validation",
     });
@@ -1055,7 +1106,7 @@ describe("Codex app-server provider", () => {
   });
 
   test("maps patch notifications with object-style single change payloads", () => {
-    const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
+    const item = mapCodexPatchNotificationToToolCall({
       callId: "patch-object-single",
       changes: {
         path: "/tmp/repo/src/object-single.ts",
@@ -1076,7 +1127,7 @@ describe("Codex app-server provider", () => {
   });
 
   test("maps patch notifications with file_path aliases in array-style changes", () => {
-    const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
+    const item = mapCodexPatchNotificationToToolCall({
       callId: "patch-array-file-path",
       changes: [
         {
@@ -1105,7 +1156,7 @@ describe("Codex app-server provider", () => {
         PASEO_TEST_FLAG: "codex-launch-value",
       },
     };
-    const env = __codexAppServerInternals.buildCodexAppServerEnv(
+    const env = buildCodexAppServerEnv(
       {
         env: {
           PASEO_AGENT_ID: "runtime-value",
@@ -1499,6 +1550,7 @@ describe("Codex app-server provider", () => {
         item: {
           type: "user_message",
           text: "Check OpenCode timestamps.",
+          messageId: "user-history",
         },
       },
       {
@@ -1568,6 +1620,40 @@ describe("Codex app-server provider", () => {
           type: "assistant_message",
           text: "The tests are green.",
           messageId: "after-tool-message",
+        },
+      },
+    ]);
+  });
+
+  test("captures live Codex user message ids from item events", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const userMessageItem = {
+      type: "userMessage",
+      id: "codex-user-live-1",
+      content: [{ type: "text", text: "Use the native Codex id." }],
+    };
+
+    asInternals(session).handleNotification("item/started", {
+      threadId: "test-thread",
+      item: userMessageItem,
+    });
+    asInternals(session).handleNotification("item/completed", {
+      threadId: "test-thread",
+      item: userMessageItem,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "user_message",
+          text: "Use the native Codex id.",
+          messageId: "codex-user-live-1",
         },
       },
     ]);
@@ -1694,7 +1780,7 @@ describe("Codex app-server provider", () => {
           return { data: [] };
         }
         if (method === "thread/resume") {
-          throw new Error("no rollout found for thread id archived-thread-id");
+          throw new Error("no tool-call found for thread id archived-thread-id");
         }
         if (method === "thread/start") {
           return { thread: { id: "replacement-empty-thread-id" } };
@@ -1704,7 +1790,7 @@ describe("Codex app-server provider", () => {
     };
 
     await expect(asInternals(session).ensureThreadLoaded()).rejects.toThrow(
-      "no rollout found for thread id archived-thread-id",
+      "no tool-call found for thread id archived-thread-id",
     );
 
     expect(session.currentThreadId).toBe("archived-thread-id");

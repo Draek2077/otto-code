@@ -412,16 +412,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
         return (
           <UserMessage
+            serverId={resolvedServerId}
+            agentId={agentId}
+            messageId={item.id}
             message={item.text}
             images={item.images}
             attachments={item.attachments}
             timestamp={item.timestamp.getTime()}
+            capabilities={agent.capabilities}
+            client={client}
             isFirstInGroup={layoutItem.isFirstInUserGroup}
             isLastInGroup={layoutItem.isLastInUserGroup}
           />
         );
       },
-      [],
+      [agent.capabilities, agentId, client, resolvedServerId],
     );
 
     const renderAssistantMessageItem = useCallback(

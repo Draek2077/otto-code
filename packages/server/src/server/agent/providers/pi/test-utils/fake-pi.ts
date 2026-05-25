@@ -53,6 +53,8 @@ export class FakePiSession implements PiRuntimeSession {
   readonly prompts: Array<{ message: string; imageCount: number }> = [];
   readonly setModelRequests: Array<{ provider: string; modelId: string }> = [];
   readonly setThinkingLevelRequests: string[] = [];
+  readonly treeNavigationRequests: string[] = [];
+  capturedUserEntries: Array<{ id: string; parentId: string | null; text: string }> = [];
   abortRequested = false;
   readonly canceledExtensionUiRequests: string[] = [];
   readonly extensionUiResponses: Array<{
@@ -77,7 +79,7 @@ export class FakePiSession implements PiRuntimeSession {
       thinkingLevel: "medium",
       isStreaming: false,
       isCompacting: false,
-      sessionFile: launch.session ?? "/tmp/pi-session.jsonl",
+      sessionFile: launch.session ?? "/tmp/pi-session",
       sessionId: "pi-session-1",
       messageCount: 0,
       pendingMessageCount: 0,
@@ -96,6 +98,8 @@ export class FakePiSession implements PiRuntimeSession {
     images?: Array<{ type: "image"; data: string; mimeType: string }>,
   ): Promise<void> {
     this.prompts.push({ message, imageCount: images?.length ?? 0 });
+    this.handleTreeNavigationCommand(message);
+    this.handleEntryCaptureCommand(message);
   }
 
   async abort(): Promise<void> {
@@ -157,5 +161,63 @@ export class FakePiSession implements PiRuntimeSession {
   finishTurn(message: PiAgentMessage = { role: "assistant", content: [] }): void {
     this.messages = [...this.messages, message];
     this.emit({ type: "agent_end", messages: this.messages });
+  }
+
+  private handleTreeNavigationCommand(message: string): void {
+    const prefix = "/paseo_tree ";
+    if (!message.startsWith(prefix)) {
+      return;
+    }
+    const payload = JSON.parse(
+      Buffer.from(message.slice(prefix.length), "base64url").toString("utf8"),
+    ) as { targetId?: unknown; requestId?: unknown };
+    if (typeof payload.targetId !== "string" || typeof payload.requestId !== "string") {
+      return;
+    }
+    this.treeNavigationRequests.push(payload.targetId);
+    this.emitEntryCapture(undefined, "tree_navigation");
+    this.emitExtensionCommandResult(payload.requestId, { ok: true, result: {} });
+  }
+
+  private handleEntryCaptureCommand(message: string): void {
+    const prefix = "/paseo_capture_entries ";
+    if (!message.startsWith(prefix)) {
+      return;
+    }
+    const payload = JSON.parse(
+      Buffer.from(message.slice(prefix.length), "base64url").toString("utf8"),
+    ) as { requestId?: unknown; reason?: unknown };
+    if (typeof payload.requestId !== "string") {
+      return;
+    }
+    this.emitEntryCapture(
+      payload.requestId,
+      typeof payload.reason === "string" ? payload.reason : "command",
+    );
+  }
+
+  emitEntryCapture(requestId?: string, reason = "test"): void {
+    this.emit({
+      type: "extension_ui_request",
+      id: `capture-${requestId ?? reason}`,
+      method: "notify",
+      message: `PASEO_ENTRY_CAPTURE ${JSON.stringify({
+        reason,
+        requestId,
+        entries: this.capturedUserEntries,
+      })}`,
+    });
+  }
+
+  private emitExtensionCommandResult(
+    requestId: string,
+    result: { ok: true; result: unknown } | { ok: false; error: string },
+  ): void {
+    this.emit({
+      type: "extension_ui_request",
+      id: `command-${requestId}`,
+      method: "notify",
+      message: `PASEO_COMMAND_RESULT ${JSON.stringify({ requestId, ...result })}`,
+    });
   }
 }

@@ -276,8 +276,17 @@ describe("processTimelineResponse", () => {
   });
 
   it("sets cursor to null when reset=true but no cursors in payload", () => {
+    const existingTail: StreamItem[] = [
+      {
+        kind: "user_message",
+        id: "only-user",
+        text: "first turn",
+        timestamp: new Date(500),
+      },
+    ];
     const result = processTimelineResponse({
       ...baseTimelineInput,
+      currentTail: existingTail,
       currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 5 },
       payload: {
         ...baseTimelineInput.payload,
@@ -288,6 +297,8 @@ describe("processTimelineResponse", () => {
 
     expect(result.cursor).toBe(null);
     expect(result.cursorChanged).toBe(true);
+    expect(result.tail).toEqual([]);
+    expect(getUserTexts(result.tail)).toHaveLength(0);
   });
 
   it("performs bootstrap tail init with catch-up side effect", () => {
@@ -930,6 +941,34 @@ describe("processAgentStreamEvent", () => {
     expect(result.cursorChanged).toBe(false);
     expect(result.changedTail).toBe(false);
     expect(result.changedHead).toBe(false);
+    expect(result.sideEffects).toEqual([]);
+  });
+
+  it("resets visible timeline when a new epoch starts at seq 1", () => {
+    const existingCursor: TimelineCursor = {
+      epoch: "epoch-1",
+      startSeq: 1,
+      endSeq: 5,
+    };
+    const currentTail = [makeAssistantItem("old timeline")];
+
+    const result = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeTimelineEvent("rewound start", "user_message"),
+      seq: 1,
+      epoch: "epoch-2",
+      currentCursor: existingCursor,
+      currentTail,
+    });
+
+    expect(result.cursorChanged).toBe(true);
+    expect(result.cursor).toEqual({
+      epoch: "epoch-2",
+      startSeq: 1,
+      endSeq: 1,
+    });
+    expect(getAssistantTexts(result.tail)).toEqual([]);
+    expect(getUserTexts(result.tail)).toEqual(["rewound start"]);
     expect(result.sideEffects).toEqual([]);
   });
 

@@ -2,11 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import type { AgentStreamEvent } from "../../agent-sdk-types.js";
 import type { PiAgentMessage } from "./rpc-types.js";
-import { streamPiHistory } from "./history-mapper.js";
+import { streamPiHistory, type PiCapturedUserMessageEntry } from "./history-mapper.js";
 
-async function collectHistory(messages: PiAgentMessage[]): Promise<AgentStreamEvent[]> {
+async function collectHistory(
+  messages: PiAgentMessage[],
+  userEntries: PiCapturedUserMessageEntry[] = [],
+): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
-  for await (const event of streamPiHistory("pi", messages)) {
+  for await (const event of streamPiHistory("pi", messages, userEntries)) {
     events.push(event);
   }
   return events;
@@ -46,7 +49,6 @@ describe("Pi history mapper", () => {
         item: {
           type: "user_message",
           text: "read this\n\nthen answer",
-          messageId: "pi-user-0",
         },
       },
       {
@@ -120,6 +122,46 @@ describe("Pi history mapper", () => {
           status: "completed",
           detail: { type: "shell", command: "echo hi", output: "hi\n", exitCode: 0 },
           error: null,
+        },
+      },
+    ]);
+  });
+
+  test("uses Pi tree entry ids for replayed user messages", async () => {
+    await expect(
+      collectHistory(
+        [
+          { role: "user", content: "first prompt" },
+          { role: "assistant", content: [{ type: "text", text: "first answer" }] },
+          { role: "user", content: "second prompt" },
+        ],
+        [
+          { id: "entry-user-1", text: "first prompt" },
+          { id: "entry-user-2", text: "second prompt" },
+        ],
+      ),
+    ).resolves.toEqual([
+      {
+        type: "timeline",
+        provider: "pi",
+        item: {
+          type: "user_message",
+          text: "first prompt",
+          messageId: "entry-user-1",
+        },
+      },
+      {
+        type: "timeline",
+        provider: "pi",
+        item: { type: "assistant_message", text: "first answer" },
+      },
+      {
+        type: "timeline",
+        provider: "pi",
+        item: {
+          type: "user_message",
+          text: "second prompt",
+          messageId: "entry-user-2",
         },
       },
     ]);

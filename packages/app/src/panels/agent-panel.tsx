@@ -11,6 +11,7 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";
+import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import type { ImageAttachment } from "@/components/message-input";
 import { getProviderIcon } from "@/components/provider-icons";
 import { ToastViewport, useToastHost } from "@/components/toast-host";
@@ -23,7 +24,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
-import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useAgentInputDraft, type AgentInputDraft } from "@/hooks/use-agent-input-draft";
 import {
   type AgentScreenAgent,
   type AgentScreenMissingState,
@@ -69,6 +70,7 @@ interface ChatAgentStateShape {
   id: string | null;
   status: Agent["status"] | null;
   cwd: string | null;
+  capabilities?: Agent["capabilities"];
   lastError?: Agent["lastError"] | null;
 }
 
@@ -111,6 +113,7 @@ function selectChatAgentState(
     id: agent.id,
     status: agent.status,
     cwd: agent.cwd,
+    capabilities: agent.capabilities,
     lastError: agent.lastError ?? null,
     archivedAt: agent.archivedAt ?? null,
     requiresAttention: agent.requiresAttention ?? false,
@@ -130,6 +133,7 @@ function buildChatAgentFromState(
     id: state.id,
     status: state.status,
     cwd: state.cwd,
+    capabilities: state.capabilities,
     lastError: state.lastError ?? null,
     projectPlacement,
   };
@@ -945,70 +949,162 @@ function ChatAgentContent({
     effectiveAgent,
   });
   if (nonReadyView) return nonReadyView;
+  invariant(agentId, "agent id is defined when agent content is ready");
   invariant(effectiveAgent, "effectiveAgent is defined when the non-ready view is absent");
-  invariant(agentState.cwd, "agent cwd is defined when agent content is ready");
+  const agentCwd = agentState.cwd;
+  invariant(agentCwd, "agent cwd is defined when agent content is ready");
+  const showHistorySyncOverlay =
+    viewState.tag === "ready" &&
+    viewState.sync.status === "catching_up" &&
+    viewState.sync.ui === "overlay";
 
   return (
-    <View style={styles.root}>
-      <FileDropZone onFilesDropped={handleFilesDropped} disabled={isArchivingCurrentAgent}>
-        <View style={styles.container}>
-          <View style={styles.contentContainer}>
-            <ReanimatedAnimated.View style={animatedContentStyle}>
-              <AgentStreamSection
-                streamViewRef={streamViewRef}
-                serverId={serverId}
-                agentId={agentId}
-                agent={effectiveAgent}
-                pendingCreate={pendingCreate}
-                shouldUseOptimisticStream={shouldUseOptimisticStream}
-                canFinalizePendingCreate={canFinalizePendingCreate}
-                routeBottomAnchorRequest={routeBottomAnchorRequest}
-                hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
-                toast={panelToast.api}
-                onOpenWorkspaceFile={onOpenWorkspaceFile}
-              />
-            </ReanimatedAnimated.View>
-          </View>
+    <ChatAgentReadyContent
+      serverId={serverId}
+      agentId={agentId}
+      isPaneFocused={isPaneFocused}
+      isArchivingCurrentAgent={isArchivingCurrentAgent}
+      agentState={agentState}
+      effectiveAgent={effectiveAgent}
+      pendingCreate={pendingCreate}
+      shouldUseOptimisticStream={shouldUseOptimisticStream}
+      canFinalizePendingCreate={canFinalizePendingCreate}
+      routeBottomAnchorRequest={routeBottomAnchorRequest}
+      hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
+      panelToast={panelToast}
+      streamViewRef={streamViewRef}
+      animatedContentStyle={animatedContentStyle}
+      handleFilesDropped={handleFilesDropped}
+      handleAddImagesCallback={handleAddImagesCallback}
+      handleComposerHeightChange={handleComposerHeightChange}
+      handleMessageSent={handleMessageSent}
+      showPendingCreateSubmitLoading={showPendingCreateSubmitLoading}
+      showHistorySyncOverlay={showHistorySyncOverlay}
+      cwd={agentCwd}
+      attentionController={attentionController}
+      onOpenWorkspaceFile={onOpenWorkspaceFile}
+    />
+  );
+}
 
-          <AgentComposerSection
-            agentId={agentId}
-            serverId={serverId}
-            isPaneFocused={isPaneFocused}
-            isArchivingCurrentAgent={isArchivingCurrentAgent}
-            archivedAt={agentState.archivedAt}
-            cwd={agentState.cwd}
-            isSubmitLoading={showPendingCreateSubmitLoading}
-            onAttentionInputFocus={attentionController.clearOnInputFocus}
-            onAttentionPromptSend={attentionController.clearOnPromptSend}
-            onAddImages={handleAddImagesCallback}
-            onComposerHeightChange={handleComposerHeightChange}
-            onMessageSent={handleMessageSent}
-          />
+function ChatAgentReadyContent({
+  serverId,
+  agentId,
+  isPaneFocused,
+  isArchivingCurrentAgent,
+  agentState,
+  effectiveAgent,
+  pendingCreate,
+  shouldUseOptimisticStream,
+  canFinalizePendingCreate,
+  routeBottomAnchorRequest,
+  hasAppliedAuthoritativeHistory,
+  panelToast,
+  streamViewRef,
+  animatedContentStyle,
+  handleFilesDropped,
+  handleAddImagesCallback,
+  handleComposerHeightChange,
+  handleMessageSent,
+  showPendingCreateSubmitLoading,
+  showHistorySyncOverlay,
+  cwd,
+  attentionController,
+  onOpenWorkspaceFile,
+}: {
+  serverId: string;
+  agentId: string;
+  isPaneFocused: boolean;
+  isArchivingCurrentAgent: boolean;
+  agentState: ChatAgentSelectedState;
+  effectiveAgent: AgentScreenAgent;
+  pendingCreate: PendingCreateAttempt | null;
+  shouldUseOptimisticStream: boolean;
+  canFinalizePendingCreate: boolean;
+  routeBottomAnchorRequest: RouteBottomAnchorRequest;
+  hasAppliedAuthoritativeHistory: boolean;
+  panelToast: ReturnType<typeof useToastHost>;
+  streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
+  animatedContentStyle: object[];
+  handleFilesDropped: (files: ImageAttachment[]) => void;
+  handleAddImagesCallback: (addImages: (images: ImageAttachment[]) => void) => void;
+  handleComposerHeightChange: (height: number) => void;
+  handleMessageSent: () => void;
+  showPendingCreateSubmitLoading: boolean;
+  showHistorySyncOverlay: boolean;
+  cwd: string;
+  attentionController: ReturnType<typeof useAgentAttentionClear>;
+  onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+}) {
+  const agentInputDraft = useAgentInputDraft({
+    draftKey: buildDraftStoreKey({
+      serverId,
+      agentId,
+    }),
+  });
 
-          {viewState.tag === "ready" &&
-          viewState.sync.status === "catching_up" &&
-          viewState.sync.ui === "overlay" ? (
-            <View style={styles.historySyncOverlay} testID="agent-history-overlay">
-              <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
+  return (
+    <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
+      <View style={styles.root}>
+        <FileDropZone onFilesDropped={handleFilesDropped} disabled={isArchivingCurrentAgent}>
+          <View style={styles.container}>
+            <View style={styles.contentContainer}>
+              <ReanimatedAnimated.View style={animatedContentStyle}>
+                <AgentStreamSection
+                  streamViewRef={streamViewRef}
+                  serverId={serverId}
+                  agentId={agentId}
+                  agent={effectiveAgent}
+                  pendingCreate={pendingCreate}
+                  shouldUseOptimisticStream={shouldUseOptimisticStream}
+                  canFinalizePendingCreate={canFinalizePendingCreate}
+                  routeBottomAnchorRequest={routeBottomAnchorRequest}
+                  hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
+                  toast={panelToast.api}
+                  onOpenWorkspaceFile={onOpenWorkspaceFile}
+                />
+              </ReanimatedAnimated.View>
             </View>
-          ) : null}
 
-          <ToastViewport
-            toast={panelToast.toast}
-            onDismiss={panelToast.dismiss}
-            placement="panel"
-          />
-        </View>
-      </FileDropZone>
+            <AgentComposerSection
+              agentId={agentId}
+              serverId={serverId}
+              isPaneFocused={isPaneFocused}
+              isArchivingCurrentAgent={isArchivingCurrentAgent}
+              archivedAt={agentState.archivedAt}
+              cwd={cwd}
+              isSubmitLoading={showPendingCreateSubmitLoading}
+              agentInputDraft={agentInputDraft}
+              onAttentionInputFocus={attentionController.clearOnInputFocus}
+              onAttentionPromptSend={attentionController.clearOnPromptSend}
+              onAddImages={handleAddImagesCallback}
+              onComposerHeightChange={handleComposerHeightChange}
+              onMessageSent={handleMessageSent}
+            />
 
-      {isArchivingCurrentAgent ? (
-        <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
-          <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
-          <Text style={styles.archivingTitle}>Archiving agent...</Text>
-          <Text style={styles.archivingSubtitle}>Please wait while we archive this agent.</Text>
-        </View>
-      ) : null}
-    </View>
+            {showHistorySyncOverlay ? (
+              <View style={styles.historySyncOverlay} testID="agent-history-overlay">
+                <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
+              </View>
+            ) : null}
+
+            <ToastViewport
+              toast={panelToast.toast}
+              onDismiss={panelToast.dismiss}
+              placement="panel"
+            />
+          </View>
+        </FileDropZone>
+
+        {isArchivingCurrentAgent ? (
+          <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
+            <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
+            <Text style={styles.archivingTitle}>Archiving agent...</Text>
+            <Text style={styles.archivingSubtitle}>Please wait while we archive this agent.</Text>
+          </View>
+        ) : null}
+      </View>
+    </RewindComposerRestoreProvider>
   );
 }
 
@@ -1081,6 +1177,7 @@ function AgentStreamSection({
         id: pendingCreate.clientMessageId,
         text: pendingCreate.text,
         timestamp: new Date(pendingCreate.timestamp),
+        optimistic: true,
         ...(pendingCreate.images && pendingCreate.images.length > 0
           ? { images: pendingCreate.images }
           : {}),
@@ -1183,6 +1280,7 @@ function AgentComposerSection({
   archivedAt,
   cwd,
   isSubmitLoading,
+  agentInputDraft,
   onAttentionInputFocus,
   onAttentionPromptSend,
   onAddImages,
@@ -1196,6 +1294,7 @@ function AgentComposerSection({
   archivedAt: Date | null;
   cwd: string;
   isSubmitLoading: boolean;
+  agentInputDraft: AgentInputDraft;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onAddImages: (addImages: (images: ImageAttachment[]) => void) => void;
@@ -1219,6 +1318,7 @@ function AgentComposerSection({
       isPaneFocused={isPaneFocused}
       cwd={cwd}
       isSubmitLoading={isSubmitLoading}
+      agentInputDraft={agentInputDraft}
       onAttentionInputFocus={onAttentionInputFocus}
       onAttentionPromptSend={onAttentionPromptSend}
       onAddImages={onAddImages}
@@ -1234,6 +1334,7 @@ function ActiveAgentComposer({
   isPaneFocused,
   cwd,
   isSubmitLoading,
+  agentInputDraft,
   onAttentionInputFocus,
   onAttentionPromptSend,
   onAddImages,
@@ -1245,6 +1346,7 @@ function ActiveAgentComposer({
   isPaneFocused: boolean;
   cwd: string;
   isSubmitLoading: boolean;
+  agentInputDraft: AgentInputDraft;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onAddImages: (addImages: (images: ImageAttachment[]) => void) => void;
@@ -1270,12 +1372,6 @@ function ActiveAgentComposer({
     [serverId],
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
-  const agentInputDraft = useAgentInputDraft({
-    draftKey: buildDraftStoreKey({
-      serverId,
-      agentId,
-    }),
-  });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
