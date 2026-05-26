@@ -49,7 +49,7 @@ import {
   FileSymlink,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { SPACING, type Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -67,7 +67,7 @@ import type { AgentAttachment } from "@server/shared/messages";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { getMarkdownListMarker, getMarkdownNextSiblingType } from "@/utils/markdown-list";
+import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
@@ -1554,39 +1554,14 @@ function MarkdownParagraphView({ paragraphStyle, children }: MarkdownParagraphVi
   return <View style={style}>{children}</View>;
 }
 
-// List spacing in markdown:
-//   - p -> list and list -> p use a slightly larger gap than p -> p, so lists
-//     read as their own section against surrounding prose.
-//   - list -> list keeps the normal p-to-p gap; back-to-back lists are
-//     continuous content, not section breaks.
-//
-// Paragraph's marginBottom is SPACING[3] = 12 (and marginTop is 0). To produce
-// 16px gaps on p<->list transitions and 12px on list<->list, we add a constant
-// marginTop on lists (4) and switch marginBottom by next-sibling type:
-//   p -> list      = p.marginBottom(12) + list.marginTop(4)        = 16
-//   list -> p      = list.marginBottom(16) + p.marginTop(0)        = 16
-//   list -> list   = list.marginBottom(8) + list.marginTop(4)      = 12
-const MARKDOWN_LIST_MARGIN_TOP = SPACING[1]; // 4
-const MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE = SPACING[4]; // 16
-const MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST = SPACING[2]; // 8
-
-function getMarkdownListContextMarginBottom(node: ASTNode, parent: ASTNode[]): number {
-  const nextType = getMarkdownNextSiblingType(node, parent);
-  const nextIsList = nextType === "bullet_list" || nextType === "ordered_list";
-  return nextIsList ? MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST : MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE;
-}
-
 interface MarkdownListViewProps {
   baseStyle: ViewStyle;
-  marginBottom: number;
+  spacing: { marginTop: number; marginBottom: number };
   children: ReactNode;
 }
 
-function MarkdownListView({ baseStyle, marginBottom, children }: MarkdownListViewProps) {
-  const style = useMemo(
-    () => [baseStyle, { marginTop: MARKDOWN_LIST_MARGIN_TOP, marginBottom }],
-    [baseStyle, marginBottom],
-  );
+function MarkdownListView({ baseStyle, spacing, children }: MarkdownListViewProps) {
+  const style = useMemo(() => [baseStyle, spacing], [baseStyle, spacing]);
   return <View style={style}>{children}</View>;
 }
 
@@ -1748,7 +1723,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownListView
           key={node.key}
           baseStyle={styles.bullet_list}
-          marginBottom={getMarkdownListContextMarginBottom(node, parent)}
+          spacing={getMarkdownListSpacing(node, parent)}
         >
           {children}
         </MarkdownListView>
@@ -1762,7 +1737,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MarkdownListView
           key={node.key}
           baseStyle={styles.ordered_list}
-          marginBottom={getMarkdownListContextMarginBottom(node, parent)}
+          spacing={getMarkdownListSpacing(node, parent)}
         >
           {children}
         </MarkdownListView>

@@ -1,3 +1,5 @@
+import { SPACING } from "@/styles/theme";
+
 interface MarkdownNode {
   type?: string;
   index?: number;
@@ -10,6 +12,11 @@ interface MarkdownNode {
 
 const LIST_BULLET = "•";
 const DEFAULT_ORDERED_LIST_MARKUP = ".";
+const MARKDOWN_LIST_MARGIN_TOP = SPACING[1];
+const MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE = SPACING[4];
+const MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST = SPACING[2];
+const MARKDOWN_NESTED_LIST_MARGIN_BOTTOM = 0;
+const MARKDOWN_TERMINAL_LIST_MARGIN_BOTTOM = 0;
 
 function toParentNodes(parent: unknown): MarkdownNode[] {
   if (Array.isArray(parent)) {
@@ -74,6 +81,41 @@ export function getMarkdownNextSiblingType(
     }
   }
   return undefined;
+}
+
+function isListType(type: string | undefined): boolean {
+  return type === "bullet_list" || type === "ordered_list";
+}
+
+function hasListItemAncestor(parent: unknown): boolean {
+  return toParentNodes(parent).some((ancestor) => ancestor?.type === "list_item");
+}
+
+export function getMarkdownListSpacing(
+  node: MarkdownNode,
+  parent: unknown,
+): { marginTop: number; marginBottom: number } {
+  if (hasListItemAncestor(parent)) {
+    return {
+      marginTop: MARKDOWN_LIST_MARGIN_TOP,
+      marginBottom: MARKDOWN_NESTED_LIST_MARGIN_BOTTOM,
+    };
+  }
+
+  const nextType = getMarkdownNextSiblingType(node, parent);
+  if (!nextType) {
+    return {
+      marginTop: MARKDOWN_LIST_MARGIN_TOP,
+      marginBottom: MARKDOWN_TERMINAL_LIST_MARGIN_BOTTOM,
+    };
+  }
+
+  return {
+    marginTop: MARKDOWN_LIST_MARGIN_TOP,
+    marginBottom: isListType(nextType)
+      ? MARKDOWN_LIST_MARGIN_BOTTOM_TO_LIST
+      : MARKDOWN_LIST_MARGIN_BOTTOM_TO_PROSE,
+  };
 }
 
 export function getMarkdownListMarker(
