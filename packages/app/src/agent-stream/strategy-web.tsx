@@ -584,9 +584,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
             </div>
           ) : null}
           {mountedHistoryRows}
-          {boundary.hasMountedHistory && boundary.hasLiveHead && boundary.historyToHeadGap > 0 ? (
-            <HistoryToHeadSpacer height={boundary.historyToHeadGap} />
-          ) : null}
           {liveHeadRows}
           {liveAuxiliary}
           {shouldRenderEmpty ? listEmptyComponent : null}
@@ -633,13 +630,4 @@ export function createWebStreamStrategy(input: CreateWebStreamStrategyInput): St
     },
     getBottomOffset: (metrics) => Math.max(0, metrics.contentHeight - metrics.viewportHeight),
   });
-}
-
-interface HistoryToHeadSpacerProps {
-  height: number;
-}
-
-function HistoryToHeadSpacer({ height }: HistoryToHeadSpacerProps) {
-  const spacerStyle = useMemo(() => ({ height, width: "100%" as const }), [height]);
-  return <div style={spacerStyle} />;
 }

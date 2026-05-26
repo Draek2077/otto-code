@@ -123,6 +123,43 @@ function findLayoutItem(layout: StreamLayout, id: string): StreamLayoutItem {
 }
 
 describe("layoutStream", () => {
+  it.each(["web", "android"] as const)(
+    "keeps split assistant block spacing identical to unsplit history on %s",
+    (platform) => {
+      const firstBlock = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
+      const secondBlock = assistantMessage("turn:block:1", 3, { groupId: "turn", index: 1 });
+      const thirdBlock = assistantMessage("turn:block:2", 4, { groupId: "turn", index: 2 });
+      const splitLayout = layoutFor({
+        platform,
+        agentStatus: "running",
+        tail: [userMessage("u1", 1), firstBlock],
+        head: [secondBlock, thirdBlock],
+        timingIds: [firstBlock.id, secondBlock.id, thirdBlock.id],
+      });
+      const unsplitLayout = layoutFor({
+        platform,
+        agentStatus: "running",
+        tail: [userMessage("u1", 1), firstBlock, secondBlock, thirdBlock],
+        timingIds: [firstBlock.id, secondBlock.id, thirdBlock.id],
+      });
+
+      expect(findLayoutItem(splitLayout, firstBlock.id).belowItem?.id).toBe(secondBlock.id);
+      expect(findLayoutItem(splitLayout, secondBlock.id).aboveItem?.id).toBe(firstBlock.id);
+      expect(findLayoutItem(splitLayout, firstBlock.id).assistantSpacing).toBe(
+        findLayoutItem(unsplitLayout, firstBlock.id).assistantSpacing,
+      );
+      expect(findLayoutItem(splitLayout, secondBlock.id).assistantSpacing).toBe(
+        findLayoutItem(unsplitLayout, secondBlock.id).assistantSpacing,
+      );
+      expect(findLayoutItem(splitLayout, firstBlock.id).gapBelow).toBe(
+        findLayoutItem(unsplitLayout, firstBlock.id).gapBelow,
+      );
+      expect(findLayoutItem(splitLayout, secondBlock.id).gapBelow).toBe(
+        findLayoutItem(unsplitLayout, secondBlock.id).gapBelow,
+      );
+    },
+  );
+
   it("does not duplicate footers when a native assistant turn spans history and live head", () => {
     const historyBlock = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
     const headBlock = assistantMessage("turn:head", 3, { groupId: "turn", index: 1 });
@@ -194,6 +231,39 @@ describe("layoutStream", () => {
     expect(findLayoutItem(layout, historyBlock.id).assistantSpacing).toBe("compactBottom");
     expect(findLayoutItem(layout, headBlock.id).assistantSpacing).toBe("compactTop");
   });
+
+  it.each(["web", "android"] as const)(
+    "keeps split tool sequencing and gapBelow identical to unsplit history on %s",
+    (platform) => {
+      const shell = toolCall("tool-1", 2);
+      const thinking = thought("thought-1", 3);
+      const assistant = assistantMessage("a1", 4);
+      const splitLayout = layoutFor({
+        platform,
+        tail: [userMessage("u1", 1), shell],
+        head: [thinking, assistant],
+      });
+      const unsplitLayout = layoutFor({
+        platform,
+        tail: [userMessage("u1", 1), shell, thinking, assistant],
+      });
+
+      expect(findLayoutItem(splitLayout, shell.id).belowItem?.id).toBe(thinking.id);
+      expect(findLayoutItem(splitLayout, thinking.id).aboveItem?.id).toBe(shell.id);
+      expect(findLayoutItem(splitLayout, shell.id).toolSequence).toBe(
+        findLayoutItem(unsplitLayout, shell.id).toolSequence,
+      );
+      expect(findLayoutItem(splitLayout, thinking.id).toolSequence).toBe(
+        findLayoutItem(unsplitLayout, thinking.id).toolSequence,
+      );
+      expect(findLayoutItem(splitLayout, shell.id).gapBelow).toBe(
+        findLayoutItem(unsplitLayout, shell.id).gapBelow,
+      );
+      expect(findLayoutItem(splitLayout, thinking.id).gapBelow).toBe(
+        findLayoutItem(unsplitLayout, thinking.id).gapBelow,
+      );
+    },
+  );
 
   it("computes tool sequence position from strategy-aware neighbors", () => {
     const shell = toolCall("tool-1", 2);

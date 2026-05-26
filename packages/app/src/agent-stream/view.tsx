@@ -613,16 +613,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
-        boundary: {
-          ...baseRenderModel.boundary,
-          historyToHeadGap: streamLayout.historyToHeadGap,
-        },
+        boundary: baseRenderModel.boundary,
         auxiliary: {
           pendingPermissions: pendingPermissionsNode,
           turnFooter: turnFooterNode,
         },
       };
-    }, [baseRenderModel, pendingPermissionsNode, streamLayout.historyToHeadGap, turnFooterNode]);
+    }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
 
     const emptyStateStyle = useMemo(() => [stylesheet.emptyState, stylesheet.contentWrapper], []);
     const listEmptyComponent = useMemo(

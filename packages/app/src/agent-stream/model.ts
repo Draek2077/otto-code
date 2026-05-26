@@ -19,7 +19,6 @@ export interface StreamHistoryBoundary {
   hasVirtualizedHistory: boolean;
   hasMountedHistory: boolean;
   hasLiveHead: boolean;
-  historyToHeadGap: number;
 }
 
 export interface StreamRenderAuxiliary {
@@ -205,7 +204,6 @@ export function buildAgentStreamRenderModel(
       hasVirtualizedHistory: splitHistory.segments.historyVirtualized.length > 0,
       hasMountedHistory: splitHistory.segments.historyMounted.length > 0,
       hasLiveHead: orderedHead.length > 0,
-      historyToHeadGap: 0,
     },
     auxiliary: EMPTY_AUXILIARY,
   };

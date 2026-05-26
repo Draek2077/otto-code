@@ -32,7 +32,6 @@ export interface StreamLayout {
   history: StreamLayoutItem[];
   liveHead: StreamLayoutItem[];
   auxiliaryTurnFooter: TurnFooterHost | null;
-  historyToHeadGap: number;
 }
 
 export interface StreamLayoutInput {
@@ -243,6 +242,5 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
     history,
     liveHead,
     auxiliaryTurnFooter,
-    historyToHeadGap: getGapBetweenStreamItems(historyBoundaryItem, liveHeadBoundaryItem),
   };
 }
