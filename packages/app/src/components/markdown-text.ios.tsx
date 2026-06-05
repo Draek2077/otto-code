@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { View, type StyleProp, type TextProps, type TextStyle, type ViewStyle } from "react-native";
 import { UITextView } from "react-native-uitextview";
+import { resolvePlainMarkdownTextStyle } from "@/components/markdown-text-style";
 
 interface MarkdownTextSpanProps {
   style?: StyleProp<TextStyle>;
@@ -26,11 +27,13 @@ export function MarkdownTextSpan({
   onPress,
   accessibilityRole,
 }: MarkdownTextSpanProps) {
+  const plainStyle = useMemo(() => resolvePlainMarkdownTextStyle(style), [style]);
+
   return (
     <UITextView
       uiTextView
       selectable
-      style={style}
+      style={plainStyle}
       onPress={onPress}
       accessibilityRole={accessibilityRole}
     >
@@ -59,7 +62,11 @@ export function MarkdownParagraphView({
   children,
 }: MarkdownParagraphViewProps) {
   const textStyle = useMemo(
-    () => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET] as StyleProp<TextStyle>,
+    () =>
+      resolvePlainMarkdownTextStyle([
+        paragraphStyle,
+        MARKDOWN_PARAGRAPH_RESET,
+      ] as StyleProp<TextStyle>),
     [paragraphStyle],
   );
   const viewStyle = useMemo(() => [paragraphStyle, MARKDOWN_PARAGRAPH_RESET], [paragraphStyle]);
