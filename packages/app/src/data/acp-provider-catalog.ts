@@ -9,6 +9,7 @@ export interface AcpProviderCatalogEntry {
   installLink: string;
   command: readonly [string, ...string[]];
   env?: Readonly<Record<string, string>>;
+  params?: Readonly<Record<string, unknown>>;
 }
 
 const CATALOG_DATA = [
@@ -166,6 +167,7 @@ const CATALOG_DATA = [
       DROID_DISABLE_AUTO_UPDATE: "true",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
     },
+    params: { supportsMcpServers: false },
   },
   {
     id: "fast-agent",
@@ -357,5 +359,6 @@ export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = CATALOG_DATA.map(
   installLink: entry.installLink,
   command: entry.command,
   env: "env" in entry ? entry.env : undefined,
+  params: "params" in entry ? entry.params : undefined,
   iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,
 }));

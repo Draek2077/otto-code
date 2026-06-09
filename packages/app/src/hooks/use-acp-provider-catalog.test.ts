@@ -66,4 +66,12 @@ describe("ACP provider catalog", () => {
       AUGMENT_DISABLE_AUTO_UPDATE: "1",
     });
   });
+
+  it("preserves provider params in the daemon config patch", () => {
+    const droidPatch = buildAcpProviderConfigPatch(findProvider("factory-droid"));
+
+    expect(droidPatch.providers?.["factory-droid"]?.params).toEqual({
+      supportsMcpServers: false,
+    });
+  });
 });

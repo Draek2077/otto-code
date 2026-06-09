@@ -438,6 +438,25 @@ Required fields for ACP providers:
 - `label`
 - `command` — the command to spawn the agent process (must support ACP over stdio)
 
+By default, Paseo injects its internal MCP server into ACP providers so agents can use Paseo tools such as subagent creation. Some ACP adapters cannot create sessions when `mcpServers` is non-empty. Disable injected MCP for those providers with `params.supportsMcpServers: false`:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "my-agent": {
+        "extends": "acp",
+        "label": "My Agent",
+        "command": ["my-agent", "acp"],
+        "params": {
+          "supportsMcpServers": false
+        }
+      }
+    }
+  }
+}
+```
+
 ### Generic ACP diagnostics
 
 Paseo diagnostics for `extends: "acp"` providers report the configured command, resolved launcher binary, version output, ACP `initialize`, ACP `session/new`, model count, modes, and final status.
@@ -574,18 +593,19 @@ When an `additionalModels` entry has the same `id` as a discovered model, it upd
 
 Every entry under `agents.providers` accepts these fields:
 
-| Field              | Type                     | Required          | Description                                                        |
-| ------------------ | ------------------------ | ----------------- | ------------------------------------------------------------------ |
-| `extends`          | `string`                 | Yes (custom only) | Built-in provider ID to inherit from, or `"acp"`                   |
-| `label`            | `string`                 | Yes (custom only) | Display name in the UI                                             |
-| `description`      | `string`                 | No                | Short description shown in the UI                                  |
-| `command`          | `string[]`               | Yes (ACP only)    | Command to spawn the agent process                                 |
-| `env`              | `Record<string, string>` | No                | Environment variables to set for the agent process                 |
-| `models`           | `ProviderProfileModel[]` | No                | Static model list (overrides runtime discovery)                    |
-| `additionalModels` | `ProviderProfileModel[]` | No                | Static model additions (merged with runtime discovery or `models`) |
-| `disallowedTools`  | `string[]`               | No                | Tool names to disable for this provider (e.g. `["WebSearch"]`)     |
-| `enabled`          | `boolean`                | No                | Set to `false` to hide the provider (default: `true`)              |
-| `order`            | `number`                 | No                | Sort order in the provider list                                    |
+| Field              | Type                      | Required          | Description                                                        |
+| ------------------ | ------------------------- | ----------------- | ------------------------------------------------------------------ |
+| `extends`          | `string`                  | Yes (custom only) | Built-in provider ID to inherit from, or `"acp"`                   |
+| `label`            | `string`                  | Yes (custom only) | Display name in the UI                                             |
+| `description`      | `string`                  | No                | Short description shown in the UI                                  |
+| `command`          | `string[]`                | Yes (ACP only)    | Command to spawn the agent process                                 |
+| `env`              | `Record<string, string>`  | No                | Environment variables to set for the agent process                 |
+| `params`           | `Record<string, unknown>` | No                | Provider-specific options such as `supportsMcpServers: false`      |
+| `models`           | `ProviderProfileModel[]`  | No                | Static model list (overrides runtime discovery)                    |
+| `additionalModels` | `ProviderProfileModel[]`  | No                | Static model additions (merged with runtime discovery or `models`) |
+| `disallowedTools`  | `string[]`                | No                | Tool names to disable for this provider (e.g. `["WebSearch"]`)     |
+| `enabled`          | `boolean`                 | No                | Set to `false` to hide the provider (default: `true`)              |
+| `order`            | `number`                  | No                | Sort order in the provider list                                    |
 
 ### Model definition
 
