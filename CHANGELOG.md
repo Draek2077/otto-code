@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.102-beta.1 - 2026-06-27
+
+### Added
+
+- Use Paseo from a browser served directly by your daemon ([#1635](https://github.com/getpaseo/paseo/pull/1635))
+- Run Paseo from an official Docker image ([#1740](https://github.com/getpaseo/paseo/pull/1740) by [@Herbrant](https://github.com/Herbrant))
+- Update a remote host from the app when a newer daemon is available ([#1513](https://github.com/getpaseo/paseo/pull/1513) by [@thedavidweng](https://github.com/thedavidweng))
+- Dropped files can be attached from every composer ([#1750](https://github.com/getpaseo/paseo/pull/1750))
+- MiniMax usage is available in provider quota views ([#1662](https://github.com/getpaseo/paseo/pull/1662) by [@ilteoood](https://github.com/ilteoood))
+- C# code blocks now have syntax highlighting ([#1651](https://github.com/getpaseo/paseo/pull/1651) by [@dev693](https://github.com/dev693))
+
+### Improved
+
+- The sidebar can show workspaces across all connected hosts ([#1538](https://github.com/getpaseo/paseo/pull/1538))
+- Creating a new workspace is available from an app-wide screen ([#1746](https://github.com/getpaseo/paseo/pull/1746))
+- Project search shows loading progress while results are fetched ([#1762](https://github.com/getpaseo/paseo/pull/1762))
+- Pi waits longer for extension results before timing out ([#1732](https://github.com/getpaseo/paseo/pull/1732) by [@theslava](https://github.com/theslava))
+- Open file tabs refresh when you revisit them ([#1699](https://github.com/getpaseo/paseo/pull/1699) by [@cleiter](https://github.com/cleiter))
+- Web terminals stay smoother while scrolling ([#1622](https://github.com/getpaseo/paseo/pull/1622) by [@TommyLike](https://github.com/TommyLike))
+- ACP provider catalog updated to the latest registry versions
+
+### Fixed
+
+- Freshly added projects can be edited without restarting ([#1761](https://github.com/getpaseo/paseo/pull/1761) by [@huiliaoning](https://github.com/huiliaoning))
+- Opening projects and directory suggestions work better in large repos ([#1620](https://github.com/getpaseo/paseo/pull/1620) by [@jms830](https://github.com/jms830))
+- Desktop file uploads keep their file extensions ([#1741](https://github.com/getpaseo/paseo/pull/1741))
+- Closing Claude Code sessions no longer leaves child processes running ([#1540](https://github.com/getpaseo/paseo/pull/1540) by [@TommyLike](https://github.com/TommyLike))
+- OpenCode no longer indexes your home directory by mistake ([#1704](https://github.com/getpaseo/paseo/pull/1704) by [@rex-chang](https://github.com/rex-chang))
+- ACP sessions load with the correct project folder and MCP server settings ([#1624](https://github.com/getpaseo/paseo/pull/1624) by [@theslava](https://github.com/theslava))
+
 ## 0.1.101 - 2026-06-26
 
 ### Added
