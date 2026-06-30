@@ -53,7 +53,9 @@ import {
   listRegisteredPaseoBrowserIds,
   readBrowserIdFromWebviewAttach,
   registerBrowserWebviewNavigationGuards,
+  registerPaseoBrowserWorkspace,
   registerPaseoBrowserWebContents,
+  setAgentActivePaseoBrowserId,
   setWorkspaceActivePaseoBrowserId,
 } from "./features/browser-webviews/index.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
@@ -70,6 +72,7 @@ import {
 } from "./daemon/quit-lifecycle.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
+import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
@@ -108,6 +111,50 @@ const FORWARDED_PASEO_SHORTCUT_KEYS = new Set([
 const DESKTOP_SMOKE_ENV = "PASEO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "paseo-smoke-stop";
 app.setName(APP_NAME);
+
+function readBrowserWorkspaceInput(
+  input: unknown,
+): { browserId: string; workspaceId: string } | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  if (typeof record.browserId !== "string" || record.browserId.trim().length === 0) {
+    return null;
+  }
+  if (typeof record.workspaceId !== "string" || record.workspaceId.trim().length === 0) {
+    return null;
+  }
+  return { browserId: record.browserId.trim(), workspaceId: record.workspaceId.trim() };
+}
+
+function readActiveBrowserInput(
+  input: unknown,
+): { workspaceId: string; browserId: string | null } | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  if (typeof record.workspaceId !== "string" || record.workspaceId.trim().length === 0) {
+    return null;
+  }
+  const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
+  return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
+}
+
+function readAgentActiveBrowserInput(
+  input: unknown,
+): { agentId: string; browserId: string | null } | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  if (typeof record.agentId !== "string" || record.agentId.trim().length === 0) {
+    return null;
+  }
+  const browserId = typeof record.browserId === "string" ? record.browserId.trim() : null;
+  return { agentId: record.agentId.trim(), browserId: browserId || null };
+}
 
 const pendingBrowserWebviewIds: string[] = [];
 
@@ -254,8 +301,25 @@ ipcMain.handle("paseo:get-pending-open-project", (event) => {
   return result;
 });
 
-ipcMain.handle("paseo:browser:set-workspace-active-browser", (_event, browserId: unknown) => {
-  setWorkspaceActivePaseoBrowserId(typeof browserId === "string" ? browserId : null);
+ipcMain.handle("paseo:browser:register-workspace-browser", (_event, rawInput: unknown) => {
+  const input = readBrowserWorkspaceInput(rawInput);
+  if (input) {
+    registerPaseoBrowserWorkspace(input);
+  }
+});
+
+ipcMain.handle("paseo:browser:set-workspace-active-browser", (_event, rawInput: unknown) => {
+  const input = readActiveBrowserInput(rawInput);
+  if (input) {
+    setWorkspaceActivePaseoBrowserId(input);
+  }
+});
+
+ipcMain.handle("paseo:browser:set-agent-active-browser", (_event, rawInput: unknown) => {
+  const input = readAgentActiveBrowserInput(rawInput);
+  if (input) {
+    setAgentActivePaseoBrowserId(input);
+  }
 });
 
 ipcMain.handle("paseo:browser:open-devtools", (_event, browserId: unknown) => {
@@ -696,6 +760,7 @@ async function bootstrap(): Promise<void> {
   registerNotificationHandlers();
   registerOpenerHandlers();
   registerEditorTargetHandlers();
+  registerBrowserAutomationIpc();
 
   // In-app "Open in new window": opens a window that lands on the given project
   // via the same open-project flow as a CLI launch (no move, no ownership).
