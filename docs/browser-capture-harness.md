@@ -21,6 +21,18 @@ Run it with the repo Electron:
 npm run capture-harness --workspace=@getpaseo/desktop
 ```
 
+Run the browser automation fixture with:
+
+```bash
+PASEO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@getpaseo/desktop
+```
+
+The automation group uses a real guest webview to verify the page-side ref contract:
+ARIA-like snapshot text includes headings, static text, and controls; refs survive
+`pushState` when the element still matches; same-URL rerenders stale old refs; and a
+file-input ref can be resolved to a CDP backend node id for upload. It also verifies
+page-context evaluation, including passing a resolved ref element as the function argument.
+
 On macOS the harness process must set `app.setActivationPolicy("accessory")` and
 hide the Dock icon before creating any window. `showInactive()` only prevents window
 focus; a normal Electron app launch can still activate the app and steal focus.

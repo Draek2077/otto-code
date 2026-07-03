@@ -1095,10 +1095,821 @@ async function runPermanentParkingGroup() {
   return results;
 }
 
+function automationFixtureUrl() {
+  const html = `<!doctype html>
+    <html>
+      <head><meta charset="utf-8"><title>Automation Fixture</title></head>
+      <style>
+        body { min-height: 1800px; }
+        #hover-target { display: none; }
+        #hover-source:hover + #hover-target { display: inline-block; }
+        #moving {
+          animation: slide 320ms linear;
+        }
+        #drag-target {
+          display: inline-block;
+          margin-left: 24px;
+          padding: 12px;
+          border: 1px solid #888;
+        }
+        @keyframes slide {
+          from { transform: translateX(80px); }
+          to { transform: translateX(0); }
+        }
+      </style>
+      <body>
+        <main>
+          <h1>Settings</h1>
+          <section aria-label="Account">
+            <p>Connected as Maya</p>
+            <label for="name">Name</label>
+            <input id="name" value="Maya">
+            <a href="#docs">Read docs</a>
+            <button id="save">Save changes</button>
+            <button id="delayed" disabled>Delayed save</button>
+            <button id="moving">Moving target</button>
+            <button id="hover-source">Reveal actions</button>
+            <button id="hover-target">Revealed action</button>
+            <button id="drag-source">Drag source</button>
+            <span id="drag-target">Drop target</span>
+            <button id="dialog-alert">Open alert</button>
+            <button id="dialog-confirm">Open confirm</button>
+            <button id="dialog-prompt">Open prompt</button>
+            <button id="dialog-beforeunload">Arm beforeunload</button>
+            <input id="upload" type="file" aria-label="Upload receipt">
+          </section>
+        </main>
+        <script>
+          window.fixtureLog = [];
+          document.getElementById("save").addEventListener("click", (event) => {
+            window.fixtureLog.push({
+              event: "click-save",
+              trusted: event.isTrusted,
+              button: event.button,
+              detail: event.detail,
+              ctrlKey: event.ctrlKey,
+              shiftKey: event.shiftKey,
+            });
+          });
+          document.getElementById("save").addEventListener("mousedown", (event) => {
+            window.fixtureLog.push({
+              event: "down-save",
+              trusted: event.isTrusted,
+              button: event.button,
+              detail: event.detail,
+              ctrlKey: event.ctrlKey,
+              shiftKey: event.shiftKey,
+            });
+          });
+          document.getElementById("name").addEventListener("input", (event) => {
+            window.fixtureLog.push({ event: "input-name", trusted: event.isTrusted });
+          });
+          document.getElementById("delayed").addEventListener("click", (event) => {
+            window.fixtureLog.push({ event: "click-delayed", trusted: event.isTrusted });
+          });
+          document.getElementById("moving").addEventListener("click", (event) => {
+            window.fixtureLog.push({ event: "click-moving", trusted: event.isTrusted });
+          });
+          document.getElementById("drag-source").addEventListener("pointerdown", (event) => {
+            window.fixtureLog.push({ event: "drag-down", trusted: event.isTrusted });
+          });
+          document.getElementById("drag-target").addEventListener("pointerup", (event) => {
+            window.fixtureLog.push({ event: "drag-up", trusted: event.isTrusted });
+          });
+          document.getElementById("dialog-alert").addEventListener("click", () => {
+            alert("Alert opened");
+            window.fixtureLog.push({ event: "alert-returned" });
+          });
+          document.getElementById("dialog-confirm").addEventListener("click", () => {
+            window.fixtureLog.push({ event: "confirm-result", value: confirm("Confirm action?") });
+          });
+          document.getElementById("dialog-prompt").addEventListener("click", () => {
+            window.fixtureLog.push({ event: "prompt-result", value: prompt("Prompt value?", "Maya") });
+          });
+          window.beforeUnloadEnabled = false;
+          document.getElementById("dialog-beforeunload").addEventListener("click", () => {
+            window.beforeUnloadEnabled = true;
+            window.fixtureLog.push({ event: "beforeunload-armed" });
+          });
+          window.addEventListener("beforeunload", (event) => {
+            if (!window.beforeUnloadEnabled) return;
+            event.preventDefault();
+            event.returnValue = "Leave fixture?";
+          });
+          setTimeout(() => {
+            document.getElementById("delayed").disabled = false;
+          }, 250);
+          window.pushFixtureState = () => history.pushState({}, "", "#advanced");
+          window.sameUrlRerender = () => {
+            const oldSave = document.getElementById("save");
+            const nextSave = document.createElement("button");
+            nextSave.id = "save";
+            nextSave.textContent = "Save later";
+            oldSave.replaceWith(nextSave);
+          };
+        </script>
+      </body>
+    </html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+const AUTOMATION_SNAPSHOT_PROBE = String.raw`(() => {
+  const refs = new Map();
+  const lines = ['- document "Automation Fixture"'];
+  let nextRef = 1;
+  function text(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+  function fingerprint(element, role, name) {
+    return { role, name, tagName: element.tagName.toLowerCase(), type: element.getAttribute('type') || '', ariaLabel: element.getAttribute('aria-label') || '' };
+  }
+  function runtime() {
+    const api = {
+      refs,
+      resolve(ref, expected) {
+        const element = refs.get(ref);
+        if (!element || !element.isConnected) return { ok: false, reason: 'stale_ref' };
+        const role = roleFor(element);
+        const name = nameFor(element, role);
+        const current = fingerprint(element, role, name);
+        return current.role === expected.role && current.name === expected.name && current.tagName === expected.tagName && current.type === expected.type && current.ariaLabel === expected.ariaLabel
+          ? { ok: true, element }
+          : { ok: false, reason: 'stale_ref' };
+      }
+    };
+    Object.defineProperty(window, '__PASEO_BROWSER_AUTOMATION__', { configurable: true, value: api });
+    return api;
+  }
+  function roleFor(element) {
+    const tag = element.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) return 'heading';
+    if (tag === 'input') return element.type === 'file' ? 'button' : 'textbox';
+    if (tag === 'button') return 'button';
+    if (element.id === 'drag-target') return 'button';
+    if (tag === 'a') return 'link';
+    if (tag === 'section') return 'region';
+    return '';
+  }
+  function nameFor(element, role) {
+    if (element.getAttribute('aria-label')) return element.getAttribute('aria-label');
+    if (element.id) {
+      const label = document.querySelector('label[for="' + element.id + '"]');
+      if (label) return text(label.textContent);
+    }
+    return role === 'textbox' ? text(element.value || element.placeholder) : text(element.textContent);
+  }
+  const api = runtime();
+  const heading = document.querySelector('h1');
+  lines.push('  - heading "' + nameFor(heading, 'heading') + '" [level=1]');
+  lines.push('  - text: "Connected as Maya"');
+  for (const element of document.querySelectorAll('input, a, button, #drag-target')) {
+    const role = roleFor(element);
+    const name = nameFor(element, role);
+    const ref = '@e' + nextRef++;
+    const fp = fingerprint(element, role, name);
+    api.refs.set(ref, element);
+    lines.push('  - ' + role + ' "' + name + '" [ref=' + ref + ']');
+  }
+  return {
+    snapshot: lines.join('\n'),
+    refs: Array.from(api.refs.entries()).map(([ref, element]) => {
+      const role = roleFor(element);
+      return { ref, fingerprint: fingerprint(element, role, nameFor(element, role)) };
+    })
+  };
+})()`;
+
+async function attachAutomationDebugger(guest) {
+  if (!guest.debugger.isAttached()) {
+    guest.debugger.attach("1.3");
+  }
+  return (command, params = {}) => guest.debugger.sendCommand(command, params);
+}
+
+async function automationRefPoint(guest, ref, fingerprint) {
+  const result = await guest.executeJavaScript(
+    String.raw`(async () => {
+      const fingerprint = ${JSON.stringify(fingerprint)};
+      const ref = ${JSON.stringify(ref)};
+      const deadline = performance.now() + 5000;
+      const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const sameRect = (a, b) =>
+        Math.abs(a.x - b.x) < 0.25 &&
+        Math.abs(a.y - b.y) < 0.25 &&
+        Math.abs(a.width - b.width) < 0.25 &&
+        Math.abs(a.height - b.height) < 0.25;
+      const isDisabled = (element) =>
+        Boolean(element.closest?.('[aria-disabled="true"]')) ||
+        Boolean('disabled' in element && element.disabled);
+      const isVisible = (element, rect) => {
+        const style = getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      };
+      while (performance.now() <= deadline) {
+        const resolved = window.__PASEO_BROWSER_AUTOMATION__.resolve(ref, fingerprint);
+        if (!resolved.ok || !resolved.element?.isConnected) return { ok: false, reason: 'stale_ref' };
+        const element = resolved.element;
+        const rect = element.getBoundingClientRect();
+        if (!isVisible(element, rect) || isDisabled(element)) {
+          await sleep(25);
+          continue;
+        }
+        element.scrollIntoView?.({ block: 'center', inline: 'center' });
+        await nextFrame();
+        const first = element.getBoundingClientRect();
+        await nextFrame();
+        const second = element.getBoundingClientRect();
+        if (!sameRect(first, second)) continue;
+        const x = Math.min(Math.max(second.left + second.width / 2, 0), Math.max(window.innerWidth - 1, 0));
+        const y = Math.min(Math.max(second.top + second.height / 2, 0), Math.max(window.innerHeight - 1, 0));
+        const hit = document.elementFromPoint(x, y);
+        if (hit && (hit === element || element.contains(hit))) return { ok: true, x, y };
+        await sleep(25);
+      }
+      return { ok: false, reason: 'timeout' };
+    })()`,
+    true,
+  );
+  if (!result || result.ok !== true) {
+    fail(`automation ref ${ref} was not actionable: ${JSON.stringify(result)}`);
+  }
+  return { x: result.x, y: result.y };
+}
+
+async function automationClick(guest, refEntry, options = {}) {
+  const send = await attachAutomationDebugger(guest);
+  const point = await automationRefPoint(guest, refEntry.ref, refEntry.fingerprint);
+  const button = options.button || "left";
+  const modifiers = automationModifierMask(options.modifiers || []);
+  const clickCount = options.doubleClick ? 2 : 1;
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "none",
+    modifiers,
+  });
+  await send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: point.x,
+    y: point.y,
+    button,
+    buttons: automationButtonMask(button),
+    clickCount,
+    modifiers,
+  });
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: point.x,
+    y: point.y,
+    button,
+    buttons: 0,
+    clickCount,
+    modifiers,
+  });
+  return point;
+}
+
+async function automationHover(guest, refEntry) {
+  const send = await attachAutomationDebugger(guest);
+  const point = await automationRefPoint(guest, refEntry.ref, refEntry.fingerprint);
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "none",
+  });
+}
+
+async function automationScroll(guest, deltaX, deltaY) {
+  const send = await attachAutomationDebugger(guest);
+  const point = await guest.executeJavaScript(
+    "({ x: Math.max(0, (window.innerWidth || 1) / 2), y: Math.max(0, (window.innerHeight || 1) / 2) })",
+    true,
+  );
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: point.x,
+    y: point.y,
+    deltaX,
+    deltaY,
+  });
+}
+
+async function automationDrag(guest, sourceRef, targetRef) {
+  const send = await attachAutomationDebugger(guest);
+  const source = await automationRefPoint(guest, sourceRef.ref, sourceRef.fingerprint);
+  const target = await automationRefPoint(guest, targetRef.ref, targetRef.fingerprint);
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: source.x,
+    y: source.y,
+    button: "none",
+  });
+  await send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: source.x,
+    y: source.y,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: target.x,
+    y: target.y,
+    button: "left",
+    buttons: 1,
+  });
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: target.x,
+    y: target.y,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+}
+
+async function automationType(guest, refEntry, text) {
+  const send = await attachAutomationDebugger(guest);
+  await automationClick(guest, refEntry);
+  await send("Input.insertText", { text });
+}
+
+async function automationEvaluate(guest, functionSource, refEntry) {
+  return guest.executeJavaScript(
+    String.raw`(async () => {
+      const userFunction = (0, eval)(${JSON.stringify(`(${functionSource})`)});
+      const args = [];
+      ${
+        refEntry
+          ? `const resolved = window.__PASEO_BROWSER_AUTOMATION__.resolve(${JSON.stringify(refEntry.ref)}, ${JSON.stringify(refEntry.fingerprint)});
+      if (!resolved.ok) return { ok: false, reason: "stale_ref" };
+      args.push(resolved.element);`
+          : ""
+      }
+      return JSON.stringify(await userFunction(...args));
+    })()`,
+    true,
+  );
+}
+
+const AUTOMATION_DIALOG_POLICY = {
+  alert: { action: "accepted", accept: true },
+  confirm: { action: "dismissed", accept: false },
+  prompt: { action: "dismissed", accept: false },
+  beforeunload: { action: "dismissed", accept: false },
+};
+
+const AUTOMATION_PROMPT_SHIM_INSTALL = String.raw`(() => {
+  const stateKey = "__PASEO_BROWSER_AUTOMATION_DIALOG_STATE__";
+  const state = window[stateKey] || { prompts: [], installed: false };
+  window[stateKey] = state;
+  if (state.installed) return true;
+  window.prompt = (message = "", defaultValue = "") => {
+    state.prompts.push({
+      type: "prompt",
+      message: String(message ?? ""),
+      defaultValue: String(defaultValue ?? ""),
+      action: "dismissed",
+      timestamp: Date.now(),
+    });
+    return null;
+  };
+  state.installed = true;
+  return true;
+})()`;
+
+const AUTOMATION_PROMPT_SHIM_DRAIN = String.raw`(() => {
+  const state = window.__PASEO_BROWSER_AUTOMATION_DIALOG_STATE__;
+  if (!state || !Array.isArray(state.prompts)) return [];
+  return state.prompts.splice(0);
+})()`;
+
+async function captureAutomationDialogs(guest, action, expectedCount) {
+  const send = await attachAutomationDebugger(guest);
+  await send("Page.enable");
+  await send("Runtime.evaluate", {
+    expression: AUTOMATION_PROMPT_SHIM_INSTALL,
+    returnByValue: true,
+  });
+  const dialogs = [];
+  const listener = (_event, method, params = {}) => {
+    if (method !== "Page.javascriptDialogOpening") return;
+    const type = AUTOMATION_DIALOG_POLICY[params.type] ? params.type : "alert";
+    const policy = AUTOMATION_DIALOG_POLICY[type];
+    dialogs.push({
+      type,
+      message: String(params.message || ""),
+      ...(typeof params.defaultPrompt === "string" ? { defaultValue: params.defaultPrompt } : {}),
+      action: policy.action,
+      timestamp: Date.now(),
+    });
+    void send("Page.handleJavaScriptDialog", { accept: policy.accept });
+  };
+  guest.debugger.on("message", listener);
+  try {
+    await action();
+    const promptResult = await send("Runtime.evaluate", {
+      expression: AUTOMATION_PROMPT_SHIM_DRAIN,
+      returnByValue: true,
+    });
+    if (Array.isArray(promptResult.result?.value)) {
+      dialogs.push(...promptResult.result.value);
+    }
+    await waitForDialogCount(dialogs, expectedCount);
+    return dialogs;
+  } finally {
+    guest.debugger.removeListener?.("message", listener);
+  }
+}
+
+async function waitForDialogCount(dialogs, expectedCount) {
+  const deadline = Date.now() + 1000;
+  do {
+    if (dialogs.length >= expectedCount) return;
+    await delay(25);
+  } while (Date.now() < deadline);
+  fail(`automation observed ${dialogs.length}/${expectedCount} dialogs`);
+}
+
+function assertAutomationDialog(dialogs, expected) {
+  const dialog = dialogs.find((entry) => entry.type === expected.type);
+  if (!dialog) {
+    fail(`automation did not report ${expected.type} dialog: ${JSON.stringify(dialogs)}`);
+  }
+  for (const [key, value] of Object.entries(expected)) {
+    if (dialog[key] !== value) {
+      fail(`automation ${expected.type} dialog ${key}=${JSON.stringify(dialog[key])}`);
+    }
+  }
+}
+
+function automationButtonMask(button) {
+  if (button === "right") return 2;
+  if (button === "middle") return 4;
+  return 1;
+}
+
+function automationModifierMask(modifiers) {
+  const masks = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
+  return modifiers.reduce((mask, modifier) => mask | masks[modifier], 0);
+}
+
+function automationRefByName(snapshot, name) {
+  const entry = snapshot.refs.find((ref) => ref.fingerprint.name === name);
+  if (!entry) {
+    fail(`automation ref missing for ${name}`);
+  }
+  return entry;
+}
+
+async function automationLog(guest) {
+  return guest.executeJavaScript("window.fixtureLog", true);
+}
+
+async function waitForAutomationLog(guest, predicate, label) {
+  const deadline = Date.now() + 1000;
+  do {
+    const log = await automationLog(guest);
+    if (Array.isArray(log) && log.some(predicate)) {
+      return log;
+    }
+    await delay(25);
+  } while (Date.now() < deadline);
+  fail(`automation log never observed ${label}`);
+}
+
+async function runAutomationGroup() {
+  const results = [];
+  const handle = createInactiveHarnessWindow({
+    width: 1000,
+    height: 700,
+    backgroundColor: "#202020",
+    webPreferences: {
+      webviewTag: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  const { win } = handle;
+  installHarnessWebviewGuards(win);
+  const tracker = trackAttachedGuests(win, { disableGuestBackgroundThrottlingAtAttach: true });
+  try {
+    await withTimeout(
+      win.loadFile(path.join(ROOT, "index.html"), {
+        query: {
+          webviewCount: "0",
+          permanentParkingState: "p1-overflow-1x1",
+          targetUrl: automationFixtureUrl(),
+        },
+      }),
+      "automation harness window loadFile",
+    );
+    await waitForInactiveReveal(handle, "automation harness window");
+    const { guest } = await appendPermanentWebview({
+      win,
+      tracker,
+      state: { id: "p1-overflow-1x1" },
+      sourceUrl: automationFixtureUrl(),
+    });
+    await waitForGuestLoad(guest);
+
+    const first = await guest.executeJavaScript(AUTOMATION_SNAPSHOT_PROBE, true);
+    assertAutomationSnapshot(first);
+    pass("automation snapshot renders headings static text controls and refs");
+    results.push({ group: "automation", check: "snapshot", pass: true });
+
+    const saveRef = first.refs.find((ref) => ref.fingerprint.name === "Save changes");
+    if (!saveRef) {
+      fail("automation save ref missing");
+    }
+    await guest.executeJavaScript("window.pushFixtureState()", true);
+    const pushStateResult = await guest.executeJavaScript(
+      `window.__PASEO_BROWSER_AUTOMATION__.resolve(${JSON.stringify(saveRef.ref)}, ${JSON.stringify(saveRef.fingerprint)}).ok`,
+      true,
+    );
+    if (pushStateResult !== true) {
+      fail("automation ref did not survive pushState");
+    }
+    pass("automation ref resolves after pushState");
+    results.push({ group: "automation", check: "pushState-ref", pass: true });
+
+    const pageEvaluate = await automationEvaluate(guest, "() => ({ title: document.title })");
+    const refEvaluate = await automationEvaluate(
+      guest,
+      "(element) => ({ text: element.textContent.trim(), tag: element.tagName.toLowerCase() })",
+      saveRef,
+    );
+    if (
+      pageEvaluate !== '{"title":"Automation Fixture"}' ||
+      refEvaluate !== '{"text":"Save changes","tag":"button"}'
+    ) {
+      fail(`automation evaluate returned page=${pageEvaluate} ref=${refEvaluate}`);
+    }
+    pass("automation evaluate runs in page context and receives ref element");
+    results.push({ group: "automation", check: "evaluate", pass: true });
+
+    await guest.executeJavaScript("window.scrollTo(0, 0)", true);
+    await automationScroll(guest, 0, 500);
+    await delay(100);
+    const scrollY = await guest.executeJavaScript("window.scrollY", true);
+    if (!(scrollY > 0)) {
+      fail(`automation scroll did not change window.scrollY: ${scrollY}`);
+    }
+    pass("automation scroll changes the viewport scroll position");
+    results.push({ group: "automation", check: "scroll", pass: true });
+
+    const nameRef = automationRefByName(first, "Name");
+    await automationType(guest, nameRef, " Ada");
+    await automationClick(guest, saveRef);
+    await waitForAutomationLog(
+      guest,
+      (entry) => entry.event === "input-name" && entry.trusted === true,
+      "trusted input event",
+    );
+    await waitForAutomationLog(
+      guest,
+      (entry) => entry.event === "click-save" && entry.trusted === true,
+      "trusted click event",
+    );
+    pass("automation trusted click and text input events reach the page");
+    results.push({ group: "automation", check: "trusted-input", pass: true });
+
+    const hoverRef = automationRefByName(first, "Reveal actions");
+    await automationHover(guest, hoverRef);
+    const hoverVisible = await guest.executeJavaScript(
+      "getComputedStyle(document.getElementById('hover-target')).display !== 'none'",
+      true,
+    );
+    if (hoverVisible !== true) {
+      fail("automation hover did not reveal the hover target");
+    }
+    pass("automation hover reveals CSS :hover content");
+    results.push({ group: "automation", check: "hover-reveal", pass: true });
+
+    const delayedRef = automationRefByName(first, "Delayed save");
+    await automationClick(guest, delayedRef);
+    const delayedLog = await automationLog(guest);
+    if (!delayedLog.some((entry) => entry.event === "click-delayed" && entry.trusted === true)) {
+      fail("automation delayed enabled button did not receive trusted click");
+    }
+    pass("automation action waits for delayed enabled state");
+    results.push({ group: "automation", check: "delayed-enable", pass: true });
+
+    const movingRef = automationRefByName(first, "Moving target");
+    await automationClick(guest, movingRef);
+    const movingLog = await automationLog(guest);
+    if (!movingLog.some((entry) => entry.event === "click-moving" && entry.trusted === true)) {
+      fail("automation moving button did not receive trusted click");
+    }
+    pass("automation action waits for moving element stabilization");
+    results.push({ group: "automation", check: "moving-stable", pass: true });
+
+    const dragSourceRef = automationRefByName(first, "Drag source");
+    const dragTargetRef = automationRefByName(first, "Drop target");
+    await automationDrag(guest, dragSourceRef, dragTargetRef);
+    const dragLog = await automationLog(guest);
+    if (
+      !dragLog.some((entry) => entry.event === "drag-down" && entry.trusted === true) ||
+      !dragLog.some((entry) => entry.event === "drag-up" && entry.trusted === true)
+    ) {
+      fail("automation pointer drag did not produce trusted pointer events");
+    }
+    pass("automation pointer-event drag reaches source and target");
+    results.push({ group: "automation", check: "pointer-drag", pass: true });
+
+    await automationClick(guest, saveRef, {
+      button: "right",
+      doubleClick: true,
+      modifiers: ["Control", "Shift"],
+    });
+    const optionsLog = await automationLog(guest);
+    if (
+      !optionsLog.some(
+        (entry) =>
+          entry.event === "down-save" &&
+          entry.trusted === true &&
+          entry.button === 2 &&
+          entry.detail === 2 &&
+          entry.ctrlKey === true &&
+          entry.shiftKey === true,
+      )
+    ) {
+      fail("automation click options did not affect button/modifiers/double-click count");
+    }
+    pass("automation click options affect button modifiers and double-click count");
+    results.push({ group: "automation", check: "click-options", pass: true });
+
+    const alertRef = automationRefByName(first, "Open alert");
+    const alertDialogs = await captureAutomationDialogs(
+      guest,
+      () => automationClick(guest, alertRef),
+      1,
+    );
+    assertAutomationDialog(alertDialogs, {
+      type: "alert",
+      message: "Alert opened",
+      action: "accepted",
+    });
+    await waitForAutomationLog(guest, (entry) => entry.event === "alert-returned", "alert return");
+    pass("automation alert dialogs are accepted and reported");
+    results.push({ group: "automation", check: "dialog-alert", pass: true });
+
+    const confirmRef = automationRefByName(first, "Open confirm");
+    const confirmDialogs = await captureAutomationDialogs(
+      guest,
+      () => automationClick(guest, confirmRef),
+      1,
+    );
+    assertAutomationDialog(confirmDialogs, {
+      type: "confirm",
+      message: "Confirm action?",
+      action: "dismissed",
+    });
+    await waitForAutomationLog(
+      guest,
+      (entry) => entry.event === "confirm-result" && entry.value === false,
+      "confirm dismissal",
+    );
+    pass("automation confirm dialogs are dismissed and reported");
+    results.push({ group: "automation", check: "dialog-confirm", pass: true });
+
+    const promptRef = automationRefByName(first, "Open prompt");
+    const promptDialogs = await captureAutomationDialogs(
+      guest,
+      () => automationClick(guest, promptRef),
+      1,
+    );
+    assertAutomationDialog(promptDialogs, {
+      type: "prompt",
+      message: "Prompt value?",
+      defaultValue: "Maya",
+      action: "dismissed",
+    });
+    await waitForAutomationLog(
+      guest,
+      (entry) => entry.event === "prompt-result" && entry.value === null,
+      "prompt dismissal",
+    );
+    pass("automation prompt dialogs are dismissed and reported");
+    results.push({ group: "automation", check: "dialog-prompt", pass: true });
+
+    const beforeUnloadRef = automationRefByName(first, "Arm beforeunload");
+    await automationClick(guest, beforeUnloadRef);
+    const beforeUrl = guest.getURL();
+    const beforeUnloadDialogs = await captureAutomationDialogs(
+      guest,
+      async () => {
+        await guest.loadURL(automationFixtureUrl()).catch(() => {});
+      },
+      1,
+    );
+    assertAutomationDialog(beforeUnloadDialogs, {
+      type: "beforeunload",
+      action: "dismissed",
+    });
+    if (guest.getURL() !== beforeUrl) {
+      fail("automation beforeunload dismissal did not cancel navigation");
+    }
+    pass("automation beforeunload dialogs are dismissed and reported");
+    results.push({ group: "automation", check: "dialog-beforeunload", pass: true });
+
+    await guest.executeJavaScript("window.sameUrlRerender()", true);
+    const rerenderResult = await guest.executeJavaScript(
+      `window.__PASEO_BROWSER_AUTOMATION__.resolve(${JSON.stringify(saveRef.ref)}, ${JSON.stringify(saveRef.fingerprint)}).reason`,
+      true,
+    );
+    if (rerenderResult !== "stale_ref") {
+      fail(`automation same-url rerender returned ${rerenderResult}`);
+    }
+    pass("automation same-url rerender stales old ref");
+    results.push({ group: "automation", check: "same-url-stale-ref", pass: true });
+
+    const second = await guest.executeJavaScript(AUTOMATION_SNAPSHOT_PROBE, true);
+    const uploadRef = second.refs.find((ref) => ref.fingerprint.name === "Upload receipt");
+    if (!uploadRef) {
+      fail("automation upload ref missing");
+    }
+    if (!guest.debugger.isAttached()) {
+      guest.debugger.attach("1.3");
+    }
+    const evaluated = await guest.debugger.sendCommand("Runtime.evaluate", {
+      expression: `(() => window.__PASEO_BROWSER_AUTOMATION__.resolve(${JSON.stringify(uploadRef.ref)}, ${JSON.stringify(uploadRef.fingerprint)}).element)()`,
+      objectGroup: "paseo-browser-automation",
+      returnByValue: false,
+    });
+    const described = await guest.debugger.sendCommand("DOM.describeNode", {
+      objectId: evaluated.result.objectId,
+    });
+    if (!described.node || typeof described.node.backendNodeId !== "number") {
+      fail("automation upload ref did not resolve to backendNodeId");
+    }
+    pass("automation upload ref resolves to backendNodeId");
+    results.push({ group: "automation", check: "upload-backend-node", pass: true });
+
+    // Resize is not harness-testable: the harness hosts webviews in the parked
+    // 1px resident host, and Electron does not propagate CSS-box resizes to a
+    // parked guest's capture surface (see docs/browser-capture-harness.md).
+    // The production resize path is app-owned webview sizing, covered by
+    // packages/app/src/browser-automation/handler.test.ts.
+
+    await fsp.writeFile(
+      path.join(OUT_DIR, "automation-results.json"),
+      `${JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2)}\n`,
+    );
+    return results;
+  } finally {
+    await closeHarnessWindow(win);
+  }
+}
+
+function assertAutomationSnapshot(snapshot) {
+  const text = snapshot && snapshot.snapshot;
+  if (typeof text !== "string") {
+    fail("automation snapshot returned no text");
+  }
+  for (const expected of [
+    'heading "Settings"',
+    'text: "Connected as Maya"',
+    'textbox "Name" [ref=@e1]',
+    'link "Read docs"',
+    'button "Save changes"',
+    'button "Upload receipt"',
+  ]) {
+    if (!text.includes(expected)) {
+      fail(`automation snapshot missing ${expected}`);
+    }
+  }
+  if (text.includes("selector")) {
+    fail("automation snapshot exposed selector text");
+  }
+}
+
 async function main() {
   ensureDirSync(OUT_DIR);
-  if (!["all", "existing", "permanent-parking"].includes(HARNESS_GROUP)) {
+  if (!["all", "existing", "permanent-parking", "automation"].includes(HARNESS_GROUP)) {
     fail(`unknown harness group ${HARNESS_GROUP}`);
+  }
+
+  if (HARNESS_GROUP === "automation") {
+    const automationResults = await runAutomationGroup();
+    await fsp.writeFile(
+      path.join(OUT_DIR, "results.json"),
+      `${JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          automationResults,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    pass(`capture harness automation complete output=${OUT_DIR}`);
+    return;
   }
 
   if (HARNESS_GROUP === "permanent-parking") {

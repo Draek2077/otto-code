@@ -45,6 +45,18 @@ const BrowserToolOutputSchema = {
       retryable: z.boolean(),
     })
     .optional(),
+  dialogs: z
+    .array(
+      z.object({
+        type: z.enum(["alert", "confirm", "prompt", "beforeunload"]),
+        message: z.string(),
+        defaultValue: z.string().optional(),
+        action: z.enum(["accepted", "dismissed"]),
+        promptText: z.string().optional(),
+        timestamp: z.number(),
+      }),
+    )
+    .optional(),
   context: z
     .object({
       agentId: z.string().optional(),
@@ -70,6 +82,8 @@ const BrowserHttpUrlInputSchema = z
     return normalized;
   });
 const BrowserRefInputSchema = z.string().regex(/^@e\d+$/);
+const BrowserClickButtonInputSchema = z.enum(["left", "right", "middle"]);
+const BrowserClickModifierInputSchema = z.enum(["Alt", "Control", "Meta", "Shift"]);
 const BrowserWaitInputSchema = z
   .object({
     text: z.string().min(1).optional(),
@@ -178,10 +192,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       inputSchema: {
         ref: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
+        button: BrowserClickButtonInputSchema.optional(),
+        doubleClick: z.boolean().optional(),
+        modifiers: z.array(BrowserClickModifierInputSchema).optional(),
       },
       outputSchema: BrowserToolOutputSchema,
     },
-    async ({ ref, browserId }) => {
+    async ({ ref, browserId, button, doubleClick, modifiers }) => {
       const context = resolveBrowserToolContext(options);
       const payload = await options.broker.execute({
         agentId: context.agentId,
@@ -193,6 +210,9 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           args: {
             browserId,
             ref,
+            button: button ?? "left",
+            doubleClick: doubleClick ?? false,
+            modifiers: modifiers ?? [],
           },
         },
       });
@@ -605,6 +625,136 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       return browserToolResult({ payload, context: { ...context, browserId } });
     },
   );
+
+  options.registerTool(
+    "browser_evaluate",
+    {
+      title: "Evaluate browser JavaScript",
+      description:
+        "Evaluate a JavaScript function in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
+      inputSchema: {
+        function: z.string().min(1),
+        ref: BrowserRefInputSchema.optional(),
+        browserId: BrowserAutomationBrowserIdSchema,
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({ function: functionSource, ref, browserId }) => {
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "evaluate",
+          args: {
+            browserId,
+            function: functionSource,
+            ...(ref ? { ref } : {}),
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
+
+  options.registerTool(
+    "browser_scroll",
+    {
+      title: "Scroll browser",
+      description:
+        "Scroll a Paseo browser tab by deltaX/deltaY CSS pixels. Use browserId from browser_new_tab or browser_list_tabs; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+        ref: BrowserRefInputSchema.optional(),
+        deltaX: z.number(),
+        deltaY: z.number(),
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({ browserId, ref, deltaX, deltaY }) => {
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "scroll",
+          args: {
+            browserId,
+            ...(ref ? { ref } : {}),
+            deltaX,
+            deltaY,
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
+
+  options.registerTool(
+    "browser_resize",
+    {
+      title: "Resize browser viewport",
+      description:
+        "Resize a Paseo browser tab's resident webview viewport. Use browserId from browser_new_tab or browser_list_tabs.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({ browserId, width, height }) => {
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "resize",
+          args: {
+            browserId,
+            width,
+            height,
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
+
+  options.registerTool(
+    "browser_close_tab",
+    {
+      title: "Close browser tab",
+      description:
+        "Close a Paseo browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from browser_new_tab or browser_list_tabs.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({ browserId }) => {
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "close_tab",
+          args: {
+            browserId,
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
 }
 
 function resolveBrowserToolContext(options: RegisterBrowserToolsOptions): {
@@ -681,16 +831,23 @@ function browserToolResult(params: {
       structuredContent: {
         ok: true,
         result: browserToolStructuredResult(payload.result),
+        ...(payload.dialogs ? { dialogs: payload.dialogs } : {}),
         context,
       },
     };
   }
 
   return {
-    content: [{ type: "text", text: summarizeBrowserError(payload.error) }],
+    content: [
+      {
+        type: "text",
+        text: appendDialogSummary(summarizeBrowserError(payload.error), payload.dialogs),
+      },
+    ],
     structuredContent: {
       ok: false,
       error: payload.error,
+      ...(payload.dialogs ? { dialogs: payload.dialogs } : {}),
       context,
     },
   };
@@ -732,34 +889,35 @@ function browserToolImageContent(
 function summarizeBrowserSuccess(
   payload: Extract<BrowserToolsResponsePayload, { ok: true }>,
 ): string {
+  const withDialogs = (summary: string) => appendDialogSummary(summary, payload.dialogs);
   const controlSummary = summarizeBrowserControlSuccess(payload.result);
   if (controlSummary) {
-    return controlSummary;
+    return withDialogs(controlSummary);
   }
 
   const refActionSummary = summarizeBrowserRefActionSuccess(payload.result);
   if (refActionSummary) {
-    return refActionSummary;
+    return withDialogs(refActionSummary);
   }
 
   const diagnosticsSummary = summarizeBrowserDiagnosticsSuccess(payload.result);
   if (diagnosticsSummary) {
-    return diagnosticsSummary;
+    return withDialogs(diagnosticsSummary);
   }
 
   const keyboardSummary = summarizeBrowserKeyboardSuccess(payload.result);
   if (keyboardSummary) {
-    return keyboardSummary;
+    return withDialogs(keyboardSummary);
   }
 
   const navigationSummary = summarizeBrowserNavigationSuccess(payload.result);
   if (navigationSummary) {
-    return navigationSummary;
+    return withDialogs(navigationSummary);
   }
 
   const mediaSummary = summarizeBrowserMediaSuccess(payload.result);
   if (mediaSummary) {
-    return mediaSummary;
+    return withDialogs(mediaSummary);
   }
 
   if (payload.result.command === "list_tabs") {
@@ -771,26 +929,49 @@ function summarizeBrowserSuccess(
       const active = tab.isActive ? " active" : "";
       return `- browserId=${tab.browserId}${active} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}`;
     });
-    return [
-      `Found ${count} Paseo browser tab${count === 1 ? "" : "s"}. Use these browserId values for tab-scoped browser tools.`,
-      ...tabLines,
-    ].join("\n");
+    return withDialogs(
+      [
+        `Found ${count} Paseo browser tab${count === 1 ? "" : "s"}. Use these browserId values for tab-scoped browser tools.`,
+        ...tabLines,
+      ].join("\n"),
+    );
   }
 
   if (payload.result.command === "new_tab") {
-    return `Created browser tab browserId=${payload.result.browserId} url=${payload.result.url}. Use this browserId for tab-scoped browser tools.`;
+    return withDialogs(
+      `Created browser tab browserId=${payload.result.browserId} url=${payload.result.url}. Use this browserId for tab-scoped browser tools.`,
+    );
   }
 
   if (payload.result.command === "snapshot") {
-    const count = payload.result.elements.length;
-    return `Snapshot captured ${count} element${count === 1 ? "" : "s"}.`;
+    return withDialogs(
+      [
+        `Snapshot captured ${payload.result.stats.nodeCount} node${payload.result.stats.nodeCount === 1 ? "" : "s"} with ${payload.result.stats.refCount} ref${payload.result.stats.refCount === 1 ? "" : "s"}.`,
+        `Title: ${payload.result.title || "Untitled"}`,
+        `URL: ${payload.result.url}`,
+        "",
+        payload.result.snapshot,
+      ].join("\n"),
+    );
   }
 
   if (payload.result.command === "wait") {
-    return `Browser wait matched ${payload.result.matched}.`;
+    return withDialogs(`Browser wait matched ${payload.result.matched}.`);
   }
 
-  return `Browser ${payload.result.command} complete.`;
+  return withDialogs(`Browser ${payload.result.command} complete.`);
+}
+
+function appendDialogSummary(
+  summary: string,
+  dialogs: BrowserToolsResponsePayload["dialogs"],
+): string {
+  if (!dialogs || dialogs.length === 0) {
+    return summary;
+  }
+  return `${summary}\nHandled browser dialog${dialogs.length === 1 ? "" : "s"}: ${dialogs
+    .map((dialog) => `${dialog.action} ${dialog.type} ${JSON.stringify(dialog.message)}`)
+    .join("; ")}.`;
 }
 
 function summarizeBrowserMediaSuccess(
@@ -841,9 +1022,18 @@ function summarizeBrowserNavigationSuccess(
 function summarizeBrowserDiagnosticsSuccess(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): string | null {
+  if (result.command === "evaluate") {
+    return [
+      "Browser evaluate returned:",
+      result.resultJson,
+      ...(result.truncated ? ["Result was truncated."] : []),
+    ].join("\n");
+  }
+
   if (result.command !== "logs") {
     return null;
   }
+
   const consoleCount = result.console.length;
   const networkCount = result.network.length;
   return `Read ${consoleCount} console log${consoleCount === 1 ? "" : "s"} and ${networkCount} network entr${networkCount === 1 ? "y" : "ies"}.`;
@@ -876,6 +1066,20 @@ function summarizeBrowserControlSuccess(
 
   if (result.command === "drag") {
     return `Dragged browser element ${result.sourceRef} to ${result.targetRef}.`;
+  }
+
+  if (result.command === "scroll") {
+    return result.ref
+      ? `Scrolled browser element ${result.ref} by ${result.deltaX}, ${result.deltaY}.`
+      : `Scrolled browser by ${result.deltaX}, ${result.deltaY}.`;
+  }
+
+  if (result.command === "resize") {
+    return `Resized browser viewport to ${result.width}x${result.height}.`;
+  }
+
+  if (result.command === "close_tab") {
+    return `Closed browser tab ${result.browserId}.`;
   }
 
   return null;
