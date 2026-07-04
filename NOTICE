@@ -1,0 +1,56 @@
+Otto
+Copyright (c) 2026-present The Otto authors
+
+This product is a modified fork of the Paseo project.
+
+  Paseo
+  Copyright (c) 2025-present Mohamed Boudra
+  Source: https://github.com/getpaseo
+  License: GNU Affero General Public License, version 3 (AGPL-3.0)
+
+================================================================================
+Attribution and license
+================================================================================
+
+Otto is derived from Paseo and is distributed under the same license, the GNU
+Affero General Public License version 3 (AGPL-3.0), in accordance with the
+copyleft terms of the original work. The original copyright notice and the full
+text of the license are preserved verbatim in the LICENSE file at the root of
+this repository and are NOT removed or altered by this fork.
+
+As required by section 5 of the AGPL-3.0 ("Conveying Modified Source Versions"),
+this file provides prominent notice that Otto is a modified version of Paseo and
+records the nature of the modifications at a high level.
+
+If you run a modified version of this software to interact with users over a
+network, the AGPL-3.0 requires that those users be offered access to the
+corresponding source code of your modified version.
+
+================================================================================
+Summary of modifications relative to Paseo
+================================================================================
+
+Otto begins as a rebrand of Paseo and is being developed toward a more
+autonomous AI coding IDE. Changes so far include, but are not limited to:
+
+  * Project, product, and package renaming from "Paseo" to "Otto"
+    (npm scope "@getpaseo/*" -> "@otto-code/*", CLI command "paseo" -> "otto",
+    environment-variable prefix "PASEO_" -> "OTTO_", default data directory
+    "~/.paseo" -> "~/.otto", default daemon port 6767 -> 6868, marketing domain
+    paseo.sh -> otto-code.ai, application bundle identifiers "sh.paseo*" ->
+    "ai.ottocode*").
+  * Associated documentation, configuration, and asset updates for the new name.
+
+Further functional changes made after the fork are recorded in the project's
+version-control history and CHANGELOG.
+
+================================================================================
+Third-party components
+================================================================================
+
+All third-party components incorporated into this software remain licensed under
+the original license provided by the owner of the applicable component, as noted
+in the LICENSE file and in the respective dependency manifests.
+
+Otto is an independent project. It is not endorsed by, sponsored by, or
+affiliated with the Paseo project or its authors.

@@ -2,7 +2,7 @@ import type {
   AgentAttachment,
   GitHubSearchItem,
   UploadedFileAttachment,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 
 export type AttachmentStorageType = "web-indexeddb" | "desktop-file" | "native-file";
 

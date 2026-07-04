@@ -10,8 +10,8 @@ import type {
   CreateScheduleOptions,
   DaemonClient,
   UpdateScheduleOptions,
-} from "@getpaseo/client/internal/daemon-client";
-import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+} from "@otto-code/client/internal/daemon-client";
+import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 import { schedulesQueryBaseKey } from "@/hooks/use-schedules";
 import type {
   AggregatedSchedule,

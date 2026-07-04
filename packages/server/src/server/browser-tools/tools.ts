@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { BrowserAutomationBrowserIdSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
 import type {
-  PaseoToolConfig,
-  PaseoToolExecutionContext,
-  PaseoToolResult,
+  OttoToolConfig,
+  OttoToolExecutionContext,
+  OttoToolResult,
 } from "../agent/tools/types.js";
 
 interface CallerAgentContext {
@@ -17,12 +17,12 @@ interface CallerAgentContext {
 export interface RegisterBrowserToolsOptions {
   registerTool: (
     name: string,
-    config: PaseoToolConfig,
+    config: OttoToolConfig,
     handler: (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool inputs are validated by the catalog before execution.
       input: any,
-      context: PaseoToolExecutionContext,
-    ) => Promise<PaseoToolResult>,
+      context: OttoToolExecutionContext,
+    ) => Promise<OttoToolResult>,
   ) => void;
   broker: Pick<BrowserToolsBroker, "execute">;
   callerAgentId?: string;
@@ -31,7 +31,7 @@ export interface RegisterBrowserToolsOptions {
 
 const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
 const WORKSPACE_CONTEXT_MESSAGE =
-  "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.";
+  "This browser tool needs a workspace. Start the agent from a Otto workspace before calling browser_new_tab or browser_list_tabs.";
 const URL_WHITESPACE_PATTERN = /\s/;
 const NON_HTTP_EXPLICIT_SCHEME_PATTERN = /^(?!https?:\/\/)[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -101,7 +101,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "List browser tabs",
       description:
-        "List open Paseo browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools.",
+        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools.",
       inputSchema: {},
       outputSchema: BrowserToolOutputSchema,
     },
@@ -129,7 +129,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Create browser tab",
       description:
-        "Create a new Paseo browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
+        "Create a new Otto browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
       },
@@ -159,7 +159,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Snapshot browser page",
       description:
-        "Return a model-readable snapshot of a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Return a model-readable snapshot of a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -188,7 +188,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Click browser element",
       description:
-        "Click an element in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Click an element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
@@ -225,7 +225,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Fill browser element",
       description:
-        "Fill an input-like element in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Fill an input-like element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -258,7 +258,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Wait for browser condition",
       description:
-        "Wait until a Paseo browser tab contains text or reaches a URL fragment. Use browserId from browser_new_tab or browser_list_tabs; waits up to 5s by default on the browser host.",
+        "Wait until a Otto browser tab contains text or reaches a URL fragment. Use browserId from browser_new_tab or browser_list_tabs; waits up to 5s by default on the browser host.",
       inputSchema: BrowserWaitInputSchema,
       outputSchema: BrowserToolOutputSchema,
     },
@@ -355,7 +355,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Navigate browser",
       description:
-        "Navigate a Paseo browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
+        "Navigate a Otto browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
       inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
       outputSchema: BrowserToolOutputSchema,
     },
@@ -384,21 +384,21 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       command: "back",
       title: "Browser back",
       description:
-        "Go back in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Go back in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
     {
       name: "browser_forward",
       command: "forward",
       title: "Browser forward",
       description:
-        "Go forward in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Go forward in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
     {
       name: "browser_reload",
       command: "reload",
       title: "Browser reload",
       description:
-        "Reload a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Reload a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
   ] as const) {
     options.registerTool(
@@ -433,7 +433,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs. Set fullPage to true to capture the full page.",
+        "Capture a PNG screenshot of a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs. Set fullPage to true to capture the full page.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         fullPage: z.boolean().default(false),
@@ -464,7 +464,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Upload files in browser",
       description:
-        "Set workspace files on a file input in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Set workspace files on a file input in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         filePaths: z.array(z.string().min(1)).min(1),
@@ -498,7 +498,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       command: "hover",
       title: "Hover browser element",
       description:
-        "Hover an element in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Hover an element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
   ] as const) {
     options.registerTool(
@@ -534,7 +534,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Select browser option",
       description:
-        "Set a select element in a Paseo browser tab to a value. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Set a select element in a Otto browser tab to a value. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -567,7 +567,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Drag browser element",
       description:
-        "Drag one element onto another in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Drag one element onto another in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         sourceRef: BrowserRefInputSchema,
         targetRef: BrowserRefInputSchema,
@@ -600,7 +600,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser logs",
       description:
-        "Read recent console messages and browser performance network entries for a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; maxEntries defaults to 50.",
+        "Read recent console messages and browser performance network entries for a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; maxEntries defaults to 50.",
       inputSchema: {
         maxEntries: z.number().int().positive().max(200).optional(),
         browserId: BrowserAutomationBrowserIdSchema,
@@ -631,7 +631,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Evaluate browser JavaScript",
       description:
-        "Evaluate a JavaScript function in a Paseo browser tab. Use browserId from browser_new_tab or browser_list_tabs; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
+        "Evaluate a JavaScript function in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
       inputSchema: {
         function: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
@@ -664,7 +664,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Scroll browser",
       description:
-        "Scroll a Paseo browser tab by deltaX/deltaY CSS pixels. Use browserId from browser_new_tab or browser_list_tabs; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
+        "Scroll a Otto browser tab by deltaX/deltaY CSS pixels. Use browserId from browser_new_tab or browser_list_tabs; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         ref: BrowserRefInputSchema.optional(),
@@ -699,7 +699,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Resize browser viewport",
       description:
-        "Resize a Paseo browser tab's resident webview viewport. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Resize a Otto browser tab's resident webview viewport. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         width: z.number().int().positive(),
@@ -732,7 +732,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Close browser tab",
       description:
-        "Close a Paseo browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Close a Otto browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -801,7 +801,7 @@ function requireWorkspaceContext(context: {
   agentId?: string;
   cwd?: string;
   workspaceId?: string;
-}): PaseoToolResult | null {
+}): OttoToolResult | null {
   if (context.workspaceId) {
     return null;
   }
@@ -823,7 +823,7 @@ function requireWorkspaceContext(context: {
 function browserToolResult(params: {
   payload: BrowserToolsResponsePayload;
   context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string };
-}): PaseoToolResult {
+}): OttoToolResult {
   const { payload, context } = params;
   if (payload.ok) {
     return {
@@ -866,7 +866,7 @@ function browserToolStructuredResult(
 
 function browserToolSuccessContent(
   payload: Extract<BrowserToolsResponsePayload, { ok: true }>,
-): PaseoToolResult["content"] {
+): OttoToolResult["content"] {
   const textContent = { type: "text" as const, text: summarizeBrowserSuccess(payload) };
   const imageContent = browserToolImageContent(payload.result);
   return imageContent ? [textContent, imageContent] : [textContent];
@@ -874,7 +874,7 @@ function browserToolSuccessContent(
 
 function browserToolImageContent(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
-): PaseoToolResult["content"][number] | null {
+): OttoToolResult["content"][number] | null {
   if (result.command !== "screenshot") {
     return null;
   }
@@ -923,7 +923,7 @@ function summarizeBrowserSuccess(
   if (payload.result.command === "list_tabs") {
     const count = payload.result.tabs.length;
     if (count === 0) {
-      return "No Paseo browser tabs are open. Call browser_new_tab to create one.";
+      return "No Otto browser tabs are open. Call browser_new_tab to create one.";
     }
     const tabLines = payload.result.tabs.map((tab) => {
       const active = tab.isActive ? " active" : "";
@@ -931,7 +931,7 @@ function summarizeBrowserSuccess(
     });
     return withDialogs(
       [
-        `Found ${count} Paseo browser tab${count === 1 ? "" : "s"}. Use these browserId values for tab-scoped browser tools.`,
+        `Found ${count} Otto browser tab${count === 1 ? "" : "s"}. Use these browserId values for tab-scoped browser tools.`,
         ...tabLines,
       ].join("\n"),
     );

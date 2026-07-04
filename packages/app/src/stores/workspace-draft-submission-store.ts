@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { ComposerAttachment } from "@/attachments/types";
-import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
 export interface PendingWorkspaceDraftSubmission {

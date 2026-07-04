@@ -1,4 +1,4 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { CommandError, CommandOptions } from "../../output/index.js";
 
 export interface WorktreeCreateOptions extends CommandOptions {
@@ -13,12 +13,12 @@ export interface WorktreeCreateOptions extends CommandOptions {
 
 const VALID_MODES = ["branch-off", "checkout-branch", "checkout-pr"] as const;
 
-type CreatePaseoWorktreeRequest = Parameters<DaemonClient["createPaseoWorktree"]>[0];
+type CreateOttoWorktreeRequest = Parameters<DaemonClient["createOttoWorktree"]>[0];
 
 export function buildCreateWorktreeRequest(
   options: WorktreeCreateOptions,
   cwd: string,
-): CreatePaseoWorktreeRequest {
+): CreateOttoWorktreeRequest {
   const mode = options.mode;
   if (!mode) {
     throw cmdError(
@@ -47,7 +47,7 @@ export function buildCreateWorktreeRequest(
 function buildBranchOffRequest(
   options: WorktreeCreateOptions,
   cwd: string,
-): CreatePaseoWorktreeRequest {
+): CreateOttoWorktreeRequest {
   if (!options.newBranch) {
     throw cmdError("MISSING_NEW_BRANCH", "--new-branch is required for --mode branch-off");
   }
@@ -63,7 +63,7 @@ function buildBranchOffRequest(
 function buildCheckoutBranchRequest(
   options: WorktreeCreateOptions,
   cwd: string,
-): CreatePaseoWorktreeRequest {
+): CreateOttoWorktreeRequest {
   if (!options.branch) {
     throw cmdError("MISSING_BRANCH", "--branch is required for --mode checkout-branch");
   }
@@ -78,7 +78,7 @@ function buildCheckoutBranchRequest(
 function buildCheckoutPrRequest(
   options: WorktreeCreateOptions,
   cwd: string,
-): CreatePaseoWorktreeRequest {
+): CreateOttoWorktreeRequest {
   if (options.prNumber === undefined || options.prNumber === "") {
     throw cmdError("MISSING_PR_NUMBER", "--pr-number is required for --mode checkout-pr");
   }

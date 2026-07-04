@@ -468,7 +468,7 @@ export function LocalDaemonSection() {
   );
 }
 
-const ADVANCED_DAEMON_SETTINGS_URL = "https://paseo.sh/docs/configuration";
+const ADVANCED_DAEMON_SETTINGS_URL = "https://otto-code.ai/docs/configuration";
 
 const styles = StyleSheet.create((theme) => ({
   actionGroup: {

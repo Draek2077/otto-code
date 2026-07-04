@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { queryClient as appQueryClient } from "@/query/query-client";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
@@ -298,7 +298,7 @@ describe("checkout-git-actions-store", () => {
   it("hides an archived worktree optimistically while the archive RPC is in flight", async () => {
     const deferred = createDeferred<Record<string, never>>();
     const client = {
-      archivePaseoWorktree: vi.fn(() => deferred.promise),
+      archiveOttoWorktree: vi.fn(() => deferred.promise),
     };
     const featureWorkspace = workspace({
       id: workspaceId,
@@ -308,7 +308,7 @@ describe("checkout-git-actions-store", () => {
     useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
     useSessionStore.getState().setWorkspaces(serverId, new Map([[workspaceId, featureWorkspace]]));
     appQueryClient.setQueryData(
-      ["sidebarPaseoWorktreeList", serverId, "/tmp"],
+      ["sidebarOttoWorktreeList", serverId, "/tmp"],
       [{ worktreePath: cwd }, { worktreePath: "/tmp/other" }],
     );
 
@@ -318,7 +318,7 @@ describe("checkout-git-actions-store", () => {
 
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.has(workspaceId)).toBe(false);
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.has(cwd)).toBe(false);
-    expect(appQueryClient.getQueryData(["sidebarPaseoWorktreeList", serverId, "/tmp"])).toEqual([
+    expect(appQueryClient.getQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"])).toEqual([
       { worktreePath: "/tmp/other" },
     ]);
     expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(true);
@@ -342,7 +342,7 @@ describe("checkout-git-actions-store", () => {
 
   it("archives on the server even when its workspace cannot be resolved", async () => {
     const client = {
-      archivePaseoWorktree: vi.fn(async () => ({})),
+      archiveOttoWorktree: vi.fn(async () => ({})),
     };
     useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
 
@@ -351,14 +351,14 @@ describe("checkout-git-actions-store", () => {
       .archiveWorktree({ serverId, cwd, worktreePath: cwd });
 
     // The server archive is keyed by worktreePath and must run regardless.
-    expect(client.archivePaseoWorktree).toHaveBeenCalledWith({ worktreePath: cwd });
+    expect(client.archiveOttoWorktree).toHaveBeenCalledWith({ worktreePath: cwd });
     // The optimistic client-side mark is never keyed by the path.
     expect(isWorkspaceArchivePending({ serverId, workspaceId: cwd })).toBe(false);
   });
 
   it("restores an optimistically hidden worktree when archive fails", async () => {
     const client = {
-      archivePaseoWorktree: vi.fn(async () => ({ error: { message: "archive failed" } })),
+      archiveOttoWorktree: vi.fn(async () => ({ error: { message: "archive failed" } })),
     };
     const featureWorkspace = workspace({
       id: workspaceId,
@@ -368,7 +368,7 @@ describe("checkout-git-actions-store", () => {
     const listSnapshot = [{ worktreePath: cwd }, { worktreePath: "/tmp/other" }];
     useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
     useSessionStore.getState().setWorkspaces(serverId, new Map([[workspaceId, featureWorkspace]]));
-    appQueryClient.setQueryData(["sidebarPaseoWorktreeList", serverId, "/tmp"], listSnapshot);
+    appQueryClient.setQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"], listSnapshot);
 
     await expect(
       useCheckoutGitActionsStore
@@ -379,7 +379,7 @@ describe("checkout-git-actions-store", () => {
     expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(workspaceId)).toEqual(
       featureWorkspace,
     );
-    expect(appQueryClient.getQueryData(["sidebarPaseoWorktreeList", serverId, "/tmp"])).toEqual(
+    expect(appQueryClient.getQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"])).toEqual(
       listSnapshot,
     );
   });
@@ -387,7 +387,7 @@ describe("checkout-git-actions-store", () => {
   it("reports local archive pending only while the archive action is in flight", async () => {
     const deferred = createDeferred<Record<string, never>>();
     const client = {
-      archivePaseoWorktree: vi.fn(() => deferred.promise),
+      archiveOttoWorktree: vi.fn(() => deferred.promise),
     };
     const featureWorkspace = workspace({
       id: workspaceId,

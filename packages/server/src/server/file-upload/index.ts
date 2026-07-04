@@ -1,12 +1,12 @@
 import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { FileTransferOpcode, type FileTransferFrame } from "@getpaseo/protocol/binary-frames/index";
-import { getErrorMessage } from "@getpaseo/protocol/error-utils";
+import { FileTransferOpcode, type FileTransferFrame } from "@otto-code/protocol/binary-frames/index";
+import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import type { FileUploadRequest, FileUploadResponse } from "../messages.js";
 
 interface FileUploadStoreOptions {
-  paseoHome: string;
+  ottoHome: string;
   staleUploadTimeoutMs?: number;
 }
 
@@ -27,12 +27,12 @@ interface PendingUpload {
 export class FileUploadStore {
   private static readonly defaultStaleUploadTimeoutMs = 10 * 60 * 1000;
 
-  private readonly paseoHome: string;
+  private readonly ottoHome: string;
   private readonly staleUploadTimeoutMs: number;
   private readonly pending = new Map<string, PendingUpload>();
 
   constructor(options: FileUploadStoreOptions) {
-    this.paseoHome = options.paseoHome;
+    this.ottoHome = options.ottoHome;
     this.staleUploadTimeoutMs =
       options.staleUploadTimeoutMs ?? FileUploadStore.defaultStaleUploadTimeoutMs;
   }
@@ -47,7 +47,7 @@ export class FileUploadStore {
     const fileName = sanitizeFileName(request.fileName);
     const attempt = existingUpload ? existingUpload.attempt + 1 : 1;
     const id = buildUploadId(request.requestId, attempt);
-    const uploadDir = join(this.paseoHome, "uploads", id);
+    const uploadDir = join(this.ottoHome, "uploads", id);
     const upload: PendingUpload = {
       requestId: request.requestId,
       id,
@@ -104,7 +104,7 @@ export class FileUploadStore {
   }
 
   private async startWriting(upload: PendingUpload): Promise<void> {
-    await mkdir(join(this.paseoHome, "uploads", upload.id), { recursive: true });
+    await mkdir(join(this.ottoHome, "uploads", upload.id), { recursive: true });
     await writeFile(upload.path, new Uint8Array());
     upload.started = true;
   }
@@ -177,7 +177,7 @@ export class FileUploadStore {
   }
 
   private async removeUploadDirectory(upload: PendingUpload): Promise<void> {
-    await rm(join(this.paseoHome, "uploads", upload.id), { recursive: true, force: true }).catch(
+    await rm(join(this.ottoHome, "uploads", upload.id), { recursive: true, force: true }).catch(
       () => undefined,
     );
   }

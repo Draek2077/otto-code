@@ -2,95 +2,95 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 type EventHandler = (payload: unknown) => void;
 
-contextBridge.exposeInMainWorld("paseoDesktop", {
+contextBridge.exposeInMainWorld("ottoDesktop", {
   platform: process.platform,
   invoke: (command: string, args?: Record<string, unknown>) =>
-    ipcRenderer.invoke("paseo:invoke", command, args),
+    ipcRenderer.invoke("otto:invoke", command, args),
   getPendingOpenProject: () =>
-    ipcRenderer.invoke("paseo:get-pending-open-project") as Promise<string | null>,
+    ipcRenderer.invoke("otto:get-pending-open-project") as Promise<string | null>,
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {
       const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
         handler(payload);
       };
-      ipcRenderer.on(`paseo:event:${event}`, listener);
+      ipcRenderer.on(`otto:event:${event}`, listener);
       return Promise.resolve(() => {
-        ipcRenderer.removeListener(`paseo:event:${event}`, listener);
+        ipcRenderer.removeListener(`otto:event:${event}`, listener);
       });
     },
   },
   window: {
     openNew: (options?: { pendingOpenProjectPath?: string | null }) =>
-      ipcRenderer.invoke("paseo:window:openNew", options),
+      ipcRenderer.invoke("otto:window:openNew", options),
     getCurrentWindow: () => ({
-      toggleMaximize: () => ipcRenderer.invoke("paseo:window:toggleMaximize"),
-      isFullscreen: () => ipcRenderer.invoke("paseo:window:isFullscreen"),
+      toggleMaximize: () => ipcRenderer.invoke("otto:window:toggleMaximize"),
+      isFullscreen: () => ipcRenderer.invoke("otto:window:isFullscreen"),
       updateWindowControls: (update: {
         height?: number;
         backgroundColor?: string;
         foregroundColor?: string;
-      }) => ipcRenderer.invoke("paseo:window:updateWindowControls", update),
+      }) => ipcRenderer.invoke("otto:window:updateWindowControls", update),
       onResized: (handler: EventHandler): (() => void) => {
         const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
           handler(payload);
         };
-        ipcRenderer.on("paseo:window:resized", listener);
+        ipcRenderer.on("otto:window:resized", listener);
         return () => {
-          ipcRenderer.removeListener("paseo:window:resized", listener);
+          ipcRenderer.removeListener("otto:window:resized", listener);
         };
       },
-      setBadgeCount: (count?: number) => ipcRenderer.invoke("paseo:window:setBadgeCount", count),
+      setBadgeCount: (count?: number) => ipcRenderer.invoke("otto:window:setBadgeCount", count),
     }),
   },
   dialog: {
     ask: (message: string, options?: Record<string, unknown>) =>
-      ipcRenderer.invoke("paseo:dialog:ask", message, options),
+      ipcRenderer.invoke("otto:dialog:ask", message, options),
     askWithCheckbox: (message: string, options: Record<string, unknown>) =>
-      ipcRenderer.invoke("paseo:dialog:askWithCheckbox", message, options),
-    open: (options?: Record<string, unknown>) => ipcRenderer.invoke("paseo:dialog:open", options),
+      ipcRenderer.invoke("otto:dialog:askWithCheckbox", message, options),
+    open: (options?: Record<string, unknown>) => ipcRenderer.invoke("otto:dialog:open", options),
   },
   notification: {
-    isSupported: () => ipcRenderer.invoke("paseo:notification:isSupported"),
+    isSupported: () => ipcRenderer.invoke("otto:notification:isSupported"),
     sendNotification: (payload: { title: string; body?: string; data?: Record<string, unknown> }) =>
-      ipcRenderer.invoke("paseo:notification:send", payload),
+      ipcRenderer.invoke("otto:notification:send", payload),
   },
   opener: {
-    openUrl: (url: string) => ipcRenderer.invoke("paseo:opener:openUrl", url),
+    openUrl: (url: string) => ipcRenderer.invoke("otto:opener:openUrl", url),
   },
   editor: {
-    listTargets: () => ipcRenderer.invoke("paseo:editor:listTargets"),
+    listTargets: () => ipcRenderer.invoke("otto:editor:listTargets"),
     openTarget: (input: {
       editorId: string;
       path: string;
       cwd?: string;
       mode?: "open" | "reveal";
-    }) => ipcRenderer.invoke("paseo:editor:openTarget", input),
+    }) => ipcRenderer.invoke("otto:editor:openTarget", input),
   },
   webUtils: {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
   menu: {
     showContextMenu: (input?: Record<string, unknown>) =>
-      ipcRenderer.invoke("paseo:menu:showContextMenu", input),
+      ipcRenderer.invoke("otto:menu:showContextMenu", input),
   },
   browser: {
     registerWorkspaceBrowser: (input: { browserId: string; workspaceId: string }) =>
-      ipcRenderer.invoke("paseo:browser:register-workspace-browser", input),
+      ipcRenderer.invoke("otto:browser:register-workspace-browser", input),
     unregisterWorkspaceBrowser: (browserId: string) =>
-      ipcRenderer.invoke("paseo:browser:unregister-workspace-browser", browserId),
+      ipcRenderer.invoke("otto:browser:unregister-workspace-browser", browserId),
     setWorkspaceActiveBrowser: (input: { workspaceId: string; browserId: string | null }) =>
-      ipcRenderer.invoke("paseo:browser:set-workspace-active-browser", input),
+      ipcRenderer.invoke("otto:browser:set-workspace-active-browser", input),
     openDevTools: (browserId: string) =>
-      ipcRenderer.invoke("paseo:browser:open-devtools", browserId),
+      ipcRenderer.invoke("otto:browser:open-devtools", browserId),
     clearPartition: (browserId: string) =>
-      ipcRenderer.invoke("paseo:browser:clear-partition", browserId),
+      ipcRenderer.invoke("otto:browser:clear-partition", browserId),
     executeAutomationCommand: (request: Record<string, unknown>) =>
-      ipcRenderer.invoke("paseo:browser:execute-automation-command", request),
+      ipcRenderer.invoke("otto:browser:execute-automation-command", request),
     captureElement: (
       browserId: string,
       rect: { x: number; y: number; width: number; height: number },
-    ) => ipcRenderer.invoke("paseo:browser:capture-element", browserId, rect),
+    ) => ipcRenderer.invoke("otto:browser:capture-element", browserId, rect),
     copyElement: (payload: { text?: string; imageDataUrl?: string }) =>
-      ipcRenderer.invoke("paseo:browser:copy-element", payload),
+      ipcRenderer.invoke("otto:browser:copy-element", payload),
   },
 });

@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
-export const CHANGES_PREFERENCES_STORAGE_KEY = "@paseo:changes-preferences";
+export const CHANGES_PREFERENCES_STORAGE_KEY = "@otto:changes-preferences";
 export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
 export const CHANGES_PREFERENCES_QUERY_KEY = ["changes-preferences"];
 

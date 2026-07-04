@@ -48,16 +48,16 @@ import { registerEditorTargetHandlers } from "./features/editor-targets.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
-  getPaseoBrowserIdForWebContents,
-  getPaseoBrowserWebContents,
+  getOttoBrowserIdForWebContents,
+  getOttoBrowserWebContents,
   handleBrowserWindowOpenRequest,
-  listRegisteredPaseoBrowserIds,
+  listRegisteredOttoBrowserIds,
   readBrowserIdFromWebviewAttach,
   registerBrowserWebviewNavigationGuards,
-  unregisterPaseoBrowser,
-  registerPaseoBrowserWorkspace,
-  registerPaseoBrowserWebContents,
-  setWorkspaceActivePaseoBrowserId,
+  unregisterOttoBrowser,
+  registerOttoBrowserWorkspace,
+  registerOttoBrowserWebContents,
+  setWorkspaceActiveOttoBrowserId,
 } from "./features/browser-webviews/index.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
@@ -76,15 +76,15 @@ import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
-const APP_SCHEME = "paseo";
-const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
-const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
-const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo";
+const APP_SCHEME = "otto";
+const OTTO_DEBUG = process.env.OTTO_DEBUG === "1";
+const DISABLE_SINGLE_INSTANCE_LOCK = process.env.OTTO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
+const APP_NAME = process.env.OTTO_TEST_APP_NAME?.trim() || "Otto";
 
-const BROWSER_SHORTCUT_EVENT = "paseo:event:browser-shortcut";
-const BROWSER_FORWARDED_KEY_EVENT = "paseo:event:browser-forwarded-key";
+const BROWSER_SHORTCUT_EVENT = "otto:event:browser-shortcut";
+const BROWSER_FORWARDED_KEY_EVENT = "otto:event:browser-forwarded-key";
 
-const FORWARDED_PASEO_SHORTCUT_KEYS = new Set([
+const FORWARDED_OTTO_SHORTCUT_KEYS = new Set([
   "b",
   "e",
   "w",
@@ -110,8 +110,8 @@ const FORWARDED_PASEO_SHORTCUT_KEYS = new Set([
   "arrowup",
   "arrowdown",
 ]);
-const DESKTOP_SMOKE_ENV = "PASEO_DESKTOP_SMOKE";
-const DESKTOP_SMOKE_STOP_REQUEST = "paseo-smoke-stop";
+const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
+const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
 
 function readBrowserWorkspaceInput(
@@ -160,14 +160,14 @@ function isBrowserLocationInput(input: Electron.Input): boolean {
   return (input.meta || input.control) && input.key.toLowerCase() === "l";
 }
 
-function isForwardablePaseoShortcutInput(input: Electron.Input): boolean {
+function isForwardableOttoShortcutInput(input: Electron.Input): boolean {
   if (input.type !== "keyDown") {
     return false;
   }
   if (!input.meta && !input.control) {
     return false;
   }
-  return FORWARDED_PASEO_SHORTCUT_KEYS.has(input.key.toLowerCase());
+  return FORWARDED_OTTO_SHORTCUT_KEYS.has(input.key.toLowerCase());
 }
 
 function showBrowserWebviewContextMenu(
@@ -186,7 +186,7 @@ function showBrowserWebviewContextMenu(
             click: () => {
               log.info("[browser-devtools] inspect-element.request", {
                 webContentsId: contents.id,
-                browserId: getPaseoBrowserIdForWebContents(contents),
+                browserId: getOttoBrowserIdForWebContents(contents),
                 x: params.x,
                 y: params.y,
                 isDevToolsOpened: contents.isDevToolsOpened(),
@@ -207,7 +207,7 @@ function showBrowserWebviewContextMenu(
 // In dev mode, detect git worktrees and isolate each instance so multiple
 // Electron windows can run side-by-side (separate userData = separate lock).
 let devWorktreeName: string | null = null;
-const forcedUserDataDir = process.env.PASEO_ELECTRON_USER_DATA_DIR?.trim();
+const forcedUserDataDir = process.env.OTTO_ELECTRON_USER_DATA_DIR?.trim();
 if (forcedUserDataDir) {
   app.setPath("userData", forcedUserDataDir);
   log.info("[dev-user-data] forced userData dir:", forcedUserDataDir);
@@ -219,7 +219,7 @@ if (forcedUserDataDir) {
       windowsHide: true,
     }).trim();
     devWorktreeName = path.basename(topLevel);
-    // Main checkout (e.g. "paseo") gets default userData — only worktrees diverge.
+    // Main checkout (e.g. "otto") gets default userData — only worktrees diverge.
     const commonDir = path.resolve(
       topLevel,
       execFileSync("git", ["rev-parse", "--git-common-dir"], {
@@ -231,7 +231,7 @@ if (forcedUserDataDir) {
     );
     const isWorktree = path.resolve(topLevel, ".git") !== commonDir;
     if (isWorktree) {
-      app.setPath("userData", path.join(app.getPath("appData"), `Paseo-${devWorktreeName}`));
+      app.setPath("userData", path.join(app.getPath("appData"), `Otto-${devWorktreeName}`));
       log.info("[worktree] isolated userData for worktree:", devWorktreeName);
     } else {
       devWorktreeName = null;
@@ -248,10 +248,10 @@ if (process.platform === "linux" && process.env.APPIMAGE) {
   app.commandLine.appendSwitch("no-sandbox");
 }
 
-// Allow users to pass Chromium flags via PASEO_ELECTRON_FLAGS for debugging
+// Allow users to pass Chromium flags via OTTO_ELECTRON_FLAGS for debugging
 // rendering issues (e.g. "--disable-gpu --ozone-platform=x11").
 // Must run before app.whenReady().
-const electronFlags = process.env.PASEO_ELECTRON_FLAGS?.trim();
+const electronFlags = process.env.OTTO_ELECTRON_FLAGS?.trim();
 if (electronFlags) {
   for (const token of electronFlags.split(/\s+/)) {
     const [key, ...rest] = token.replace(/^--/, "").split("=");
@@ -271,7 +271,7 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
 // racing a global.
 const pendingOpenProjectStore = new PendingOpenProjectStore();
 
-if (PASEO_DEBUG) {
+if (OTTO_DEBUG) {
   log.info("[open-project] argv:", process.argv);
   log.info("[open-project] isDefaultApp:", process.defaultApp);
   log.info("[open-project] pendingOpenProjectPath:", pendingOpenProjectPath);
@@ -279,7 +279,7 @@ if (PASEO_DEBUG) {
 
 // The renderer pulls the pending path on mount via IPC — this avoids
 // a race where the push event arrives before React registers its listener.
-ipcMain.handle("paseo:get-pending-open-project", (event) => {
+ipcMain.handle("otto:get-pending-open-project", (event) => {
   const webContentsId = event.sender.id;
   const result = pendingOpenProjectStore.take(webContentsId);
   log.info("[open-project] renderer requested pending path:", {
@@ -322,44 +322,44 @@ function normalizeBrowserCaptureRect(
   };
 }
 
-ipcMain.handle("paseo:browser:register-workspace-browser", (_event, rawInput: unknown) => {
+ipcMain.handle("otto:browser:register-workspace-browser", (_event, rawInput: unknown) => {
   const input = readBrowserWorkspaceInput(rawInput);
   if (input) {
-    registerPaseoBrowserWorkspace(input);
+    registerOttoBrowserWorkspace(input);
   }
 });
 
-ipcMain.handle("paseo:browser:unregister-workspace-browser", (_event, browserId: unknown) => {
+ipcMain.handle("otto:browser:unregister-workspace-browser", (_event, browserId: unknown) => {
   if (typeof browserId === "string" && browserId.trim().length > 0) {
-    unregisterPaseoBrowser(browserId.trim());
+    unregisterOttoBrowser(browserId.trim());
   }
 });
 
-ipcMain.handle("paseo:browser:set-workspace-active-browser", (_event, rawInput: unknown) => {
+ipcMain.handle("otto:browser:set-workspace-active-browser", (_event, rawInput: unknown) => {
   const input = readActiveBrowserInput(rawInput);
   if (input) {
-    setWorkspaceActivePaseoBrowserId(input);
+    setWorkspaceActiveOttoBrowserId(input);
   }
 });
 
-ipcMain.handle("paseo:browser:open-devtools", (_event, browserId: unknown) => {
+ipcMain.handle("otto:browser:open-devtools", (_event, browserId: unknown) => {
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     const result = {
       ok: false,
       reason: "invalid-browser-id",
       browserId,
-      registeredBrowserIds: listRegisteredPaseoBrowserIds(),
+      registeredBrowserIds: listRegisteredOttoBrowserIds(),
     };
     log.warn("[browser-devtools] open-devtools.invalid", result);
     return result;
   }
-  const contents = getPaseoBrowserWebContents(browserId);
+  const contents = getOttoBrowserWebContents(browserId);
   if (!contents) {
     const result = {
       ok: false,
       reason: "browser-webcontents-not-found",
       browserId,
-      registeredBrowserIds: listRegisteredPaseoBrowserIds(),
+      registeredBrowserIds: listRegisteredOttoBrowserIds(),
     };
     log.warn("[browser-devtools] open-devtools.not-found", result);
     return result;
@@ -369,7 +369,7 @@ ipcMain.handle("paseo:browser:open-devtools", (_event, browserId: unknown) => {
     webContentsId: contents.id,
     isDestroyed: contents.isDestroyed(),
     isDevToolsOpened: contents.isDevToolsOpened(),
-    registeredBrowserIds: listRegisteredPaseoBrowserIds(),
+    registeredBrowserIds: listRegisteredOttoBrowserIds(),
   });
   contents.openDevTools({ mode: "detach" });
   const result = {
@@ -383,21 +383,21 @@ ipcMain.handle("paseo:browser:open-devtools", (_event, browserId: unknown) => {
   return result;
 });
 
-ipcMain.handle("paseo:browser:clear-partition", async (_event, browserId: unknown) => {
+ipcMain.handle("otto:browser:clear-partition", async (_event, browserId: unknown) => {
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     return;
   }
-  const partition = `persist:paseo-browser-${browserId}`;
+  const partition = `persist:otto-browser-${browserId}`;
   await session.fromPartition(partition).clearStorageData();
 });
 
 ipcMain.handle(
-  "paseo:browser:capture-element",
+  "otto:browser:capture-element",
   async (_event, browserId: unknown, rect: unknown) => {
     if (typeof browserId !== "string" || browserId.trim().length === 0) {
       return null;
     }
-    const contents = getPaseoBrowserWebContents(browserId);
+    const contents = getOttoBrowserWebContents(browserId);
     if (!contents || contents.isDestroyed()) {
       return null;
     }
@@ -423,7 +423,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("paseo:browser:copy-element", (_event, payload: unknown): boolean => {
+ipcMain.handle("otto:browser:copy-element", (_event, payload: unknown): boolean => {
   if (!payload || typeof payload !== "object") {
     return false;
   }
@@ -621,11 +621,11 @@ async function createWindow(
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
     const browserId = pendingBrowserWebviewIds.shift() ?? null;
     if (browserId) {
-      registerPaseoBrowserWebContents(contents, browserId);
+      registerOttoBrowserWebContents(contents, browserId);
       log.info("[browser-webview] registered", {
         browserId,
         webContentsId: contents.id,
-        registeredBrowserIds: listRegisteredPaseoBrowserIds(),
+        registeredBrowserIds: listRegisteredOttoBrowserIds(),
       });
     }
     contents.on("before-input-event", (event, input) => {
@@ -640,14 +640,14 @@ async function createWindow(
       }
       if (isBrowserLocationInput(input)) {
         event.preventDefault();
-        const focusedBrowserId = getPaseoBrowserIdForWebContents(contents);
+        const focusedBrowserId = getOttoBrowserIdForWebContents(contents);
         mainWindow.webContents.send(BROWSER_SHORTCUT_EVENT, {
           action: "focus-url",
           ...(focusedBrowserId ? { browserId: focusedBrowserId } : {}),
         });
         return;
       }
-      if (isForwardablePaseoShortcutInput(input)) {
+      if (isForwardableOttoShortcutInput(input)) {
         event.preventDefault();
         mainWindow.webContents.send(BROWSER_FORWARDED_KEY_EVENT, {
           key: input.key,
@@ -662,7 +662,7 @@ async function createWindow(
     contents.setWindowOpenHandler(({ url }) =>
       handleBrowserWindowOpenRequest({
         url,
-        sourceBrowserId: getPaseoBrowserIdForWebContents(contents),
+        sourceBrowserId: getOttoBrowserIdForWebContents(contents),
         requestNewTab: (payload) => {
           mainWindow.webContents.send(BROWSER_NEW_TAB_REQUEST_EVENT, payload);
         },
@@ -696,7 +696,7 @@ async function createWindow(
 // Resolves once bootstrap() has registered the custom protocol handler and IPC
 // handlers and created the first window. second-instance window creation waits
 // on this rather than app.whenReady(): in packaged mode createWindow loads
-// `paseo://app/`, which fails if the protocol handler isn't registered yet, and
+// `otto://app/`, which fails if the protocol handler isn't registered yet, and
 // a second instance can arrive mid-cold-start.
 let resolveBootstrapComplete: () => void;
 const bootstrapComplete = new Promise<void>((resolve) => {
@@ -705,7 +705,7 @@ const bootstrapComplete = new Promise<void>((resolve) => {
 
 function setupSingleInstanceLock(): boolean {
   if (DISABLE_SINGLE_INSTANCE_LOCK) {
-    log.info("[single-instance] disabled by PASEO_DISABLE_SINGLE_INSTANCE_LOCK");
+    log.info("[single-instance] disabled by OTTO_DISABLE_SINGLE_INSTANCE_LOCK");
     return true;
   }
 
@@ -722,7 +722,7 @@ function setupSingleInstanceLock(): boolean {
       isDefaultApp: false,
     });
     log.info("[open-project] second-instance openProjectPath:", openProjectPath);
-    // Relaunching the app (CLI `paseo [path]`, double-click, etc.) opens a new
+    // Relaunching the app (CLI `otto [path]`, double-click, etc.) opens a new
     // window rather than focusing the existing one. Wait for bootstrap (not just
     // app.whenReady) so the protocol + IPC handlers exist before the window loads.
     void bootstrapComplete
@@ -761,7 +761,7 @@ async function runDesktopSmokeIfRequested(): Promise<boolean> {
   const handlers = createDaemonCommandHandlers();
   const startStatus = await handlers.start_desktop_daemon();
   process.stdout.write(
-    `[paseo-smoke] ${JSON.stringify({
+    `[otto-smoke] ${JSON.stringify({
       type: "desktop-daemon-smoke-started",
       status: startStatus,
     })}\n`,
@@ -771,7 +771,7 @@ async function runDesktopSmokeIfRequested(): Promise<boolean> {
 
   const stopStatus = await handlers.stop_desktop_daemon();
   process.stdout.write(
-    `[paseo-smoke] ${JSON.stringify({
+    `[otto-smoke] ${JSON.stringify({
       type: "desktop-daemon-smoke-stopped",
       stopStatus,
     })}\n`,
@@ -856,7 +856,7 @@ async function bootstrap(): Promise<void> {
 
   // In-app "Open in new window": opens a window that lands on the given project
   // via the same open-project flow as a CLI launch (no move, no ownership).
-  ipcMain.handle("paseo:window:openNew", async (_event, options?: unknown) => {
+  ipcMain.handle("otto:window:openNew", async (_event, options?: unknown) => {
     const pendingPath =
       options && typeof options === "object" && "pendingOpenProjectPath" in options
         ? (options as { pendingOpenProjectPath?: unknown }).pendingOpenProjectPath
@@ -899,7 +899,7 @@ void runDesktopStartup({
 
 function showDaemonShutdownDialog(): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send("paseo:event:quitting", {});
+    win.webContents.send("otto:event:quitting", {});
   }
 }
 

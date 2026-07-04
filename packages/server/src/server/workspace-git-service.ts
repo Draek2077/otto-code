@@ -4,7 +4,7 @@ import { basename, join, resolve } from "node:path";
 import { LRUCache } from "lru-cache";
 import pLimit from "p-limit";
 import type pino from "pino";
-import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
+import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
 import type { CheckoutContext } from "../utils/checkout-git.js";
 import {
   type BranchCheckoutResolution,
@@ -32,7 +32,7 @@ import {
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { resolveGitHubRemote, type GitHubRemoteIdentity } from "../utils/github-remote.js";
-import { listPaseoWorktrees, type PaseoWorktreeInfo } from "../utils/worktree.js";
+import { listOttoWorktrees, type OttoWorktreeInfo } from "../utils/worktree.js";
 import { READ_ONLY_GIT_ENV } from "./checkout-git-utils.js";
 import {
   buildWorkspaceGitMetadataFromSnapshot,
@@ -58,7 +58,7 @@ const LINUX_WATCH_REFRESH_COOLDOWN_MS = 2_000;
 const LINUX_WATCH_IGNORE_TTL_MS = 5 * 60 * 1_000;
 
 const linuxWatchReaddirConcurrency =
-  parseInt(process.env.PASEO_LINUX_WATCH_READDIR_CONCURRENCY ?? "16", 10) || 16;
+  parseInt(process.env.OTTO_LINUX_WATCH_READDIR_CONCURRENCY ?? "16", 10) || 16;
 const linuxWatchReaddirLimit = pLimit(linuxWatchReaddirConcurrency);
 
 export interface WorkspaceGitRuntimeSnapshot {
@@ -69,7 +69,7 @@ export interface WorkspaceGitRuntimeSnapshot {
     mainRepoRoot: string | null;
     currentBranch: string | null;
     remoteUrl: string | null;
-    isPaseoOwnedWorktree: boolean;
+    isOttoOwnedWorktree: boolean;
     isDirty: boolean | null;
     baseRef: string | null;
     aheadBehind: { ahead: number; behind: number } | null;
@@ -185,19 +185,19 @@ export interface WorkspaceGitBranchSuggestionsOptions {
 }
 
 export interface WorkspaceGitStashListOptions {
-  paseoOnly?: boolean;
+  ottoOnly?: boolean;
 }
 
 export interface WorkspaceGitStashEntry {
   index: number;
   message: string;
   branch: string | null;
-  isPaseo: boolean;
+  isOtto: boolean;
 }
 
 export type WorkspaceGitBranchValidationResult = BranchCheckoutResolution;
 export type WorkspaceGitBranchSuggestion = BranchSuggestion;
-export type WorkspaceGitWorktreeInfo = PaseoWorktreeInfo;
+export type WorkspaceGitWorktreeInfo = OttoWorktreeInfo;
 
 export type WorkspaceGitSnapshotOptions =
   | {
@@ -247,7 +247,7 @@ interface WorkspaceGitServiceDependencies {
   resolveBranchCheckout: typeof resolveBranchCheckout;
   resolveRepositoryDefaultBranch: typeof resolveRepositoryDefaultBranch;
   listBranchSuggestions: typeof listBranchSuggestions;
-  listPaseoWorktrees: typeof listPaseoWorktrees;
+  listOttoWorktrees: typeof listOttoWorktrees;
   github: GitHubService;
   resolveAbsoluteGitDir: (cwd: string) => Promise<string | null>;
   hasOriginRemote: (cwd: string) => Promise<boolean>;
@@ -258,7 +258,7 @@ interface WorkspaceGitServiceDependencies {
 
 interface WorkspaceGitServiceOptions {
   logger: pino.Logger;
-  paseoHome: string;
+  ottoHome: string;
   worktreesRoot?: string;
   deps?: Partial<WorkspaceGitServiceDependencies>;
 }
@@ -335,7 +335,7 @@ function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies 
     resolveBranchCheckout,
     resolveRepositoryDefaultBranch,
     listBranchSuggestions,
-    listPaseoWorktrees,
+    listOttoWorktrees,
     github: createGitHubService(),
     resolveAbsoluteGitDir,
     hasOriginRemote,
@@ -353,7 +353,7 @@ function resolveWorkspaceGitServiceDeps(
 
 export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly logger: pino.Logger;
-  private readonly paseoHome: string;
+  private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly deps: WorkspaceGitServiceDependencies;
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
@@ -392,7 +392,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   >({ max: WORKSPACE_GIT_CHECKOUT_DIFF_CACHE_MAX });
   constructor(options: WorkspaceGitServiceOptions) {
     this.logger = options.logger.child({ module: "workspace-git-service" });
-    this.paseoHome = options.paseoHome;
+    this.ottoHome = options.ottoHome;
     this.worktreesRoot = options.worktreesRoot;
     this.deps = resolveWorkspaceGitServiceDeps(options.deps);
   }
@@ -446,7 +446,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const normalizedCwd = resolve(cwd);
     try {
       const status = await this.deps.getCheckoutStatus(normalizedCwd, {
-        paseoHome: this.paseoHome,
+        ottoHome: this.ottoHome,
         worktreesRoot: this.worktreesRoot,
         logger: this.logger,
       });
@@ -456,7 +456,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           currentBranch: null,
           remoteUrl: null,
           repoRoot: null,
-          isPaseoOwnedWorktree: false,
+          isOttoOwnedWorktree: false,
           mainRepoRoot: null,
         });
       }
@@ -465,7 +465,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         currentBranch: status.currentBranch,
         remoteUrl: status.remoteUrl,
         repoRoot: status.repoRoot,
-        isPaseoOwnedWorktree: status.isPaseoOwnedWorktree,
+        isOttoOwnedWorktree: status.isOttoOwnedWorktree,
         mainRepoRoot: status.mainRepoRoot,
       });
     } catch {
@@ -474,7 +474,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         currentBranch: null,
         remoteUrl: null,
         repoRoot: null,
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       });
     }
@@ -495,7 +495,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const key = this.buildCheckoutDiffCacheKey(normalizedCwd, normalizedOptions);
     return this.readAuxiliaryCache(this.checkoutDiffCache, key, readOptions, () =>
       this.deps.getCheckoutDiff(normalizedCwd, normalizedOptions, {
-        paseoHome: this.paseoHome,
+        ottoHome: this.ottoHome,
         worktreesRoot: this.worktreesRoot,
       }),
     );
@@ -573,14 +573,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     readOptions?: WorkspaceGitReadOptions,
   ): Promise<WorkspaceGitStashEntry[]> {
     const normalizedCwd = resolve(cwd);
-    const paseoOnly = options?.paseoOnly !== false;
-    const key = JSON.stringify(["stashes", normalizedCwd, paseoOnly]);
+    const ottoOnly = options?.ottoOnly !== false;
+    const key = JSON.stringify(["stashes", normalizedCwd, ottoOnly]);
     return this.readAuxiliaryCache(this.stashListCache, key, readOptions, async () => {
       const { stdout } = await this.deps.runGitCommand(["stash", "list", "--format=%gd%x00%s"], {
         cwd: normalizedCwd,
         envOverlay: READ_ONLY_GIT_ENV,
       });
-      return parseWorkspaceGitStashList(stdout, { paseoOnly });
+      return parseWorkspaceGitStashList(stdout, { ottoOnly });
     });
   }
 
@@ -591,9 +591,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const repoRoot = await this.resolveRepoRoot(cwdOrRepoRoot, options);
     const key = JSON.stringify(["worktrees", repoRoot]);
     return this.readAuxiliaryCache(this.worktreeListCache, key, options, () =>
-      this.deps.listPaseoWorktrees({
+      this.deps.listOttoWorktrees({
         cwd: repoRoot,
-        paseoHome: this.paseoHome,
+        ottoHome: this.ottoHome,
         worktreesRoot: this.worktreesRoot,
       }),
     );
@@ -605,7 +605,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       throw new Error("Create worktree requires a git repository");
     }
 
-    return snapshot.git.isPaseoOwnedWorktree
+    return snapshot.git.isOttoOwnedWorktree
       ? (snapshot.git.mainRepoRoot ?? snapshot.git.repoRoot ?? resolve(cwd))
       : (snapshot.git.repoRoot ?? resolve(cwd));
   }
@@ -906,7 +906,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target: WorkspaceGitTarget,
   ): Promise<CheckoutSnapshotFacts | null> {
     return this.loadCheckoutFacts(target, {
-      paseoHome: this.paseoHome,
+      ottoHome: this.ottoHome,
       logger: this.logger,
       allowRecent: true,
     });
@@ -1634,7 +1634,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const cwd = target.cwd;
     const previousGitHubPollKey = this.getGitHubPollKey(target);
     const baseContext: CheckoutContext = {
-      paseoHome: this.paseoHome,
+      ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.logger,
     };
@@ -1664,7 +1664,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       mainRepoRoot: checkoutStatus.mainRepoRoot,
       currentBranch: checkoutStatus.currentBranch,
       remoteUrl: checkoutStatus.remoteUrl,
-      isPaseoOwnedWorktree: checkoutStatus.isPaseoOwnedWorktree,
+      isOttoOwnedWorktree: checkoutStatus.isOttoOwnedWorktree,
       isDirty: checkoutStatus.isDirty,
       baseRef: checkoutStatus.baseRef,
       aheadBehind: checkoutStatus.aheadBehind,
@@ -1966,7 +1966,7 @@ async function loadGitHubSnapshot(options: {
 
 function parseWorkspaceGitStashList(
   stdout: string,
-  options: { paseoOnly: boolean },
+  options: { ottoOnly: boolean },
 ): WorkspaceGitStashEntry[] {
   const entries: WorkspaceGitStashEntry[] = [];
   const lines = stdout.trim().split("\n").filter(Boolean);
@@ -1985,16 +1985,16 @@ function parseWorkspaceGitStashList(
     }
 
     const index = Number(indexMatch[1]);
-    const prefix = "paseo-auto-stash:";
+    const prefix = "otto-auto-stash:";
     const prefixIdx = subject.indexOf(prefix);
-    const isPaseo = prefixIdx >= 0;
-    const branch = isPaseo ? subject.slice(prefixIdx + prefix.length).trim() || null : null;
+    const isOtto = prefixIdx >= 0;
+    const branch = isOtto ? subject.slice(prefixIdx + prefix.length).trim() || null : null;
 
-    if (options.paseoOnly && !isPaseo) {
+    if (options.ottoOnly && !isOtto) {
       continue;
     }
 
-    entries.push({ index, message: subject, branch, isPaseo });
+    entries.push({ index, message: subject, branch, isOtto });
   }
 
   return entries;
@@ -2009,7 +2009,7 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
       mainRepoRoot: null,
       currentBranch: null,
       remoteUrl: null,
-      isPaseoOwnedWorktree: false,
+      isOttoOwnedWorktree: false,
       isDirty: null,
       baseRef: null,
       aheadBehind: null,

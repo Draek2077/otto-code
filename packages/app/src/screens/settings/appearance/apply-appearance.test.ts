@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { darkHighlightColors, resolveSyntaxColors } from "@getpaseo/highlight";
+import { darkHighlightColors, resolveSyntaxColors } from "@otto-code/highlight";
 import { DEFAULT_UI_FONT_STACK } from "@/styles/theme";
 import { applyAppearance, type AppearanceInput } from "./apply-appearance";
 

@@ -126,7 +126,7 @@ test.describe("Settings host page", () => {
     // from get_desktop_settings) bypasses the desktop bootstrap flow so only
     // the sidebar's status query runs against the seeded test daemon.
     await page.addInitScript((localServerId) => {
-      (window as unknown as { paseoDesktop: unknown }).paseoDesktop = {
+      (window as unknown as { ottoDesktop: unknown }).ottoDesktop = {
         platform: "darwin",
         invoke: async (command: string) => {
           if (command === "desktop_daemon_status") {

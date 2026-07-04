@@ -6,7 +6,7 @@ import {
   loadPersistedConfig,
   savePersistedConfig,
   type PersistedConfig,
-} from "@getpaseo/server";
+} from "@otto-code/server";
 import type {
   CommandError,
   CommandOptions,
@@ -14,7 +14,7 @@ import type {
   OutputSchema,
   SingleResult,
 } from "../../output/index.js";
-import { resolveLocalPaseoHome } from "./local-daemon.js";
+import { resolveLocalOttoHome } from "./local-daemon.js";
 
 const CONFIG_FILENAME = "config.json";
 
@@ -81,9 +81,9 @@ export async function setDaemonPasswordInConfig(
   newPassword: string,
   options: SetPasswordOptions = {},
 ): Promise<SetPasswordResult> {
-  const paseoHome = resolveLocalPaseoHome(options.home);
-  const configPath = path.join(paseoHome, CONFIG_FILENAME);
-  const persisted = loadPersistedConfig(paseoHome);
+  const ottoHome = resolveLocalOttoHome(options.home);
+  const configPath = path.join(ottoHome, CONFIG_FILENAME);
+  const persisted = loadPersistedConfig(ottoHome);
   const nextConfig: PersistedConfig = {
     ...persisted,
     daemon: {
@@ -95,13 +95,13 @@ export async function setDaemonPasswordInConfig(
     },
   };
 
-  savePersistedConfig(paseoHome, nextConfig);
+  savePersistedConfig(ottoHome, nextConfig);
 
   return {
     action: "password_set",
     configPath,
-    restartCommand: "paseo daemon restart",
-    message: `Password written to ${configPath}\nRestart the daemon for the change to take effect.\nRun: paseo daemon restart`,
+    restartCommand: "otto daemon restart",
+    message: `Password written to ${configPath}\nRestart the daemon for the change to take effect.\nRun: otto daemon restart`,
   };
 }
 

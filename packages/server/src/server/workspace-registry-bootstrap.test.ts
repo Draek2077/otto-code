@@ -16,7 +16,7 @@ const ARCHIVED_PROJECT = path.resolve("/tmp/archived-project");
 
 describe("bootstrapWorkspaceRegistries", () => {
   let tmpDir: string;
-  let paseoHome: string;
+  let ottoHome: string;
   let agentStorage: AgentStorage;
   let projectRegistry: FileBackedProjectRegistry;
   let workspaceRegistry: FileBackedWorkspaceRegistry;
@@ -25,14 +25,14 @@ describe("bootstrapWorkspaceRegistries", () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), "workspace-bootstrap-"));
-    paseoHome = path.join(tmpDir, ".paseo");
-    agentStorage = new AgentStorage(path.join(paseoHome, "agents"), logger);
+    ottoHome = path.join(tmpDir, ".otto");
+    agentStorage = new AgentStorage(path.join(ottoHome, "agents"), logger);
     projectRegistry = new FileBackedProjectRegistry(
-      path.join(paseoHome, "projects", "projects.json"),
+      path.join(ottoHome, "projects", "projects.json"),
       logger,
     );
     workspaceRegistry = new FileBackedWorkspaceRegistry(
-      path.join(paseoHome, "projects", "workspaces.json"),
+      path.join(ottoHome, "projects", "workspaces.json"),
       logger,
     );
     workspaceGitService = createNoopWorkspaceGitService();
@@ -97,7 +97,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,
@@ -162,7 +162,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,
@@ -228,7 +228,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,
@@ -283,7 +283,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,
@@ -301,7 +301,7 @@ describe("bootstrapWorkspaceRegistries", () => {
       archivedAt: null,
     });
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,
@@ -348,7 +348,7 @@ describe("bootstrapWorkspaceRegistries", () => {
     });
 
     await bootstrapWorkspaceRegistries({
-      paseoHome,
+      ottoHome,
       agentStorage,
       projectRegistry,
       workspaceRegistry,

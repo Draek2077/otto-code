@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { StoredScheduleSchema, type StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import { StoredScheduleSchema, type StoredSchedule } from "@otto-code/protocol/schedule/types";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
 function generateScheduleId(): string {

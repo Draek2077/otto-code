@@ -1,4 +1,4 @@
-import { spawnProcess } from "@getpaseo/server";
+import { spawnProcess } from "@otto-code/server";
 import log from "electron-log/main";
 import type { NodeEntrypointInvocation } from "../node-entrypoint-launcher.js";
 import { createNodeEntrypointInvocation } from "../runtime-paths.js";

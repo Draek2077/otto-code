@@ -24,7 +24,7 @@ import type {
   StoredSchedule,
   UpdateScheduleInput,
   UpdateScheduleNewAgentConfig,
-} from "@getpaseo/protocol/schedule/types";
+} from "@otto-code/protocol/schedule/types";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
 
@@ -182,7 +182,7 @@ function buildRunOutput(params: {
 type CreateConfigResolver = Pick<ProviderSnapshotManager, "resolveCreateConfig">;
 
 export interface ScheduleServiceOptions {
-  paseoHome: string;
+  ottoHome: string;
   logger: Logger;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
@@ -206,7 +206,7 @@ export class ScheduleService {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ScheduleServiceOptions) {
-    this.store = new ScheduleStore(join(options.paseoHome, "schedules"));
+    this.store = new ScheduleStore(join(options.ottoHome, "schedules"));
     this.logger = options.logger.child({ module: "schedule-service" });
     this.agentManager = options.agentManager;
     this.agentStorage = options.agentStorage;
@@ -712,8 +712,8 @@ export class ScheduleService {
       initialPrompt: schedule.prompt,
     });
     const labels = {
-      "paseo.schedule-id": schedule.id,
-      "paseo.schedule-run": runId,
+      "otto.schedule-id": schedule.id,
+      "otto.schedule-run": runId,
     };
     const agent = await this.agentManager.createAgent(config, undefined, {
       labels,

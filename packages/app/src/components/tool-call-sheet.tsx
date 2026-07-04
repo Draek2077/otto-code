@@ -9,7 +9,7 @@ import {
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
-import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
+import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,

@@ -231,13 +231,13 @@ class ScriptedAgentSession implements AgentSession {
 describe("LoopService", () => {
   const logger = createTestLogger();
   let tmpDir: string;
-  let paseoHome: string;
+  let ottoHome: string;
   let workspaceDir: string;
   let storage: AgentStorage;
 
   beforeEach(() => {
     tmpDir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "loop-service-")));
-    paseoHome = path.join(tmpDir, "paseo-home");
+    ottoHome = path.join(tmpDir, "otto-home");
     workspaceDir = path.join(tmpDir, "workspace");
     storage = new AgentStorage(path.join(tmpDir, "agents"), logger);
     mkdirSync(workspaceDir, { recursive: true });
@@ -274,7 +274,7 @@ describe("LoopService", () => {
         logger,
       });
       const service = new LoopService({
-        paseoHome,
+        ottoHome,
         agentManager: manager,
         logger,
         providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,
@@ -303,7 +303,7 @@ describe("LoopService", () => {
       expect(finalLoop.iterations[1]?.status).toBe("succeeded");
       expect(finalLoop.iterations[0]?.verifyChecks[0]?.passed).toBe(false);
       expect(finalLoop.iterations[1]?.verifyChecks[0]?.passed).toBe(true);
-      expect(readFileSync(path.join(paseoHome, "loops", "loops.json"), "utf8")).toContain(loop.id);
+      expect(readFileSync(path.join(ottoHome, "loops", "loops.json"), "utf8")).toContain(loop.id);
     },
   );
 
@@ -330,7 +330,7 @@ describe("LoopService", () => {
       logger,
     });
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,
@@ -396,7 +396,7 @@ describe("LoopService", () => {
       await archiveAgent(agentId);
     };
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,
@@ -453,7 +453,7 @@ describe("LoopService", () => {
       logger,
     });
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,
@@ -500,7 +500,7 @@ describe("LoopService", () => {
       logger,
     });
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: {
@@ -555,7 +555,7 @@ describe("LoopService", () => {
       logger,
     });
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: {
@@ -611,7 +611,7 @@ describe("LoopService", () => {
       logger,
     });
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,
@@ -660,7 +660,7 @@ describe("LoopService", () => {
       return cancelAgentRun(agentId);
     };
     const service = new LoopService({
-      paseoHome,
+      ottoHome,
       agentManager: manager,
       logger,
       providerSnapshotManager: NO_UNATTENDED_LOOP_POLICY,

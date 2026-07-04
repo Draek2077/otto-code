@@ -1,7 +1,7 @@
 npmRebuild: false
-appId: sh.paseo.desktop
-productName: Paseo
-executableName: Paseo
+appId: ai.ottocode.desktop
+productName: Otto
+executableName: Otto
 afterPack: ./scripts/after-pack.js
 afterSign: ./scripts/after-sign.js
 directories:
@@ -9,13 +9,13 @@ directories:
 files:
   - dist/**/*
   - "!**/*.map"
-  - "!node_modules/@getpaseo/*/src/**"
-  - "!node_modules/@getpaseo/**/*.test.*"
-  - "!node_modules/@getpaseo/**/*.spec.*"
-  - "!node_modules/@getpaseo/server/dist/server/web-ui/**"
+  - "!node_modules/@otto-code/*/src/**"
+  - "!node_modules/@otto-code/**/*.test.*"
+  - "!node_modules/@otto-code/**/*.spec.*"
+  - "!node_modules/@otto-code/server/dist/server/web-ui/**"
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
-  - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
+  - node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*
 extraResources:
   - from: ../app/dist
     to: app-dist
@@ -23,10 +23,10 @@ extraResources:
     to: skills
 publish:
   provider: github
-  owner: getpaseo
-  repo: paseo
+  owner: otto-code-ai
+  repo: otto
 mac:
-  artifactName: "Paseo-${version}-${arch}.${ext}"
+  artifactName: "Otto-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
   icon: assets/icon.icns
   hardenedRuntime: true
@@ -34,20 +34,20 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
   extraResources:
-    - from: bin/paseo
-      to: bin/paseo
+    - from: bin/otto
+      to: bin/otto
   target:
     - dmg
     - zip
 linux:
   category: Development
   icon: assets
-  artifactName: "Paseo-${version}-${arch}.${ext}"
+  artifactName: "Otto-${version}-${arch}.${ext}"
   maintainer: "Mohamed Boudra <hello@moboudra.com>"
-  vendor: "Paseo"
+  vendor: "Otto"
   extraResources:
-    - from: bin/paseo
-      to: bin/paseo
+    - from: bin/otto
+      to: bin/otto
   target:
     - AppImage
     - deb
@@ -57,15 +57,15 @@ appImage:
   # Keep the AppImage filename stable across versions (no ${version}) so
   # electron-updater overwrites the file in place instead of renaming it to a new
   # versioned path. A rename orphans the old binary, breaks desktop shortcuts, and
-  # dangles the ~/.local/bin/paseo CLI symlink, which points at $APPIMAGE. The
+  # dangles the ~/.local/bin/otto CLI symlink, which points at $APPIMAGE. The
   # version stays discoverable via the release tag and the in-app version.
-  artifactName: "Paseo-${arch}.${ext}"
+  artifactName: "Otto-${arch}.${ext}"
 win:
-  artifactName: "Paseo-Setup-${version}-${arch}.${ext}"
+  artifactName: "Otto-Setup-${version}-${arch}.${ext}"
   icon: assets/icon.ico
   extraResources:
-    - from: bin/paseo.cmd
-      to: bin/paseo.cmd
+    - from: bin/otto.cmd
+      to: bin/otto.cmd
   target:
     - target: nsis
       arch:

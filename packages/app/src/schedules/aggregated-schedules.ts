@@ -1,5 +1,5 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 import { toErrorMessage } from "@/utils/error-messages";
 
 export const ALL_SCHEDULE_HOSTS_FAILED_MESSAGE = "No connected hosts could load schedules";

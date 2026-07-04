@@ -50,27 +50,27 @@ describe("Pi tool call mapper", () => {
 
   test("normalizes Pi MCP proxy calls from requested tool args while running", () => {
     const toolCall = parseToolArgs("mcp", {
-      tool: "paseo_list_models",
+      tool: "otto_list_models",
       args: '{"provider":"pi"}',
     });
 
-    expect(resolveToolCallName(toolCall, null)).toBe("paseo.list_models");
+    expect(resolveToolCallName(toolCall, null)).toBe("otto.list_models");
   });
 
   test("normalizes Pi MCP proxy calls from result details when completed", () => {
     const toolCall = parseToolArgs("mcp", {
-      tool: "paseo_list_models",
+      tool: "otto_list_models",
       args: '{"provider":"pi"}',
     });
     const result = parseToolResult({
       content: [{ type: "text", text: "(empty result)" }],
       details: {
         mode: "call",
-        server: "paseo",
+        server: "otto",
         tool: "list_models",
       },
     });
 
-    expect(resolveToolCallName(toolCall, result)).toBe("paseo.list_models");
+    expect(resolveToolCallName(toolCall, result)).toBe("otto.list_models");
   });
 });

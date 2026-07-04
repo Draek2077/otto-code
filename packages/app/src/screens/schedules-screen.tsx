@@ -35,7 +35,7 @@ import {
   buildProjectNameByCwd,
   buildScheduleProjectTargets,
 } from "@/schedules/schedule-project-targets";
-import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
 type FormState =
   | { mode: "closed" }

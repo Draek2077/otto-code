@@ -57,7 +57,7 @@ describe("selectActiveGitWorkspaceProject", () => {
 });
 
 describe("shouldShowWorktreeSetupCallout", () => {
-  it("shows the callout when paseo config was read and setup commands are missing", () => {
+  it("shows the callout when otto config was read and setup commands are missing", () => {
     expect(shouldShowWorktreeSetupCallout({ ok: true, config: {} })).toBe(true);
     expect(shouldShowWorktreeSetupCallout({ ok: true, config: null })).toBe(true);
   });
@@ -74,7 +74,7 @@ describe("shouldShowWorktreeSetupCallout", () => {
     ).toBe(false);
   });
 
-  it("does not show the callout when reading paseo config fails or has not completed", () => {
+  it("does not show the callout when reading otto config fails or has not completed", () => {
     expect(shouldShowWorktreeSetupCallout(undefined)).toBe(false);
     expect(shouldShowWorktreeSetupCallout({ ok: false })).toBe(false);
   });

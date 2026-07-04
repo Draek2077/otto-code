@@ -8,7 +8,7 @@ import { createTestAgentClients } from "../../test-utils/fake-agent-client.js";
 import { createProviderSnapshotManagerStub } from "../../test-utils/session-stubs.js";
 import { AgentManager } from "../agent-manager.js";
 import { AgentStorage } from "../agent-storage.js";
-import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
+import type { CreateOttoWorktreeWorkflowResult } from "../../worktree-session.js";
 import { createAgentCommand } from "./create.js";
 import type { ManagedAgent } from "../agent-manager.js";
 
@@ -28,7 +28,7 @@ function createRealAgentManager(storage: AgentStorage): AgentManager {
 function fakeWorktreeCreator(args: { repoRoot: string; createdWorkspaceId: string }) {
   const worktreePath = join(args.repoRoot, "worktree");
   mkdirSync(worktreePath, { recursive: true });
-  return async (): Promise<CreatePaseoWorktreeWorkflowResult> =>
+  return async (): Promise<CreateOttoWorktreeWorkflowResult> =>
     ({
       worktree: { worktreePath },
       intent: {},
@@ -36,14 +36,14 @@ function fakeWorktreeCreator(args: { repoRoot: string; createdWorkspaceId: strin
       repoRoot: args.repoRoot,
       created: true,
       setupContinuation: { kind: "agent" as const, startAfterAgentCreate: () => {} },
-    }) as unknown as CreatePaseoWorktreeWorkflowResult;
+    }) as unknown as CreateOttoWorktreeWorkflowResult;
 }
 
 test("session create forwards clientMessageId to the initial prompt run options", async () => {
   const snapshot = {
     id: "agent-1",
     provider: "codex",
-    cwd: "/tmp/paseo-create-test",
+    cwd: "/tmp/otto-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
   const streamAgent = vi.fn(() => (async function* noop() {})());
@@ -65,7 +65,7 @@ test("session create forwards clientMessageId to the initial prompt run options"
 
   await createAgentCommand(dependencies, {
     kind: "session",
-    config: { provider: "codex", cwd: "/tmp/paseo-create-test" },
+    config: { provider: "codex", cwd: "/tmp/otto-create-test" },
     initialPrompt: "hello from create",
     clientMessageId: "msg-create-1",
     labels: {},
@@ -171,7 +171,7 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
         agentStorage: storage,
         logger,
         providerSnapshotManager,
-        createPaseoWorktree: fakeWorktreeCreator({
+        createOttoWorktree: fakeWorktreeCreator({
           repoRoot: workdir,
           createdWorkspaceId: "ws-new-worktree",
         }),

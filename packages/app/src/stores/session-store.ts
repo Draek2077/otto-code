@@ -1,7 +1,7 @@
 import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendOptimisticUserMessageToStream,
@@ -11,7 +11,7 @@ import {
 } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
 import type { ComposerAttachment } from "@/attachments/types";
-import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type {
   AgentPermissionRequest,
   AgentFeature,
@@ -20,14 +20,14 @@ import type {
   AgentCapabilityFlags,
   AgentUsage,
   AgentPersistenceHandle,
-} from "@getpaseo/protocol/agent-types";
+} from "@otto-code/protocol/agent-types";
 import type {
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,

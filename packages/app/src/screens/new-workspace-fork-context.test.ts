@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import type { AgentAttachment } from "@otto-code/protocol/messages";
 import {
   getWorkspaceNamingAttachments,
   remapDraftCwdToWorkspace,
@@ -41,7 +41,7 @@ describe("getWorkspaceNamingAttachments", () => {
       mimeType: "application/github-pr",
       number: 1788,
       title: "Fork assistant turns into new drafts",
-      url: "https://github.com/getpaseo/paseo/pull/1788",
+      url: "https://github.com/otto-code-ai/otto-code/pull/1788",
     } satisfies AgentAttachment;
 
     expect(getWorkspaceNamingAttachments([chatHistory, prContext])).toEqual([prContext]);

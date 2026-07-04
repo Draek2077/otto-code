@@ -1,5 +1,5 @@
-import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
-import { validateCronExpression } from "@getpaseo/protocol/schedule/cron-expression";
+import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
+import { validateCronExpression } from "@otto-code/protocol/schedule/cron-expression";
 
 export type IntervalUnit = "minutes" | "hours" | "days";
 

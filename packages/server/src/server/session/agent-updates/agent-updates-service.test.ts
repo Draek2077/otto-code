@@ -75,7 +75,7 @@ function makeProject(overrides?: Partial<ProjectPlacementPayload>): ProjectPlace
       currentBranch: null,
       remoteUrl: null,
       worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
+      isOttoOwnedWorktree: false,
       mainRepoRoot: null,
     },
     ...overrides,

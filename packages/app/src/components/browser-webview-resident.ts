@@ -1,5 +1,5 @@
-const RESIDENT_BROWSER_HOST_ID = "paseo-browser-resident-webviews";
-const BROWSER_ID_ATTRIBUTE = "data-paseo-browser-id";
+const RESIDENT_BROWSER_HOST_ID = "otto-browser-resident-webviews";
+const BROWSER_ID_ATTRIBUTE = "data-otto-browser-id";
 const RESIDENT_VIEWPORT_WIDTH = 1280;
 const RESIDENT_VIEWPORT_HEIGHT = 800;
 
@@ -107,7 +107,7 @@ export function prepareBrowserWebview(
   input: { browserId: string; initialUrl?: string | null },
 ): void {
   webview.setAttribute(BROWSER_ID_ATTRIBUTE, input.browserId);
-  webview.setAttribute("partition", `persist:paseo-browser-${input.browserId}`);
+  webview.setAttribute("partition", `persist:otto-browser-${input.browserId}`);
   webview.setAttribute("allowpopups", "true");
   webview.setAttribute("spellcheck", "false");
   webview.setAttribute("autosize", "on");

@@ -44,7 +44,7 @@ import {
   DEV_AGENT_PROVIDER_DEFINITIONS,
   getAgentProviderDefinition,
   type AgentProviderDefinition,
-} from "@getpaseo/protocol/provider-manifest";
+} from "@otto-code/protocol/provider-manifest";
 
 function isNonEmptyStringArray(value: string[]): value is [string, ...string[]] {
   return value.length > 0;

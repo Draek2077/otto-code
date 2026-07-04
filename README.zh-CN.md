@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="packages/website/public/logo.svg" width="64" height="64" alt="Paseo logo">
+  <img src="packages/website/public/logo.svg" width="64" height="64" alt="Otto logo">
 </p>
 
-<h1 align="center">Paseo</h1>
+<h1 align="center">Otto</h1>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -11,11 +11,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/getpaseo/paseo/stargazers">
-    <img src="https://img.shields.io/github/stars/getpaseo/paseo?style=flat&logo=github" alt="GitHub stars">
+  <a href="https://github.com/otto-code-ai/otto-code/stargazers">
+    <img src="https://img.shields.io/github/stars/otto-code-ai/otto-code?style=flat&logo=github" alt="GitHub stars">
   </a>
-  <a href="https://github.com/getpaseo/paseo/releases">
-    <img src="https://img.shields.io/github/v/release/getpaseo/paseo?style=flat&logo=github" alt="GitHub release">
+  <a href="https://github.com/otto-code-ai/otto-code/releases">
+    <img src="https://img.shields.io/github/v/release/otto-code-ai/otto-code?style=flat&logo=github" alt="GitHub release">
   </a>
   <a href="https://x.com/moboudra">
     <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
@@ -23,7 +23,7 @@
   <a href="https://discord.gg/jz8T2uahpH">
     <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
   </a>
-  <a href="https://www.reddit.com/r/PaseoAI/">
+  <a href="https://www.reddit.com/r/OttoAI/">
     <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
   </a>
 </p>
@@ -31,11 +31,11 @@
 <p align="center">Claude Code、Codex、Copilot、OpenCode 和 Pi agents 的统一界面。</p>
 
 <p align="center">
-  <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
+  <img src="https://otto-code.ai/hero-mockup.png" alt="Otto app screenshot" width="100%">
 </p>
 
 <p align="center">
-  <img src="https://paseo.sh/mobile-mockup.png" alt="Paseo mobile app" width="100%">
+  <img src="https://otto-code.ai/mobile-mockup.png" alt="Otto mobile app" width="100%">
 </p>
 
 > [!NOTE]
@@ -50,11 +50,11 @@
 - **多提供商：** 通过同一个界面使用 Claude Code、Codex、Copilot、OpenCode 和 Pi。为每个任务选择合适的模型。
 - **语音控制：** 在语音模式下口述任务或讨论问题。需要免手操作时很方便。
 - **跨设备：** 支持 iOS、Android、桌面端、Web 和 CLI。在桌前开始工作，用手机查看进度，也可以从终端脚本化操作。
-- **隐私优先：** Paseo 没有遥测、追踪，也不会强制登录。
+- **隐私优先：** Otto 没有遥测、追踪，也不会强制登录。
 
 ## 快速开始
 
-Paseo 会运行一个名为 daemon 的本地服务，用来管理你的 coding agents。桌面 app、移动 app、Web app 和 CLI 等客户端都会连接到它。
+Otto 会运行一个名为 daemon 的本地服务，用来管理你的 coding agents。桌面 app、移动 app、Web app 和 CLI 等客户端都会连接到它。
 
 ### 前置条件
 
@@ -68,69 +68,69 @@ Paseo 会运行一个名为 daemon 的本地服务，用来管理你的 coding a
 
 ### 桌面 app（推荐）
 
-从 [paseo.sh/download](https://paseo.sh/download) 或 [GitHub releases 页面](https://github.com/getpaseo/paseo/releases)下载。打开 app 后 daemon 会自动启动，不需要再安装其他东西。
+从 [otto-code.ai/download](https://otto-code.ai/download) 或 [GitHub releases 页面](https://github.com/otto-code-ai/otto-code/releases)下载。打开 app 后 daemon 会自动启动，不需要再安装其他东西。
 
 如果要从手机连接，在 Settings 中扫描显示的二维码。
 
 ### CLI / 无头模式
 
-安装 CLI 并启动 Paseo：
+安装 CLI 并启动 Otto：
 
 ```bash
-npm install -g @getpaseo/cli
-paseo
+npm install -g @otto-code/cli
+otto
 ```
 
 终端中会显示一个二维码。你可以从任意客户端连接。这个方式适合服务器和远程机器。
 
 完整安装和配置见：
 
-- [文档](https://paseo.sh/docs)
-- [配置参考](https://paseo.sh/docs/configuration)
+- [文档](https://otto-code.ai/docs)
+- [配置参考](https://otto-code.ai/docs/configuration)
 
 ## CLI
 
 你能在 app 中完成的事情，也都可以在终端中完成。
 
 ```bash
-paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
+otto run --provider claude/opus-4.6 "implement user authentication"
+otto run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
 
-paseo ls                           # 列出正在运行的 agents
-paseo attach abc123                # 实时流式查看输出
-paseo send abc123 "also add tests" # 发送后续任务
+otto ls                           # 列出正在运行的 agents
+otto attach abc123                # 实时流式查看输出
+otto send abc123 "also add tests" # 发送后续任务
 
 # 在远程 daemon 上运行
-paseo --host workstation.local:6767 run "run the full test suite"
+otto --host workstation.local:6868 run "run the full test suite"
 ```
 
-更多内容见[完整 CLI 参考](https://paseo.sh/docs/cli)。
+更多内容见[完整 CLI 参考](https://otto-code.ai/docs/cli)。
 
 ## Skills
 
-Skills 会教你的 agent 使用 Paseo 来编排其他 agents。
+Skills 会教你的 agent 使用 Otto 来编排其他 agents。
 
 ```bash
-npx skills add getpaseo/paseo
+npx skills add otto-code-ai/otto-code
 ```
 
 然后在任意 agent 对话中使用：
 
-- `/paseo-handoff` — 在 agents 之间交接工作。我会用它先和 Claude 规划，再交给 Codex 实现。
-- `/paseo-loop` — 让 agent 按明确验收标准循环工作（也叫 Ralph loops），也可以加 verifier。
-- `/paseo-advisor` — 启动单个 agent 作为 advisor，提供第二意见，但不把工作委托出去。
-- `/paseo-committee` — 组建两个风格互补的 agents，让它们后退一步做根因分析并产出计划。
+- `/otto-handoff` — 在 agents 之间交接工作。我会用它先和 Claude 规划，再交给 Codex 实现。
+- `/otto-loop` — 让 agent 按明确验收标准循环工作（也叫 Ralph loops），也可以加 verifier。
+- `/otto-advisor` — 启动单个 agent 作为 advisor，提供第二意见，但不把工作委托出去。
+- `/otto-committee` — 组建两个风格互补的 agents，让它们后退一步做根因分析并产出计划。
 
 ## 开发
 
 Monorepo 包结构速览：
 
-- `packages/server`：Paseo daemon（agent 进程编排、WebSocket API、MCP server）
+- `packages/server`：Otto daemon（agent 进程编排、WebSocket API、MCP server）
 - `packages/app`：Expo 客户端（iOS、Android、Web）
-- `packages/cli`：用于 daemon 和 agent 工作流的 `paseo` CLI
+- `packages/cli`：用于 daemon 和 agent 工作流的 `otto` CLI
 - `packages/desktop`：Electron 桌面 app
 - `packages/relay`：用于远程连接的 relay 包
-- `packages/website`：营销站点和文档（`paseo.sh`）
+- `packages/website`：营销站点和文档（`otto-code.ai`）
 
 常用命令：
 
@@ -153,18 +153,18 @@ npm run typecheck
 
 ## 社区
 
-- [paseo-relay](https://github.com/zenghongtu/paseo-relay) — Go 实现的自托管 relay
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code 扩展
+- [otto-relay](https://github.com/zenghongtu/otto-relay) — Go 实现的自托管 relay
+- [otto-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.otto-vscode) — VS Code 扩展
 
 ### 自托管 relay TLS
 
 自托管 relay 默认使用 `ws://`，除非显式启用 TLS。对于 nginx 后面、监听 443 的 relay，可以这样启动 daemon：
 
 ```bash
-PASEO_RELAY_ENDPOINT=127.0.0.1:8080 \
-PASEO_RELAY_PUBLIC_ENDPOINT=relay.example.com:443 \
-PASEO_RELAY_USE_TLS=true \
-paseo daemon start
+OTTO_RELAY_ENDPOINT=127.0.0.1:8080 \
+OTTO_RELAY_PUBLIC_ENDPOINT=relay.example.com:443 \
+OTTO_RELAY_USE_TLS=true \
+otto daemon start
 ```
 
 等价配置：
@@ -205,11 +205,11 @@ server {
 ---
 
 <p align="center">
-  <a href="https://star-history.com/#getpaseo/paseo&Date">
+  <a href="https://star-history.com/#otto-code-ai/otto-code&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date&theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date">
-      <img src="https://api.star-history.com/svg?repos=getpaseo/paseo&type=Date" alt="Star history chart for getpaseo/paseo" width="600" style="max-width: 100%;">
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date&theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date">
+      <img src="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date" alt="Star history chart for otto-code-ai/otto-code" width="600" style="max-width: 100%;">
     </picture>
   </a>
 </p>

@@ -7,12 +7,12 @@ export function getLocalBinDir(): string {
 }
 
 export function getCliTargetPath(): string {
-  const filename = process.platform === "win32" ? "paseo.cmd" : "paseo";
+  const filename = process.platform === "win32" ? "otto.cmd" : "otto";
   return path.join(getLocalBinDir(), filename);
 }
 
 export function getBundledCliShimPath(): string {
-  const cliShimFilename = process.platform === "win32" ? "paseo.cmd" : "paseo";
+  const cliShimFilename = process.platform === "win32" ? "otto.cmd" : "otto";
 
   if (process.platform === "darwin") {
     const electronExePath = app.getPath("exe");

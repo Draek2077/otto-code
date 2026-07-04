@@ -8,7 +8,7 @@ import {
   encodeFileTransferFrame,
   FileTransferOpcode,
   type FileTransferFrame,
-} from "@getpaseo/protocol/binary-frames/index";
+} from "@otto-code/protocol/binary-frames/index";
 import { FileUploadStore } from "./index.js";
 
 const tempDirs: string[] = [];
@@ -22,8 +22,8 @@ describe("file uploads", () => {
   });
 
   it("stores chunked upload bytes and returns an uploaded-file attachment", async () => {
-    const paseoHome = makePaseoHome();
-    const uploads = new FileUploadStore({ paseoHome });
+    const ottoHome = makeOttoHome();
+    const uploads = new FileUploadStore({ ottoHome });
 
     uploads.beginUpload({
       type: "file.upload.request",
@@ -37,7 +37,7 @@ describe("file uploads", () => {
     await expect(uploads.receiveFrame(uploadChunk("req-upload", "hello"))).resolves.toBeNull();
     await expect(uploads.receiveFrame(uploadChunk("req-upload", " world"))).resolves.toBeNull();
 
-    const path = join(paseoHome, "uploads", "upload_req-upload", "notes.txt");
+    const path = join(ottoHome, "uploads", "upload_req-upload", "notes.txt");
     await expect(uploads.receiveFrame(uploadEnds("req-upload"))).resolves.toEqual({
       type: "file.upload.response",
       payload: {
@@ -57,8 +57,8 @@ describe("file uploads", () => {
   });
 
   it("rejects chunks beyond the declared size and removes the partial file", async () => {
-    const paseoHome = makePaseoHome();
-    const uploads = new FileUploadStore({ paseoHome });
+    const ottoHome = makeOttoHome();
+    const uploads = new FileUploadStore({ ottoHome });
 
     uploads.beginUpload({
       type: "file.upload.request",
@@ -70,7 +70,7 @@ describe("file uploads", () => {
     });
     await expect(uploads.receiveFrame(uploadBegins("req-overflow"))).resolves.toBeNull();
 
-    const uploadDir = join(paseoHome, "uploads", "upload_req-overflow");
+    const uploadDir = join(ottoHome, "uploads", "upload_req-overflow");
     const path = join(uploadDir, "notes.txt");
     await expect(uploads.receiveFrame(uploadChunk("req-overflow", "hello!"))).resolves.toEqual({
       type: "file.upload.response",
@@ -85,8 +85,8 @@ describe("file uploads", () => {
   });
 
   it("preserves chunk order when frames arrive before earlier disk writes finish", async () => {
-    const paseoHome = makePaseoHome();
-    const uploads = new FileUploadStore({ paseoHome });
+    const ottoHome = makeOttoHome();
+    const uploads = new FileUploadStore({ ottoHome });
 
     uploads.beginUpload({
       type: "file.upload.request",
@@ -106,7 +106,7 @@ describe("file uploads", () => {
 
     expect(results.slice(0, 3)).toEqual([null, null, null]);
     expect(results[3]?.payload.error).toBeNull();
-    expect(readFileSync(join(paseoHome, "uploads", "upload_req-queued", "notes.txt"), "utf8")).toBe(
+    expect(readFileSync(join(ottoHome, "uploads", "upload_req-queued", "notes.txt"), "utf8")).toBe(
       "hello world",
     );
   });
@@ -114,8 +114,8 @@ describe("file uploads", () => {
   it("replaces duplicate upload starts without letting the old stale timeout evict the replacement", async () => {
     vi.useFakeTimers();
 
-    const paseoHome = makePaseoHome();
-    const uploads = new FileUploadStore({ paseoHome, staleUploadTimeoutMs: 50 });
+    const ottoHome = makeOttoHome();
+    const uploads = new FileUploadStore({ ottoHome, staleUploadTimeoutMs: 50 });
 
     uploads.beginUpload({
       type: "file.upload.request",
@@ -139,7 +139,7 @@ describe("file uploads", () => {
     });
     await vi.advanceTimersByTimeAsync(30);
 
-    const path = join(paseoHome, "uploads", "upload_req-duplicate_2", "new.txt");
+    const path = join(ottoHome, "uploads", "upload_req-duplicate_2", "new.txt");
     await expect(uploads.receiveFrame(uploadBegins("req-duplicate"))).resolves.toBeNull();
     await expect(uploads.receiveFrame(uploadChunk("req-duplicate", "new"))).resolves.toBeNull();
     await expect(uploads.receiveFrame(uploadEnds("req-duplicate"))).resolves.toEqual({
@@ -163,8 +163,8 @@ describe("file uploads", () => {
   it("keeps an active upload alive beyond the initial stale timeout", async () => {
     vi.useFakeTimers();
 
-    const paseoHome = makePaseoHome();
-    const uploads = new FileUploadStore({ paseoHome, staleUploadTimeoutMs: 50 });
+    const ottoHome = makeOttoHome();
+    const uploads = new FileUploadStore({ ottoHome, staleUploadTimeoutMs: 50 });
 
     uploads.beginUpload({
       type: "file.upload.request",
@@ -184,7 +184,7 @@ describe("file uploads", () => {
       uploads.receiveFrame(uploadChunk("req-slow-active", " world")),
     ).resolves.toBeNull();
 
-    const path = join(paseoHome, "uploads", "upload_req-slow-active", "notes.txt");
+    const path = join(ottoHome, "uploads", "upload_req-slow-active", "notes.txt");
     await expect(uploads.receiveFrame(uploadEnds("req-slow-active"))).resolves.toEqual({
       type: "file.upload.response",
       payload: {
@@ -204,7 +204,7 @@ describe("file uploads", () => {
   });
 });
 
-function makePaseoHome(): string {
+function makeOttoHome(): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "file-upload-test-")));
   tempDirs.push(root);
   return root;

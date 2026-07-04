@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import type { AgentStreamEventPayload, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { AgentStreamEventPayload, SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/voice/audio-engine-types";
@@ -9,7 +9,7 @@ import {
 } from "@/utils/thinking-tone.native-pcm";
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
-const KEEP_AWAKE_TAG = "paseo:voice";
+const KEEP_AWAKE_TAG = "otto:voice";
 const THINKING_TONE_REPEAT_GAP_MS = 350;
 const DISPLAY_VOLUME_PUBLISH_INTERVAL_MS = 120;
 const DISPLAY_VOLUME_CHANGE_EPSILON = 0.02;

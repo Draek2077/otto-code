@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
-import { createPaseoToolCatalog } from "./tools/paseo-tools.js";
+import { createOttoToolCatalog } from "./tools/otto-tools.js";
 import { AgentManager, type ManagedAgent } from "./agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
@@ -22,7 +22,7 @@ import {
   AgentListItemPayloadSchema,
   AgentPermissionRequestPayloadSchema,
   AgentSnapshotPayloadSchema,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 import {
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
@@ -32,18 +32,18 @@ import type {
   CreateScheduleInput,
   StoredSchedule,
   UpdateScheduleInput,
-} from "@getpaseo/protocol/schedule/types";
+} from "@otto-code/protocol/schedule/types";
 import type { ScheduleService } from "../schedule/service.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
 import {
-  createPaseoWorktree as createPaseoWorktreeService,
-  type CreatePaseoWorktreeInput,
-} from "../paseo-worktree-service.js";
-import type { CreatePaseoWorktreeWorkflowFn } from "../worktree-session.js";
+  createOttoWorktree as createOttoWorktreeService,
+  type CreateOttoWorktreeInput,
+} from "../otto-worktree-service.js";
+import type { CreateOttoWorktreeWorkflowFn } from "../worktree-session.js";
 import { WorkspaceGitServiceImpl } from "../workspace-git-service.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
 import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
 
@@ -304,7 +304,7 @@ function configureOpenCodeProviderStub(
   const opencodeModes: AgentMode[] = [
     { id: "build", label: "Build", description: "Can edit" },
     { id: "plan", label: "Plan", description: "Read-only" },
-    { id: "paseo-custom", label: "Paseo Custom", description: "Custom OpenCode agent" },
+    { id: "otto-custom", label: "Otto Custom", description: "Custom OpenCode agent" },
   ];
   const entries: ProviderSnapshotEntry[] = [
     buildSnapshotEntry({
@@ -331,7 +331,7 @@ function configureOpenCodeProviderStub(
   ];
   const customOpenCodeModes: AgentMode[] = [
     ...opencodeModes,
-    { id: "paseo-custom", label: "Paseo Custom" },
+    { id: "otto-custom", label: "Otto Custom" },
   ];
   if (options.customOpenCodeProvider) {
     entries.push(
@@ -568,7 +568,7 @@ class BoundaryProviderSnapshotManagerFake {
 }
 
 async function connectInMemoryMcpClient(server: Awaited<ReturnType<typeof createAgentMcpServer>>) {
-  const client = new Client({ name: "paseo-test-client", version: "0.0.0" });
+  const client = new Client({ name: "otto-test-client", version: "0.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
@@ -612,25 +612,25 @@ function createArchiveWorkspaceRecordMutator(
   };
 }
 
-function createPaseoWorktreeForMcpTest(options: {
-  paseoHome: string;
+function createOttoWorktreeForMcpTest(options: {
+  ottoHome: string;
   broadcasts: string[];
   createdWorkspaceIds?: string[];
   setupContinuations?: Array<"workspace" | "agent" | undefined>;
   startedAgentSetupIds?: string[];
-}): CreatePaseoWorktreeWorkflowFn {
+}): CreateOttoWorktreeWorkflowFn {
   const projects = new Map<string, PersistedProjectRecord>();
   const workspaces = new Map<string, PersistedWorkspaceRecord>();
   const github = createGitHubServiceStub();
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger: createTestLogger(),
-    paseoHome: options.paseoHome,
+    ottoHome: options.ottoHome,
     deps: { github },
   });
 
   return async (input, serviceOptions) => {
     options.setupContinuations?.push(serviceOptions?.setupContinuation?.kind);
-    const result = await createPaseoWorktreeService(input, {
+    const result = await createOttoWorktreeService(input, {
       github,
       ...(serviceOptions?.resolveDefaultBranch
         ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
@@ -721,7 +721,7 @@ describe("browser MCP tools", () => {
 
       const listedTools = await client.listTools();
       const toolsByName = new Map(listedTools.tools.map((tool) => [tool.name, tool]));
-      const catalog = createPaseoToolCatalog(serverOptions);
+      const catalog = createOttoToolCatalog(serverOptions);
 
       for (const tool of catalog.tools.values()) {
         if (tool.outputSchema !== undefined) {
@@ -889,7 +889,7 @@ describe("browser MCP tools", () => {
     expect(response.content).toEqual([
       {
         type: "text",
-        text: "No Paseo browser tabs are open. Call browser_new_tab to create one.",
+        text: "No Otto browser tabs are open. Call browser_new_tab to create one.",
       },
     ]);
     expect(response.structuredContent).toEqual({
@@ -923,7 +923,7 @@ describe("browser MCP tools", () => {
     expect(response.content).toEqual([
       {
         type: "text",
-        text: "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+        text: "This browser tool needs a workspace. Start the agent from a Otto workspace before calling browser_new_tab or browser_list_tabs.",
       },
     ]);
     expect(response.structuredContent).toEqual({
@@ -931,7 +931,7 @@ describe("browser MCP tools", () => {
       error: {
         code: "browser_denied",
         message:
-          "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+          "This browser tool needs a workspace. Start the agent from a Otto workspace before calling browser_new_tab or browser_list_tabs.",
         retryable: false,
       },
       context: { agentId: "agent-1", cwd: REPO_CWD },
@@ -1545,9 +1545,9 @@ describe("create_agent MCP tool", () => {
 
   it("registers and broadcasts a workspace when create_agent creates a worktree", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-worktree-"));
+    const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-worktree-"));
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
     const broadcasts: string[] = [];
     const createdWorkspaceIds: string[] = [];
     const setupContinuations: Array<"workspace" | "agent" | undefined> = [];
@@ -1582,9 +1582,9 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({
-          paseoHome,
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({
+          ottoHome,
           broadcasts,
           createdWorkspaceIds,
           setupContinuations,
@@ -1635,9 +1635,9 @@ describe("create_agent MCP tool", () => {
 
   it("creates a create_agent branch-off worktree without invoking the legacy metadata branch rename", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-agent-worktree-name-context-"));
+    const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-agent-worktree-name-context-"));
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
     const broadcasts: string[] = [];
     const workspaceGitService = {
       getSnapshot: vi.fn(async () => {
@@ -1674,8 +1674,8 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts }),
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({ ottoHome, broadcasts }),
         workspaceGitService: workspaceGitService as unknown as Pick<
           WorkspaceGitService,
           "getSnapshot" | "listWorktrees"
@@ -1713,9 +1713,9 @@ describe("create_agent MCP tool", () => {
 
   it("does not auto-rename a create_agent checkout worktree from the initial prompt", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-agent-checkout-name-context-"));
+    const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-agent-checkout-name-context-"));
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
     const broadcasts: string[] = [];
     const workspaceGitService = {
       getSnapshot: vi.fn(async () => {
@@ -1760,8 +1760,8 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts }),
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({ ottoHome, broadcasts }),
         workspaceGitService: workspaceGitService as unknown as Pick<
           WorkspaceGitService,
           "getSnapshot" | "listWorktrees"
@@ -1797,10 +1797,10 @@ describe("create_agent MCP tool", () => {
   it("passes create_agent GitHub PR worktrees through workspace creation without metadata branch rename", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     const startedAgentSetupIds: string[] = [];
-    const createPaseoWorktree = vi.fn(
+    const createOttoWorktree = vi.fn(
       async (
-        input: CreatePaseoWorktreeInput,
-        options?: Parameters<CreatePaseoWorktreeWorkflowFn>[1],
+        input: CreateOttoWorktreeInput,
+        options?: Parameters<CreateOttoWorktreeWorkflowFn>[1],
       ) => ({
         worktree: {
           branchName: "pr-123",
@@ -1854,7 +1854,7 @@ describe("create_agent MCP tool", () => {
       agentManager,
       agentStorage,
       providerSnapshotManager: createOpenCodeManager().manager,
-      createPaseoWorktree,
+      createOttoWorktree,
       workspaceGitService: workspaceGitService as unknown as Pick<
         WorkspaceGitService,
         "getSnapshot" | "listWorktrees"
@@ -1873,7 +1873,7 @@ describe("create_agent MCP tool", () => {
       background: true,
     });
 
-    expect(createPaseoWorktree).toHaveBeenCalledWith(
+    expect(createOttoWorktree).toHaveBeenCalledWith(
       expect.objectContaining({
         githubPrNumber: 123,
         firstAgentContext: { prompt: "Rename this PR branch from prompt" },
@@ -1894,9 +1894,9 @@ describe("create_agent MCP tool", () => {
 
   it("registers and broadcasts a workspace when create_worktree creates a worktree", async () => {
     const { agentManager, agentStorage } = createTestDeps();
-    const tempDir = await mkdtemp(join(tmpdir(), "paseo-mcp-create-worktree-"));
+    const tempDir = await mkdtemp(join(tmpdir(), "otto-mcp-create-worktree-"));
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
     const broadcasts: string[] = [];
     const setupContinuations: Array<"workspace" | "agent" | undefined> = [];
 
@@ -1925,9 +1925,9 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({
-          paseoHome,
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({
+          ottoHome,
           broadcasts,
           setupContinuations,
         }),
@@ -1967,10 +1967,10 @@ describe("create_agent MCP tool", () => {
   it("forces a workspace git snapshot refresh when archive_worktree deletes a worktree", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const tempDir = realpathSync.native(
-      await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-")),
+      await mkdtemp(join(tmpdir(), "otto-mcp-archive-worktree-")),
     );
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
 
     try {
       execFileSync("git", ["init", repoDir], { stdio: "pipe" });
@@ -2002,8 +2002,8 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts: [] }),
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({ ottoHome, broadcasts: [] }),
         workspaceGitService: workspaceGitService as unknown as Pick<
           WorkspaceGitService,
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
@@ -2063,10 +2063,10 @@ describe("create_agent MCP tool", () => {
   it("archives every workspace on a directory and removes the directory", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const tempDir = realpathSync.native(
-      await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-multi-")),
+      await mkdtemp(join(tmpdir(), "otto-mcp-archive-worktree-multi-")),
     );
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
 
     try {
       execFileSync("git", ["init", repoDir], { stdio: "pipe" });
@@ -2104,8 +2104,8 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts: [] }),
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({ ottoHome, broadcasts: [] }),
         workspaceGitService: workspaceGitService as unknown as Pick<
           WorkspaceGitService,
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
@@ -2150,10 +2150,10 @@ describe("create_agent MCP tool", () => {
   it("archives a worktree by slug", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const tempDir = realpathSync.native(
-      await mkdtemp(join(tmpdir(), "paseo-mcp-archive-worktree-slug-")),
+      await mkdtemp(join(tmpdir(), "otto-mcp-archive-worktree-slug-")),
     );
     const repoDir = join(tempDir, "repo");
-    const paseoHome = join(tempDir, ".paseo");
+    const ottoHome = join(tempDir, ".otto");
 
     try {
       execFileSync("git", ["init", repoDir], { stdio: "pipe" });
@@ -2180,8 +2180,8 @@ describe("create_agent MCP tool", () => {
         agentManager,
         agentStorage,
         providerSnapshotManager: createOpenCodeManager().manager,
-        paseoHome,
-        createPaseoWorktree: createPaseoWorktreeForMcpTest({ paseoHome, broadcasts: [] }),
+        ottoHome,
+        createOttoWorktree: createOttoWorktreeForMcpTest({ ottoHome, broadcasts: [] }),
         workspaceGitService: workspaceGitService as unknown as Pick<
           WorkspaceGitService,
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
@@ -2231,7 +2231,7 @@ describe("create_agent MCP tool", () => {
       getSnapshot: vi.fn(async () => null),
       listWorktrees: vi.fn(async () => [
         {
-          path: "/tmp/paseo/worktrees/repo/feature",
+          path: "/tmp/otto/worktrees/repo/feature",
           branchName: "feature",
           createdAt: "2026-04-12T00:00:00.000Z",
         },
@@ -2256,7 +2256,7 @@ describe("create_agent MCP tool", () => {
     });
     expect(response.structuredContent.worktrees).toEqual([
       {
-        path: "/tmp/paseo/worktrees/repo/feature",
+        path: "/tmp/otto/worktrees/repo/feature",
         branchName: "feature",
         createdAt: "2026-04-12T00:00:00.000Z",
       },
@@ -2286,7 +2286,7 @@ describe("create_agent MCP tool", () => {
 
   it("allows caller agents to override cwd and applies caller context labels", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const baseDir = await mkdtemp(join(tmpdir(), "paseo-mcp-test-"));
+    const baseDir = await mkdtemp(join(tmpdir(), "otto-mcp-test-"));
     const subdir = join(baseDir, "subdir");
     await mkdir(subdir, { recursive: true });
     spies.agentManager.getAgent.mockReturnValue({

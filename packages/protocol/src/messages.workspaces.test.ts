@@ -374,9 +374,9 @@ describe("workspace message schemas", () => {
           scripts: [
             {
               scriptName: "web",
-              hostname: "web.paseo.localhost",
+              hostname: "web.otto.localhost",
               port: 3000,
-              proxyUrl: "http://web.paseo.localhost:6767",
+              proxyUrl: "http://web.otto.localhost:6868",
               lifecycle: "running",
               health: "healthy",
             },
@@ -393,9 +393,9 @@ describe("workspace message schemas", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.paseo.localhost",
+        hostname: "web.otto.localhost",
         port: 3000,
-        proxyUrl: "http://web.paseo.localhost:6767",
+        proxyUrl: "http://web.otto.localhost:6868",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -560,7 +560,7 @@ describe("workspace message schemas", () => {
         scripts: [
           {
             scriptName: "web",
-            hostname: "web.paseo.localhost",
+            hostname: "web.otto.localhost",
             port: null,
             proxyUrl: null,
             lifecycle: "stopped",
@@ -584,14 +584,14 @@ describe("workspace message schemas", () => {
       type: "service",
       hostname: "web--repo.localhost",
       port: 3000,
-      proxyUrl: "http://web--repo.localhost:6767",
+      proxyUrl: "http://web--repo.localhost:6868",
       lifecycle: "running",
       health: "healthy",
     });
 
     expect(parsed.localProxyUrl).toBeUndefined();
     expect(parsed.publicProxyUrl).toBeUndefined();
-    expect(parsed.proxyUrl).toBe("http://web--repo.localhost:6767");
+    expect(parsed.proxyUrl).toBe("http://web--repo.localhost:6868");
   });
 
   test("parses workspace service payloads with split local and public proxy URLs", () => {
@@ -600,14 +600,14 @@ describe("workspace message schemas", () => {
       type: "service",
       hostname: "web--repo.localhost",
       port: 3000,
-      localProxyUrl: "http://web--repo.localhost:6767",
+      localProxyUrl: "http://web--repo.localhost:6868",
       publicProxyUrl: "https://web--repo.services.example.com",
       proxyUrl: "https://web--repo.services.example.com",
       lifecycle: "running",
       health: "healthy",
     });
 
-    expect(parsed.localProxyUrl).toBe("http://web--repo.localhost:6767");
+    expect(parsed.localProxyUrl).toBe("http://web--repo.localhost:6868");
     expect(parsed.publicProxyUrl).toBe("https://web--repo.services.example.com");
     expect(parsed.proxyUrl).toBe("https://web--repo.services.example.com");
   });
@@ -633,14 +633,14 @@ describe("workspace message schemas", () => {
         status: "completed",
         detail: {
           type: "worktree_setup",
-          worktreePath: "/repo/.paseo/worktrees/feature-a",
+          worktreePath: "/repo/.otto/worktrees/feature-a",
           branchName: "feature-a",
           log: "done",
           commands: [
             {
               index: 1,
               command: "npm install",
-              cwd: "/repo/.paseo/worktrees/feature-a",
+              cwd: "/repo/.otto/worktrees/feature-a",
               log: "done",
               status: "completed",
               exitCode: 0,
@@ -675,7 +675,7 @@ describe("workspace message schemas", () => {
           status: "completed",
           detail: {
             type: "worktree_setup",
-            worktreePath: "/repo/.paseo/worktrees/feature-a",
+            worktreePath: "/repo/.otto/worktrees/feature-a",
             branchName: "feature-a",
             log: "done",
             commands: [],
@@ -712,7 +712,7 @@ describe("workspace message schemas", () => {
             gitRuntime: {
               currentBranch: "main",
               remoteUrl: "https://github.com/acme/repo.git",
-              isPaseoOwnedWorktree: false,
+              isOttoOwnedWorktree: false,
               isDirty: true,
               aheadBehind: {
                 ahead: 2,
@@ -773,7 +773,7 @@ describe("workspace message schemas", () => {
             gitRuntime: {
               currentBranch: "main",
               remoteUrl: "https://github.com/acme/repo.git",
-              isPaseoOwnedWorktree: false,
+              isOttoOwnedWorktree: false,
               isDirty: false,
               aheadBehind: {
                 ahead: 0,
@@ -889,7 +889,7 @@ describe("workspace message schemas", () => {
                 isGit: true,
                 currentBranch: "main",
                 remoteUrl: "https://github.com/acme/repo.git",
-                isPaseoOwnedWorktree: false,
+                isOttoOwnedWorktree: false,
                 mainRepoRoot: null,
               },
             },

@@ -76,17 +76,17 @@ const tick = async (): Promise<void> => {
 
 describe("DictationStreamManager (finish buffer-too-small tolerance)", () => {
   const env = {
-    dictationDebug: process.env.PASEO_DICTATION_DEBUG,
+    dictationDebug: process.env.OTTO_DICTATION_DEBUG,
   };
 
   beforeEach(() => {
     vi.useFakeTimers();
-    process.env.PASEO_DICTATION_DEBUG = "false";
+    process.env.OTTO_DICTATION_DEBUG = "false";
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    process.env.PASEO_DICTATION_DEBUG = env.dictationDebug;
+    process.env.OTTO_DICTATION_DEBUG = env.dictationDebug;
   });
 
   it("treats buffer-too-small as benign and finalizes with existing transcripts", async () => {
@@ -132,7 +132,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
     persisted?: unknown;
   }): string {
     const result = resolveSpeechConfig({
-      paseoHome: "/tmp/paseo-home",
+      ottoHome: "/tmp/otto-home",
       env: params.env ?? ({} as NodeJS.ProcessEnv),
       persisted: PersistedConfigSchema.parse(params.persisted ?? {}),
     });
@@ -163,20 +163,20 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
     expect(sttProvider.lastLanguage).toBe("en");
   });
 
-  it("uses PASEO_DICTATION_LANGUAGE when set", async () => {
+  it("uses OTTO_DICTATION_LANGUAGE when set", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        PASEO_DICTATION_LANGUAGE: "pt",
+        OTTO_DICTATION_LANGUAGE: "pt",
       } as NodeJS.ProcessEnv,
     });
 
     expect(sttProvider.lastLanguage).toBe("pt");
   });
 
-  it("treats empty PASEO_DICTATION_LANGUAGE as unset", async () => {
+  it("treats empty OTTO_DICTATION_LANGUAGE as unset", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        PASEO_DICTATION_LANGUAGE: "  ",
+        OTTO_DICTATION_LANGUAGE: "  ",
       } as NodeJS.ProcessEnv,
     });
 
@@ -202,7 +202,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
   it("uses env dictation language over settings dictation STT language", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        PASEO_DICTATION_LANGUAGE: "pt",
+        OTTO_DICTATION_LANGUAGE: "pt",
       } as NodeJS.ProcessEnv,
       persisted: {
         features: {
@@ -246,8 +246,8 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
   });
 
   it("auto-commits while streaming and assembles final transcript in segment order", async () => {
-    const originalDebug = process.env.PASEO_DICTATION_DEBUG;
-    process.env.PASEO_DICTATION_DEBUG = "false";
+    const originalDebug = process.env.OTTO_DICTATION_DEBUG;
+    process.env.OTTO_DICTATION_DEBUG = "false";
 
     try {
       const session = new FakeRealtimeSession();
@@ -291,9 +291,9 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
       expect((final?.payload as { text?: string } | undefined)?.text).toBe("hello world");
     } finally {
       if (originalDebug === undefined) {
-        delete process.env.PASEO_DICTATION_DEBUG;
+        delete process.env.OTTO_DICTATION_DEBUG;
       } else {
-        process.env.PASEO_DICTATION_DEBUG = originalDebug;
+        process.env.OTTO_DICTATION_DEBUG = originalDebug;
       }
     }
   });
@@ -363,8 +363,8 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
 
   it("drops dangling uncommitted non-final transcripts when finishing after silence tail clear", async () => {
     vi.useFakeTimers();
-    const previousDebug = process.env.PASEO_DICTATION_DEBUG;
-    process.env.PASEO_DICTATION_DEBUG = "false";
+    const previousDebug = process.env.OTTO_DICTATION_DEBUG;
+    process.env.OTTO_DICTATION_DEBUG = "false";
     try {
       const session = new FakeRealtimeSession();
       const emitted: Array<{ type: string; payload: unknown }> = [];
@@ -406,7 +406,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
       expect(error).toBeUndefined();
       expect((final?.payload as { text?: string } | undefined)?.text).toBe("hello");
     } finally {
-      process.env.PASEO_DICTATION_DEBUG = previousDebug;
+      process.env.OTTO_DICTATION_DEBUG = previousDebug;
       vi.useRealTimers();
     }
   });

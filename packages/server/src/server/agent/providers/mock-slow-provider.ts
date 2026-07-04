@@ -33,7 +33,7 @@ export class MockSlowProviderClient implements AgentClient {
   readonly capabilities = CAPABILITIES;
 
   async isAvailable(): Promise<boolean> {
-    return process.env.PASEO_ENABLE_MOCK_SLOW === "true";
+    return process.env.OTTO_ENABLE_MOCK_SLOW === "true";
   }
 
   async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PaseoBrowserWebviewRegistry } from "./registry.js";
+import { OttoBrowserWebviewRegistry } from "./registry.js";
 
-describe("PaseoBrowserWebviewRegistry", () => {
+describe("OttoBrowserWebviewRegistry", () => {
   it("keeps one authoritative webContents target per browserId", () => {
-    const registry = new PaseoBrowserWebviewRegistry();
+    const registry = new OttoBrowserWebviewRegistry();
 
     registry.registerWebContents({ webContentsId: 1, browserId: "browser-a" });
     registry.registerWorkspace({ browserId: "browser-a", workspaceId: "workspace-a" });
@@ -18,7 +18,7 @@ describe("PaseoBrowserWebviewRegistry", () => {
   });
 
   it("ignores stale destroy events after a duplicate browserId moved", () => {
-    const registry = new PaseoBrowserWebviewRegistry();
+    const registry = new OttoBrowserWebviewRegistry();
 
     registry.registerWebContents({ webContentsId: 1, browserId: "browser-a" });
     registry.registerWebContents({ webContentsId: 2, browserId: "browser-a" });

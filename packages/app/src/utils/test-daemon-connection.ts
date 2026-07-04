@@ -1,5 +1,5 @@
-import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { DaemonClientConfig } from "@getpaseo/client/internal/daemon-client";
+import { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClientConfig } from "@otto-code/client/internal/daemon-client";
 import type { HostConnection } from "@/types/host-connection";
 import { getOrCreateClientId } from "./client-id";
 import { resolveAppVersion } from "./app-version";

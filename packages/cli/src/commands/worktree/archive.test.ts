@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { runArchiveCommandWithDeps } from "./archive.js";
 
 function createFakeDaemonClient(
   overrides: Partial<
-    Pick<DaemonClient, "getPaseoWorktreeList" | "archivePaseoWorktree" | "close">
+    Pick<DaemonClient, "getOttoWorktreeList" | "archiveOttoWorktree" | "close">
   > = {},
 ): DaemonClient {
   return {
-    getPaseoWorktreeList: async () => ({
+    getOttoWorktreeList: async () => ({
       worktrees: [],
       error: null,
       requestId: "req-list",
     }),
-    archivePaseoWorktree: async () => ({
+    archiveOttoWorktree: async () => ({
       success: true,
       removedAgents: [],
       error: null,
@@ -30,12 +30,12 @@ function createFakeDaemonClient(
 
 describe("runArchiveCommand", () => {
   it("sends scope worktree when archiving by worktree path", async () => {
-    const worktreePath = "/tmp/paseo-home/worktrees/repo/feature";
+    const worktreePath = "/tmp/otto-home/worktrees/repo/feature";
     const archiveCalls: Array<{
-      input: Parameters<DaemonClient["archivePaseoWorktree"]>[0];
+      input: Parameters<DaemonClient["archiveOttoWorktree"]>[0];
     }> = [];
     const fakeClient = createFakeDaemonClient({
-      getPaseoWorktreeList: async () => ({
+      getOttoWorktreeList: async () => ({
         worktrees: [
           {
             worktreePath,
@@ -47,7 +47,7 @@ describe("runArchiveCommand", () => {
         error: null,
         requestId: "req-list",
       }),
-      archivePaseoWorktree: async (input) => {
+      archiveOttoWorktree: async (input) => {
         archiveCalls.push({ input });
         return {
           success: true,
@@ -81,12 +81,12 @@ describe("runArchiveCommand", () => {
   });
 
   it("archives by matching branch name when no directory name matches", async () => {
-    const worktreePath = "/tmp/paseo-home/worktrees/repo/feature-branch";
+    const worktreePath = "/tmp/otto-home/worktrees/repo/feature-branch";
     const archiveCalls: Array<{
-      input: Parameters<DaemonClient["archivePaseoWorktree"]>[0];
+      input: Parameters<DaemonClient["archiveOttoWorktree"]>[0];
     }> = [];
     const fakeClient = createFakeDaemonClient({
-      getPaseoWorktreeList: async () => ({
+      getOttoWorktreeList: async () => ({
         worktrees: [
           {
             worktreePath,
@@ -98,7 +98,7 @@ describe("runArchiveCommand", () => {
         error: null,
         requestId: "req-list",
       }),
-      archivePaseoWorktree: async (input) => {
+      archiveOttoWorktree: async (input) => {
         archiveCalls.push({ input });
         return {
           success: true,
@@ -124,7 +124,7 @@ describe("runArchiveCommand", () => {
 
   it("throws a CommandError when the worktree is not found", async () => {
     const fakeClient = createFakeDaemonClient({
-      getPaseoWorktreeList: async () => ({
+      getOttoWorktreeList: async () => ({
         worktrees: [],
         error: null,
         requestId: "req-list",

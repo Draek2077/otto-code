@@ -135,7 +135,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.paseo.sh:443",
+      relayEndpoint: "relay.otto-code.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -159,7 +159,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.paseo.sh:443",
+      relayEndpoint: "relay.otto-code.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -183,7 +183,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.paseo.sh:443",
+      relayEndpoint: "relay.otto-code.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -211,7 +211,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket,
-      relayEndpoint: "relay.paseo.sh:443",
+      relayEndpoint: "relay.otto-code.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,

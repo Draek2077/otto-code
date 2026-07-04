@@ -164,7 +164,7 @@ describe("Claude tool_result image rendering", () => {
     expect(extraImages).toEqual([]);
 
     const source = markdownImageSource(imageMessage);
-    expect(source).toMatch(/paseo-attachments[\\/][0-9a-f]{64}\.png$/);
+    expect(source).toMatch(/otto-attachments[\\/][0-9a-f]{64}\.png$/);
     expect(existsSync(source)).toBe(true);
     expect(JSON.stringify(events)).not.toContain(ONE_BY_ONE_PNG_BASE64);
 
@@ -180,7 +180,7 @@ describe("Claude tool_result image rendering", () => {
     expect(extraImages).toEqual([]);
 
     const source = markdownImageSource(imageMessage);
-    expect(source).toMatch(/paseo-attachments[\\/][0-9a-f]{64}\.png$/);
+    expect(source).toMatch(/otto-attachments[\\/][0-9a-f]{64}\.png$/);
     expect(existsSync(source)).toBe(true);
     expect(JSON.stringify(items)).not.toContain(ONE_BY_ONE_PNG_BASE64);
 

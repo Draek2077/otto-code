@@ -85,9 +85,9 @@ jobs:
 
       - name: Verify public package contents
         run: |
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/protocol
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/client
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/server
+          npm pack --dry-run --ignore-scripts --workspace=@otto-code/protocol
+          npm pack --dry-run --ignore-scripts --workspace=@otto-code/client
+          npm pack --dry-run --ignore-scripts --workspace=@otto-code/server
 
   server-tests:
     strategy:
@@ -121,7 +121,7 @@ jobs:
         run: npm run build:server-deps
 
       - name: Run server tests
-        run: npm run test --workspace=@getpaseo/server
+        run: npm run test --workspace=@otto-code/server
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -175,7 +175,7 @@ jobs:
         run: npm run build:server
 
       - name: Run desktop tests
-        run: npm run test --workspace=@getpaseo/desktop
+        run: npm run test --workspace=@otto-code/desktop
 
   app-tests:
     runs-on: ubuntu-latest
@@ -211,7 +211,7 @@ jobs:
         run: npm run build:app-deps
 
       - name: Run app unit tests
-        run: npm run test --workspace=@getpaseo/app
+        run: npm run test --workspace=@otto-code/app
 
   sdk-tests:
     runs-on: ubuntu-latest
@@ -232,13 +232,13 @@ jobs:
         run: npm run build:client
 
       - name: Run protocol tests
-        run: npm run test --workspace=@getpaseo/protocol
+        run: npm run test --workspace=@otto-code/protocol
 
       - name: Run client tests
-        run: npm run test --workspace=@getpaseo/client
+        run: npm run test --workspace=@otto-code/client
 
       - name: Typecheck client examples
-        run: npm run typecheck:examples --workspace=@getpaseo/client
+        run: npm run typecheck:examples --workspace=@otto-code/client
 
   playwright:
     strategy:
@@ -285,7 +285,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       - name: Run Playwright E2E tests
-        run: npm run test:e2e --workspace=@getpaseo/app -- --shard=${{ matrix.shard }}/4
+        run: npm run test:e2e --workspace=@otto-code/app -- --shard=${{ matrix.shard }}/4
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
@@ -318,7 +318,7 @@ jobs:
         run: npm run build:relay
 
       - name: Run relay tests
-        run: npm run test --workspace=@getpaseo/relay
+        run: npm run test --workspace=@otto-code/relay
 
   cli-tests:
     strategy:
@@ -344,10 +344,10 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       - name: Run CLI tests
-        run: npm run test --workspace=@getpaseo/cli
+        run: npm run test --workspace=@otto-code/cli
         env:
-          PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
-          PASEO_DICTATION_ENABLED: "0"
-          PASEO_VOICE_MODE_ENABLED: "0"
-          PASEO_CLI_TEST_SHARD: ${{ matrix.shard }}
-          PASEO_CLI_TEST_SHARD_TOTAL: "3"
+          OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
+          OTTO_DICTATION_ENABLED: "0"
+          OTTO_VOICE_MODE_ENABLED: "0"
+          OTTO_CLI_TEST_SHARD: ${{ matrix.shard }}
+          OTTO_CLI_TEST_SHARD_TOTAL: "3"

@@ -16,8 +16,8 @@ import {
   decodeTerminalStreamFrame,
   encodeTerminalStreamFrame,
   TerminalStreamOpcode,
-} from "@getpaseo/protocol/terminal-stream-protocol";
-import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
+} from "@otto-code/protocol/terminal-stream-protocol";
+import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 
 type SocketListener = (...args: unknown[]) => void;
 
@@ -242,7 +242,7 @@ function createServer(options?: {
     }),
     createStub<AgentStorage>({}),
     createStub<DownloadTokenStore>({}),
-    "/tmp/paseo-test",
+    "/tmp/otto-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set() },
@@ -384,8 +384,8 @@ function createHelloMessage(
 function createDirectRequest() {
   return {
     headers: {
-      host: "localhost:6767",
-      origin: "http://localhost:6767",
+      host: "localhost:6868",
+      origin: "http://localhost:6868",
       "user-agent": "vitest",
     },
     socket: {

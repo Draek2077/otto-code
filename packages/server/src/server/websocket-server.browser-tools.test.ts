@@ -5,9 +5,9 @@ import type {
   BrowserAutomationCommandName,
   BrowserAutomationExecuteRequest,
   BrowserAutomationExecuteResponse,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import type pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -288,7 +288,7 @@ function createVoiceAssistantWebSocketServer(params: {
     createStub<AgentManager>(agentManager),
     createStub<AgentStorage>({}),
     createStub<DownloadTokenStore>({}),
-    "/tmp/paseo-browser-tools-websocket-test",
+    "/tmp/otto-browser-tools-websocket-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set(["*"]) },

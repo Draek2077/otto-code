@@ -3,9 +3,9 @@ import { buildSeededHost } from "./daemon-registry";
 import { wsRoutePatternForPort } from "./daemon-port";
 import { type SeededWorkspace } from "./seed-client";
 
-const REGISTRY_KEY = "@paseo:daemon-registry";
-const SEED_NONCE_KEY = "@paseo:e2e-seed-nonce";
-const DISABLE_DEFAULT_SEED_ONCE_KEY = "@paseo:e2e-disable-default-seed-once";
+const REGISTRY_KEY = "@otto:daemon-registry";
+const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
+const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 const FAKE_HOST_MODEL_ID = "fake-host-model";
 const FAKE_HOST_MODEL_LABEL = "Fake host model";
 const FAKE_HOST_PROJECT_DISPLAY_NAME = "Fake host project";

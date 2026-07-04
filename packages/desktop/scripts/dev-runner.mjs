@@ -162,7 +162,7 @@ spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
     ...colorEnv,
     BROWSER: "none",
     APP_VARIANT: "development",
-    PASEO_WEB_PLATFORM: "electron",
+    OTTO_WEB_PLATFORM: "electron",
   },
 });
 

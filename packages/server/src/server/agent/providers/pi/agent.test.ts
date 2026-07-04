@@ -35,7 +35,7 @@ function rewindCapabilities(capabilities: PiRpcAgentSession["capabilities"]) {
 function createConfig(overrides: Partial<AgentSessionConfig> = {}): AgentSessionConfig {
   return {
     provider: "pi",
-    cwd: "/tmp/paseo-pi-rpc-test",
+    cwd: "/tmp/otto-pi-rpc-test",
     ...overrides,
   };
 }
@@ -583,7 +583,7 @@ describe("PiRpcAgentSession", () => {
 
     const actualLaunch = pi.recordedLaunches[0]!;
     expect(actualLaunch).toMatchObject({
-      cwd: "/tmp/paseo-pi-rpc-test",
+      cwd: "/tmp/otto-pi-rpc-test",
       systemPrompt: "Agent prompt\n\nDaemon prompt",
     });
     expect(actualLaunch.extensionPaths).toHaveLength(1);
@@ -672,7 +672,7 @@ describe("PiRpcAgentSession", () => {
 
 describe("PiRpcAgentClient", () => {
   test("lists JSONL persisted sessions from configured provider params", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "paseo-pi-sessions-"));
+    const root = mkdtempSync(path.join(tmpdir(), "otto-pi-sessions-"));
     const cwd = path.join(root, "workspace");
     const otherCwd = path.join(root, "other");
     const sessionsDir = path.join(root, "sessions");
@@ -733,7 +733,7 @@ describe("PiRpcAgentClient", () => {
   });
 
   test("lists JSONL persisted sessions from Pi's configured agent directory", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "paseo-pi-default-sessions-"));
+    const root = mkdtempSync(path.join(tmpdir(), "otto-pi-default-sessions-"));
     const cwd = path.join(root, "workspace");
     const agentDir = path.join(root, ".pi", "agent");
     const sessionsDir = path.join(agentDir, "sessions");
@@ -780,7 +780,7 @@ describe("PiRpcAgentClient", () => {
   });
 
   test("imports JSONL sessions with the recorded model and thinking level", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "paseo-pi-import-config-"));
+    const root = mkdtempSync(path.join(tmpdir(), "otto-pi-import-config-"));
     const cwd = path.join(root, "workspace");
     const sessionsDir = path.join(root, "sessions");
     mkdirSync(sessionsDir, { recursive: true });
@@ -900,7 +900,7 @@ describe("PiRpcAgentClient", () => {
     expect(pi.recordedLaunches).toHaveLength(0);
   });
 
-  test("maps extension, prompt, and skill commands to Paseo slash commands", async () => {
+  test("maps extension, prompt, and skill commands to Otto slash commands", async () => {
     const { pi, session } = await createSession();
     pi.latestSession().commands = [
       { name: "review", description: "Review changes", source: "extension" },
@@ -1147,9 +1147,9 @@ describe("PiRpcAgentClient", () => {
     const session = await client.createSession(
       createConfig({
         mcpServers: {
-          paseo: {
+          otto: {
             type: "http",
-            url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
+            url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=agent-1",
           },
           localSecret: {
             type: "stdio",
@@ -1163,7 +1163,7 @@ describe("PiRpcAgentClient", () => {
 
     expect(pi.recordedLaunches).toHaveLength(2);
     expect(pi.recordedLaunches[0]).toMatchObject({
-      cwd: "/tmp/paseo-pi-rpc-test",
+      cwd: "/tmp/otto-pi-rpc-test",
       argv: ["pi", "--mode", "rpc"],
     });
     const actualLaunch = pi.recordedLaunches[1]!;
@@ -1188,8 +1188,8 @@ describe("PiRpcAgentClient", () => {
     };
     expect(injectedConfig).toEqual({
       mcpServers: {
-        paseo: {
-          url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
+        otto: {
+          url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=agent-1",
           auth: false,
           oauth: false,
         },
@@ -1213,9 +1213,9 @@ describe("PiRpcAgentClient", () => {
     const session = await client.createSession(
       createConfig({
         mcpServers: {
-          paseo: {
+          otto: {
             type: "http",
-            url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
+            url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=agent-1",
           },
         },
       }),

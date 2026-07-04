@@ -10,8 +10,8 @@ import {
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { ChevronDown, Folder } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { AgentProvider } from "@getpaseo/protocol/agent-types";
-import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,

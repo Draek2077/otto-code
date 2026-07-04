@@ -14,7 +14,7 @@ async function createTempDir(prefix: string): Promise<string> {
 
 describe("file explorer service", () => {
   it("reads .ex files as text", async () => {
-    const root = await createTempDir("paseo-file-explorer-");
+    const root = await createTempDir("otto-file-explorer-");
 
     try {
       const filePath = path.join(root, "sample.ex");
@@ -36,7 +36,7 @@ describe("file explorer service", () => {
   });
 
   it("reads unknown extension text files as text", async () => {
-    const root = await createTempDir("paseo-file-explorer-");
+    const root = await createTempDir("otto-file-explorer-");
 
     try {
       const filePath = path.join(root, "notes.customext");
@@ -58,7 +58,7 @@ describe("file explorer service", () => {
   });
 
   it("classifies files with null bytes as binary", async () => {
-    const root = await createTempDir("paseo-file-explorer-");
+    const root = await createTempDir("otto-file-explorer-");
 
     try {
       const filePath = path.join(root, "blob.weird");
@@ -79,7 +79,7 @@ describe("file explorer service", () => {
   });
 
   it("expands a ~ prefix in relative paths against the user home directory", async () => {
-    const root = await createHomeTempDir(".paseo-file-explorer-home-");
+    const root = await createHomeTempDir(".otto-file-explorer-home-");
 
     try {
       const filePath = path.join(root, "sample.txt");
@@ -99,7 +99,7 @@ describe("file explorer service", () => {
   });
 
   it("allows home to be the scoped root for tilde file previews", async () => {
-    const root = await createHomeTempDir(".paseo-file-explorer-home-root-");
+    const root = await createHomeTempDir(".otto-file-explorer-home-root-");
 
     try {
       const filePath = path.join(root, "sample.txt");
@@ -120,7 +120,7 @@ describe("file explorer service", () => {
   });
 
   it("rejects ~-prefixed paths that resolve outside the workspace", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-file-explorer-outside-home-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "otto-file-explorer-outside-home-"));
 
     try {
       await expect(

@@ -4,17 +4,17 @@ import { runRunCommand, type AgentRunOptions } from "./run";
 // validateRunOptions runs before the CLI ever connects to a daemon, so these
 // invalid combinations reject without one running.
 describe("runRunCommand option validation", () => {
-  const originalWorkspaceId = process.env.PASEO_WORKSPACE_ID;
+  const originalWorkspaceId = process.env.OTTO_WORKSPACE_ID;
 
   beforeEach(() => {
-    delete process.env.PASEO_WORKSPACE_ID;
+    delete process.env.OTTO_WORKSPACE_ID;
   });
 
   afterEach(() => {
     if (originalWorkspaceId === undefined) {
-      delete process.env.PASEO_WORKSPACE_ID;
+      delete process.env.OTTO_WORKSPACE_ID;
     } else {
-      process.env.PASEO_WORKSPACE_ID = originalWorkspaceId;
+      process.env.OTTO_WORKSPACE_ID = originalWorkspaceId;
     }
   });
 
@@ -32,16 +32,16 @@ describe("runRunCommand option validation", () => {
     );
   });
 
-  it("rejects --worktree combined with an ambient PASEO_WORKSPACE_ID", async () => {
-    process.env.PASEO_WORKSPACE_ID = "ws-ambient";
+  it("rejects --worktree combined with an ambient OTTO_WORKSPACE_ID", async () => {
+    process.env.OTTO_WORKSPACE_ID = "ws-ambient";
     await expectInvalidOptions(
       { worktree: "feat" },
-      /--worktree cannot be combined with an ambient PASEO_WORKSPACE_ID/,
+      /--worktree cannot be combined with an ambient OTTO_WORKSPACE_ID/,
     );
   });
 
   it("allows a bare --worktree through validation when no workspace is selected", async () => {
-    // A bare --worktree with no --workspace and no ambient PASEO_WORKSPACE_ID
+    // A bare --worktree with no --workspace and no ambient OTTO_WORKSPACE_ID
     // must clear validation. It still fails later (provider resolution), which
     // is enough to prove the new guard did not reject it.
     await expect(

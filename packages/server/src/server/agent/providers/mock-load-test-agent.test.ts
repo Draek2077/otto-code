@@ -235,7 +235,7 @@ describe("MockLoadTestAgentClient", () => {
 
   test("agent manager coalesces adjacent assistant tokens into fewer messages", async () => {
     vi.useFakeTimers();
-    const workdir = mkdtempSync(join(tmpdir(), "paseo-mock-load-test-"));
+    const workdir = mkdtempSync(join(tmpdir(), "otto-mock-load-test-"));
     try {
       const client = new MockLoadTestAgentClient();
       const manager = new AgentManager({

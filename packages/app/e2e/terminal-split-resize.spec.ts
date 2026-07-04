@@ -12,8 +12,8 @@ interface TerminalSize {
 // prove the bug. It is the misleading symptom.
 async function readXtermSize(page: Page): Promise<TerminalSize> {
   return page.evaluate(() => {
-    const term = (window as Window & { __paseoTerminal?: { rows?: number; cols?: number } })
-      .__paseoTerminal;
+    const term = (window as Window & { __ottoTerminal?: { rows?: number; cols?: number } })
+      .__ottoTerminal;
     return {
       rows: typeof term?.rows === "number" ? term.rows : null,
       cols: typeof term?.cols === "number" ? term.cols : null,

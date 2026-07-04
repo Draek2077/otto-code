@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
+import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/query/query-client";
 import {
@@ -92,11 +92,11 @@ function invalidateCheckoutGitQueries(serverId: string, cwd: string) {
 function invalidateWorktreeList() {
   void appQueryClient.invalidateQueries({
     predicate: (query) =>
-      Array.isArray(query.queryKey) && query.queryKey[0] === "paseoWorktreeList",
+      Array.isArray(query.queryKey) && query.queryKey[0] === "ottoWorktreeList",
   });
   void appQueryClient.invalidateQueries({
     predicate: (query) =>
-      Array.isArray(query.queryKey) && query.queryKey[0] === "sidebarPaseoWorktreeList",
+      Array.isArray(query.queryKey) && query.queryKey[0] === "sidebarOttoWorktreeList",
   });
 }
 
@@ -119,7 +119,7 @@ function removeWorktreeFromCachedLists(input: { serverId: string; worktreePath: 
     {
       predicate: (query) =>
         Array.isArray(query.queryKey) &&
-        query.queryKey[0] === "paseoWorktreeList" &&
+        query.queryKey[0] === "ottoWorktreeList" &&
         query.queryKey[1] === serverId,
     },
     removeFromList,
@@ -129,7 +129,7 @@ function removeWorktreeFromCachedLists(input: { serverId: string; worktreePath: 
     {
       predicate: (query) =>
         Array.isArray(query.queryKey) &&
-        query.queryKey[0] === "sidebarPaseoWorktreeList" &&
+        query.queryKey[0] === "sidebarOttoWorktreeList" &&
         query.queryKey[1] === serverId,
     },
     removeFromList,
@@ -144,8 +144,8 @@ interface WorktreeArchiveSnapshot {
 function isWorktreeListQuery(input: { queryKey: QueryKey; serverId: string }): boolean {
   return (
     Array.isArray(input.queryKey) &&
-    (input.queryKey[0] === "paseoWorktreeList" ||
-      input.queryKey[0] === "sidebarPaseoWorktreeList") &&
+    (input.queryKey[0] === "ottoWorktreeList" ||
+      input.queryKey[0] === "sidebarOttoWorktreeList") &&
     input.queryKey[1] === input.serverId
   );
 }
@@ -513,7 +513,7 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         }
         removeWorktreeFromCachedLists({ serverId, worktreePath });
         try {
-          const payload = await client.archivePaseoWorktree({
+          const payload = await client.archiveOttoWorktree({
             worktreePath,
             ...(workspaceId !== undefined ? { workspaceId } : {}),
           });

@@ -1,4 +1,4 @@
-import type { CheckoutGithubCheckDetails } from "@getpaseo/protocol/messages";
+import type { CheckoutGithubCheckDetails } from "@otto-code/protocol/messages";
 import type { PullRequestContextAttachment } from "@/attachments/types";
 import {
   formatPullRequestActivityLocation,

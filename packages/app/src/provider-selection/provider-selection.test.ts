@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
-import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { i18n } from "@/i18n/i18next";
 import {
   buildProviderSelectorProviders,

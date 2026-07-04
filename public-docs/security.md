@@ -1,6 +1,6 @@
 ---
 title: Security
-description: "Security model for Paseo: architecture overview, connection methods, relay encryption, and best practices."
+description: "Security model for Otto: architecture overview, connection methods, relay encryption, and best practices."
 nav: Security
 order: 4
 category: Getting started
@@ -8,13 +8,13 @@ category: Getting started
 
 # Security
 
-Paseo follows a client-server architecture, similar to Docker. The daemon runs on your machine and manages your coding agents. Clients (the mobile app, CLI, or web interface) connect to the daemon to monitor and control those agents.
+Otto follows a client-server architecture, similar to Docker. The daemon runs on your machine and manages your coding agents. Clients (the mobile app, CLI, or web interface) connect to the daemon to monitor and control those agents.
 
-Your code never leaves your machine. Paseo is a local-first tool that connects directly to your development environment.
+Your code never leaves your machine. Otto is a local-first tool that connects directly to your development environment.
 
 ## Architecture
 
-The Paseo daemon can run anywhere you want to execute agents: your laptop, a Mac Mini, a VPS, or a Docker container. The daemon listens for connections and manages agent lifecycles.
+The Otto daemon can run anywhere you want to execute agents: your laptop, a Mac Mini, a VPS, or a Docker container. The daemon listens for connections and manages agent lifecycles.
 
 Clients connect to the daemon over WebSocket. There are two ways to establish this connection:
 
@@ -29,7 +29,7 @@ The relay is the simplest way to connect from your phone. It requires no VPN set
 
 ### How it works
 
-1. The daemon generates a persistent ECDH keypair and stores it in `$PASEO_HOME/daemon-keypair.json`
+1. The daemon generates a persistent ECDH keypair and stores it in `$OTTO_HOME/daemon-keypair.json`
 2. When you scan the QR code or click the pairing link, your phone receives the daemon's public key
 3. Your phone sends a handshake message with its own public key. The daemon will not accept any commands until this handshake completes.
 4. Both sides perform a Curve25519 ECDH key exchange to derive a shared key. All subsequent
@@ -54,7 +54,7 @@ If you believe a pairing offer has been compromised, restart the daemon to gener
 
 ## Direct connections
 
-By default, the daemon listens on `127.0.0.1:6767` (localhost only). This is safe for local CLI usage but not reachable from your phone or other devices.
+By default, the daemon listens on `127.0.0.1:6868` (localhost only). This is safe for local CLI usage but not reachable from your phone or other devices.
 
 ### Socket file (CLI only)
 
@@ -67,9 +67,9 @@ If you prefer direct connections over the relay, you can use a VPN like [Tailsca
 To set this up:
 
 1. Install Tailscale on your machine and phone and join them to the same [tailnet](https://tailscale.com/kb/1136/tailnet)
-2. Configure the daemon to listen on your Tailscale IP (e.g., `100.x.y.z:6767`)
+2. Configure the daemon to listen on your Tailscale IP (e.g., `100.x.y.z:6868`)
 3. Add your Tailscale hostname to `hostnames` and `cors.allowedOrigins`
-4. Add the daemon as a direct connection in the Paseo app using the Tailscale address
+4. Add the daemon as a direct connection in the Otto app using the Tailscale address
 
 ### Binding to 0.0.0.0
 
@@ -79,7 +79,7 @@ To set this up:
 
 **CORS is not a complete security boundary.** It controls which browser origins can make requests, but does not prevent a malicious website from resolving its domain to your local machine (DNS rebinding).
 
-Paseo uses a host allowlist to validate the `Host` header on incoming requests. Requests with unrecognized hosts are rejected.
+Otto uses a host allowlist to validate the `Host` header on incoming requests. Requests with unrecognized hosts are rejected.
 
 Configure via `daemon.hostnames` in `config.json`:
 
@@ -112,29 +112,29 @@ We still recommend the relay for mobile access, it combines authentication with 
 
 ## Docker self-hosting
 
-The official Docker image runs the daemon and bundled web UI in one container. It binds to `0.0.0.0:6767` inside the container so Docker port publishing and reverse proxies work normally.
+The official Docker image runs the daemon and bundled web UI in one container. It binds to `0.0.0.0:6868` inside the container so Docker port publishing and reverse proxies work normally.
 
 For Docker deployments:
 
-- Set `PASEO_PASSWORD` before publishing the port to a LAN, VPN, or public address.
+- Set `OTTO_PASSWORD` before publishing the port to a LAN, VPN, or public address.
 - Use HTTPS at your reverse proxy for browser access outside localhost.
-- Set `PASEO_HOSTNAMES` for any DNS names you use to reach the container.
+- Set `OTTO_HOSTNAMES` for any DNS names you use to reach the container.
 - Keep `/workspace` mounts scoped to repositories the agents should be able to read and write.
-- Treat `/home/paseo` as sensitive, it can contain daemon state and provider credentials.
+- Treat `/home/otto` as sensitive, it can contain daemon state and provider credentials.
 
-The image runs the daemon and launched agents as the non-root `paseo` user, but container user isolation is not a substitute for careful mounts. Agents can still access whatever code and credentials you mount into the container.
+The image runs the daemon and launched agents as the non-root `otto` user, but container user isolation is not a substitute for careful mounts. Agents can still access whatever code and credentials you mount into the container.
 
 See [Docker](/docs/docker) for Compose and reverse proxy examples.
 
 ## Agent authentication
 
-Paseo wraps agent CLIs (Claude Code, Codex, OpenCode) but does not manage their authentication. Each agent provider handles its own credentials:
+Otto wraps agent CLIs (Claude Code, Codex, OpenCode) but does not manage their authentication. Each agent provider handles its own credentials:
 
 - **Claude Code**, authenticates via Anthropic's OAuth flow, stored in `~/.claude/`
 - **Codex**, uses your OpenAI API key or OAuth session
 - **OpenCode**, configured via provider-specific API keys
 
-Paseo never stores or transmits provider API keys. Agents run in your user context with your existing credentials.
+Otto never stores or transmits provider API keys. Agents run in your user context with your existing credentials.
 
 ## Recommendations
 

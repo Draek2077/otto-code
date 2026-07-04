@@ -1,7 +1,7 @@
 {
-  "name": "@getpaseo/client",
+  "name": "@otto-code/client",
   "version": "0.1.104-beta.2",
-  "description": "Paseo client SDK package",
+  "description": "Otto client SDK package",
   "files": [
     "dist",
     "!dist/**/*.map",
@@ -35,8 +35,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@getpaseo/protocol": "0.1.104-beta.2",
-    "@getpaseo/relay": "0.1.104-beta.2",
+    "@otto-code/protocol": "0.1.104-beta.2",
+    "@otto-code/relay": "0.1.104-beta.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

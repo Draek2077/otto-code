@@ -22,18 +22,18 @@ import {
   planTimelineCatchUpAfter,
   planTimelineCatchUpFollowUp,
 } from "@/timeline/timeline-sync-plan";
-import type { AgentAttachment, SessionOutboundMessage } from "@getpaseo/protocol/messages";
-import { parseServerInfoStatusPayload } from "@getpaseo/protocol/messages";
+import type { AgentAttachment, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import { parseServerInfoStatusPayload } from "@otto-code/protocol/messages";
 import {
   buildAgentAttentionNotificationPayload,
   type AgentAttentionNotificationPayload,
   type NotificationPermissionRequest,
-} from "@getpaseo/protocol/agent-attention-notification";
-import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
-import type { GitSetupOptions } from "@getpaseo/protocol/messages";
-import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
+} from "@otto-code/protocol/agent-attention-notification";
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { AgentSessionConfig } from "@otto-code/protocol/agent-types";
+import type { GitSetupOptions } from "@otto-code/protocol/messages";
+import type { AgentPermissionResponse } from "@otto-code/protocol/agent-types";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";

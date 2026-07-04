@@ -13,7 +13,7 @@ import {
   type ResolveWorktreeCreationIntentInput,
   type WorktreeCreationIntent,
 } from "./resolve-worktree-creation-intent.js";
-import type { FirstAgentContext } from "@getpaseo/protocol/messages";
+import type { FirstAgentContext } from "@otto-code/protocol/messages";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 
 export interface CreateWorktreeCoreInput {
@@ -24,7 +24,7 @@ export interface CreateWorktreeCoreInput {
   action?: "branch-off" | "checkout";
   githubPrNumber?: number;
   firstAgentContext?: FirstAgentContext;
-  paseoHome?: string;
+  ottoHome?: string;
   worktreesRoot?: string;
   runSetup?: boolean;
 }
@@ -103,7 +103,7 @@ export async function createWorktreeCore(
   const existingWorktree = await resolveExistingWorktreeForSlug({
     slug: normalizedSlug,
     repoRoot,
-    paseoHome: input.paseoHome,
+    ottoHome: input.ottoHome,
     worktreesRoot: input.worktreesRoot,
   });
   if (existingWorktree) {
@@ -116,7 +116,7 @@ export async function createWorktreeCore(
       worktreeSlug: normalizedSlug,
       source: intent,
       runSetup: input.runSetup ?? true,
-      paseoHome: input.paseoHome,
+      ottoHome: input.ottoHome,
       worktreesRoot: input.worktreesRoot,
     }),
     intent,
@@ -139,7 +139,7 @@ async function resolveDefaultBranch(
 }
 
 export async function resolveWorktreeRepoRoot(
-  input: Pick<CreateWorktreeCoreInput, "cwd" | "paseoHome">,
+  input: Pick<CreateWorktreeCoreInput, "cwd" | "ottoHome">,
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">,
 ): Promise<string> {
   if (!workspaceGitService) {

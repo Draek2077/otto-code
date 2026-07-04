@@ -42,7 +42,7 @@ describe("parseScheduleCreateInput cwd/host validation", () => {
   test("host with cwd → uses provided cwd", () => {
     const input = parseScheduleCreateInput({
       ...baseOptions,
-      host: "dev:6767",
+      host: "dev:6868",
       cwd: "/remote/project",
     });
     expect(input.target).toEqual({
@@ -52,7 +52,7 @@ describe("parseScheduleCreateInput cwd/host validation", () => {
   });
 
   test("host without cwd → throws MISSING_CWD", () => {
-    expect(() => parseScheduleCreateInput({ ...baseOptions, host: "dev:6767" })).toThrow(
+    expect(() => parseScheduleCreateInput({ ...baseOptions, host: "dev:6868" })).toThrow(
       expect.objectContaining({
         code: "MISSING_CWD",
         message: expect.stringContaining("--cwd is required when --host is specified"),
@@ -62,7 +62,7 @@ describe("parseScheduleCreateInput cwd/host validation", () => {
 
   test("host with whitespace-only cwd → throws MISSING_CWD", () => {
     expect(() =>
-      parseScheduleCreateInput({ ...baseOptions, host: "dev:6767", cwd: "   " }),
+      parseScheduleCreateInput({ ...baseOptions, host: "dev:6868", cwd: "   " }),
     ).toThrow(expect.objectContaining({ code: "MISSING_CWD" }));
   });
 });

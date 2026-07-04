@@ -90,7 +90,7 @@ function shouldIncludeLocalProviderConfig(params: {
 
   return (
     localRequestedByFeature ||
-    params.env.PASEO_LOCAL_MODELS_DIR !== undefined ||
+    params.env.OTTO_LOCAL_MODELS_DIR !== undefined ||
     params.persisted.providers?.local?.modelsDir !== undefined
   );
 }
@@ -121,13 +121,13 @@ function buildLocalSpeechLanguageResolutionInput(params: {
   const { env, persisted } = params;
   return {
     dictationLanguage: firstNonEmptyString([
-      env.PASEO_DICTATION_LANGUAGE,
+      env.OTTO_DICTATION_LANGUAGE,
       persisted.features?.dictation?.stt?.language,
       DEFAULT_STT_LANGUAGE,
     ]),
     voiceLanguage: firstNonEmptyString([
-      env.PASEO_VOICE_LANGUAGE,
-      env.PASEO_DICTATION_LANGUAGE,
+      env.OTTO_VOICE_LANGUAGE,
+      env.OTTO_DICTATION_LANGUAGE,
       persisted.features?.voiceMode?.stt?.language,
       persisted.features?.dictation?.stt?.language,
       DEFAULT_STT_LANGUAGE,
@@ -136,22 +136,22 @@ function buildLocalSpeechLanguageResolutionInput(params: {
 }
 
 function buildLocalSpeechResolutionInput(params: {
-  paseoHome: string;
+  ottoHome: string;
   env: NodeJS.ProcessEnv;
   persisted: PersistedConfig;
   providers: RequestedSpeechProviders;
   includeProviderConfig: boolean;
 }): Record<string, unknown> {
-  const { paseoHome, env, persisted, providers, includeProviderConfig } = params;
+  const { ottoHome, env, persisted, providers, includeProviderConfig } = params;
   return {
     includeProviderConfig,
     modelsDir: firstDefinedValue<string>([
-      env.PASEO_LOCAL_MODELS_DIR,
+      env.OTTO_LOCAL_MODELS_DIR,
       persisted.providers?.local?.modelsDir,
-      path.join(paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
+      path.join(ottoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
     ]),
     dictationLocalSttModel: firstDefinedValue<string>([
-      env.PASEO_DICTATION_LOCAL_STT_MODEL,
+      env.OTTO_DICTATION_LOCAL_STT_MODEL,
       persistedLocalFeatureModel(
         providers.dictationStt.provider,
         providers.dictationStt.enabled,
@@ -160,7 +160,7 @@ function buildLocalSpeechResolutionInput(params: {
       DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalSttModel: firstDefinedValue<string>([
-      env.PASEO_VOICE_LOCAL_STT_MODEL,
+      env.OTTO_VOICE_LOCAL_STT_MODEL,
       persistedLocalFeatureModel(
         providers.voiceStt.provider,
         providers.voiceStt.enabled,
@@ -169,7 +169,7 @@ function buildLocalSpeechResolutionInput(params: {
       DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalTtsModel: firstDefinedValue<string>([
-      env.PASEO_VOICE_LOCAL_TTS_MODEL,
+      env.OTTO_VOICE_LOCAL_TTS_MODEL,
       persistedLocalFeatureModel(
         providers.voiceTts.provider,
         providers.voiceTts.enabled,
@@ -179,18 +179,18 @@ function buildLocalSpeechResolutionInput(params: {
     ]),
     ...buildLocalSpeechLanguageResolutionInput({ env, persisted }),
     voiceLocalTtsSpeakerId: firstDefinedValue<string | number>([
-      env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID,
+      env.OTTO_VOICE_LOCAL_TTS_SPEAKER_ID,
       persisted.features?.voiceMode?.tts?.speakerId,
     ]),
     voiceLocalTtsSpeed: firstDefinedValue<string | number>([
-      env.PASEO_VOICE_LOCAL_TTS_SPEED,
+      env.OTTO_VOICE_LOCAL_TTS_SPEED,
       persisted.features?.voiceMode?.tts?.speed,
     ]),
   };
 }
 
 export function resolveLocalSpeechConfig(params: {
-  paseoHome: string;
+  ottoHome: string;
   env: NodeJS.ProcessEnv;
   persisted: PersistedConfig;
   providers: RequestedSpeechProviders;

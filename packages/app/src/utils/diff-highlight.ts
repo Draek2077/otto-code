@@ -1,4 +1,4 @@
-import { isLanguageSupported, type HighlightToken } from "@getpaseo/highlight";
+import { isLanguageSupported, type HighlightToken } from "@otto-code/highlight";
 import { extensionFromPath, tokenizeToLines } from "@/utils/highlight-cache";
 import type { DiffLine } from "@/utils/tool-call-parsers";
 

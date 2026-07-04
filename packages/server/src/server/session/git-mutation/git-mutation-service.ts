@@ -1,5 +1,5 @@
 import type pino from "pino";
-import { getErrorMessage } from "@getpaseo/protocol/error-utils";
+import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import type { GitHubService } from "../../../services/github-service.js";
 import {
   checkoutResolvedBranch,

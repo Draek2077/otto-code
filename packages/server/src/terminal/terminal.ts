@@ -6,17 +6,17 @@ import { tmpdir, userInfo } from "node:os";
 import { basename, delimiter, dirname, extname, join, resolve as resolvePath } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { createExternalProcessEnv } from "../server/paseo-env.js";
+import { createExternalProcessEnv } from "../server/otto-env.js";
 import { writePrivateFileAtomicSync } from "../server/private-files.js";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
-import type { TerminalCell, TerminalState } from "@getpaseo/protocol/messages";
-import { TerminalInputModeTracker } from "@getpaseo/protocol/terminal-input-mode";
+import type { TerminalCell, TerminalState } from "@otto-code/protocol/messages";
+import { TerminalInputModeTracker } from "@otto-code/protocol/terminal-input-mode";
 import { TerminalActivityTracker } from "./activity/terminal-activity-tracker.js";
-import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import type { TerminalActivity, TerminalActivityState } from "@otto-code/protocol/terminal-activity";
 
 const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
-const PASEO_CLI_BIN_ENTRY = "@getpaseo/cli/bin/paseo";
+const OTTO_CLI_BIN_ENTRY = "@otto-code/cli/bin/otto";
 let nodePtySpawnHelperChecked = false;
 const TERMINAL_TITLE_DEBOUNCE_MS = 150;
 const TERMINAL_EXIT_OUTPUT_LINE_LIMIT = 12;
@@ -153,8 +153,8 @@ interface BuildTerminalEnvironmentInput {
   shell: string;
   env: Record<string, string>;
   zshShellIntegrationDir?: string;
-  paseoCliBinDir?: string | null;
-  paseoHookCliPath?: string | null;
+  ottoCliBinDir?: string | null;
+  ottoHookCliPath?: string | null;
 }
 
 interface EnsureNodePtySpawnHelperExecutableOptions {
@@ -307,8 +307,8 @@ function resolveExternalProcessPath(filePath: string): string {
   return filePath.replace(/\.asar(?=[/\\]|$)/, ".asar.unpacked");
 }
 
-export function resolvePaseoCliBinDir(): string | null {
-  const cliEntrypoint = resolvePaseoCliBinEntrypoint();
+export function resolveOttoCliBinDir(): string | null {
+  const cliEntrypoint = resolveOttoCliBinEntrypoint();
   if (!cliEntrypoint) {
     return null;
   }
@@ -317,8 +317,8 @@ export function resolvePaseoCliBinDir(): string | null {
   return findNpmBinDir(dirname(externalCliEntrypoint)) ?? dirname(externalCliEntrypoint);
 }
 
-export function resolvePaseoCliExecutablePath(): string | null {
-  const cliEntrypoint = resolvePaseoCliBinEntrypoint();
+export function resolveOttoCliExecutablePath(): string | null {
+  const cliEntrypoint = resolveOttoCliBinEntrypoint();
   if (!cliEntrypoint) {
     return null;
   }
@@ -326,7 +326,7 @@ export function resolvePaseoCliExecutablePath(): string | null {
   const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
   const npmBinDir = findNpmBinDir(dirname(externalCliEntrypoint));
   if (npmBinDir) {
-    const shim = resolvePaseoCliShim(npmBinDir);
+    const shim = resolveOttoCliShim(npmBinDir);
     if (shim) {
       return shim;
     }
@@ -335,9 +335,9 @@ export function resolvePaseoCliExecutablePath(): string | null {
   return externalCliEntrypoint;
 }
 
-function resolvePaseoCliBinEntrypoint(): string | null {
+function resolveOttoCliBinEntrypoint(): string | null {
   try {
-    return require.resolve(PASEO_CLI_BIN_ENTRY);
+    return require.resolve(OTTO_CLI_BIN_ENTRY);
   } catch {
     return null;
   }
@@ -347,7 +347,7 @@ function findNpmBinDir(startPath: string): string | null {
   let current = startPath;
   while (true) {
     const candidate = join(current, "node_modules", ".bin");
-    if (hasPaseoCliShim(candidate)) {
+    if (hasOttoCliShim(candidate)) {
       return candidate;
     }
 
@@ -359,12 +359,12 @@ function findNpmBinDir(startPath: string): string | null {
   }
 }
 
-function hasPaseoCliShim(binDir: string): boolean {
-  return resolvePaseoCliShim(binDir) !== null;
+function hasOttoCliShim(binDir: string): boolean {
+  return resolveOttoCliShim(binDir) !== null;
 }
 
-function resolvePaseoCliShim(binDir: string): string | null {
-  for (const name of paseoCliShimNames()) {
+function resolveOttoCliShim(binDir: string): string | null {
+  for (const name of ottoCliShimNames()) {
     const candidate = join(binDir, name);
     if (existsSync(candidate)) {
       return candidate;
@@ -373,8 +373,8 @@ function resolvePaseoCliShim(binDir: string): string | null {
   return null;
 }
 
-function paseoCliShimNames(): string[] {
-  return process.platform === "win32" ? ["paseo.cmd", "paseo.exe", "paseo"] : ["paseo"];
+function ottoCliShimNames(): string[] {
+  return process.platform === "win32" ? ["otto.cmd", "otto.exe", "otto"] : ["otto"];
 }
 
 function resolveZshShellIntegrationRuntimeDir(): string {
@@ -384,7 +384,7 @@ function resolveZshShellIntegrationRuntimeDir(): string {
   } catch {
     // keep fallback
   }
-  return join(tmpdir(), `${username}-paseo-zsh`);
+  return join(tmpdir(), `${username}-otto-zsh`);
 }
 
 function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegrationDir()): string {
@@ -397,8 +397,8 @@ function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegra
     readFileSync(join(readableSourceDir, ".zshenv")),
   );
   writePrivateFileAtomicSync(
-    join(runtimeDir, "paseo-integration.zsh"),
-    readFileSync(join(readableSourceDir, "paseo-integration.zsh")),
+    join(runtimeDir, "otto-integration.zsh"),
+    readFileSync(join(readableSourceDir, "otto-integration.zsh")),
   );
   return runtimeDir;
 }
@@ -410,13 +410,13 @@ export function buildTerminalEnvironment(
     TERM: "xterm-256color",
     TERM_PROGRAM: "kitty",
   });
-  const envWithAgentHooks = prependPaseoCliToPath(
+  const envWithAgentHooks = prependOttoCliToPath(
     baseEnv,
-    input.paseoCliBinDir === undefined ? resolvePaseoCliBinDir() : input.paseoCliBinDir,
+    input.ottoCliBinDir === undefined ? resolveOttoCliBinDir() : input.ottoCliBinDir,
   );
-  const envWithHookCli = injectPaseoHookCli(
+  const envWithHookCli = injectOttoHookCli(
     envWithAgentHooks,
-    input.paseoHookCliPath === undefined ? resolvePaseoCliExecutablePath() : input.paseoHookCliPath,
+    input.ottoHookCliPath === undefined ? resolveOttoCliExecutablePath() : input.ottoHookCliPath,
   );
 
   if (basename(input.shell) !== "zsh") {
@@ -426,12 +426,12 @@ export function buildTerminalEnvironment(
   const originalZdotdir = envWithHookCli.ZDOTDIR ?? "";
   return {
     ...envWithHookCli,
-    PASEO_ZSH_ZDOTDIR: originalZdotdir,
+    OTTO_ZSH_ZDOTDIR: originalZdotdir,
     ZDOTDIR: prepareZshShellIntegrationRuntimeDir(input.zshShellIntegrationDir),
   };
 }
 
-function injectPaseoHookCli(
+function injectOttoHookCli(
   env: Record<string, string>,
   cliPath: string | null,
 ): Record<string, string> {
@@ -441,11 +441,11 @@ function injectPaseoHookCli(
 
   return {
     ...env,
-    PASEO_HOOK_CLI: resolvePath(resolveExternalProcessPath(cliPath)),
+    OTTO_HOOK_CLI: resolvePath(resolveExternalProcessPath(cliPath)),
   };
 }
 
-function prependPaseoCliToPath(
+function prependOttoCliToPath(
   env: Record<string, string>,
   cliBinDir: string | null,
 ): Record<string, string> {
@@ -865,7 +865,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       env: {
         ...env,
         ...activityEnv,
-        PASEO_WORKSPACE_ID: workspaceId,
+        OTTO_WORKSPACE_ID: workspaceId,
       },
     }),
   });

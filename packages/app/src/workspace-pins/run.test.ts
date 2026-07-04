@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TerminalProfile } from "@getpaseo/protocol/messages";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { runPinnedTabTarget, type TabTargetHandlers } from "./run";
 

@@ -8,19 +8,19 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { GitHubSearchClient } from "@/git/use-github-search-query";
-import type { GitHubSearchItem, GitHubSearchResponse } from "@getpaseo/protocol/messages";
+import type { GitHubSearchItem, GitHubSearchResponse } from "@otto-code/protocol/messages";
 import { useComposerGithubAutoAttach } from "./auto-attach";
 
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
 
-const remoteUrl = "git@github.com:acme/paseo.git";
+const remoteUrl = "git@github.com:acme/otto.git";
 const cwd = "/repo";
 
 const pr101: GitHubSearchItem = {
   kind: "pr",
   number: 101,
   title: "Attach PR",
-  url: "https://github.com/acme/paseo/pull/101",
+  url: "https://github.com/acme/otto/pull/101",
   state: "open",
   body: null,
   labels: [],
@@ -32,7 +32,7 @@ const issue202: GitHubSearchItem = {
   kind: "issue",
   number: 202,
   title: "Attach issue",
-  url: "https://github.com/acme/paseo/issues/202",
+  url: "https://github.com/acme/otto/issues/202",
   state: "open",
   body: null,
   labels: [],
@@ -126,7 +126,7 @@ describe("useComposerGithubAutoAttach", () => {
     const { result } = renderHook(() => useHarness(client), { wrapper: createWrapper() });
 
     act(() => {
-      result.current.setText("Please review https://github.com/acme/paseo/pull/101");
+      result.current.setText("Please review https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
@@ -141,7 +141,7 @@ describe("useComposerGithubAutoAttach", () => {
     const { result } = renderHook(() => useHarness(client), { wrapper: createWrapper() });
 
     act(() => {
-      result.current.setText("Other repo https://github.com/other/paseo/pull/101");
+      result.current.setText("Other repo https://github.com/other/otto/pull/101");
     });
     await flushDebounce();
 
@@ -159,7 +159,7 @@ describe("useComposerGithubAutoAttach", () => {
     });
 
     act(() => {
-      result.current.setText("Already here https://github.com/acme/paseo/pull/101");
+      result.current.setText("Already here https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
@@ -179,7 +179,7 @@ describe("useComposerGithubAutoAttach", () => {
     act(() => {
       result.current.markGithubAttachmentRemoved(initialAttachments[0]);
       result.current.setAttachments([]);
-      result.current.setText("Re-pasted https://github.com/acme/paseo/pull/101");
+      result.current.setText("Re-pasted https://github.com/acme/otto/pull/101");
     });
     await flushDebounce();
 
@@ -195,7 +195,7 @@ describe("useComposerGithubAutoAttach", () => {
 
     act(() => {
       result.current.setText(
-        "Refs https://github.com/acme/paseo/pull/101 and https://github.com/acme/paseo/issues/202",
+        "Refs https://github.com/acme/otto/pull/101 and https://github.com/acme/otto/issues/202",
       );
     });
     await flushDebounce();

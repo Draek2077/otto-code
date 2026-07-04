@@ -308,13 +308,13 @@ export class LoopService {
 
   constructor(
     private readonly options: {
-      paseoHome: string;
+      ottoHome: string;
       agentManager: AgentManager;
       logger: Logger;
       providerSnapshotManager: CreateConfigResolver;
     },
   ) {
-    this.storePath = path.join(options.paseoHome, "loops", "loops.json");
+    this.storePath = path.join(options.ottoHome, "loops", "loops.json");
     this.logger = options.logger.child({ module: "loop-service" });
   }
 

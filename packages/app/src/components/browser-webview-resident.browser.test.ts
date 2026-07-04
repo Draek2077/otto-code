@@ -8,7 +8,7 @@ import {
   takeResidentBrowserWebview,
 } from "./browser-webview-resident";
 
-const RESIDENT_HOST_ID = "paseo-browser-resident-webviews";
+const RESIDENT_HOST_ID = "otto-browser-resident-webviews";
 
 function residentHost(): HTMLElement {
   const host = document.getElementById(RESIDENT_HOST_ID);
@@ -72,8 +72,8 @@ describe("resident browser webviews", () => {
 
     expect(webview).not.toBeNull();
     expect(webview?.isConnected).toBe(true);
-    expect(webview?.getAttribute("data-paseo-browser-id")).toBe("browser-agent");
-    expect(webview?.getAttribute("partition")).toBe("persist:paseo-browser-browser-agent");
+    expect(webview?.getAttribute("data-otto-browser-id")).toBe("browser-agent");
+    expect(webview?.getAttribute("partition")).toBe("persist:otto-browser-browser-agent");
     expect((webview as HTMLUnknownElement & { src?: string })?.src).toContain(
       "https://example.com",
     );

@@ -1,5 +1,5 @@
-import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
-import type { GitHubSearchItem } from "@getpaseo/protocol/messages";
+import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
+import type { GitHubSearchItem } from "@otto-code/protocol/messages";
 
 export type PickerItem =
   | { kind: "branch"; name: string }
@@ -9,7 +9,7 @@ export type PickerItem =
     };
 
 export type PickerCheckoutRequest = Pick<
-  CreatePaseoWorktreeInput,
+  CreateOttoWorktreeInput,
   "action" | "refName" | "githubPrNumber"
 >;
 

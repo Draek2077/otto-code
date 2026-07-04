@@ -1,7 +1,7 @@
 {
-  "name": "@getpaseo/relay",
+  "name": "@otto-code/relay",
   "version": "0.1.104-beta.2",
-  "description": "Paseo relay for bridging daemon and client connections",
+  "description": "Otto relay for bridging daemon and client connections",
   "files": [
     "dist",
     "!dist/**/*.map"

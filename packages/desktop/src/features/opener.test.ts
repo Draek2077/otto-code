@@ -11,7 +11,7 @@ vi.mock("electron", () => ({
 function getRegisteredOpenUrlHandler(): (_event: unknown, url: unknown) => Promise<void> {
   registerOpenerHandlers();
   const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => {
-    return channel === "paseo:opener:openUrl";
+    return channel === "otto:opener:openUrl";
   })?.[1];
   if (typeof handler !== "function") {
     throw new Error("open URL handler was not registered");
@@ -30,7 +30,7 @@ describe("desktop opener", () => {
     expect(isAllowedExternalUrl("http://localhost:8081")).toBe(true);
     expect(isAllowedExternalUrl("file:///etc/passwd")).toBe(false);
     expect(isAllowedExternalUrl("javascript:alert(1)")).toBe(false);
-    expect(isAllowedExternalUrl("paseo://settings")).toBe(false);
+    expect(isAllowedExternalUrl("otto://settings")).toBe(false);
     expect(isAllowedExternalUrl("/relative/path")).toBe(false);
     expect(isAllowedExternalUrl(null)).toBe(false);
   });

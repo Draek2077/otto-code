@@ -192,19 +192,19 @@ describe("buildSidebarProjectsFromStructure", () => {
           projectKey: "project-1",
           hosts: [
             {
-              serverId: "relay:paseo-host",
+              serverId: "relay:otto-host",
               iconWorkingDir: "/repo/project-1",
               canCreateWorktree: true,
             },
           ],
-          workspaceKeys: ["relay:paseo-host:ws-main"],
+          workspaceKeys: ["relay:otto-host:ws-main"],
         }),
       ],
     });
 
     expect(projects[0]?.workspaces[0]).toMatchObject({
-      workspaceKey: "relay:paseo-host:ws-main",
-      serverId: "relay:paseo-host",
+      workspaceKey: "relay:otto-host:ws-main",
+      serverId: "relay:otto-host",
       workspaceId: "ws-main",
     });
   });
@@ -215,12 +215,12 @@ describe("shared sidebar workspace model", () => {
     const model = buildSidebarWorkspacePlacementModel({
       projects: [
         project({
-          projectKey: "getpaseo/paseo",
-          projectName: "getpaseo/paseo",
-          iconWorkingDir: "/repo/getpaseo/paseo",
+          projectKey: "otto-code-ai/otto-code",
+          projectName: "otto-code-ai/otto-code",
+          iconWorkingDir: "/repo/otto-code-ai/otto-code",
           hosts: [
-            { serverId: "host-a", iconWorkingDir: "/repo/getpaseo/paseo", canCreateWorktree: true },
-            { serverId: "host-b", iconWorkingDir: "/repo/getpaseo/paseo", canCreateWorktree: true },
+            { serverId: "host-a", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
+            { serverId: "host-b", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
         }),
@@ -237,8 +237,8 @@ describe("shared sidebar workspace model", () => {
               workspace({
                 id: "main",
                 name: "main",
-                projectId: "getpaseo/paseo",
-                projectDisplayName: "getpaseo/paseo",
+                projectId: "otto-code-ai/otto-code",
+                projectDisplayName: "otto-code-ai/otto-code",
                 status: "done",
               }),
             ],
@@ -252,8 +252,8 @@ describe("shared sidebar workspace model", () => {
               workspace({
                 id: "feature",
                 name: "feature/status-flow",
-                projectId: "getpaseo/paseo",
-                projectDisplayName: "getpaseo/paseo",
+                projectId: "otto-code-ai/otto-code",
+                projectDisplayName: "otto-code-ai/otto-code",
                 status: "running",
                 statusEnteredAt: new Date("2026-06-10T00:00:00.000Z"),
               }),
@@ -269,10 +269,10 @@ describe("shared sidebar workspace model", () => {
     ]);
     expect(model.projects).toEqual([
       expect.objectContaining({
-        projectKey: "getpaseo/paseo",
+        projectKey: "otto-code-ai/otto-code",
         hosts: [
-          { serverId: "host-a", iconWorkingDir: "/repo/getpaseo/paseo", canCreateWorktree: true },
-          { serverId: "host-b", iconWorkingDir: "/repo/getpaseo/paseo", canCreateWorktree: true },
+          { serverId: "host-a", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
+          { serverId: "host-b", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
         ],
         workspaces: [
           expect.objectContaining({
@@ -294,7 +294,7 @@ describe("shared sidebar workspace model", () => {
         ["host-b:feature", "running", "feature/status-flow"],
       ],
     );
-    expect(model.projectNamesByKey).toEqual(new Map([["getpaseo/paseo", "getpaseo/paseo"]]));
+    expect(model.projectNamesByKey).toEqual(new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]));
   });
 });
 
@@ -341,10 +341,10 @@ describe("shouldShowSidebarHostLabels", () => {
     const projects = buildSidebarProjectsFromStructure({
       projects: [
         project({
-          projectKey: "getpaseo/paseo",
+          projectKey: "otto-code-ai/otto-code",
           hosts: [
-            { serverId: "host-a", iconWorkingDir: "/repo/paseo", canCreateWorktree: true },
-            { serverId: "host-b", iconWorkingDir: "/repo/paseo", canCreateWorktree: true },
+            { serverId: "host-a", iconWorkingDir: "/repo/otto", canCreateWorktree: true },
+            { serverId: "host-b", iconWorkingDir: "/repo/otto", canCreateWorktree: true },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
         }),

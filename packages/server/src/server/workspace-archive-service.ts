@@ -7,9 +7,9 @@ import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import type { GitHubService } from "../services/github-service.js";
 import {
-  deletePaseoWorktree,
-  isPaseoOwnedWorktreeCwd,
-  resolvePaseoWorktreeRootForCwd,
+  deleteOttoWorktree,
+  isOttoOwnedWorktreeCwd,
+  resolveOttoWorktreeRootForCwd,
   WorktreeTeardownError,
 } from "../utils/worktree.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
@@ -22,10 +22,10 @@ export interface ActiveWorkspaceRef {
 }
 
 export interface ArchiveDependencies {
-  paseoHome?: string;
+  ottoHome?: string;
   // Base directory that may hold worktrees across repositories. Used as a fallback
   // when the request does not supply a per-repo root.
-  paseoWorktreesBaseRoot?: string;
+  ottoWorktreesBaseRoot?: string;
   github: GitHubService;
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
@@ -70,7 +70,7 @@ export interface ArchiveByScopeRequest {
   repoWorktreesRoot?: string;
   // Base directory that may hold worktrees across repositories; falls back to the
   // dependency's base root for ownership checks and path resolution.
-  paseoWorktreesBaseRoot?: string;
+  ottoWorktreesBaseRoot?: string;
   requestId: string;
 }
 
@@ -90,7 +90,7 @@ export async function resolveWorkspaceIdAtPath(
 
 // THE single archive entry. Resolves the in-scope record set, tears each down
 // (agents + terminals + record), then removes the backing directory iff it is
-// Paseo-owned AND no active workspace still references it.
+// Otto-owned AND no active workspace still references it.
 export async function archiveByScope(
   dependencies: ArchiveDependencies,
   request: ArchiveByScopeRequest,
@@ -98,7 +98,7 @@ export async function archiveByScope(
   const { targetDir, targetWorkspaceIds } = await resolveArchiveTargets(
     dependencies,
     request.scope,
-    request.paseoWorktreesBaseRoot,
+    request.ottoWorktreesBaseRoot,
   );
 
   if (targetWorkspaceIds.length > 0) {
@@ -157,7 +157,7 @@ export async function archiveByScope(
 async function resolveArchiveTargets(
   dependencies: ArchiveDependencies,
   scope: ArchiveScope,
-  paseoWorktreesBaseRoot?: string,
+  ottoWorktreesBaseRoot?: string,
 ): Promise<{ targetDir: string | null; targetWorkspaceIds: string[] }> {
   const activeWorkspaces = await dependencies.listActiveWorkspaces();
 
@@ -175,9 +175,9 @@ async function resolveArchiveTargets(
   }
 
   let targetPath = scope.targetPath;
-  const resolvedWorktree = await resolvePaseoWorktreeRootForCwd(targetPath, {
-    paseoHome: dependencies.paseoHome,
-    worktreesRoot: paseoWorktreesBaseRoot ?? dependencies.paseoWorktreesBaseRoot,
+  const resolvedWorktree = await resolveOttoWorktreeRootForCwd(targetPath, {
+    ottoHome: dependencies.ottoHome,
+    worktreesRoot: ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
   });
   if (resolvedWorktree) {
     targetPath = resolvedWorktree.worktreePath;
@@ -228,9 +228,9 @@ async function maybeRemoveDirectory(
   targetDir: string,
   archivedWorkspaceIds: string[],
 ): Promise<boolean> {
-  const ownership = await isPaseoOwnedWorktreeCwd(targetDir, {
-    paseoHome: dependencies.paseoHome,
-    worktreesRoot: request.paseoWorktreesBaseRoot ?? dependencies.paseoWorktreesBaseRoot,
+  const ownership = await isOttoOwnedWorktreeCwd(targetDir, {
+    ottoHome: dependencies.ottoHome,
+    worktreesRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
   });
   if (!ownership.allowed) {
     return false;
@@ -242,12 +242,12 @@ async function maybeRemoveDirectory(
   }
 
   try {
-    await deletePaseoWorktree({
+    await deleteOttoWorktree({
       cwd: request.repoRoot,
       worktreePath: targetDir,
       worktreesRoot: request.repoWorktreesRoot ?? ownership.worktreeRoot,
-      paseoHome: dependencies.paseoHome,
-      worktreesBaseRoot: request.paseoWorktreesBaseRoot ?? dependencies.paseoWorktreesBaseRoot,
+      ottoHome: dependencies.ottoHome,
+      worktreesBaseRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
     });
     dependencies.github.invalidate({ cwd: targetDir });
     return true;

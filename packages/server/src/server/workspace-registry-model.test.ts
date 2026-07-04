@@ -113,7 +113,7 @@ describe("deriveWorkspaceDirectoryKey", () => {
         currentBranch: "main",
         remoteUrl: "https://github.com/acme/repo.git",
         worktreeRoot: "/tmp/repo",
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       }),
     ).toBe("/tmp/repo");
@@ -129,7 +129,7 @@ describe("deriveWorkspaceDirectoryKey", () => {
         currentBranch: "main",
         remoteUrl: null,
         worktreeRoot: `--path-format=absolute\n${cwd}`,
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       }),
     ).toBe(resolve(cwd));
@@ -145,7 +145,7 @@ describe("deriveWorkspaceDirectoryKey", () => {
         currentBranch: null,
         remoteUrl: null,
         worktreeRoot: null,
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       }),
     ).toBe(resolve("/tmp/repo/scratch"));
@@ -167,7 +167,7 @@ describe("opaque workspace id versus directory key", () => {
       currentBranch: null,
       remoteUrl: null,
       worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
+      isOttoOwnedWorktree: false,
       mainRepoRoot: null,
     });
 
@@ -186,7 +186,7 @@ describe("git worktree grouping", () => {
         currentBranch: "feature/plain",
         remoteUrl: "https://github.com/acme/repo.git",
         worktreeRoot: "/tmp/repo-feature",
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: "/tmp/repo",
       },
     });
@@ -214,7 +214,7 @@ describe("git worktree grouping", () => {
           currentBranch: "feature/plain",
           remoteUrl: "https://github.com/acme/repo.git",
           worktreeRoot: "/tmp/repo-feature",
-          isPaseoOwnedWorktree: false,
+          isOttoOwnedWorktree: false,
           mainRepoRoot: "/tmp/repo",
         },
       }),
@@ -229,7 +229,7 @@ describe("git worktree grouping", () => {
         currentBranch: "feature/plain",
         remoteUrl: "https://github.com/acme/repo.git",
         worktreeRoot: "/tmp/repo-feature",
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: "/tmp/repo",
       }),
     ).toBe("worktree");

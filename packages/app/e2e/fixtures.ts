@@ -8,7 +8,7 @@ import { createWithWorkspace, type WithWorkspace } from "./helpers/with-workspac
 // across spec-file boundaries — Playwright sometimes skips it for the first test of a
 // subsequent spec when multiple specs run in the same worker. Auto fixtures run
 // reliably for every test that uses this `test` object.
-const test = base.extend<{ paseoE2ESetup: void; withWorkspace: WithWorkspace }>({
+const test = base.extend<{ ottoE2ESetup: void; withWorkspace: WithWorkspace }>({
   baseURL: async ({}, provide) => {
     const metroPort = process.env.E2E_METRO_PORT;
     if (!metroPort) {
@@ -16,7 +16,7 @@ const test = base.extend<{ paseoE2ESetup: void; withWorkspace: WithWorkspace }>(
     }
     await provide(`http://localhost:${metroPort}`);
   },
-  paseoE2ESetup: [
+  ottoE2ESetup: [
     async ({ page }, provide, testInfo) => {
       const daemonPort = getE2EDaemonPort();
       const metroPort = process.env.E2E_METRO_PORT;
@@ -27,10 +27,10 @@ const test = base.extend<{ paseoE2ESetup: void; withWorkspace: WithWorkspace }>(
       }
 
       // Hard guardrail: never allow tests to hit the developer's default daemon.
-      // This blocks both HTTP and WS attempts to :6767 (before any navigation).
-      await page.route(/:(6767)\b/, (route) => route.abort());
-      await page.routeWebSocket(/:(6767)\b/, async (ws) => {
-        await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
+      // This blocks both HTTP and WS attempts to :6868 (before any navigation).
+      await page.route(/:(6868)\b/, (route) => route.abort());
+      await page.routeWebSocket(/:(6868)\b/, async (ws) => {
+        await ws.close({ code: 1008, reason: "Blocked connection to localhost:6868 during e2e." });
       });
 
       const entries: string[] = [];
@@ -61,7 +61,7 @@ const test = base.extend<{ paseoE2ESetup: void; withWorkspace: WithWorkspace }>(
           // `addInitScript` runs on every navigation (including reloads). Some tests intentionally
           // override storage and reload; they can opt out of seeding for the *next* navigation by
           // setting this flag before the reload.
-          const disableOnceKey = "@paseo:e2e-disable-default-seed-once";
+          const disableOnceKey = "@otto:e2e-disable-default-seed-once";
           const disableValue = localStorage.getItem(disableOnceKey);
           if (disableValue) {
             localStorage.removeItem(disableOnceKey);
@@ -70,13 +70,13 @@ const test = base.extend<{ paseoE2ESetup: void; withWorkspace: WithWorkspace }>(
             }
           }
 
-          localStorage.setItem("@paseo:e2e", "1");
-          localStorage.setItem("@paseo:e2e-seed-nonce", nonce);
+          localStorage.setItem("@otto:e2e", "1");
+          localStorage.setItem("@otto:e2e-seed-nonce", nonce);
 
           // Hard-reset anything that could point to a developer's real daemon.
-          localStorage.setItem("@paseo:daemon-registry", JSON.stringify([daemon]));
-          localStorage.removeItem("@paseo:settings");
-          localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+          localStorage.setItem("@otto:daemon-registry", JSON.stringify([daemon]));
+          localStorage.removeItem("@otto:settings");
+          localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
         },
         { daemon: testDaemon, preferences: createAgentPreferences, seedNonce },
       );

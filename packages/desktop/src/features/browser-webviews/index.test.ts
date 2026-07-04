@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getPaseoBrowserIdForWebContents, registerPaseoBrowserWebContents } from "./index.js";
+import { getOttoBrowserIdForWebContents, registerOttoBrowserWebContents } from "./index.js";
 
 class FakeRegisteredWebContents {
   public readonly backgroundThrottlingCalls: boolean[] = [];
@@ -27,18 +27,18 @@ class FakeRegisteredWebContents {
   }
 }
 
-describe("registerPaseoBrowserWebContents", () => {
+describe("registerOttoBrowserWebContents", () => {
   test("disables guest background throttling once when the webview is registered", () => {
     const contents = new FakeRegisteredWebContents(9001);
 
-    registerPaseoBrowserWebContents(contents, "browser-throttle");
+    registerOttoBrowserWebContents(contents, "browser-throttle");
 
     expect(contents.backgroundThrottlingCalls).toEqual([false]);
-    expect(getPaseoBrowserIdForWebContents(contents)).toBe("browser-throttle");
+    expect(getOttoBrowserIdForWebContents(contents)).toBe("browser-throttle");
 
     contents.destroy();
 
-    expect(getPaseoBrowserIdForWebContents(contents)).toBeNull();
+    expect(getOttoBrowserIdForWebContents(contents)).toBeNull();
     expect(contents.backgroundThrottlingCalls).toEqual([false]);
   });
 });

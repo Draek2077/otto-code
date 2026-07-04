@@ -1,4 +1,4 @@
-import type { AgentModelDefinition } from "@getpaseo/protocol/agent-types";
+import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 
 export interface ProviderDiscoveredModelsCache {
   serverId: string;

@@ -1,11 +1,11 @@
-import { AGENT_HOOK_PROVIDERS } from "@getpaseo/server/agent-hooks";
+import { AGENT_HOOK_PROVIDERS } from "@otto-code/server/agent-hooks";
 import { describe, expect, it } from "vitest";
 import { runHooksCommand } from "./hooks.js";
 
 const hookEnv = {
-  PASEO_TERMINAL_ID: "terminal-1",
-  PASEO_ACTIVITY_TOKEN: "token-1",
-  PASEO_TERMINAL_ACTIVITY_URL: "http://127.0.0.1:6767/api/terminal-activity",
+  OTTO_TERMINAL_ID: "terminal-1",
+  OTTO_ACTIVITY_TOKEN: "token-1",
+  OTTO_TERMINAL_ACTIVITY_URL: "http://127.0.0.1:6868/api/terminal-activity",
 };
 
 function inputFrom(value: string) {
@@ -59,13 +59,13 @@ async function runHook(agent: string, event: string, input = ttyInput()) {
 function expectPostedState(fetch: RecordingFetch, state: string) {
   expect(fetch.calls).toEqual([
     {
-      url: hookEnv.PASEO_TERMINAL_ACTIVITY_URL,
+      url: hookEnv.OTTO_TERMINAL_ACTIVITY_URL,
       init: {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          terminalId: hookEnv.PASEO_TERMINAL_ID,
-          token: hookEnv.PASEO_ACTIVITY_TOKEN,
+          terminalId: hookEnv.OTTO_TERMINAL_ID,
+          token: hookEnv.OTTO_ACTIVITY_TOKEN,
           state,
         }),
         signal: expect.any(AbortSignal),

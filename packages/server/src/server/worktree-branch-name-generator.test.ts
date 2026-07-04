@@ -8,12 +8,12 @@ import type { StructuredAgentGenerationWithFallbackOptions } from "./agent/agent
 import {
   attemptFirstAgentBranchAutoName,
   type AttemptFirstAgentBranchAutoNameResult,
-} from "./paseo-worktree-service.js";
+} from "./otto-worktree-service.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { generateBranchNameFromFirstAgentContext } from "./worktree-branch-name-generator.js";
 import {
-  writePaseoWorktreeFirstAgentBranchAutoNameMetadata,
-  writePaseoWorktreeMetadata,
+  writeOttoWorktreeFirstAgentBranchAutoNameMetadata,
+  writeOttoWorktreeMetadata,
 } from "../utils/worktree-metadata.js";
 
 const cleanupPaths: string[] = [];
@@ -230,9 +230,9 @@ describe("generateBranchNameFromFirstAgentContext", () => {
   });
 
   test.each([
-    ["paseo.json missing", undefined],
-    ["paseo.json exists but invalid JSON", "{ nope"],
-    ["paseo.json valid but missing metadataGeneration", {}],
+    ["otto.json missing", undefined],
+    ["otto.json exists but invalid JSON", "{ nope"],
+    ["otto.json valid but missing metadataGeneration", {}],
     [
       "metadataGeneration exists but missing branchName",
       { metadataGeneration: { commitMessage: { instructions: "Use Conventional Commits." } } },
@@ -293,11 +293,11 @@ describe("generateBranchNameFromFirstAgentContext", () => {
   });
 
   test("keeps the branch slug validator fallback when instructions are present", async () => {
-    const repoRoot = createTempDir("paseo-branch-config-");
-    const worktreeRoot = createTempDir("paseo-branch-worktree-");
+    const repoRoot = createTempDir("otto-branch-config-");
+    const worktreeRoot = createTempDir("otto-branch-worktree-");
     mkdirSync(path.join(worktreeRoot, ".git"));
-    writePaseoWorktreeMetadata(worktreeRoot, { baseRefName: "main" });
-    writePaseoWorktreeFirstAgentBranchAutoNameMetadata(worktreeRoot, {
+    writeOttoWorktreeMetadata(worktreeRoot, { baseRefName: "main" });
+    writeOttoWorktreeFirstAgentBranchAutoNameMetadata(worktreeRoot, {
       placeholderBranchName: "dazzling-yak",
     });
     writeConfig(repoRoot, {
@@ -340,9 +340,9 @@ describe("generateBranchNameFromFirstAgentContext", () => {
 });
 
 async function generateBranchPromptWithConfig(config: unknown): Promise<{ prompt: string }> {
-  const repoRoot = createTempDir("paseo-branch-config-");
+  const repoRoot = createTempDir("otto-branch-config-");
   if (typeof config === "string") {
-    writeFileSync(path.join(repoRoot, "paseo.json"), config);
+    writeFileSync(path.join(repoRoot, "otto.json"), config);
   } else if (config !== undefined) {
     writeConfig(repoRoot, config);
   }
@@ -375,5 +375,5 @@ function createTempDir(prefix: string): string {
 }
 
 function writeConfig(repoRoot: string, config: unknown): void {
-  writeFileSync(path.join(repoRoot, "paseo.json"), `${JSON.stringify(config)}\n`);
+  writeFileSync(path.join(repoRoot, "otto.json"), `${JSON.stringify(config)}\n`);
 }

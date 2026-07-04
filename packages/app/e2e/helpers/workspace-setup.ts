@@ -1,19 +1,19 @@
 import { realpathSync } from "node:fs";
 import { expect, type Page } from "@playwright/test";
-import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
 import { parseHostWorkspaceRouteFromPathname } from "../../src/utils/host-routes";
 import { gotoAppShell } from "./app";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
 import { switchWorkspaceViaSidebar } from "./workspace-ui";
-import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 
 type WorkspaceSetupDaemonClient = Pick<
   InternalDaemonClient,
   | "close"
   | "addProject"
   | "connect"
-  | "createPaseoWorktree"
+  | "createOttoWorktree"
   | "createWorkspace"
   | "fetchAgent"
   | "fetchAgents"
@@ -206,7 +206,7 @@ export async function createWorkspaceThroughDaemon(
   client: WorkspaceSetupDaemonClient,
   input: { cwd: string; worktreeSlug: string },
 ): Promise<{ id: string; name: string }> {
-  const result = await client.createPaseoWorktree(input);
+  const result = await client.createOttoWorktree(input);
   if (!result.workspace || result.error) {
     throw new Error(result.error ?? `Failed to create workspace for ${input.cwd}`);
   }

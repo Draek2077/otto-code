@@ -16,9 +16,9 @@ import { $ } from "zx";
 $.verbose = false;
 
 const testEnv = {
-  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
-  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
+  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
+  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
 };
 
 function sleep(ms: number): Promise<void> {
@@ -79,13 +79,13 @@ if (process.platform === "win32") {
   process.exit(0);
 }
 
-const paseoHome = await mkdtemp(join(tmpdir(), "paseo-stop-tree-kill-"));
-const childPidPath = join(paseoHome, "descendant.pid");
+const ottoHome = await mkdtemp(join(tmpdir(), "otto-stop-tree-kill-"));
+const childPidPath = join(ottoHome, "descendant.pid");
 let ownerProcess: ChildProcess | null = null;
 let descendantPid: number | null = null;
 
 try {
-  await mkdir(paseoHome, { recursive: true });
+  await mkdir(ottoHome, { recursive: true });
 
   console.log("Test 1: start daemon-owner fixture with a detached descendant");
   ownerProcess = spawn(
@@ -115,7 +115,7 @@ try {
 
   assert(ownerProcess.pid, "owner pid should exist");
   await writeFile(
-    join(paseoHome, "paseo.pid"),
+    join(ottoHome, "otto.pid"),
     JSON.stringify({
       pid: ownerProcess.pid,
       listen: "127.0.0.1:1",
@@ -139,7 +139,7 @@ try {
 
   console.log("Test 2: forced daemon stop kills owner and separate-PGID descendant");
   const stopResult =
-    await $`PASEO_HOME=${paseoHome} PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD} PASEO_DICTATION_ENABLED=${testEnv.PASEO_DICTATION_ENABLED} PASEO_VOICE_MODE_ENABLED=${testEnv.PASEO_VOICE_MODE_ENABLED} npx paseo daemon stop --home ${paseoHome} --json --timeout 1 --force --kill-timeout 2`.nothrow();
+    await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon stop --home ${ottoHome} --json --timeout 1 --force --kill-timeout 2`.nothrow();
   assert.strictEqual(stopResult.exitCode, 0, `stop should succeed: ${stopResult.stderr}`);
   const parsed = JSON.parse(stopResult.stdout) as {
     action?: unknown;
@@ -176,7 +176,7 @@ try {
 } finally {
   killIfRunning(ownerProcess?.pid ?? null);
   killIfRunning(descendantPid);
-  await rm(paseoHome, { recursive: true, force: true });
+  await rm(ottoHome, { recursive: true, force: true });
 }
 
 console.log("=== Daemon stop tree kill regression test passed ===");

@@ -9,7 +9,7 @@ import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
 
 const OPENCODE_REAL_MODEL = "openrouter/google/gemini-2.5-flash-lite";
 const OPENCODE_SEED_TIMEOUT_MS = 45_000;
-const PASEO_REPO_PATH = path.resolve(__dirname, "../../..");
+const OTTO_REPO_PATH = path.resolve(__dirname, "../../..");
 
 interface OpenCodeSeedResult {
   stdout: string;
@@ -40,7 +40,7 @@ test.afterEach(async () => {
 });
 
 test("imports a real OpenCode session from the workspace import sheet", async ({ page }) => {
-  const scenario = await seedPaseoWorkspaceWithOpenCodeSession();
+  const scenario = await seedOttoWorkspaceWithOpenCodeSession();
   workspace = scenario.workspace;
   const importableSession = await waitForImportableOpenCodeSession(scenario);
   await openWorkspace(page, scenario.workspace);
@@ -51,18 +51,18 @@ test("imports a real OpenCode session from the workspace import sheet", async ({
   await expectImportedSessionOpen(page, scenario);
 });
 
-async function seedPaseoWorkspaceWithOpenCodeSession(): Promise<OpenCodeImportScenario> {
-  const response = `PASEO_OPENCODE_IMPORT_E2E_OK_${randomUUID().slice(0, 8)}`;
+async function seedOttoWorkspaceWithOpenCodeSession(): Promise<OpenCodeImportScenario> {
+  const response = `OTTO_OPENCODE_IMPORT_E2E_OK_${randomUUID().slice(0, 8)}`;
   const prompt = `Do not use tools. Reply with exactly: ${response}`;
   const promptPreview = JSON.stringify(prompt);
-  await launchOpenCodeSessionInWorkspace(PASEO_REPO_PATH, prompt);
+  await launchOpenCodeSessionInWorkspace(OTTO_REPO_PATH, prompt);
   const client = await connectSeedClient();
   try {
     const createdWorkspace = await client.createWorkspace({
-      source: { kind: "directory", path: PASEO_REPO_PATH },
+      source: { kind: "directory", path: OTTO_REPO_PATH },
     });
     if (!createdWorkspace.workspace) {
-      throw new Error(createdWorkspace.error ?? `Failed to create workspace ${PASEO_REPO_PATH}`);
+      throw new Error(createdWorkspace.error ?? `Failed to create workspace ${OTTO_REPO_PATH}`);
     }
     return {
       prompt,
@@ -70,7 +70,7 @@ async function seedPaseoWorkspaceWithOpenCodeSession(): Promise<OpenCodeImportSc
       response,
       workspace: {
         client,
-        repoPath: PASEO_REPO_PATH,
+        repoPath: OTTO_REPO_PATH,
         workspaceId: createdWorkspace.workspace.id,
         workspaceName: createdWorkspace.workspace.name,
         workspaceDirectory: createdWorkspace.workspace.workspaceDirectory,
@@ -145,7 +145,7 @@ function runOpenCodeSeed(repoPath: string, prompt: string): Promise<OpenCodeSeed
 function formatOpenCodeLaunchError(result: OpenCodeSeedResult, prompt: string): string {
   return [
     "OpenCode launch failed",
-    `command: ${["opencode", ...openCodeSeedArgs(PASEO_REPO_PATH, prompt)].join(" ")}`,
+    `command: ${["opencode", ...openCodeSeedArgs(OTTO_REPO_PATH, prompt)].join(" ")}`,
     `exit: ${result.code ?? "null"}`,
     result.signal ? `signal: ${result.signal}` : null,
     result.timedOut ? `timed out after ${OPENCODE_SEED_TIMEOUT_MS}ms` : null,

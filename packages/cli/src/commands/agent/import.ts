@@ -3,11 +3,11 @@ import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import type { CommandError, CommandOptions, SingleResult } from "../../output/index.js";
 import { agentRunSchema, type AgentRunResult } from "./run.js";
-import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 
 export function addImportOptions(cmd: Command): Command {
   return cmd
-    .description("Import an existing provider session as a Paseo agent")
+    .description("Import an existing provider session as a Otto agent")
     .argument("<id>", "Provider session/thread ID to import")
     .requiredOption("--provider <provider>", "Agent provider id")
     .option("--cwd <path>", "Working directory for providers that require it")
@@ -44,7 +44,7 @@ function parseImportProvider(provider: string | undefined): string {
     throw {
       code: "MISSING_PROVIDER",
       message: "Provider is required",
-      details: "Usage: paseo import --provider <provider> <id>",
+      details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
 
@@ -105,7 +105,7 @@ async function connectToDaemonOrThrow(
     throw {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: paseo daemon start",
+      details: "Start the daemon with: otto daemon start",
     } satisfies CommandError;
   }
 }
@@ -121,7 +121,7 @@ export async function runImportCommand(
     throw {
       code: "MISSING_SESSION_ID",
       message: "Session ID is required",
-      details: "Usage: paseo import --provider <provider> <id>",
+      details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
 

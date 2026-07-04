@@ -1,10 +1,10 @@
-# AGENTS.md — Paseo Server Development Guide
+# AGENTS.md — Otto Server Development Guide
 
 For AI coding agents working in `packages/server`. Supplements [CLAUDE.md](../CLAUDE.md) at the repo root.
 
 ## Project Overview
 
-Paseo is a mobile + CLI app for monitoring and controlling local AI coding agents (Claude Code, Codex, GitHub Copilot, OpenCode, Pi). The daemon runs on your machine, manages agent processes, and streams their output over WebSocket to clients.
+Otto is a mobile + CLI app for monitoring and controlling local AI coding agents (Claude Code, Codex, GitHub Copilot, OpenCode, Pi). The daemon runs on your machine, manages agent processes, and streams their output over WebSocket to clients.
 
 ---
 
@@ -145,7 +145,7 @@ Tests prove behavior, not structure. Every test should answer: "what user-visibl
 
 ## Critical Rules
 
-1. **NEVER restart the daemon on port 6767** — it kills your own process
+1. **NEVER restart the daemon on port 6868** — it kills your own process
 2. **NEVER assume timeouts need a restart** — they can be transient
 3. **Always run `npm run typecheck` after changes**
 4. **NEVER add auth checks to tests** — agent providers handle their own auth
@@ -169,15 +169,15 @@ packages/server/src/
 ├── relay-transport.ts        # Outbound relay connection
 ```
 
-Agent state persists to `$PASEO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`  
-Daemon logs: `$PASEO_HOME/daemon.log`
+Agent state persists to `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`  
+Daemon logs: `$OTTO_HOME/daemon.log`
 
 ---
 
 ## Debugging
 
 ```bash
-tail -f $PASEO_HOME/daemon.log      # Daemon logs
+tail -f $OTTO_HOME/daemon.log      # Daemon logs
 npm run test:ui                     # Vitest browser UI at localhost:51204
 npm run cli -- inspect <agent-id>   # Detailed agent info
 npm run db:query -- "SELECT * FROM agent_timeline_rows..."

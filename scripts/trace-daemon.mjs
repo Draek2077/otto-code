@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Emit the set of files the daemon and CLI need at runtime, computed by
 // static module-graph tracing (@vercel/nft) from the three entry points.
-// Used by nix/package.nix's installPhase to materialize $out/lib/paseo
+// Used by nix/package.nix's installPhase to materialize $out/lib/otto
 // with only the bytes the daemon actually loads — no Expo, RN, Metro,
 // Electron, ML stacks, or other non-daemon workspace bloat.
 //
 // Output: newline-separated repo-relative file paths on stdout. The Nix
-// installPhase copies each path to $out/lib/paseo/<path>, preserving the
+// installPhase copies each path to $out/lib/otto/<path>, preserving the
 // directory structure node's module resolution expects.
 //
 // Run from the repo root, after `npm run build:server`. Requires
@@ -37,7 +37,7 @@ const additionalInputs = [
   // Server runtime config files (read by path, not require)
   "packages/server/.env.example",
   // CLI shebang script wrapping dist/index.js
-  "packages/cli/bin/paseo",
+  "packages/cli/bin/otto",
   // node-pty's compiled native addon. nft can't trace it because
   // node-pty loads it via `require(path.join(__dirname, 'prebuilds/<plat>/pty.node'))`
   // with a runtime-computed platform suffix. Pin to the host platform —

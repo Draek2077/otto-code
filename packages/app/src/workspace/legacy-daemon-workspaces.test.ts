@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { DaemonClient, FetchAgentsEntry } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient, FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { deriveWorkspaceAgentVisibility } from "@/workspace-tabs/agent-visibility";
 import {
@@ -52,7 +52,7 @@ function legacyAgent(input: {
         currentBranch: "main",
         remoteUrl: "git@example.com:repo/app.git",
         worktreeRoot: input.cwd,
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: "/repo",
       },
     },

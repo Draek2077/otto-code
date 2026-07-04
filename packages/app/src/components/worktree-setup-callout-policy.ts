@@ -1,4 +1,4 @@
-import type { PaseoConfigRaw } from "@getpaseo/protocol/messages";
+import type { OttoConfigRaw } from "@otto-code/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 
@@ -21,7 +21,7 @@ export interface ActiveGitWorkspaceProject {
 
 interface ReadProjectConfigResult {
   ok: boolean;
-  config?: PaseoConfigRaw | null;
+  config?: OttoConfigRaw | null;
 }
 
 export interface WorktreeSetupCalloutPolicy {
@@ -73,7 +73,7 @@ export function buildWorktreeSetupCalloutPolicy(
   };
 }
 
-function hasSetupCommands(config: PaseoConfigRaw): boolean {
+function hasSetupCommands(config: OttoConfigRaw): boolean {
   const setup = config.worktree?.setup;
   if (typeof setup === "string") {
     return setup.trim().length > 0;

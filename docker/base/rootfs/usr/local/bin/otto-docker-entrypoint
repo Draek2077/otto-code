@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE_HOME="/home/otto"
+
+: "${HOME:=$IMAGE_HOME}"
+: "${OTTO_HOME:=${HOME}/.otto}"
+: "${OTTO_LISTEN:=0.0.0.0:6868}"
+: "${OTTO_WEB_UI_ENABLED:=true}"
+: "${OTTO_LOG_LEVEL:=info}"
+: "${OTTO_LOG_FORMAT:=json}"
+: "${CLAUDE_CONFIG_DIR:=${HOME}/.claude}"
+: "${CODEX_HOME:=${HOME}/.codex}"
+: "${XDG_CONFIG_HOME:=${HOME}/.config}"
+: "${XDG_DATA_HOME:=${HOME}/.local/share}"
+: "${XDG_STATE_HOME:=${HOME}/.local/state}"
+: "${XDG_CACHE_HOME:=${HOME}/.cache}"
+
+export HOME
+export OTTO_HOME
+export OTTO_LISTEN
+export OTTO_WEB_UI_ENABLED
+export OTTO_LOG_LEVEL
+export OTTO_LOG_FORMAT
+export CLAUDE_CONFIG_DIR
+export CODEX_HOME
+export XDG_CONFIG_HOME
+export XDG_DATA_HOME
+export XDG_STATE_HOME
+export XDG_CACHE_HOME
+
+ensure_dir() {
+  local dir="$1"
+  mkdir -p "$dir"
+  if [[ "$(id -u)" == "0" ]]; then
+    local owner
+    owner="$(stat -c "%u" "$dir")"
+    if [[ "$owner" == "0" ]]; then
+      chown otto:otto "$dir"
+    fi
+  fi
+}
+
+ensure_dir "$HOME"
+ensure_dir "$OTTO_HOME"
+ensure_dir "$CLAUDE_CONFIG_DIR"
+ensure_dir "$CODEX_HOME"
+ensure_dir "$XDG_CONFIG_HOME"
+ensure_dir "$XDG_DATA_HOME"
+ensure_dir "$XDG_STATE_HOME"
+ensure_dir "$XDG_CACHE_HOME"
+
+if [[ "$#" -gt 0 ]]; then
+  if [[ "$(id -u)" == "0" ]]; then
+    exec gosu otto "$@"
+  fi
+  exec "$@"
+fi
+
+if [[ -z "${OTTO_PASSWORD:-}" ]]; then
+  {
+    echo "[otto] WARNING: OTTO_PASSWORD is not set."
+    echo "[otto] The daemon accepts unauthenticated control connections from any client that can reach it."
+    echo "[otto] Set OTTO_PASSWORD for any published port or network-reachable deployment."
+  } >&2
+fi
+
+if [[ ! -f /etc/otto-server-entry ]]; then
+  echo "[otto] FATAL: /etc/otto-server-entry is missing." >&2
+  exit 1
+fi
+
+entry="$(cat /etc/otto-server-entry)"
+echo "[otto] starting daemon on ${OTTO_LISTEN} with web UI ${OTTO_WEB_UI_ENABLED}"
+if [[ "$(id -u)" == "0" ]]; then
+  exec gosu otto node "$entry"
+fi
+exec node "$entry"

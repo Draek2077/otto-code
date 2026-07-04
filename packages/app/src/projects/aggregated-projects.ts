@@ -1,4 +1,4 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { fetchAllWorkspaceDescriptors } from "@/projects/workspace-fetching";
 import { buildProjects, type ProjectHost, type ProjectSummary } from "@/utils/projects";
 

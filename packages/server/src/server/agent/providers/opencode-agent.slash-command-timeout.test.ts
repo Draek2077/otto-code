@@ -23,7 +23,7 @@ function createDeferred<T>(): {
 }
 
 describe("OpenCodeAgentSession slash command timeout handling", () => {
-  test("lists only OpenCode built-in slash commands Paseo can execute", async () => {
+  test("lists only OpenCode built-in slash commands Otto can execute", async () => {
     const runtime = new TestOpenCodeHarness();
     const openCodeClient = createOpenCodeClientWithConnectedProvider();
     runtime.enqueueClient(openCodeClient);

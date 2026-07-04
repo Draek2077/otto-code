@@ -1,7 +1,7 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentProviderNotice } from "@getpaseo/protocol/agent-types";
-import type { AgentAttachment } from "@getpaseo/protocol/messages";
-import type { PaseoToolCatalog } from "./tools/types.js";
+import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
+import type { AgentAttachment } from "@otto-code/protocol/messages";
+import type { OttoToolCatalog } from "./tools/types.js";
 
 export type { AgentProviderNotice };
 
@@ -171,7 +171,7 @@ export interface AgentCapabilityFlags {
   supportsSessionListing?: boolean;
   supportsDynamicModes: boolean;
   supportsMcpServers: boolean;
-  supportsNativePaseoTools?: boolean;
+  supportsNativeOttoTools?: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
   supportsRewindConversation?: boolean;
@@ -581,10 +581,10 @@ export interface AgentLaunchContext {
   agentId?: string;
   env?: Record<string, string>;
   /**
-   * Runtime-only internal Paseo tools. This must never be persisted into
+   * Runtime-only internal Otto tools. This must never be persisted into
    * AgentSessionConfig; providers may adapt it to their native tool surface.
    */
-  paseoTools?: PaseoToolCatalog;
+  ottoTools?: OttoToolCatalog;
 }
 
 export interface AgentCreateSessionOptions {
@@ -701,12 +701,12 @@ export interface AgentClient {
   getDiagnostic?(): Promise<{ diagnostic: string }>;
   /**
    * Archive a persisted session in the native provider (best-effort).
-   * Called when Paseo archives an agent so the provider's own UI reflects the same state.
+   * Called when Otto archives an agent so the provider's own UI reflects the same state.
    */
   archiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
   /**
    * Unarchive a persisted session in the native provider.
-   * Called before Paseo clears its archived flag so provider resume can succeed.
+   * Called before Otto clears its archived flag so provider resume can succeed.
    */
   unarchiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
   /**

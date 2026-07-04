@@ -28,17 +28,17 @@ export interface SkillTargets {
   codexDir: string;
 }
 
-export const PASEO_SKILL_NAMES = [
-  "paseo",
-  "paseo-advisor",
-  "paseo-chat",
-  "paseo-committee",
-  "paseo-handoff",
-  "paseo-loop",
+export const OTTO_SKILL_NAMES = [
+  "otto",
+  "otto-advisor",
+  "otto-chat",
+  "otto-committee",
+  "otto-handoff",
+  "otto-loop",
   // Keep removed bundle names here so auto-update deletes stale installed copies.
-  "paseo-epic",
-  "paseo-orchestrate",
-  "paseo-orchestrator",
+  "otto-epic",
+  "otto-orchestrate",
+  "otto-orchestrator",
 ] as const;
 
 type SkillFiles = Map<string, string>;
@@ -69,7 +69,7 @@ async function hashSkillDir(skillDir: string): Promise<SkillFiles | null> {
 
 async function hashSkills(rootDir: string): Promise<Map<string, SkillFiles>> {
   const out = new Map<string, SkillFiles>();
-  for (const name of PASEO_SKILL_NAMES) {
+  for (const name of OTTO_SKILL_NAMES) {
     const files = await hashSkillDir(path.join(rootDir, name));
     if (files !== null) out.set(name, files);
   }
@@ -78,7 +78,7 @@ async function hashSkills(rootDir: string): Promise<Map<string, SkillFiles>> {
 
 function diff(bundle: TargetSkills, disks: readonly TargetSkills[]): SkillOp[] {
   const ops: SkillOp[] = [];
-  for (const name of PASEO_SKILL_NAMES) {
+  for (const name of OTTO_SKILL_NAMES) {
     const b = bundle.get(name);
     const targetFiles = disks.map((disk) => disk.get(name));
     const installedTargets = targetFiles.filter(
@@ -97,7 +97,7 @@ function diff(bundle: TargetSkills, disks: readonly TargetSkills[]): SkillOp[] {
   return ops;
 }
 
-function hasInstalledPaseoSkill(disks: readonly TargetSkills[]): boolean {
+function hasInstalledOttoSkill(disks: readonly TargetSkills[]): boolean {
   return disks.some((disk) => disk.size > 0);
 }
 
@@ -129,7 +129,7 @@ export async function getSkillsStatus(targets?: SkillTargets): Promise<SkillsSta
   const disks = [agentsDisk, claudeDisk, codexDisk];
   const ops = diff(bundle, disks);
 
-  if (!hasInstalledPaseoSkill(disks)) return { state: "not-installed", ops };
+  if (!hasInstalledOttoSkill(disks)) return { state: "not-installed", ops };
   if (ops.length === 0) return { state: "up-to-date", ops };
   return { state: "drift", ops };
 }
@@ -182,7 +182,7 @@ export async function autoUpdateInstalledSkills(targets?: SkillTargets): Promise
 
 export async function uninstallSkills(targets?: SkillTargets): Promise<SkillsStatus> {
   const t = targets ?? resolveSkillTargets();
-  for (const name of PASEO_SKILL_NAMES) {
+  for (const name of OTTO_SKILL_NAMES) {
     await removeSkill(name, {
       agentsDir: t.agentsDir,
       claudeDir: t.claudeDir,

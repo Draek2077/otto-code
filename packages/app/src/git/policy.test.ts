@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CheckoutPrStatusSchema } from "@getpaseo/protocol/messages";
+import { CheckoutPrStatusSchema } from "@otto-code/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 
 import { buildGitActions, type BuildGitActionsInput } from "./policy";
@@ -40,7 +40,7 @@ function createInput(overrides: Partial<BuildGitActionsInput> = {}): BuildGitAct
     pullRequestMergeable: "UNKNOWN",
     pullRequestGithub: null,
     hasRemote: false,
-    isPaseoOwnedWorktree: false,
+    isOttoOwnedWorktree: false,
     isOnBaseBranch: true,
     hasUncommittedChanges: false,
     baseRefAvailable: true,
@@ -171,11 +171,11 @@ describe("git-actions-policy", () => {
     });
   });
 
-  it("keeps push available for a no-upstream Paseo worktree with local commits", () => {
+  it("keeps push available for a no-upstream Otto worktree with local commits", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
-        isPaseoOwnedWorktree: true,
+        isOttoOwnedWorktree: true,
         isOnBaseBranch: false,
         aheadCount: 1,
         aheadOfOrigin: null,
@@ -352,9 +352,9 @@ describe("git-actions-policy", () => {
     );
   });
 
-  it("only shows archive worktree for paseo worktrees", () => {
+  it("only shows archive worktree for otto worktrees", () => {
     const hidden = buildGitActions(createInput());
-    const shown = buildGitActions(createInput({ isPaseoOwnedWorktree: true }));
+    const shown = buildGitActions(createInput({ isOttoOwnedWorktree: true }));
 
     expect(hidden.secondary.some((action) => action.id === "archive-worktree")).toBe(false);
     expect(shown.secondary.some((action) => action.id === "archive-worktree")).toBe(true);
@@ -939,7 +939,7 @@ describe("git-actions-policy", () => {
         pullRequestState: "open",
         pullRequestMergeable: "MERGEABLE",
         pullRequestGithub: githubStatus(),
-        isPaseoOwnedWorktree: true,
+        isOttoOwnedWorktree: true,
       }),
     );
 

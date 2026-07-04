@@ -28,7 +28,7 @@ const gitMetadata: WorkspaceGitMetadata = {
   workspaceDisplayName: "repo",
   gitRemote: null,
   isWorktree: false,
-  projectSlug: "paseo",
+  projectSlug: "otto",
   repoRoot: "/tmp/repo",
   currentBranch: "feature/scripts",
   remoteUrl: null,
@@ -88,7 +88,7 @@ function buildService(options: BuildOptions = {}) {
       options.terminalManager === undefined ? availableTerminalManager : options.terminalManager,
     workspaceRegistry: fakeWorkspaceRegistry(workspace),
     workspaceGitService: fakeGitService(),
-    getDaemonTcpPort: () => 6767,
+    getDaemonTcpPort: () => 6868,
     getDaemonTcpHost: () => "127.0.0.1",
     serviceProxyPublicBaseUrl: null,
     resolveScriptHealth: null,
@@ -140,7 +140,7 @@ describe("buildSnapshot", () => {
     expect(service.buildSnapshot("ws-1", "/tmp/repo")).toEqual([]);
   });
 
-  test("returns no scripts for a workspace without a paseo.json", () => {
+  test("returns no scripts for a workspace without a otto.json", () => {
     const dir = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
     tempDirs.push(dir);
     const { service } = buildService();
@@ -203,10 +203,10 @@ describe("start", () => {
     expect(spawnCalls[0]).toMatchObject({
       repoRoot: "/tmp/repo",
       workspaceId: "ws-1",
-      projectSlug: "paseo",
+      projectSlug: "otto",
       branchName: "feature/scripts",
       scriptName: "app",
-      daemonPort: 6767,
+      daemonPort: 6868,
       daemonListenHost: "127.0.0.1",
     });
     expect(emitted).toContainEqual({

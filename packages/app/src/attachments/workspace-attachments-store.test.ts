@@ -16,7 +16,7 @@ function reviewAttachment(body: string): WorkspaceComposerAttachment {
     commentCount: 1,
     attachment: {
       type: "review",
-      mimeType: "application/paseo-review",
+      mimeType: "application/otto-review",
       cwd: "/repo",
       mode: "uncommitted",
       baseRef: null,
@@ -55,7 +55,7 @@ function contextAttachment(id: string): WorkspaceComposerAttachment {
     id,
     title: "Comment · octocat",
     text: "GitHub pull request comment\n\nLooks good.",
-    url: `https://github.com/getpaseo/paseo/pull/42#${id}`,
+    url: `https://github.com/otto-code-ai/otto-code/pull/42#${id}`,
   };
 }
 

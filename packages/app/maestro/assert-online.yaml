@@ -1,8 +1,8 @@
-appId: sh.paseo
+appId: ai.ottocode
 ---
 - runFlow:
     when:
-      visible: "Open in.*Paseo.*\\?"
+      visible: "Open in.*Otto.*\\?"
     commands:
       - tapOn: "Open"
 

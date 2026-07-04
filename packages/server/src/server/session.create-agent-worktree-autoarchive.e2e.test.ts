@@ -28,11 +28,11 @@ function createGitRepo(): string {
   tempRoots.push(tempRoot);
   const repoDir = path.join(tempRoot, "repo");
   execFileSync("git", ["init", "-b", "main", repoDir], { stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", "test@getpaseo.local"], {
+  execFileSync("git", ["config", "user.email", "test@otto-code.local"], {
     cwd: repoDir,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.name", "Paseo Test"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "user.name", "Otto Test"], { cwd: repoDir, stdio: "pipe" });
   writeFileSync(path.join(repoDir, "README.md"), "hello\n");
   execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], {
@@ -68,7 +68,7 @@ async function expectWorktreePresentInList(repoDir: string, worktreePath: string
   await expect
     .poll(
       async () => {
-        const listed = await ctx.client.getPaseoWorktreeList({ cwd: repoDir });
+        const listed = await ctx.client.getOttoWorktreeList({ cwd: repoDir });
         return listed.worktrees.map((worktree) => worktree.worktreePath).includes(worktreePath);
       },
       { timeout: 5000, interval: 100 },
@@ -77,7 +77,7 @@ async function expectWorktreePresentInList(repoDir: string, worktreePath: string
 }
 
 async function expectWorktreeListEmpty(repoDir: string): Promise<void> {
-  const listed = await ctx.client.getPaseoWorktreeList({ cwd: repoDir });
+  const listed = await ctx.client.getOttoWorktreeList({ cwd: repoDir });
   expect(listed.worktrees).toEqual([]);
 }
 
@@ -126,7 +126,7 @@ test("create_agent_request creates a worktree and auto-archives both after the f
   const created = await ctx.client.createAgent(request);
 
   expect(created.cwd).not.toBe(repoDir);
-  const listedWithWorktree = await ctx.client.getPaseoWorktreeList({ cwd: repoDir });
+  const listedWithWorktree = await ctx.client.getOttoWorktreeList({ cwd: repoDir });
   expect(listedWithWorktree.worktrees).toEqual([
     expect.objectContaining({
       worktreePath: created.cwd,
@@ -158,7 +158,7 @@ test("create_agent_request with autoArchive archives only the agent when no work
   await expectAgentAbsentFromActiveList(created.id);
   const archived = await ctx.client.fetchAgents({ filter: { includeArchived: true } });
   expect(archived.entries.map((entry) => entry.agent.id)).toContain(created.id);
-  const worktrees = await ctx.client.getPaseoWorktreeList({ cwd: repoDir });
+  const worktrees = await ctx.client.getOttoWorktreeList({ cwd: repoDir });
   expect(worktrees.worktrees).toEqual([]);
 });
 
@@ -203,14 +203,14 @@ test("create_agent_request with worktree but no autoArchive leaves agent and wor
   await expectAgentPresentInActiveList(created.agentId);
   await expectWorktreePresentInList(created.repoDir, created.worktreePath);
 
-  await ctx.client.archivePaseoWorktree({ worktreePath: created.worktreePath });
+  await ctx.client.archiveOttoWorktree({ worktreePath: created.worktreePath });
 });
 
 test("archiving a created worktree removes the directory on last reference", async () => {
   const created = await createAgentInBranchOffWorktree();
 
   await ctx.client.waitForFinish(created.agentId, 10000);
-  await ctx.client.archivePaseoWorktree({ worktreePath: created.worktreePath });
+  await ctx.client.archiveOttoWorktree({ worktreePath: created.worktreePath });
 
   await expectAgentAbsentFromActiveList(created.agentId);
   await expectWorktreeListEmpty(created.repoDir);
@@ -235,7 +235,7 @@ test("auto-archiving a created worktree keeps the directory when a sibling works
   await expectWorktreePresentInList(created.repoDir, created.worktreePath);
   expect(existsSync(created.worktreePath)).toBe(true);
 
-  await ctx.client.archivePaseoWorktree({ worktreePath: created.worktreePath });
+  await ctx.client.archiveOttoWorktree({ worktreePath: created.worktreePath });
 });
 
 test("create_agent_request rejects legacy git options before creating a worktree", async () => {

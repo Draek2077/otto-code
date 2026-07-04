@@ -188,7 +188,7 @@ export class FakePiSession implements PiRuntimeSession {
   }
 
   private handleTreeNavigationCommand(message: string): void {
-    const prefix = "/paseo_tree ";
+    const prefix = "/otto_tree ";
     if (!message.startsWith(prefix)) {
       return;
     }
@@ -204,7 +204,7 @@ export class FakePiSession implements PiRuntimeSession {
   }
 
   private handleEntryCaptureCommand(message: string): void {
-    const prefix = "/paseo_capture_entries ";
+    const prefix = "/otto_capture_entries ";
     if (!message.startsWith(prefix)) {
       return;
     }
@@ -225,7 +225,7 @@ export class FakePiSession implements PiRuntimeSession {
       type: "extension_ui_request",
       id: `capture-${requestId ?? reason}`,
       method: "notify",
-      message: `PASEO_ENTRY_CAPTURE ${JSON.stringify({
+      message: `OTTO_ENTRY_CAPTURE ${JSON.stringify({
         reason,
         requestId,
         entries: this.capturedUserEntries,
@@ -241,7 +241,7 @@ export class FakePiSession implements PiRuntimeSession {
       type: "extension_ui_request",
       id: `command-${requestId}`,
       method: "notify",
-      message: `PASEO_COMMAND_RESULT ${JSON.stringify({ requestId, ...result })}`,
+      message: `OTTO_COMMAND_RESULT ${JSON.stringify({ requestId, ...result })}`,
     });
   }
 }

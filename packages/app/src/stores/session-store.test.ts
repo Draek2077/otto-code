@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
 
 import {
   normalizeWorkspaceDescriptor,
@@ -58,9 +58,9 @@ describe("normalizeWorkspaceDescriptor", () => {
       {
         scriptName: "web",
         type: "service" as const,
-        hostname: "web.paseo.localhost",
+        hostname: "web.otto.localhost",
         port: 3000,
-        proxyUrl: "http://web.paseo.localhost:6767",
+        proxyUrl: "http://web.otto.localhost:6868",
         lifecycle: "running" as const,
         health: "healthy" as const,
         exitCode: null,
@@ -88,9 +88,9 @@ describe("normalizeWorkspaceDescriptor", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.paseo.localhost",
+        hostname: "web.otto.localhost",
         port: 3000,
-        proxyUrl: "http://web.paseo.localhost:6767",
+        proxyUrl: "http://web.otto.localhost:6868",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -243,7 +243,7 @@ describe("normalizeWorkspaceDescriptor", () => {
           currentBranch: "main",
           remoteUrl: "https://github.com/acme/app.git",
           worktreeRoot: "/repo/app",
-          isPaseoOwnedWorktree: false,
+          isOttoOwnedWorktree: false,
           mainRepoRoot: null,
         },
       },
@@ -258,7 +258,7 @@ describe("normalizeWorkspaceDescriptor", () => {
         currentBranch: "main",
         remoteUrl: "https://github.com/acme/app.git",
         worktreeRoot: "/repo/app",
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       },
     });
@@ -281,9 +281,9 @@ describe("mergeWorkspaces", () => {
           {
             scriptName: "web",
             type: "service",
-            hostname: "web.paseo.localhost",
+            hostname: "web.otto.localhost",
             port: 3000,
-            proxyUrl: "http://web.paseo.localhost:6767",
+            proxyUrl: "http://web.otto.localhost:6868",
             lifecycle: "running",
             health: "healthy",
             exitCode: null,
@@ -297,9 +297,9 @@ describe("mergeWorkspaces", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.paseo.localhost",
+        hostname: "web.otto.localhost",
         port: 3000,
-        proxyUrl: "http://web.paseo.localhost:6767",
+        proxyUrl: "http://web.otto.localhost:6868",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -496,9 +496,9 @@ describe("patchWorkspaceScripts", () => {
     const script = {
       scriptName: "web",
       type: "service" as const,
-      hostname: "web.paseo.localhost",
+      hostname: "web.otto.localhost",
       port: 3000,
-      proxyUrl: "http://web.paseo.localhost:6767",
+      proxyUrl: "http://web.otto.localhost:6868",
       lifecycle: "running" as const,
       health: "healthy" as const,
       exitCode: null,

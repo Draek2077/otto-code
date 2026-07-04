@@ -7,8 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   DaemonClient,
   FetchRecentProviderSessionEntry,
-} from "@getpaseo/client/internal/daemon-client";
-import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+} from "@otto-code/client/internal/daemon-client";
+import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 
@@ -191,7 +191,7 @@ function renderSheet(
     },
   });
 
-  const cwd = options && "cwd" in options ? (options.cwd ?? undefined) : "/repo/paseo";
+  const cwd = options && "cwd" in options ? (options.cwd ?? undefined) : "/repo/otto";
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -222,7 +222,7 @@ function createImportedAgentSnapshot(id: string): Awaited<ReturnType<DaemonClien
   return {
     id,
     provider: "custom-provider",
-    cwd: "/repo/paseo",
+    cwd: "/repo/otto",
     model: null,
     createdAt: "2026-04-30T10:00:00.000Z",
     updatedAt: "2026-04-30T10:00:00.000Z",
@@ -252,7 +252,7 @@ function createProviderSessionEntry(
     providerId: "custom-provider",
     providerLabel: "Custom Agent",
     providerHandleId: "provider-thread-1",
-    cwd: "/repo/paseo",
+    cwd: "/repo/otto",
     title: "Import me",
     firstPromptPreview: "Import this external provider session",
     lastPromptPreview: "Import this external provider session",
@@ -408,7 +408,7 @@ describe("ImportSessionSheet", () => {
 
     await waitFor(() => {
       expect(fetchRecentProviderSessions).toHaveBeenCalledWith({
-        cwd: "/repo/paseo",
+        cwd: "/repo/otto",
         providers: ["claude"],
         limit: 15,
       });
@@ -450,7 +450,7 @@ describe("ImportSessionSheet", () => {
             visible={visible}
             client={client}
             serverId="server-1"
-            cwd="/repo/paseo"
+            cwd="/repo/otto"
             onClose={vi.fn()}
             onImportedAgent={vi.fn()}
           />
@@ -470,7 +470,7 @@ describe("ImportSessionSheet", () => {
     await screen.findByText("Cached importable session");
     await waitFor(() => {
       expect(fetchRecentProviderSessions).toHaveBeenCalledWith({
-        cwd: "/repo/paseo",
+        cwd: "/repo/otto",
         providers: ["claude"],
         limit: 15,
       });
@@ -484,7 +484,7 @@ describe("ImportSessionSheet", () => {
         createProviderSessionEntry({
           providerId: "claude",
           providerLabel: "Claude Code",
-          cwd: "/repo/paseo-realpath",
+          cwd: "/repo/otto-realpath",
         }),
       ],
     }));
@@ -510,7 +510,7 @@ describe("ImportSessionSheet", () => {
       expect(importAgent).toHaveBeenCalledWith({
         providerId: "claude",
         providerHandleId: "provider-thread-1",
-        cwd: "/repo/paseo-realpath",
+        cwd: "/repo/otto-realpath",
       });
     });
     expect(onImportedAgent).toHaveBeenCalledWith("agent-imported");
@@ -546,7 +546,7 @@ describe("ImportSessionSheet", () => {
     expect(importAgent).toHaveBeenCalledWith({
       providerId: "claude",
       providerHandleId: "provider-thread-1",
-      cwd: "/repo/paseo",
+      cwd: "/repo/otto",
     });
     expect(onImportedAgent).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -589,13 +589,13 @@ describe("ImportSessionSheet", () => {
 
     await waitFor(() => {
       expect(fetchRecentProviderSessions).toHaveBeenCalledWith({
-        cwd: "/repo/paseo",
+        cwd: "/repo/otto",
         providers: ["claude"],
         limit: 15,
       });
     });
     expect(fetchRecentProviderSessions).toHaveBeenCalledWith({
-      cwd: "/repo/paseo",
+      cwd: "/repo/otto",
       providers: ["codex"],
       limit: 15,
     });
@@ -603,7 +603,7 @@ describe("ImportSessionSheet", () => {
       expect.objectContaining({ providers: ["opencode"] }),
     );
     expect(fetchRecentProviderSessions).toHaveBeenCalledWith({
-      cwd: "/repo/paseo",
+      cwd: "/repo/otto",
       providers: ["z-ai"],
       limit: 15,
     });

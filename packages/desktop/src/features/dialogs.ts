@@ -27,7 +27,7 @@ function resolveDialogType(kind: AskOptions["kind"]): "warning" | "error" | "que
 }
 
 export function registerDialogHandlers(): void {
-  ipcMain.handle("paseo:dialog:ask", async (event, message: string, options?: AskOptions) => {
+  ipcMain.handle("otto:dialog:ask", async (event, message: string, options?: AskOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showMessageBox(win ?? BrowserWindow.getFocusedWindow()!, {
       type: resolveDialogType(options?.kind),
@@ -41,7 +41,7 @@ export function registerDialogHandlers(): void {
   });
 
   ipcMain.handle(
-    "paseo:dialog:askWithCheckbox",
+    "otto:dialog:askWithCheckbox",
     async (event, message: string, options: AskWithCheckboxOptions) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       const result = await dialog.showMessageBox(win ?? BrowserWindow.getFocusedWindow()!, {
@@ -61,7 +61,7 @@ export function registerDialogHandlers(): void {
     },
   );
 
-  ipcMain.handle("paseo:dialog:open", async (event, options?: OpenOptions) => {
+  ipcMain.handle("otto:dialog:open", async (event, options?: OpenOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const properties: Electron.OpenDialogOptions["properties"] = [];
     if (options?.directory) properties.push("openDirectory");

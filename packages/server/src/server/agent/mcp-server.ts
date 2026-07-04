@@ -6,10 +6,10 @@ import type {
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { createPaseoToolCatalog, type PaseoToolHostDependencies } from "./tools/paseo-tools.js";
-import type { PaseoToolResult } from "./tools/types.js";
+import { createOttoToolCatalog, type OttoToolHostDependencies } from "./tools/otto-tools.js";
+import type { OttoToolResult } from "./tools/types.js";
 
-export type AgentMcpServerOptions = PaseoToolHostDependencies;
+export type AgentMcpServerOptions = OttoToolHostDependencies;
 
 type McpToolContext = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
@@ -61,7 +61,7 @@ function addModelVisibleStructuredContent(result: CallToolResult): CallToolResul
   };
 }
 
-function toMcpToolResult(result: PaseoToolResult): CallToolResult {
+function toMcpToolResult(result: OttoToolResult): CallToolResult {
   return addModelVisibleStructuredContent({
     content: result.content as CallToolResult["content"],
     ...(result.structuredContent !== undefined
@@ -72,7 +72,7 @@ function toMcpToolResult(result: PaseoToolResult): CallToolResult {
 }
 
 export async function createAgentMcpServer(options: AgentMcpServerOptions): Promise<McpServer> {
-  const catalog = await createPaseoToolCatalog(options);
+  const catalog = await createOttoToolCatalog(options);
   const server = new McpServer({
     name: "agent-mcp",
     version: "2.0.0",

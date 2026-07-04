@@ -8,7 +8,7 @@ import { runGitCommand } from "./run-git-command.js";
 const tempDirs: string[] = [];
 
 function makeTempRepo(): string {
-  const repo = mkdtempSync(path.join(tmpdir(), "paseo-git-shell-"));
+  const repo = mkdtempSync(path.join(tmpdir(), "otto-git-shell-"));
   tempDirs.push(repo);
   return repo;
 }
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("runGitCommand shell behavior", () => {
   it("passes git arguments directly instead of through the platform shell", async () => {
     const repo = makeTempRepo();
-    const literalName = "%PASEO_GIT_SHELL_SENTINEL%";
+    const literalName = "%OTTO_GIT_SHELL_SENTINEL%";
     const expandedName = "expanded-by-cmd";
 
     await runGitCommand(["init"], { cwd: repo });
@@ -33,7 +33,7 @@ describe("runGitCommand shell behavior", () => {
     const result = await runGitCommand(["ls-files", "--error-unmatch", literalName], {
       cwd: repo,
       envOverlay: {
-        PASEO_GIT_SHELL_SENTINEL: expandedName,
+        OTTO_GIT_SHELL_SENTINEL: expandedName,
       },
     });
 

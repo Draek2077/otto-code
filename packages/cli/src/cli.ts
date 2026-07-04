@@ -45,8 +45,8 @@ export function createCli(): Command {
   const program = new Command();
 
   program
-    .name("paseo")
-    .description("Paseo CLI - control your AI coding agents from the command line")
+    .name("otto")
+    .description("Otto CLI - control your AI coding agents from the command line")
     .version(VERSION, "-v, --version", "output the version number")
     // Global output options
     .option("-o, --format <format>", "output format: table, json, yaml", "table")
@@ -102,17 +102,17 @@ export function createCli(): Command {
   addJsonOption(
     program
       .command("status")
-      .description('Show local daemon status (alias for "paseo daemon status")'),
+      .description('Show local daemon status (alias for "otto daemon status")'),
   )
-    .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
+    .option("--home <path>", "Otto home directory (default: ~/.otto)")
     .action(withOutput(runDaemonStatusCommand));
 
   addJsonOption(
     program
       .command("restart")
-      .description('Restart local daemon (alias for "paseo daemon restart")'),
+      .description('Restart local daemon (alias for "otto daemon restart")'),
   )
-    .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
+    .option("--home <path>", "Otto home directory (default: ~/.otto)")
     .option("--timeout <seconds>", "Wait timeout before force step (default: 15)")
     .option("--force", "Send SIGKILL if graceful stop times out")
     .option(

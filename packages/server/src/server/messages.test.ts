@@ -49,7 +49,7 @@ describe("serializeAgentStreamEvent", () => {
       provider: "claude",
       item: {
         type: "user_message",
-        text: "<paseo-instructions>\nX\n</paseo-instructions>\n\nHello",
+        text: "<otto-instructions>\nX\n</otto-instructions>\n\nHello",
         messageId: "m1",
       },
     };
@@ -96,7 +96,7 @@ describe("serializeAgentStreamEvent", () => {
       item: {
         type: "tool_call",
         callId: "call_unknown",
-        name: "paseo_voice.speak",
+        name: "otto_voice.speak",
         status: "completed",
         detail: {
           type: "unknown",

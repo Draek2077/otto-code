@@ -97,7 +97,7 @@ assertNoDirectWorkerLaunch("desktop runtime paths", desktopRuntimePaths);
 const nixPackage = await readFile(nixPackagePath, "utf-8");
 assert(
   nixPackage.includes("dist/scripts/supervisor-entrypoint.js"),
-  "Nix paseo-server wrapper should use dist/scripts/supervisor-entrypoint.js",
+  "Nix otto-server wrapper should use dist/scripts/supervisor-entrypoint.js",
 );
 assertNoDirectWorkerLaunch("Nix package wrapper", nixPackage);
 console.log("✓ desktop runtime and Nix wrapper enter supervisor\n");

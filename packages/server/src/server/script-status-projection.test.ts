@@ -8,16 +8,16 @@ import {
   buildWorkspaceScriptPayloads,
   createScriptStatusEmitter,
 } from "./script-status-projection.js";
-import { WorkspaceScriptPayloadSchema } from "@getpaseo/protocol/messages";
+import { WorkspaceScriptPayloadSchema } from "@otto-code/protocol/messages";
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
-import { readPaseoConfig } from "../utils/worktree.js";
-import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
+import { readOttoConfig } from "../utils/worktree.js";
+import type { OttoConfig } from "@otto-code/protocol/otto-config-schema";
 import { createTestLogger } from "../test-utils/test-logger.js";
 
 function createWorkspaceRepo(options?: {
   branchName?: string;
-  paseoConfig?: Record<string, unknown>;
+  ottoConfig?: Record<string, unknown>;
 }): { tempDir: string; repoDir: string; cleanup: () => void } {
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "script-projection-")));
   const repoDir = path.join(tempDir, "repo");
@@ -32,8 +32,8 @@ function createWorkspaceRepo(options?: {
   });
   execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
   writeFileSync(path.join(repoDir, "README.md"), "hello\n");
-  if (options?.paseoConfig) {
-    writeFileSync(path.join(repoDir, "paseo.json"), JSON.stringify(options.paseoConfig, null, 2));
+  if (options?.ottoConfig) {
+    writeFileSync(path.join(repoDir, "otto.json"), JSON.stringify(options.ottoConfig, null, 2));
   }
   execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], {
@@ -53,7 +53,7 @@ function createWorkspaceRepo(options?: {
 function buildPayloads(input: {
   workspaceId: string;
   workspaceDirectory: string;
-  paseoConfig?: PaseoConfig | null;
+  ottoConfig?: OttoConfig | null;
   routeStore?: ScriptRouteStore;
   serviceProxy?: ScriptRouteStore;
   runtimeStore: WorkspaceScriptRuntimeStore;
@@ -62,18 +62,18 @@ function buildPayloads(input: {
   gitMetadata?: { projectSlug: string; currentBranch: string | null };
   resolveHealth?: (hostname: string) => ScriptHealthState | null;
 }) {
-  const paseoConfig =
-    input.paseoConfig !== undefined ? input.paseoConfig : loadConfig(input.workspaceDirectory);
+  const ottoConfig =
+    input.ottoConfig !== undefined ? input.ottoConfig : loadConfig(input.workspaceDirectory);
   const { routeStore, serviceProxy, ...rest } = input;
   return buildWorkspaceScriptPayloads({
     ...rest,
     serviceProxy: serviceProxy ?? routeStore ?? new ScriptRouteStore(),
-    paseoConfig,
+    ottoConfig,
   });
 }
 
-function loadConfig(repoRoot: string): PaseoConfig | null {
-  const result = readPaseoConfig(repoRoot);
+function loadConfig(repoRoot: string): OttoConfig | null {
+  const result = readOttoConfig(repoRoot);
   return result.ok ? result.config : null;
 }
 
@@ -96,7 +96,7 @@ describe("script-status-projection", () => {
   it("projects plain scripts and services differently", () => {
     const workspaceId = "workspace-plain-and-service";
     const workspace = createWorkspaceRepo({
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           typecheck: { command: "npm run typecheck" },
           web: { type: "service", command: "npm run web", port: 3000 },
@@ -121,7 +121,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
         }),
       ).toEqual([
         {
@@ -140,9 +140,9 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "web--repo.localhost",
           port: 3000,
-          localProxyUrl: "http://web--repo.localhost:6767",
+          localProxyUrl: "http://web--repo.localhost:6868",
           publicProxyUrl: null,
-          proxyUrl: "http://web--repo.localhost:6767",
+          proxyUrl: "http://web--repo.localhost:6868",
           lifecycle: "stopped",
           health: null,
           exitCode: null,
@@ -158,7 +158,7 @@ describe("script-status-projection", () => {
     const workspaceId = "workspace-service-metadata";
     const workspace = createWorkspaceRepo({
       branchName: "local-branch-that-should-not-be-read",
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           web: { type: "service", command: "npm run web", port: 3000 },
         },
@@ -173,7 +173,7 @@ describe("script-status-projection", () => {
         workspaceDirectory: workspace.repoDir,
         serviceProxy: routeStore,
         runtimeStore,
-        daemonPort: 6767,
+        daemonPort: 6868,
         gitMetadata: {
           projectSlug: "service-provided",
           currentBranch: "feature/from-service",
@@ -186,9 +186,9 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "web--feature-from-service--service-provided.localhost",
           port: 3000,
-          localProxyUrl: "http://web--feature-from-service--service-provided.localhost:6767",
+          localProxyUrl: "http://web--feature-from-service--service-provided.localhost:6868",
           publicProxyUrl: null,
-          proxyUrl: "http://web--feature-from-service--service-provided.localhost:6767",
+          proxyUrl: "http://web--feature-from-service--service-provided.localhost:6868",
           lifecycle: "stopped",
           health: null,
           exitCode: null,
@@ -203,7 +203,7 @@ describe("script-status-projection", () => {
   it("projects local and public service URLs while keeping proxyUrl public-first", () => {
     const workspaceId = "workspace-public-service";
     const workspace = createWorkspaceRepo({
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           web: { type: "service", command: "npm run web", port: 3000 },
         },
@@ -219,7 +219,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
           serviceProxyPublicBaseUrl: "https://services.example.com",
           gitMetadata: { projectSlug: "repo", currentBranch: "feature/card" },
         }),
@@ -229,7 +229,7 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "web--feature-card--repo.localhost",
           port: 3000,
-          localProxyUrl: "http://web--feature-card--repo.localhost:6767",
+          localProxyUrl: "http://web--feature-card--repo.localhost:6868",
           publicProxyUrl: "https://web--feature-card--repo.services.example.com",
           proxyUrl: "https://web--feature-card--repo.services.example.com",
           lifecycle: "stopped",
@@ -247,7 +247,7 @@ describe("script-status-projection", () => {
     const workspaceId = "workspace-running-service";
     const workspace = createWorkspaceRepo({
       branchName: "feature/card",
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           web: { type: "service", command: "npm run web" },
         },
@@ -278,7 +278,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
           resolveHealth: () => "healthy",
         }),
       ).toEqual([
@@ -287,9 +287,9 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "web--feature-card--repo.localhost",
           port: 4321,
-          localProxyUrl: "http://web--feature-card--repo.localhost:6767",
+          localProxyUrl: "http://web--feature-card--repo.localhost:6868",
           publicProxyUrl: null,
-          proxyUrl: "http://web--feature-card--repo.localhost:6767",
+          proxyUrl: "http://web--feature-card--repo.localhost:6868",
           lifecycle: "running",
           health: "healthy",
           exitCode: null,
@@ -304,7 +304,7 @@ describe("script-status-projection", () => {
   it("maps internal pending health to null on the wire", () => {
     const workspaceId = "workspace-pending-health";
     const workspace = createWorkspaceRepo({
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           web: { type: "service", command: "npm run web" },
         },
@@ -335,7 +335,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
           resolveHealth: () => "pending",
         }),
       ).toEqual([
@@ -344,9 +344,9 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "web--repo.localhost",
           port: 4321,
-          localProxyUrl: "http://web--repo.localhost:6767",
+          localProxyUrl: "http://web--repo.localhost:6868",
           publicProxyUrl: null,
-          proxyUrl: "http://web--repo.localhost:6767",
+          proxyUrl: "http://web--repo.localhost:6868",
           lifecycle: "running",
           health: null,
           exitCode: null,
@@ -386,7 +386,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
         }),
       ).toEqual([
         {
@@ -394,9 +394,9 @@ describe("script-status-projection", () => {
           type: "service",
           hostname: "docs--repo.localhost",
           port: 3002,
-          localProxyUrl: "http://docs--repo.localhost:6767",
+          localProxyUrl: "http://docs--repo.localhost:6868",
           publicProxyUrl: null,
-          proxyUrl: "http://docs--repo.localhost:6767",
+          proxyUrl: "http://docs--repo.localhost:6868",
           lifecycle: "running",
           health: null,
           exitCode: null,
@@ -429,7 +429,7 @@ describe("script-status-projection", () => {
           workspaceDirectory: workspace.repoDir,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
         }),
       ).toEqual([
         {
@@ -449,16 +449,16 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("readPaseoConfig fails with configPath and error when paseo.json is malformed", () => {
+  it("readOttoConfig fails with configPath and error when otto.json is malformed", () => {
     const workspace = createWorkspaceRepo();
-    const configPath = path.join(workspace.repoDir, "paseo.json");
+    const configPath = path.join(workspace.repoDir, "otto.json");
     writeFileSync(
       configPath,
       '{\n<<<<<<< HEAD\n  "scripts": {}\n=======\n  "scripts": {}\n>>>>>>> origin/main\n}\n',
     );
 
     try {
-      const result = readPaseoConfig(workspace.repoDir);
+      const result = readOttoConfig(workspace.repoDir);
       expect(result.ok).toBe(false);
       if (result.ok) throw new Error("unreachable");
       expect(result.configPath).toBe(configPath);
@@ -468,7 +468,7 @@ describe("script-status-projection", () => {
     }
   });
 
-  it("buildWorkspaceScriptPayloads given paseoConfig=null still surfaces orphaned runtime scripts", () => {
+  it("buildWorkspaceScriptPayloads given ottoConfig=null still surfaces orphaned runtime scripts", () => {
     const workspaceId = "workspace-null-config";
     const workspace = createWorkspaceRepo();
     const routeStore = new ScriptRouteStore();
@@ -487,10 +487,10 @@ describe("script-status-projection", () => {
         buildPayloads({
           workspaceId,
           workspaceDirectory: workspace.repoDir,
-          paseoConfig: null,
+          ottoConfig: null,
           routeStore,
           runtimeStore,
-          daemonPort: 6767,
+          daemonPort: 6868,
         }),
       ).toEqual([
         {
@@ -513,7 +513,7 @@ describe("script-status-projection", () => {
   it("createScriptStatusEmitter overlays health onto the projected workspace script list", async () => {
     const workspaceId = "workspace-emitter";
     const workspace = createWorkspaceRepo({
-      paseoConfig: {
+      ottoConfig: {
         scripts: {
           api: { type: "service", command: "npm run api" },
           typecheck: { command: "npm run typecheck" },
@@ -543,7 +543,7 @@ describe("script-status-projection", () => {
       sessions: () => [session],
       serviceProxy: routeStore,
       runtimeStore,
-      daemonPort: 6767,
+      daemonPort: 6868,
       resolveWorkspaceDirectory: async (requestedWorkspaceId) =>
         requestedWorkspaceId === "workspace-emitter" ? workspace.repoDir : null,
       logger: createTestLogger(),
@@ -570,9 +570,9 @@ describe("script-status-projection", () => {
               type: "service",
               hostname: "api--repo.localhost",
               port: 3001,
-              localProxyUrl: "http://api--repo.localhost:6767",
+              localProxyUrl: "http://api--repo.localhost:6868",
               publicProxyUrl: null,
-              proxyUrl: "http://api--repo.localhost:6767",
+              proxyUrl: "http://api--repo.localhost:6868",
               lifecycle: "running",
               health: "healthy",
               exitCode: null,

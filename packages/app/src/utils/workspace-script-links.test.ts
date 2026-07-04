@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceScriptPayload } from "@getpaseo/protocol/messages";
+import type { WorkspaceScriptPayload } from "@otto-code/protocol/messages";
 import type { ActiveConnection } from "@/runtime/host-runtime";
 import { resolveWorkspaceScriptLink } from "./workspace-script-links";
 
 const runningService: WorkspaceScriptPayload = {
   scriptName: "web",
   type: "service",
-  hostname: "web--feature--paseo.localhost",
+  hostname: "web--feature--otto.localhost",
   port: 3000,
-  localProxyUrl: "http://web--feature--paseo.localhost:6767",
+  localProxyUrl: "http://web--feature--otto.localhost:6868",
   publicProxyUrl: null,
-  proxyUrl: "http://web--feature--paseo.localhost:6767",
+  proxyUrl: "http://web--feature--otto.localhost:6868",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,
@@ -27,19 +27,19 @@ function resolveLink(activeConnection: ActiveConnection | null) {
 describe("resolveWorkspaceScriptLink", () => {
   it("uses the local proxy URL for loopback TCP connections", () => {
     expect(
-      resolveLink({ type: "directTcp", endpoint: "localhost:6767", display: "localhost:6767" }),
+      resolveLink({ type: "directTcp", endpoint: "localhost:6868", display: "localhost:6868" }),
     ).toEqual({
-      openUrl: "http://web--feature--paseo.localhost:6767",
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      openUrl: "http://web--feature--otto.localhost:6868",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
   it("uses the local proxy URL for socket and pipe connections", () => {
     expect(
-      resolveLink({ type: "directSocket", endpoint: "/tmp/paseo.sock", display: "socket" }),
+      resolveLink({ type: "directSocket", endpoint: "/tmp/otto.sock", display: "socket" }),
     ).toEqual({
-      openUrl: "http://web--feature--paseo.localhost:6767",
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      openUrl: "http://web--feature--otto.localhost:6868",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
@@ -47,8 +47,8 @@ describe("resolveWorkspaceScriptLink", () => {
     expect(
       resolveLink({
         type: "directTcp",
-        endpoint: "mac-mini.tail123.ts.net:6767",
-        display: "mac-mini.tail123.ts.net:6767",
+        endpoint: "mac-mini.tail123.ts.net:6868",
+        display: "mac-mini.tail123.ts.net:6868",
       }),
     ).toEqual({
       openUrl: "http://mac-mini.tail123.ts.net:3000",
@@ -58,10 +58,10 @@ describe("resolveWorkspaceScriptLink", () => {
 
   it("shows the local proxy URL but disables opening over relay", () => {
     expect(
-      resolveLink({ type: "relay", endpoint: "relay.paseo.sh:443", display: "relay" }),
+      resolveLink({ type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" }),
     ).toEqual({
       openUrl: null,
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
@@ -70,14 +70,14 @@ describe("resolveWorkspaceScriptLink", () => {
       resolveWorkspaceScriptLink({
         script: {
           ...runningService,
-          publicProxyUrl: "https://web--feature--paseo.services.example.com",
-          proxyUrl: "https://web--feature--paseo.services.example.com",
+          publicProxyUrl: "https://web--feature--otto.services.example.com",
+          proxyUrl: "https://web--feature--otto.services.example.com",
         },
-        activeConnection: { type: "relay", endpoint: "relay.paseo.sh:443", display: "relay" },
+        activeConnection: { type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" },
       }),
     ).toEqual({
-      openUrl: "https://web--feature--paseo.services.example.com",
-      labelUrl: "https://web--feature--paseo.services.example.com",
+      openUrl: "https://web--feature--otto.services.example.com",
+      labelUrl: "https://web--feature--otto.services.example.com",
     });
   });
 
@@ -86,14 +86,14 @@ describe("resolveWorkspaceScriptLink", () => {
       resolveWorkspaceScriptLink({
         script: {
           ...runningService,
-          publicProxyUrl: "https://web--feature--paseo.services.example.com",
-          proxyUrl: "https://web--feature--paseo.services.example.com",
+          publicProxyUrl: "https://web--feature--otto.services.example.com",
+          proxyUrl: "https://web--feature--otto.services.example.com",
         },
-        activeConnection: { type: "directTcp", endpoint: "127.0.0.1:6767", display: "localhost" },
+        activeConnection: { type: "directTcp", endpoint: "127.0.0.1:6868", display: "localhost" },
       }),
     ).toEqual({
-      openUrl: "http://web--feature--paseo.localhost:6767",
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      openUrl: "http://web--feature--otto.localhost:6868",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
@@ -102,14 +102,14 @@ describe("resolveWorkspaceScriptLink", () => {
       resolveWorkspaceScriptLink({
         script: {
           ...runningService,
-          publicProxyUrl: "https://web--feature--paseo.services.example.com",
-          proxyUrl: "https://web--feature--paseo.services.example.com",
+          publicProxyUrl: "https://web--feature--otto.services.example.com",
+          proxyUrl: "https://web--feature--otto.services.example.com",
         },
-        activeConnection: { type: "directPipe", endpoint: "paseo", display: "pipe" },
+        activeConnection: { type: "directPipe", endpoint: "otto", display: "pipe" },
       }),
     ).toEqual({
-      openUrl: "http://web--feature--paseo.localhost:6767",
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      openUrl: "http://web--feature--otto.localhost:6868",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
@@ -118,18 +118,18 @@ describe("resolveWorkspaceScriptLink", () => {
       resolveWorkspaceScriptLink({
         script: {
           ...runningService,
-          publicProxyUrl: "https://web--feature--paseo.services.example.com",
-          proxyUrl: "https://web--feature--paseo.services.example.com",
+          publicProxyUrl: "https://web--feature--otto.services.example.com",
+          proxyUrl: "https://web--feature--otto.services.example.com",
         },
         activeConnection: {
           type: "directTcp",
-          endpoint: "mac-mini.tail123.ts.net:6767",
+          endpoint: "mac-mini.tail123.ts.net:6868",
           display: "remote",
         },
       }),
     ).toEqual({
-      openUrl: "https://web--feature--paseo.services.example.com",
-      labelUrl: "https://web--feature--paseo.services.example.com",
+      openUrl: "https://web--feature--otto.services.example.com",
+      labelUrl: "https://web--feature--otto.services.example.com",
     });
   });
 
@@ -143,11 +143,11 @@ describe("resolveWorkspaceScriptLink", () => {
     expect(
       resolveWorkspaceScriptLink({
         script: oldPayload,
-        activeConnection: { type: "directTcp", endpoint: "localhost:6767", display: "localhost" },
+        activeConnection: { type: "directTcp", endpoint: "localhost:6868", display: "localhost" },
       }),
     ).toEqual({
-      openUrl: "http://web--feature--paseo.localhost:6767",
-      labelUrl: "http://web--feature--paseo.localhost:6767",
+      openUrl: "http://web--feature--otto.localhost:6868",
+      labelUrl: "http://web--feature--otto.localhost:6868",
     });
   });
 
@@ -158,17 +158,17 @@ describe("resolveWorkspaceScriptLink", () => {
       ...oldPayload
     } = {
       ...runningService,
-      proxyUrl: "https://web--feature--paseo.services.example.com",
+      proxyUrl: "https://web--feature--otto.services.example.com",
     };
 
     expect(
       resolveWorkspaceScriptLink({
         script: oldPayload,
-        activeConnection: { type: "relay", endpoint: "relay.paseo.sh:443", display: "relay" },
+        activeConnection: { type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" },
       }),
     ).toEqual({
-      openUrl: "https://web--feature--paseo.services.example.com",
-      labelUrl: "https://web--feature--paseo.services.example.com",
+      openUrl: "https://web--feature--otto.services.example.com",
+      labelUrl: "https://web--feature--otto.services.example.com",
     });
   });
 });

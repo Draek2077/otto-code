@@ -8,7 +8,7 @@ import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import type { AgentClient, ImportableProviderSession } from "../agent/agent-sdk-types.js";
 import { OpenCodeServerManager } from "../agent/providers/opencode/server-manager.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
 import { canRunRealProvider, createRealProviderClient } from "./real-provider-test-config.js";
 
 function tmpCwd(): string {
@@ -21,7 +21,7 @@ async function withConnectedOpenCodeDaemon(
   run: (context: { client: DaemonClient }) => Promise<void>,
 ): Promise<void> {
   const logger = pino({ level: "silent" });
-  const daemon = await createTestPaseoDaemon({
+  const daemon = await createTestOttoDaemon({
     agentClients: { opencode: provider },
     logger,
   });

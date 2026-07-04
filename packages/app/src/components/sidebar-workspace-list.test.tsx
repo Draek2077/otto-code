@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { act } from "@testing-library/react";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { WorkspaceScriptPayload } from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { WorkspaceScriptPayload } from "@otto-code/protocol/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import React from "react";
@@ -63,9 +63,9 @@ interface RenderCounts {
 const runningScript: WorkspaceScriptPayload = {
   scriptName: "web",
   type: "service",
-  hostname: "web.paseo.localhost",
+  hostname: "web.otto.localhost",
   port: 3000,
-  proxyUrl: "http://web.paseo.localhost:6767",
+  proxyUrl: "http://web.otto.localhost:6868",
   lifecycle: "running",
   health: "healthy",
   exitCode: null,

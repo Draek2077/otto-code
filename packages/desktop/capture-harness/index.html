@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Paseo Browser Capture Harness</title>
+    <title>Otto Browser Capture Harness</title>
     <style>
       html,
       body {
@@ -14,7 +14,7 @@
         font-family: Arial, sans-serif;
       }
 
-      #paseo-browser-resident-webviews {
+      #otto-browser-resident-webviews {
         position: fixed;
         left: 0;
         top: 0;
@@ -38,12 +38,12 @@
     </style>
   </head>
   <body>
-    <div id="paseo-browser-resident-webviews" aria-hidden="true"></div>
+    <div id="otto-browser-resident-webviews" aria-hidden="true"></div>
 
     <script>
       const RESIDENT_VIEWPORT_WIDTH = 1280;
       const RESIDENT_VIEWPORT_HEIGHT = 800;
-      const host = document.getElementById("paseo-browser-resident-webviews");
+      const host = document.getElementById("otto-browser-resident-webviews");
       const params = new URLSearchParams(window.location.search);
       const requestedWebviewCount = params.has("webviewCount")
         ? Number(params.get("webviewCount"))
@@ -61,8 +61,8 @@
         const webview = document.createElement("webview");
         webview.id = `target-webview-${index + 1}`;
         webview.className = "capture-harness-webview";
-        webview.setAttribute("data-paseo-browser-id", `capture-harness-${index + 1}`);
-        webview.setAttribute("partition", `persist:paseo-capture-harness-${index + 1}`);
+        webview.setAttribute("data-otto-browser-id", `capture-harness-${index + 1}`);
+        webview.setAttribute("partition", `persist:otto-capture-harness-${index + 1}`);
         webview.setAttribute("allowpopups", "true");
         webview.setAttribute("spellcheck", "false");
         webview.setAttribute("autosize", "on");
