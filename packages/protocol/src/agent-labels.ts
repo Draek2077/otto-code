@@ -1,4 +1,4 @@
-export const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
+export const PARENT_AGENT_ID_LABEL = "otto.parent-agent-id";
 
 export interface AgentLabelSource {
   labels?: Record<string, unknown> | null;

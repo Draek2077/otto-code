@@ -1,0 +1,33 @@
+{
+  "worktree": {
+    "setup": [
+      "npm ci",
+      "node ./scripts/seed-ios-native-cache.mjs",
+      "cross-env OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_SEED_HOME=\"$OTTO_SOURCE_CHECKOUT_PATH/.dev/otto-home\" OTTO_HOME=\"$PWD/.dev/otto-home\" ./scripts/dev-home.sh",
+      "npm run build:server",
+      "npm run build --workspace=@otto-code/expo-two-way-audio",
+      "cp \"$OTTO_SOURCE_CHECKOUT_PATH/packages/server/.env\" \"$PWD/packages/server/.env\""
+    ]
+  },
+  "scripts": {
+    "daemon": {
+      "type": "service",
+      "command": "cross-env OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"${OTTO_WORKTREE_PATH:-$PWD}\" OTTO_HOME=\"${OTTO_WORKTREE_PATH:-$PWD}/.dev/otto-home\" OTTO_SKIP_DEV_SERVER_BUILD=1 OTTO_LISTEN=0.0.0.0:${OTTO_PORT:-6768} ./scripts/dev-daemon.sh"
+    },
+    "app": {
+      "type": "service",
+      "command": "cross-env OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"${OTTO_WORKTREE_PATH:-$PWD}\" OTTO_HOME=\"${OTTO_WORKTREE_PATH:-$PWD}/.dev/otto-home\" OTTO_LISTEN=0.0.0.0:${OTTO_SERVICE_DAEMON_PORT:-6768} OTTO_DEV_DAEMON_ENDPOINT=localhost:${OTTO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${OTTO_PORT:-} ./scripts/dev-app.sh"
+    },
+    "desktop": {
+      "type": "service",
+      "command": "cross-env OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"${OTTO_WORKTREE_PATH:-$PWD}\" OTTO_HOME=\"${OTTO_WORKTREE_PATH:-$PWD}/.dev/otto-home\" OTTO_LISTEN=0.0.0.0:${OTTO_SERVICE_DAEMON_PORT:-6768} OTTO_DEV_DAEMON_ENDPOINT=localhost:${OTTO_SERVICE_DAEMON_PORT:-6768} EXPO_PORT=${OTTO_PORT:-} npm run dev --workspace=@otto-code/desktop"
+    },
+    "ios-simulator": {
+      "type": "service",
+      "command": "cross-env OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_ROOT=\"$PWD\" OTTO_HOME=\"$PWD/.dev/otto-home\" OTTO_LISTEN=0.0.0.0:${OTTO_SERVICE_DAEMON_PORT} OTTO_DEV_DAEMON_ENDPOINT=localhost:${OTTO_SERVICE_DAEMON_PORT} ./scripts/otto-ios-simulator-service.sh"
+    },
+    "typecheck": {
+      "command": "npm run typecheck"
+    }
+  }
+}

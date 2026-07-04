@@ -34,8 +34,8 @@ class RecordingLoginShellLogger {
 function createEnv(home: string): NodeJS.ProcessEnv {
   return {
     HOME: home,
-    USER: "paseo-test",
-    LOGNAME: "paseo-test",
+    USER: "otto-test",
+    LOGNAME: "otto-test",
     SHELL: zsh,
     PATH: basePath,
   };
@@ -52,7 +52,7 @@ function expectNoRawStdout(fields: Record<string, unknown>): void {
 }
 
 async function createShellHome(): Promise<string> {
-  return await mkdtemp(path.join(os.tmpdir(), "paseo-login-shell-env-"));
+  return await mkdtemp(path.join(os.tmpdir(), "otto-login-shell-env-"));
 }
 
 describeIfZsh("login shell env", () => {
@@ -91,13 +91,13 @@ describeIfZsh("login shell env", () => {
   it("loads the user's zshrc while resolving the login shell env", async () => {
     const home = await createShellHome();
     homes.add(home);
-    await writeFile(path.join(home, ".zshrc"), "export PASEO_TEST_ZSHRC_LOADED=1\n");
+    await writeFile(path.join(home, ".zshrc"), "export OTTO_TEST_ZSHRC_LOADED=1\n");
     const env = createEnv(home);
     const logger = new RecordingLoginShellLogger();
 
     inheritLoginShellEnv({ env, logger });
 
-    expect(env.PASEO_TEST_ZSHRC_LOADED).toBe("1");
+    expect(env.OTTO_TEST_ZSHRC_LOADED).toBe("1");
     expect(logger.infos.map((entry) => entry.message)).toEqual([
       "[login-shell-env] start",
       "[login-shell-env] applied",

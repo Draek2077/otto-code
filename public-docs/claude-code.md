@@ -1,6 +1,6 @@
 ---
 title: Claude Code
-description: How Paseo runs Claude Code and how Anthropic's usage policy applies.
+description: How Otto runs Claude Code and how Anthropic's usage policy applies.
 nav: Claude Code
 order: 23
 category: Providers
@@ -8,7 +8,7 @@ category: Providers
 
 # Claude Code
 
-Paseo runs Claude Code through the official `claude` CLI using the same Claude Agent SDK that Claude Desktop uses internally.
+Otto runs Claude Code through the official `claude` CLI using the same Claude Agent SDK that Claude Desktop uses internally.
 
 ## Anthropic's June 15, 2026 policy change
 
@@ -30,21 +30,21 @@ Starting June 15, 2026, Anthropic splits Claude Code usage into two buckets. Thi
 
 Credit amounts per month: Pro ($20), Max 5x ($100), Max 20x ($200), Team Standard ($20/seat), Team Premium ($100/seat). Credits don't roll over. After they run out, additional usage flows to pay-as-you-go API rates (if you have usage credits enabled).
 
-## Where Paseo fits
+## Where Otto fits
 
-Paseo uses the **Claude Agent SDK** to run Claude Code — the exact same mechanism Claude Desktop uses under the hood. Claude Desktop is whitelisted by Anthropic and counts as interactive usage. Paseo is not.
+Otto uses the **Claude Agent SDK** to run Claude Code — the exact same mechanism Claude Desktop uses under the hood. Claude Desktop is whitelisted by Anthropic and counts as interactive usage. Otto is not.
 
-Even though the usage is practically interactive — you type prompts, review output, and approve tool calls in real time — Anthropic classifies Paseo as "programmatic usage" because it is a third-party app that authenticates through the Agent SDK.
+Even though the usage is practically interactive — you type prompts, review output, and approve tool calls in real time — Anthropic classifies Otto as "programmatic usage" because it is a third-party app that authenticates through the Agent SDK.
 
 ## What this means for you
 
 - Your **interactive** Claude Code usage (terminal, IDE, Claude Desktop) continues to draw from your main subscription limits, unchanged.
-- Your **Paseo chat** usage draws from the separate Agent SDK monthly credits.
-- Using Claude Code inside a Paseo terminal draws from your main subscription limits, same as any terminal.
+- Your **Otto chat** usage draws from the separate Agent SDK monthly credits.
+- Using Claude Code inside a Otto terminal draws from your main subscription limits, same as any terminal.
 
 ## You can still use the terminal
 
-Paseo has first-class terminal support. You can run Claude Code in your terminal exactly as you always have, and Paseo will still give you:
+Otto has first-class terminal support. You can run Claude Code in your terminal exactly as you always have, and Otto will still give you:
 
 - **Worktree management** — create and switch git worktrees from the app
 - **Remote access** — connect to your daemon from mobile or web while your terminal session runs locally
@@ -58,4 +58,4 @@ Paseo has first-class terminal support. You can run Claude Code in your terminal
 - [Anthropic: Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 - [Custom providers](/docs/custom-providers), for custom binaries, third-party endpoints, or multiple Claude profiles.
 - [Supported providers](/docs/supported-providers), for other agents you can run alongside Claude Code.
-- [Paseo vs Claude Desktop](/alternatives/claude-desktop), for a feature comparison.
+- [Otto vs Claude Desktop](/alternatives/claude-desktop), for a feature comparison.

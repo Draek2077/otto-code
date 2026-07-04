@@ -20,7 +20,7 @@ async function runSupervisorFixture(options: {
   stdout: string;
   stderr: string;
 }> {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "paseo-supervisor-log-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "otto-supervisor-log-"));
   const logPath = path.join(tempDir, "daemon.log");
   const workerPath = path.join(tempDir, "worker.mjs");
   const runnerPath = path.join(tempDir, "runner.mjs");
@@ -89,19 +89,19 @@ async function runSupervisorFixture(options: {
 
 describe("supervisor durable logging", () => {
   test("resolves rotation defaults", () => {
-    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
-    const logFile = resolveSupervisorLogFile(paseoHome, {}, {});
+    const ottoHome = path.join(path.sep, "tmp", "otto-home");
+    const logFile = resolveSupervisorLogFile(ottoHome, {}, {});
 
     expect(logFile).toEqual({
-      path: path.join(paseoHome, "daemon.log"),
+      path: path.join(ottoHome, "daemon.log"),
       rotate: { maxSize: "10m", maxFiles: 3 },
     });
   });
 
   test("lets persisted rotation override env rotation defaults", () => {
-    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
+    const ottoHome = path.join(path.sep, "tmp", "otto-home");
     const logFile = resolveSupervisorLogFile(
-      paseoHome,
+      ottoHome,
       {
         log: {
           file: {
@@ -111,30 +111,30 @@ describe("supervisor durable logging", () => {
         },
       },
       {
-        PASEO_LOG_ROTATE_SIZE: "200m",
-        PASEO_LOG_ROTATE_COUNT: "12",
+        OTTO_LOG_ROTATE_SIZE: "200m",
+        OTTO_LOG_ROTATE_COUNT: "12",
       },
     );
 
     expect(logFile).toEqual({
-      path: path.resolve(paseoHome, "logs", "daemon.log"),
+      path: path.resolve(ottoHome, "logs", "daemon.log"),
       rotate: { maxSize: "25m", maxFiles: 4 },
     });
   });
 
   test("uses env rotation when persisted rotation is absent", () => {
-    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
+    const ottoHome = path.join(path.sep, "tmp", "otto-home");
     const logFile = resolveSupervisorLogFile(
-      paseoHome,
+      ottoHome,
       {},
       {
-        PASEO_LOG_ROTATE_SIZE: "50m",
-        PASEO_LOG_ROTATE_COUNT: "8",
+        OTTO_LOG_ROTATE_SIZE: "50m",
+        OTTO_LOG_ROTATE_COUNT: "8",
       },
     );
 
     expect(logFile).toEqual({
-      path: path.join(paseoHome, "daemon.log"),
+      path: path.join(ottoHome, "daemon.log"),
       rotate: { maxSize: "50m", maxFiles: 8 },
     });
   });
@@ -172,7 +172,7 @@ describe("supervisor durable logging", () => {
   test("logs the worker shutdown reason before signaling the worker", async () => {
     const result = await runSupervisorFixture({
       workerSource: `
-        process.send?.({ type: "paseo:shutdown", reason: "client_shutdown_rpc" });
+        process.send?.({ type: "otto:shutdown", reason: "client_shutdown_rpc" });
         setInterval(() => {}, 1000);
       `,
     });

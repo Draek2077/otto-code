@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Command } from "commander";
-import { isBearerTokenValid } from "@getpaseo/server";
+import { isBearerTokenValid } from "@otto-code/server";
 import {
   runSetPasswordCommand,
   setDaemonPasswordInConfig,
@@ -14,8 +14,8 @@ import {
 
 console.log("=== Daemon Set Password Command ===\n");
 
-const root = await mkdtemp(join(tmpdir(), "paseo-set-password-"));
-const paseoHome = join(root, ".paseo");
+const root = await mkdtemp(join(tmpdir(), "otto-set-password-"));
+const ottoHome = join(root, ".otto");
 
 function promptSequence(values: string[]): PromptPassword {
   return async () => {
@@ -30,9 +30,9 @@ function promptSequence(values: string[]): PromptPassword {
 try {
   {
     console.log("Test 1: setDaemonPasswordInConfig writes hash and preserves config fields");
-    await mkdir(paseoHome, { recursive: true });
+    await mkdir(ottoHome, { recursive: true });
     await writeFile(
-      join(paseoHome, "config.json"),
+      join(ottoHome, "config.json"),
       `${JSON.stringify(
         {
           version: 1,
@@ -40,18 +40,18 @@ try {
             listen: "127.0.0.1:9999",
             relay: { enabled: false },
           },
-          app: { baseUrl: "https://app.paseo.sh" },
+          app: { baseUrl: "https://app.otto-code.ai" },
         },
         null,
         2,
       )}\n`,
     );
 
-    const result = await setDaemonPasswordInConfig("shared-secret", { home: paseoHome });
-    const config = JSON.parse(await readFile(join(paseoHome, "config.json"), "utf-8"));
+    const result = await setDaemonPasswordInConfig("shared-secret", { home: ottoHome });
+    const config = JSON.parse(await readFile(join(ottoHome, "config.json"), "utf-8"));
 
-    assert.strictEqual(result.configPath, join(paseoHome, "config.json"));
-    assert.strictEqual(result.restartCommand, "paseo daemon restart");
+    assert.strictEqual(result.configPath, join(ottoHome, "config.json"));
+    assert.strictEqual(result.restartCommand, "otto daemon restart");
     assert.strictEqual(config.daemon.listen, "127.0.0.1:9999");
     assert.strictEqual(config.daemon.relay.enabled, false);
     assert.notStrictEqual(config.daemon.auth.password, "shared-secret");
@@ -67,12 +67,12 @@ try {
     console.log("Test 2: command prompts twice and accepts matching confirmation");
     const result = await runSetPasswordCommand(
       {
-        home: paseoHome,
+        home: ottoHome,
         promptPassword: promptSequence(["new-secret", "new-secret"]),
       },
       {} as Command,
     );
-    const config = JSON.parse(await readFile(join(paseoHome, "config.json"), "utf-8"));
+    const config = JSON.parse(await readFile(join(ottoHome, "config.json"), "utf-8"));
 
     assert.strictEqual(result.data.action, "password_set");
     assert.strictEqual(
@@ -87,7 +87,7 @@ try {
     await assert.rejects(
       runSetPasswordCommand(
         {
-          home: paseoHome,
+          home: ottoHome,
           promptPassword: promptSequence(["first-secret", "second-secret"]),
         },
         {} as Command,

@@ -10,7 +10,7 @@ import type {
   ManagedProcessRegistry,
   ManagedProcessReapResult,
 } from "./managed-processes/managed-processes.js";
-import { createPaseoDaemon, type PaseoDaemonConfig } from "./bootstrap.js";
+import { createOttoDaemon, type OttoDaemonConfig } from "./bootstrap.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 
 let tempRoot: string | null = null;
@@ -27,25 +27,25 @@ afterEach(async () => {
 
 describe("daemon managed process bootstrap", () => {
   test("reaps stale helper process records during daemon bootstrap", async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-managed-bootstrap-"));
-    staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
-    const paseoHome = path.join(tempRoot, ".paseo");
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), "otto-managed-bootstrap-"));
+    staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
+    const ottoHome = path.join(tempRoot, ".otto");
     const managedProcesses = new FakeManagedProcesses();
-    const daemon = await createPaseoDaemon(
+    const daemon = await createOttoDaemon(
       {
         listen: "127.0.0.1:0",
-        paseoHome,
+        ottoHome,
         corsAllowedOrigins: [],
         hostnames: true,
         mcpEnabled: false,
         staticDir,
         mcpDebug: false,
         agentClients: createTestAgentClients(),
-        agentStoragePath: path.join(paseoHome, "agents"),
+        agentStoragePath: path.join(ottoHome, "agents"),
         relayEnabled: false,
-        appBaseUrl: "https://app.paseo.sh",
+        appBaseUrl: "https://app.otto-code.ai",
         managedProcesses,
-      } as PaseoDaemonConfig,
+      } as OttoDaemonConfig,
       pino({ level: "silent" }),
     );
 

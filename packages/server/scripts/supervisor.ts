@@ -13,20 +13,20 @@ interface SupervisorLogFileOptions {
 
 type WorkerLifecycleMessage =
   | {
-      type: "paseo:shutdown";
+      type: "otto:shutdown";
       reason?: string;
     }
   | {
-      type: "paseo:ready";
+      type: "otto:ready";
       listen: string;
     }
   | {
-      type: "paseo:restart";
+      type: "otto:restart";
       reason?: string;
     };
 
 interface SupervisorHeartbeatMessage {
-  type: "paseo:supervisor-heartbeat";
+  type: "otto:supervisor-heartbeat";
 }
 
 interface SupervisorOptions {
@@ -56,24 +56,24 @@ function parseLifecycleMessage(msg: unknown): WorkerLifecycleMessage | null {
     return null;
   }
   const type = (msg as { type?: unknown }).type;
-  if (type === "paseo:shutdown") {
+  if (type === "otto:shutdown") {
     const reason = (msg as { reason?: unknown }).reason;
     return {
-      type: "paseo:shutdown",
+      type: "otto:shutdown",
       ...(typeof reason === "string" && reason.trim().length > 0 ? { reason } : {}),
     };
   }
-  if (type === "paseo:ready") {
+  if (type === "otto:ready") {
     const listen = (msg as { listen?: unknown }).listen;
     if (typeof listen !== "string" || listen.trim().length === 0) {
       return null;
     }
-    return { type: "paseo:ready", listen };
+    return { type: "otto:ready", listen };
   }
-  if (type === "paseo:restart") {
+  if (type === "otto:restart") {
     const reason = (msg as { reason?: unknown }).reason;
     return {
-      type: "paseo:restart",
+      type: "otto:restart",
       ...(typeof reason === "string" && reason.trim().length > 0 ? { reason } : {}),
     };
   }
@@ -194,7 +194,7 @@ export function runSupervisor(options: SupervisorOptions): void {
 
     const currentChild = child;
     const heartbeat = setInterval(() => {
-      const message: SupervisorHeartbeatMessage = { type: "paseo:supervisor-heartbeat" };
+      const message: SupervisorHeartbeatMessage = { type: "otto:supervisor-heartbeat" };
       if (currentChild.connected) {
         currentChild.send?.(message, (error) => {
           if (error) {
@@ -229,7 +229,7 @@ export function runSupervisor(options: SupervisorOptions): void {
         return;
       }
 
-      if (lifecycleMessage.type === "paseo:ready") {
+      if (lifecycleMessage.type === "otto:ready") {
         writeLifecycleLog("Worker ready", { listen: lifecycleMessage.listen });
         Promise.resolve(options.onWorkerReady?.({ listen: lifecycleMessage.listen })).catch(
           (error) => {
@@ -240,7 +240,7 @@ export function runSupervisor(options: SupervisorOptions): void {
         return;
       }
 
-      if (lifecycleMessage.type === "paseo:shutdown") {
+      if (lifecycleMessage.type === "otto:shutdown") {
         const reason = lifecycleMessage.reason ?? "worker_requested_shutdown";
         writeLifecycleLog("Worker requested shutdown", { reason });
         requestShutdown(reason);

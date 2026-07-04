@@ -2,8 +2,8 @@ import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
-import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@getpaseo/protocol/agent-title-limits";
-import { AgentProviderSchema } from "@getpaseo/protocol/provider-manifest";
+import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@otto-code/protocol/agent-title-limits";
+import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
 import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ChatCreateRequestSchema,
@@ -40,7 +40,7 @@ import {
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
-} from "@getpaseo/protocol/schedule/rpc-schemas";
+} from "@otto-code/protocol/schedule/rpc-schemas";
 import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
@@ -52,40 +52,40 @@ import {
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
-} from "@getpaseo/protocol/loop/rpc-schemas";
+} from "@otto-code/protocol/loop/rpc-schemas";
 import {
   BrowserAutomationExecuteRequestSchema,
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
 import {
-  PaseoConfigRawSchema,
-  PaseoLifecycleCommandRawSchema,
-  PaseoMetadataGenerationEntrySchema,
-  PaseoMetadataGenerationSchema,
-  PaseoScriptEntryRawSchema,
-  PaseoWorktreeConfigRawSchema,
-  PaseoConfigRevisionSchema,
+  OttoConfigRawSchema,
+  OttoLifecycleCommandRawSchema,
+  OttoMetadataGenerationEntrySchema,
+  OttoMetadataGenerationSchema,
+  OttoScriptEntryRawSchema,
+  OttoWorktreeConfigRawSchema,
+  OttoConfigRevisionSchema,
   ProjectConfigRpcErrorSchema,
-  type PaseoConfigRaw,
-  type PaseoConfigRevision,
-  type PaseoMetadataGeneration,
-  type PaseoMetadataGenerationEntry,
-  type PaseoScriptEntryRaw,
+  type OttoConfigRaw,
+  type OttoConfigRevision,
+  type OttoMetadataGeneration,
+  type OttoMetadataGenerationEntry,
+  type OttoScriptEntryRaw,
   type ProjectConfigRpcError,
-} from "@getpaseo/protocol/paseo-config-schema";
+} from "@otto-code/protocol/otto-config-schema";
 export {
-  PaseoConfigRawSchema,
-  PaseoLifecycleCommandRawSchema,
-  PaseoMetadataGenerationEntrySchema,
-  PaseoMetadataGenerationSchema,
-  PaseoScriptEntryRawSchema,
-  PaseoWorktreeConfigRawSchema,
-  type PaseoConfigRaw,
-  type PaseoConfigRevision,
-  type PaseoMetadataGeneration,
-  type PaseoMetadataGenerationEntry,
-  type PaseoScriptEntryRaw,
+  OttoConfigRawSchema,
+  OttoLifecycleCommandRawSchema,
+  OttoMetadataGenerationEntrySchema,
+  OttoMetadataGenerationSchema,
+  OttoScriptEntryRawSchema,
+  OttoWorktreeConfigRawSchema,
+  type OttoConfigRaw,
+  type OttoConfigRevision,
+  type OttoMetadataGeneration,
+  type OttoMetadataGenerationEntry,
+  type OttoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
 // ---------------------------------------------------------------------------
@@ -890,7 +890,7 @@ export const ReviewAttachmentCommentSchema = z.object({
 
 export const ReviewAttachmentSchema = z.object({
   type: z.literal("review"),
-  mimeType: z.literal("application/paseo-review"),
+  mimeType: z.literal("application/otto-review"),
   cwd: z.string(),
   mode: z.enum(["uncommitted", "base"]),
   baseRef: z.string().nullable().optional(),
@@ -1105,8 +1105,8 @@ export const WriteProjectConfigRequestMessageSchema = z.object({
   type: z.literal("write_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
-  config: PaseoConfigRawSchema,
-  expectedRevision: PaseoConfigRevisionSchema.nullable(),
+  config: OttoConfigRawSchema,
+  expectedRevision: OttoConfigRevisionSchema.nullable(),
 });
 
 // ============================================================================
@@ -1624,8 +1624,8 @@ export const StashPopRequestSchema = z.object({
 export const StashListRequestSchema = z.object({
   type: z.literal("stash_list_request"),
   cwd: z.string(),
-  /** If true, only return paseo-created stashes. Default true. */
-  paseoOnly: z.boolean().optional(),
+  /** If true, only return otto-created stashes. Default true. */
+  ottoOnly: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -1672,15 +1672,15 @@ export const DirectorySuggestionsRequestSchema = z.object({
   requestId: z.string(),
 });
 
-export const PaseoWorktreeListRequestSchema = z.object({
-  type: z.literal("paseo_worktree_list_request"),
+export const OttoWorktreeListRequestSchema = z.object({
+  type: z.literal("otto_worktree_list_request"),
   cwd: z.string().optional(),
   repoRoot: z.string().optional(),
   requestId: z.string(),
 });
 
-export const PaseoWorktreeArchiveRequestSchema = z.object({
-  type: z.literal("paseo_worktree_archive_request"),
+export const OttoWorktreeArchiveRequestSchema = z.object({
+  type: z.literal("otto_worktree_archive_request"),
   worktreePath: z.string().optional(),
   repoRoot: z.string().optional(),
   branchName: z.string().optional(),
@@ -1694,7 +1694,7 @@ export const PaseoWorktreeArchiveRequestSchema = z.object({
   // Scope of the archive operation. "workspace" archives a single workspace record
   // (today's default UI behavior). "worktree" archives every active workspace whose
   // cwd resolves to the target directory, then removes the directory if it is
-  // Paseo-owned. Omitted/unknown values default to "workspace" for old-client safety.
+  // Otto-owned. Omitted/unknown values default to "workspace" for old-client safety.
   scope: z.enum(["workspace", "worktree"]).optional().default("workspace"),
   // COMPAT(worktreeDiskDeletion): added in v0.1.97, ignored as of v0.1.97
   // (disk removal derived from scope + last-reference + ownership); field
@@ -1708,8 +1708,8 @@ export const FirstAgentContextSchema = z.object({
   attachments: AgentAttachmentsSchema,
 });
 
-export const CreatePaseoWorktreeRequestSchema = z.object({
-  type: z.literal("create_paseo_worktree_request"),
+export const CreateOttoWorktreeRequestSchema = z.object({
+  type: z.literal("create_otto_worktree_request"),
   cwd: z.string(),
   projectId: z.string().optional(),
   worktreeSlug: z.string().optional(),
@@ -1764,7 +1764,7 @@ export const ArchiveWorkspaceRequestSchema = z.object({
 
 // Create a new workspace record. Unlike open_project, this never deduplicates by
 // directory: it always produces a fresh workspace. The source discriminates
-// between an existing local directory and a newly created paseo worktree.
+// between an existing local directory and a newly created otto worktree.
 export const WorkspaceCreateRequestSchema = z.object({
   type: z.literal("workspace.create.request"),
   requestId: z.string(),
@@ -2119,9 +2119,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BranchSuggestionsRequestSchema,
   GitHubSearchRequestSchema,
   DirectorySuggestionsRequestSchema,
-  PaseoWorktreeListRequestSchema,
-  PaseoWorktreeArchiveRequestSchema,
-  CreatePaseoWorktreeRequestSchema,
+  OttoWorktreeListRequestSchema,
+  OttoWorktreeArchiveRequestSchema,
+  CreateOttoWorktreeRequestSchema,
   WorkspaceSetupStatusRequestSchema,
   LegacyListAvailableEditorsRequestSchema,
   LegacyOpenInEditorRequestSchema,
@@ -2490,7 +2490,7 @@ export const ProjectCheckoutLiteNotGitPayloadSchema = z
     currentBranch: z.null(),
     remoteUrl: z.null(),
     worktreeRoot: z.null().optional(),
-    isPaseoOwnedWorktree: z.literal(false),
+    isOttoOwnedWorktree: z.literal(false),
     mainRepoRoot: z.null(),
   })
   .transform((value) => ({
@@ -2498,14 +2498,14 @@ export const ProjectCheckoutLiteNotGitPayloadSchema = z
     worktreeRoot: null,
   }));
 
-export const ProjectCheckoutLiteGitNonPaseoPayloadSchema = z
+export const ProjectCheckoutLiteGitNonOttoPayloadSchema = z
   .object({
     cwd: z.string(),
     isGit: z.literal(true),
     currentBranch: z.string().nullable(),
     remoteUrl: z.string().nullable(),
     worktreeRoot: z.string().optional(),
-    isPaseoOwnedWorktree: z.literal(false),
+    isOttoOwnedWorktree: z.literal(false),
     mainRepoRoot: z.string().nullable().optional().default(null),
   })
   .transform((value) => ({
@@ -2513,14 +2513,14 @@ export const ProjectCheckoutLiteGitNonPaseoPayloadSchema = z
     worktreeRoot: value.worktreeRoot ?? value.cwd,
   }));
 
-export const ProjectCheckoutLiteGitPaseoPayloadSchema = z
+export const ProjectCheckoutLiteGitOttoPayloadSchema = z
   .object({
     cwd: z.string(),
     isGit: z.literal(true),
     currentBranch: z.string().nullable(),
     remoteUrl: z.string().nullable(),
     worktreeRoot: z.string().optional(),
-    isPaseoOwnedWorktree: z.literal(true),
+    isOttoOwnedWorktree: z.literal(true),
     mainRepoRoot: z.string(),
   })
   .transform((value) => ({
@@ -2530,8 +2530,8 @@ export const ProjectCheckoutLiteGitPaseoPayloadSchema = z
 
 export const ProjectCheckoutLitePayloadSchema = z.union([
   ProjectCheckoutLiteNotGitPayloadSchema,
-  ProjectCheckoutLiteGitNonPaseoPayloadSchema,
-  ProjectCheckoutLiteGitPaseoPayloadSchema,
+  ProjectCheckoutLiteGitNonOttoPayloadSchema,
+  ProjectCheckoutLiteGitOttoPayloadSchema,
 ]);
 
 export const ProjectPlacementPayloadSchema = z.object({
@@ -2562,7 +2562,7 @@ const WorkspaceGitRuntimePayloadSchema = z
   .object({
     currentBranch: z.string().nullable().optional(),
     remoteUrl: z.string().nullable().optional(),
-    isPaseoOwnedWorktree: z.boolean().optional(),
+    isOttoOwnedWorktree: z.boolean().optional(),
     isDirty: z.boolean().nullable().optional(),
     aheadBehind: z
       .object({
@@ -3118,8 +3118,8 @@ export const ReadProjectConfigResponseMessageSchema = z.object({
       requestId: z.string(),
       repoRoot: z.string(),
       ok: z.literal(true),
-      config: PaseoConfigRawSchema.nullable(),
-      revision: PaseoConfigRevisionSchema.nullable(),
+      config: OttoConfigRawSchema.nullable(),
+      revision: OttoConfigRevisionSchema.nullable(),
     }),
     z.object({
       requestId: z.string(),
@@ -3137,8 +3137,8 @@ export const WriteProjectConfigResponseMessageSchema = z.object({
       requestId: z.string(),
       repoRoot: z.string(),
       ok: z.literal(true),
-      config: PaseoConfigRawSchema,
-      revision: PaseoConfigRevisionSchema,
+      config: OttoConfigRawSchema,
+      revision: OttoConfigRevisionSchema,
     }),
     z.object({
       requestId: z.string(),
@@ -3215,7 +3215,7 @@ const CheckoutStatusCommonSchema = z.object({
 
 const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(false),
-  isPaseoOwnedWorktree: z.literal(false),
+  isOttoOwnedWorktree: z.literal(false),
   repoRoot: z.null(),
   currentBranch: z.null(),
   isDirty: z.null(),
@@ -3227,9 +3227,9 @@ const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
   remoteUrl: z.null(),
 });
 
-const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
+const CheckoutStatusGitNonOttoSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(true),
-  isPaseoOwnedWorktree: z.literal(false),
+  isOttoOwnedWorktree: z.literal(false),
   repoRoot: z.string(),
   mainRepoRoot: z.string().nullable().optional().default(null),
   currentBranch: z.string().nullable(),
@@ -3242,9 +3242,9 @@ const CheckoutStatusGitNonPaseoSchema = CheckoutStatusCommonSchema.extend({
   remoteUrl: z.string().nullable(),
 });
 
-const CheckoutStatusGitPaseoSchema = CheckoutStatusCommonSchema.extend({
+const CheckoutStatusGitOttoSchema = CheckoutStatusCommonSchema.extend({
   isGit: z.literal(true),
-  isPaseoOwnedWorktree: z.literal(true),
+  isOttoOwnedWorktree: z.literal(true),
   repoRoot: z.string(),
   mainRepoRoot: z.string(),
   currentBranch: z.string().nullable(),
@@ -3261,8 +3261,8 @@ export const CheckoutStatusResponseSchema = z.object({
   type: z.literal("checkout_status_response"),
   payload: z.union([
     CheckoutStatusNotGitSchema,
-    CheckoutStatusGitNonPaseoSchema,
-    CheckoutStatusGitPaseoSchema,
+    CheckoutStatusGitNonOttoSchema,
+    CheckoutStatusGitOttoSchema,
   ]),
 });
 
@@ -3359,8 +3359,8 @@ export const CheckoutStatusUpdateSchema = z.object({
   payload: z
     .union([
       CheckoutStatusNotGitSchema,
-      CheckoutStatusGitNonPaseoSchema,
-      CheckoutStatusGitPaseoSchema,
+      CheckoutStatusGitNonOttoSchema,
+      CheckoutStatusGitOttoSchema,
     ])
     .and(CheckoutStatusUpdateMetadataSchema),
 });
@@ -3659,7 +3659,7 @@ const StashEntrySchema = z.object({
   index: z.number().int().min(0),
   message: z.string(),
   branch: z.string().nullable(),
-  isPaseo: z.boolean(),
+  isOtto: z.boolean(),
 });
 
 export const StashSaveResponseSchema = z.object({
@@ -3750,24 +3750,24 @@ export const DirectorySuggestionsResponseSchema = z.object({
   }),
 });
 
-const PaseoWorktreeSchema = z.object({
+const OttoWorktreeSchema = z.object({
   worktreePath: z.string(),
   createdAt: z.string(),
   branchName: z.string().nullable().optional(),
   head: z.string().nullable().optional(),
 });
 
-export const PaseoWorktreeListResponseSchema = z.object({
-  type: z.literal("paseo_worktree_list_response"),
+export const OttoWorktreeListResponseSchema = z.object({
+  type: z.literal("otto_worktree_list_response"),
   payload: z.object({
-    worktrees: z.array(PaseoWorktreeSchema),
+    worktrees: z.array(OttoWorktreeSchema),
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
 });
 
-export const PaseoWorktreeArchiveResponseSchema = z.object({
-  type: z.literal("paseo_worktree_archive_response"),
+export const OttoWorktreeArchiveResponseSchema = z.object({
+  type: z.literal("otto_worktree_archive_response"),
   payload: z.object({
     success: z.boolean(),
     removedAgents: z.array(z.string()).optional(),
@@ -3776,8 +3776,8 @@ export const PaseoWorktreeArchiveResponseSchema = z.object({
   }),
 });
 
-export const CreatePaseoWorktreeResponseSchema = z.object({
-  type: z.literal("create_paseo_worktree_response"),
+export const CreateOttoWorktreeResponseSchema = z.object({
+  type: z.literal("create_otto_worktree_response"),
   payload: z.object({
     workspace: WorkspaceDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
@@ -4256,9 +4256,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BranchSuggestionsResponseSchema,
   GitHubSearchResponseSchema,
   DirectorySuggestionsResponseSchema,
-  PaseoWorktreeListResponseSchema,
-  PaseoWorktreeArchiveResponseSchema,
-  CreatePaseoWorktreeResponseSchema,
+  OttoWorktreeListResponseSchema,
+  OttoWorktreeArchiveResponseSchema,
+  CreateOttoWorktreeResponseSchema,
   FileExplorerResponseSchema,
   ProjectIconResponseSchema,
   FileDownloadTokenResponseSchema,
@@ -4581,13 +4581,13 @@ export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
 export type GitHubSearchKind = z.infer<typeof GitHubSearchKindSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;
 export type GitHubSearchResponse = z.infer<typeof GitHubSearchResponseSchema>;
-export type CreatePaseoWorktreeRequest = z.infer<typeof CreatePaseoWorktreeRequestSchema>;
+export type CreateOttoWorktreeRequest = z.infer<typeof CreateOttoWorktreeRequestSchema>;
 export type DirectorySuggestionsRequest = z.infer<typeof DirectorySuggestionsRequestSchema>;
 export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsResponseSchema>;
-export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSchema>;
-export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
-export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;
-export type PaseoWorktreeArchiveResponse = z.infer<typeof PaseoWorktreeArchiveResponseSchema>;
+export type OttoWorktreeListRequest = z.infer<typeof OttoWorktreeListRequestSchema>;
+export type OttoWorktreeListResponse = z.infer<typeof OttoWorktreeListResponseSchema>;
+export type OttoWorktreeArchiveRequest = z.infer<typeof OttoWorktreeArchiveRequestSchema>;
+export type OttoWorktreeArchiveResponse = z.infer<typeof OttoWorktreeArchiveResponseSchema>;
 export type WorkspaceSetupStatusRequest = z.infer<typeof WorkspaceSetupStatusRequestSchema>;
 export type LegacyListAvailableEditorsRequest = z.infer<
   typeof LegacyListAvailableEditorsRequestSchema

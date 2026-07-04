@@ -11,7 +11,7 @@ import {
   type ChatMessage,
   type ChatRoom,
   type ChatRoomDetail,
-} from "@getpaseo/protocol/chat/types";
+} from "@otto-code/protocol/chat/types";
 
 const ChatStorePayloadSchema = z.object({
   rooms: z.array(ChatRoomSchema),
@@ -117,8 +117,8 @@ export class FileBackedChatService {
   private persistQueue: Promise<void> = Promise.resolve();
   private readonly waitersByRoomId = new Map<string, Set<Waiter>>();
 
-  constructor(options: { paseoHome: string; logger: pino.Logger }) {
-    this.filePath = path.join(options.paseoHome, "chat", "rooms.json");
+  constructor(options: { ottoHome: string; logger: pino.Logger }) {
+    this.filePath = path.join(options.ottoHome, "chat", "rooms.json");
     this.logger = options.logger.child({ component: "chat-service" });
   }
 

@@ -6,7 +6,7 @@ import type {
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
   BrowserAutomationExecuteRequest,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
 import type { BrowserRegistry, TabContents, TabImage } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
@@ -116,7 +116,7 @@ class FakeTab implements TabContents {
     if (code.includes("document.body.innerText")) {
       return this.bodyText;
     }
-    if (code.includes("__PASEO_ARIA_SNAPSHOT__")) {
+    if (code.includes("__OTTO_ARIA_SNAPSHOT__")) {
       return JSON.stringify(snapshotResult(this.snapshotNodes));
     }
     if (code.includes("Timed out waiting") || code.includes("performance.now()")) {
@@ -134,7 +134,7 @@ class FakeTab implements TabContents {
     if (code.includes("element.focus({ preventScroll: true })")) {
       return { editable: this.keypressTargetEditable };
     }
-    if (code.includes("__PASEO_BROWSER_EVALUATE__")) {
+    if (code.includes("__OTTO_BROWSER_EVALUATE__")) {
       if (this.evaluateScriptThrows) {
         throw new Error(this.evaluateScriptErrorMessage);
       }
@@ -386,7 +386,7 @@ function snapshotResult(nodes: FakeTab["snapshotNodes"]) {
       : [],
   );
   return {
-    marker: "__PASEO_ARIA_SNAPSHOT__",
+    marker: "__OTTO_ARIA_SNAPSHOT__",
     root: {
       kind: "role",
       role: "document",
@@ -1387,7 +1387,7 @@ describe("executeAutomationCommand", () => {
         truncated: false,
       },
     });
-    expect(containsScript(browser.tab, "__PASEO_BROWSER_EVALUATE__", "() => 42")).toBe(true);
+    expect(containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "() => 42")).toBe(true);
   });
 
   test("evaluate returns object JSON from the page context", async () => {
@@ -1435,7 +1435,7 @@ describe("executeAutomationCommand", () => {
         truncated: false,
       },
     });
-    expect(containsScript(browser.tab, '"@e1"', "__PASEO_BROWSER_AUTOMATION__?.resolve")).toBe(
+    expect(containsScript(browser.tab, '"@e1"', "__OTTO_BROWSER_AUTOMATION__?.resolve")).toBe(
       true,
     );
   });
@@ -1515,7 +1515,7 @@ describe("executeAutomationCommand", () => {
     });
 
     expect(
-      containsScript(browser.tab, "__PASEO_BROWSER_EVALUATE__", "resultJson.length <= 80000"),
+      containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "resultJson.length <= 80000"),
     ).toBe(true);
     expect(containsScript(browser.tab, "resultJson.slice(0, 79000)")).toBe(true);
   });
@@ -1886,7 +1886,7 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "paseo-browser-automation",
+          objectGroup: "otto-browser-automation",
           returnByValue: false,
         },
       },
@@ -1933,7 +1933,7 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "paseo-browser-automation",
+          objectGroup: "otto-browser-automation",
           returnByValue: false,
         },
       },
@@ -1972,7 +1972,7 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "paseo-browser-automation",
+          objectGroup: "otto-browser-automation",
           returnByValue: false,
         },
       },

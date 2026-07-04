@@ -179,7 +179,7 @@ export function applyWindowControlsOverlayUpdate(input: {
 export function registerWindowManager(): void {
   const overlayStateByWindow = new WeakMap<BrowserWindow, WindowControlsOverlayState>();
 
-  ipcMain.handle("paseo:window:toggleMaximize", (event) => {
+  ipcMain.handle("otto:window:toggleMaximize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     if (win.isMaximized()) {
@@ -189,12 +189,12 @@ export function registerWindowManager(): void {
     }
   });
 
-  ipcMain.handle("paseo:window:isFullscreen", (event) => {
+  ipcMain.handle("otto:window:isFullscreen", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isFullScreen() ?? false;
   });
 
-  ipcMain.handle("paseo:window:setBadgeCount", (_event, count?: unknown) => {
+  ipcMain.handle("otto:window:setBadgeCount", (_event, count?: unknown) => {
     if (process.platform === "darwin" || process.platform === "linux") {
       const badgeCount = readBadgeCount(count);
       try {
@@ -209,7 +209,7 @@ export function registerWindowManager(): void {
     }
   });
 
-  ipcMain.handle("paseo:window:updateWindowControls", (event, update?: unknown) => {
+  ipcMain.handle("otto:window:updateWindowControls", (event, update?: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return;
@@ -247,7 +247,7 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
     if (win.isDestroyed() || win.webContents.isDestroyed()) {
       return;
     }
-    win.webContents.send("paseo:window:resized", {});
+    win.webContents.send("otto:window:resized", {});
   };
 
   win.on("resize", notifyResized);

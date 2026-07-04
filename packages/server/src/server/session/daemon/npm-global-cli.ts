@@ -1,8 +1,8 @@
-import { getErrorMessage } from "@getpaseo/protocol/error-utils";
+import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import { z } from "zod";
 import { execCommand } from "../../../utils/spawn.js";
 
-export const PASEO_CLI_PACKAGE = "@getpaseo/cli";
+export const OTTO_CLI_PACKAGE = "@otto-code/cli";
 
 const NPM_PROBE_TIMEOUT_MS = 10_000;
 const NPM_INSTALL_TIMEOUT_MS = 300_000;
@@ -42,15 +42,15 @@ export interface CommandResult {
   stderr: string;
 }
 
-export interface NpmGlobalPaseoInstall {
+export interface NpmGlobalOttoInstall {
   version: string;
   packagePath: string;
   globalRootPath: string | null;
   isLinked: boolean;
 }
 
-export interface NpmGlobalPaseoCli {
-  inspect(): Promise<NpmGlobalPaseoInstall>;
+export interface NpmGlobalOttoCli {
+  inspect(): Promise<NpmGlobalOttoInstall>;
   installLatest(): Promise<CommandResult>;
 }
 
@@ -85,7 +85,7 @@ async function runExternalCommand(
   }
 }
 
-function parseNpmGlobalPaseoInstall(stdout: string): NpmGlobalPaseoInstall | null {
+function parseNpmGlobalOttoInstall(stdout: string): NpmGlobalOttoInstall | null {
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(stdout);
@@ -98,7 +98,7 @@ function parseNpmGlobalPaseoInstall(stdout: string): NpmGlobalPaseoInstall | nul
     return null;
   }
 
-  const rawCliPackage = list.data.dependencies?.[PASEO_CLI_PACKAGE];
+  const rawCliPackage = list.data.dependencies?.[OTTO_CLI_PACKAGE];
   const cliPackage = NpmGlobalCliPackageSchema.safeParse(rawCliPackage);
   if (!cliPackage.success) {
     return null;
@@ -112,13 +112,13 @@ function parseNpmGlobalPaseoInstall(stdout: string): NpmGlobalPaseoInstall | nul
   };
 }
 
-export class DefaultNpmGlobalPaseoCli implements NpmGlobalPaseoCli {
+export class DefaultNpmGlobalOttoCli implements NpmGlobalOttoCli {
   constructor(private readonly runCommand: CommandRunner = runExternalCommand) {}
 
-  async inspect(): Promise<NpmGlobalPaseoInstall> {
+  async inspect(): Promise<NpmGlobalOttoInstall> {
     const result = await this.runCommand(
       "npm",
-      ["-g", "ls", PASEO_CLI_PACKAGE, "--json", "--depth=0", "--long"],
+      ["-g", "ls", OTTO_CLI_PACKAGE, "--json", "--depth=0", "--long"],
       {
         timeout: NPM_PROBE_TIMEOUT_MS,
         maxBuffer: NPM_MAX_BUFFER_BYTES,
@@ -129,19 +129,19 @@ export class DefaultNpmGlobalPaseoCli implements NpmGlobalPaseoCli {
       throw new Error(result.stderr.trim() || "npm is not available on this host");
     }
 
-    const install = parseNpmGlobalPaseoInstall(result.stdout);
+    const install = parseNpmGlobalOttoInstall(result.stdout);
     if (!install) {
-      throw new Error(`${PASEO_CLI_PACKAGE} is not installed with npm -g on this host`);
+      throw new Error(`${OTTO_CLI_PACKAGE} is not installed with npm -g on this host`);
     }
     return install;
   }
 
   installLatest(): Promise<CommandResult> {
-    return this.runCommand("npm", ["install", "-g", `${PASEO_CLI_PACKAGE}@latest`], {
+    return this.runCommand("npm", ["install", "-g", `${OTTO_CLI_PACKAGE}@latest`], {
       timeout: NPM_INSTALL_TIMEOUT_MS,
       maxBuffer: NPM_MAX_BUFFER_BYTES,
     });
   }
 }
 
-export const npmGlobalPaseoCli = new DefaultNpmGlobalPaseoCli();
+export const npmGlobalOttoCli = new DefaultNpmGlobalOttoCli();

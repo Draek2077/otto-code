@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
-    getPath: vi.fn(() => "/tmp/paseo-user-data"),
+    getPath: vi.fn(() => "/tmp/otto-user-data"),
     isPackaged: false,
   },
 }));
@@ -14,7 +14,7 @@ import {
   autoUpdateInstalledSkills,
   getSkillsStatus,
   installSkills,
-  PASEO_SKILL_NAMES,
+  OTTO_SKILL_NAMES,
   type SkillTargets,
   uninstallSkills,
   updateSkills,
@@ -26,7 +26,7 @@ interface Sandbox {
 }
 
 async function makeSandbox(): Promise<Sandbox> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-skills-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "otto-skills-"));
   const targets: SkillTargets = {
     sourceDir: path.join(root, "bundle"),
     agentsDir: path.join(root, "home", ".agents", "skills"),
@@ -74,8 +74,8 @@ async function writeOnDiskSkillToAllTargets(
 }
 
 async function writeCurrentBundle(sourceDir: string): Promise<void> {
-  await writeBundleSkill(sourceDir, "paseo", { "SKILL.md": "paseo-v1" });
-  await writeBundleSkill(sourceDir, "paseo-loop", { "SKILL.md": "loop-v1" });
+  await writeBundleSkill(sourceDir, "otto", { "SKILL.md": "otto-v1" });
+  await writeBundleSkill(sourceDir, "otto-loop", { "SKILL.md": "loop-v1" });
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -103,8 +103,8 @@ describe("getSkillsStatus", () => {
 
     expect(status.state).toBe("not-installed");
     expect(status.ops).toEqual([
-      { kind: "add", name: "paseo" },
-      { kind: "add", name: "paseo-loop" },
+      { kind: "add", name: "otto" },
+      { kind: "add", name: "otto-loop" },
     ]);
   });
 
@@ -118,15 +118,15 @@ describe("getSkillsStatus", () => {
 
     expect(status.state).toBe("not-installed");
     expect(status.ops).toEqual([
-      { kind: "add", name: "paseo" },
-      { kind: "add", name: "paseo-loop" },
+      { kind: "add", name: "otto" },
+      { kind: "add", name: "otto-loop" },
     ]);
   });
 
   it("returns up-to-date when every bundled skill matches on disk", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto-loop", { "SKILL.md": "loop-v1" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
@@ -135,18 +135,18 @@ describe("getSkillsStatus", () => {
 
   it("ignores user-added files inside current managed skill dirs in every target", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", {
-      "SKILL.md": "paseo-v1",
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", {
+      "SKILL.md": "otto-v1",
       "my-context.md": "user context",
     });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", {
-      "SKILL.md": "paseo-v1",
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", {
+      "SKILL.md": "otto-v1",
       "commands/local.md": "user command",
     });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", {
-      "SKILL.md": "paseo-v1",
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", {
+      "SKILL.md": "otto-v1",
       "hooks/guard.sh": "user guard",
     });
 
@@ -157,68 +157,68 @@ describe("getSkillsStatus", () => {
 
   it("returns drift with a single update op when one bundled file diverges", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "stale" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto-loop", { "SKILL.md": "loop-v1" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
     expect(status.state).toBe("drift");
-    expect(status.ops).toEqual([{ kind: "update", name: "paseo" }]);
+    expect(status.ops).toEqual([{ kind: "update", name: "otto" }]);
   });
 
   it("returns drift when a secondary agent target is stale", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "stale" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto-loop", { "SKILL.md": "loop-v1" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
     expect(status.state).toBe("drift");
-    expect(status.ops).toEqual([{ kind: "update", name: "paseo" }]);
+    expect(status.ops).toEqual([{ kind: "update", name: "otto" }]);
   });
 
   it("returns drift with add ops for the bundled skills missing from disk", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo", { "SKILL.md": "paseo-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto", { "SKILL.md": "otto-v1" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
     expect(status.state).toBe("drift");
-    expect(status.ops).toEqual([{ kind: "add", name: "paseo-loop" }]);
+    expect(status.ops).toEqual([{ kind: "add", name: "otto-loop" }]);
   });
 
   it("returns drift with a delete op for a legacy skill name still on disk", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-chat", { "SKILL.md": "chat-old" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto-chat", { "SKILL.md": "chat-old" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
     expect(status.state).toBe("drift");
-    expect(status.ops).toEqual([{ kind: "delete", name: "paseo-chat" }]);
+    expect(status.ops).toEqual([{ kind: "delete", name: "otto-chat" }]);
   });
 
   it("emits add + update + delete ops sorted by name when state is mixed", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "stale" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-chat", { "SKILL.md": "chat-old" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto-chat", { "SKILL.md": "chat-old" });
 
     const status = await getSkillsStatus(sandbox.targets);
 
     expect(status.state).toBe("drift");
     expect(status.ops).toEqual([
-      { kind: "update", name: "paseo" },
-      { kind: "delete", name: "paseo-chat" },
-      { kind: "add", name: "paseo-loop" },
+      { kind: "update", name: "otto" },
+      { kind: "delete", name: "otto-chat" },
+      { kind: "add", name: "otto-loop" },
     ]);
   });
 });
@@ -241,13 +241,13 @@ describe("installSkills / updateSkills", () => {
     const status = await installSkills(sandbox.targets);
 
     expect(status).toEqual({ state: "up-to-date", ops: [] });
-    for (const name of ["paseo", "paseo-loop"]) {
+    for (const name of ["otto", "otto-loop"]) {
       expect(
         await fs.readFile(path.join(sandbox.targets.agentsDir, name, "SKILL.md"), "utf-8"),
-      ).toBe(name === "paseo" ? "paseo-v1" : "loop-v1");
+      ).toBe(name === "otto" ? "otto-v1" : "loop-v1");
       expect(
         await fs.readFile(path.join(sandbox.targets.codexDir, name, "SKILL.md"), "utf-8"),
-      ).toBe(name === "paseo" ? "paseo-v1" : "loop-v1");
+      ).toBe(name === "otto" ? "otto-v1" : "loop-v1");
       expect(await pathExists(path.join(sandbox.targets.claudeDir, name))).toBe(true);
     }
     expect(
@@ -257,43 +257,43 @@ describe("installSkills / updateSkills", () => {
 
   it("converges to up-to-date when state has missing + edited + legacy skills", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "stale" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-chat", { "SKILL.md": "chat-old" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo-chat", { "SKILL.md": "chat-old" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo-chat", { "SKILL.md": "chat-old" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", { "SKILL.md": "stale" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto-chat", { "SKILL.md": "chat-old" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto-chat", { "SKILL.md": "chat-old" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto-chat", { "SKILL.md": "chat-old" });
 
     const status = await updateSkills(sandbox.targets);
 
     expect(status).toEqual({ state: "up-to-date", ops: [] });
     expect(
-      await fs.readFile(path.join(sandbox.targets.agentsDir, "paseo", "SKILL.md"), "utf-8"),
-    ).toBe("paseo-v1");
+      await fs.readFile(path.join(sandbox.targets.agentsDir, "otto", "SKILL.md"), "utf-8"),
+    ).toBe("otto-v1");
     expect(
-      await fs.readFile(path.join(sandbox.targets.agentsDir, "paseo-loop", "SKILL.md"), "utf-8"),
+      await fs.readFile(path.join(sandbox.targets.agentsDir, "otto-loop", "SKILL.md"), "utf-8"),
     ).toBe("loop-v1");
     for (const dir of [
       sandbox.targets.agentsDir,
       sandbox.targets.claudeDir,
       sandbox.targets.codexDir,
     ]) {
-      expect(await pathExists(path.join(dir, "paseo-chat"))).toBe(false);
+      expect(await pathExists(path.join(dir, "otto-chat"))).toBe(false);
     }
   });
 
   it("defines updated as the state reached after preserving user files", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkillToAllTargets(sandbox.targets, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", {
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkillToAllTargets(sandbox.targets, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", {
       "SKILL.md": "stale",
       "hooks/guard.sh": "user guard",
     });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", {
-      "SKILL.md": "paseo-v1",
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", {
+      "SKILL.md": "otto-v1",
       "notes/local.md": "claude notes",
     });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", {
-      "SKILL.md": "paseo-v1",
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", {
+      "SKILL.md": "otto-v1",
       "prompts/local.md": "codex prompt",
     });
 
@@ -303,19 +303,19 @@ describe("installSkills / updateSkills", () => {
     expect(await getSkillsStatus(sandbox.targets)).toEqual({ state: "up-to-date", ops: [] });
     expect(
       await fs.readFile(
-        path.join(sandbox.targets.agentsDir, "paseo", "hooks", "guard.sh"),
+        path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"),
         "utf-8",
       ),
     ).toBe("user guard");
     expect(
       await fs.readFile(
-        path.join(sandbox.targets.claudeDir, "paseo", "notes", "local.md"),
+        path.join(sandbox.targets.claudeDir, "otto", "notes", "local.md"),
         "utf-8",
       ),
     ).toBe("claude notes");
     expect(
       await fs.readFile(
-        path.join(sandbox.targets.codexDir, "paseo", "prompts", "local.md"),
+        path.join(sandbox.targets.codexDir, "otto", "prompts", "local.md"),
         "utf-8",
       ),
     ).toBe("codex prompt");
@@ -323,23 +323,23 @@ describe("installSkills / updateSkills", () => {
 
   it("repairs secondary agent targets even when agents skills are current", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo-loop", { "SKILL.md": "loop-v1" });
-    await writeOnDiskSkill(sandbox.targets.claudeDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo", { "SKILL.md": "paseo-v1" });
-    await writeOnDiskSkill(sandbox.targets.codexDir, "paseo-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto-loop", { "SKILL.md": "loop-v1" });
+    await writeOnDiskSkill(sandbox.targets.claudeDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto", { "SKILL.md": "otto-v1" });
+    await writeOnDiskSkill(sandbox.targets.codexDir, "otto-loop", { "SKILL.md": "loop-v1" });
 
     const status = await updateSkills(sandbox.targets);
 
     expect(status).toEqual({ state: "up-to-date", ops: [] });
     expect(
-      await fs.readFile(path.join(sandbox.targets.claudeDir, "paseo-loop", "SKILL.md"), "utf-8"),
+      await fs.readFile(path.join(sandbox.targets.claudeDir, "otto-loop", "SKILL.md"), "utf-8"),
     ).toBe("loop-v1");
   });
 
   it("auto-updates drifted installed skills", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
-    await writeOnDiskSkill(sandbox.targets.agentsDir, "paseo", {
+    await writeOnDiskSkill(sandbox.targets.agentsDir, "otto", {
       "SKILL.md": "stale",
       "hooks/guard.sh": "user guard",
     });
@@ -349,11 +349,11 @@ describe("installSkills / updateSkills", () => {
     expect(status).toEqual({ state: "up-to-date", ops: [] });
     expect(await getSkillsStatus(sandbox.targets)).toEqual({ state: "up-to-date", ops: [] });
     expect(
-      await fs.readFile(path.join(sandbox.targets.agentsDir, "paseo", "SKILL.md"), "utf-8"),
-    ).toBe("paseo-v1");
+      await fs.readFile(path.join(sandbox.targets.agentsDir, "otto", "SKILL.md"), "utf-8"),
+    ).toBe("otto-v1");
     expect(
       await fs.readFile(
-        path.join(sandbox.targets.agentsDir, "paseo", "hooks", "guard.sh"),
+        path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"),
         "utf-8",
       ),
     ).toBe("user guard");
@@ -367,13 +367,13 @@ describe("installSkills / updateSkills", () => {
     expect(status).toEqual({
       state: "not-installed",
       ops: [
-        { kind: "add", name: "paseo" },
-        { kind: "add", name: "paseo-loop" },
+        { kind: "add", name: "otto" },
+        { kind: "add", name: "otto-loop" },
       ],
     });
-    expect(await pathExists(path.join(sandbox.targets.agentsDir, "paseo"))).toBe(false);
-    expect(await pathExists(path.join(sandbox.targets.claudeDir, "paseo"))).toBe(false);
-    expect(await pathExists(path.join(sandbox.targets.codexDir, "paseo"))).toBe(false);
+    expect(await pathExists(path.join(sandbox.targets.agentsDir, "otto"))).toBe(false);
+    expect(await pathExists(path.join(sandbox.targets.claudeDir, "otto"))).toBe(false);
+    expect(await pathExists(path.join(sandbox.targets.codexDir, "otto"))).toBe(false);
   });
 
   it("is idempotent — running install twice keeps state at up-to-date", async () => {
@@ -398,7 +398,7 @@ describe("uninstallSkills", () => {
     await fs.rm(sandbox.root, { recursive: true, force: true });
   });
 
-  it("removes every Paseo skill from all three targets and preserves user dirs", async () => {
+  it("removes every Otto skill from all three targets and preserves user dirs", async () => {
     await writeCurrentBundle(sandbox.targets.sourceDir);
     await installSkills(sandbox.targets);
     for (const name of ["unslop", "tdd", "devbox"]) {
@@ -408,7 +408,7 @@ describe("uninstallSkills", () => {
     const status = await uninstallSkills(sandbox.targets);
 
     expect(status.state).toBe("not-installed");
-    for (const name of PASEO_SKILL_NAMES) {
+    for (const name of OTTO_SKILL_NAMES) {
       expect(await pathExists(path.join(sandbox.targets.agentsDir, name))).toBe(false);
       expect(await pathExists(path.join(sandbox.targets.claudeDir, name))).toBe(false);
       expect(await pathExists(path.join(sandbox.targets.codexDir, name))).toBe(false);
@@ -435,7 +435,7 @@ describe("uninstallSkills", () => {
       sandbox.targets.claudeDir,
       sandbox.targets.codexDir,
     ]) {
-      await writeOnDiskSkill(dir, "paseo-chat", { "SKILL.md": "chat-old" });
+      await writeOnDiskSkill(dir, "otto-chat", { "SKILL.md": "chat-old" });
     }
 
     const status = await uninstallSkills(sandbox.targets);
@@ -446,7 +446,7 @@ describe("uninstallSkills", () => {
       sandbox.targets.claudeDir,
       sandbox.targets.codexDir,
     ]) {
-      expect(await pathExists(path.join(dir, "paseo-chat"))).toBe(false);
+      expect(await pathExists(path.join(dir, "otto-chat"))).toBe(false);
     }
   });
 });

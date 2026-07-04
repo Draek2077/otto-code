@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { FileReadResult } from "@getpaseo/client/internal/daemon-client";
+import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
   ActivityIndicator,
   Image as RNImage,
@@ -15,7 +15,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
-import { highlightCode, type HighlightToken } from "@getpaseo/highlight";
+import { highlightCode, type HighlightToken } from "@otto-code/highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";

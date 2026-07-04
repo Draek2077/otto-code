@@ -3,7 +3,7 @@ export interface BrowserWorkspaceRegistration {
   workspaceId: string;
 }
 
-export class PaseoBrowserWebviewRegistry {
+export class OttoBrowserWebviewRegistry {
   private readonly browserIdsByWebContentsId = new Map<number, string>();
   private readonly webContentsIdsByBrowserId = new Map<string, number>();
   private readonly workspaceIdsByBrowserId = new Map<string, string>();

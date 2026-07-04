@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import type { GitHubSearchRequest, GitHubSearchResponse } from "@getpaseo/protocol/messages";
+import type { GitHubSearchRequest, GitHubSearchResponse } from "@otto-code/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 
 export const GITHUB_SEARCH_STALE_TIME = 30_000;

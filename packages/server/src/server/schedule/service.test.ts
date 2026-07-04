@@ -23,7 +23,7 @@ import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
 import { ScheduleService, ScheduleTargetGoneError } from "./service.js";
-import type { ScheduleExecutionResult, StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleExecutionResult, StoredSchedule } from "@otto-code/protocol/schedule/types";
 
 interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule): Promise<ScheduleExecutionResult>;
@@ -97,7 +97,7 @@ describe("ScheduleService", () => {
 
   test("ticks due schedules and records run history on disk", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -136,7 +136,7 @@ describe("ScheduleService", () => {
 
   test("pause and resume update persisted schedule state", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -172,7 +172,7 @@ describe("ScheduleService", () => {
 
   test("completes schedules when max runs is reached", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -212,7 +212,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -252,7 +252,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -409,7 +409,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -593,7 +593,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -635,7 +635,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -697,7 +697,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -739,7 +739,7 @@ describe("ScheduleService", () => {
 
   test("advances stale nextRunAt on daemon restart", async () => {
     const service1 = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -764,7 +764,7 @@ describe("ScheduleService", () => {
     // Simulate daemon restart 10 minutes later
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -790,7 +790,7 @@ describe("ScheduleService", () => {
     });
 
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -839,7 +839,7 @@ describe("ScheduleService", () => {
   test("rejects archived target agents before loading them", async () => {
     const manager = new AgentManager({ logger: createTestLogger() });
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -897,7 +897,7 @@ describe("ScheduleService", () => {
 
   test("defaults --every schedules to fire immediately on creation", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -920,7 +920,7 @@ describe("ScheduleService", () => {
 
   test("--every with runOnCreate=false waits the full interval", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -944,7 +944,7 @@ describe("ScheduleService", () => {
 
   test("--cron defaults to the next cron slot", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -967,7 +967,7 @@ describe("ScheduleService", () => {
 
   test("--cron with runOnCreate=true fires immediately on creation", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -991,7 +991,7 @@ describe("ScheduleService", () => {
 
   test("runOnce records a run without changing nextRunAt or completing the schedule", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1027,7 +1027,7 @@ describe("ScheduleService", () => {
 
   test("update mutates cadence, prompt, name, and target fields in place", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1080,7 +1080,7 @@ describe("ScheduleService", () => {
 
   test("update switches between every and cron cadences and recomputes nextRunAt", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1113,7 +1113,7 @@ describe("ScheduleService", () => {
 
   test("update preserves nextRunAt and run history when cadence is unchanged", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1145,7 +1145,7 @@ describe("ScheduleService", () => {
 
   test("update clears the schedule name when given an empty string", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1171,7 +1171,7 @@ describe("ScheduleService", () => {
 
   test("update rejects new-agent fields on agent-target schedules", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1196,7 +1196,7 @@ describe("ScheduleService", () => {
 
   test("update changes individual new-agent fields independently", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1241,7 +1241,7 @@ describe("ScheduleService", () => {
 
   test("update returns a schedule that round-trips through the store", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1272,7 +1272,7 @@ describe("ScheduleService", () => {
 
   test("runOnce rejects completed schedules", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1298,7 +1298,7 @@ describe("ScheduleService", () => {
 
   test("completeForAgent completes only schedules targeting that agent", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1365,7 +1365,7 @@ describe("ScheduleService", () => {
     );
 
     const service1 = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1409,7 +1409,7 @@ describe("ScheduleService", () => {
 
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1432,7 +1432,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a scheduled run reports the target is gone", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1464,7 +1464,7 @@ describe("ScheduleService", () => {
     const agentId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
     let service!: ScheduleService;
     service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1495,7 +1495,7 @@ describe("ScheduleService", () => {
 
   test("keeps the schedule active when a run fails for a transient reason", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1524,7 +1524,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a scheduled run targets an archived agent", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1560,7 +1560,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a scheduled run targets a missing agent", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1585,7 +1585,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a new-agent run's cwd no longer exists", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1620,7 +1620,7 @@ describe("ScheduleService", () => {
     // No providers registered: the agent exists and is live, but loading it fails
     // with a plain error (not ScheduleTargetGoneError), so the schedule must retry.
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1651,7 +1651,7 @@ describe("ScheduleService", () => {
 
   test("runOnce completes the schedule when the target is gone", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1674,7 +1674,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace updates the matching schedule in place instead of duplicating", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1716,7 +1716,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace creates a sibling when name, target, or completion differ", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1771,7 +1771,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace never dedups anonymous schedules", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1797,7 +1797,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace matches new-agent targets by config", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1833,7 +1833,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace dedups new-agent targets regardless of config key order", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1881,7 +1881,7 @@ describe("ScheduleService", () => {
 
   test("completeForAgent skips schedules that are already completed", async () => {
     const service = new ScheduleService({
-      paseoHome: tempDir,
+      ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,

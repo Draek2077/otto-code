@@ -3,12 +3,12 @@ import path from "node:path";
 import { expect, test as base, type Page } from "./fixtures";
 import { connectSeedClient, seedWorkspace } from "./helpers/seed-client";
 import {
-  blockPaseoConfigWrites,
-  bumpPaseoConfigOnDisk,
+  blockOttoConfigWrites,
+  bumpOttoConfigOnDisk,
   clickReloadProjectSettings,
   clickRetryProjectSettingsSave,
   clickSaveProjectSettings,
-  corruptPaseoConfig,
+  corruptOttoConfig,
   editWorktreeSetup,
   expectEmptyScriptList,
   expectHostIndicatorVisible,
@@ -27,8 +27,8 @@ import {
   openProjectSettings,
   openProjects,
   removeProjectScript,
-  restorePaseoConfig,
-  unblockPaseoConfigWrites,
+  restoreOttoConfig,
+  unblockOttoConfigWrites,
 } from "./helpers/project-settings";
 import { gotoAppShell } from "./helpers/app";
 import { createTempGitRepo } from "./helpers/workspace";
@@ -45,7 +45,7 @@ interface ProjectsSettingsFixtures {
   gitlabRemoteProject: ProjectsSettingsProject;
 }
 
-const initialPaseoConfig = {
+const initialOttoConfig = {
   worktree: {
     setup: ["echo initial setup"],
     teardown: "echo cleanup",
@@ -66,7 +66,7 @@ const test = base.extend<ProjectsSettingsFixtures>({
   editableProject: async ({ page: _page }, provide) => {
     const workspace = await seedWorkspace({
       repoPrefix: "projects-settings-",
-      repo: { paseoConfig: initialPaseoConfig },
+      repo: { ottoConfig: initialOttoConfig },
     });
 
     await provide({
@@ -83,7 +83,7 @@ const test = base.extend<ProjectsSettingsFixtures>({
     const workspace = await seedWorkspace({
       repoPrefix: "projects-settings-gitlab-",
       repo: {
-        paseoConfig: initialPaseoConfig,
+        ottoConfig: initialOttoConfig,
         originUrl: "https://gitlab.com/acme/app.git",
       },
     });
@@ -111,18 +111,18 @@ async function expectProjectConfigSaved(project: ProjectsSettingsProject): Promi
     .toMatchObject({
       worktree: {
         setup: updatedSetup,
-        teardown: initialPaseoConfig.worktree.teardown,
-        customWorktreeField: initialPaseoConfig.worktree.customWorktreeField,
+        teardown: initialOttoConfig.worktree.teardown,
+        customWorktreeField: initialOttoConfig.worktree.customWorktreeField,
       },
       scripts: {
         dev: {
-          command: initialPaseoConfig.scripts.dev.command,
-          type: initialPaseoConfig.scripts.dev.type,
-          port: initialPaseoConfig.scripts.dev.port,
-          customScriptField: initialPaseoConfig.scripts.dev.customScriptField,
+          command: initialOttoConfig.scripts.dev.command,
+          type: initialOttoConfig.scripts.dev.type,
+          port: initialOttoConfig.scripts.dev.port,
+          customScriptField: initialOttoConfig.scripts.dev.customScriptField,
         },
       },
-      customTopLevelField: initialPaseoConfig.customTopLevelField,
+      customTopLevelField: initialOttoConfig.customTopLevelField,
     });
 
   const savedConfig = await readProjectConfigFile(project);
@@ -130,7 +130,7 @@ async function expectProjectConfigSaved(project: ProjectsSettingsProject): Promi
 }
 
 async function readProjectConfigFile(project: ProjectsSettingsProject): Promise<string> {
-  return readFile(path.join(project.path, "paseo.json"), "utf8");
+  return readFile(path.join(project.path, "otto.json"), "utf8");
 }
 
 async function addProjectFromSidebar(page: Page, projectPath: string): Promise<string> {
@@ -221,7 +221,7 @@ test.describe("Projects settings — error UX", () => {
     await openProjectSettings(page, editableProject.name);
 
     // Bump the file on disk so the daemon detects a revision mismatch on save.
-    await bumpPaseoConfigOnDisk(editableProject.path);
+    await bumpOttoConfigOnDisk(editableProject.path);
 
     await clickSaveProjectSettings(page);
 
@@ -234,11 +234,11 @@ test.describe("Projects settings — error UX", () => {
     await expectProjectSettingsFormVisible(page);
   });
 
-  test("invalid paseo.json shows read-error callout, reload after fix shows form", async ({
+  test("invalid otto.json shows read-error callout, reload after fix shows form", async ({
     page,
     editableProject,
   }) => {
-    await corruptPaseoConfig(editableProject.path);
+    await corruptOttoConfig(editableProject.path);
 
     await openProjects(page);
     await navigateToProjectSettings(page, editableProject.name);
@@ -247,7 +247,7 @@ test.describe("Projects settings — error UX", () => {
     await expectProjectSettingsFormHidden(page);
 
     // Restore a valid config so the reload succeeds.
-    await restorePaseoConfig(editableProject.path, initialPaseoConfig);
+    await restoreOttoConfig(editableProject.path, initialOttoConfig);
 
     await clickReloadProjectSettings(page);
 
@@ -262,7 +262,7 @@ test.describe("Projects settings — error UX", () => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
 
-    await blockPaseoConfigWrites(editableProject.path);
+    await blockOttoConfigWrites(editableProject.path);
 
     await clickSaveProjectSettings(page);
 
@@ -272,7 +272,7 @@ test.describe("Projects settings — error UX", () => {
     await clickRetryProjectSettingsSave(page);
     await expectProjectSettingsError(page, "write_failed");
 
-    await unblockPaseoConfigWrites(editableProject.path);
+    await unblockOttoConfigWrites(editableProject.path);
     await clickReloadProjectSettings(page);
     await expectNoProjectSettingsError(page, "write_failed");
     await expectProjectSettingsFormVisible(page);

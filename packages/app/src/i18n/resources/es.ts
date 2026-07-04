@@ -680,7 +680,7 @@ export const es: TranslationResources = {
           updateCurrent:
             "La actualización no está disponible porque esta rama ya está actualizada con{{baseRef}}",
           archiveNotWorktree:
-            "El archivo no está disponible aquí porque este espacio de trabajo no se creó como un árbol de trabajoPaseo",
+            "El archivo no está disponible aquí porque este espacio de trabajo no se creó como un árbol de trabajoOtto",
           mergePrNoGithub:
             "FusionarPRno está disponible en este momento porqueGitHubno está conectado",
           mergePrMissing:
@@ -920,7 +920,7 @@ export const es: TranslationResources = {
   },
   desktop: {
     quitting: {
-      title: "Saliendo dePaseo...",
+      title: "Saliendo deOtto...",
       detail: "Deteniendo el demonio local.",
     },
     daemon: {
@@ -934,20 +934,20 @@ export const es: TranslationResources = {
       },
       management: {
         title: "Administrar demonio incorporado",
-        hint: "Deje quePaseoinicie y detenga el demonio incorporado",
+        hint: "Deje queOttoinicie y detenga el demonio incorporado",
         pauseTitle: "Pausar el demonio incorporado",
         pauseMessage:
           "Esto detendrá el demonio incorporado inmediatamente. Se detendrán los agentes en ejecución y los terminales conectados al demonio integrado.",
         pauseAndStop: "Pausa y para",
         registrationFailed:
-          "Built-in daemon started, but Paseo could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
+          "Built-in daemon started, but Otto could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
         pausedStopFailed:
-          "La gestión del demonio integrado se pausó, peroPaseono pudo detener el demonio.",
+          "La gestión del demonio integrado se pausó, peroOttono pudo detener el demonio.",
         updateFailed: "No se puede actualizar la gestión de demonios integrada.",
       },
       keepRunning: {
         title: "Mantener el demonio en ejecución después de salir",
-        hint: "Daemonsigue ejecutándose cuando sales dePaseo",
+        hint: "Daemonsigue ejecutándose cuando sales deOtto",
       },
       logs: {
         title: "Archivo de registro",
@@ -962,7 +962,7 @@ export const es: TranslationResources = {
       fullStatus: {
         title: "Estado completo",
         modalTitle: "EstadoDaemon",
-        hint: "Ejecuta`paseo daemon status`y muestra la salida.",
+        hint: "Ejecuta`otto daemon status`y muestra la salida.",
         view: "Ver estado",
         copied: "Estado copiado al portapapeles.",
         fetchFailed: "No se pudo recuperar el estado del demonio:{{message}}",
@@ -1017,7 +1017,7 @@ export const es: TranslationResources = {
     },
     rosetta: {
       title: "Descargue la compilaciónApple Silicon",
-      runningIntel: "Estás ejecutando la compilaciónInteldePaseoenRosettaenApple Silicon.",
+      runningIntel: "Estás ejecutando la compilaciónInteldeOttoenRosettaenApple Silicon.",
       highCpu:
         "Esto provoca un uso elevado de la CPU. Descargue la compilaciónApple Siliconpara solucionarlo.",
       download: "Descargar",
@@ -1064,7 +1064,7 @@ export const es: TranslationResources = {
         microphone: "El estado del micrófono aún no se ha comprobado.",
       },
       testNotification: {
-        title: "Prueba de notificaciónPaseo",
+        title: "Prueba de notificaciónOtto",
         body: "Si puede ver esto, las notificaciones de escritorio funcionan.",
         notDelivered:
           "La notificación no fue entregada. Verifique Configuración del sistema> Notificaciones.",
@@ -1074,7 +1074,7 @@ export const es: TranslationResources = {
     integrations: {
       cli: {
         statusFailed: "No se puede verificar el estado de instalación deCLI.",
-        installFailed: "No se puede instalar elPaseoCLI.",
+        installFailed: "No se puede instalar elOttoCLI.",
       },
       skills: {
         statusFailed: "No se puede comprobar el estado de las habilidades de orquestación.",
@@ -1173,7 +1173,7 @@ export const es: TranslationResources = {
     },
   },
   onboarding: {
-    title: "Bienvenido aPaseo",
+    title: "Bienvenido aOtto",
     subtitle: "Conecte su computadora para comenzar",
     actions: {
       settings: "Ajustes",
@@ -1249,7 +1249,7 @@ export const es: TranslationResources = {
     },
     direct: {
       title: "Conexión directa",
-      helper: "Ingrese la dirección de un servidorPaseo.",
+      helper: "Ingrese la dirección de un servidorOtto.",
       fields: {
         host: "Host",
         port: "Puerto",
@@ -1329,7 +1329,7 @@ export const es: TranslationResources = {
       failedToLoadOffer: "No se pudo cargar la oferta de emparejamiento.",
       relayDisabled: "El relé no está habilitado. Habilite el relé para emparejar un dispositivo.",
       unavailable: "Oferta de maridaje no disponible.",
-      hint: "Escanee este códigoQRconPaseoen su teléfono o copie el enlace a continuación.",
+      hint: "Escanee este códigoQRconOttoen su teléfono o copie el enlace a continuación.",
       qrUnavailable: "CódigoQRno disponible.",
       retry: "Rever",
       copy: "Copiar",
@@ -1361,7 +1361,7 @@ export const es: TranslationResources = {
   serviceUrl: {
     title: "Servicio abiertoURL",
     message: "¿Abrir{{url}}?",
-    inPaseo: "EnPaseo",
+    inOtto: "EnOtto",
     externalBrowser: "Navegador externo",
     dontAskAgain: "no vuelvas a preguntar",
   },
@@ -1488,7 +1488,7 @@ export const es: TranslationResources = {
         description: "Dónde abrir URL desde scripts en ejecución",
         options: {
           ask: "Preguntar",
-          inApp: "EnPaseo",
+          inApp: "EnOtto",
           external: "Navegador externo",
         },
       },
@@ -1553,7 +1553,7 @@ export const es: TranslationResources = {
         label: "Actualizaciones de aplicaciones",
         readyToInstall: "Listo para instalar:{{version}}",
         installTitle: "Instalar actualización de escritorio",
-        installMessage: "Esto actualizaPaseoen esta computadora.",
+        installMessage: "Esto actualizaOttoen esta computadora.",
         installConfirm: "Instalar actualización",
         update: "Actualizar",
         updateTo: "Actualización a{{version}}",
@@ -1682,11 +1682,11 @@ export const es: TranslationResources = {
         title: "Habilidades de orquestación",
         description: "Enseñe a sus agentes a orquestar a través delCLI",
         updateAvailable: "Actualización disponible",
-        updateTitle: "¿Actualizar las habilidades dePaseo?",
+        updateTitle: "¿Actualizar las habilidades deOtto?",
         updateFallback: "Sincronice las habilidades incluidas con su máquina.",
-        uninstallTitle: "¿Desinstalar las habilidadesPaseo?",
+        uninstallTitle: "¿Desinstalar las habilidadesOtto?",
         uninstallMessage:
-          "Elimina todas las habilidades de orquestaciónPaseode ~/.agents, ~/.claude, ~/.codex.",
+          "Elimina todas las habilidades de orquestaciónOttode ~/.agents, ~/.claude, ~/.codex.",
       },
       actions: {
         install: "Instalar",
@@ -1741,9 +1741,9 @@ export const es: TranslationResources = {
         title: "Orquestación",
         unavailable: "Conéctese a este host para administrar la orquestación",
         enableTools: {
-          title: "Habilitar herramientasPaseo",
+          title: "Habilitar herramientasOtto",
           hint: "Los agentes podrán gestionar árboles de trabajo, agentes y horarios.",
-          accessibilityLabel: "Inyectar herramientasPaseo",
+          accessibilityLabel: "Inyectar herramientasOtto",
         },
         systemPrompt: {
           title: "Aviso del sistema",
@@ -1810,10 +1810,10 @@ export const es: TranslationResources = {
             "Este host no está conectado. Espere a que se conecte antes de reiniciar.",
           offlineTitle: "Hostfuera de línea",
           offlineMessage:
-            "Este anfitrión está desconectado.Paseose vuelve a conectar automáticamente; espere hasta que vuelva a estar en línea antes de reiniciar.",
+            "Este anfitrión está desconectado.Ottose vuelve a conectar automáticamente; espere hasta que vuelva a estar en línea antes de reiniciar.",
           requestFailedTitle: "Error",
           requestFailedMessage:
-            "No se pudo enviar la solicitud de reinicio.Paseose vuelve a conectar automáticamente; inténtelo nuevamente una vez que el host se muestre en línea.",
+            "No se pudo enviar la solicitud de reinicio.Ottose vuelve a conectar automáticamente; inténtelo nuevamente una vez que el host se muestre en línea.",
           dialogFailedMessage:
             "No se puede abrir el cuadro de diálogo de confirmación de reinicio.",
         },
@@ -1925,14 +1925,14 @@ export const es: TranslationResources = {
         reset: "Reiniciar",
       },
       readFailures: {
-        invalidTitle: "paseo.json no se pudo analizar",
+        invalidTitle: "otto.json no se pudo analizar",
         invalidDescription: "Fije el archivo en el disco y luego vuelva a cargarlo.",
         missingTitle: "Este anfitrión no tiene este proyecto",
         missingWithHosts: "Cambie a otro host de arriba o vuelva a cargar.",
         missingSingleHost: "El anfitrión seleccionado no tiene registro de este proyecto.",
-        transportTitle: "No se pudo cargar paseo.json",
+        transportTitle: "No se pudo cargar otto.json",
         transportFallback: "El anfitrión no respondió.",
-        failedTitle: "No se pudo cargar paseo.json",
+        failedTitle: "No se pudo cargar otto.json",
         failedDescription: "Vuelva a cargar para intentarlo de nuevo.",
       },
       worktree: {
@@ -1965,7 +1965,7 @@ export const es: TranslationResources = {
         newScript: "Nuevo guión",
         editScript: "Editar{{name}}",
         runAsService: "Ejecutar como servicio",
-        serviceHint: "Paseosupervisa el proceso y asigna un puerto vía $PASEO_PORT",
+        serviceHint: "Ottosupervisa el proceso y asigna un puerto vía $OTTO_PORT",
         actions: {
           add: "Agregar guión",
           edit: "Editar",
@@ -1974,7 +1974,7 @@ export const es: TranslationResources = {
       },
       metadata: {
         title: "Generación de metadatos",
-        info: "Instrucciones específicas del proyecto inyectadas en los mensajes de IA quePaseoutiliza para generar metadatos; úselas para hacer cumplir las convenciones de su equipo, como la denominación de ramas, el estilo de confirmación o el formatoPR.",
+        info: "Instrucciones específicas del proyecto inyectadas en los mensajes de IA queOttoutiliza para generar metadatos; úselas para hacer cumplir las convenciones de su equipo, como la denominación de ramas, el estilo de confirmación o el formatoPR.",
         branchName: "Nombres de sucursales",
         branchNamePlaceholder: "Prefijo ramas con feat/ o fix/, mb/ para ramas personales",
         commitMessage: "Confirmar mensajes",
@@ -1985,8 +1985,8 @@ export const es: TranslationResources = {
       },
       writeFailures: {
         staleTitle: "Configuración cambiada en el disco",
-        staleDescription: "Vuelva a cargar para obtener el último paseo.json antes de guardar.",
-        failedTitle: "No se pudo guardar paseo.json",
+        staleDescription: "Vuelva a cargar para obtener el último otto.json antes de guardar.",
+        failedTitle: "No se pudo guardar otto.json",
         failedDescription: "Inténtelo de nuevo o vuelva a cargar la última versión desde el disco.",
       },
       actions: {

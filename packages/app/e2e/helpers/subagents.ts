@@ -1,4 +1,4 @@
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { expect, type Page } from "@playwright/test";
 import type { SeededWorkspace } from "./seed-client";
 

@@ -17,7 +17,7 @@ export interface MaterializedProviderImage {
   path: string;
 }
 
-const PROVIDER_IMAGE_ATTACHMENT_DIR = "paseo-attachments";
+const PROVIDER_IMAGE_ATTACHMENT_DIR = "otto-attachments";
 
 function getImageExtension(mimeType: string): string {
   switch (mimeType) {

@@ -7,12 +7,12 @@ import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 
-export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
+export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 
-type MutableDaemonConfig = import("@getpaseo/protocol/messages").MutableDaemonConfig;
-type MutableDaemonConfigPatch = import("@getpaseo/protocol/messages").MutableDaemonConfigPatch;
+type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonConfig;
+type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
 
 interface LoggerLike {
@@ -83,13 +83,13 @@ export function applyMutableProviderConfigToOverrides(
 
 export class DaemonConfigStore {
   private current: MutableDaemonConfig;
-  private readonly paseoHome: string;
+  private readonly ottoHome: string;
   private readonly logger: LoggerLike | undefined;
   private readonly changeListeners = new Set<ConfigListener>();
   private readonly fieldChangeHandlers = new Map<string, Set<FieldChangeHandler>>();
 
-  constructor(paseoHome: string, initial: MutableDaemonConfig, logger?: LoggerLike) {
-    this.paseoHome = paseoHome;
+  constructor(ottoHome: string, initial: MutableDaemonConfig, logger?: LoggerLike) {
+    this.ottoHome = ottoHome;
     this.logger = getLogger(logger);
     this.current = MutableDaemonConfigSchema.parse(initial);
   }
@@ -158,12 +158,12 @@ export class DaemonConfigStore {
   }
 
   private persistConfig(config: MutableDaemonConfig): void {
-    const persisted = loadPersistedConfig(this.paseoHome, this.logger);
+    const persisted = loadPersistedConfig(this.ottoHome, this.logger);
     const nextPersisted = mergeMutableConfigIntoPersistedConfig({
       persisted,
       mutable: config,
     });
-    savePersistedConfig(this.paseoHome, nextPersisted, this.logger);
+    savePersistedConfig(this.ottoHome, nextPersisted, this.logger);
   }
 }
 

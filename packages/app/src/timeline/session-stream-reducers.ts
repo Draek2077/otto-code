@@ -1,5 +1,5 @@
-import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
-import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
+import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type { Agent } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import type { StreamItem, UserMessageItem } from "@/types/stream";

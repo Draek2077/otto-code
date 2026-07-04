@@ -1,10 +1,10 @@
 import type { Rectangle } from "electron";
 import { ipcMain } from "electron";
-import { BrowserAutomationExecuteRequestSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { BrowserAutomationExecuteRequestSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type {
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { TabContents, BrowserRegistry, TabImage } from "./service.js";
 import { CdpSessionQueue } from "./cdp-session-queue.js";
 import {
@@ -17,11 +17,11 @@ import {
 } from "./dialog-handling.js";
 import { executeAutomationCommand } from "./service.js";
 import {
-  listRegisteredPaseoBrowserIds,
-  listRegisteredPaseoBrowserIdsForWorkspace,
-  getPaseoBrowserWebContents,
-  getWorkspaceActivePaseoBrowserId,
-  getPaseoBrowserWorkspaceId,
+  listRegisteredOttoBrowserIds,
+  listRegisteredOttoBrowserIdsForWorkspace,
+  getOttoBrowserWebContents,
+  getWorkspaceActiveOttoBrowserId,
+  getOttoBrowserWorkspaceId,
 } from "../browser-webviews/index.js";
 
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
@@ -339,14 +339,14 @@ function normalizeConsoleMessage(input: {
 
 function createRegistry(): BrowserRegistry {
   return {
-    listRegisteredBrowserIds: listRegisteredPaseoBrowserIds,
-    listRegisteredBrowserIdsForWorkspace: listRegisteredPaseoBrowserIdsForWorkspace,
+    listRegisteredBrowserIds: listRegisteredOttoBrowserIds,
+    listRegisteredBrowserIdsForWorkspace: listRegisteredOttoBrowserIdsForWorkspace,
     getTabContents(browserId: string): TabContents | null {
-      const contents = getPaseoBrowserWebContents(browserId);
+      const contents = getOttoBrowserWebContents(browserId);
       return contents ? adaptWebContents(contents) : null;
     },
-    getBrowserWorkspaceId: getPaseoBrowserWorkspaceId,
-    getWorkspaceActiveBrowserId: getWorkspaceActivePaseoBrowserId,
+    getBrowserWorkspaceId: getOttoBrowserWorkspaceId,
+    getWorkspaceActiveBrowserId: getWorkspaceActiveOttoBrowserId,
   };
 }
 
@@ -354,7 +354,7 @@ export function registerBrowserAutomationIpc(options?: { ipc?: IpcHandlerRegistr
   const ipc = options?.ipc ?? ipcMain;
   const registry = createRegistry();
 
-  ipc.handle("paseo:browser:execute-automation-command", async (_event, rawRequest: unknown) => {
+  ipc.handle("otto:browser:execute-automation-command", async (_event, rawRequest: unknown) => {
     const parsed = BrowserAutomationExecuteRequestSchema.safeParse(rawRequest);
     if (!parsed.success) {
       return {

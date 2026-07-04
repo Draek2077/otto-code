@@ -24,24 +24,24 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
   root: string;
   shimPath: string;
 } {
-  const root = mkdtempSync(join(tmpdir(), "paseo-cli-shim-test-"));
-  const appPath = join(root, "Paseo.app");
+  const root = mkdtempSync(join(tmpdir(), "otto-cli-shim-test-"));
+  const appPath = join(root, "Otto.app");
   const contentsPath = join(appPath, "Contents");
   const resourcesPath = join(contentsPath, "Resources");
-  const shimPath = join(resourcesPath, "bin", "paseo");
-  const mainPath = join(contentsPath, "MacOS", "Paseo");
+  const shimPath = join(resourcesPath, "bin", "otto");
+  const mainPath = join(contentsPath, "MacOS", "Otto");
   const helperPath = join(
     contentsPath,
     "Frameworks",
-    "Paseo Helper.app",
+    "Otto Helper.app",
     "Contents",
     "MacOS",
-    "Paseo Helper",
+    "Otto Helper",
   );
 
   mkdirSync(dirname(shimPath), { recursive: true });
   mkdirSync(dirname(mainPath), { recursive: true });
-  copyFileSync(join(packageRoot, "bin", "paseo"), shimPath);
+  copyFileSync(join(packageRoot, "bin", "otto"), shimPath);
   chmodSync(shimPath, 0o755);
 
   writeExecutable(mainPath, "#!/bin/sh\necho main-executable\n");
@@ -52,7 +52,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
       helperPath,
       [
         "#!/bin/sh",
-        'printf "helper env=%s/%s\\n" "$ELECTRON_RUN_AS_NODE" "$PASEO_NODE_ENV"',
+        'printf "helper env=%s/%s\\n" "$ELECTRON_RUN_AS_NODE" "$OTTO_NODE_ENV"',
         'printf "args=%s\\n" "$*"',
         "",
       ].join("\n"),
@@ -67,10 +67,10 @@ describe("desktop packaging", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
     expect(config).toContain(
-      "node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*",
+      "node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*",
     );
     expect(config).not.toContain(
-      "node_modules/@getpaseo/server/dist/src/terminal/shell-integration/**/*",
+      "node_modules/@otto-code/server/dist/src/terminal/shell-integration/**/*",
     );
   });
 
@@ -78,19 +78,19 @@ describe("desktop packaging", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
     expect(config).toContain("!**/*.map");
-    expect(config).toContain("!node_modules/@getpaseo/*/src/**");
-    expect(config).toContain("!node_modules/@getpaseo/**/*.test.*");
-    expect(config).toContain("!node_modules/@getpaseo/**/*.spec.*");
+    expect(config).toContain("!node_modules/@otto-code/*/src/**");
+    expect(config).toContain("!node_modules/@otto-code/**/*.test.*");
+    expect(config).toContain("!node_modules/@otto-code/**/*.spec.*");
   });
 
   it("excludes the bundled daemon web UI from the packaged app", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
-    expect(config).toContain("!node_modules/@getpaseo/server/dist/server/web-ui/**");
+    expect(config).toContain("!node_modules/@otto-code/server/dist/server/web-ui/**");
   });
 
   // electron-builder packs production dependencies declared in package.json into
-  // app.asar. Runtime code in runtime-paths.ts and bin/paseo dynamically resolves
+  // app.asar. Runtime code in runtime-paths.ts and bin/otto dynamically resolves
   // these workspace packages by string, so static analysis (TypeScript, Knip) cannot
   // see the link. If a runtime-required workspace dep is dropped from
   // dependencies, the build still succeeds but ships a broken bundle. This
@@ -101,7 +101,7 @@ describe("desktop packaging", () => {
     };
     const deps = pkg.dependencies ?? {};
 
-    for (const required of ["@getpaseo/cli", "@getpaseo/server"]) {
+    for (const required of ["@otto-code/cli", "@otto-code/server"]) {
       expect(deps[required], `${required} must be declared in dependencies`).toBe("*");
     }
   });
@@ -117,7 +117,7 @@ describe("desktop packaging", () => {
       expect(result.stdout).toContain("helper env=1/production");
       expect(result.stdout).toContain("node-entrypoint-runner.js");
       expect(result.stdout).toContain("node-script");
-      expect(result.stdout).toContain("@getpaseo/cli/dist/index.js");
+      expect(result.stdout).toContain("@otto-code/cli/dist/index.js");
       expect(result.stdout).toContain("--version");
       expect(result.stdout).not.toContain("main-executable");
     } finally {
@@ -133,7 +133,7 @@ describe("desktop packaging", () => {
       const result = spawnSync(bundle.shimPath, ["--version"], { encoding: "utf8" });
 
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("Bundled Paseo Helper executable not found");
+      expect(result.stderr).toContain("Bundled Otto Helper executable not found");
       expect(result.stdout).not.toContain("main-executable");
     } finally {
       rmSync(bundle.root, { recursive: true, force: true });

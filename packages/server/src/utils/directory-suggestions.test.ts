@@ -22,7 +22,7 @@ describe("searchHomeDirectories", () => {
     homeDir = realpathSync(homeDir);
     outsideDir = realpathSync(outsideDir);
 
-    mkdirSync(path.join(homeDir, "projects", "paseo"), { recursive: true });
+    mkdirSync(path.join(homeDir, "projects", "otto"), { recursive: true });
     mkdirSync(path.join(homeDir, "projects", "playground"), { recursive: true });
     mkdirSync(path.join(homeDir, "documents", "plans"), { recursive: true });
     mkdirSync(path.join(homeDir, ".hidden", "cache"), { recursive: true });
@@ -57,7 +57,7 @@ describe("searchHomeDirectories", () => {
 
     const resolvedResults = results.map((result) => realpathSync.native(result));
     expect(resolvedResults).toContain(realpathSync.native(path.join(homeDir, "projects")));
-    expect(resolvedResults).toContain(realpathSync.native(path.join(homeDir, "projects", "paseo")));
+    expect(resolvedResults).toContain(realpathSync.native(path.join(homeDir, "projects", "otto")));
     expect(results).not.toContain(path.join(homeDir, "projects", "README.md"));
   });
 
@@ -69,7 +69,7 @@ describe("searchHomeDirectories", () => {
     });
 
     expect(results.map((result) => realpathSync.native(result))).toEqual([
-      realpathSync.native(path.join(homeDir, "projects", "paseo")),
+      realpathSync.native(path.join(homeDir, "projects", "otto")),
     ]);
   });
 
@@ -205,7 +205,7 @@ describe("searchWorkspaceEntries", () => {
     mkdirSync(path.join(workspaceDir, "docs"), { recursive: true });
     mkdirSync(path.join(outsideDir, "escaped"), { recursive: true });
 
-    writeFileSync(path.join(workspaceDir, "README.md"), "# paseo\n");
+    writeFileSync(path.join(workspaceDir, "README.md"), "# otto\n");
     writeFileSync(
       path.join(workspaceDir, "src", "components", "chat-input.tsx"),
       "export const ChatInput = null;\n",
@@ -303,7 +303,7 @@ describe("searchWorkspaceEntries", () => {
     mkdirSync(path.join(workspaceDir, "packages", "app", "src"), { recursive: true });
     writeFileSync(path.join(workspaceDir, "src", "file.ts"), "");
     writeFileSync(path.join(workspaceDir, "packages", "app", "src", "file.ts"), "");
-    writeFileSync(path.join(workspaceDir, "src", "paseo-config-file.ts"), "");
+    writeFileSync(path.join(workspaceDir, "src", "otto-config-file.ts"), "");
 
     const basenameResults = await searchWorkspaceEntries({
       cwd: workspaceDir,
@@ -365,13 +365,13 @@ describe("searchWorkspaceEntries", () => {
   });
 
   it("suffix mode resolves explicit hidden file paths without broad hidden traversal", async () => {
-    const targetPath = path.join(workspaceDir, ".dev", "paseo-home", "daemon.log");
+    const targetPath = path.join(workspaceDir, ".dev", "otto-home", "daemon.log");
     mkdirSync(path.dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, "daemon log\n");
 
     const results = await searchWorkspaceEntries({
       cwd: workspaceDir,
-      query: ".dev/paseo-home/daemon.log",
+      query: ".dev/otto-home/daemon.log",
       limit: 20,
       includeFiles: true,
       includeDirectories: false,
@@ -379,7 +379,7 @@ describe("searchWorkspaceEntries", () => {
       maxEntriesScanned: 1,
     });
 
-    expect(results).toEqual([{ path: ".dev/paseo-home/daemon.log", kind: "file" }]);
+    expect(results).toEqual([{ path: ".dev/otto-home/daemon.log", kind: "file" }]);
   });
 
   it("suffix mode finds files under allowlisted hidden workspace directories", async () => {

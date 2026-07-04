@@ -14,7 +14,7 @@ async function writeSession(root: string, lines: unknown[]): Promise<string> {
 }
 
 test("Pi import config preserves the latest recorded model and thinking level", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "paseo-pi-session-model-"));
+  const root = await mkdtemp(path.join(tmpdir(), "otto-pi-session-model-"));
   const cwd = path.join(root, "repo");
   const sessionFile = await writeSession(root, [
     {
@@ -76,7 +76,7 @@ test("Pi import config preserves the latest recorded model and thinking level", 
 });
 
 test("Pi import config can infer model from assistant messages", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "paseo-pi-session-message-model-"));
+  const root = await mkdtemp(path.join(tmpdir(), "otto-pi-session-message-model-"));
   const cwd = path.join(root, "repo");
   const sessionFile = await writeSession(root, [
     {
@@ -116,7 +116,7 @@ test("Pi import config can infer model from assistant messages", async () => {
 });
 
 test("Pi import config preserves thinking before a later model in large sessions", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "paseo-pi-session-large-thinking-"));
+  const root = await mkdtemp(path.join(tmpdir(), "otto-pi-session-large-thinking-"));
   const cwd = path.join(root, "repo");
   const fillerMessages = Array.from({ length: 2_100 }, (_, index) => ({
     type: "message",

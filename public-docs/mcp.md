@@ -1,14 +1,14 @@
 ---
-title: Paseo MCP
-description: Paseo MCP tools injected into agents.
-nav: Paseo MCP
+title: Otto MCP
+description: Otto MCP tools injected into agents.
+nav: Otto MCP
 order: 30
 category: Automation
 ---
 
-# Paseo MCP
+# Otto MCP
 
-Paseo can inject these MCP tools into every new agent it launches. Turn on **Inject Paseo tools** in host settings, or set `daemon.mcp.injectIntoAgents` to `true`.
+Otto can inject these MCP tools into every new agent it launches. Turn on **Inject Otto tools** in host settings, or set `daemon.mcp.injectIntoAgents` to `true`.
 
 The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may need a reload.
 
@@ -63,9 +63,9 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 | Tool               | Function                                                                      |
 | ------------------ | ----------------------------------------------------------------------------- |
-| `list_worktrees`   | List Paseo-managed git worktrees for a repository.                            |
-| `create_worktree`  | Create a Paseo-managed git worktree from a branch, base branch, or GitHub PR. |
-| `archive_worktree` | Delete a Paseo-managed git worktree.                                          |
+| `list_worktrees`   | List Otto-managed git worktrees for a repository.                            |
+| `create_worktree`  | Create a Otto-managed git worktree from a branch, base branch, or GitHub PR. |
+| `archive_worktree` | Delete a Otto-managed git worktree.                                          |
 
 ### Permissions
 

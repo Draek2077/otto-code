@@ -7,8 +7,8 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/changelog")({
   head: () =>
     pageMeta(
-      "Changelog - Paseo",
-      "Product updates, bug fixes, and improvements shipped in each Paseo release. Track new agent providers, mobile features, and daemon changes over time.",
+      "Changelog - Otto",
+      "Product updates, bug fixes, and improvements shipped in each Otto release. Track new agent providers, mobile features, and daemon changes over time.",
       "/changelog",
     ),
   component: Changelog,

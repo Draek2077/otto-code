@@ -25,19 +25,19 @@ async function waitForTrigger(state) {
 }
 
 async function reportActivity(state) {
-  const response = await fetch(process.env.PASEO_TERMINAL_ACTIVITY_URL, {
+  const response = await fetch(process.env.OTTO_TERMINAL_ACTIVITY_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      terminalId: process.env.PASEO_TERMINAL_ID,
-      token: process.env.PASEO_ACTIVITY_TOKEN,
+      terminalId: process.env.OTTO_TERMINAL_ID,
+      token: process.env.OTTO_ACTIVITY_TOKEN,
       state,
     }),
   });
   if (!response.ok) {
     throw new Error("Activity report failed: " + response.status);
   }
-  process.stdout.write("PASEO_ACTIVITY_REPORTED:" + state + "\\n");
+  process.stdout.write("OTTO_ACTIVITY_REPORTED:" + state + "\\n");
 }
 
 (async () => {

@@ -65,7 +65,7 @@ import {
 } from "../provider-launch-config.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 import { execCommand } from "../../../utils/spawn.js";
-import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
+import { buildToolCallDisplayModel } from "@otto-code/protocol/tool-call-display";
 import { mapOpencodeToolCall } from "./opencode/tool-call-mapper.js";
 import {
   OpenCodeServerManager,

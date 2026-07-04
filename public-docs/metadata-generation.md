@@ -1,6 +1,6 @@
 ---
 title: Metadata generation
-description: How Paseo uses providers to generate branch names, commit messages, and pull request text, and how to configure them.
+description: How Otto uses providers to generate branch names, commit messages, and pull request text, and how to configure them.
 nav: Metadata generation
 order: 42
 category: Configuration
@@ -8,9 +8,9 @@ category: Configuration
 
 # Metadata generation
 
-Paseo asks a language model to write short pieces of text for you so you don't have to. This is separate from the agent you're talking to: it's a small, one-shot call made in the background.
+Otto asks a language model to write short pieces of text for you so you don't have to. This is separate from the agent you're talking to: it's a small, one-shot call made in the background.
 
-Paseo generates these kinds of metadata:
+Otto generates these kinds of metadata:
 
 - **Workspace titles** — a short, task-shaped label for a workspace, shown in the sidebar.
 - **Worktree branch names** — a slug for the branch a new worktree agent runs on.
@@ -21,7 +21,7 @@ A workspace title and its branch name are produced together from the same prompt
 
 ## How a model is chosen
 
-You don't have to configure anything — Paseo picks a model automatically. It builds an ordered list of candidates and tries each one until a generation succeeds, so a slow or unavailable model falls through to the next.
+You don't have to configure anything — Otto picks a model automatically. It builds an ordered list of candidates and tries each one until a generation succeeds, so a slow or unavailable model falls through to the next.
 
 The candidate list is assembled in this order:
 
@@ -39,7 +39,7 @@ The intent of the default order is to prefer small, fast, cheap models for these
 
 ## Configuring the providers
 
-To control which models Paseo uses — for example to keep all metadata generation on one provider, or to prefer a local model — set `agents.metadataGeneration.providers` in `~/.paseo/config.json`. Your entries are tried before the built-in defaults.
+To control which models Otto uses — for example to keep all metadata generation on one provider, or to prefer a local model — set `agents.metadataGeneration.providers` in `~/.otto/config.json`. Your entries are tried before the built-in defaults.
 
 ```json
 {
@@ -64,7 +64,7 @@ Restart the daemon after editing the file.
 
 ## Per-project instructions
 
-You can steer the wording of each kind of metadata per repository with a `paseo.json` file at your repo root. Paseo reads it from the committed version of the base branch, the same way it reads worktree config.
+You can steer the wording of each kind of metadata per repository with a `otto.json` file at your repo root. Otto reads it from the committed version of the base branch, the same way it reads worktree config.
 
 ```json
 {
@@ -77,4 +77,4 @@ You can steer the wording of each kind of metadata per repository with a `paseo.
 }
 ```
 
-Each key is optional; only the ones you set are affected. Your instructions **replace** the default style for that metadata type — they are not appended to it — so your wording never competes with Paseo's defaults. The functional requirements (what to produce and the output format) always apply and cannot be overridden.
+Each key is optional; only the ones you set are affected. Your instructions **replace** the default style for that metadata type — they are not appended to it — so your wording never competes with Otto's defaults. The functional requirements (what to produce and the output format) always apply and cannot be overridden.

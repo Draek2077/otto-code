@@ -18,7 +18,7 @@ import type { Theme } from "@/styles/theme";
 import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
 import { formatCadence, formatNextRun, resolveScheduleTitle } from "@/utils/schedule-format";
 import { formatTimeAgo } from "@/utils/time";
-import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
 // Themed lucide wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.

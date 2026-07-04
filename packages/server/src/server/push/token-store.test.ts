@@ -26,7 +26,7 @@ function modeOf(filePath: string): number {
 
 describe.skipIf(process.platform === "win32")("PushTokenStore file permissions", () => {
   test("persists push tokens with private permissions", () => {
-    const home = mkdtempSync(path.join(tmpdir(), "paseo-push-tokens-"));
+    const home = mkdtempSync(path.join(tmpdir(), "otto-push-tokens-"));
     const tokenPath = path.join(home, "push-tokens.json");
     try {
       const store = new PushTokenStore(createLogger(), tokenPath);
@@ -40,7 +40,7 @@ describe.skipIf(process.platform === "win32")("PushTokenStore file permissions",
   });
 
   test("repairs existing push token file permissions when loading", () => {
-    const home = mkdtempSync(path.join(tmpdir(), "paseo-push-tokens-"));
+    const home = mkdtempSync(path.join(tmpdir(), "otto-push-tokens-"));
     const tokenPath = path.join(home, "push-tokens.json");
     try {
       writeFileSync(tokenPath, JSON.stringify({ tokens: ["ExponentPushToken[test]"] }));

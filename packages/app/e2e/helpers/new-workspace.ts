@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
 import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { daemonWsRoutePattern } from "./daemon-port";
@@ -7,15 +7,15 @@ import { expectWorkspaceHeader } from "./workspace-ui";
 
 type NewWorkspaceDaemonClient = Pick<
   InternalDaemonClient,
-  | "archivePaseoWorktree"
+  | "archiveOttoWorktree"
   | "archiveWorkspace"
   | "checkoutRefresh"
   | "close"
   | "connect"
-  | "createPaseoWorktree"
+  | "createOttoWorktree"
   | "createWorkspace"
   | "fetchWorkspaces"
-  | "getPaseoWorktreeList"
+  | "getOttoWorktreeList"
   | "getDaemonConfig"
   | "patchDaemonConfig"
   | "removeProject"
@@ -110,7 +110,7 @@ export async function archiveWorkspaceFromDaemon(
   workspaceDirectory: string,
   options?: { scope?: "workspace" | "worktree" },
 ): Promise<void> {
-  const payload = await client.archivePaseoWorktree({
+  const payload = await client.archiveOttoWorktree({
     worktreePath: workspaceDirectory,
     ...(options?.scope !== undefined ? { scope: options.scope } : {}),
   });
@@ -139,7 +139,7 @@ export async function createWorktreeViaDaemon(
   client: NewWorkspaceDaemonClient,
   input: { cwd: string; slug: string },
 ): Promise<OpenedProject> {
-  const payload = await client.createPaseoWorktree({
+  const payload = await client.createOttoWorktree({
     cwd: input.cwd,
     worktreeSlug: input.slug,
   });

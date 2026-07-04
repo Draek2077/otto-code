@@ -6,7 +6,7 @@ import {
   type ConnectionState,
   type FetchAgentsEntry,
   type FetchAgentsOptions,
-} from "@getpaseo/client/internal/daemon-client";
+} from "@otto-code/client/internal/daemon-client";
 import {
   connectionFromListen,
   normalizeStoredHostProfile,
@@ -23,7 +23,7 @@ import {
   shouldUseTlsForDefaultHostedRelay,
 } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
-import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
+import { ConnectionOfferSchema, type ConnectionOffer } from "@otto-code/protocol/connection-offer";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
@@ -38,8 +38,8 @@ import {
   createDesktopLocalDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import { getDesktopHost } from "@/desktop/host";
-import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
-import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
+import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { replaceFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -1315,11 +1315,11 @@ export class HostRuntimeController {
   }
 }
 
-const REGISTRY_STORAGE_KEY = "@paseo:daemon-registry";
-const LOCALHOST_FALLBACK_ENDPOINT = "localhost:6767";
+const REGISTRY_STORAGE_KEY = "@otto:daemon-registry";
+const LOCALHOST_FALLBACK_ENDPOINT = "localhost:6868";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
-const E2E_STORAGE_KEY = "@paseo:e2e";
-const INITIAL_DAEMON_CONNECTION_HINT_GLOBAL_KEY = "__PASEO_INITIAL_DAEMON_CONNECTION__";
+const E2E_STORAGE_KEY = "@otto:e2e";
+const INITIAL_DAEMON_CONNECTION_HINT_GLOBAL_KEY = "__OTTO_INITIAL_DAEMON_CONNECTION__";
 
 export interface InitialDaemonConnectionHint {
   listen: string;
@@ -2181,7 +2181,7 @@ export class HostRuntimeStore {
 }
 
 let singletonHostRuntimeStore: HostRuntimeStore | null = null;
-const HOST_RUNTIME_STORE_GLOBAL_KEY = "__paseoHostRuntimeStore";
+const HOST_RUNTIME_STORE_GLOBAL_KEY = "__ottoHostRuntimeStore";
 
 type HostRuntimeGlobal = typeof globalThis & {
   [HOST_RUNTIME_STORE_GLOBAL_KEY]?: HostRuntimeStore;

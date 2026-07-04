@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   canRunRealProvider,
@@ -186,7 +186,7 @@ describe("daemon E2E (real claude) - send message during tool call", () => {
   test("sending a message while a tool call is running replaces the turn without error, idle flash, or autonomous fallback", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createTestOttoDaemon({
       agentClients: createRealProviderClients(["claude"], logger),
       logger,
     });

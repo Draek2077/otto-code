@@ -1,4 +1,4 @@
-import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import type { AgentAttachment } from "@otto-code/protocol/messages";
 
 const REVIEW_LINE_MARKERS = { add: "+", remove: "-", context: " " } as const;
 
@@ -28,7 +28,7 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
       return attachment.text;
     }
     case "review": {
-      const lines = [`Paseo review attachment (${attachment.mode})`, `CWD: ${attachment.cwd}`];
+      const lines = [`Otto review attachment (${attachment.mode})`, `CWD: ${attachment.cwd}`];
       if (attachment.baseRef) {
         lines.push(`Base: ${attachment.baseRef}`);
       }

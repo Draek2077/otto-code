@@ -1,26 +1,26 @@
-# Paseo Docker Image
+# Otto Docker Image
 
-This directory contains the official Paseo daemon image.
+This directory contains the official Otto daemon image.
 
 The image runs the daemon headless and serves the bundled web UI from the same
 HTTP origin. Start it, then open the daemon URL in a browser.
 
 ```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
+docker run -d --name otto \
+  -p 6868:6868 \
+  -e OTTO_PASSWORD=change-me \
+  -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
+  ghcr.io/otto-code-ai/otto-code:latest
 ```
 
-Then open `http://localhost:6767`.
+Then open `http://localhost:6868`.
 
 The base image intentionally does not bundle agent CLIs. Extend it with the
 agents you use:
 
 ```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
+FROM ghcr.io/otto-code-ai/otto-code:latest
 
 USER root
 RUN npm install -g @openai/codex @anthropic-ai/claude-code

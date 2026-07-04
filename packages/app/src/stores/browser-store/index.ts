@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BrowserAutomationBrowserIdSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {

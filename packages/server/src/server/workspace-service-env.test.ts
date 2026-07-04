@@ -19,9 +19,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         peers: [{ scriptName: "daemon", port: 5173 }],
       }).HOST,
@@ -30,9 +30,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: "localhost",
         peers: [{ scriptName: "daemon", port: 5173 }],
       }).HOST,
@@ -43,9 +43,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: "100.64.0.20",
         peers: [{ scriptName: "daemon", port: 5173 }],
       }).HOST,
@@ -56,18 +56,18 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         peers: [{ scriptName: "daemon", port: 5173 }],
       }),
     ).toEqual({
       HOST: "127.0.0.1",
-      PASEO_PORT: "5173",
-      PASEO_URL: "http://daemon--paseo.localhost:6767",
-      PASEO_SERVICE_DAEMON_PORT: "5173",
-      PASEO_SERVICE_DAEMON_URL: "http://daemon--paseo.localhost:6767",
+      OTTO_PORT: "5173",
+      OTTO_URL: "http://daemon--otto.localhost:6868",
+      OTTO_SERVICE_DAEMON_PORT: "5173",
+      OTTO_SERVICE_DAEMON_URL: "http://daemon--otto.localhost:6868",
     });
   });
 
@@ -75,32 +75,32 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "feature-x",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         peers: [{ scriptName: "daemon", port: 5173 }],
       }),
     ).toEqual({
       HOST: "127.0.0.1",
-      PASEO_PORT: "5173",
-      PASEO_URL: "http://daemon--feature-x--paseo.localhost:6767",
-      PASEO_SERVICE_DAEMON_PORT: "5173",
-      PASEO_SERVICE_DAEMON_URL: "http://daemon--feature-x--paseo.localhost:6767",
+      OTTO_PORT: "5173",
+      OTTO_URL: "http://daemon--feature-x--otto.localhost:6868",
+      OTTO_SERVICE_DAEMON_PORT: "5173",
+      OTTO_SERVICE_DAEMON_URL: "http://daemon--feature-x--otto.localhost:6868",
     });
   });
 
-  it("omits PORT while keeping PASEO_PORT", () => {
+  it("omits PORT while keeping OTTO_PORT", () => {
     const env = buildWorkspaceServiceEnv({
       scriptName: "daemon",
-      projectSlug: "paseo",
+      projectSlug: "otto",
       branchName: "main",
-      daemonPort: 6767,
+      daemonPort: 6868,
       daemonListenHost: null,
       peers: [{ scriptName: "daemon", port: 5173 }],
     });
 
-    expect(env.PASEO_PORT).toBe("5173");
+    expect(env.OTTO_PORT).toBe("5173");
     expect(env).not.toHaveProperty("PORT");
   });
 
@@ -108,7 +108,7 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "daemon",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
         daemonPort: null,
         daemonListenHost: null,
@@ -116,8 +116,8 @@ describe("buildWorkspaceServiceEnv", () => {
       }),
     ).toEqual({
       HOST: "127.0.0.1",
-      PASEO_PORT: "5173",
-      PASEO_SERVICE_DAEMON_PORT: "5173",
+      OTTO_PORT: "5173",
+      OTTO_SERVICE_DAEMON_PORT: "5173",
     });
   });
 
@@ -125,9 +125,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "web",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "feature-x",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         peers: [
           { scriptName: "api", port: 4000 },
@@ -136,12 +136,12 @@ describe("buildWorkspaceServiceEnv", () => {
       }),
     ).toEqual({
       HOST: "127.0.0.1",
-      PASEO_PORT: "5173",
-      PASEO_URL: "http://web--feature-x--paseo.localhost:6767",
-      PASEO_SERVICE_API_PORT: "4000",
-      PASEO_SERVICE_API_URL: "http://api--feature-x--paseo.localhost:6767",
-      PASEO_SERVICE_WEB_PORT: "5173",
-      PASEO_SERVICE_WEB_URL: "http://web--feature-x--paseo.localhost:6767",
+      OTTO_PORT: "5173",
+      OTTO_URL: "http://web--feature-x--otto.localhost:6868",
+      OTTO_SERVICE_API_PORT: "4000",
+      OTTO_SERVICE_API_URL: "http://api--feature-x--otto.localhost:6868",
+      OTTO_SERVICE_WEB_PORT: "5173",
+      OTTO_SERVICE_WEB_URL: "http://web--feature-x--otto.localhost:6868",
     });
   });
 
@@ -149,9 +149,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(
       buildWorkspaceServiceEnv({
         scriptName: "web",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "feature-x",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         serviceProxyPublicBaseUrl: "https://services.example.com",
         peers: [
@@ -160,9 +160,9 @@ describe("buildWorkspaceServiceEnv", () => {
         ],
       }),
     ).toMatchObject({
-      PASEO_URL: "https://web--feature-x--paseo.services.example.com",
-      PASEO_SERVICE_API_URL: "https://api--feature-x--paseo.services.example.com",
-      PASEO_SERVICE_WEB_URL: "https://web--feature-x--paseo.services.example.com",
+      OTTO_URL: "https://web--feature-x--otto.services.example.com",
+      OTTO_SERVICE_API_URL: "https://api--feature-x--otto.services.example.com",
+      OTTO_SERVICE_WEB_URL: "https://web--feature-x--otto.services.example.com",
     });
   });
 
@@ -170,9 +170,9 @@ describe("buildWorkspaceServiceEnv", () => {
     expect(() =>
       buildWorkspaceServiceEnv({
         scriptName: "app-server",
-        projectSlug: "paseo",
+        projectSlug: "otto",
         branchName: "main",
-        daemonPort: 6767,
+        daemonPort: 6868,
         daemonListenHost: null,
         peers: [
           { scriptName: "app-server", port: 5173 },

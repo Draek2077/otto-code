@@ -58,7 +58,7 @@ function buildEmbed(input: CloudSignupInput) {
   fields.push({ name: "Message", value: truncate(input.message, 1024) });
 
   return {
-    title: "Paseo Cloud signup",
+    title: "Otto Cloud signup",
     color: 0x5865f2,
     fields,
     timestamp: new Date().toISOString(),

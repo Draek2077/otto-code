@@ -12,7 +12,7 @@ import type {
   AgentTimelineItem,
 } from "../agent/agent-sdk-types.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
 import {
   canRunRealProvider,
   createRealProviderClient,
@@ -20,7 +20,7 @@ import {
   getRealProviderConfig,
 } from "./real-provider-test-config.js";
 
-process.env.PASEO_SUPERVISED = "0";
+process.env.OTTO_SUPERVISED = "0";
 
 const PI_TEST_TIMEOUT_MS = 240_000;
 const PI_REAL_TEST_MODEL = getRealProviderConfig("pi").model;
@@ -50,7 +50,7 @@ function createPiClient(): AgentClient {
 
 function createPiToolDaemon() {
   const logger = pino({ level: "silent" });
-  return createTestPaseoDaemon({
+  return createTestOttoDaemon({
     agentClients: createRealProviderClients(["pi"], logger),
     logger,
   });
@@ -136,7 +136,7 @@ beforeEach((context) => {
 });
 
 test(
-  "real Pi daemon lists Paseo-handled compact slash commands",
+  "real Pi daemon lists Otto-handled compact slash commands",
   async () => {
     const cwd = tmpCwd("pi-compact-commands-");
 

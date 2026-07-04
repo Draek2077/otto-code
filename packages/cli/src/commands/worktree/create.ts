@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Command } from "commander";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandError, OutputSchema, SingleResult } from "../../output/index.js";
 import { buildCreateWorktreeRequest, type WorktreeCreateOptions } from "./create-input.js";
@@ -40,12 +40,12 @@ export async function runCreateCommand(
     throw cmdError(
       "DAEMON_NOT_RUNNING",
       `Cannot connect to daemon at ${host}: ${message}`,
-      "Start the daemon with: paseo daemon start",
+      "Start the daemon with: otto daemon start",
     );
   }
 
   try {
-    const response = await client.createPaseoWorktree(request);
+    const response = await client.createOttoWorktree(request);
 
     const workspace = response.workspace;
     if (!workspace || response.error) {

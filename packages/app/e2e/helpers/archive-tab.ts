@@ -108,13 +108,13 @@ export async function primeAdditionalPage(page: Page): Promise<void> {
   const seedNonce = randomUUID();
   const { daemon, preferences } = buildSeededStoragePayload();
 
-  await page.route(/:(6767)\b/, (route) => route.abort());
-  await page.routeWebSocket(/:(6767)\b/, async (ws) => {
-    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
+  await page.route(/:(6868)\b/, (route) => route.abort());
+  await page.routeWebSocket(/:(6868)\b/, async (ws) => {
+    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6868 during e2e." });
   });
   await page.addInitScript(
     ({ daemon: seededDaemon, preferences: seededPreferences, seedNonce: nonce }) => {
-      const disableOnceKey = "@paseo:e2e-disable-default-seed-once";
+      const disableOnceKey = "@otto:e2e-disable-default-seed-once";
       const disableValue = localStorage.getItem(disableOnceKey);
       if (disableValue) {
         localStorage.removeItem(disableOnceKey);
@@ -123,11 +123,11 @@ export async function primeAdditionalPage(page: Page): Promise<void> {
         }
       }
 
-      localStorage.setItem("@paseo:e2e", "1");
-      localStorage.setItem("@paseo:e2e-seed-nonce", nonce);
-      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([seededDaemon]));
-      localStorage.removeItem("@paseo:settings");
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(seededPreferences));
+      localStorage.setItem("@otto:e2e", "1");
+      localStorage.setItem("@otto:e2e-seed-nonce", nonce);
+      localStorage.setItem("@otto:daemon-registry", JSON.stringify([seededDaemon]));
+      localStorage.removeItem("@otto:settings");
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(seededPreferences));
     },
     { daemon, preferences, seedNonce },
   );
@@ -140,10 +140,10 @@ export async function resetSeededPageState(page: Page): Promise<void> {
   await page.evaluate(
     ({ daemon: seededDaemon, preferences: seededPreferences }) => {
       localStorage.clear();
-      localStorage.setItem("@paseo:e2e", "1");
-      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([seededDaemon]));
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(seededPreferences));
-      localStorage.removeItem("@paseo:settings");
+      localStorage.setItem("@otto:e2e", "1");
+      localStorage.setItem("@otto:daemon-registry", JSON.stringify([seededDaemon]));
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(seededPreferences));
+      localStorage.removeItem("@otto:settings");
     },
     { daemon, preferences },
   );

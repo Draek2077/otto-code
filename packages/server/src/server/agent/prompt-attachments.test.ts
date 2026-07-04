@@ -10,7 +10,7 @@ describe("prompt attachments", () => {
         mimeType: "application/github-pr",
         number: 123,
         title: "Fix race in worktree setup",
-        url: "https://github.com/getpaseo/paseo/pull/123",
+        url: "https://github.com/otto-code-ai/otto-code/pull/123",
         body: "PR body",
         baseRefName: "main",
         headRefName: "fix/worktree-race",
@@ -22,7 +22,7 @@ describe("prompt attachments", () => {
     expect(
       renderPromptAttachmentAsText({
         type: "review",
-        mimeType: "application/paseo-review",
+        mimeType: "application/otto-review",
         cwd: "/tmp/repo",
         mode: "base",
         baseRef: "main",
@@ -60,7 +60,7 @@ describe("prompt attachments", () => {
       }),
     ).toBe(
       [
-        "Paseo review attachment (base)",
+        "Otto review attachment (base)",
         "CWD: /tmp/repo",
         "Base: main",
         "",
@@ -80,7 +80,7 @@ describe("prompt attachments", () => {
         mimeType: "application/github-issue",
         number: 55,
         title: "Issue",
-        url: "https://github.com/getpaseo/paseo/issues/55",
+        url: "https://github.com/otto-code-ai/otto-code/issues/55",
       }),
     ).toContain("GitHub Issue #55: Issue");
   });
@@ -104,12 +104,12 @@ describe("prompt attachments", () => {
         fileName: "notes.txt",
         mimeType: "text/plain",
         size: 11,
-        path: "/tmp/paseo/uploads/upload_req-upload/notes.txt",
+        path: "/tmp/otto/uploads/upload_req-upload/notes.txt",
       }),
     ).toBe(
       [
         "Uploaded file: notes.txt",
-        "Path: /tmp/paseo/uploads/upload_req-upload/notes.txt",
+        "Path: /tmp/otto/uploads/upload_req-upload/notes.txt",
         "MIME: text/plain",
         "Size: 11 bytes",
       ].join("\n"),
@@ -133,14 +133,14 @@ describe("prompt attachments", () => {
             mimeType: "application/github-pr",
             number: 123,
             title: "Fix worktree naming",
-            url: "https://github.com/getpaseo/paseo/pull/123",
+            url: "https://github.com/otto-code-ai/otto-code/pull/123",
             baseRefName: "main",
             headRefName: "fix/worktree-naming",
           },
         ],
       }),
     ).toBe(
-      "<user-prompt>\nInvestigate flaky test\n</user-prompt>\n\n<attachments>\nGitHub PR #123: Fix worktree naming\nhttps://github.com/getpaseo/paseo/pull/123\nBase: main\nHead: fix/worktree-naming\n</attachments>",
+      "<user-prompt>\nInvestigate flaky test\n</user-prompt>\n\n<attachments>\nGitHub PR #123: Fix worktree naming\nhttps://github.com/otto-code-ai/otto-code/pull/123\nBase: main\nHead: fix/worktree-naming\n</attachments>",
     );
   });
 });

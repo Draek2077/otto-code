@@ -14,11 +14,11 @@ function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorks
     serverId: "srv",
     workspaceId: "ws-root",
     projectKey: "project-1",
-    projectName: "paseo",
+    projectName: "otto",
     workspaceDirectory: "/repo",
     projectKind: "git",
     workspaceKind: "checkout",
-    name: "paseo",
+    name: "otto",
     title: null,
     currentBranch: null,
     statusBucket: "done",
@@ -38,7 +38,7 @@ function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEn
   const projectKind = overrides.projectKind ?? "git";
   return {
     projectKey: "project-1",
-    projectName: "paseo",
+    projectName: "otto",
     projectKind,
     iconWorkingDir: "/repo",
     hosts: overrides.hosts ?? [

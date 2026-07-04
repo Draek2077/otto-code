@@ -8,8 +8,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { Buffer } from "node:buffer";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
-import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
-import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
+import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createClientChannel, type Transport } from "@otto-code/relay/e2ee";
 import {
   deriveSharedKey,
   decrypt,
@@ -17,10 +17,10 @@ import {
   exportPublicKey,
   generateKeyPair,
   importPublicKey,
-} from "@getpaseo/relay";
-import { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
-import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
-import { WSOutboundMessageSchema } from "@getpaseo/protocol/messages";
+} from "@otto-code/relay";
+import { buildRelayWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
+import { ConnectionOfferSchema } from "@otto-code/protocol/connection-offer";
+import { WSOutboundMessageSchema } from "@otto-code/protocol/messages";
 
 const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
 const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
@@ -38,14 +38,14 @@ function createCapturingLogger() {
 }
 
 async function getPairingOfferUrl(args: {
-  paseoHome: string;
+  ottoHome: string;
   relayEnabled?: boolean;
   relayEndpoint?: string;
   relayPublicEndpoint?: string;
   appBaseUrl?: string;
 }): Promise<string> {
   const pairing = await generateLocalPairingOffer({
-    paseoHome: args.paseoHome,
+    ottoHome: args.ottoHome,
     relayEnabled: args.relayEnabled,
     relayEndpoint: args.relayEndpoint,
     relayPublicEndpoint: args.relayPublicEndpoint,
@@ -227,12 +227,12 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
   };
 
   test("daemon connects to relay and client ping/pong works through relay", async () => {
-    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createTestOttoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -241,7 +241,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        paseoHome: daemon.paseoHome,
+        ottoHome: daemon.ottoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -363,12 +363,12 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
   }, 90000);
 
   test("daemon keeps relay socket open while idle (no handshake timeout loop)", async () => {
-    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createTestOttoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -377,7 +377,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        paseoHome: daemon.paseoHome,
+        ottoHome: daemon.ottoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -504,12 +504,12 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
   }, 90000);
 
   test("daemon accepts a relay client that pipelines app hello after E2EE hello", async () => {
-    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createTestOttoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -518,7 +518,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        paseoHome: daemon.paseoHome,
+        ottoHome: daemon.ottoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,

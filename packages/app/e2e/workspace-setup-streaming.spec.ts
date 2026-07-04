@@ -39,7 +39,7 @@ test.describe("Workspace setup streaming", () => {
   test("opens the setup tab when a workspace is created from the sidebar", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-open-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: [
             "sh -c 'echo starting setup; for i in $(seq 1 30); do echo tick $i; sleep 1; done; echo setup complete'",
@@ -67,7 +67,7 @@ test.describe("Workspace setup streaming", () => {
   test("runs setup through the sidebar and leaves the workspace usable", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-ui-flow-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: [
             "sh -c 'echo starting setup; sleep 1; echo loading dependencies; sleep 1; echo setup complete'",
@@ -111,7 +111,7 @@ test.describe("Workspace setup streaming", () => {
   test("streams running and completed setup snapshots for a successful setup", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-success-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: ["sh -c 'echo starting setup; sleep 2; echo setup complete'"],
         },
@@ -156,7 +156,7 @@ test.describe("Workspace setup streaming", () => {
   test("streams a failed setup snapshot when setup fails", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-failure-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: ["sh -c 'echo starting setup; sleep 2; echo setup failed 1>&2; exit 1'"],
         },
@@ -218,7 +218,7 @@ test.describe("Workspace setup streaming", () => {
     test.setTimeout(90_000);
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-svc-ui-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
@@ -267,7 +267,7 @@ test.describe("Workspace setup streaming", () => {
   test("launches workspace scripts through an explicit daemon request", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-scripts-", {
-      paseoConfig: {
+      ottoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
@@ -287,7 +287,7 @@ test.describe("Workspace setup streaming", () => {
           payload.status === "completed" && payload.detail.log.includes("setup complete"),
       );
 
-      const result = await client.createPaseoWorktree({
+      const result = await client.createOttoWorktree({
         cwd: repo.path,
         worktreeSlug: "workspace-setup-scripts",
       });

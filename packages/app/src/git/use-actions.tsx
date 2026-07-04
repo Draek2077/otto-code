@@ -11,7 +11,7 @@ import {
   type GitAction,
   type GitActions,
 } from "@/git/policy";
-import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
+import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -75,7 +75,7 @@ interface DerivedGitActionsState {
   behindOfOrigin: number | null;
   hasPullRequest: boolean;
   hasRemote: boolean;
-  isPaseoOwnedWorktree: boolean;
+  isOttoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   shouldPromoteArchive: boolean;
 }
@@ -97,13 +97,13 @@ function extractGitCommitCounts(gitStatus: CheckoutStatusPayload | null): GitCom
 }
 
 function computeShouldPromoteArchive(input: {
-  isPaseoOwnedWorktree: boolean;
+  isOttoOwnedWorktree: boolean;
   hasUncommittedChanges: boolean;
   postShipArchiveSuggested: boolean;
   isMergedPullRequest: boolean;
 }): boolean {
   return (
-    input.isPaseoOwnedWorktree &&
+    input.isOttoOwnedWorktree &&
     !input.hasUncommittedChanges &&
     (input.postShipArchiveSuggested || input.isMergedPullRequest)
   );
@@ -121,17 +121,17 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
     baseRefLabel,
   } = args;
   const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
-  const isPaseoOwnedWorktree = gitStatus?.isPaseoOwnedWorktree ?? false;
+  const isOttoOwnedWorktree = gitStatus?.isOttoOwnedWorktree ?? false;
   const isMergedPullRequest = Boolean(prStatus?.isMerged);
   return {
     actionsDisabled,
     ...extractGitCommitCounts(gitStatus),
     hasPullRequest: Boolean(prStatus?.url),
     hasRemote: gitStatus?.hasRemote ?? false,
-    isPaseoOwnedWorktree,
+    isOttoOwnedWorktree,
     isOnBaseBranch: gitStatus?.currentBranch === baseRefLabel,
     shouldPromoteArchive: computeShouldPromoteArchive({
-      isPaseoOwnedWorktree,
+      isOttoOwnedWorktree,
       hasUncommittedChanges,
       postShipArchiveSuggested,
       isMergedPullRequest,
@@ -198,7 +198,7 @@ function useWorkspaceScreenArchiveController({
     serverId,
     workspaceId: activeWorkspaceSelection?.workspaceId ?? archiveWorkspaceRecord?.id ?? "",
     workspaceDirectory,
-    workspaceKind: gitStatus?.isPaseoOwnedWorktree ? "worktree" : "local_checkout",
+    workspaceKind: gitStatus?.isOttoOwnedWorktree ? "worktree" : "local_checkout",
     name: archiveWorkspaceRecord?.name ?? branchLabel,
     isDirty: gitStatus?.isDirty,
     aheadOfOrigin: gitStatus?.aheadOfOrigin,
@@ -253,7 +253,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     if (!gitStatus?.repoRoot) {
       return null;
     }
-    return `@paseo:changes-ship-default:${gitStatus.repoRoot}`;
+    return `@otto:changes-ship-default:${gitStatus.repoRoot}`;
   }, [gitStatus?.repoRoot]);
 
   useEffect(() => {
@@ -555,7 +555,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     behindOfOrigin,
     hasPullRequest,
     hasRemote,
-    isPaseoOwnedWorktree,
+    isOttoOwnedWorktree,
     isOnBaseBranch,
     shouldPromoteArchive,
   } = derived;
@@ -582,7 +582,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
       pullRequestGithub: prStatus?.github ?? null,
       hasRemote,
-      isPaseoOwnedWorktree,
+      isOttoOwnedWorktree,
       isOnBaseBranch,
       hasUncommittedChanges,
       baseRefAvailable: Boolean(baseRef),
@@ -698,7 +698,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       prStatus?.github,
       aheadCount,
       behindBaseCount,
-      isPaseoOwnedWorktree,
+      isOttoOwnedWorktree,
       isOnBaseBranch,
       githubFeaturesEnabled,
       githubAutoMergeActionsEnabled,
@@ -945,7 +945,7 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.updateNoBase",
     "Update isn't available while you have local changes so commit or stash them first":
       "workspace.git.actions.unavailable.updateDirty",
-    "Archive isn't available here because this workspace was not created as a Paseo worktree":
+    "Archive isn't available here because this workspace was not created as a Otto worktree":
       "workspace.git.actions.unavailable.archiveNotWorktree",
     "Merge PR isn't available right now because GitHub isn't connected":
       "workspace.git.actions.unavailable.mergePrNoGithub",

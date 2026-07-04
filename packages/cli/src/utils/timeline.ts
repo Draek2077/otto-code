@@ -1,5 +1,5 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
 
 export const LIVE_HISTORY_FETCH_TIMEOUT_MS = 2_000;
 

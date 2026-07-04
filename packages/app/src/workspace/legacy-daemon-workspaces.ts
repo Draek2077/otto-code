@@ -2,11 +2,11 @@ import type {
   DaemonClient,
   FetchAgentsEntry,
   FetchAgentsOptions,
-} from "@getpaseo/client/internal/daemon-client";
+} from "@otto-code/client/internal/daemon-client";
 import {
   deriveAgentStateBucket,
   getWorkspaceStateBucketPriority,
-} from "@getpaseo/protocol/agent-state-bucket";
+} from "@otto-code/protocol/agent-state-bucket";
 import type { Agent, DaemonServerInfo, WorkspaceDescriptor } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -314,7 +314,7 @@ function createLegacyWorkspace(
       ? {
           currentBranch: checkout.currentBranch,
           remoteUrl: checkout.remoteUrl,
-          isPaseoOwnedWorktree: checkout.isPaseoOwnedWorktree,
+          isOttoOwnedWorktree: checkout.isOttoOwnedWorktree,
           isDirty: null,
           aheadBehind: null,
           aheadOfOrigin: null,
@@ -332,7 +332,7 @@ function resolveLegacyWorkspaceKind(
   if (!checkout.isGit) {
     return "directory";
   }
-  if (checkout.isPaseoOwnedWorktree) {
+  if (checkout.isOttoOwnedWorktree) {
     return "worktree";
   }
   return "checkout";

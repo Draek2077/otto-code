@@ -24,8 +24,8 @@ if (process.argv.includes("--version")) {
   console.log("fake-cli 1.0.0");
   process.exit(0);
 }
-const expected = JSON.parse(process.env.PASEO_EXPECTED_ARGV_JSON);
-const sliceFrom = process.env.PASEO_ARGV_SLICE_FROM ? Number(process.env.PASEO_ARGV_SLICE_FROM) : 2;
+const expected = JSON.parse(process.env.OTTO_EXPECTED_ARGV_JSON);
+const sliceFrom = process.env.OTTO_ARGV_SLICE_FROM ? Number(process.env.OTTO_ARGV_SLICE_FROM) : 2;
 const actual = process.argv.slice(sliceFrom);
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   console.error("ARGV_MISMATCH");
@@ -42,10 +42,10 @@ function makeFixture(): {
   assertScript: string;
   expectedArgs: string[];
 } {
-  const root = mkdtempSync(path.join(tmpdir(), "paseo spawn regression "));
+  const root = mkdtempSync(path.join(tmpdir(), "otto spawn regression "));
   tempDirs.push(root);
 
-  const fakeDaemonNode = path.join(root, "Fake Paseo.exe");
+  const fakeDaemonNode = path.join(root, "Fake Otto.exe");
   copyFileSync(process.execPath, fakeDaemonNode);
 
   const expectedArgs = ["--config", JSON_ARG];
@@ -58,7 +58,7 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
-const expected = JSON.parse(process.env.PASEO_EXPECTED_ARGV_JSON);
+const expected = JSON.parse(process.env.OTTO_EXPECTED_ARGV_JSON);
 const actual = process.argv.slice(2);
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   console.error("ARGV_MISMATCH");
@@ -130,7 +130,7 @@ async function runFixture(params: {
   const child = spawnProcess(params.command, params.args, {
     env: {
       ...process.env,
-      PASEO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG]),
+      OTTO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG]),
     },
     stdio: ["ignore", "pipe", "pipe"],
     ...(params.shell === undefined ? {} : { shell: params.shell }),
@@ -148,11 +148,11 @@ interface LaunchFixture {
 }
 
 function makeLaunchFixture(ext: "exe" | "cmd" | "bat"): LaunchFixture {
-  const root = mkdtempSync(path.join(tmpdir(), `paseo-launch-${ext}-`));
+  const root = mkdtempSync(path.join(tmpdir(), `otto-launch-${ext}-`));
   tempDirs.push(root);
 
   // Unique base name so a globally installed binary cannot satisfy findExecutable.
-  const command = `paseo-launch-fake-${path.basename(root)}`;
+  const command = `otto-launch-fake-${path.basename(root)}`;
   const userArgs = ["--config", JSON_ARG];
   const expectedArgvJson = JSON.stringify(userArgs);
 
@@ -216,8 +216,8 @@ async function findAndLaunch(fixture: LaunchFixture): Promise<{
     const child = spawnProcess(found, fixture.args, {
       env: {
         ...process.env,
-        PASEO_EXPECTED_ARGV_JSON: fixture.expectedArgvJson,
-        PASEO_ARGV_SLICE_FROM: String(fixture.sliceFrom),
+        OTTO_EXPECTED_ARGV_JSON: fixture.expectedArgvJson,
+        OTTO_ARGV_SLICE_FROM: String(fixture.sliceFrom),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

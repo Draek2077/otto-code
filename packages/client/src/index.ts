@@ -17,7 +17,7 @@ import type {
   SendAgentMessageRequest,
   SessionOutboundMessage,
   WorkspaceDescriptorPayload,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 import { DaemonClient } from "./daemon-client.js";
 import type {
   FetchAgentTimelineCursor,
@@ -43,14 +43,14 @@ export type ConnectionState =
   | { status: "disconnected"; reason?: string }
   | { status: "disposed" };
 
-export interface PaseoLogger {
+export interface OttoLogger {
   debug(obj: object, msg?: string): void;
   info(obj: object, msg?: string): void;
   warn(obj: object, msg?: string): void;
   error(obj: object, msg?: string): void;
 }
 
-export interface PaseoClientConfig {
+export interface OttoClientConfig {
   url: string;
   clientId?: string;
   appVersion?: string;
@@ -58,7 +58,7 @@ export interface PaseoClientConfig {
   password?: string;
   authHeader?: string;
   suppressSendErrors?: boolean;
-  logger?: PaseoLogger;
+  logger?: OttoLogger;
   connectTimeoutMs?: number;
   e2ee?: {
     enabled?: boolean;
@@ -73,98 +73,98 @@ export interface PaseoClientConfig {
   runtimeMetricsWindowMs?: number;
 }
 
-export type PaseoWorkspace = WorkspaceDescriptorPayload;
-export type PaseoAgent = AgentSnapshotPayload;
-export type PaseoWorkspaceListOptions = Omit<
+export type OttoWorkspace = WorkspaceDescriptorPayload;
+export type OttoAgent = AgentSnapshotPayload;
+export type OttoWorkspaceListOptions = Omit<
   FetchWorkspacesRequestMessage,
   "type" | "requestId"
 > & {
   requestId?: string;
 };
 
-export interface PaseoWorkspaceListResult {
+export interface OttoWorkspaceListResult {
   requestId: string;
   subscriptionId?: string | null;
-  entries: PaseoWorkspace[];
+  entries: OttoWorkspace[];
   pageInfo: FetchWorkspacesResponseMessage["payload"]["pageInfo"];
 }
 
-export interface PaseoWorkspaceOpenOptions {
+export interface OttoWorkspaceOpenOptions {
   cwd: string;
   requestId?: string;
 }
 
-export interface PaseoWorkspaceOpenResult {
+export interface OttoWorkspaceOpenResult {
   requestId: string;
-  workspace: PaseoWorkspaceHandle | null;
+  workspace: OttoWorkspaceHandle | null;
   error: string | null;
 }
 
-export interface PaseoWorkspaceArchiveResult {
+export interface OttoWorkspaceArchiveResult {
   requestId: string;
   workspaceId: string;
   archivedAt: string | null;
   error: string | null;
 }
 
-export type PaseoWorkspaceUpdate = Extract<
+export type OttoWorkspaceUpdate = Extract<
   SessionOutboundMessage,
   { type: "workspace_update" }
 >["payload"];
 
-export type PaseoWorkspaceUpdateHandler = (update: PaseoWorkspaceUpdate) => void;
+export type OttoWorkspaceUpdateHandler = (update: OttoWorkspaceUpdate) => void;
 
 /**
  * A handle is a stable typed reference to a daemon resource. Its identity is the
  * daemon id, and `latest()` only returns the most recent snapshot this handle has
  * seen through construction, `refetch()`, or this handle's local subscription.
  */
-export interface PaseoWorkspaceHandle {
+export interface OttoWorkspaceHandle {
   readonly id: string;
-  latest(): PaseoWorkspace | null;
+  latest(): OttoWorkspace | null;
   /**
    * Fetches a fresh workspace snapshot through the existing workspace list RPC,
    * exact-matches this handle id from the result, and updates `latest()`.
    */
-  refetch(options?: { requestId?: string }): Promise<PaseoWorkspace | null>;
-  archive(requestId?: string): Promise<PaseoWorkspaceArchiveResult>;
+  refetch(options?: { requestId?: string }): Promise<OttoWorkspace | null>;
+  archive(requestId?: string): Promise<OttoWorkspaceArchiveResult>;
   /**
    * Subscribes to already-emitted daemon workspace_update events for this id.
    * This returns a local unsubscribe function; it does not own app cache state or
    * send a daemon unsubscribe RPC. Call `workspaces.list({ subscribe: {} })` when
    * the daemon should start streaming workspace directory updates.
    */
-  subscribe(handler: (update: PaseoWorkspaceUpdate) => void): () => void;
+  subscribe(handler: (update: OttoWorkspaceUpdate) => void): () => void;
 }
 
-export interface PaseoWorkspaceActions {
-  list(options?: PaseoWorkspaceListOptions): Promise<PaseoWorkspaceListResult>;
-  ref(workspace: string | PaseoWorkspace): PaseoWorkspaceHandle;
+export interface OttoWorkspaceActions {
+  list(options?: OttoWorkspaceListOptions): Promise<OttoWorkspaceListResult>;
+  ref(workspace: string | OttoWorkspace): OttoWorkspaceHandle;
   open(
-    input: string | PaseoWorkspaceOpenOptions,
+    input: string | OttoWorkspaceOpenOptions,
     requestId?: string,
-  ): Promise<PaseoWorkspaceOpenResult>;
+  ): Promise<OttoWorkspaceOpenResult>;
   create(
-    input: string | PaseoWorkspaceOpenOptions,
+    input: string | OttoWorkspaceOpenOptions,
     requestId?: string,
-  ): Promise<PaseoWorkspaceOpenResult>;
+  ): Promise<OttoWorkspaceOpenResult>;
   archive(
-    workspace: string | PaseoWorkspaceHandle,
+    workspace: string | OttoWorkspaceHandle,
     requestId?: string,
-  ): Promise<PaseoWorkspaceArchiveResult>;
+  ): Promise<OttoWorkspaceArchiveResult>;
   /**
    * Local event subscription over the low-level driver's workspace_update stream.
    * The returned function only removes this SDK listener.
    */
-  subscribe(handler: PaseoWorkspaceUpdateHandler): () => void;
+  subscribe(handler: OttoWorkspaceUpdateHandler): () => void;
 }
 
-type PaseoAgentSessionConfig = CreateAgentRequestMessage["config"];
-type PaseoAgentProvider = PaseoAgentSessionConfig["provider"];
-type PaseoAgentConfigOverrides = Partial<Omit<PaseoAgentSessionConfig, "provider" | "cwd">>;
+type OttoAgentSessionConfig = CreateAgentRequestMessage["config"];
+type OttoAgentProvider = OttoAgentSessionConfig["provider"];
+type OttoAgentConfigOverrides = Partial<Omit<OttoAgentSessionConfig, "provider" | "cwd">>;
 
-export interface PaseoAgentCreateOptions extends PaseoAgentConfigOverrides {
-  config?: PaseoAgentSessionConfig;
+export interface OttoAgentCreateOptions extends OttoAgentConfigOverrides {
+  config?: OttoAgentSessionConfig;
   provider?: CreateAgentRequestMessage["config"]["provider"];
   cwd?: string;
   workspaceId?: string;
@@ -179,12 +179,12 @@ export interface PaseoAgentCreateOptions extends PaseoAgentConfigOverrides {
   labels?: Record<string, string>;
 }
 
-export interface PaseoAgentRefetchResult {
-  agent: PaseoAgent;
+export interface OttoAgentRefetchResult {
+  agent: OttoAgent;
   project: ProjectPlacementPayload | null;
 }
 
-export interface PaseoAgentTimelineRefetchOptions {
+export interface OttoAgentTimelineRefetchOptions {
   direction?: FetchAgentTimelineDirection;
   cursor?: FetchAgentTimelineCursor;
   limit?: number;
@@ -192,30 +192,30 @@ export interface PaseoAgentTimelineRefetchOptions {
   requestId?: string;
 }
 
-export interface PaseoAgentSendOptions {
+export interface OttoAgentSendOptions {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
 }
 
-export type PaseoAgentUpdate = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
+export type OttoAgentUpdate = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
 
-export type PaseoAgentStream = Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"];
+export type OttoAgentStream = Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"];
 
-export type PaseoAgentUpdateHandler = (update: PaseoAgentUpdate) => void;
+export type OttoAgentUpdateHandler = (update: OttoAgentUpdate) => void;
 
-export interface PaseoAgentTimelineHandle {
+export interface OttoAgentTimelineHandle {
   /**
    * Fetches a fresh timeline page through the existing daemon RPC. If the daemon
    * includes an agent snapshot in the response, the parent handle's `latest()`
    * is updated to that snapshot.
    */
-  refetch(options?: PaseoAgentTimelineRefetchOptions): Promise<FetchAgentTimelinePayload>;
+  refetch(options?: OttoAgentTimelineRefetchOptions): Promise<FetchAgentTimelinePayload>;
   /**
    * Local listener for agent_stream events matching this handle id. It does not
    * retain timeline entries or own application cache state.
    */
-  subscribe(handler: (event: PaseoAgentStream) => void): () => void;
+  subscribe(handler: (event: OttoAgentStream) => void): () => void;
 }
 
 /**
@@ -224,92 +224,92 @@ export interface PaseoAgentTimelineHandle {
  * handle through construction, `refetch()`, timeline refetch, archive, or local
  * agent_update subscription.
  */
-export interface PaseoAgentHandle {
+export interface OttoAgentHandle {
   readonly id: string;
-  readonly timeline: PaseoAgentTimelineHandle;
-  latest(): PaseoAgent | null;
-  refetch(requestId?: string): Promise<PaseoAgentRefetchResult | null>;
-  send(text: string, options?: PaseoAgentSendOptions): Promise<void>;
+  readonly timeline: OttoAgentTimelineHandle;
+  latest(): OttoAgent | null;
+  refetch(requestId?: string): Promise<OttoAgentRefetchResult | null>;
+  send(text: string, options?: OttoAgentSendOptions): Promise<void>;
   archive(): Promise<{ archivedAt: string }>;
   detach(): Promise<void>;
-  subscribe(handler: (update: PaseoAgentUpdate) => void): () => void;
+  subscribe(handler: (update: OttoAgentUpdate) => void): () => void;
 }
 
-export interface PaseoAgentActions {
-  ref(agent: string | PaseoAgent): PaseoAgentHandle;
-  create(options: PaseoAgentCreateOptions): Promise<PaseoAgentHandle>;
+export interface OttoAgentActions {
+  ref(agent: string | OttoAgent): OttoAgentHandle;
+  create(options: OttoAgentCreateOptions): Promise<OttoAgentHandle>;
   /**
    * Local event subscription over the low-level driver's agent_update stream.
    * The returned function only removes this SDK listener.
    */
-  subscribe(handler: PaseoAgentUpdateHandler): () => void;
+  subscribe(handler: OttoAgentUpdateHandler): () => void;
 }
 
-export interface PaseoProviderConfig extends PaseoProviderConfigInput {
-  provider: PaseoAgentProvider;
+export interface OttoProviderConfig extends OttoProviderConfigInput {
+  provider: OttoAgentProvider;
 }
-export type PaseoProviderFeatureValues = Record<string, unknown>;
+export type OttoProviderFeatureValues = Record<string, unknown>;
 
-export interface PaseoProviderConfigInput {
+export interface OttoProviderConfigInput {
   model?: string;
   modeId?: string;
   thinkingOptionId?: string;
-  featureValues?: PaseoProviderFeatureValues;
+  featureValues?: OttoProviderFeatureValues;
 }
 
-export type PaseoProviderModelsResult = ListProviderModelsResponseMessage["payload"];
-export type PaseoProviderModesResult = ListProviderModesResponseMessage["payload"];
-export type PaseoProviderFeaturesInput = ListProviderFeaturesRequestMessage["draftConfig"];
-export type PaseoProviderFeaturesResult = ListProviderFeaturesResponseMessage["payload"];
-export type PaseoProviderAvailabilityResult = ListAvailableProvidersResponse["payload"];
-export type PaseoProviderSnapshotResult = GetProvidersSnapshotResponseMessage["payload"];
-export type PaseoProviderSnapshotUpdate = Extract<
+export type OttoProviderModelsResult = ListProviderModelsResponseMessage["payload"];
+export type OttoProviderModesResult = ListProviderModesResponseMessage["payload"];
+export type OttoProviderFeaturesInput = ListProviderFeaturesRequestMessage["draftConfig"];
+export type OttoProviderFeaturesResult = ListProviderFeaturesResponseMessage["payload"];
+export type OttoProviderAvailabilityResult = ListAvailableProvidersResponse["payload"];
+export type OttoProviderSnapshotResult = GetProvidersSnapshotResponseMessage["payload"];
+export type OttoProviderSnapshotUpdate = Extract<
   SessionOutboundMessage,
   { type: "providers_snapshot_update" }
 >["payload"];
-export type PaseoProviderRefreshResult = RefreshProvidersSnapshotResponseMessage["payload"];
-export type PaseoProviderDiagnosticResult = ProviderDiagnosticResponseMessage["payload"];
+export type OttoProviderRefreshResult = RefreshProvidersSnapshotResponseMessage["payload"];
+export type OttoProviderDiagnosticResult = ProviderDiagnosticResponseMessage["payload"];
 
-export interface PaseoProviderListOptions {
+export interface OttoProviderListOptions {
   cwd?: string;
   requestId?: string;
 }
 
-export interface PaseoProviderRefreshOptions {
+export interface OttoProviderRefreshOptions {
   cwd?: string;
-  providers?: PaseoAgentProvider[];
+  providers?: OttoAgentProvider[];
   requestId?: string;
 }
 
-export interface PaseoProviderActions {
-  codex(input?: PaseoProviderConfigInput): PaseoProviderConfig;
-  claude(input?: PaseoProviderConfigInput): PaseoProviderConfig;
-  opencode(input?: PaseoProviderConfigInput): PaseoProviderConfig;
-  copilot(input?: PaseoProviderConfigInput): PaseoProviderConfig;
-  config(provider: PaseoAgentProvider, input?: PaseoProviderConfigInput): PaseoProviderConfig;
+export interface OttoProviderActions {
+  codex(input?: OttoProviderConfigInput): OttoProviderConfig;
+  claude(input?: OttoProviderConfigInput): OttoProviderConfig;
+  opencode(input?: OttoProviderConfigInput): OttoProviderConfig;
+  copilot(input?: OttoProviderConfigInput): OttoProviderConfig;
+  config(provider: OttoAgentProvider, input?: OttoProviderConfigInput): OttoProviderConfig;
   listModels(
-    provider: PaseoAgentProvider,
-    options?: PaseoProviderListOptions,
-  ): Promise<PaseoProviderModelsResult>;
+    provider: OttoAgentProvider,
+    options?: OttoProviderListOptions,
+  ): Promise<OttoProviderModelsResult>;
   listModes(
-    provider: PaseoAgentProvider,
-    options?: PaseoProviderListOptions,
-  ): Promise<PaseoProviderModesResult>;
+    provider: OttoAgentProvider,
+    options?: OttoProviderListOptions,
+  ): Promise<OttoProviderModesResult>;
   listFeatures(
-    draftConfig: PaseoProviderFeaturesInput,
+    draftConfig: OttoProviderFeaturesInput,
     options?: { requestId?: string },
-  ): Promise<PaseoProviderFeaturesResult>;
-  listAvailable(options?: { requestId?: string }): Promise<PaseoProviderAvailabilityResult>;
-  snapshot(options?: PaseoProviderListOptions): Promise<PaseoProviderSnapshotResult>;
-  refresh(options?: PaseoProviderRefreshOptions): Promise<PaseoProviderRefreshResult>;
+  ): Promise<OttoProviderFeaturesResult>;
+  listAvailable(options?: { requestId?: string }): Promise<OttoProviderAvailabilityResult>;
+  snapshot(options?: OttoProviderListOptions): Promise<OttoProviderSnapshotResult>;
+  refresh(options?: OttoProviderRefreshOptions): Promise<OttoProviderRefreshResult>;
   diagnostic(
-    provider: PaseoAgentProvider,
+    provider: OttoAgentProvider,
     options?: { requestId?: string },
-  ): Promise<PaseoProviderDiagnosticResult>;
-  subscribe(handler: (update: PaseoProviderSnapshotUpdate) => void): () => void;
+  ): Promise<OttoProviderDiagnosticResult>;
+  subscribe(handler: (update: OttoProviderSnapshotUpdate) => void): () => void;
 }
 
-export interface PaseoConfigActions {
+export interface OttoConfigActions {
   /**
    * Reads daemon config through the existing config RPC. Provider profiles,
    * custom provider entries, keys/env, custom binaries, and provider enablement
@@ -329,18 +329,18 @@ export interface PaseoConfigActions {
   ): Promise<{ requestId: string; config: MutableDaemonConfig }>;
 }
 
-export interface PaseoClient {
-  readonly workspaces: PaseoWorkspaceActions;
-  readonly agents: PaseoAgentActions;
-  readonly providers: PaseoProviderActions;
-  readonly config: PaseoConfigActions;
+export interface OttoClient {
+  readonly workspaces: OttoWorkspaceActions;
+  readonly agents: OttoAgentActions;
+  readonly providers: OttoProviderActions;
+  readonly config: OttoConfigActions;
   connect(): Promise<void>;
   close(): Promise<void>;
   ensureConnected(): void;
   getConnectionState(): ConnectionState;
 }
 
-export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
+export function createOttoClient(config: OttoClientConfig): OttoClient {
   const daemonClient = new DaemonClient({
     ...config,
     clientId: config.clientId ?? createGeneratedClientId(),
@@ -405,8 +405,8 @@ export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
   };
 }
 
-type WorkspaceHandleFactory = (workspace: string | PaseoWorkspace) => PaseoWorkspaceHandle;
-type AgentHandleFactory = (agent: string | PaseoAgent) => PaseoAgentHandle;
+type WorkspaceHandleFactory = (workspace: string | OttoWorkspace) => OttoWorkspaceHandle;
+type AgentHandleFactory = (agent: string | OttoAgent) => OttoAgentHandle;
 
 function createWorkspaceHandleFactory(daemonClient: DaemonClient): WorkspaceHandleFactory {
   return (workspace) => {
@@ -455,7 +455,7 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
     const id = typeof agent === "string" ? agent : agent.id;
     let latest = typeof agent === "string" ? null : agent;
 
-    const handle: PaseoAgentHandle = {
+    const handle: OttoAgentHandle = {
       id,
       timeline: {
         refetch: async (options) => {
@@ -510,9 +510,9 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
 async function openWorkspace(
   daemonClient: DaemonClient,
   createWorkspaceHandle: WorkspaceHandleFactory,
-  input: string | PaseoWorkspaceOpenOptions,
+  input: string | OttoWorkspaceOpenOptions,
   requestId?: string,
-): Promise<PaseoWorkspaceOpenResult> {
+): Promise<OttoWorkspaceOpenResult> {
   const options = typeof input === "string" ? { cwd: input, requestId } : input;
   const result = await daemonClient.openProject(options.cwd, options.requestId);
   return {
@@ -521,14 +521,14 @@ async function openWorkspace(
   };
 }
 
-function resolveWorkspaceId(workspace: string | PaseoWorkspaceHandle): string {
+function resolveWorkspaceId(workspace: string | OttoWorkspaceHandle): string {
   return typeof workspace === "string" ? workspace : workspace.id;
 }
 
 function providerConfig(
-  provider: PaseoAgentProvider,
-  input: PaseoProviderConfigInput = {},
-): PaseoProviderConfig {
+  provider: OttoAgentProvider,
+  input: OttoProviderConfigInput = {},
+): OttoProviderConfig {
   return {
     provider,
     ...(input.model !== undefined ? { model: input.model } : {}),
@@ -543,5 +543,5 @@ function createGeneratedClientId(): string {
     typeof globalThis.crypto?.randomUUID === "function"
       ? globalThis.crypto.randomUUID()
       : Math.random().toString(36).slice(2);
-  return `paseo-sdk-${randomId}`;
+  return `otto-sdk-${randomId}`;
 }

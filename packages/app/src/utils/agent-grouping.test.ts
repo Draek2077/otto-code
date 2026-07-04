@@ -37,10 +37,10 @@ describe("deriveProjectDisplayName", () => {
   it("shows owner/repo for GitHub remote keys", () => {
     expect(
       deriveProjectDisplayName({
-        projectKey: "remote:github.com/getpaseo/paseo",
-        projectName: "paseo",
+        projectKey: "remote:github.com/otto-code-ai/otto-code",
+        projectName: "otto",
       }),
-    ).toBe("getpaseo/paseo");
+    ).toBe("otto-code-ai/otto-code");
   });
 
   it("shows remote path for non-GitHub remote keys", () => {
@@ -55,22 +55,22 @@ describe("deriveProjectDisplayName", () => {
   it("falls back to projectName for local keys", () => {
     expect(
       deriveProjectDisplayName({
-        projectKey: "/Users/me/dev/paseo",
-        projectName: "paseo",
+        projectKey: "/Users/me/dev/otto",
+        projectName: "otto",
       }),
-    ).toBe("paseo");
+    ).toBe("otto");
   });
 });
 
 describe("groupAgents", () => {
   it("groups active agents by remote URL when available", () => {
     const agents = [
-      makeAgent({ id: "a1", cwd: "/Users/me/dev/paseo" }),
-      makeAgent({ id: "a2", cwd: "/Users/me/dev/paseo-fix/worktree" }),
+      makeAgent({ id: "a1", cwd: "/Users/me/dev/otto" }),
+      makeAgent({ id: "a2", cwd: "/Users/me/dev/otto-fix/worktree" }),
     ];
 
     const { activeGroups } = groupAgents(agents, {
-      getRemoteUrl: () => "git@github.com:getpaseo/paseo.git",
+      getRemoteUrl: () => "git@github.com:otto-code-ai/otto-code.git",
     });
 
     expect(activeGroups).toHaveLength(1);
@@ -79,8 +79,8 @@ describe("groupAgents", () => {
 
   it("falls back to cwd grouping when remote URL is unavailable", () => {
     const agents = [
-      makeAgent({ id: "a1", cwd: "/Users/me/dev/paseo" }),
-      makeAgent({ id: "a2", cwd: "/Users/me/dev/paseo-fix/worktree" }),
+      makeAgent({ id: "a1", cwd: "/Users/me/dev/otto" }),
+      makeAgent({ id: "a2", cwd: "/Users/me/dev/otto-fix/worktree" }),
     ];
 
     const { activeGroups } = groupAgents(agents, {

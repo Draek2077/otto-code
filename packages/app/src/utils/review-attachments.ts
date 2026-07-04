@@ -1,4 +1,4 @@
-import type { AgentAttachment, GitHubSearchItem } from "@getpaseo/protocol/messages";
+import type { AgentAttachment, GitHubSearchItem } from "@otto-code/protocol/messages";
 
 export function buildGitHubAttachmentFromSearchItem(
   item: GitHubSearchItem | null,

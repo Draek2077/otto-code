@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import * as pty from "node-pty";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolvePaseoCliBinDir } from "../../terminal.js";
+import { resolveOttoCliBinDir } from "../../terminal.js";
 import { installRegisteredAgentHooks } from "../provider-registry.js";
 
 interface ActivityPost {
@@ -125,11 +125,11 @@ describe.skipIf(!claudeAvailability.available)(
       const recorder = await createActivityRecorder();
       const terminalId = "real-claude-terminal";
       const token = "real-claude-token";
-      const configDir = createTempDir("paseo-real-claude-config-");
-      const cwd = createTempDir("paseo-real-claude-cwd-");
-      const paseoCliBinDir = resolvePaseoCliBinDir();
-      if (!paseoCliBinDir) {
-        throw new Error("Could not resolve paseo CLI bin directory");
+      const configDir = createTempDir("otto-real-claude-config-");
+      const cwd = createTempDir("otto-real-claude-cwd-");
+      const ottoCliBinDir = resolveOttoCliBinDir();
+      if (!ottoCliBinDir) {
+        throw new Error("Could not resolve otto CLI bin directory");
       }
 
       installRegisteredAgentHooks({ configDir });
@@ -145,10 +145,10 @@ describe.skipIf(!claudeAvailability.available)(
             cwd,
             env: {
               ...process.env,
-              PASEO_TERMINAL_ID: terminalId,
-              PASEO_ACTIVITY_TOKEN: token,
-              PASEO_TERMINAL_ACTIVITY_URL: recorder.url,
-              PATH: [paseoCliBinDir, process.env.PATH].filter(isString).join(delimiter),
+              OTTO_TERMINAL_ID: terminalId,
+              OTTO_ACTIVITY_TOKEN: token,
+              OTTO_TERMINAL_ACTIVITY_URL: recorder.url,
+              PATH: [ottoCliBinDir, process.env.PATH].filter(isString).join(delimiter),
             },
           },
         );

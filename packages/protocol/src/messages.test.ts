@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   FileExplorerRequestSchema,
-  PaseoWorktreeArchiveRequestSchema,
+  OttoWorktreeArchiveRequestSchema,
   parseServerInfoStatusPayload,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
@@ -66,7 +66,7 @@ describe("workspace descriptor message compatibility", () => {
               currentBranch: "main",
               remoteUrl: "https://github.com/acme/app.git",
               worktreeRoot: "/repo/app",
-              isPaseoOwnedWorktree: false,
+              isOttoOwnedWorktree: false,
               mainRepoRoot: null,
             },
           },
@@ -87,7 +87,7 @@ describe("workspace descriptor message compatibility", () => {
         currentBranch: "main",
         remoteUrl: "https://github.com/acme/app.git",
         worktreeRoot: "/repo/app",
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       },
     });
@@ -111,7 +111,7 @@ describe("workspace descriptor message compatibility", () => {
               currentBranch: null,
               remoteUrl: null,
               worktreeRoot: null,
-              isPaseoOwnedWorktree: false,
+              isOttoOwnedWorktree: false,
               mainRepoRoot: null,
             },
           },
@@ -238,7 +238,7 @@ describe("diagnostics message contract", () => {
       type: "diagnostics.response",
       payload: {
         requestId: "diag-2",
-        diagnostic: "Paseo diagnostics\n  Status: ok",
+        diagnostic: "Otto diagnostics\n  Status: ok",
       },
     });
 
@@ -371,10 +371,10 @@ describe("file explorer request compatibility", () => {
   });
 });
 
-describe("paseo worktree archive request compatibility", () => {
+describe("otto worktree archive request compatibility", () => {
   test("omitted scope defaults to workspace", () => {
-    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
-      type: "paseo_worktree_archive_request",
+    const parsed = OttoWorktreeArchiveRequestSchema.parse({
+      type: "otto_worktree_archive_request",
       worktreePath: "/repo/app",
       requestId: "req-old-scope",
     });
@@ -382,8 +382,8 @@ describe("paseo worktree archive request compatibility", () => {
   });
 
   test("scope worktree parses", () => {
-    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
-      type: "paseo_worktree_archive_request",
+    const parsed = OttoWorktreeArchiveRequestSchema.parse({
+      type: "otto_worktree_archive_request",
       worktreePath: "/repo/app",
       scope: "worktree",
       requestId: "req-worktree-scope",
@@ -392,8 +392,8 @@ describe("paseo worktree archive request compatibility", () => {
   });
 
   test("unknown extra field is still accepted", () => {
-    const parsed = PaseoWorktreeArchiveRequestSchema.parse({
-      type: "paseo_worktree_archive_request",
+    const parsed = OttoWorktreeArchiveRequestSchema.parse({
+      type: "otto_worktree_archive_request",
       worktreePath: "/repo/app",
       requestId: "req-extra",
       extraField: "ignored",

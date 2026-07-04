@@ -336,7 +336,7 @@ export function createLoggedNdJsonStream(
 
 // Lets a provider that publishes its slash commands through a vendor-specific
 // ACP extension notification (rather than the standard
-// `available_commands_update` session update) translate that payload into Paseo
+// `available_commands_update` session update) translate that payload into Otto
 // slash commands, without the generic ACP session/client carrying any vendor
 // knowledge. Return the parsed commands (possibly empty) for a notification this
 // provider owns, or null to ignore notifications it does not handle.
@@ -1036,7 +1036,7 @@ export class ACPAgentClient implements AgentClient {
           transport.connection.initialize({
             protocolVersion: PROTOCOL_VERSION,
             clientCapabilities: ACP_CLIENT_CAPABILITIES,
-            clientInfo: { name: "Paseo", version: "dev" },
+            clientInfo: { name: "Otto", version: "dev" },
           }),
           transport.spawnError,
           ...(initializeTimeoutPromise ? [initializeTimeoutPromise] : []),
@@ -2291,7 +2291,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       connection.initialize({
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: ACP_CLIENT_CAPABILITIES,
-        clientInfo: { name: "Paseo", version: "dev" },
+        clientInfo: { name: "Otto", version: "dev" },
       }),
     );
 

@@ -25,28 +25,28 @@ export interface RealDaemonState {
 
 /**
  * Reads live state from the running E2E test daemon: version from the HTTP
- * status endpoint, PID from the paseo.pid lock file, log path from the
- * E2E_PASEO_HOME directory. Call this in Node test code (not in the browser).
+ * status endpoint, PID from the otto.pid lock file, log path from the
+ * E2E_OTTO_HOME directory. Call this in Node test code (not in the browser).
  */
 export async function loadRealDaemonState(): Promise<RealDaemonState> {
   const port = getE2EDaemonPort();
-  const paseoHome = process.env.E2E_PASEO_HOME;
-  if (!paseoHome) throw new Error("E2E_PASEO_HOME not set — globalSetup must run first");
+  const ottoHome = process.env.E2E_OTTO_HOME;
+  if (!ottoHome) throw new Error("E2E_OTTO_HOME not set — globalSetup must run first");
 
   const resp = await fetch(`http://127.0.0.1:${port}/api/status`);
   const data: DaemonApiStatus = await resp.json();
 
   let pid: number | null = null;
   try {
-    const raw = readFileSync(`${paseoHome}/paseo.pid`, "utf8");
+    const raw = readFileSync(`${ottoHome}/otto.pid`, "utf8");
     const pidContent: PidFileContent = JSON.parse(raw);
     pid = pidContent.pid ?? null;
   } catch (err) {
     // PID file may not be present yet on a very fresh daemon start
-    console.warn("[desktop-updates] paseo.pid not found:", err);
+    console.warn("[desktop-updates] otto.pid not found:", err);
   }
 
-  return { version: data.version, pid, logPath: `${paseoHome}/daemon.log` };
+  return { version: data.version, pid, logPath: `${ottoHome}/daemon.log` };
 }
 
 export interface DesktopBridgeConfig {
@@ -61,7 +61,7 @@ export interface DesktopBridgeConfig {
   daemonLogPath?: string;
   /** Initial manageBuiltInDaemon setting. Defaults to false. */
   manageBuiltInDaemon?: boolean;
-  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6767. */
+  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6868. */
   daemonListen?: string;
   /** Keep start_desktop_daemon pending to hold the desktop startup blocker open. */
   hangDaemonStart?: boolean;
@@ -101,7 +101,7 @@ declare global {
 }
 
 /**
- * Injects window.paseoDesktop before app load so all Electron-gated code
+ * Injects window.ottoDesktop before app load so all Electron-gated code
  * activates. The update-check IPC is mocked at the boundary so the real
  * auto-updater never fires. Daemon start/stop commands are stateful: the mock
  * tracks running state and assigns a fresh PID on each start, letting tests
@@ -130,7 +130,7 @@ export async function injectDesktopBridge(page: Page, config: DesktopBridgeConfi
       return {
         serverId: cfg.serverId,
         status: daemonRunning ? "running" : "stopped",
-        listen: cfg.daemonListen ?? "127.0.0.1:6767",
+        listen: cfg.daemonListen ?? "127.0.0.1:6868",
         hostname: null,
         pid: currentPid,
         home: "",
@@ -263,7 +263,7 @@ export async function injectDesktopBridge(page: Page, config: DesktopBridgeConfi
       };
     }
 
-    (window as unknown as { paseoDesktop: unknown }).paseoDesktop = desktopBridge;
+    (window as unknown as { ottoDesktop: unknown }).ottoDesktop = desktopBridge;
   }, config);
 }
 

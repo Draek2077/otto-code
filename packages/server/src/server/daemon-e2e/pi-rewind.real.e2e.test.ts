@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest"
 
 import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
 import { canRunRealProvider, createRealProviderClients } from "./real-provider-test-config.js";
 import {
   closeRewindSession,
@@ -15,7 +15,7 @@ import {
 
 interface PiRewindHarness {
   client: DaemonClient;
-  daemon: TestPaseoDaemon;
+  daemon: TestOttoDaemon;
 }
 
 interface PiRewindSession {
@@ -65,7 +65,7 @@ function expectPiSessionId(value: string): void {
 
 function piPrompt(input: { promptToken: string; doneToken: string }): string {
   return [
-    `PASEO_PI_REWIND_PROMPT_${input.promptToken}.`,
+    `OTTO_PI_REWIND_PROMPT_${input.promptToken}.`,
     "Remember this marker for the conversation.",
     `Reply exactly: ${input.doneToken}`,
   ].join(" ");
@@ -112,7 +112,7 @@ describe("daemon E2E (real pi) - rewind", () => {
       return;
     }
     const logger = pino({ level: "silent" });
-    const daemon = await createTestPaseoDaemon({
+    const daemon = await createTestOttoDaemon({
       agentClients: createRealProviderClients(["pi"], logger),
       logger,
     });

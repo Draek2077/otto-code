@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { DaemonClient } from "./test-utils/index.js";
-import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
+import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
 import { getFullAccessConfig } from "./daemon-e2e/agent-configs.js";
 
-// The daemon-level workspace contract that `paseo run` depends on: each
+// The daemon-level workspace contract that `otto run` depends on: each
 // local-backed createWorkspace for a cwd mints a fresh, distinct workspace,
 // createAgent stamps the agent with the workspaceId it is given, and attaching
 // to an existing workspace by id creates no new record. The CLI's own flag
-// precedence (--workspace > $PASEO_WORKSPACE_ID > --worktree > bare) is covered
+// precedence (--workspace > $OTTO_WORKSPACE_ID > --worktree > bare) is covered
 // in packages/cli/src/commands/agent/run.test.ts; this test only proves the
 // daemon behaviors the CLI builds on.
 
@@ -29,8 +29,8 @@ async function mintLocalWorkspace(client: DaemonClient, cwd: string): Promise<st
 }
 
 test("daemon mints a distinct local workspace per run and stamps agents by id", async () => {
-  const daemon = await createTestPaseoDaemon();
-  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-cli-run-cwd-"));
+  const daemon = await createTestOttoDaemon();
+  const cwd = mkdtempSync(path.join(tmpdir(), "otto-cli-run-cwd-"));
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -75,7 +75,7 @@ test("daemon mints a distinct local workspace per run and stamps agents by id", 
     expect(idsAfterTwoMints).toContain(secondWorkspaceId);
 
     // Attaching to an existing workspace by id (how --workspace and
-    // $PASEO_WORKSPACE_ID land a run) creates no new workspace record: the
+    // $OTTO_WORKSPACE_ID land a run) creates no new workspace record: the
     // agent lands in the named workspace and the workspace set is unchanged.
     const idsBeforeAttach = await workspaceIds(client);
     const attachedAgent = await client.createAgent({

@@ -7,13 +7,13 @@ import {
   releasePidLock,
   updatePidLock,
 } from "../src/server/pid-lock.js";
-import { resolvePaseoHome } from "../src/server/paseo-home.js";
+import { resolveOttoHome } from "../src/server/otto-home.js";
 import { loadPersistedConfig } from "../src/server/persisted-config.js";
 import { runSupervisor } from "./supervisor.js";
 import { resolveSupervisorLogFile } from "./supervisor-log-config.js";
 import { applySherpaLoaderEnv } from "../src/server/speech/providers/local/sherpa/sherpa-runtime-env.js";
 
-process.title = "Paseo Supervisor";
+process.title = "Otto Supervisor";
 
 interface DaemonRunnerConfig {
   devMode: boolean;
@@ -69,9 +69,9 @@ function resolveWorkerExecArgv(workerEntry: string, devMode: boolean): string[] 
     "--heapsnapshot-near-heap-limit=3",
     "--max-old-space-size=3072",
     "--report-on-fatalerror",
-    "--report-directory=/tmp/paseo-reports",
+    "--report-directory=/tmp/otto-reports",
   ];
-  const inspectArg = process.env.PASEO_NODE_INSPECT ?? "--inspect";
+  const inspectArg = process.env.OTTO_NODE_INSPECT ?? "--inspect";
   if (inspectArg !== "0" && inspectArg !== "false" && inspectArg !== "off") {
     devArgs.push(inspectArg);
   }
@@ -79,7 +79,7 @@ function resolveWorkerExecArgv(workerEntry: string, devMode: boolean): string[] 
 }
 
 function resolvePackagedNodeEntrypointRunnerPath(currentScriptPath: string): string | null {
-  const packageMarker = `${path.sep}node_modules${path.sep}@getpaseo${path.sep}server${path.sep}`;
+  const packageMarker = `${path.sep}node_modules${path.sep}@otto-code${path.sep}server${path.sep}`;
   const markerIndex = currentScriptPath.lastIndexOf(packageMarker);
   if (markerIndex === -1) {
     return null;
@@ -102,12 +102,12 @@ async function main(): Promise<void> {
 
   applySherpaLoaderEnv(workerEnv);
 
-  const paseoHome = resolvePaseoHome(workerEnv);
-  const persistedConfig = loadPersistedConfig(paseoHome);
-  const supervisorLogFile = resolveSupervisorLogFile(paseoHome, persistedConfig, workerEnv);
+  const ottoHome = resolveOttoHome(workerEnv);
+  const persistedConfig = loadPersistedConfig(ottoHome);
+  const supervisorLogFile = resolveSupervisorLogFile(ottoHome, persistedConfig, workerEnv);
 
   try {
-    await acquirePidLock(paseoHome, null, {
+    await acquirePidLock(ottoHome, null, {
       ownerPid: process.pid,
     });
   } catch (error) {
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
       return;
     }
     lockReleased = true;
-    await releasePidLock(paseoHome, {
+    await releasePidLock(ottoHome, {
       ownerPid: process.pid,
     });
   };
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
     restartOnCrash: true,
     logFile: supervisorLogFile,
     onWorkerReady: async ({ listen }) => {
-      await updatePidLock(paseoHome, { listen }, { ownerPid: process.pid });
+      await updatePidLock(ottoHome, { listen }, { ownerPid: process.pid });
     },
     onSupervisorExit: releaseLock,
   });

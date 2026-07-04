@@ -18,13 +18,13 @@ It validates the compositor behavior that unit tests cannot see:
 Run it with the repo Electron:
 
 ```bash
-npm run capture-harness --workspace=@getpaseo/desktop
+npm run capture-harness --workspace=@otto-code/desktop
 ```
 
 Run the browser automation fixture with:
 
 ```bash
-PASEO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@getpaseo/desktop
+OTTO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@otto-code/desktop
 ```
 
 The automation group uses a real guest webview to verify the page-side ref contract:

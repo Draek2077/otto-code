@@ -5,7 +5,7 @@ import {
 } from "./node-entrypoint-launcher";
 
 const CLI_ENTRYPOINT: NodeEntrypointSpec = {
-  entryPath: "/tmp/paseo-cli.js",
+  entryPath: "/tmp/otto-cli.js",
   execArgv: ["--import", "tsx"],
 };
 
@@ -14,29 +14,29 @@ describe("node-entrypoint-launcher", () => {
     it("uses the packaged runner when the desktop app is packaged", () => {
       expect(
         createNodeEntrypointInvocation({
-          execPath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+          execPath: "/Applications/Otto.app/Contents/MacOS/Otto",
           isPackaged: true,
           packagedRunnerPath:
-            "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+            "/Applications/Otto.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           entrypoint: CLI_ENTRYPOINT,
           argvMode: "node-script",
           args: ["ls", "--json"],
           baseEnv: { PATH: "/usr/bin" },
         }),
       ).toEqual({
-        command: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+        command: "/Applications/Otto.app/Contents/MacOS/Otto",
         args: [
           "--disable-warning=DEP0040",
-          "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+          "/Applications/Otto.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           "node-script",
-          "/tmp/paseo-cli.js",
+          "/tmp/otto-cli.js",
           "ls",
           "--json",
         ],
         env: {
           PATH: "/usr/bin",
           ELECTRON_RUN_AS_NODE: "1",
-          PASEO_NODE_ENV: "production",
+          OTTO_NODE_ENV: "production",
         },
       });
     });
@@ -54,7 +54,7 @@ describe("node-entrypoint-launcher", () => {
         }),
       ).toEqual({
         command: "/opt/homebrew/bin/electron",
-        args: ["--import", "tsx", "/tmp/paseo-cli.js", "ls"],
+        args: ["--import", "tsx", "/tmp/otto-cli.js", "ls"],
         env: {
           PATH: "/usr/bin",
           ELECTRON_RUN_AS_NODE: "1",
@@ -65,10 +65,10 @@ describe("node-entrypoint-launcher", () => {
     it("forces packaged launches to production even when NODE_ENV is inherited as development", () => {
       expect(
         createNodeEntrypointInvocation({
-          execPath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+          execPath: "/Applications/Otto.app/Contents/MacOS/Otto",
           isPackaged: true,
           packagedRunnerPath:
-            "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+            "/Applications/Otto.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           entrypoint: CLI_ENTRYPOINT,
           argvMode: "node-script",
           args: [],
@@ -78,35 +78,35 @@ describe("node-entrypoint-launcher", () => {
         PATH: "/usr/bin",
         ELECTRON_RUN_AS_NODE: "1",
         NODE_ENV: "development",
-        PASEO_NODE_ENV: "production",
+        OTTO_NODE_ENV: "production",
       });
     });
 
     it("keeps node-style argv for packaged script entrypoints", () => {
       expect(
         createNodeEntrypointInvocation({
-          execPath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+          execPath: "/Applications/Otto.app/Contents/MacOS/Otto",
           isPackaged: true,
           packagedRunnerPath:
-            "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+            "/Applications/Otto.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           entrypoint: CLI_ENTRYPOINT,
           argvMode: "node-script",
           args: ["--dev"],
           baseEnv: { PATH: "/usr/bin" },
         }),
       ).toEqual({
-        command: "/Applications/Paseo.app/Contents/MacOS/Paseo",
+        command: "/Applications/Otto.app/Contents/MacOS/Otto",
         args: [
           "--disable-warning=DEP0040",
-          "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+          "/Applications/Otto.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           "node-script",
-          "/tmp/paseo-cli.js",
+          "/tmp/otto-cli.js",
           "--dev",
         ],
         env: {
           PATH: "/usr/bin",
           ELECTRON_RUN_AS_NODE: "1",
-          PASEO_NODE_ENV: "production",
+          OTTO_NODE_ENV: "production",
         },
       });
     });

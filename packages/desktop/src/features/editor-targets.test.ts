@@ -548,8 +548,8 @@ describe("desktop editor targets", () => {
       },
     });
 
-    const listHandler = handlers.get("paseo:editor:listTargets");
-    const openHandler = handlers.get("paseo:editor:openTarget");
+    const listHandler = handlers.get("otto:editor:listTargets");
+    const openHandler = handlers.get("otto:editor:openTarget");
     if (!listHandler || !openHandler) {
       throw new Error("editor IPC handlers were not registered");
     }

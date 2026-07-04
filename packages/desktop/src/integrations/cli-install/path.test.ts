@@ -7,10 +7,10 @@ describe("cli-install-path", () => {
       resolveCliInstallSourcePath({
         platform: "darwin",
         isPackaged: true,
-        executablePath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
-        shimPath: "/Applications/Paseo.app/Contents/Resources/bin/paseo",
+        executablePath: "/Applications/Otto.app/Contents/MacOS/Otto",
+        shimPath: "/Applications/Otto.app/Contents/Resources/bin/otto",
       }),
-    ).toBe("/Applications/Paseo.app/Contents/Resources/bin/paseo");
+    ).toBe("/Applications/Otto.app/Contents/Resources/bin/otto");
   });
 
   it("prefers the original AppImage path on linux", () => {
@@ -18,11 +18,11 @@ describe("cli-install-path", () => {
       resolveCliInstallSourcePath({
         platform: "linux",
         isPackaged: true,
-        executablePath: "/tmp/.mount_paseo123/paseo",
-        shimPath: "/tmp/.mount_paseo123/resources/bin/paseo",
-        appImagePath: "/home/user/Applications/Paseo.AppImage",
+        executablePath: "/tmp/.mount_otto123/otto",
+        shimPath: "/tmp/.mount_otto123/resources/bin/otto",
+        appImagePath: "/home/user/Applications/Otto.AppImage",
       }),
-    ).toBe("/home/user/Applications/Paseo.AppImage");
+    ).toBe("/home/user/Applications/Otto.AppImage");
   });
 
   it("falls back to the shim on windows and in development", () => {
@@ -30,18 +30,18 @@ describe("cli-install-path", () => {
       resolveCliInstallSourcePath({
         platform: "win32",
         isPackaged: true,
-        executablePath: "C:\\Users\\user\\AppData\\Local\\Programs\\Paseo\\Paseo.exe",
-        shimPath: "C:\\Users\\user\\AppData\\Local\\Programs\\Paseo\\resources\\bin\\paseo.cmd",
+        executablePath: "C:\\Users\\user\\AppData\\Local\\Programs\\Otto\\Otto.exe",
+        shimPath: "C:\\Users\\user\\AppData\\Local\\Programs\\Otto\\resources\\bin\\otto.cmd",
       }),
-    ).toBe("C:\\Users\\user\\AppData\\Local\\Programs\\Paseo\\resources\\bin\\paseo.cmd");
+    ).toBe("C:\\Users\\user\\AppData\\Local\\Programs\\Otto\\resources\\bin\\otto.cmd");
 
     expect(
       resolveCliInstallSourcePath({
         platform: "linux",
         isPackaged: false,
-        executablePath: "/opt/Paseo/paseo",
-        shimPath: "/opt/Paseo/resources/bin/paseo",
+        executablePath: "/opt/Otto/otto",
+        shimPath: "/opt/Otto/resources/bin/otto",
       }),
-    ).toBe("/opt/Paseo/resources/bin/paseo");
+    ).toBe("/opt/Otto/resources/bin/otto");
   });
 });

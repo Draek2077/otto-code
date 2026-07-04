@@ -92,10 +92,10 @@ function formatListenTarget(listenTarget: ListenTarget | null): string | null {
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { createGitHubService } from "../services/github-service.js";
 import {
-  createPaseoWorktree as createRegisteredPaseoWorktree,
+  createOttoWorktree as createRegisteredOttoWorktree,
   createLocalCheckoutWorkspace,
-} from "./paseo-worktree-service.js";
-import { createPaseoWorktreeWorkflow } from "./worktree-session.js";
+} from "./otto-worktree-service.js";
+import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
@@ -106,10 +106,10 @@ import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
-  createPaseoToolCatalog,
-  type PaseoToolHostDependencies,
-} from "./agent/tools/paseo-tools.js";
-import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
+  createOttoToolCatalog,
+  type OttoToolHostDependencies,
+} from "./agent/tools/otto-tools.js";
+import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
@@ -139,7 +139,7 @@ import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
-import type { TerminalProfile } from "@getpaseo/protocol/messages";
+import type { TerminalProfile } from "@otto-code/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -294,18 +294,18 @@ function summarizeAgentMcpDebugBody(body: unknown): Record<string, unknown> {
   };
 }
 
-export type PaseoOpenAIConfig = OpenAiSpeechProviderConfig;
-export type PaseoLocalSpeechConfig = LocalSpeechProviderConfig;
+export type OttoOpenAIConfig = OpenAiSpeechProviderConfig;
+export type OttoLocalSpeechConfig = LocalSpeechProviderConfig;
 
-export interface PaseoSpeechSttLanguages {
+export interface OttoSpeechSttLanguages {
   dictation: string;
   voice: string;
 }
 
-export interface PaseoSpeechConfig {
+export interface OttoSpeechConfig {
   providers: RequestedSpeechProviders;
-  sttLanguages?: PaseoSpeechSttLanguages;
-  local?: PaseoLocalSpeechConfig;
+  sttLanguages?: OttoSpeechSttLanguages;
+  local?: OttoLocalSpeechConfig;
 }
 
 export type DaemonLifecycleIntent =
@@ -322,9 +322,9 @@ export type DaemonLifecycleIntent =
       reason: string;
     };
 
-export interface PaseoDaemonConfig {
+export interface OttoDaemonConfig {
   listen: string;
-  paseoHome: string;
+  ottoHome: string;
   worktreesRoot?: string;
   corsAllowedOrigins: string[];
   allowedHosts?: HostnamesConfig;
@@ -357,8 +357,8 @@ export interface PaseoDaemonConfig {
   };
   appBaseUrl?: string;
   auth?: DaemonAuthConfig;
-  openai?: PaseoOpenAIConfig;
-  speech?: PaseoSpeechConfig;
+  openai?: OttoOpenAIConfig;
+  speech?: OttoSpeechConfig;
   voiceLlmProvider?: AgentProvider | null;
   voiceLlmProviderExplicit?: boolean;
   voiceLlmModel?: string | null;
@@ -379,8 +379,8 @@ export interface PaseoDaemonConfig {
   managedProcesses?: ManagedProcessRegistry;
 }
 
-export interface PaseoDaemon {
-  config: PaseoDaemonConfig;
+export interface OttoDaemon {
+  config: OttoDaemonConfig;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager: TerminalManager;
@@ -393,7 +393,7 @@ export interface PaseoDaemon {
 }
 
 function createBootstrapManagedProcessRegistry(
-  config: Pick<PaseoDaemonConfig, "paseoHome" | "managedProcesses">,
+  config: Pick<OttoDaemonConfig, "ottoHome" | "managedProcesses">,
   logger: Logger,
 ): ManagedProcessRegistry {
   if (config.managedProcesses) {
@@ -401,7 +401,7 @@ function createBootstrapManagedProcessRegistry(
   }
 
   return createManagedProcessRegistry({
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     processTable: createSystemManagedProcessTable(),
     terminateProcess: terminateWithTreeKill,
     logger,
@@ -418,7 +418,7 @@ async function reconcileManagedProcessLedger(
   }
 }
 
-function mountWebUi(app: express.Application, config: PaseoDaemonConfig, logger: Logger): void {
+function mountWebUi(app: express.Application, config: OttoDaemonConfig, logger: Logger): void {
   app.use(
     createWebUiMiddleware({
       enabled: config.webUi?.enabled ?? false,
@@ -429,11 +429,11 @@ function mountWebUi(app: express.Application, config: PaseoDaemonConfig, logger:
   );
 }
 
-function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | string[] {
+function resolveExpressTrustProxySetting(config: OttoDaemonConfig): true | string[] {
   return config.trustedProxies ?? ["loopback"];
 }
 
-function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
+function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
       const providerConfig: MutableDaemonConfig["providers"][string] = {};
@@ -466,16 +466,16 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
   return initialConfig;
 }
 
-export async function createPaseoDaemon(
-  config: PaseoDaemonConfig,
+export async function createOttoDaemon(
+  config: OttoDaemonConfig,
   rootLogger: Logger,
-): Promise<PaseoDaemon> {
+): Promise<OttoDaemon> {
   const logger = rootLogger.child({ module: "bootstrap" });
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = resolveDaemonVersion(import.meta.url);
   const daemonConfigStore = new DaemonConfigStore(
-    config.paseoHome,
+    config.ottoHome,
     createInitialMutableDaemonConfig(config),
     logger,
   );
@@ -484,8 +484,8 @@ export async function createPaseoDaemon(
     policy: browserToolsPolicy,
   });
 
-  const serverId = getOrCreateServerId(config.paseoHome, { logger });
-  const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
+  const serverId = getOrCreateServerId(config.ottoHome, { logger });
+  const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
@@ -578,8 +578,8 @@ export async function createPaseoDaemon(
   // CORS - allow same-origin + configured origins
   const allowedOrigins = new Set([
     ...config.corsAllowedOrigins,
-    // Packaged desktop renderers use the custom paseo:// protocol scheme.
-    "paseo://app",
+    // Packaged desktop renderers use the custom otto:// protocol scheme.
+    "otto://app",
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [
@@ -714,21 +714,21 @@ export async function createPaseoDaemon(
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
   const projectRegistry = new FileBackedProjectRegistry(
-    path.join(config.paseoHome, "projects", "projects.json"),
+    path.join(config.ottoHome, "projects", "projects.json"),
     logger,
   );
   workspaceRegistry = new FileBackedWorkspaceRegistry(
-    path.join(config.paseoHome, "projects", "workspaces.json"),
+    path.join(config.ottoHome, "projects", "workspaces.json"),
     logger,
   );
   const chatService = new FileBackedChatService({
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     logger,
   });
   const github = createGitHubService();
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
       github,
@@ -765,7 +765,7 @@ export async function createPaseoDaemon(
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
   await bootstrapWorkspaceRegistries({
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     agentStorage,
     projectRegistry,
     workspaceRegistry,
@@ -797,11 +797,11 @@ export async function createPaseoDaemon(
   logger.info({ elapsed: elapsed() }, "Chat service initialized");
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     workspaceGitService,
   });
   const loopService = new LoopService({
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     logger,
     agentManager,
     providerSnapshotManager,
@@ -809,7 +809,7 @@ export async function createPaseoDaemon(
   await loopService.initialize();
   logger.info({ elapsed: elapsed() }, "Loop service initialized");
   const scheduleService = new ScheduleService({
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     logger,
     agentManager,
     agentStorage,
@@ -896,8 +896,8 @@ export async function createPaseoDaemon(
   };
 
   setupAutoArchiveOnMerge({
-    paseoHome: config.paseoHome,
-    paseoWorktreesBaseRoot: config.worktreesRoot,
+    ottoHome: config.ottoHome,
+    ottoWorktreesBaseRoot: config.worktreesRoot,
     daemonConfigStore,
     workspaceGitService,
     github,
@@ -913,16 +913,16 @@ export async function createPaseoDaemon(
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
   });
 
-  const createPaseoWorktreeForTools = async (
-    input: Parameters<typeof createPaseoWorktreeWorkflow>[1],
-    serviceOptions?: Parameters<typeof createPaseoWorktreeWorkflow>[2],
+  const createOttoWorktreeForTools = async (
+    input: Parameters<typeof createOttoWorktreeWorkflow>[1],
+    serviceOptions?: Parameters<typeof createOttoWorktreeWorkflow>[2],
   ) => {
-    return createPaseoWorktreeWorkflow(
+    return createOttoWorktreeWorkflow(
       {
-        paseoHome: config.paseoHome,
+        ottoHome: config.ottoHome,
         worktreesRoot: config.worktreesRoot,
-        createPaseoWorktree: async (workflowInput, workflowOptions) => {
-          return createRegisteredPaseoWorktree(workflowInput, {
+        createOttoWorktree: async (workflowInput, workflowOptions) => {
+          return createRegisteredOttoWorktree(workflowInput, {
             github,
             ...(workflowOptions?.resolveDefaultBranch
               ? {
@@ -962,8 +962,8 @@ export async function createPaseoDaemon(
   };
 
   const createAgentToolHostDependencies = (
-    runtime: PaseoToolRuntimeContext,
-  ): PaseoToolHostDependencies => ({
+    runtime: OttoToolRuntimeContext,
+  ): OttoToolHostDependencies => ({
     agentManager,
     agentStorage,
     terminalManager,
@@ -980,9 +980,9 @@ export async function createPaseoDaemon(
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,
-    createPaseoWorktree: createPaseoWorktreeForTools,
+    createOttoWorktree: createOttoWorktreeForTools,
     browserToolsBroker,
-    paseoHome: config.paseoHome,
+    ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
     enableVoiceTools: runtime.enableVoiceTools,
@@ -991,10 +991,10 @@ export async function createPaseoDaemon(
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
     logger,
   });
-  const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>
-    createPaseoToolCatalog(createAgentToolHostDependencies(runtime));
-  agentManager.setPaseoToolCatalogFactory(createAgentToolCatalog);
-  agentManager.setPaseoToolsEnabled(config.mcpInjectIntoAgents !== false);
+  const createAgentToolCatalog = (runtime: OttoToolRuntimeContext) =>
+    createOttoToolCatalog(createAgentToolHostDependencies(runtime));
+  agentManager.setOttoToolCatalogFactory(createAgentToolCatalog);
+  agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
 
   const mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
@@ -1158,20 +1158,20 @@ export async function createPaseoDaemon(
             const mcpBaseUrl = mcpEnabled ? createAgentMcpBaseUrl(boundListenTarget) : null;
             agentMcpBaseUrl = config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
             agentManager.setMcpBaseUrl(agentMcpBaseUrl);
-            agentManager.setPaseoToolsEnabled(config.mcpInjectIntoAgents !== false);
+            agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
               agentManager.setMcpBaseUrl(value ? mcpBaseUrl : null);
-              agentManager.setPaseoToolsEnabled(value !== false);
+              agentManager.setOttoToolsEnabled(value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
             const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
+            const relayEndpoint = config.relayEndpoint ?? "relay.otto-code.ai:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.otto-code.ai:443";
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
-            const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
+            const appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.ai";
 
             if (boundListenTarget.type === "tcp") {
               logger.info(
@@ -1204,7 +1204,7 @@ export async function createPaseoDaemon(
               agentManager,
               agentStorage,
               downloadTokenStore,
-              config.paseoHome,
+              config.ottoHome,
               daemonConfigStore,
               mcpBaseUrl,
               { allowedOrigins, hostnames: configuredHostnames },

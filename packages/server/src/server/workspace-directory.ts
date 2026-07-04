@@ -10,15 +10,15 @@ import {
   deriveAgentStateBucket,
   getWorkspaceStateBucketPriority,
   type WorkspaceStateBucket,
-} from "@getpaseo/protocol/agent-state-bucket";
-import { getParentAgentIdFromLabels, isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
+} from "@otto-code/protocol/agent-state-bucket";
+import { getParentAgentIdFromLabels, isDelegatedAgent } from "@otto-code/protocol/agent-labels";
 import { SortablePager } from "./pagination/sortable-pager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import { resolveProjectDisplayName } from "./workspace-registry.js";
 import {
   deriveTerminalActivityStatusBucket,
   type TerminalActivity,
-} from "@getpaseo/protocol/terminal-activity";
+} from "@otto-code/protocol/terminal-activity";
 
 const FETCH_WORKSPACES_SORT_KEYS = [
   "status_priority",

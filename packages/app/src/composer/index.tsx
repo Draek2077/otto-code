@@ -94,7 +94,7 @@ import { submitAgentInput } from "@/composer/submit";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { GitHubSearchItem } from "@getpaseo/protocol/messages";
+import type { GitHubSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,

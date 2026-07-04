@@ -54,7 +54,7 @@ interface RestartDaemonClientConfig {
 }
 
 interface SeededRestartHome {
-  paseoHome: string;
+  ottoHome: string;
   cwd: string;
   projectId: string;
   projectDisplayName: string;
@@ -73,10 +73,10 @@ function nowIso(): string {
 }
 
 async function seedRestartHome(): Promise<SeededRestartHome> {
-  const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-playwright-restart-home-"));
-  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-playwright-restart-cwd-"));
-  const projectsDir = path.join(paseoHome, "projects");
-  const agentDir = path.join(paseoHome, "agents", projectDirNameFromCwd(cwd));
+  const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-playwright-restart-home-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "otto-playwright-restart-cwd-"));
+  const projectsDir = path.join(ottoHome, "projects");
+  const agentDir = path.join(ottoHome, "agents", projectDirNameFromCwd(cwd));
   mkdirSync(projectsDir, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
 
@@ -143,14 +143,14 @@ async function seedRestartHome(): Promise<SeededRestartHome> {
   );
 
   return {
-    paseoHome,
+    ottoHome,
     cwd,
     projectId: project.projectId,
     projectDisplayName,
     workspaceA: workspaceA.workspaceId,
     workspaceB: workspaceB.workspaceId,
     cleanup: () => {
-      rmSync(paseoHome, { recursive: true, force: true });
+      rmSync(ottoHome, { recursive: true, force: true });
       rmSync(cwd, { recursive: true, force: true });
     },
   };
@@ -232,11 +232,11 @@ async function stopProcess(child: ChildProcess): Promise<void> {
 }
 
 async function startRestartDaemon(input: {
-  paseoHome: string;
+  ottoHome: string;
   origin: string;
 }): Promise<StartedDaemon> {
   const port = await getAvailablePort();
-  if (port === 6767 || String(port) === process.env.E2E_DAEMON_PORT) {
+  if (port === 6868 || String(port) === process.env.E2E_DAEMON_PORT) {
     return startRestartDaemon(input);
   }
 
@@ -246,12 +246,12 @@ async function startRestartDaemon(input: {
     cwd: serverDir,
     env: withDisabledE2ESpeechEnv({
       ...process.env,
-      PASEO_HOME: input.paseoHome,
-      PASEO_SERVER_ID: SERVER_ID,
-      PASEO_LISTEN: `127.0.0.1:${port}`,
-      PASEO_CORS_ORIGINS: input.origin,
-      PASEO_RELAY_ENABLED: "0",
-      PASEO_NODE_ENV: "development",
+      OTTO_HOME: input.ottoHome,
+      OTTO_SERVER_ID: SERVER_ID,
+      OTTO_LISTEN: `127.0.0.1:${port}`,
+      OTTO_CORS_ORIGINS: input.origin,
+      OTTO_RELAY_ENABLED: "0",
+      OTTO_NODE_ENV: "development",
       NODE_ENV: "development",
     }),
     stdio: ["ignore", "ignore", "pipe"],
@@ -306,9 +306,9 @@ function loadAppVersion(): string {
 }
 
 async function seedBrowserForDaemon(page: Page, input: { serverId: string; port: number }) {
-  await page.route(/:(6767)\b/, (route) => route.abort());
-  await page.routeWebSocket(/:(6767)\b/, async (ws) => {
-    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
+  await page.route(/:(6868)\b/, (route) => route.abort());
+  await page.routeWebSocket(/:(6868)\b/, async (ws) => {
+    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6868 during e2e." });
   });
   await page.route(
     "**/*",
@@ -331,10 +331,10 @@ async function seedBrowserForDaemon(page: Page, input: { serverId: string; port:
   });
   await page.evaluate(
     ({ daemon, preferences }) => {
-      localStorage.setItem("@paseo:e2e", "1");
-      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([daemon]));
-      localStorage.removeItem("@paseo:settings");
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+      localStorage.setItem("@otto:e2e", "1");
+      localStorage.setItem("@otto:daemon-registry", JSON.stringify([daemon]));
+      localStorage.removeItem("@otto:settings");
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
     },
     {
       daemon: host,
@@ -430,7 +430,7 @@ test.describe("Workspace model restart regressions", () => {
     test.setTimeout(90_000);
     const seeded = await seedRestartHome();
     const origin = new URL(baseURL ?? "http://localhost").origin;
-    const daemon = await startRestartDaemon({ paseoHome: seeded.paseoHome, origin });
+    const daemon = await startRestartDaemon({ ottoHome: seeded.ottoHome, origin });
     const serverId = SERVER_ID;
     const client = await connectRestartDaemonClient(daemon.port);
 

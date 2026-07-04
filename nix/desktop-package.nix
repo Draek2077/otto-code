@@ -11,13 +11,13 @@
   libuv,
   # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content —
   # without this, the desktop drv produces a separately-named store path
-  # (`paseo-desktop-<v>-npm-deps`) and refetches the entire registry. Override
-  # the upstream hash via `paseo.override { npmDepsHash = "..."; }`.
-  paseo,
+  # (`otto-desktop-<v>-npm-deps`) and refetches the entire registry. Override
+  # the upstream hash via `otto.override { npmDepsHash = "..."; }`.
+  otto,
 }:
 
 buildNpmPackage rec {
-  pname = "paseo-desktop";
+  pname = "otto-desktop";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {
@@ -38,13 +38,13 @@ buildNpmPackage rec {
       && !(lib.hasSuffix ".e2e.test.ts" baseName)
       && baseName != "node_modules"
       && baseName != ".git"
-      && baseName != ".paseo"
+      && baseName != ".otto"
       && baseName != ".DS_Store"
       && baseName != "release";
   };
 
   nodejs = nodejs_22;
-  inherit (paseo) npmDeps;
+  inherit (otto) npmDeps;
 
   # Prevent onnxruntime-node's install script from running during automatic
   # npm rebuild. We manually rebuild only node-pty in buildPhase.
@@ -77,13 +77,13 @@ buildNpmPackage rec {
     npm run build:server
 
     # App workspace deps not covered by build:server
-    npm run build --workspace=@getpaseo/expo-two-way-audio
+    npm run build --workspace=@otto-code/expo-two-way-audio
 
     # Expo web export for the Electron renderer
-    ( cd packages/app && PASEO_WEB_PLATFORM=electron npx expo export --platform web )
+    ( cd packages/app && OTTO_WEB_PLATFORM=electron npx expo export --platform web )
 
     # Desktop main process (tsc only — NOT electron-builder)
-    npm run build:main --workspace=@getpaseo/desktop
+    npm run build:main --workspace=@otto-code/desktop
 
     runHook postBuild
   '';
@@ -91,7 +91,7 @@ buildNpmPackage rec {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/share/paseo-desktop $out/bin
+    mkdir -p $out/share/otto-desktop $out/bin
 
     # Preserve the monorepo layout so main.js's dev-mode path resolution
     # (`__dirname/../../app/dist`, `__dirname/../assets/icon.png`) works
@@ -99,22 +99,22 @@ buildNpmPackage rec {
     # `app.isPackaged` is false, so these relative paths are used.
     #
     # Copy the entire packages/ tree (not just built artifacts) because npm
-    # creates workspace symlinks from node_modules/@getpaseo/* into packages/*.
+    # creates workspace symlinks from node_modules/@otto-code/* into packages/*.
     # Missing any workspace package leaves dangling symlinks and fails the
     # noBrokenSymlinks output check. The cleanSourceWith filter above already
     # drops the big platform-specific things (android/ios, website, tests).
-    cp package.json $out/share/paseo-desktop/
-    cp -a packages $out/share/paseo-desktop/
-    cp -a node_modules $out/share/paseo-desktop/
+    cp package.json $out/share/otto-desktop/
+    cp -a packages $out/share/otto-desktop/
+    cp -a node_modules $out/share/otto-desktop/
 
     # Skills directory referenced at runtime by some agents
     if [ -d skills ]; then
-      cp -a skills $out/share/paseo-desktop/
+      cp -a skills $out/share/otto-desktop/
     fi
 
     # Hicolor icon for desktop environments
     install -Dm644 packages/desktop/assets/icon.png \
-      $out/share/icons/hicolor/512x512/apps/paseo-desktop.png
+      $out/share/icons/hicolor/512x512/apps/otto-desktop.png
 
     # Launcher wraps nixpkgs electron.
     # --no-sandbox: Chromium's setuid sandbox can't live in /nix/store
@@ -124,12 +124,12 @@ buildNpmPackage rec {
     # EXPO_DEV_URL: We run unpackaged via `electron path/to/main.js`, so
     # `app.isPackaged` is false. In that mode main.ts loads `DEV_SERVER_URL`
     # (defaults to http://localhost:8081 — the Expo dev server, which doesn't
-    # exist here). Point it at the `paseo://` protocol handler instead, which
+    # exist here). Point it at the `otto://` protocol handler instead, which
     # serves from `__dirname/../../app/dist` (our install layout matches).
-    makeWrapper ${electron}/bin/electron $out/bin/paseo-desktop \
-      --add-flags "$out/share/paseo-desktop/packages/desktop/dist/main.js" \
+    makeWrapper ${electron}/bin/electron $out/bin/otto-desktop \
+      --add-flags "$out/share/otto-desktop/packages/desktop/dist/main.js" \
       --add-flags "--no-sandbox" \
-      --set EXPO_DEV_URL "paseo://app/"
+      --set EXPO_DEV_URL "otto://app/"
 
     copyDesktopItems
 
@@ -138,22 +138,22 @@ buildNpmPackage rec {
 
   desktopItems = [
     (makeDesktopItem {
-      name = "paseo-desktop";
-      desktopName = "Paseo";
+      name = "otto-desktop";
+      desktopName = "Otto";
       genericName = "AI Coding Agents";
       comment = "Self-hosted daemon for AI coding agents";
-      exec = "paseo-desktop";
-      icon = "paseo-desktop";
+      exec = "otto-desktop";
+      icon = "otto-desktop";
       categories = [ "Development" ];
-      startupWMClass = "Paseo";
+      startupWMClass = "Otto";
     })
   ];
 
   meta = {
-    description = "Paseo desktop app (Electron wrapper)";
-    homepage = "https://github.com/getpaseo/paseo";
+    description = "Otto desktop app (Electron wrapper)";
+    homepage = "https://github.com/otto-code-ai/otto-code";
     license = lib.licenses.agpl3Plus;
-    mainProgram = "paseo-desktop";
+    mainProgram = "otto-desktop";
     platforms = lib.platforms.linux;
   };
 }

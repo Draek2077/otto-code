@@ -8,7 +8,7 @@ import type {
   ManagedImportableProviderSession,
 } from "./agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
-import type { FetchRecentProviderSessionsRequestMessage } from "@getpaseo/protocol/messages";
+import type { FetchRecentProviderSessionsRequestMessage } from "@otto-code/protocol/messages";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import {
   ImportSessionsRequestError,
@@ -279,7 +279,7 @@ test("listImportableProviderSessions filters out metadata generation sessions", 
 });
 
 test("listImportableProviderSessions keeps realpath-equivalent cwd matches", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "paseo-import-cwd-"));
+  const root = mkdtempSync(path.join(tmpdir(), "otto-import-cwd-"));
   const realCwd = path.join(root, "real-project");
   const linkedCwd = path.join(root, "linked-project");
   mkdirSync(realCwd, { recursive: true });

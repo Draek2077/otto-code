@@ -6,7 +6,7 @@ import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import { createDaemonCommandHandlers } from "./daemon-manager";
 
 const mocks = vi.hoisted(() => ({
-  paseoHome: "/tmp/paseo-desktop-daemon-manager-test-home",
+  ottoHome: "/tmp/otto-desktop-daemon-manager-test-home",
   settings: {
     releaseChannel: "stable",
     daemon: {
@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   app: {
-    getPath: vi.fn(() => "/tmp/paseo-user-data"),
+    getPath: vi.fn(() => "/tmp/otto-user-data"),
     getVersion: vi.fn(() => "1.2.3"),
     isPackaged: true,
   },
@@ -35,8 +35,8 @@ vi.mock("electron-log/main", () => ({
   default: { info: mocks.logInfo, error: mocks.logError },
 }));
 
-vi.mock("@getpaseo/server", () => ({
-  resolvePaseoHome: vi.fn(() => mocks.paseoHome),
+vi.mock("@otto-code/server", () => ({
+  resolveOttoHome: vi.fn(() => mocks.ottoHome),
   spawnProcess: mocks.spawnProcess,
 }));
 
@@ -105,11 +105,11 @@ describe("daemon-manager commands", () => {
     mocks.spawnProcess.mockReset();
     mocks.logInfo.mockReset();
     mocks.logError.mockReset();
-    rmSync(mocks.paseoHome, { recursive: true, force: true });
+    rmSync(mocks.ottoHome, { recursive: true, force: true });
   });
 
   afterEach(() => {
-    rmSync(mocks.paseoHome, { recursive: true, force: true });
+    rmSync(mocks.ottoHome, { recursive: true, force: true });
   });
 
   it("refuses start and restart while built-in daemon management is disabled", async () => {
@@ -141,7 +141,7 @@ describe("daemon-manager commands", () => {
       listen: null,
       hostname: null,
       pid: null,
-      home: mocks.paseoHome,
+      home: mocks.ottoHome,
       version: null,
       desktopManaged: false,
       error: null,
@@ -156,7 +156,7 @@ describe("daemon-manager commands", () => {
         localDaemon: "running",
         serverId: "server-1",
         pid: 4242,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         desktopManaged: true,
       })
       .mockResolvedValueOnce({ action: "stopped" })
@@ -172,7 +172,7 @@ describe("daemon-manager commands", () => {
       listen: null,
       hostname: null,
       pid: null,
-      home: mocks.paseoHome,
+      home: mocks.ottoHome,
       version: null,
       desktopManaged: false,
       error: null,
@@ -232,7 +232,7 @@ describe("daemon-manager commands", () => {
         connectedDaemon: "reachable",
         serverId: "server-1",
         pid: 7675,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         daemonVersion: "1.2.2",
         desktopManaged: true,
       })
@@ -250,7 +250,7 @@ describe("daemon-manager commands", () => {
       listen: null,
       hostname: null,
       pid: null,
-      home: mocks.paseoHome,
+      home: mocks.ottoHome,
       version: null,
       desktopManaged: false,
       error: null,
@@ -274,7 +274,7 @@ describe("daemon-manager commands", () => {
         localDaemon: "running",
         serverId: "server-1",
         pid: 4242,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         desktopManaged: true,
       })
       .mockResolvedValueOnce({ action: "stopped", reason: "lifecycle_shutdown_rpc" })
@@ -307,7 +307,7 @@ describe("daemon-manager commands", () => {
       connectedDaemon: "reachable",
       serverId: "server-1",
       pid: 7675,
-      listen: "127.0.0.1:6767",
+      listen: "127.0.0.1:6868",
       hostname: "dev-host",
       daemonVersion: "1.2.3",
       desktopManaged: true,
@@ -317,10 +317,10 @@ describe("daemon-manager commands", () => {
     await expect(handlers.start_desktop_daemon()).resolves.toEqual({
       serverId: "server-1",
       status: "running",
-      listen: "127.0.0.1:6767",
+      listen: "127.0.0.1:6868",
       hostname: "dev-host",
       pid: null,
-      home: mocks.paseoHome,
+      home: mocks.ottoHome,
       version: "1.2.3",
       desktopManaged: true,
       error: null,
@@ -336,7 +336,7 @@ describe("daemon-manager commands", () => {
         connectedDaemon: "reachable",
         serverId: "server-1",
         pid: 7675,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         hostname: "dev-host",
         daemonVersion: "1.2.2",
         desktopManaged: true,
@@ -346,7 +346,7 @@ describe("daemon-manager commands", () => {
         connectedDaemon: "reachable",
         serverId: "server-1",
         pid: 7675,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         daemonVersion: "1.2.2",
         desktopManaged: true,
       })
@@ -361,7 +361,7 @@ describe("daemon-manager commands", () => {
         connectedDaemon: "reachable",
         serverId: "server-2",
         pid: 8888,
-        listen: "127.0.0.1:6767",
+        listen: "127.0.0.1:6868",
         hostname: "dev-host",
         daemonVersion: "1.2.3",
         desktopManaged: true,
@@ -372,10 +372,10 @@ describe("daemon-manager commands", () => {
     await expect(handlers.start_desktop_daemon()).resolves.toEqual({
       serverId: "server-2",
       status: "running",
-      listen: "127.0.0.1:6767",
+      listen: "127.0.0.1:6868",
       hostname: "dev-host",
       pid: 8888,
-      home: mocks.paseoHome,
+      home: mocks.ottoHome,
       version: "1.2.3",
       desktopManaged: true,
       error: null,
@@ -395,9 +395,9 @@ describe("daemon-manager commands", () => {
   });
 
   it("starts the managed daemon detached from desktop stdio and reports daemon log failures", async () => {
-    mkdirSync(mocks.paseoHome, { recursive: true });
+    mkdirSync(mocks.ottoHome, { recursive: true });
     writeFileSync(
-      `${mocks.paseoHome}/daemon.log`,
+      `${mocks.ottoHome}/daemon.log`,
       ["old log line", "recent daemon failure"].join("\n"),
     );
     mocks.runExternalCliJsonCommand.mockResolvedValue({
@@ -431,7 +431,7 @@ describe("daemon-manager commands", () => {
       expect.objectContaining({
         detached: true,
         stdio: ["ignore", "ignore", "ignore"],
-        envOverlay: expect.objectContaining({ PASEO_WEB_UI_ENABLED: "false" }),
+        envOverlay: expect.objectContaining({ OTTO_WEB_UI_ENABLED: "false" }),
       }),
     );
   });

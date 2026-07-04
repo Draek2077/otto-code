@@ -15,11 +15,11 @@ import type {
 } from "../workspace-git-service.js";
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import { isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
+import { isOttoOwnedWorktreeCwd } from "../../utils/worktree.js";
 
 export interface AutoArchiveArchiveOptions {
-  paseoHome: string;
-  paseoWorktreesBaseRoot?: string;
+  ottoHome: string;
+  ottoWorktreesBaseRoot?: string;
   daemonConfigStore: DaemonConfigStore;
   workspaceGitService: WorkspaceGitServiceImpl;
   github: GitHubService;
@@ -37,14 +37,14 @@ export interface AutoArchiveArchiveOptions {
 export interface ArchiveIfSafeDependencies {
   archiveByScope: typeof archiveByScope;
   resolveWorkspaceIdAtPath: typeof resolveWorkspaceIdAtPath;
-  isPaseoOwnedWorktreeCwd: typeof isPaseoOwnedWorktreeCwd;
+  isOttoOwnedWorktreeCwd: typeof isOttoOwnedWorktreeCwd;
   killTerminalsForWorkspace: typeof killTerminalsForWorkspace;
 }
 
 const defaultDependencies: ArchiveIfSafeDependencies = {
   archiveByScope,
   resolveWorkspaceIdAtPath,
-  isPaseoOwnedWorktreeCwd,
+  isOttoOwnedWorktreeCwd,
   killTerminalsForWorkspace,
 };
 
@@ -91,9 +91,9 @@ export async function archiveIfSafe(input: {
       return;
     }
 
-    const ownership = await deps.isPaseoOwnedWorktreeCwd(cwd, {
-      paseoHome: options.paseoHome,
-      worktreesRoot: options.paseoWorktreesBaseRoot,
+    const ownership = await deps.isOttoOwnedWorktreeCwd(cwd, {
+      ottoHome: options.ottoHome,
+      worktreesRoot: options.ottoWorktreesBaseRoot,
     });
     if (!ownership.allowed) {
       return;
@@ -114,8 +114,8 @@ export async function archiveIfSafe(input: {
 
       await deps.archiveByScope(
         {
-          paseoHome: options.paseoHome,
-          paseoWorktreesBaseRoot: options.paseoWorktreesBaseRoot,
+          ottoHome: options.ottoHome,
+          ottoWorktreesBaseRoot: options.ottoWorktreesBaseRoot,
           github: options.github,
           workspaceGitService: options.workspaceGitService,
           agentManager: options.agentManager,
@@ -139,7 +139,7 @@ export async function archiveIfSafe(input: {
         {
           scope: { kind: "workspace", workspaceId },
           repoRoot: ownership.repoRoot ?? null,
-          paseoWorktreesBaseRoot: options.paseoWorktreesBaseRoot,
+          ottoWorktreesBaseRoot: options.ottoWorktreesBaseRoot,
           requestId: "auto-archive-on-merge",
         },
       );

@@ -5,8 +5,8 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
-} from "@getpaseo/protocol/messages";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+} from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { i18n } from "@/i18n/i18next";
 import { mapPrPaneData, type PrPaneData } from "./data";

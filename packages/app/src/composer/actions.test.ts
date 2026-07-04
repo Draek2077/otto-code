@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentAttachment, GitHubSearchItem } from "@getpaseo/protocol/messages";
+import type { AgentAttachment, GitHubSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -42,7 +42,7 @@ const issueItem: GitHubSearchItem = {
   kind: "issue",
   number: 101,
   title: "Fix composer attachments",
-  url: "https://github.com/acme/paseo/issues/101",
+  url: "https://github.com/acme/otto/issues/101",
   state: "open",
   body: "Issue body",
   labels: ["composer"],
@@ -54,7 +54,7 @@ const prItem: GitHubSearchItem = {
   kind: "pr",
   number: 202,
   title: "Refactor composer attachments",
-  url: "https://github.com/acme/paseo/pull/202",
+  url: "https://github.com/acme/otto/pull/202",
   state: "open",
   body: "PR body",
   labels: ["composer"],
@@ -71,7 +71,7 @@ function reviewWorkspaceAttachment(
 ): Extract<WorkspaceComposerAttachment, { kind: "review" }> {
   const attachment: Extract<AgentAttachment, { type: "review" }> = {
     type: "review",
-    mimeType: "application/paseo-review",
+    mimeType: "application/otto-review",
     cwd: "/repo",
     mode: "uncommitted",
     baseRef: null,
@@ -341,7 +341,7 @@ describe("dispatchComposerAgentMessage", () => {
         mimeType: "application/github-pr",
         number: 202,
         title: "Refactor composer attachments",
-        url: "https://github.com/acme/paseo/pull/202",
+        url: "https://github.com/acme/otto/pull/202",
         body: "PR body",
         baseRefName: "main",
         headRefName: "composer-attachments",

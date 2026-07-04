@@ -1,5 +1,5 @@
 import { generateMessageId } from "@/types/stream";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { i18n } from "@/i18n/i18next";
 
 const MAX_CHUNKS_PER_FLUSH_TURN = 128;

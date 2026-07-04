@@ -4,12 +4,12 @@ import {
   handleBrowserWindowOpenRequest,
   isAllowedBrowserWebviewUrl,
 } from "./window-open.js";
-import { PaseoBrowserWebviewRegistry, type BrowserWorkspaceRegistration } from "./registry.js";
+import { OttoBrowserWebviewRegistry, type BrowserWorkspaceRegistration } from "./registry.js";
 
 export { BROWSER_NEW_TAB_REQUEST_EVENT, handleBrowserWindowOpenRequest };
 export type { BrowserWorkspaceRegistration };
 
-const browserRegistry = new PaseoBrowserWebviewRegistry();
+const browserRegistry = new OttoBrowserWebviewRegistry();
 
 interface BrowserWebContentsIdentity {
   readonly id: number;
@@ -22,7 +22,7 @@ interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
 }
 
 function getBrowserIdFromWebviewPartition(partition: string | undefined): string | null {
-  const prefix = "persist:paseo-browser-";
+  const prefix = "persist:otto-browser-";
   if (!partition?.startsWith(prefix)) {
     return null;
   }
@@ -40,13 +40,13 @@ export function readBrowserIdFromWebviewAttach(input: {
   return getBrowserIdFromWebviewPartition(input.partition);
 }
 
-export function listRegisteredPaseoBrowserIds(): string[] {
+export function listRegisteredOttoBrowserIds(): string[] {
   return browserRegistry
     .listBrowserIds()
-    .filter((browserId) => getPaseoBrowserWebContents(browserId));
+    .filter((browserId) => getOttoBrowserWebContents(browserId));
 }
 
-export function registerPaseoBrowserWebContents(
+export function registerOttoBrowserWebContents(
   contents: RegisteredBrowserWebContents,
   browserId: string,
 ): void {
@@ -57,7 +57,7 @@ export function registerPaseoBrowserWebContents(
   });
 }
 
-export function getPaseoBrowserIdForWebContents(
+export function getOttoBrowserIdForWebContents(
   contents: BrowserWebContentsIdentity | null,
 ): string | null {
   if (!contents || contents.isDestroyed()) {
@@ -66,36 +66,36 @@ export function getPaseoBrowserIdForWebContents(
   return browserRegistry.getBrowserIdForWebContents(contents.id);
 }
 
-export function registerPaseoBrowserWorkspace(input: BrowserWorkspaceRegistration): void {
+export function registerOttoBrowserWorkspace(input: BrowserWorkspaceRegistration): void {
   browserRegistry.registerWorkspace(input);
 }
 
-export function unregisterPaseoBrowser(browserId: string): void {
+export function unregisterOttoBrowser(browserId: string): void {
   browserRegistry.unregisterBrowser(browserId);
 }
 
-export function getPaseoBrowserWorkspaceId(browserId: string): string | null {
+export function getOttoBrowserWorkspaceId(browserId: string): string | null {
   return browserRegistry.getWorkspaceId(browserId);
 }
 
-export function listRegisteredPaseoBrowserIdsForWorkspace(workspaceId: string): string[] {
+export function listRegisteredOttoBrowserIdsForWorkspace(workspaceId: string): string[] {
   return browserRegistry
     .listBrowserIdsForWorkspace(workspaceId)
-    .filter((browserId) => getPaseoBrowserWebContents(browserId));
+    .filter((browserId) => getOttoBrowserWebContents(browserId));
 }
 
-export function setWorkspaceActivePaseoBrowserId(input: {
+export function setWorkspaceActiveOttoBrowserId(input: {
   workspaceId: string;
   browserId: string | null;
 }): void {
   browserRegistry.setWorkspaceActiveBrowser(input);
 }
 
-export function getWorkspaceActivePaseoBrowserId(workspaceId: string): string | null {
+export function getWorkspaceActiveOttoBrowserId(workspaceId: string): string | null {
   return browserRegistry.getWorkspaceActiveBrowserId(workspaceId);
 }
 
-export function getPaseoBrowserWebContents(browserId: string): WebContents | null {
+export function getOttoBrowserWebContents(browserId: string): WebContents | null {
   const contentsId = browserRegistry.getWebContentsIdForBrowser(browserId);
   if (contentsId === null) {
     return null;
@@ -108,9 +108,9 @@ export function getPaseoBrowserWebContents(browserId: string): WebContents | nul
   return null;
 }
 
-export function getMostRecentWorkspaceActivePaseoBrowserWebContents(): WebContents | null {
+export function getMostRecentWorkspaceActiveOttoBrowserWebContents(): WebContents | null {
   const browserId = browserRegistry.getMostRecentWorkspaceActiveBrowserId();
-  return browserId ? getPaseoBrowserWebContents(browserId) : null;
+  return browserId ? getOttoBrowserWebContents(browserId) : null;
 }
 
 function preventUnsafeBrowserWebviewNavigation(

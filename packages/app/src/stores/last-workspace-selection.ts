@@ -3,7 +3,7 @@ export interface ActiveWorkspaceSelection {
   workspaceId: string;
 }
 
-export const LAST_WORKSPACE_SELECTION_STORAGE_KEY = "paseo:last-workspace-route-selection";
+export const LAST_WORKSPACE_SELECTION_STORAGE_KEY = "otto:last-workspace-route-selection";
 
 export interface LastWorkspaceSelectionStorage {
   read(): Promise<string | null>;

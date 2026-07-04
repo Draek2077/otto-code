@@ -6,7 +6,7 @@ import pino from "pino";
 
 import { ClaudeAgentClient } from "../agent/providers/claude/agent.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
 
 function sanitizeClaudeProjectPath(cwd: string): string {
   return cwd.replace(/[\\/._:]/g, "-");
@@ -59,7 +59,7 @@ describe("daemon E2E - refresh rehydrates timeline from on-disk session", () => 
   let prevClaudeConfigDir: string | undefined;
   let cwd: string;
   let sessionFile: string;
-  let daemon: TestPaseoDaemon | undefined;
+  let daemon: TestOttoDaemon | undefined;
   let client: DaemonClient | undefined;
 
   const sessionId = "external-edits-session";
@@ -101,7 +101,7 @@ describe("daemon E2E - refresh rehydrates timeline from on-disk session", () => 
 
   test("refresh picks up entries appended externally and advances the epoch", async () => {
     const logger = pino({ level: "silent" });
-    daemon = await createTestPaseoDaemon({
+    daemon = await createTestOttoDaemon({
       agentClients: {
         claude: new ClaudeAgentClient({
           logger,

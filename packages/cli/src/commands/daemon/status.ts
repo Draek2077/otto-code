@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { createRequire } from "node:module";
-import { getOrCreateServerId, findExecutable, execCommand } from "@getpaseo/server";
+import { getOrCreateServerId, findExecutable, execCommand } from "@otto-code/server";
 import { connectToDaemon } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema } from "../../output/index.js";
 import { resolveLocalDaemonState, resolveTcpHostFromListen } from "./local-daemon.js";
@@ -218,9 +218,9 @@ function classifyDaemonAuthProbeFailure(error: unknown): DaemonAuthProbeFailure 
 
 function describeDaemonAuthProbeFailure(host: string, failure: DaemonAuthProbeFailure): string {
   if (failure === "auth_required") {
-    return `Daemon is reachable at ${host} but requires a password. Set PASEO_PASSWORD and retry.`;
+    return `Daemon is reachable at ${host} but requires a password. Set OTTO_PASSWORD and retry.`;
   }
-  return `Daemon is reachable at ${host} but the supplied password was rejected. Check PASEO_PASSWORD and retry.`;
+  return `Daemon is reachable at ${host} but the supplied password was rejected. Check OTTO_PASSWORD and retry.`;
 }
 
 async function probeDaemonOverWebsocket(args: {

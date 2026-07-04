@@ -6,8 +6,8 @@ import { escapeRegex } from "./regex";
  * build daemon WebSocket URLs, route patterns, or host endpoints share this
  * accessor instead of re-reading the env var.
  *
- * The port-6767 guard is a hard guardrail: 6767 is the developer's default
- * daemon, which manages real agents. The e2e port is never legitimately 6767,
+ * The port-6868 guard is a hard guardrail: 6868 is the developer's default
+ * daemon, which manages real agents. The e2e port is never legitimately 6868,
  * so refusing it here keeps every test off the developer daemon.
  */
 export function getE2EDaemonPort(): string {
@@ -15,8 +15,8 @@ export function getE2EDaemonPort(): string {
   if (!port) {
     throw new Error("E2E_DAEMON_PORT is not set (expected from Playwright globalSetup).");
   }
-  if (port === "6767") {
-    throw new Error("E2E_DAEMON_PORT must not point at the developer daemon (6767).");
+  if (port === "6868") {
+    throw new Error("E2E_DAEMON_PORT must not point at the developer daemon (6868).");
   }
   return port;
 }

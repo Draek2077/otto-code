@@ -31,8 +31,8 @@ function createTempDir(prefix: string): string {
 }
 
 function createFakeCliBinDir(): string {
-  const dir = createTempDir("paseo-cli-bin-");
-  writeFileSync(join(dir, "paseo"), "");
+  const dir = createTempDir("otto-cli-bin-");
+  writeFileSync(join(dir, "otto"), "");
   return dir;
 }
 
@@ -69,7 +69,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 describe("Claude terminal agent hooks", () => {
   it("installs registered provider hooks idempotently", () => {
-    const configDir = createTempDir("paseo-claude-config-");
+    const configDir = createTempDir("otto-claude-config-");
     const provider = AGENT_HOOK_PROVIDERS.claude;
     const install = provider.install;
 
@@ -78,19 +78,19 @@ describe("Claude terminal agent hooks", () => {
 
     const settings = readSettings(configDir);
     for (const event of provider.events) {
-      const paseoCommands = hookCommands(settings, event.event).filter((command) =>
+      const ottoCommands = hookCommands(settings, event.event).filter((command) =>
         command.includes(install.hookMarker),
       );
-      expect(paseoCommands).toHaveLength(1);
-      expect(paseoCommands[0]).toBe(
-        `if [ -n "$PASEO_TERMINAL_ID" ]; then "\${PASEO_HOOK_CLI:-paseo}" hooks ${provider.id} ${event.event}; fi`,
+      expect(ottoCommands).toHaveLength(1);
+      expect(ottoCommands[0]).toBe(
+        `if [ -n "$OTTO_TERMINAL_ID" ]; then "\${OTTO_HOOK_CLI:-otto}" hooks ${provider.id} ${event.event}; fi`,
       );
     }
     expect(registeredAgentHooksAreInstalled({ configDir })).toBe(true);
   });
 
   it("preserves unrelated user hooks", () => {
-    const configDir = createTempDir("paseo-claude-config-preserve-");
+    const configDir = createTempDir("otto-claude-config-preserve-");
     writeFileSync(
       join(configDir, "settings.json"),
       `${JSON.stringify(
@@ -121,7 +121,7 @@ describe("Claude terminal agent hooks", () => {
   });
 
   it("uninstalls only marker-matched hooks", () => {
-    const configDir = createTempDir("paseo-claude-config-uninstall-");
+    const configDir = createTempDir("otto-claude-config-uninstall-");
     installRegisteredAgentHooks({ configDir });
     const settings = readSettings(configDir);
     settings.hooks = {
@@ -148,18 +148,18 @@ describe("Claude terminal agent hooks", () => {
     const command = buildAgentHookShellCommand(provider, provider.events[0]);
 
     expect(command).toBe(
-      'if [ -n "$PASEO_TERMINAL_ID" ]; then "${PASEO_HOOK_CLI:-paseo}" hooks claude UserPromptSubmit; fi',
+      'if [ -n "$OTTO_TERMINAL_ID" ]; then "${OTTO_HOOK_CLI:-otto}" hooks claude UserPromptSubmit; fi',
     );
   });
 
   it.skipIf(isPlatform("win32")).each(AGENT_HOOK_PROVIDERS.claude.events)(
-    "$event hook command exits 0 when PASEO_TERMINAL_ID is unset",
+    "$event hook command exits 0 when OTTO_TERMINAL_ID is unset",
     (event) => {
       const provider = AGENT_HOOK_PROVIDERS.claude;
       const command = buildAgentHookShellCommand(provider, event);
 
       const result = spawnSync("/bin/sh", ["-c", command], {
-        env: { PATH: process.env.PATH ?? "", PASEO_HOOK_CLI: "paseo" },
+        env: { PATH: process.env.PATH ?? "", OTTO_HOOK_CLI: "otto" },
         stdio: "ignore",
       });
 
@@ -181,26 +181,26 @@ describe("Claude terminal agent hooks", () => {
     }
   });
 
-  it("prepends the paseo CLI directory and injects the hook CLI path", () => {
+  it("prepends the otto CLI directory and injects the hook CLI path", () => {
     const cliBinDir = createFakeCliBinDir();
-    const hookCliPath = join(cliBinDir, "paseo");
+    const hookCliPath = join(cliBinDir, "otto");
 
     const env = buildTerminalEnvironment({
       shell: "/bin/sh",
       env: { PATH: ["/usr/bin", "/bin"].join(delimiter) },
-      paseoCliBinDir: cliBinDir,
-      paseoHookCliPath: hookCliPath,
+      ottoCliBinDir: cliBinDir,
+      ottoHookCliPath: hookCliPath,
     });
 
     expect(env.PATH?.split(delimiter)).toEqual([cliBinDir, "/usr/bin", "/bin"]);
-    expect(env.PASEO_HOOK_CLI).toBe(hookCliPath);
+    expect(env.OTTO_HOOK_CLI).toBe(hookCliPath);
   });
 
   it("leaves terminal PATH unchanged when the CLI directory cannot be resolved", () => {
     const env = buildTerminalEnvironment({
       shell: "/bin/sh",
       env: { PATH: ["/usr/bin", "/bin"].join(delimiter) },
-      paseoCliBinDir: null,
+      ottoCliBinDir: null,
     });
 
     expect(env.PATH?.split(delimiter)).toEqual(["/usr/bin", "/bin"]);

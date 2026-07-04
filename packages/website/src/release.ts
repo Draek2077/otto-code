@@ -13,12 +13,12 @@ interface GitHubRelease {
 }
 
 const LINUX_APPIMAGE_ASSET_PATTERN =
-  /^Paseo-(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)-)?x86_64\.AppImage$/;
+  /^Otto-(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)-)?x86_64\.AppImage$/;
 
 const REQUIRED_ASSET_PATTERNS = [
-  /Paseo-.*-arm64\.dmg$/, // Mac Apple Silicon
+  /Otto-.*-arm64\.dmg$/, // Mac Apple Silicon
   LINUX_APPIMAGE_ASSET_PATTERN, // Linux AppImage
-  /Paseo-Setup-.*\.exe$/, // Windows (any arch)
+  /Otto-Setup-.*\.exe$/, // Windows (any arch)
 ];
 
 function hasRequiredAssets(release: GitHubRelease): boolean {
@@ -28,11 +28,11 @@ function hasRequiredAssets(release: GitHubRelease): boolean {
 }
 
 function pickWindowsAssets(assets: GitHubAsset[]) {
-  const x64Suffixed = assets.find((a) => /Paseo-Setup-.*-x64\.exe$/.test(a.name));
-  const arm64 = assets.find((a) => /Paseo-Setup-.*-arm64\.exe$/.test(a.name));
+  const x64Suffixed = assets.find((a) => /Otto-Setup-.*-x64\.exe$/.test(a.name));
+  const arm64 = assets.find((a) => /Otto-Setup-.*-arm64\.exe$/.test(a.name));
   const legacy = assets.find(
     (a) =>
-      /Paseo-Setup-.*\.exe$/.test(a.name) &&
+      /Otto-Setup-.*\.exe$/.test(a.name) &&
       !a.name.endsWith("-x64.exe") &&
       !a.name.endsWith("-arm64.exe"),
   );
@@ -57,14 +57,14 @@ interface ReleaseInfo {
   windowsArm64Asset: string | null;
 }
 
-const GITHUB_RELEASES_URL = "https://api.github.com/repos/getpaseo/paseo/releases?per_page=10";
+const GITHUB_RELEASES_URL = "https://api.github.com/repos/otto-code-ai/otto-code/releases?per_page=10";
 const RELEASE_CACHE_KEY = "github-release:v1";
 
 async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
   const res = await fetch(GITHUB_RELEASES_URL, {
     headers: {
       Accept: "application/vnd.github+json",
-      "User-Agent": "paseo-website",
+      "User-Agent": "otto-website",
     },
     cf: {
       cacheEverything: true,
@@ -95,18 +95,18 @@ function isReleaseInfo(value: unknown): value is ReleaseInfo {
     typeof record.version === "string" &&
     /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(record.version) &&
     typeof record.linuxAppImageAsset === "string" &&
-    (record.linuxAppImageAsset === "Paseo-x86_64.AppImage" ||
-      new RegExp(`^Paseo-${record.version.replaceAll(".", "\\.")}-x86_64\\.AppImage$`).test(
+    (record.linuxAppImageAsset === "Otto-x86_64.AppImage" ||
+      new RegExp(`^Otto-${record.version.replaceAll(".", "\\.")}-x86_64\\.AppImage$`).test(
         record.linuxAppImageAsset,
       )) &&
     (typeof record.windowsX64Asset === "string" || record.windowsX64Asset === null) &&
     (typeof record.windowsArm64Asset === "string" || record.windowsArm64Asset === null) &&
     (record.windowsX64Asset === null ||
-      new RegExp(`^Paseo-Setup-${record.version.replaceAll(".", "\\.")}(?:-x64)?\\.exe$`).test(
+      new RegExp(`^Otto-Setup-${record.version.replaceAll(".", "\\.")}(?:-x64)?\\.exe$`).test(
         record.windowsX64Asset,
       )) &&
     (record.windowsArm64Asset === null ||
-      new RegExp(`^Paseo-Setup-${record.version.replaceAll(".", "\\.")}-arm64\\.exe$`).test(
+      new RegExp(`^Otto-Setup-${record.version.replaceAll(".", "\\.")}-arm64\\.exe$`).test(
         record.windowsArm64Asset,
       ))
   );

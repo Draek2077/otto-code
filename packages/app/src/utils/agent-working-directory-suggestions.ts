@@ -4,7 +4,7 @@ export interface AgentWorkingDirectorySource {
   lastActivityAt?: Date | null;
 }
 
-const PASEO_WORKTREE_PATH_PATTERN = /(^|\/)\.paseo\/worktrees(\/|$)/;
+const OTTO_WORKTREE_PATH_PATTERN = /(^|\/)\.otto\/worktrees(\/|$)/;
 
 export function collectAgentWorkingDirectorySuggestions(
   sources: Iterable<AgentWorkingDirectorySource>,
@@ -16,7 +16,7 @@ export function collectAgentWorkingDirectorySuggestions(
     if (!cwd) {
       continue;
     }
-    if (isPaseoOwnedWorktreePath(cwd)) {
+    if (isOttoOwnedWorktreePath(cwd)) {
       continue;
     }
 
@@ -38,8 +38,8 @@ export function collectAgentWorkingDirectorySuggestions(
     .map(([cwd]) => cwd);
 }
 
-function isPaseoOwnedWorktreePath(cwd: string): boolean {
-  return PASEO_WORKTREE_PATH_PATTERN.test(cwd.replace(/\\/g, "/"));
+function isOttoOwnedWorktreePath(cwd: string): boolean {
+  return OTTO_WORKTREE_PATH_PATTERN.test(cwd.replace(/\\/g, "/"));
 }
 
 function toEpochMs(date: Date | null | undefined): number {

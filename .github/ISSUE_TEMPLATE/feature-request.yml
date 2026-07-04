@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Paseo is opinionated and maintained by one person. Feature requests are welcome, but they get evaluated against product fit, not just usefulness, and the bar is whether the change keeps the product lean enough for one person to maintain.
+        Otto is opinionated and maintained by one person. Feature requests are welcome, but they get evaluated against product fit, not just usefulness, and the bar is whether the change keeps the product lean enough for one person to maintain.
 
         Big ideas are better discussed in [Discord](https://discord.gg/jz8T2uahpH) first. And please don't open a feature request and a PR at the same time, get alignment on the idea before writing code.
 
@@ -24,7 +24,7 @@ body:
       label: What's the problem
       description: What are you actually trying to do, and why is the current behavior in the way?
       placeholder: |
-        When I'm doing X, I want to Y, but Paseo currently Z.
+        When I'm doing X, I want to Y, but Otto currently Z.
     validations:
       required: true
 

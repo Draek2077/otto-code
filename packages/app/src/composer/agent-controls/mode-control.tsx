@@ -32,8 +32,8 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { resolveNextAgentModeId } from "@/composer/agent-controls/mode";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
-import type { AgentMode, AgentProvider } from "@getpaseo/protocol/agent-types";
-import { getModeVisuals, type AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import type { AgentMode, AgentProvider } from "@otto-code/protocol/agent-types";
+import { getModeVisuals, type AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 
 export type AgentModeControlPlacement = "toolbar" | "footer";
 

@@ -1,5 +1,5 @@
 import { app, Menu, BrowserWindow, ipcMain } from "electron";
-import { getMostRecentWorkspaceActivePaseoBrowserWebContents } from "./browser-webviews/index.js";
+import { getMostRecentWorkspaceActiveOttoBrowserWebContents } from "./browser-webviews/index.js";
 
 interface ShowContextMenuInput {
   kind?: "terminal";
@@ -20,7 +20,7 @@ function withBrowserWindow(
 }
 
 function getReloadTargetBrowserWebContents(): Electron.WebContents | null {
-  return getMostRecentWorkspaceActivePaseoBrowserWebContents();
+  return getMostRecentWorkspaceActiveOttoBrowserWebContents();
 }
 
 function reloadFocusedContentsOrWindow(win: BrowserWindow, options?: { ignoreCache?: boolean }) {
@@ -154,7 +154,7 @@ export function setupApplicationMenu(options: ApplicationMenuOptions): void {
   const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(options));
   Menu.setApplicationMenu(menu);
 
-  ipcMain.handle("paseo:menu:showContextMenu", (event, input?: ShowContextMenuInput) => {
+  ipcMain.handle("otto:menu:showContextMenu", (event, input?: ShowContextMenuInput) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return;

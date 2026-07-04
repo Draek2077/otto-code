@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
-import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -168,7 +168,7 @@ export interface DesktopHostBridge {
 
 declare global {
   interface Window {
-    paseoDesktop?: DesktopHostBridge;
+    ottoDesktop?: DesktopHostBridge;
   }
 }
 

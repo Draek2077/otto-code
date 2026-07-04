@@ -306,14 +306,14 @@ function ignoreWebviewJavaScriptError() {}
 function destroyWebviewSelector(webview: ElectronWebview): void {
   void executeWebviewJavaScript(
     webview,
-    "if(window.__paseoSelector) window.__paseoSelector.destroy();",
+    "if(window.__ottoSelector) window.__ottoSelector.destroy();",
   ).catch(ignoreWebviewJavaScriptError);
 }
 
 function clearWebviewSelector(webview: ElectronWebview): void {
   void executeWebviewJavaScript(
     webview,
-    "if(window.__paseoSelector) window.__paseoSelector.destroy(); window.__paseoSelectorResult = null;",
+    "if(window.__ottoSelector) window.__ottoSelector.destroy(); window.__ottoSelectorResult = null;",
   ).catch(ignoreWebviewJavaScriptError);
 }
 
@@ -333,7 +333,7 @@ function buildAnnotationMarkerScript(markers: readonly BrowserAnnotationMarker[]
   return `
     (function() {
       var markers = ${payload};
-      if (window.__paseoAnnotationMarkers) { window.__paseoAnnotationMarkers.update(markers); return true; }
+      if (window.__ottoAnnotationMarkers) { window.__ottoAnnotationMarkers.update(markers); return true; }
       var host = document.createElement('div');
       host.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483646;pointer-events:none;';
       (document.body || document.documentElement).appendChild(host);
@@ -369,14 +369,14 @@ function buildAnnotationMarkerScript(markers: readonly BrowserAnnotationMarker[]
       }
       window.addEventListener('scroll', schedule, true);
       window.addEventListener('resize', schedule, true);
-      window.__paseoAnnotationMarkers = {
+      window.__ottoAnnotationMarkers = {
         update: function(next) { current = next; schedule(); },
         destroy: function() {
           window.removeEventListener('scroll', schedule, true);
           window.removeEventListener('resize', schedule, true);
           clearBadges();
           if (host.parentNode) host.parentNode.removeChild(host);
-          window.__paseoAnnotationMarkers = null;
+          window.__ottoAnnotationMarkers = null;
         }
       };
       reposition();
@@ -397,7 +397,7 @@ function applyAnnotationMarkers(
 function clearAnnotationMarkers(webview: ElectronWebview): void {
   void executeWebviewJavaScript(
     webview,
-    "if(window.__paseoAnnotationMarkers) window.__paseoAnnotationMarkers.destroy();",
+    "if(window.__ottoAnnotationMarkers) window.__ottoAnnotationMarkers.destroy();",
   ).catch(ignoreWebviewJavaScriptError);
 }
 
@@ -436,7 +436,7 @@ function startSelectorResultPolling(input: {
       try {
         const raw = await executeWebviewJavaScript(
           webview,
-          "JSON.stringify(window.__paseoSelectorResult || null)",
+          "JSON.stringify(window.__ottoSelectorResult || null)",
         );
         const result = typeof raw === "string" ? JSON.parse(raw) : null;
         if (!result) {
@@ -444,7 +444,7 @@ function startSelectorResultPolling(input: {
         }
         window.clearInterval(poll);
         onDone();
-        await executeWebviewJavaScript(webview, "window.__paseoSelectorResult = null;");
+        await executeWebviewJavaScript(webview, "window.__ottoSelectorResult = null;");
         if (!result.__cancelled) {
           onSelection(result as BrowserElementSelection);
         }
@@ -1154,26 +1154,26 @@ export function BrowserPane({
 
       const js = `
       (function() {
-        if (window.__paseoSelector) { window.__paseoSelector.destroy(); }
+        if (window.__ottoSelector) { window.__ottoSelector.destroy(); }
         var overlay = null;
         var style = document.createElement('style');
         style.textContent = [
-          '.__paseo-hover { outline: 2px solid #3b82f6 !important; outline-offset: 2px !important; cursor: crosshair !important; }',
-          '.__paseo-select-mode, .__paseo-select-mode * { cursor: crosshair !important; pointer-events: auto !important; user-select: none !important; }',
-          '.__paseo-select-mode *, .__paseo-select-mode *::before, .__paseo-select-mode *::after { animation: none !important; transition: none !important; }',
-          '.__paseo-select-mode a, .__paseo-select-mode button, .__paseo-select-mode input, .__paseo-select-mode select, .__paseo-select-mode textarea, .__paseo-select-mode [role="button"], .__paseo-select-mode [onclick] { pointer-events: none !important; }',
-          '.__paseo-select-mode iframe, .__paseo-select-mode video, .__paseo-select-mode audio { pointer-events: none !important; }',
-          '.__paseo-hover-label { position: fixed; z-index: 2147483647; pointer-events: none; max-width: 360px; padding: 4px 8px; border-radius: 6px; background: rgba(24,24,27,0.96); color: #fff; font: 500 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow: 0 2px 10px rgba(0,0,0,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-          '.__paseo-hover-label .__paseo-tag { color: #93c5fd; }',
-          '.__paseo-hover-label .__paseo-id { color: #fca5a5; }',
-          '.__paseo-hover-label .__paseo-cls { color: #fcd34d; }',
-          '.__paseo-hover-label .__paseo-dim { color: #a1a1aa; margin-left: 6px; }',
-          '.__paseo-hover-label .__paseo-comp { color: #86efac; margin-left: 6px; }',
+          '.__otto-hover { outline: 2px solid #3b82f6 !important; outline-offset: 2px !important; cursor: crosshair !important; }',
+          '.__otto-select-mode, .__otto-select-mode * { cursor: crosshair !important; pointer-events: auto !important; user-select: none !important; }',
+          '.__otto-select-mode *, .__otto-select-mode *::before, .__otto-select-mode *::after { animation: none !important; transition: none !important; }',
+          '.__otto-select-mode a, .__otto-select-mode button, .__otto-select-mode input, .__otto-select-mode select, .__otto-select-mode textarea, .__otto-select-mode [role="button"], .__otto-select-mode [onclick] { pointer-events: none !important; }',
+          '.__otto-select-mode iframe, .__otto-select-mode video, .__otto-select-mode audio { pointer-events: none !important; }',
+          '.__otto-hover-label { position: fixed; z-index: 2147483647; pointer-events: none; max-width: 360px; padding: 4px 8px; border-radius: 6px; background: rgba(24,24,27,0.96); color: #fff; font: 500 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow: 0 2px 10px rgba(0,0,0,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+          '.__otto-hover-label .__otto-tag { color: #93c5fd; }',
+          '.__otto-hover-label .__otto-id { color: #fca5a5; }',
+          '.__otto-hover-label .__otto-cls { color: #fcd34d; }',
+          '.__otto-hover-label .__otto-dim { color: #a1a1aa; margin-left: 6px; }',
+          '.__otto-hover-label .__otto-comp { color: #86efac; margin-left: 6px; }',
         ].join('\\n');
         document.head.appendChild(style);
-        document.documentElement.classList.add('__paseo-select-mode');
+        document.documentElement.classList.add('__otto-select-mode');
         var hoverLabel = document.createElement('div');
-        hoverLabel.className = '__paseo-hover-label';
+        hoverLabel.className = '__otto-hover-label';
         hoverLabel.style.display = 'none';
         document.documentElement.appendChild(hoverLabel);
         var last = null;
@@ -1184,23 +1184,23 @@ export function BrowserPane({
         }
         function describeElement(el) {
           var tag = el.tagName ? el.tagName.toLowerCase() : 'node';
-          var parts = ['<span class="__paseo-tag">' + escapeHtml(tag) + '</span>'];
+          var parts = ['<span class="__otto-tag">' + escapeHtml(tag) + '</span>'];
           if (el.id) {
-            parts.push('<span class="__paseo-id">#' + escapeHtml(el.id) + '</span>');
+            parts.push('<span class="__otto-id">#' + escapeHtml(el.id) + '</span>');
           }
           if (el.classList && el.classList.length) {
             var cls = Array.prototype.slice.call(el.classList, 0, 2)
-              .filter(function(c) { return c.indexOf('__paseo') !== 0; })
+              .filter(function(c) { return c.indexOf('__otto') !== 0; })
               .map(function(c) { return '.' + escapeHtml(c); })
               .join('');
-            if (cls) parts.push('<span class="__paseo-cls">' + cls + '</span>');
+            if (cls) parts.push('<span class="__otto-cls">' + cls + '</span>');
           }
           var comp = getReactSource(el);
           if (comp && comp.componentName) {
-            parts.push('<span class="__paseo-comp">&lt;' + escapeHtml(comp.componentName) + '&gt;</span>');
+            parts.push('<span class="__otto-comp">&lt;' + escapeHtml(comp.componentName) + '&gt;</span>');
           }
           var rect = el.getBoundingClientRect();
-          parts.push('<span class="__paseo-dim">' + Math.round(rect.width) + '×' + Math.round(rect.height) + '</span>');
+          parts.push('<span class="__otto-dim">' + Math.round(rect.width) + '×' + Math.round(rect.height) + '</span>');
           return { html: parts.join(''), rect: rect };
         }
         function positionLabel(rect, e) {
@@ -1219,9 +1219,9 @@ export function BrowserPane({
         function onMove(e) {
           e.preventDefault();
           e.stopPropagation();
-          if (last) last.classList.remove('__paseo-hover');
+          if (last) last.classList.remove('__otto-hover');
           var el = e.target;
-          el.classList.add('__paseo-hover');
+          el.classList.add('__otto-hover');
           last = el;
           try {
             var info = describeElement(el);
@@ -1306,7 +1306,7 @@ export function BrowserPane({
           e.stopPropagation();
           e.stopImmediatePropagation();
           var el = e.target;
-          if (last) last.classList.remove('__paseo-hover');
+          if (last) last.classList.remove('__otto-hover');
           hoverLabel.style.display = 'none';
           var attrs = {};
           for (var i = 0; i < el.attributes.length; i++) {
@@ -1327,10 +1327,10 @@ export function BrowserPane({
             children: getChildSummary(el, 8)
           };
           destroy();
-          window.__paseoSelectorResult = result;
+          window.__ottoSelectorResult = result;
         }
         function onKey(e) {
-          if (e.key === 'Escape') { destroy(); window.__paseoSelectorResult = { __cancelled: true }; }
+          if (e.key === 'Escape') { destroy(); window.__ottoSelectorResult = { __cancelled: true }; }
         }
         function blockEvent(e) {
           e.preventDefault();
@@ -1349,11 +1349,11 @@ export function BrowserPane({
           document.removeEventListener('touchend', blockEvent, true);
           document.removeEventListener('focus', blockEvent, true);
           document.removeEventListener('submit', blockEvent, true);
-          document.documentElement.classList.remove('__paseo-select-mode');
-          if (last) last.classList.remove('__paseo-hover');
+          document.documentElement.classList.remove('__otto-select-mode');
+          if (last) last.classList.remove('__otto-hover');
           if (hoverLabel.parentNode) hoverLabel.parentNode.removeChild(hoverLabel);
           style.remove();
-          window.__paseoSelector = null;
+          window.__ottoSelector = null;
         }
         document.addEventListener('mousemove', onMove, true);
         document.addEventListener('click', onClick, true);
@@ -1366,7 +1366,7 @@ export function BrowserPane({
         document.addEventListener('touchend', blockEvent, true);
         document.addEventListener('focus', blockEvent, true);
         document.addEventListener('submit', blockEvent, true);
-        window.__paseoSelector = { destroy: destroy };
+        window.__ottoSelector = { destroy: destroy };
       })()
     `;
 

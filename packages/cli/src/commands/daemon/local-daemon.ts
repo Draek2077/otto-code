@@ -2,7 +2,7 @@ import { spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { loadConfig, resolvePaseoHome, spawnProcess } from "@getpaseo/server";
+import { loadConfig, resolveOttoHome, spawnProcess } from "@otto-code/server";
 import treeKill from "tree-kill";
 import { tryConnectToDaemon } from "../../utils/client.js";
 
@@ -97,7 +97,7 @@ export interface DaemonLaunchRuntime {
 const DETACHED_STARTUP_GRACE_MS = 1200;
 const PID_POLL_INTERVAL_MS = 100;
 const DAEMON_LOG_FILENAME = "daemon.log";
-const DAEMON_PID_FILENAME = "paseo.pid";
+const DAEMON_PID_FILENAME = "otto.pid";
 
 export const DEFAULT_STOP_TIMEOUT_MS = 15_000;
 export const DEFAULT_KILL_TIMEOUT_MS = 3_000;
@@ -106,7 +106,7 @@ const require = createRequire(import.meta.url);
 
 const defaultDaemonLaunchRuntime: DaemonLaunchRuntime = {
   resolveRunnerEntry: resolveDaemonRunnerEntry,
-  resolveHome: resolvePaseoHome,
+  resolveHome: resolveOttoHome,
   spawnDetached: spawnProcess,
   spawnForeground: spawnSync,
 };
@@ -123,7 +123,7 @@ function envWithHome(home?: string): NodeJS.ProcessEnv {
     return process.env;
   }
 
-  return { ...process.env, PASEO_HOME: home };
+  return { ...process.env, OTTO_HOME: home };
 }
 
 function buildRunnerArgs(options: DaemonStartOptions): string[] {
@@ -154,24 +154,24 @@ function buildRunnerArgs(options: DaemonStartOptions): string[] {
 function buildChildEnv(options: DaemonStartOptions): NodeJS.ProcessEnv {
   const childEnv: NodeJS.ProcessEnv = { ...process.env };
   if (options.home) {
-    childEnv.PASEO_HOME = options.home;
+    childEnv.OTTO_HOME = options.home;
   }
   if (options.listen) {
-    childEnv.PASEO_LISTEN = options.listen;
+    childEnv.OTTO_LISTEN = options.listen;
   } else if (options.port) {
-    childEnv.PASEO_LISTEN = `127.0.0.1:${options.port}`;
+    childEnv.OTTO_LISTEN = `127.0.0.1:${options.port}`;
   }
   if (options.hostnames) {
-    childEnv.PASEO_HOSTNAMES = options.hostnames;
+    childEnv.OTTO_HOSTNAMES = options.hostnames;
   }
   if (options.relayUseTls === true) {
-    childEnv.PASEO_RELAY_USE_TLS = "true";
+    childEnv.OTTO_RELAY_USE_TLS = "true";
   }
   if (options.webUi === true) {
-    childEnv.PASEO_WEB_UI_ENABLED = "true";
+    childEnv.OTTO_WEB_UI_ENABLED = "true";
   }
   if (options.webUi === false) {
-    childEnv.PASEO_WEB_UI_ENABLED = "false";
+    childEnv.OTTO_WEB_UI_ENABLED = "false";
   }
   return childEnv;
 }
@@ -181,7 +181,7 @@ function resolveServerRunnerFromDir(currentDir: string): string | null {
   if (!existsSync(packageJsonPath)) return null;
   try {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { name?: string };
-    if (packageJson.name !== "@getpaseo/server") return null;
+    if (packageJson.name !== "@otto-code/server") return null;
     const distRunner = path.join(currentDir, "dist", "scripts", "supervisor-entrypoint.js");
     if (existsSync(distRunner)) {
       return distRunner;
@@ -193,7 +193,7 @@ function resolveServerRunnerFromDir(currentDir: string): string | null {
 }
 
 function resolveDaemonRunnerEntry(): string {
-  const serverExportPath = require.resolve("@getpaseo/server");
+  const serverExportPath = require.resolve("@otto-code/server");
   let currentDir = path.dirname(serverExportPath);
 
   while (true) {
@@ -209,11 +209,11 @@ function resolveDaemonRunnerEntry(): string {
     currentDir = parentDir;
   }
 
-  throw new Error("Unable to resolve @getpaseo/server package root for daemon runner");
+  throw new Error("Unable to resolve @otto-code/server package root for daemon runner");
 }
 
-function pidFilePath(paseoHome: string): string {
-  return path.join(paseoHome, DAEMON_PID_FILENAME);
+function pidFilePath(ottoHome: string): string {
+  return path.join(ottoHome, DAEMON_PID_FILENAME);
 }
 
 function resolveListenField(listen: unknown, sockPath: unknown): string | undefined {
@@ -500,8 +500,8 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function resolveLocalPaseoHome(home?: string): string {
-  return resolvePaseoHome(envWithHome(home));
+export function resolveLocalOttoHome(home?: string): string {
+  return resolveOttoHome(envWithHome(home));
 }
 
 export function resolveTcpHostFromListen(listen: string): string | null {
@@ -536,16 +536,16 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     ...envWithHome(options.home),
     // Status should reflect local persisted config + pid file, not inherited daemon env overrides.
     // This is CLI-side defensive scrubbing; the daemon RPC is authoritative when available.
-    PASEO_LISTEN: undefined,
-    PASEO_HOSTNAMES: undefined,
-    PASEO_ALLOWED_HOSTS: undefined,
-    PASEO_RELAY_ENABLED: undefined,
-    PASEO_RELAY_ENDPOINT: undefined,
-    PASEO_RELAY_PUBLIC_ENDPOINT: undefined,
-    PASEO_RELAY_USE_TLS: undefined,
-    PASEO_RELAY_PUBLIC_USE_TLS: undefined,
+    OTTO_LISTEN: undefined,
+    OTTO_HOSTNAMES: undefined,
+    OTTO_ALLOWED_HOSTS: undefined,
+    OTTO_RELAY_ENABLED: undefined,
+    OTTO_RELAY_ENDPOINT: undefined,
+    OTTO_RELAY_PUBLIC_ENDPOINT: undefined,
+    OTTO_RELAY_USE_TLS: undefined,
+    OTTO_RELAY_PUBLIC_USE_TLS: undefined,
   };
-  const home = resolvePaseoHome(env);
+  const home = resolveOttoHome(env);
   const config = loadConfig(home, { env });
   const pidPath = pidFilePath(home);
   const logPath = path.join(home, DAEMON_LOG_FILENAME);
@@ -557,7 +557,7 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     home,
     listen,
     relayEnabled: config.relayEnabled ?? true,
-    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.paseo.sh:443",
+    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.otto-code.ai:443",
     relayUseTls: config.relayUseTls ?? false,
     relayPublicUseTls: config.relayPublicUseTls ?? config.relayUseTls ?? false,
     logPath,
@@ -569,7 +569,7 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
 }
 
 export function tailDaemonLog(home?: string, lines = 30): string | null {
-  const logPath = path.join(resolveLocalPaseoHome(home), DAEMON_LOG_FILENAME);
+  const logPath = path.join(resolveLocalOttoHome(home), DAEMON_LOG_FILENAME);
   return tailFile(logPath, lines);
 }
 
@@ -584,8 +584,8 @@ export async function startLocalDaemonDetached(
   const daemonRunnerEntry = runtime.resolveRunnerEntry();
   const childEnv = buildChildEnv(options);
 
-  const paseoHome = runtime.resolveHome(childEnv);
-  const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME);
+  const ottoHome = runtime.resolveHome(childEnv);
+  const logPath = path.join(ottoHome, DAEMON_LOG_FILENAME);
   const child = runtime.spawnDetached(
     process.execPath,
     [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],

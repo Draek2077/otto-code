@@ -18,8 +18,8 @@ import {
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { ITheme } from "@xterm/xterm";
-import type { TerminalState } from "@getpaseo/protocol/messages";
-import type { TerminalInputModeState } from "@getpaseo/protocol/terminal-input-mode";
+import type { TerminalState } from "@otto-code/protocol/messages";
+import type { TerminalInputModeState } from "@otto-code/protocol/terminal-input-mode";
 import type { TerminalOutputData } from "../terminal/runtime/terminal-emulator-runtime";
 import type {
   TerminalLocalFileLinkSource,
@@ -326,7 +326,7 @@ export default function TerminalEmulator({
     for (const message of pending) {
       const payload = serializeForInjectedJavaScript(message);
       webViewRef.current.injectJavaScript(
-        `window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__ && window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__(${payload}); true;`,
+        `window.__OTTO_TERMINAL_WEBVIEW_RECEIVE__ && window.__OTTO_TERMINAL_WEBVIEW_RECEIVE__(${payload}); true;`,
       );
     }
   }, []);
@@ -338,7 +338,7 @@ export default function TerminalEmulator({
     }
     const payload = serializeForInjectedJavaScript(message);
     webViewRef.current.injectJavaScript(
-      `window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__ && window.__PASEO_TERMINAL_WEBVIEW_RECEIVE__(${payload}); true;`,
+      `window.__OTTO_TERMINAL_WEBVIEW_RECEIVE__ && window.__OTTO_TERMINAL_WEBVIEW_RECEIVE__(${payload}); true;`,
     );
   }, []);
 
@@ -370,7 +370,7 @@ export default function TerminalEmulator({
       },
       blur: () => {
         webViewRef.current?.injectJavaScript(
-          "window.__PASEO_TERMINAL_WEBVIEW_BLUR__ && window.__PASEO_TERMINAL_WEBVIEW_BLUR__(); true;",
+          "window.__OTTO_TERMINAL_WEBVIEW_BLUR__ && window.__OTTO_TERMINAL_WEBVIEW_BLUR__(); true;",
         );
         Keyboard.dismiss();
       },

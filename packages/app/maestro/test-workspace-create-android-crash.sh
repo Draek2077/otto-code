@@ -14,21 +14,21 @@
 #   bash packages/app/maestro/test-workspace-create-android-crash.sh
 #
 # Optional environment:
-#   PASEO_MAESTRO_APP_ID=sh.paseo.debug
-#   PASEO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6767
-#   PASEO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6767/ws
-#   PASEO_MAESTRO_PROJECT_PATH=/path/to/git/repo
+#   OTTO_MAESTRO_APP_ID=ai.ottocode.debug
+#   OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6868
+#   OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6868/ws
+#   OTTO_MAESTRO_PROJECT_PATH=/path/to/git/repo
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 FLOW_TEMPLATE="$REPO_ROOT/packages/app/maestro/workspace-create-android-crash.yaml"
 FLOW_TEMPLATE_DIR="$REPO_ROOT/packages/app/maestro"
-OUT_DIR="/tmp/paseo-workspace-create-android-$(date +%s)"
+OUT_DIR="/tmp/otto-workspace-create-android-$(date +%s)"
 CLIENT_EXPORTS="$REPO_ROOT/packages/client/dist/daemon-client.js"
 
-export PASEO_MAESTRO_APP_ID="${PASEO_MAESTRO_APP_ID:-sh.paseo.debug}"
-export PASEO_MAESTRO_DIRECT_ENDPOINT="${PASEO_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6767}"
-export PASEO_MAESTRO_DAEMON_WS_URL="${PASEO_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6767/ws}"
+export OTTO_MAESTRO_APP_ID="${OTTO_MAESTRO_APP_ID:-ai.ottocode.debug}"
+export OTTO_MAESTRO_DIRECT_ENDPOINT="${OTTO_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6868}"
+export OTTO_MAESTRO_DAEMON_WS_URL="${OTTO_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6868/ws}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -48,9 +48,9 @@ render_flow() {
   local target="$2"
   mkdir -p "$(dirname "$target")"
   perl -0pe '
-    s/\$\{PASEO_MAESTRO_APP_ID\}/$ENV{PASEO_MAESTRO_APP_ID}/g;
-    s/\$\{PASEO_MAESTRO_DIRECT_ENDPOINT\}/$ENV{PASEO_MAESTRO_DIRECT_ENDPOINT}/g;
-    s/\$\{PASEO_MAESTRO_PROJECT_NAME\}/$ENV{PASEO_MAESTRO_PROJECT_NAME}/g;
+    s/\$\{OTTO_MAESTRO_APP_ID\}/$ENV{OTTO_MAESTRO_APP_ID}/g;
+    s/\$\{OTTO_MAESTRO_DIRECT_ENDPOINT\}/$ENV{OTTO_MAESTRO_DIRECT_ENDPOINT}/g;
+    s/\$\{OTTO_MAESTRO_PROJECT_NAME\}/$ENV{OTTO_MAESTRO_PROJECT_NAME}/g;
   ' "$source" > "$target"
 }
 
@@ -70,31 +70,31 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-if [ -z "${PASEO_MAESTRO_PROJECT_PATH:-}" ]; then
-  PROJECT_PARENT="$(mktemp -d /tmp/paseo-maestro-project-XXXXXX)"
+if [ -z "${OTTO_MAESTRO_PROJECT_PATH:-}" ]; then
+  PROJECT_PARENT="$(mktemp -d /tmp/otto-maestro-project-XXXXXX)"
   PROJECT_BASENAME="aaa-workspace-create-android-$(basename "$PROJECT_PARENT")"
-  export PASEO_MAESTRO_PROJECT_PATH="$PROJECT_PARENT/$PROJECT_BASENAME"
-  mkdir -p "$PASEO_MAESTRO_PROJECT_PATH"
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" init >/dev/null
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" checkout -b main >/dev/null 2>&1 || true
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" config user.name "Paseo Maestro"
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" config user.email "maestro@getpaseo.local"
-  printf "# Workspace create Android repro\n" > "$PASEO_MAESTRO_PROJECT_PATH/README.md"
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" add README.md
-  git -C "$PASEO_MAESTRO_PROJECT_PATH" commit -m "Initial commit" >/dev/null
+  export OTTO_MAESTRO_PROJECT_PATH="$PROJECT_PARENT/$PROJECT_BASENAME"
+  mkdir -p "$OTTO_MAESTRO_PROJECT_PATH"
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" init >/dev/null
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" checkout -b main >/dev/null 2>&1 || true
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" config user.name "Otto Maestro"
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" config user.email "maestro@otto-code.local"
+  printf "# Workspace create Android repro\n" > "$OTTO_MAESTRO_PROJECT_PATH/README.md"
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" add README.md
+  git -C "$OTTO_MAESTRO_PROJECT_PATH" commit -m "Initial commit" >/dev/null
 else
   PROJECT_PARENT=""
 fi
 
-export PASEO_MAESTRO_PROJECT_NAME="${PASEO_MAESTRO_PROJECT_NAME:-$(basename "$PASEO_MAESTRO_PROJECT_PATH")}"
+export OTTO_MAESTRO_PROJECT_NAME="${OTTO_MAESTRO_PROJECT_NAME:-$(basename "$OTTO_MAESTRO_PROJECT_PATH")}"
 
 echo "=== Workspace Create Android Crash Harness ==="
 echo "Output dir: $OUT_DIR"
-echo "App id: $PASEO_MAESTRO_APP_ID"
-echo "Android direct endpoint: $PASEO_MAESTRO_DIRECT_ENDPOINT"
-echo "Daemon websocket: $PASEO_MAESTRO_DAEMON_WS_URL"
-echo "Project: $PASEO_MAESTRO_PROJECT_PATH"
-echo "Project name: $PASEO_MAESTRO_PROJECT_NAME"
+echo "App id: $OTTO_MAESTRO_APP_ID"
+echo "Android direct endpoint: $OTTO_MAESTRO_DIRECT_ENDPOINT"
+echo "Daemon websocket: $OTTO_MAESTRO_DAEMON_WS_URL"
+echo "Project: $OTTO_MAESTRO_PROJECT_PATH"
+echo "Project name: $OTTO_MAESTRO_PROJECT_NAME"
 
 FLOW="$OUT_DIR/workspace-create-android-crash.rendered.yaml"
 render_flow_tree
@@ -102,7 +102,7 @@ echo "Rendered flow: $FLOW"
 
 echo ""
 echo "Preparing Android port reverse..."
-adb reverse tcp:6767 tcp:6767 >/dev/null
+adb reverse tcp:6868 tcp:6868 >/dev/null
 
 echo ""
 echo "Opening project in daemon..."
@@ -111,8 +111,8 @@ import { pathToFileURL } from "node:url";
 import WebSocket from "ws";
 
 const repoRoot = process.env.REPO_ROOT;
-const projectPath = process.env.PASEO_MAESTRO_PROJECT_PATH;
-const daemonUrl = process.env.PASEO_MAESTRO_DAEMON_WS_URL;
+const projectPath = process.env.OTTO_MAESTRO_PROJECT_PATH;
+const daemonUrl = process.env.OTTO_MAESTRO_DAEMON_WS_URL;
 if (!repoRoot || !projectPath || !daemonUrl) {
   throw new Error("Missing required environment for daemon project setup.");
 }

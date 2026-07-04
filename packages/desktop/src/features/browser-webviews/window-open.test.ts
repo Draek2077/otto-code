@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleBrowserWindowOpenRequest } from ".";
 
 describe("browser webview window-open requests", () => {
-  it("denies Electron window creation and requests a Paseo browser tab", () => {
+  it("denies Electron window creation and requests a Otto browser tab", () => {
     const requestNewTab = vi.fn();
 
     const result = handleBrowserWindowOpenRequest({
@@ -19,7 +19,7 @@ describe("browser webview window-open requests", () => {
     });
   });
 
-  it("denies unsupported window-open requests before asking for a Paseo browser tab", () => {
+  it("denies unsupported window-open requests before asking for a Otto browser tab", () => {
     const requestNewTab = vi.fn();
 
     const result = handleBrowserWindowOpenRequest({

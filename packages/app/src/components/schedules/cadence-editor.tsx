@@ -11,7 +11,7 @@ import {
   partsToEveryMs,
   validateCron,
 } from "@/utils/schedule-format";
-import type { ScheduleCadence } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleCadence } from "@otto-code/protocol/schedule/types";
 
 type CadenceMode = ScheduleCadence["type"];
 

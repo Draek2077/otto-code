@@ -5,8 +5,8 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/sponsor")({
   head: () =>
     pageMeta(
-      "Sponsor Paseo",
-      "Support the independent open-source project behind Paseo. Built by Mo, funded by the community.",
+      "Sponsor Otto",
+      "Support the independent open-source project behind Otto. Built by Mo, funded by the community.",
       "/sponsor",
     ),
   component: Sponsor,
@@ -33,14 +33,14 @@ function Sponsor() {
         </p>
 
         <p>
-          Paseo started as a personal project: I wanted to run coding agents from anywhere without
+          Otto started as a personal project: I wanted to run coding agents from anywhere without
           giving up control of my code, my keys, or my workflow. It grew into something bigger
           because developers felt the same need: a single place to orchestrate agents across
           devices, without vendor lock-in.
         </p>
 
         <p>
-          I work on Paseo full-time. It&apos;s an independent, self-funded open-source project. I
+          I work on Otto full-time. It&apos;s an independent, self-funded open-source project. I
           don&apos;t have investors, a board, or a big team. I&apos;m just shipping software the
           best I know how and hope it&apos;s useful to other people.
         </p>
@@ -56,7 +56,7 @@ function Sponsor() {
 
       {/* Sponsor links */}
       <section className="mt-12 space-y-4">
-        <h2 className="text-xl font-medium">Support Paseo</h2>
+        <h2 className="text-xl font-medium">Support Otto</h2>
 
         <div className="flex flex-col sm:flex-row gap-4">
           <a
@@ -81,7 +81,7 @@ function Sponsor() {
           </a>
 
           <a
-            href="https://opencollective.com/paseo-ai/donate?interval=month&amount=10&contributeAs=me"
+            href="https://opencollective.com/otto-ai/donate?interval=month&amount=10&contributeAs=me"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-5 hover:border-white/20 hover:bg-white/[0.05] transition-colors"
@@ -108,7 +108,7 @@ function Sponsor() {
           </a>
 
           <a
-            href="https://buymeacoffee.com/paseo"
+            href="https://buymeacoffee.com/otto"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-5 hover:border-white/20 hover:bg-white/[0.05] transition-colors"

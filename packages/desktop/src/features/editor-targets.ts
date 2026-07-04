@@ -61,9 +61,9 @@ interface SpawnLaunch extends Launch {
 }
 
 const RUNTIME_CONTROL_ENV_KEYS = [
-  "PASEO_NODE_ENV",
-  "PASEO_DESKTOP_MANAGED",
-  "PASEO_SUPERVISED",
+  "OTTO_NODE_ENV",
+  "OTTO_DESKTOP_MANAGED",
+  "OTTO_SUPERVISED",
   "ELECTRON_RUN_AS_NODE",
   "ELECTRON_NO_ATTACH_CONSOLE",
 ] as const;
@@ -362,8 +362,8 @@ export function registerEditorTargetHandlers(
 ): void {
   const ipc = options.ipc ?? ipcMain;
   const dependencies = options.dependencies ?? {};
-  ipc.handle("paseo:editor:listTargets", () => listAvailableEditorTargets(dependencies));
-  ipc.handle("paseo:editor:openTarget", async (_event, payload: unknown) => {
+  ipc.handle("otto:editor:listTargets", () => listAvailableEditorTargets(dependencies));
+  ipc.handle("otto:editor:openTarget", async (_event, payload: unknown) => {
     const parsedInput = OpenEditorTargetInputSchema.parse(payload);
     await openEditorTarget(parsedInput, dependencies);
   });

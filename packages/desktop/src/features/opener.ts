@@ -16,7 +16,7 @@ export function isAllowedExternalUrl(value: unknown): value is string {
 }
 
 export function registerOpenerHandlers(): void {
-  ipcMain.handle("paseo:opener:openUrl", async (_event, url: unknown) => {
+  ipcMain.handle("otto:opener:openUrl", async (_event, url: unknown) => {
     if (!isAllowedExternalUrl(url)) {
       throw new Error("Unsupported external URL");
     }

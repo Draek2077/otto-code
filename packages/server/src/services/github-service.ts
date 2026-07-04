@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GitHubSearchKind } from "@getpaseo/protocol/messages";
+import type { GitHubSearchKind } from "@otto-code/protocol/messages";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { resolveGitHubRemote } from "../utils/github-remote.js";
 import { runGitCommand } from "../utils/run-git-command.js";

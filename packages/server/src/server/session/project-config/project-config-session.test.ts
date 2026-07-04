@@ -47,7 +47,7 @@ function makeSubsystem(records: PersistedProjectRecord[]) {
 describe("ProjectConfigSession", () => {
   test("read resolves a known root despite a trailing slash and returns the raw config + revision", async () => {
     const repoRoot = makeRoot();
-    writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
+    writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
     const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
 
     await subsystem.handleReadProjectConfigRequest({
@@ -79,7 +79,7 @@ describe("ProjectConfigSession", () => {
     async () => {
       const repoRoot = makeRoot();
       writeFileSync(
-        join(repoRoot, "paseo.json"),
+        join(repoRoot, "otto.json"),
         JSON.stringify({ worktree: { setup: "npm ci" } }),
       );
       const linkRoot = join(makeRoot(), "link");
@@ -181,7 +181,7 @@ describe("ProjectConfigSession", () => {
 
   test("write rejects a stale revision and an unknown root with their inline domain failures", async () => {
     const staleRoot = makeRoot();
-    writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
+    writeFileSync(join(staleRoot, "otto.json"), JSON.stringify({ worktree: { setup: "old" } }));
     const unknownRoot = makeRoot();
     const { subsystem, emitted } = makeSubsystem([projectRecord(staleRoot)]);
 

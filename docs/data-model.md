@@ -1,19 +1,19 @@
 # Data Model
 
-Paseo uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
+Otto uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
 
-All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
+All server-side stores live under `$OTTO_HOME` (defaults to `~/.otto`).
 
 ---
 
 ## Directory layout
 
 ```
-$PASEO_HOME/
+$OTTO_HOME/
 ├── config.json                          # Daemon configuration
 ├── server-id                            # Stable daemon identifier (plain text, "srv_<base64url>")
 ├── daemon-keypair.json                  # E2EE keypair for relay (mode 0600)
-├── paseo.pid                            # Daemon PID lock file
+├── otto.pid                            # Daemon PID lock file
 ├── daemon.log                           # Default log file (path configurable)
 ├── agents/
 │   └── {sanitized-cwd}/
@@ -29,7 +29,7 @@ $PASEO_HOME/
 │   └── workspaces.json                  # Workspace registry
 ├── runtime/
 │   └── managed-processes/
-│       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
+│       └── {recordId}.json              # Helper processes owned by Otto; reconciled on daemon bootstrap
 └── push-tokens.json                     # Expo push notification tokens
 ```
 
@@ -39,7 +39,7 @@ The `agents/{sanitized-cwd}/` directory name is derived from the agent's `cwd` b
 
 ## 1. Agent Record
 
-**Path:** `$PASEO_HOME/agents/{project-dir}/{agentId}.json`
+**Path:** `$OTTO_HOME/agents/{project-dir}/{agentId}.json`
 
 Each agent is stored as a separate JSON file, grouped by project directory.
 
@@ -54,7 +54,7 @@ Each agent is stored as a separate JSON file, grouped by project directory.
 | `lastActivityAt`     | `string?` (ISO 8601)                     | Last activity timestamp                                                                                                                                                                                                                                                                                                                                                             |
 | `lastUserMessageAt`  | `string?` (ISO 8601)                     | Last user message timestamp                                                                                                                                                                                                                                                                                                                                                         |
 | `title`              | `string?`                                | User-visible title                                                                                                                                                                                                                                                                                                                                                                  |
-| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). `paseo.parent-agent-id` is set automatically for `create_agent` subagent relationships — see [agent-lifecycle.md](./agent-lifecycle.md)                                                                                                                                                                                                            |
+| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). `otto.parent-agent-id` is set automatically for `create_agent` subagent relationships — see [agent-lifecycle.md](./agent-lifecycle.md)                                                                                                                                                                                                            |
 | `lastStatus`         | `AgentStatus`                            | One of: `"initializing"`, `"idle"`, `"running"`, `"error"`, `"closed"`                                                                                                                                                                                                                                                                                                              |
 | `lastModeId`         | `string?`                                | Last active mode ID                                                                                                                                                                                                                                                                                                                                                                 |
 | `config`             | `SerializableConfig?`                    | Agent session configuration (see below)                                                                                                                                                                                                                                                                                                                                             |
@@ -140,7 +140,7 @@ Terminal activity contributes to the workspace status bucket **per `workspaceId`
 
 ## 2. Daemon Configuration
 
-**Path:** `$PASEO_HOME/config.json`
+**Path:** `$OTTO_HOME/config.json`
 
 Single file, validated with `PersistedConfigSchema`.
 
@@ -148,7 +148,7 @@ Single file, validated with `PersistedConfigSchema`.
 {
   version: 1,
   daemon: {
-    listen: "127.0.0.1:6767",
+    listen: "127.0.0.1:6868",
     hostnames: true | string[],   // legacy alias `allowedHosts` is migrated on load
     trustedProxies: true | string[], // defaults to ["loopback"]; Express proxy names/CIDRs
     mcp: { enabled: boolean, injectIntoAgents: boolean },
@@ -161,7 +161,7 @@ Single file, validated with `PersistedConfigSchema`.
     baseUrl: string
   },
   worktrees?: {
-    root?: string            // optional root for new worktrees; defaults to $PASEO_HOME/worktrees
+    root?: string            // optional root for new worktrees; defaults to $OTTO_HOME/worktrees
   },
   providers: {
     openai: {
@@ -195,7 +195,7 @@ Single file, validated with `PersistedConfigSchema`.
 
 All fields are optional with sensible defaults.
 
-`agents.metadataGeneration.providers` controls the preferred structured-generation fallback order for daemon-side metadata tasks such as commit messages, PR text, branch names, and generated agent titles. Entries are tried first in the configured order, then Paseo falls through to dynamically discovered defaults and finally the current selection when available.
+`agents.metadataGeneration.providers` controls the preferred structured-generation fallback order for daemon-side metadata tasks such as commit messages, PR text, branch names, and generated agent titles. Entries are tried first in the configured order, then Otto falls through to dynamically discovered defaults and finally the current selection when available.
 
 Local speech model ids are intentionally narrow: STT uses `parakeet-tdt-0.6b-v2-int8`, TTS uses `kokoro-en-v0_19`, and turn detection uses the bundled Silero VAD model.
 
@@ -203,9 +203,9 @@ Set these to select OpenAI instead of local speech:
 
 | Env var                        | Applies to                      |
 | ------------------------------ | ------------------------------- |
-| `PASEO_VOICE_STT_PROVIDER`     | Voice mode STT provider         |
-| `PASEO_DICTATION_STT_PROVIDER` | Composer dictation STT provider |
-| `PASEO_VOICE_TTS_PROVIDER`     | Voice mode TTS provider         |
+| `OTTO_VOICE_STT_PROVIDER`     | Voice mode STT provider         |
+| `OTTO_DICTATION_STT_PROVIDER` | Composer dictation STT provider |
+| `OTTO_VOICE_TTS_PROVIDER`     | Voice mode TTS provider         |
 
 OpenAI speech can be configured under `providers.openai`. STT and TTS resolve independently, so they can point at different endpoints:
 
@@ -226,9 +226,9 @@ OpenAI speech can be configured under `providers.openai`. STT and TTS resolve in
 }
 ```
 
-`providers.openai.stt` is used for both composer dictation and voice mode speech-to-text; `providers.openai.tts` is used for voice mode text-to-speech. The equivalent env vars are `OPENAI_STT_API_KEY`/`OPENAI_STT_BASE_URL` and `OPENAI_TTS_API_KEY`/`OPENAI_TTS_BASE_URL`. Each feature falls back to `providers.openai.apiKey`/`providers.openai.baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when its own fields are unset. These settings apply only to Paseo OpenAI speech features, not to Codex or other OpenAI-backed tools.
+`providers.openai.stt` is used for both composer dictation and voice mode speech-to-text; `providers.openai.tts` is used for voice mode text-to-speech. The equivalent env vars are `OPENAI_STT_API_KEY`/`OPENAI_STT_BASE_URL` and `OPENAI_TTS_API_KEY`/`OPENAI_TTS_BASE_URL`. Each feature falls back to `providers.openai.apiKey`/`providers.openai.baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when its own fields are unset. These settings apply only to Otto OpenAI speech features, not to Codex or other OpenAI-backed tools.
 
-Paseo uses these paths under the configured OpenAI base URL:
+Otto uses these paths under the configured OpenAI base URL:
 
 - dictation STT: `/v1/audio/transcriptions`
 - voice mode STT: `/v1/audio/transcriptions`
@@ -238,7 +238,7 @@ Paseo uses these paths under the configured OpenAI base URL:
 
 ## 3. Schedule
 
-**Path:** `$PASEO_HOME/schedules/{id}.json`
+**Path:** `$OTTO_HOME/schedules/{id}.json`
 
 One file per schedule. ID is 8 hex characters.
 
@@ -286,7 +286,7 @@ One file per schedule. ID is 8 hex characters.
 
 ## 4. Chat
 
-**Path:** `$PASEO_HOME/chat/rooms.json`
+**Path:** `$OTTO_HOME/chat/rooms.json`
 
 Single file containing all rooms and messages.
 
@@ -323,7 +323,7 @@ Single file containing all rooms and messages.
 
 ## 5. Loop
 
-**Path:** `$PASEO_HOME/loops/loops.json`
+**Path:** `$OTTO_HOME/loops/loops.json`
 
 Single file containing an array of all loop records. Writes are direct (not atomic) and serialized through an in-memory queue. On daemon startup any record with `status: "running"` is recovered as `"stopped"` with an interruption log entry.
 
@@ -412,7 +412,7 @@ Single file containing an array of all loop records. Writes are direct (not atom
 
 ## 6. Project Registry
 
-**Path:** `$PASEO_HOME/projects/projects.json`
+**Path:** `$OTTO_HOME/projects/projects.json`
 
 Array of project records.
 
@@ -435,7 +435,7 @@ emptied duplicate.
 
 ## 7. Workspace Registry
 
-**Path:** `$PASEO_HOME/projects/workspaces.json`
+**Path:** `$OTTO_HOME/projects/workspaces.json`
 
 Array of workspace records. A workspace is a specific working directory within a project.
 
@@ -463,7 +463,7 @@ than treating it as valid.
 
 ## 8. Push Token Store
 
-**Path:** `$PASEO_HOME/push-tokens.json`
+**Path:** `$OTTO_HOME/push-tokens.json`
 
 ```json
 {
@@ -477,13 +477,13 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ## 9. Daemon meta files
 
-These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
+These small files are not validated as full Zod schemas but are persisted under `$OTTO_HOME` for daemon identity and runtime coordination.
 
 | Path                  | Format                                                         | Notes                                                                             |
 | --------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$PASEO_HOME` daemon ID. Overridable via `PASEO_SERVER_ID` env.        |
+| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$OTTO_HOME` daemon ID. Overridable via `OTTO_SERVER_ID` env.        |
 | `daemon-keypair.json` | `{ v: 2, publicKeyB64, secretKeyB64 }` (libsodium box keypair) | E2EE relay identity. Written with mode `0600`. Regenerated if file is unreadable. |
-| `paseo.pid`           | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$PASEO_HOME`.                         |
+| `otto.pid`           | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$OTTO_HOME`.                         |
 | `daemon.log`          | Pino log output                                                | Default location; path/rotation configurable via `log.file` in `config.json`.     |
 
 ---
@@ -497,11 +497,11 @@ These live in React Native `AsyncStorage` or browser `IndexedDB`, not on the dae
 Right-sidebar client state splits on whether it is determined by the directory or owned by the workspace (two workspaces can share one `cwd`). The split is enforced by the cache key, so changing a key changes the sharing semantics — see [architecture.md](architecture.md#right-sidebar-boundary-directory-backed-vs-workspace-owned) for the full table.
 
 - **Directory-backed** (shared by same-`cwd` workspaces): keyed by `(serverId, cwd)`. Git status/diff, GitHub PR status, PR timeline, file preview content. These are TanStack Query caches, not persisted stores.
-- **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@paseo:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
+- **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@otto:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
 
 ### Draft Store
 
-**AsyncStorage key:** `paseo-drafts` (version 2)
+**AsyncStorage key:** `otto-drafts` (version 2)
 
 ```typescript
 {
@@ -517,7 +517,7 @@ Right-sidebar client state splits on whether it is determined by the directory o
 
 ### Attachment Store (Web)
 
-**IndexedDB database:** `paseo-attachment-bytes`, object store: `attachments`
+**IndexedDB database:** `otto-attachment-bytes`, object store: `attachments`
 
 Stores binary attachment blobs keyed by attachment ID.
 

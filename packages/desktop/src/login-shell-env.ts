@@ -159,9 +159,9 @@ function resolveShellEnv(deps: Required<LoginShellEnvDependencies>): Record<stri
   }
 
   const shellEnv = { ...deps.env };
-  delete shellEnv.PASEO_NODE_ENV;
-  delete shellEnv.PASEO_DESKTOP_MANAGED;
-  delete shellEnv.PASEO_SUPERVISED;
+  delete shellEnv.OTTO_NODE_ENV;
+  delete shellEnv.OTTO_DESKTOP_MANAGED;
+  delete shellEnv.OTTO_SUPERVISED;
 
   deps.logger.info("[login-shell-env] start", {
     shell,

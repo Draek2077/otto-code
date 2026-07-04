@@ -1,5 +1,5 @@
-import { parseCronExpression } from "@getpaseo/protocol/schedule/cron-expression";
-import type { ScheduleCadence } from "@getpaseo/protocol/schedule/types";
+import { parseCronExpression } from "@otto-code/protocol/schedule/cron-expression";
+import type { ScheduleCadence } from "@otto-code/protocol/schedule/types";
 
 interface CronDateParts {
   minute: number;

@@ -1,5 +1,5 @@
 {
-  description = "Paseo - self-hosted daemon for AI coding agents";
+  description = "Otto - self-hosted daemon for AI coding agents";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -25,27 +25,27 @@
         system:
         let
           pkgs = pkgsFor system;
-          paseo = pkgs.callPackage ./nix/package.nix { };
+          otto = pkgs.callPackage ./nix/package.nix { };
           isLinux = nixpkgs.lib.elem system [
             "x86_64-linux"
             "aarch64-linux"
           ];
         in
         {
-          default = paseo;
-          paseo = paseo;
+          default = otto;
+          otto = otto;
         }
         // nixpkgs.lib.optionalAttrs isLinux {
-          desktop = pkgs.callPackage ./nix/desktop-package.nix { inherit paseo; };
+          desktop = pkgs.callPackage ./nix/desktop-package.nix { inherit otto; };
         }
       );
 
-      nixosModules.default = self.nixosModules.paseo;
-      nixosModules.paseo =
+      nixosModules.default = self.nixosModules.otto;
+      nixosModules.otto =
         { pkgs, lib, ... }:
         {
           imports = [ ./nix/module.nix ];
-          services.paseo.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          services.otto.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         };
 
       devShells = forAllSystems (

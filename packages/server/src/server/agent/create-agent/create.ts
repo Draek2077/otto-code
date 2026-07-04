@@ -1,15 +1,15 @@
 import type { Logger } from "pino";
 
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
-import type { CreatePaseoWorktreeInput } from "../../paseo-worktree-service.js";
+import type { CreateOttoWorktreeInput } from "../../otto-worktree-service.js";
 import { expandUserPath, resolvePathFromBase } from "../../path-utils.js";
 import { toWorktreeRequestError } from "../../worktree-errors.js";
 import type {
   AgentWorktreeSetupContinuation,
-  CreatePaseoWorktreeSetupContinuationInput,
-  CreatePaseoWorktreeWorkflowFn,
-  CreatePaseoWorktreeWorkflowResult,
+  CreateOttoWorktreeSetupContinuationInput,
+  CreateOttoWorktreeWorkflowFn,
+  CreateOttoWorktreeWorkflowResult,
 } from "../../worktree-session.js";
 import type { AgentAttachment, FirstAgentContext, GitSetupOptions } from "../../messages.js";
 import type { AgentManager, ManagedAgent } from "../agent-manager.js";
@@ -41,11 +41,11 @@ interface CreateAgentCommandDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   logger: Logger;
-  paseoHome?: string;
+  ottoHome?: string;
   worktreesRoot?: string;
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
-  createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
+  createOttoWorktree?: CreateOttoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: (cwd: string) => Promise<string>;
 }
@@ -426,10 +426,10 @@ async function resolveMcpCwd(params: {
       githubPrNumber: worktree.githubPrNumber,
       ...(params.initialPrompt ? { firstAgentContext: { prompt: params.initialPrompt } } : {}),
       runSetup: false,
-      paseoHome: dependencies.paseoHome,
+      ottoHome: dependencies.ottoHome,
       worktreesRoot: dependencies.worktreesRoot,
     },
-    createPaseoWorktree: dependencies.createPaseoWorktree,
+    createOttoWorktree: dependencies.createOttoWorktree,
     resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,
     setupContinuation: {
       kind: "agent",
@@ -457,20 +457,20 @@ async function resolveMcpCwd(params: {
 }
 
 interface CreateMcpWorktreeOptions {
-  input: CreatePaseoWorktreeInput;
-  createPaseoWorktree: CreatePaseoWorktreeWorkflowFn | undefined;
+  input: CreateOttoWorktreeInput;
+  createOttoWorktree: CreateOttoWorktreeWorkflowFn | undefined;
   resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-  setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
+  setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
 }
 
 async function createMcpWorktree(
   options: CreateMcpWorktreeOptions,
-): Promise<CreatePaseoWorktreeWorkflowResult> {
+): Promise<CreateOttoWorktreeWorkflowResult> {
   try {
-    if (!options.createPaseoWorktree) {
-      throw new Error("Paseo worktree service is not configured");
+    if (!options.createOttoWorktree) {
+      throw new Error("Otto worktree service is not configured");
     }
-    return await options.createPaseoWorktree(options.input, {
+    return await options.createOttoWorktree(options.input, {
       ...(options.resolveDefaultBranch
         ? { resolveDefaultBranch: options.resolveDefaultBranch }
         : {}),

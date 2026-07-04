@@ -22,7 +22,7 @@ import {
 } from "@/review/state";
 import { generateMessageId } from "@/types/stream";
 import { buildNumberedDiffHunks, type NumberedDiffLine } from "@/utils/diff-layout";
-import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import type { AgentAttachment } from "@otto-code/protocol/messages";
 
 export type {
   DiffModeOverride,
@@ -166,7 +166,7 @@ export const useReviewDraftStore = create<ReviewDraftStore>()(
       },
     }),
     {
-      name: "@paseo:review-draft-store",
+      name: "@otto:review-draft-store",
       version: STORE_VERSION,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => serializeReviewDraftState(state),
@@ -262,7 +262,7 @@ export function buildReviewAttachmentSnapshot(
 
   const attachment: ReviewAttachment = {
     type: "review",
-    mimeType: "application/paseo-review",
+    mimeType: "application/otto-review",
     cwd: input.cwd,
     mode: input.mode,
     baseRef: normalizeBaseRef(input.baseRef) || null,

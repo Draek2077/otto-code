@@ -5,7 +5,7 @@ import { withUnistyles } from "react-native-unistyles";
 import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
-} from "@getpaseo/protocol/terminal-profiles";
+} from "@otto-code/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type { Theme } from "@/styles/theme";

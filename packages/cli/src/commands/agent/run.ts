@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
-import { getStructuredAgentResponse, StructuredAgentResponseError } from "@getpaseo/server";
-import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import { getStructuredAgentResponse, StructuredAgentResponseError } from "@otto-code/server";
+import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type {
   CommandOptions,
@@ -38,7 +38,7 @@ export function addRunOptions(cmd: Command): Command {
     .option("--base <branch>", "Base branch for worktree (default: current branch)")
     .option(
       "--workspace <id>",
-      "Run in an existing workspace (default: a new workspace is created per run; falls back to $PASEO_WORKSPACE_ID)",
+      "Run in an existing workspace (default: a new workspace is created per run; falls back to $OTTO_WORKSPACE_ID)",
     )
     .option(
       "--image <path>",
@@ -266,7 +266,7 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
     throw {
       code: "MISSING_PROMPT",
       message: "A prompt is required",
-      details: "Usage: paseo agent run [options] <prompt>",
+      details: "Usage: otto agent run [options] <prompt>",
     } satisfies CommandError;
   }
 
@@ -274,7 +274,7 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
     throw {
       code: "INVALID_OPTIONS",
       message: "--base can only be used with --worktree",
-      details: "Usage: paseo agent run --worktree <name> --base <branch> <prompt>",
+      details: "Usage: otto agent run --worktree <name> --base <branch> <prompt>",
     } satisfies CommandError;
   }
 
@@ -286,12 +286,12 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
     } satisfies CommandError;
   }
 
-  if (options.worktree && !options.workspace && process.env.PASEO_WORKSPACE_ID) {
+  if (options.worktree && !options.workspace && process.env.OTTO_WORKSPACE_ID) {
     throw {
       code: "INVALID_OPTIONS",
-      message: "--worktree cannot be combined with an ambient PASEO_WORKSPACE_ID",
+      message: "--worktree cannot be combined with an ambient OTTO_WORKSPACE_ID",
       details:
-        "PASEO_WORKSPACE_ID selects an existing workspace; --worktree mints a new one. Unset PASEO_WORKSPACE_ID to use --worktree.",
+        "OTTO_WORKSPACE_ID selects an existing workspace; --worktree mints a new one. Unset OTTO_WORKSPACE_ID to use --worktree.",
     } satisfies CommandError;
   }
 
@@ -400,7 +400,7 @@ async function connectToDaemonOrThrow(
     throw {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: paseo daemon start",
+      details: "Start the daemon with: otto daemon start",
     } satisfies CommandError;
   }
 }
@@ -413,13 +413,13 @@ interface RunWorkspace {
   cwd: string;
 }
 
-// Workspace policy for `paseo run`. Precedence:
+// Workspace policy for `otto run`. Precedence:
 //   1. --workspace <id>            -> run in that existing workspace
-//   2. $PASEO_WORKSPACE_ID         -> exported by workspace terminals
+//   2. $OTTO_WORKSPACE_ID         -> exported by workspace terminals
 //   3. --worktree <name>           -> mint a new worktree-backed workspace
 //   4. bare run                    -> mint a new local-backed workspace for cwd
 // --worktree is rejected alongside both --workspace and an ambient
-// $PASEO_WORKSPACE_ID (validateRunOptions), so worktree resolution here never
+// $OTTO_WORKSPACE_ID (validateRunOptions), so worktree resolution here never
 // races an existing-workspace selection.
 async function resolveRunWorkspace(
   client: ConnectedDaemonClient,
@@ -427,10 +427,10 @@ async function resolveRunWorkspace(
   cwd: string,
 ): Promise<RunWorkspace> {
   // An explicit --worktree mints its own workspace; --workspace and an ambient
-  // PASEO_WORKSPACE_ID are both rejected alongside --worktree upstream.
+  // OTTO_WORKSPACE_ID are both rejected alongside --worktree upstream.
   const explicit = options.worktree
     ? undefined
-    : options.workspace?.trim() || process.env.PASEO_WORKSPACE_ID?.trim();
+    : options.workspace?.trim() || process.env.OTTO_WORKSPACE_ID?.trim();
   if (explicit) {
     console.error(`Using workspace ${explicit}`);
     return { id: explicit, cwd };
@@ -460,7 +460,7 @@ async function resolveRunWorkspace(
   const label = branch ? `${result.workspace.name} (${branch})` : result.workspace.name;
   console.error(`Created workspace ${result.workspace.id} - ${label}`);
   console.error(
-    "Tip: pass --workspace <id> (or set PASEO_WORKSPACE_ID) to run in an existing workspace.",
+    "Tip: pass --workspace <id> (or set OTTO_WORKSPACE_ID) to run in an existing workspace.",
   );
   return { id: result.workspace.id, cwd: result.workspace.workspaceDirectory ?? cwd };
 }
@@ -490,7 +490,7 @@ export async function runRunCommand(
         code: "INVALID_THINKING_OPTION",
         message: "--thinking cannot be empty",
         details:
-          'Provide a thinking option ID. Use "paseo provider models <provider> --thinking" to list valid IDs.',
+          'Provide a thinking option ID. Use "otto provider models <provider> --thinking" to list valid IDs.',
       };
       throw error;
     }

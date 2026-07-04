@@ -4,8 +4,8 @@ import type {
   BrowserAutomationCommandName,
   BrowserAutomationExecuteRequest,
   BrowserAutomationExecuteResponse,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { BrowserToolsBroker, type BrowserHostClient } from "./broker.js";
 import { StaticBrowserToolsPolicy } from "./policy.js";
 

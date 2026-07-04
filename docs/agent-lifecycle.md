@@ -19,16 +19,16 @@ Agents can launch other agents via the agent-scoped `create_agent` MCP tool. Age
 - `relationship` decides whether the new agent belongs under the caller.
 - `workspace` decides where the new agent lives and whether a new workspace/worktree is created.
 
-`relationship: { kind: "subagent" }` stamps the created agent with `paseo.parent-agent-id`, pointing back at the creating agent. The client surfaces that as `agent.parentAgentId`. This requires an agent-scoped MCP session.
+`relationship: { kind: "subagent" }` stamps the created agent with `otto.parent-agent-id`, pointing back at the creating agent. The client surfaces that as `agent.parentAgentId`. This requires an agent-scoped MCP session.
 
-`relationship: { kind: "detached" }` creates a sibling/root agent (e.g. handoffs, fire-and-forget delegations). The daemon may still use the creating agent for cwd/config inheritance, but it does not write `paseo.parent-agent-id`.
+`relationship: { kind: "detached" }` creates a sibling/root agent (e.g. handoffs, fire-and-forget delegations). The daemon may still use the creating agent for cwd/config inheritance, but it does not write `otto.parent-agent-id`.
 
 - **Subagents** — exist as part of the creating agent's work, appear in that agent's subagent track, and are archived with it.
 - **Detached agents** — stand on their own, do not appear in the creating agent's subagent track, and are not archived with it.
 
-`workspace: { kind: "current" }` uses the caller's workspace and can optionally override the runtime cwd. It requires an agent-scoped MCP session. `workspace: { kind: "create", source: { kind: "directory" | "worktree", ... } }` creates a new workspace for the new agent; worktree creation goes through the Paseo worktree workflow and stamps the agent with that fresh workspace id.
+`workspace: { kind: "current" }` uses the caller's workspace and can optionally override the runtime cwd. It requires an agent-scoped MCP session. `workspace: { kind: "create", source: { kind: "directory" | "worktree", ... } }` creates a new workspace for the new agent; worktree creation goes through the Otto worktree workflow and stamps the agent with that fresh workspace id.
 
-Users can also detach an existing subagent from the subagents track. Detach removes the `paseo.parent-agent-id` label only: it does not stop, archive, move, or restart the agent. The agent keeps its current `cwd` and `workspaceId`, leaves the former parent's track, and behaves like a root agent for tab close, workspace activity, and future parent archive.
+Users can also detach an existing subagent from the subagents track. Detach removes the `otto.parent-agent-id` label only: it does not stop, archive, move, or restart the agent. The agent keeps its current `cwd` and `workspaceId`, leaves the former parent's track, and behaves like a root agent for tab close, workspace activity, and future parent archive.
 
 `notifyOnFinish` defaults to `true` for agent-scoped creation and background prompt follow-ups because most delegated work needs to report back to the creating agent. Set it to `false` only for truly fire-and-forget agents or prompts.
 
@@ -36,7 +36,7 @@ Users can also detach an existing subagent from the subagents track. Detach remo
 
 Archive is a **soft delete**: the agent record stays on disk with `archivedAt` set, the runtime is closed, and the agent disappears from active lists. Archive is **global** — it lives on the server and propagates to every connected client.
 
-`create_agent_request` can opt an agent into `autoArchive`. In that mode the daemon archives the agent after the first terminal turn event (`turn_completed`, `turn_failed`, or `turn_canceled`). If the same request created a Paseo worktree through its `worktree` field, auto-archive archives that worktree too, which removes the agent records inside the worktree.
+`create_agent_request` can opt an agent into `autoArchive`. In that mode the daemon archives the agent after the first terminal turn event (`turn_completed`, `turn_failed`, or `turn_canceled`). If the same request created a Otto worktree through its `worktree` field, auto-archive archives that worktree too, which removes the agent records inside the worktree.
 
 Archiving runs through `AgentManager.archiveAgent` (`packages/server/src/server/agent/agent-manager.ts`):
 
@@ -44,7 +44,7 @@ Archiving runs through `AgentManager.archiveAgent` (`packages/server/src/server/
 2. Set `archivedAt` and normalize `lastStatus` away from `running`/`initializing`
 3. Notify subscribers
 4. Close the runtime (kills the process if still running)
-5. **Cascade-archive children** — any agent whose `paseo.parent-agent-id` label matches the archived agent gets archived too, recursively
+5. **Cascade-archive children** — any agent whose `otto.parent-agent-id` label matches the archived agent gets archived too, recursively
 
 Cascade is what keeps subagent fleets from outliving their orchestrator.
 
@@ -106,7 +106,7 @@ Closing a subagent's tab on one client doesn't affect other clients' layouts. Th
 ## Storage
 
 ```
-$PASEO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
+$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
 ```
 
 `{cwd-with-dashes}` is derived from the agent's filesystem `cwd`. It is not the workspace id; agent storage stays cwd-keyed while workspace identity is the opaque workspace id.
@@ -117,7 +117,7 @@ Each agent is a single JSON file. Fields relevant to this doc:
 | --------------------------------- | ------------- | -------------------------------------------------------------------------------------------- |
 | `id`                              | `string`      | Stable identifier                                                                            |
 | `archivedAt`                      | `string?`     | Soft-delete timestamp (ISO 8601)                                                             |
-| `labels["paseo.parent-agent-id"]` | `string?`     | Parent agent ID, set automatically by `create_agent` when `relationship.kind === "subagent"` |
+| `labels["otto.parent-agent-id"]` | `string?`     | Parent agent ID, set automatically by `create_agent` when `relationship.kind === "subagent"` |
 | `lastStatus`                      | `AgentStatus` | `initializing` / `idle` / `running` / `error` / `closed`                                     |
 
 See [`docs/data-model.md`](./data-model.md) for the full agent record.

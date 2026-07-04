@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { HostRuntimeSnapshot } from "@/runtime/host-runtime";
 
 const refreshAgent = vi.fn<(agentId: string) => Promise<unknown>>();

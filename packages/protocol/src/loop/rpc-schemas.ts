@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentProviderSchema } from "@getpaseo/protocol/provider-manifest";
+import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
 
 export const LoopLogEntrySchema = z.object({
   seq: z.number().int().positive(),

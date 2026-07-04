@@ -1,10 +1,10 @@
 import type pino from "pino";
-import { getErrorMessage } from "@getpaseo/protocol/error-utils";
+import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import {
   encodeFileTransferFrame,
   FileTransferOpcode,
   type FileTransferFrame,
-} from "@getpaseo/protocol/binary-frames/index";
+} from "@otto-code/protocol/binary-frames/index";
 import type {
   FileDownloadTokenRequest,
   FileExplorerRequest,
@@ -37,7 +37,7 @@ export interface WorkspaceFilesSessionHost {
 export interface WorkspaceFilesSessionOptions {
   host: WorkspaceFilesSessionHost;
   downloadTokenStore: DownloadTokenStore;
-  paseoHome: string;
+  ottoHome: string;
   logger: pino.Logger;
 }
 
@@ -58,7 +58,7 @@ export class WorkspaceFilesSession {
     this.host = options.host;
     this.downloadTokenStore = options.downloadTokenStore;
     this.logger = options.logger;
-    this.fileUploads = new FileUploadStore({ paseoHome: options.paseoHome });
+    this.fileUploads = new FileUploadStore({ ottoHome: options.ottoHome });
   }
 
   async handleFileExplorerRequest(request: FileExplorerRequest): Promise<void> {

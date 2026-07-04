@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mountBrowserAutomationHandler } from "./handler";
 import type { DesktopHostBridge } from "@/desktop/host";
@@ -574,7 +574,7 @@ describe("mountBrowserAutomationHandler", () => {
   test("unimplemented preload IPC reports browser_unsupported", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.thrownError = new Error(
-      'No handler registered for "paseo:browser:execute-automation-command"',
+      'No handler registered for "otto:browser:execute-automation-command"',
     );
     browser.mount();
 

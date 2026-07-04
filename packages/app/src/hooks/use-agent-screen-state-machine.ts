@@ -3,7 +3,7 @@ import type {
   AgentCapabilityFlags,
   AgentFeature,
   AgentProvider,
-} from "@getpaseo/protocol/agent-types";
+} from "@otto-code/protocol/agent-types";
 
 export interface AgentScreenAgent {
   serverId: string;

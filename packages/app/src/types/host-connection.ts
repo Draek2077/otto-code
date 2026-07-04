@@ -1,11 +1,11 @@
 import {
   normalizeHostPort,
   normalizeLoopbackToLocalhost,
-} from "@getpaseo/protocol/daemon-endpoints";
+} from "@otto-code/protocol/daemon-endpoints";
 import {
   DirectTcpHostConnectionSchema,
   type DirectTcpHostConnection,
-} from "@getpaseo/protocol/host-connection-schema";
+} from "@otto-code/protocol/host-connection-schema";
 
 export { DirectTcpHostConnectionSchema, type DirectTcpHostConnection };
 

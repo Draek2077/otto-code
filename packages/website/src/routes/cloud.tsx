@@ -8,8 +8,8 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/cloud")({
   head: () =>
     pageMeta(
-      "Paseo Cloud - Design Partners",
-      "Run Paseo across machines, with a team, or inside a company. We're onboarding design partners for the hosted, multi-machine, multi-user version of Paseo.",
+      "Otto Cloud - Design Partners",
+      "Run Otto across machines, with a team, or inside a company. We're onboarding design partners for the hosted, multi-machine, multi-user version of Otto.",
       "/cloud",
     ),
   component: Cloud,
@@ -23,9 +23,9 @@ type Status = "idle" | "submitting" | "success" | "error";
 function Cloud() {
   return (
     <SiteShell width="default">
-      <h1 className="text-3xl font-medium mb-3">Paseo Cloud</h1>
+      <h1 className="text-3xl font-medium mb-3">Otto Cloud</h1>
       <p className="text-white/70 leading-relaxed mb-10">
-        For using Paseo across machines, with a team, or inside a company. Looking for design
+        For using Otto across machines, with a team, or inside a company. Looking for design
         partners.
       </p>
 
@@ -113,7 +113,7 @@ function SignupForm() {
           name="message"
           required
           rows={5}
-          placeholder="A bit about you and what you'd want from Paseo Cloud."
+          placeholder="A bit about you and what you'd want from Otto Cloud."
           className={`${INPUT_CLASS} resize-y`}
         />
       </Field>
@@ -185,21 +185,21 @@ function FaqSection() {
     <section className="space-y-6">
       <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
-        <FAQItem question="What is Paseo Cloud?">
-          An optional layer on top of Paseo for running daemons across machines, syncing config
-          between them, and using Paseo with a team or company. Think shared runners, permissions,
+        <FAQItem question="What is Otto Cloud?">
+          An optional layer on top of Otto for running daemons across machines, syncing config
+          between them, and using Otto with a team or company. Think shared runners, permissions,
           audit, managed daemons, and org controls.
         </FAQItem>
-        <FAQItem question="Will Paseo stay free and open source?">
+        <FAQItem question="Will Otto stay free and open source?">
           Yes. The whole stack stays free and open source: app, daemon, CLI, protocols, and the
           Cloud control plane. Managed Cloud is the optional paid layer for people who don&apos;t
           want to host it themselves.
         </FAQItem>
         <FAQItem question="Self-hosted or managed?">
-          Both. The control plane will live in the Paseo monorepo so you can host it yourself.
+          Both. The control plane will live in the Otto monorepo so you can host it yourself.
           Managed is for people and teams who don&apos;t want to.
         </FAQItem>
-        <FAQItem question="Does my code go through Paseo?">
+        <FAQItem question="Does my code go through Otto?">
           No. Daemons run on your machines and talk to agent providers directly. Cloud handles
           registration, config sync, permissions, and orchestration. Code and model traffic stay on
           your machines.

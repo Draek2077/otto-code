@@ -1,5 +1,5 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { ProjectAddResponse } from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { ProjectAddResponse } from "@otto-code/protocol/messages";
 import {
   normalizeEmptyProjectDescriptor as normalizeProjectWithoutWorkspacesDescriptor,
   type EmptyProjectDescriptor as ProjectWithoutWorkspacesDescriptor,

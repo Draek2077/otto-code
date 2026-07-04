@@ -1,7 +1,7 @@
 {
-  "name": "@getpaseo/protocol",
+  "name": "@otto-code/protocol",
   "version": "0.1.104-beta.2",
-  "description": "Paseo shared protocol schemas and wire types",
+  "description": "Otto shared protocol schemas and wire types",
   "files": [
     "dist",
     "!dist/**/*.map",

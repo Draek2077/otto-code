@@ -14,7 +14,7 @@ import {
 } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import { toAgentPayload } from "./agent-projections.js";
-import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { formatSystemNotificationPrompt } from "./agent-prompt.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
 import type {
@@ -34,7 +34,7 @@ import type {
   AgentTimelineItem,
   ImportProviderSessionInput,
 } from "./agent-sdk-types.js";
-import type { PaseoToolCatalog } from "./tools/types.js";
+import type { OttoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 
 interface Deferred<T> {
@@ -171,7 +171,7 @@ class EnvProbeAgentClient extends TestAgentClient {
     const script = `
       process.stdout.write(JSON.stringify({
         probe: process.env.CHUNK14_PROBE ?? null,
-        agentId: process.env.PASEO_AGENT_ID ?? null
+        agentId: process.env.OTTO_AGENT_ID ?? null
       }));
     `;
     const child = spawn(process.execPath, ["-e", script], {
@@ -1113,7 +1113,7 @@ test("createAgent passes daemon launch env through the provider launch context",
   expect(client.lastLaunchContext).toEqual({
     agentId: snapshot.id,
     env: {
-      PASEO_AGENT_ID: snapshot.id,
+      OTTO_AGENT_ID: snapshot.id,
     },
   });
 });
@@ -1193,7 +1193,7 @@ test("createAgent persists workspaceId on the stored record and emits it in the 
   }
 });
 
-test("createAgent injects paseo MCP server only into provider launch config", async () => {
+test("createAgent injects otto MCP server only into provider launch config", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1214,7 +1214,7 @@ test("createAgent injects paseo MCP server only into provider launch config", as
     },
     registry: storage,
     logger,
-    mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+    mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
     idFactory: () => "00000000-0000-4000-8000-000000000103",
   });
 
@@ -1236,9 +1236,9 @@ test("createAgent injects paseo MCP server only into provider launch config", as
     },
   });
   expect(client.lastConfig?.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
-      url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
+      url: `http://127.0.0.1:6868/mcp/agents?callerAgentId=${snapshot.id}`,
     },
     custom: {
       type: "stdio",
@@ -1255,12 +1255,12 @@ test("createAgent injects paseo MCP server only into provider launch config", as
   });
 });
 
-test("createAgent passes native Paseo tools through launch context without internal MCP", async () => {
+test("createAgent passes native Otto tools through launch context without internal MCP", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
 
-  const paseoTools: PaseoToolCatalog = {
+  const ottoTools: OttoToolCatalog = {
     tools: new Map(),
     getTool: () => undefined,
     executeTool: async () => {
@@ -1272,7 +1272,7 @@ test("createAgent passes native Paseo tools through launch context without inter
     override readonly capabilities = {
       ...TEST_CAPABILITIES,
       supportsMcpServers: true,
-      supportsNativePaseoTools: true,
+      supportsNativeOttoTools: true,
     };
     lastConfig: AgentSessionConfig | null = null;
     lastLaunchContext: AgentLaunchContext | undefined;
@@ -1294,8 +1294,8 @@ test("createAgent passes native Paseo tools through launch context without inter
     },
     registry: storage,
     logger,
-    mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
-    paseoToolCatalogFactory: () => paseoTools,
+    mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
+    ottoToolCatalogFactory: () => ottoTools,
     idFactory: () => "00000000-0000-4000-8000-000000000106",
   });
 
@@ -1310,7 +1310,7 @@ test("createAgent passes native Paseo tools through launch context without inter
     },
   });
 
-  expect(client.lastLaunchContext?.paseoTools).toBe(paseoTools);
+  expect(client.lastLaunchContext?.ottoTools).toBe(ottoTools);
   expect(client.lastConfig?.mcpServers).toEqual({
     custom: {
       type: "stdio",
@@ -1354,7 +1354,7 @@ test("createAgent injects the MCP auth token as a bearer header into the launch 
     },
     registry: storage,
     logger,
-    mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+    mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
     mcpAuthToken: "cap-token",
     idFactory: () => "00000000-0000-4000-8000-000000000104",
   });
@@ -1365,16 +1365,16 @@ test("createAgent injects the MCP auth token as a bearer header into the launch 
   });
 
   expect(manager.getMcpAuthToken()).toBe("cap-token");
-  expect(client.lastConfig?.mcpServers?.paseo).toEqual({
+  expect(client.lastConfig?.mcpServers?.otto).toEqual({
     type: "http",
-    url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
+    url: `http://127.0.0.1:6868/mcp/agents?callerAgentId=${snapshot.id}`,
     headers: { Authorization: "Bearer cap-token" },
   });
 
   rmSync(workdir, { recursive: true, force: true });
 });
 
-test("resumeAgentFromPersistence replaces stored internal paseo MCP with current runtime URL", async () => {
+test("resumeAgentFromPersistence replaces stored internal otto MCP with current runtime URL", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1399,9 +1399,9 @@ test("resumeAgentFromPersistence replaces stored internal paseo MCP with current
   const snapshot = await manager.resumeAgentFromPersistence(handle, {
     cwd: workdir,
     mcpServers: {
-      paseo: {
+      otto: {
         type: "http",
-        url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=stale-agent",
+        url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=stale-agent",
       },
       custom: {
         type: "stdio",
@@ -1411,7 +1411,7 @@ test("resumeAgentFromPersistence replaces stored internal paseo MCP with current
   });
 
   expect(client.resumeOverrides[0]?.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
       url: `http://127.0.0.1:6768/mcp/agents?callerAgentId=${snapshot.id}`,
     },
@@ -1428,7 +1428,7 @@ test("resumeAgentFromPersistence replaces stored internal paseo MCP with current
   });
 });
 
-test("resumeAgentFromPersistence drops stored internal paseo MCP when runtime injection is disabled", async () => {
+test("resumeAgentFromPersistence drops stored internal otto MCP when runtime injection is disabled", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1451,9 +1451,9 @@ test("resumeAgentFromPersistence drops stored internal paseo MCP when runtime in
   const snapshot = await manager.resumeAgentFromPersistence(handle, {
     cwd: workdir,
     mcpServers: {
-      paseo: {
+      otto: {
         type: "http",
-        url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=stale-agent",
+        url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=stale-agent",
       },
     },
   });
@@ -1462,7 +1462,7 @@ test("resumeAgentFromPersistence drops stored internal paseo MCP when runtime in
   expect(snapshot.config.mcpServers).toBeUndefined();
 });
 
-test("createAgent preserves a user-provided paseo MCP config", async () => {
+test("createAgent preserves a user-provided otto MCP config", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -1483,7 +1483,7 @@ test("createAgent preserves a user-provided paseo MCP config", async () => {
     },
     registry: storage,
     logger,
-    mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+    mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
     idFactory: () => "00000000-0000-4000-8000-000000000104",
   });
 
@@ -1491,17 +1491,17 @@ test("createAgent preserves a user-provided paseo MCP config", async () => {
     provider: "codex",
     cwd: workdir,
     mcpServers: {
-      paseo: {
+      otto: {
         type: "http",
-        url: "https://example.com/custom-paseo",
+        url: "https://example.com/custom-otto",
       },
     },
   });
 
   expect(snapshot.config.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
-      url: "https://example.com/custom-paseo",
+      url: "https://example.com/custom-otto",
     },
   });
   expect(client.lastConfig?.mcpServers).toEqual(snapshot.config.mcpServers);
@@ -1802,20 +1802,20 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     cwd: workdir,
     systemPrompt: "new prompt",
     mcpServers: {
-      paseo: {
+      otto: {
         type: "stdio",
         command: "node",
-        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/otto.sock"],
       },
     },
   });
 
   expect(resumed.config.systemPrompt).toBe("new prompt");
   expect(resumed.config.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "stdio",
       command: "node",
-      args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+      args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/otto.sock"],
     },
   });
   expect(client.lastResumeOverrides).toMatchObject({
@@ -1823,17 +1823,17 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     modeId: "auto",
     systemPrompt: "new prompt",
     mcpServers: {
-      paseo: {
+      otto: {
         type: "stdio",
         command: "node",
-        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/otto.sock"],
       },
     },
   });
   expect(client.lastResumeLaunchContext).toEqual({
     agentId: resumed.id,
     env: {
-      PASEO_AGENT_ID: resumed.id,
+      OTTO_AGENT_ID: resumed.id,
     },
   });
 });
@@ -1974,7 +1974,7 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
   expect(client.lastCreateLaunchContext).toEqual({
     agentId: snapshot.id,
     env: {
-      PASEO_AGENT_ID: snapshot.id,
+      OTTO_AGENT_ID: snapshot.id,
     },
   });
 
@@ -1985,7 +1985,7 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
   expect(client.lastResumeLaunchContext).toEqual({
     agentId: snapshot.id,
     env: {
-      PASEO_AGENT_ID: snapshot.id,
+      OTTO_AGENT_ID: snapshot.id,
     },
   });
 });
@@ -6379,7 +6379,7 @@ test("listImportableSessions skips providers that lack supportsSessionListing ev
   expect(result.map((d) => d.provider)).toEqual(["claude"]);
 });
 
-test("user_message events wrapping a paseo-system envelope are not added to the timeline", async () => {
+test("user_message events wrapping a otto-system envelope are not added to the timeline", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-envelope-live-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
@@ -6412,7 +6412,7 @@ test("user_message events wrapping a paseo-system envelope are not added to the 
   expect(userMessages[0].text).toBe("plain user message");
 });
 
-test("user_message events wrapping a paseo-system envelope are not restored during history replay", async () => {
+test("user_message events wrapping a otto-system envelope are not restored during history replay", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-envelope-history-"));
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);

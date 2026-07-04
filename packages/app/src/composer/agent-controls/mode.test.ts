@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentMode } from "@getpaseo/protocol/agent-types";
+import type { AgentMode } from "@otto-code/protocol/agent-types";
 import { resolveAgentControlsMode, resolveNextAgentModeId } from "./mode";
 
 const PLAN_MODE = { id: "plan", label: "Plan" } satisfies AgentMode;

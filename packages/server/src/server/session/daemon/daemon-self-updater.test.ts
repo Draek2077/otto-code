@@ -5,7 +5,7 @@ import {
   type DaemonSelfUpdateRuntime,
   type DaemonSelfUpdatePhase,
 } from "./daemon-self-updater.js";
-import type { CommandResult, NpmGlobalPaseoInstall } from "./npm-global-cli.js";
+import type { CommandResult, NpmGlobalOttoInstall } from "./npm-global-cli.js";
 
 interface TestLogger {
   errors: Array<{ obj: object; msg?: string }>;
@@ -14,19 +14,19 @@ interface TestLogger {
   warn(obj: object, msg?: string): void;
 }
 
-type Inspection = NpmGlobalPaseoInstall | Error;
+type Inspection = NpmGlobalOttoInstall | Error;
 type RuntimeCall = "inspect" | "installLatest";
 
 const globalRoot = "/global/lib";
 const globalNodeModules = `${globalRoot}/node_modules`;
-const cliPackagePath = `${globalNodeModules}/@getpaseo/cli`;
-const npmServerPackageRoot = `${cliPackagePath}/node_modules/@getpaseo/server`;
+const cliPackagePath = `${globalNodeModules}/@otto-code/cli`;
+const npmServerPackageRoot = `${cliPackagePath}/node_modules/@otto-code/server`;
 const sourceServerPackageRoot = "/repo/packages/server";
 
-function npmGlobalPaseoInstall(
+function npmGlobalOttoInstall(
   version: string,
   options?: { linked?: boolean },
-): NpmGlobalPaseoInstall {
+): NpmGlobalOttoInstall {
   return {
     version,
     packagePath: cliPackagePath,
@@ -102,7 +102,7 @@ describe("DaemonSelfUpdater", () => {
     const calls: RuntimeCall[] = [];
     const runtime = createRuntime({
       calls,
-      inspections: [npmGlobalPaseoInstall("0.1.15"), npmGlobalPaseoInstall("0.1.96")],
+      inspections: [npmGlobalOttoInstall("0.1.15"), npmGlobalOttoInstall("0.1.96")],
     });
 
     const { result, phases } = await runUpdate({ runtime });
@@ -120,13 +120,13 @@ describe("DaemonSelfUpdater", () => {
     const calls: RuntimeCall[] = [];
     const runtime = createRuntime({
       calls,
-      inspections: [new Error("@getpaseo/cli is not installed with npm -g on this host")],
+      inspections: [new Error("@otto-code/cli is not installed with npm -g on this host")],
     });
 
     const { result, phases } = await runUpdate({ runtime });
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("@getpaseo/cli is not installed with npm -g on this host");
+    expect(result.error).toBe("@otto-code/cli is not installed with npm -g on this host");
     expect(phases).toEqual(["starting"]);
     expect(calls).toEqual(["inspect"]);
   });
@@ -135,7 +135,7 @@ describe("DaemonSelfUpdater", () => {
     const calls: RuntimeCall[] = [];
     const runtime = createRuntime({
       calls,
-      inspections: [npmGlobalPaseoInstall("0.1.15")],
+      inspections: [npmGlobalOttoInstall("0.1.15")],
     });
 
     const { result } = await runUpdate({ runtime, daemonVersion: "0.1.96" });
@@ -143,7 +143,7 @@ describe("DaemonSelfUpdater", () => {
     expect(result).toEqual({
       success: false,
       error:
-        "This daemon is not running from the npm global @getpaseo/cli install (global npm has 0.1.15, daemon is 0.1.96).",
+        "This daemon is not running from the npm global @otto-code/cli install (global npm has 0.1.15, daemon is 0.1.96).",
       newVersion: null,
     });
     expect(calls).toEqual(["inspect"]);
@@ -154,14 +154,14 @@ describe("DaemonSelfUpdater", () => {
     const runtime = createRuntime({
       calls,
       currentServerPackageRoot: sourceServerPackageRoot,
-      inspections: [npmGlobalPaseoInstall("0.1.15")],
+      inspections: [npmGlobalOttoInstall("0.1.15")],
     });
 
     const { result } = await runUpdate({ runtime });
 
     expect(result).toEqual({
       success: false,
-      error: "This daemon is not running from the npm global @getpaseo/cli install.",
+      error: "This daemon is not running from the npm global @otto-code/cli install.",
       newVersion: null,
     });
     expect(calls).toEqual(["inspect"]);
@@ -169,7 +169,7 @@ describe("DaemonSelfUpdater", () => {
 
   test("does not update linked global installs", async () => {
     const runtime = createRuntime({
-      inspections: [npmGlobalPaseoInstall("0.1.15", { linked: true })],
+      inspections: [npmGlobalOttoInstall("0.1.15", { linked: true })],
     });
 
     const { result } = await runUpdate({ runtime });
@@ -177,7 +177,7 @@ describe("DaemonSelfUpdater", () => {
     expect(result).toEqual({
       success: false,
       error:
-        "The global @getpaseo/cli install is linked; self-update only supports normal npm global installs.",
+        "The global @otto-code/cli install is linked; self-update only supports normal npm global installs.",
       newVersion: null,
     });
   });
@@ -193,7 +193,7 @@ describe("DaemonSelfUpdater", () => {
       npm: {
         async inspect() {
           calls.push("inspect");
-          return npmGlobalPaseoInstall("0.1.15");
+          return npmGlobalOttoInstall("0.1.15");
         },
         async installLatest() {
           calls.push("installLatest");

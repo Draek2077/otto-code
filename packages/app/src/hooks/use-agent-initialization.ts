@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useSessionStore } from "@/stores/session-store";
 import {
   createInitDeferred,

@@ -1,4 +1,4 @@
-import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildWorkspaceTabSnapshot,

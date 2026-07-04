@@ -19,35 +19,35 @@ Root checkout dev is intentionally split across terminals:
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
-`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6767` for the packaged app and production-style `~/.paseo` state.
+`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6868` for the packaged app and production-style `~/.otto` state.
 
-### PASEO_HOME
+### OTTO_HOME
 
-`PASEO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
+`OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
 
-- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.paseo` (see `packages/server/src/server/paseo-home.ts`).
-- **Repo dev scripts** default to `$ROOT/.dev/paseo-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
-- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/paseo-home` and configured dev daemon endpoint.
-- **Paseo-created worktrees** seed `$PASEO_WORKTREE_PATH/.dev/paseo-home` from `$PASEO_SOURCE_CHECKOUT_PATH/.dev/paseo-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
+- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/otto-home.ts`).
+- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
+- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/otto-home` and configured dev daemon endpoint.
+- **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/.dev/otto-home` from `$OTTO_SOURCE_CHECKOUT_PATH/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
 
 Override knobs:
 
 ```bash
-PASEO_HOME=~/.paseo-blue npm run dev          # explicit home
-PASEO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
-PASEO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
+OTTO_HOME=~/.otto-blue npm run dev          # explicit home
+OTTO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
+OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
 ```
 
 ### Daemon endpoints
 
-- Stable daemon launched by the desktop app: `localhost:6767`.
+- Stable daemon launched by the desktop app: `localhost:6868`.
 - Root checkout dev daemon: `localhost:6768`.
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev` (Windows): `localhost:6767` for the daemon.
+- `npm run dev` (Windows): `localhost:6868` for the daemon.
 
-In Paseo-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
+In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
 ### Expo Router
 
@@ -57,9 +57,9 @@ startup routing, remembered workspace restore, or active workspace selection.
 
 ### iOS simulator preview service
 
-Paseo worktrees expose the native iOS dev app through the `ios-simulator` service in `paseo.json`. The service URL serves the simulator preview at `/.sim`, so the preview link is `${PASEO_URL}/.sim`.
+Otto worktrees expose the native iOS dev app through the `ios-simulator` service in `otto.json`. The service URL serves the simulator preview at `/.sim`, so the preview link is `${OTTO_URL}/.sim`.
 
-The service is designed for concurrent worktrees: it derives a deterministic simulator identity from the worktree path, uses the worktree's assigned `PASEO_PORT`, pins `serve-sim` to that simulator UDID, and only tears down that worktree's helper/simulator state. It must not rely on the globally booted simulator or any fixed Metro port.
+The service is designed for concurrent worktrees: it derives a deterministic simulator identity from the worktree path, uses the worktree's assigned `OTTO_PORT`, pins `serve-sim` to that simulator UDID, and only tears down that worktree's helper/simulator state. It must not rely on the globally booted simulator or any fixed Metro port.
 
 Worktree setup best-effort seeds the generated iOS project and newest native build cache from the source checkout before the service runs. The service still validates the native project by running Expo prebuild and Xcode; the seed only avoids paying all setup/build cost from a cold worktree every time.
 
@@ -70,11 +70,11 @@ Starting the service must not create, focus, reveal, or leave behind macOS Simul
 `npm run dev:desktop` starts Electron with Chromium remote debugging enabled on
 `http://127.0.0.1:9223` so renderer CPU profiles can be captured through CDP.
 It launches its own Electron-flavored Expo server and passes that URL to Electron.
-Override the CDP port with `PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` when `9223` is busy.
+Override the CDP port with `OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` when `9223` is busy.
 
 When running a dedicated Electron QA instance against a non-default Expo port, set
 `EXPO_DEV_URL` explicitly. Desktop main defaults to `http://localhost:8081`, so
-`PASEO_PORT=57928` alone starts Metro on 57928 but Electron still loads 8081.
+`OTTO_PORT=57928` alone starts Metro on 57928 but Electron still loads 8081.
 
 ### React render profiling
 
@@ -84,11 +84,11 @@ to measure with `RenderProfile`, then open the app with `?renderProfile=1`. When
 the query param is absent, `RenderProfile` returns children directly and records
 nothing.
 
-Captured samples are exposed on `globalThis.__PASEO_RENDER_PROFILE__`. Call
-`globalThis.__PASEO_RESET_RENDER_PROFILE__?.()` after warm-up and before the
+Captured samples are exposed on `globalThis.__OTTO_RENDER_PROFILE__`. Call
+`globalThis.__OTTO_RESET_RENDER_PROFILE__?.()` after warm-up and before the
 interaction you want to measure. If a memo comparator or subscription boundary
 needs explanation, call `recordRenderProfileReasons(id, reasons)` while profiling;
-reason counts are exposed on `globalThis.__PASEO_RENDER_PROFILE_REASONS__`.
+reason counts are exposed on `globalThis.__OTTO_RENDER_PROFILE_REASONS__`.
 
 Use this workflow for any render investigation:
 
@@ -121,10 +121,10 @@ Existing scenario script: workspace agent/terminal tab switching. Start Expo on
 web, keep a daemon available, then run:
 
 ```bash
-PASEO_PROFILE_SERVER_ID=<server-id> \
-PASEO_PROFILE_WORKSPACE_ID=<workspace-path> \
-PASEO_PROFILE_AGENT_ID=<agent-id> \
-  npm run profile:workspace-tabs --workspace=@getpaseo/app
+OTTO_PROFILE_SERVER_ID=<server-id> \
+OTTO_PROFILE_WORKSPACE_ID=<workspace-path> \
+OTTO_PROFILE_AGENT_ID=<agent-id> \
+  npm run profile:workspace-tabs --workspace=@otto-code/app
 ```
 
 This script opens the app with `?renderProfile=1`, creates a temporary terminal
@@ -133,11 +133,11 @@ Profiler timings, then removes the temporary terminal. It is an example of the
 workflow above, not the only way to use the profiler. Useful knobs:
 
 ```bash
-PASEO_PROFILE_APP_URL=http://localhost:19010 # Expo web URL
-PASEO_PROFILE_SWITCH_COUNT=1                # number of agent/terminal switch pairs
-PASEO_PROFILE_SWITCH_WAIT_MS=250            # delay after each click
-PASEO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
-PASEO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
+OTTO_PROFILE_APP_URL=http://localhost:19010 # Expo web URL
+OTTO_PROFILE_SWITCH_COUNT=1                # number of agent/terminal switch pairs
+OTTO_PROFILE_SWITCH_WAIT_MS=250            # delay after each click
+OTTO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
+OTTO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
 ```
 
 ### Desktop macOS compositor watchdog
@@ -164,16 +164,16 @@ guards already prevent throttling from causing a false stall.
 
 ### Daemon logs
 
-Check `$PASEO_HOME/daemon.log` for daemon logs. The default level is `info`; set
-`PASEO_LOG_LEVEL=trace` before launching the daemon when you need full provider,
+Check `$OTTO_HOME/daemon.log` for daemon logs. The default level is `info`; set
+`OTTO_LOG_LEVEL=trace` before launching the daemon when you need full provider,
 session, and agent-manager traces for stuck-state debugging.
 
 The supervisor rotates `daemon.log`. Persisted `log.file.rotate` settings in
-`$PASEO_HOME/config.json` win first. Without persisted config, the optional
-`PASEO_LOG_ROTATE_SIZE` and `PASEO_LOG_ROTATE_COUNT` env vars override the
+`$OTTO_HOME/config.json` win first. Without persisted config, the optional
+`OTTO_LOG_ROTATE_SIZE` and `OTTO_LOG_ROTATE_COUNT` env vars override the
 defaults. The default rotation is `10m` x `3` files everywhere.
 
-## paseo.json service scripts
+## otto.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
 of commands. Both run sequentially.
@@ -181,7 +181,7 @@ of commands. Both run sequentially.
 ```json
 {
   "worktree": {
-    "setup": "npm ci\ncp \"$PASEO_SOURCE_CHECKOUT_PATH/.env\" .env\nnpm run db:migrate",
+    "setup": "npm ci\ncp \"$OTTO_SOURCE_CHECKOUT_PATH/.env\" .env\nnpm run db:migrate",
     "teardown": "npm run db:drop || true"
   }
 }
@@ -191,10 +191,10 @@ Every `scripts` entry with `"type": "service"` receives these environment variab
 
 | Variable                    | Value                                                                                                                     |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `PASEO_SERVICE_<NAME>_URL`  | Proxied URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts.                       |
-| `PASEO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
-| `PASEO_URL`                 | Self alias for `PASEO_SERVICE_<SELF>_URL`.                                                                                |
-| `PASEO_PORT`                | Self alias for `PASEO_SERVICE_<SELF>_PORT`.                                                                               |
+| `OTTO_SERVICE_<NAME>_URL`  | Proxied URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts.                       |
+| `OTTO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
+| `OTTO_URL`                 | Self alias for `OTTO_SERVICE_<SELF>_URL`.                                                                                |
+| `OTTO_PORT`                | Self alias for `OTTO_SERVICE_<SELF>_PORT`.                                                                               |
 | `HOST`                      | Bind host for the service process.                                                                                        |
 
 Service proxy hostnames use the double-dash shape: `web--feature-auth--project.localhost` or, on the default branch, `web--project.localhost`. Optional public aliases use the same leftmost label under the configured public base host.
@@ -208,7 +208,7 @@ Service proxy hostnames use the double-dash shape: `web--feature-auth--project.l
   "scripts": {
     "web": {
       "type": "service",
-      "command": "PORT=$PASEO_PORT npm run dev:web"
+      "command": "PORT=$OTTO_PORT npm run dev:web"
     }
   }
 }
@@ -223,13 +223,13 @@ The daemon can optionally serve the browser web client from the same HTTP server
 Enable it for a running daemon with:
 
 ```bash
-paseo daemon start --web-ui
+otto daemon start --web-ui
 ```
 
 Or set the environment variable:
 
 ```bash
-PASEO_WEB_UI_ENABLED=true paseo daemon start
+OTTO_WEB_UI_ENABLED=true otto daemon start
 ```
 
 Or persist it in `config.json`:
@@ -244,9 +244,9 @@ Or persist it in `config.json`:
 }
 ```
 
-When enabled, opening the daemon HTTP origin (for example `http://localhost:6767/`) serves the web app. The same HTTP server continues to serve `/api/*`, `/mcp/*`, `/public/*`, the WebSocket upgrade, and service-proxy routes. Static files load without daemon bearer auth; API and WebSocket calls still enforce auth.
+When enabled, opening the daemon HTTP origin (for example `http://localhost:6868/`) serves the web app. The same HTTP server continues to serve `/api/*`, `/mcp/*`, `/public/*`, the WebSocket upgrade, and service-proxy routes. Static files load without daemon bearer auth; API and WebSocket calls still enforce auth.
 
-The served app auto-bootstraps a connection to the same origin, so opening `http://localhost:6767/` directly usually skips the Add Host step.
+The served app auto-bootstraps a connection to the same origin, so opening `http://localhost:6868/` directly usually skips the Add Host step.
 
 Build the artifact for packaging or measurement with:
 
@@ -262,13 +262,13 @@ Measured bundle size for a standard Expo web export:
 - gzip: 2.55 MiB
 - brotli: 1.93 MiB
 
-The desktop-managed daemon disables the bundled web UI by default (`PASEO_WEB_UI_ENABLED=false`) because the desktop app already ships the renderer as `app-dist`. Shipping the same assets again inside `@getpaseo/server` would duplicate the ~10.8 MiB install. Desktop packaging also excludes `node_modules/@getpaseo/server/dist/server/web-ui/**` from the packaged app.
+The desktop-managed daemon disables the bundled web UI by default (`OTTO_WEB_UI_ENABLED=false`) because the desktop app already ships the renderer as `app-dist`. Shipping the same assets again inside `@otto-code/server` would duplicate the ~10.8 MiB install. Desktop packaging also excludes `node_modules/@otto-code/server/dist/server/web-ui/**` from the packaged app.
 
 ## Built workspace packages
 
 Package imports resolve through package exports to compiled `dist/` output, not sibling `src/` files. This is true in local dev and in published packages: the app, daemon, CLI, and SDK consumers should all exercise the same runtime paths.
 
-`npm run dev:server` builds the server-side workspace packages once, then keeps `@getpaseo/protocol` and `@getpaseo/client` fresh with TypeScript watch builds while the daemon runs. If you change protocol schemas or client code outside that watch workflow, rebuild the producer before trusting runtime behavior.
+`npm run dev:server` builds the server-side workspace packages once, then keeps `@otto-code/protocol` and `@otto-code/client` fresh with TypeScript watch builds while the daemon runs. If you change protocol schemas or client code outside that watch workflow, rebuild the producer before trusting runtime behavior.
 
 Use the named root build targets instead of remembering workspace dependency chains:
 
@@ -306,7 +306,7 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/paseo-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `paseo` binary on macOS is a symlink into the installed Paseo desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally
@@ -327,19 +327,19 @@ npm run cli -- --host localhost:7777 ls -a
 Agent data lives at:
 
 ```
-$PASEO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
+$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
 ```
 
 Find an agent by ID:
 
 ```bash
-find $PASEO_HOME/agents -name "{agent-id}.json"
+find $OTTO_HOME/agents -name "{agent-id}.json"
 ```
 
 Find by content:
 
 ```bash
-rg -l "some title text" $PASEO_HOME/agents/
+rg -l "some title text" $OTTO_HOME/agents/
 ```
 
 ## Provider session files
@@ -360,20 +360,20 @@ Get the session ID from the agent JSON (`persistence.sessionId`), then:
 
 ## Testing with Playwright MCP
 
-Point Playwright MCP at the running Expo web target. For root checkout dev, `npm run dev:app` reserves `http://localhost:8081`. For Paseo-managed worktree app services, use the service URL or port shown by Paseo for that worktree.
+Point Playwright MCP at the running Expo web target. For root checkout dev, `npm run dev:app` reserves `http://localhost:8081`. For Otto-managed worktree app services, use the service URL or port shown by Otto for that worktree.
 
 Do NOT use browser history (back/forward). Always navigate by clicking UI elements or using `browser_navigate` with the full URL — the app uses client-side routing and browser history breaks state.
 
 ## App web deploys
 
 `packages/app` exports a single-page Expo web app and deploys the `dist/`
-directory to Cloudflare Pages with `npm run deploy:web --workspace=@getpaseo/app`.
+directory to Cloudflare Pages with `npm run deploy:web --workspace=@otto-code/app`.
 
 PWA install metadata lives in `packages/app/public/manifest.json` and is linked
 from `packages/app/public/index.html`. Keep the install icons in `public/` so
 Cloudflare serves them from stable root URLs after `expo export`.
 
-Do not add service-worker caching casually. Paseo is a live control surface for
+Do not add service-worker caching casually. Otto is a live control surface for
 agents, and an aggressive service worker can strand installed users on stale web
 code. If offline behavior becomes a product requirement, add it deliberately
 with an update strategy and test the installed-app upgrade path.

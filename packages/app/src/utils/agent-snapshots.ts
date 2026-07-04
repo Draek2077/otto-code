@@ -1,6 +1,6 @@
-import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
-import type { AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
-import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
+import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
+import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
+import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
 
 export function derivePendingPermissionKey(
   agentId: string,

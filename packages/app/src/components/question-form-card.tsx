@@ -12,7 +12,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { Check, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "@/types/shared";
-import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
+import type { AgentPermissionResponse } from "@otto-code/protocol/agent-types";
 import { isWeb } from "@/constants/platform";
 import {
   areQuestionsAnswered,

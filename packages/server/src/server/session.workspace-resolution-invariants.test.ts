@@ -9,7 +9,7 @@ import path from "node:path";
 import { expect, test, vi } from "vitest";
 
 import { Session, type SessionOptions } from "./session.js";
-import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
@@ -59,7 +59,7 @@ function createHarness(input: {
           currentBranch: null,
           remoteUrl: null,
           worktreeRoot: null,
-          isPaseoOwnedWorktree: false,
+          isOttoOwnedWorktree: false,
           mainRepoRoot: null,
         };
       }
@@ -69,7 +69,7 @@ function createHarness(input: {
         currentBranch: "main",
         remoteUrl: null,
         worktreeRoot: root,
-        isPaseoOwnedWorktree: false,
+        isOttoOwnedWorktree: false,
         mainRepoRoot: null,
       };
     },
@@ -93,7 +93,7 @@ function createHarness(input: {
     logger: createStub<SessionOptions["logger"]>(logger),
     downloadTokenStore: createStub<SessionOptions["downloadTokenStore"]>({}),
     pushTokenStore: createStub<SessionOptions["pushTokenStore"]>({}),
-    paseoHome: mkdtempSync(path.join(tmpdir(), "paseo-invariant-test-")),
+    ottoHome: mkdtempSync(path.join(tmpdir(), "otto-invariant-test-")),
     agentManager: createStub<SessionOptions["agentManager"]>({
       subscribe: () => () => {},
       listAgents: () => [],

@@ -256,7 +256,7 @@ test.describe("Workspace navigation regression", () => {
       await ws.close({ code: 1008, reason: "Blocked cold offline workspace route test." });
     });
 
-    await page.goto(buildHostWorkspaceRoute(serverId, "/tmp/paseo-missing-workspace"));
+    await page.goto(buildHostWorkspaceRoute(serverId, "/tmp/otto-missing-workspace"));
 
     await expectHostConnectingOrOffline(page);
     await expectMenuButtonVisible(page);
@@ -431,7 +431,7 @@ test.describe("Workspace navigation regression", () => {
       await page.evaluate(
         ({ agentId, serverId: targetServerId }) => {
           globalThis.dispatchEvent(
-            new CustomEvent("paseo:web-notification-click", {
+            new CustomEvent("otto:web-notification-click", {
               detail: {
                 data: {
                   serverId: targetServerId,

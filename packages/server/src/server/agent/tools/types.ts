@@ -1,44 +1,44 @@
 import type { z } from "zod";
 
-export interface PaseoToolExecutionContext {
+export interface OttoToolExecutionContext {
   signal?: AbortSignal;
 }
 
-export interface PaseoToolResult {
+export interface OttoToolResult {
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
   structuredContent?: unknown;
   isError?: boolean;
 }
 
-export interface PaseoToolConfig {
+export interface OttoToolConfig {
   title?: string;
   description?: string;
   inputSchema?: z.ZodRawShape | z.ZodType;
   outputSchema?: z.ZodRawShape;
 }
 
-export interface PaseoToolDefinition extends PaseoToolConfig {
+export interface OttoToolDefinition extends OttoToolConfig {
   name: string;
   description: string;
-  handler: (input: unknown, context: PaseoToolExecutionContext) => Promise<PaseoToolResult>;
+  handler: (input: unknown, context: OttoToolExecutionContext) => Promise<OttoToolResult>;
 }
 
-export interface PaseoToolCatalog {
-  tools: ReadonlyMap<string, PaseoToolDefinition>;
-  getTool(name: string): PaseoToolDefinition | undefined;
+export interface OttoToolCatalog {
+  tools: ReadonlyMap<string, OttoToolDefinition>;
+  getTool(name: string): OttoToolDefinition | undefined;
   executeTool(
     name: string,
     input: unknown,
-    context?: PaseoToolExecutionContext,
-  ): Promise<PaseoToolResult>;
+    context?: OttoToolExecutionContext,
+  ): Promise<OttoToolResult>;
 }
 
-export interface PaseoToolRuntimeContext {
+export interface OttoToolRuntimeContext {
   callerAgentId?: string;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
 }
 
-export type PaseoToolCatalogFactory = (
-  context: PaseoToolRuntimeContext,
-) => PaseoToolCatalog | Promise<PaseoToolCatalog>;
+export type OttoToolCatalogFactory = (
+  context: OttoToolRuntimeContext,
+) => OttoToolCatalog | Promise<OttoToolCatalog>;

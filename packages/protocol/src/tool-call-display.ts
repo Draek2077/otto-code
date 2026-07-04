@@ -1,5 +1,5 @@
 import type { ToolCallTimelineItem } from "./agent-types.js";
-import { getPaseoToolLeafName, isPaseoToolName } from "@getpaseo/protocol/tool-name-normalization";
+import { getOttoToolLeafName, isOttoToolName } from "@otto-code/protocol/tool-name-normalization";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<
@@ -33,8 +33,8 @@ function humanizeToolName(name: string): string {
   if (!trimmed) {
     return name;
   }
-  if (isPaseoToolName(trimmed)) {
-    const leaf = getPaseoToolLeafName(trimmed);
+  if (isOttoToolName(trimmed)) {
+    const leaf = getOttoToolLeafName(trimmed);
     if (leaf) {
       return humanizeToolName(leaf);
     }

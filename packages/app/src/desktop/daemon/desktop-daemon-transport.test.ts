@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDesktopLocalDaemonTransportFactory } from "./desktop-daemon-transport";
 import { createFakeLocalDaemonTransportRpc } from "./test-local-daemon-transport-rpc";
 
-const LOCAL_URL = "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock";
+const LOCAL_URL = "otto+local://socket?path=%2Ftmp%2Fotto.sock";
 
 describe("desktop-daemon-transport", () => {
   it("emits open after the session resolves even if the rust open event raced earlier", async () => {

@@ -6,7 +6,7 @@ import {
   type BrowserAutomationCommandName,
   type BrowserAutomationExecuteRequest,
   type BrowserAutomationExecuteResponse,
-} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+} from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { browserToolsFailure, type BrowserToolsResponsePayload } from "./errors.js";
 import type { BrowserToolsPolicy } from "./policy.js";
 

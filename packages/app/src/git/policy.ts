@@ -6,7 +6,7 @@ import type {
   CheckoutPrMergeMethod,
   CheckoutPrStatusResponse,
   PullRequestMergeable,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 
 export type GitActionId =
   | "commit"
@@ -64,7 +64,7 @@ export interface BuildGitActionsInput {
   pullRequestMergeable: PullRequestMergeable;
   pullRequestGithub: PullRequestGithubStatus | null;
   hasRemote: boolean;
-  isPaseoOwnedWorktree: boolean;
+  isOttoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   hasUncommittedChanges: boolean;
   baseRefAvailable: boolean;
@@ -290,7 +290,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     disabled: input.runtime["archive-worktree"].disabled,
     status: input.runtime["archive-worktree"].status,
     unavailableMessage:
-      input.runtime["archive-worktree"].disabled || input.isPaseoOwnedWorktree
+      input.runtime["archive-worktree"].disabled || input.isOttoOwnedWorktree
         ? undefined
         : i18n.t("workspace.git.actions.unavailable.archiveNotWorktree"),
     icon: input.runtime["archive-worktree"].icon,
@@ -305,7 +305,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
-  if (input.isPaseoOwnedWorktree) {
+  if (input.isOttoOwnedWorktree) {
     secondaryIds.push("archive-worktree");
   }
 
@@ -317,7 +317,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
 }
 
 function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
-  if (input.shouldPromoteArchive && input.isPaseoOwnedWorktree) {
+  if (input.shouldPromoteArchive && input.isOttoOwnedWorktree) {
     return "archive-worktree";
   }
   if (input.hasUncommittedChanges) {
@@ -515,9 +515,9 @@ function hasPushableCommits(input: BuildGitActionsInput): boolean {
   if ((input.aheadOfOrigin ?? 0) > 0) {
     return true;
   }
-  // No-upstream Paseo worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
+  // No-upstream Otto worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
   // Do not fold this into aheadOfOrigin; null also covers deleted/pruned upstream branches.
-  return input.isPaseoOwnedWorktree && input.aheadOfOrigin === null && input.aheadCount > 0;
+  return input.isOttoOwnedWorktree && input.aheadOfOrigin === null && input.aheadCount > 0;
 }
 
 function canMergeFromBase(input: BuildGitActionsInput): boolean {

@@ -13,24 +13,24 @@ console.log("=== Local Daemon Utility Helpers ===\n");
 
 {
   console.log("Test 1: resolves numeric listen values to localhost host:port");
-  assert.strictEqual(resolveTcpHostFromListen("6767"), "127.0.0.1:6767");
+  assert.strictEqual(resolveTcpHostFromListen("6868"), "127.0.0.1:6868");
   assert.strictEqual(resolveTcpHostFromListen("  7777  "), "127.0.0.1:7777");
   console.log("✓ resolves numeric listen values\n");
 }
 
 {
   console.log("Test 2: preserves explicit host:port listen values");
-  assert.strictEqual(resolveTcpHostFromListen("localhost:6767"), "localhost:6767");
+  assert.strictEqual(resolveTcpHostFromListen("localhost:6868"), "localhost:6868");
   assert.strictEqual(resolveTcpHostFromListen("0.0.0.0:8080"), "0.0.0.0:8080");
   console.log("✓ preserves explicit host:port values\n");
 }
 
 {
   console.log("Test 3: rejects unix socket listen values");
-  assert.strictEqual(resolveTcpHostFromListen("/tmp/paseo.sock"), null);
-  assert.strictEqual(resolveTcpHostFromListen("unix:///tmp/paseo.sock"), null);
-  assert.strictEqual(resolveTcpHostFromListen("pipe://\\\\.\\pipe\\paseo-managed-test"), null);
-  assert.strictEqual(resolveTcpHostFromListen("\\\\.\\pipe\\paseo-managed-test"), null);
+  assert.strictEqual(resolveTcpHostFromListen("/tmp/otto.sock"), null);
+  assert.strictEqual(resolveTcpHostFromListen("unix:///tmp/otto.sock"), null);
+  assert.strictEqual(resolveTcpHostFromListen("pipe://\\\\.\\pipe\\otto-managed-test"), null);
+  assert.strictEqual(resolveTcpHostFromListen("\\\\.\\pipe\\otto-managed-test"), null);
   console.log("✓ rejects unix socket listen values\n");
 }
 
@@ -44,9 +44,9 @@ console.log("=== Local Daemon Utility Helpers ===\n");
 
 {
   console.log("Test 5: rejects Windows absolute paths (not TCP endpoints)");
-  assert.strictEqual(resolveTcpHostFromListen("C:\\Users\\foo\\.paseo\\paseo.sock"), null);
+  assert.strictEqual(resolveTcpHostFromListen("C:\\Users\\foo\\.otto\\otto.sock"), null);
   assert.strictEqual(resolveTcpHostFromListen("D:\\project\\socket"), null);
-  assert.strictEqual(resolveTcpHostFromListen("C:\\paseo.sock"), null);
+  assert.strictEqual(resolveTcpHostFromListen("C:\\otto.sock"), null);
   console.log("✓ rejects Windows absolute paths\n");
 }
 

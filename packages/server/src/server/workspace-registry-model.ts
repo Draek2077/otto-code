@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type {
   ProjectCheckoutLitePayload,
   ProjectPlacementPayload,
-} from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/messages";
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
@@ -169,7 +169,7 @@ export function checkoutLiteFromGitSnapshot(
     currentBranch: string | null;
     remoteUrl: string | null;
     repoRoot: string | null;
-    isPaseoOwnedWorktree: boolean;
+    isOttoOwnedWorktree: boolean;
     mainRepoRoot: string | null;
   },
 ): ProjectCheckoutLitePayload {
@@ -180,18 +180,18 @@ export function checkoutLiteFromGitSnapshot(
       currentBranch: null,
       remoteUrl: null,
       worktreeRoot: null,
-      isPaseoOwnedWorktree: false,
+      isOttoOwnedWorktree: false,
       mainRepoRoot: null,
     };
   }
-  if (git.isPaseoOwnedWorktree && git.mainRepoRoot) {
+  if (git.isOttoOwnedWorktree && git.mainRepoRoot) {
     return {
       cwd,
       isGit: true,
       currentBranch: git.currentBranch,
       remoteUrl: git.remoteUrl,
       worktreeRoot: git.repoRoot ?? cwd,
-      isPaseoOwnedWorktree: true,
+      isOttoOwnedWorktree: true,
       mainRepoRoot: git.mainRepoRoot,
     };
   }
@@ -201,7 +201,7 @@ export function checkoutLiteFromGitSnapshot(
     currentBranch: git.currentBranch,
     remoteUrl: git.remoteUrl,
     worktreeRoot: git.repoRoot ?? cwd,
-    isPaseoOwnedWorktree: false,
+    isOttoOwnedWorktree: false,
     mainRepoRoot: git.mainRepoRoot,
   };
 }

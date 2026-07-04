@@ -7,7 +7,7 @@ import {
   type DaemonEventHandler,
   type SendMessageOptions,
   type WebSocketLike,
-} from "@getpaseo/client/internal/daemon-client";
+} from "@otto-code/client/internal/daemon-client";
 
 export type DaemonClientConfig = Omit<
   SharedDaemonClientConfig,

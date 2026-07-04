@@ -668,7 +668,7 @@ export const en = {
           updateCurrent:
             "Update isn't available because this branch is already up to date with {{baseRef}}",
           archiveNotWorktree:
-            "Archive isn't available here because this workspace was not created as a Paseo worktree",
+            "Archive isn't available here because this workspace was not created as a Otto worktree",
           mergePrNoGithub: "Merge PR isn't available right now because GitHub isn't connected",
           mergePrMissing: "Merge PR isn't available because there isn't a pull request yet",
           mergePrDraft: "Merge PR isn't available because the pull request is still a draft",
@@ -900,7 +900,7 @@ export const en = {
   },
   desktop: {
     quitting: {
-      title: "Quitting Paseo...",
+      title: "Quitting Otto...",
       detail: "Stopping the local daemon.",
     },
     daemon: {
@@ -914,20 +914,20 @@ export const en = {
       },
       management: {
         title: "Manage built-in daemon",
-        hint: "Let Paseo start and stop the built-in daemon",
+        hint: "Let Otto start and stop the built-in daemon",
         pauseTitle: "Pause built-in daemon",
         pauseMessage:
           "This will stop the built-in daemon immediately. Running agents and terminals connected to the built-in daemon will be stopped.",
         pauseAndStop: "Pause and stop",
         registrationFailed:
-          "Built-in daemon started, but Paseo could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
+          "Built-in daemon started, but Otto could not save the localhost connection. Toggle daemon management off and on again, or add localhost manually.",
         pausedStopFailed:
-          "Built-in daemon management was paused, but Paseo could not stop the daemon.",
+          "Built-in daemon management was paused, but Otto could not stop the daemon.",
         updateFailed: "Unable to update built-in daemon management.",
       },
       keepRunning: {
         title: "Keep daemon running after quit",
-        hint: "Daemon keeps running when you quit Paseo",
+        hint: "Daemon keeps running when you quit Otto",
       },
       logs: {
         title: "Log file",
@@ -942,7 +942,7 @@ export const en = {
       fullStatus: {
         title: "Full status",
         modalTitle: "Daemon status",
-        hint: "Runs `paseo daemon status` and shows the output",
+        hint: "Runs `otto daemon status` and shows the output",
         view: "View status",
         copied: "Status copied to clipboard.",
         fetchFailed: "Failed to fetch daemon status: {{message}}",
@@ -994,7 +994,7 @@ export const en = {
     },
     rosetta: {
       title: "Download the Apple Silicon build",
-      runningIntel: "You're running the Intel build of Paseo under Rosetta on Apple Silicon.",
+      runningIntel: "You're running the Intel build of Otto under Rosetta on Apple Silicon.",
       highCpu: "This causes high CPU usage. Download the Apple Silicon build to fix it.",
       download: "Download",
     },
@@ -1036,7 +1036,7 @@ export const en = {
         microphone: "Microphone status has not been checked yet.",
       },
       testNotification: {
-        title: "Paseo notification test",
+        title: "Otto notification test",
         body: "If you can see this, desktop notifications work.",
         notDelivered: "Notification was not delivered. Check System Settings > Notifications.",
         failed: "Failed to send notification.",
@@ -1045,7 +1045,7 @@ export const en = {
     integrations: {
       cli: {
         statusFailed: "Unable to check CLI install status.",
-        installFailed: "Unable to install the Paseo CLI.",
+        installFailed: "Unable to install the Otto CLI.",
       },
       skills: {
         statusFailed: "Unable to check orchestration skills status.",
@@ -1144,7 +1144,7 @@ export const en = {
     },
   },
   onboarding: {
-    title: "Welcome to Paseo",
+    title: "Welcome to Otto",
     subtitle: "Connect your computer to get started",
     actions: {
       settings: "Settings",
@@ -1220,7 +1220,7 @@ export const en = {
     },
     direct: {
       title: "Direct connection",
-      helper: "Enter the address of a Paseo server.",
+      helper: "Enter the address of a Otto server.",
       fields: {
         host: "Host",
         port: "Port",
@@ -1298,7 +1298,7 @@ export const en = {
       failedToLoadOffer: "Failed to load pairing offer.",
       relayDisabled: "Relay is not enabled. Enable relay to pair a device.",
       unavailable: "Pairing offer unavailable.",
-      hint: "Scan this QR code with Paseo on your phone, or copy the link below.",
+      hint: "Scan this QR code with Otto on your phone, or copy the link below.",
       qrUnavailable: "QR code unavailable.",
       retry: "Retry",
       copy: "Copy",
@@ -1330,7 +1330,7 @@ export const en = {
   serviceUrl: {
     title: "Open service URL",
     message: "Open {{url}}?",
-    inPaseo: "In Paseo",
+    inOtto: "In Otto",
     externalBrowser: "External browser",
     dontAskAgain: "Don't ask again",
   },
@@ -1455,7 +1455,7 @@ export const en = {
         description: "Where to open URLs from running scripts",
         options: {
           ask: "Ask",
-          inApp: "In Paseo",
+          inApp: "In Otto",
           external: "External browser",
         },
       },
@@ -1520,7 +1520,7 @@ export const en = {
         label: "App updates",
         readyToInstall: "Ready to install: {{version}}",
         installTitle: "Install desktop update",
-        installMessage: "This updates Paseo on this computer",
+        installMessage: "This updates Otto on this computer",
         installConfirm: "Install update",
         update: "Update",
         updateTo: "Update to {{version}}",
@@ -1648,11 +1648,11 @@ export const en = {
         title: "Orchestration skills",
         description: "Teach your agents to orchestrate through the CLI",
         updateAvailable: "Update available",
-        updateTitle: "Update Paseo skills?",
+        updateTitle: "Update Otto skills?",
         updateFallback: "Sync bundled skills to your machine.",
-        uninstallTitle: "Uninstall Paseo skills?",
+        uninstallTitle: "Uninstall Otto skills?",
         uninstallMessage:
-          "Removes all Paseo orchestration skills from ~/.agents, ~/.claude, ~/.codex.",
+          "Removes all Otto orchestration skills from ~/.agents, ~/.claude, ~/.codex.",
       },
       actions: {
         install: "Install",
@@ -1707,9 +1707,9 @@ export const en = {
         title: "Orchestration",
         unavailable: "Connect to this host to manage orchestration",
         enableTools: {
-          title: "Enable Paseo tools",
+          title: "Enable Otto tools",
           hint: "Agents will be able to manage worktrees, agents and schedules",
-          accessibilityLabel: "Inject Paseo tools",
+          accessibilityLabel: "Inject Otto tools",
         },
         systemPrompt: {
           title: "System prompt",
@@ -1776,10 +1776,10 @@ export const en = {
             "This host is not connected. Wait for it to come online before restarting.",
           offlineTitle: "Host offline",
           offlineMessage:
-            "This host is offline. Paseo reconnects automatically-wait until it's back online before restarting.",
+            "This host is offline. Otto reconnects automatically-wait until it's back online before restarting.",
           requestFailedTitle: "Error",
           requestFailedMessage:
-            "Failed to send the restart request. Paseo reconnects automatically-try again once the host shows as online.",
+            "Failed to send the restart request. Otto reconnects automatically-try again once the host shows as online.",
           dialogFailedMessage: "Unable to open the restart confirmation dialog.",
         },
         update: {
@@ -1890,14 +1890,14 @@ export const en = {
         reset: "Reset",
       },
       readFailures: {
-        invalidTitle: "paseo.json couldn't be parsed",
+        invalidTitle: "otto.json couldn't be parsed",
         invalidDescription: "Fix the file on disk, then reload.",
         missingTitle: "This host doesn't have this project",
         missingWithHosts: "Switch to another host above, or reload.",
         missingSingleHost: "The selected host has no record of this project.",
-        transportTitle: "Couldn't load paseo.json",
+        transportTitle: "Couldn't load otto.json",
         transportFallback: "The host didn't respond.",
-        failedTitle: "Couldn't load paseo.json",
+        failedTitle: "Couldn't load otto.json",
         failedDescription: "Reload to try again.",
       },
       worktree: {
@@ -1930,7 +1930,7 @@ export const en = {
         newScript: "New script",
         editScript: "Edit {{name}}",
         runAsService: "Run as a service",
-        serviceHint: "Paseo supervises the process and assigns a port via $PASEO_PORT",
+        serviceHint: "Otto supervises the process and assigns a port via $OTTO_PORT",
         actions: {
           add: "Add script",
           edit: "Edit",
@@ -1939,7 +1939,7 @@ export const en = {
       },
       metadata: {
         title: "Metadata generation",
-        info: "Project-specific instructions injected into the AI prompts Paseo uses to generate metadata - use them to enforce your team's conventions like branch naming, commit style, or PR format",
+        info: "Project-specific instructions injected into the AI prompts Otto uses to generate metadata - use them to enforce your team's conventions like branch naming, commit style, or PR format",
         branchName: "Branch names",
         branchNamePlaceholder: "Prefix branches with feat/ or fix/, mb/ for personal branches",
         commitMessage: "Commit messages",
@@ -1949,8 +1949,8 @@ export const en = {
       },
       writeFailures: {
         staleTitle: "Config changed on disk",
-        staleDescription: "Reload to fetch the latest paseo.json before saving.",
-        failedTitle: "Couldn't save paseo.json",
+        staleDescription: "Reload to fetch the latest otto.json before saving.",
+        failedTitle: "Couldn't save otto.json",
         failedDescription: "Try again, or reload the latest version from disk.",
       },
       actions: {

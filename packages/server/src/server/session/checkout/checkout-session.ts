@@ -1,6 +1,6 @@
 import type pino from "pino";
-import { getErrorMessage } from "@getpaseo/protocol/error-utils";
-import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
+import { getErrorMessage } from "@otto-code/protocol/error-utils";
+import { validateBranchSlug } from "@otto-code/protocol/branch-slug";
 import type {
   BranchSuggestionsRequest,
   CheckoutRefreshRequest,
@@ -91,7 +91,7 @@ export interface CheckoutSessionOptions {
   github: GitHubService;
   checkoutDiffManager: CheckoutDiffSubscriber;
   gitMetadataGenerator: GitMetadataGenerator;
-  paseoHome: string;
+  ottoHome: string;
   worktreesRoot: string | undefined;
   logger: pino.Logger;
 }
@@ -107,7 +107,7 @@ export interface CheckoutSessionOptions {
  * workspace git observer streams branch changes through emitStatusUpdate().
  */
 export class CheckoutSession {
-  private static readonly PASEO_STASH_PREFIX = "paseo-auto-stash:";
+  private static readonly OTTO_STASH_PREFIX = "otto-auto-stash:";
 
   private readonly host: CheckoutSessionHost;
   private readonly gitMutation: Pick<
@@ -118,7 +118,7 @@ export class CheckoutSession {
   private readonly github: GitHubService;
   private readonly checkoutDiffManager: CheckoutDiffSubscriber;
   private readonly gitMetadataGenerator: GitMetadataGenerator;
-  private readonly paseoHome: string;
+  private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly logger: pino.Logger;
   private readonly diffSubscriptions = new Map<string, () => void>();
@@ -130,7 +130,7 @@ export class CheckoutSession {
     this.github = options.github;
     this.checkoutDiffManager = options.checkoutDiffManager;
     this.gitMetadataGenerator = options.gitMetadataGenerator;
-    this.paseoHome = options.paseoHome;
+    this.ottoHome = options.ottoHome;
     this.worktreesRoot = options.worktreesRoot;
     this.logger = options.logger;
   }
@@ -164,7 +164,7 @@ export class CheckoutSession {
           behindOfOrigin: null,
           hasRemote: false,
           remoteUrl: null,
-          isPaseoOwnedWorktree: false,
+          isOttoOwnedWorktree: false,
           error: toCheckoutError(error),
           requestId,
         },
@@ -471,8 +471,8 @@ export class CheckoutSession {
     try {
       const branchLabel = msg.branch?.trim() ?? "";
       const message = branchLabel
-        ? `${CheckoutSession.PASEO_STASH_PREFIX} ${branchLabel}`
-        : `${CheckoutSession.PASEO_STASH_PREFIX} unnamed`;
+        ? `${CheckoutSession.OTTO_STASH_PREFIX} ${branchLabel}`
+        : `${CheckoutSession.OTTO_STASH_PREFIX} unnamed`;
       await execCommand("git", ["stash", "push", "--include-untracked", "-m", message], {
         cwd,
       });
@@ -516,9 +516,9 @@ export class CheckoutSession {
     msg: Extract<SessionInboundMessage, { type: "stash_list_request" }>,
   ): Promise<void> {
     const { cwd, requestId } = msg;
-    const paseoOnly = msg.paseoOnly !== false;
+    const ottoOnly = msg.ottoOnly !== false;
     try {
-      const entries = await this.workspaceGitService.listStashes(cwd, { paseoOnly });
+      const entries = await this.workspaceGitService.listStashes(cwd, { ottoOnly });
 
       this.host.emit({
         type: "stash_list_response",
@@ -606,7 +606,7 @@ export class CheckoutSession {
           baseRef,
           mode: msg.strategy === "squash" ? "squash" : "merge",
         },
-        { paseoHome: this.paseoHome, worktreesRoot: this.worktreesRoot },
+        { ottoHome: this.ottoHome, worktreesRoot: this.worktreesRoot },
       );
       await Promise.all([
         this.gitMutation.notifyGitMutation(mutatedCwd, "merge-to-base", { invalidateGithub: true }),

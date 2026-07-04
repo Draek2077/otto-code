@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../../output/index.js";
 import { collectMultiple } from "../../utils/command-options.js";
@@ -161,10 +161,10 @@ export function buildAgentLsFetchOptions(
 
 /**
  * Agent ls command semantics:
- * - `paseo agent ls`    → active non-archived agents
- * - `paseo agent ls -g` → global non-archived agents
- * - `paseo agent ls -a` → active agents, including archived
- * - `paseo agent ls -ag` → global agents, including archived
+ * - `otto agent ls`    → active non-archived agents
+ * - `otto agent ls -g` → global non-archived agents
+ * - `otto agent ls -a` → active agents, including archived
+ * - `otto agent ls -ag` → global agents, including archived
  */
 export async function runLsCommand(
   options: AgentLsOptions,
@@ -181,7 +181,7 @@ export async function runLsCommand(
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
       details:
-        "Start the daemon with: paseo daemon start\nFor a remote daemon, pass --host <host:port> or set PASEO_HOST.",
+        "Start the daemon with: otto daemon start\nFor a remote daemon, pass --host <host:port> or set OTTO_HOST.",
     };
     throw error;
   }

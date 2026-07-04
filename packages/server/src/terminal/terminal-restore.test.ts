@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 import {
   TerminalStreamOpcode,
   decodeTerminalStreamFrame,
-} from "@getpaseo/protocol/binary-frames/index";
-import type { TerminalCell, TerminalState } from "@getpaseo/protocol/messages";
+} from "@otto-code/protocol/binary-frames/index";
+import type { TerminalCell, TerminalState } from "@otto-code/protocol/messages";
 import {
   encodeTerminalRestoreFrame,
   resolveRestoreAfterOutputOverflow,

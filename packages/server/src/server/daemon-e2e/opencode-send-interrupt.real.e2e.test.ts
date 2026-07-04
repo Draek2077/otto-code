@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
 import { DaemonClient, type WaitForFinishResult } from "../test-utils/daemon-client.js";
 import { createMessageCollector } from "../test-utils/message-collector.js";
 import { canRunRealProvider, createRealProviderClients } from "./real-provider-test-config.js";
@@ -247,10 +247,10 @@ async function waitForIdleResolvingPermissions(
 
 async function createHarness(): Promise<{
   client: DaemonClient;
-  daemon: Awaited<ReturnType<typeof createTestPaseoDaemon>>;
+  daemon: Awaited<ReturnType<typeof createTestOttoDaemon>>;
 }> {
   const logger = pino({ level: "silent" });
-  const daemon = await createTestPaseoDaemon({
+  const daemon = await createTestOttoDaemon({
     agentClients: createRealProviderClients(["opencode"], logger),
     logger,
   });

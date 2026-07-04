@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import type { CheckoutPrStatusResponse } from "@getpaseo/protocol/messages";
+import type { CheckoutPrStatusResponse } from "@otto-code/protocol/messages";
 import { checkoutPrStatusQueryKey } from "@/git/query-keys";
 import { selectPrHintFromStatus, type PrHint } from "@/git/pr-hint";
 
