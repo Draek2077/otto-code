@@ -65,6 +65,7 @@ import { useBrowserStore } from "@/stores/browser-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
+import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
@@ -1443,6 +1444,7 @@ function ActiveAgentComposer({
             const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey);
             for (const server of config?.runningServers ?? []) {
               void previewClient.previewStop(server.serverId).catch(() => undefined);
+              usePreviewRunningServersStore.getState().markStopped(serverId, server.serverId);
               for (const tab of tabs) {
                 if (
                   tab.target.kind === "browser" &&
