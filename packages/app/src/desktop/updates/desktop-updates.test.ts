@@ -115,7 +115,7 @@ describe("desktop-updates helpers", () => {
     const { buildMacAppleSiliconDownloadUrl } = await loadModuleForPlatform("web");
 
     expect(buildMacAppleSiliconDownloadUrl("v0.1.64")).toBe(
-      "https://github.com/otto-code-ai/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64.dmg",
+      "https://github.com/Draek2077/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64.dmg",
     );
     expect(buildMacAppleSiliconDownloadUrl(null)).toBeNull();
   });

@@ -38,7 +38,7 @@ export interface LocalDaemonVersionResult {
   error: string | null;
 }
 
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/otto-code-ai/otto-code/releases/download";
+const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Draek2077/otto-code/releases/download";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
