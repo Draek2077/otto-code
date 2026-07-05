@@ -61,8 +61,10 @@ if (args.print) {
   process.exit(0);
 }
 
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+
 execFileSync(
-  "npm",
+  npmCommand,
   ["version", nextVersion, "--include-workspace-root", "--message", "chore(release): cut %s"],
   { cwd: rootDir, stdio: "inherit" },
 );
