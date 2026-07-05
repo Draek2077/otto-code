@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Otto desktop app (Electron wrapper)",
   "homepage": "https://otto-code.me",
