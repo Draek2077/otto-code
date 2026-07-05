@@ -55,7 +55,7 @@ linux:
   category: Development
   icon: assets
   artifactName: "Otto-${version}-${arch}.${ext}"
-  maintainer: "Mohamed Boudra <hello@moboudra.com>"
+  maintainer: "Draekz <https://github.com/Draek2077>"
   vendor: "Otto"
   extraResources:
     - from: bin/otto

@@ -5,12 +5,6 @@
 <h1 align="center">Otto</h1>
 
 <p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.ja.md">日本語</a>
-</p>
-
-<p align="center">
   <a href="https://github.com/otto-code-ai/otto-code/stargazers">
     <img src="https://img.shields.io/github/stars/otto-code-ai/otto-code?style=flat&logo=github" alt="GitHub stars">
   </a>
