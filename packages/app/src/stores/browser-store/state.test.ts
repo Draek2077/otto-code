@@ -60,6 +60,9 @@ describe("createBrowserRecord", () => {
       createdAt: 1000,
       isPreview: false,
       previewServerId: null,
+      previewServerName: null,
+      previewCwd: null,
+      previewStatus: "ready",
     });
   });
 

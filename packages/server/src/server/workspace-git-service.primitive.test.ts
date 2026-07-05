@@ -1519,7 +1519,7 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
       workspaceDisplayName: "feature/service-metadata",
       gitRemote: "https://github.com/otto-code-ai/otto-code.git",
       isWorktree: false,
-      projectSlug: "otto",
+      projectSlug: "otto-code",
       repoRoot: REPO_CWD,
       currentBranch: "feature/service-metadata",
       remoteUrl: "https://github.com/otto-code-ai/otto-code.git",

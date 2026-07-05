@@ -32,6 +32,27 @@ vi.mock("@/constants/platform", () => ({
   isNative: false,
 }));
 
+vi.mock("@/components/ui/text-field-picker", async () => {
+  const ReactModule = await import("react");
+  const TextFieldPicker = (props: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+    testID?: string;
+  }) => {
+    if (props.testID) {
+      inputPropsByTestID.map.set(props.testID, { onChangeText: props.onChange });
+    }
+    return ReactModule.createElement("input", {
+      defaultValue: props.value ?? "",
+      placeholder: props.placeholder,
+      "data-testid": props.testID,
+      onChange: (e: { target: { value: string } }) => props.onChange?.(e.target.value),
+    });
+  };
+  return { TextFieldPicker };
+});
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
