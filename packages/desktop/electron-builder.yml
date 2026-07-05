@@ -35,8 +35,8 @@ extraResources:
     to: tray-icon-mac-attention@2x.png
 publish:
   provider: github
-  owner: otto-code-ai
-  repo: otto
+  owner: Draek2077
+  repo: otto-code
 mac:
   artifactName: "Otto-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
