@@ -13,16 +13,14 @@ interface OttoLogoProps {
 function OttoLogoBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
-      <Circle cx={132} cy={280} r={70} stroke={color} strokeWidth={28} />
-      <Circle cx={380} cy={280} r={70} stroke={color} strokeWidth={28} />
+      <Circle cx={145.57108} cy={280} r={70} stroke={color} strokeWidth={28} />
+      <Circle cx={366.42859} cy={280} r={70} stroke={color} strokeWidth={28} />
       <Line x1={152} y1={162} x2={248} y2={162} stroke={color} strokeWidth={28} />
       <Line x1={216} y1={162} x2={216} y2={364} stroke={color} strokeWidth={28} />
       <Line x1={264} y1={162} x2={360} y2={162} stroke={color} strokeWidth={28} />
       <Line x1={296} y1={162} x2={296} y2={364} stroke={color} strokeWidth={28} />
-      <Circle cx={132} cy={280} r={34} stroke={color} strokeWidth={20} />
-      <Circle cx={380} cy={280} r={34} stroke={color} strokeWidth={20} />
-      <Circle cx={132} cy={280} r={11} fill={color} />
-      <Circle cx={380} cy={280} r={11} fill={color} />
+      <Circle cx={145.57108} cy={280} r={22} fill={color} />
+      <Circle cx={366.42859} cy={280} r={22} fill={color} />
     </Svg>
   );
 }
@@ -30,8 +28,8 @@ function OttoLogoBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
 function OttoLogoWordmarkBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
-      <Circle cx={162} cy={272} r={48} stroke={color} strokeWidth={20} />
-      <Circle cx={350} cy={272} r={48} stroke={color} strokeWidth={20} />
+      <Circle cx={171.86987} cy={272} r={48} stroke={color} strokeWidth={20} />
+      <Circle cx={340.12988} cy={272} r={48} stroke={color} strokeWidth={20} />
       <Line x1={164} y1={194} x2={248} y2={194} stroke={color} strokeWidth={20} />
       <Line x1={220} y1={194} x2={220} y2={330} stroke={color} strokeWidth={20} />
       <Line x1={264} y1={194} x2={348} y2={194} stroke={color} strokeWidth={20} />
@@ -43,12 +41,10 @@ function OttoLogoWordmarkBase({ size = 64, color = "currentColor" }: OttoLogoPro
 function OttoLogoRobotBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
-      <Circle cx={162} cy={272} r={25} stroke={color} strokeWidth={13} />
-      <Circle cx={350} cy={272} r={25} stroke={color} strokeWidth={13} />
-      <Circle cx={162} cy={272} r={7} fill={color} />
-      <Circle cx={350} cy={272} r={7} fill={color} />
-      <Rect x={48} y={236} width={36} height={72} rx={8} stroke={color} strokeWidth={14} />
-      <Rect x={428} y={236} width={36} height={72} rx={8} stroke={color} strokeWidth={14} />
+      <Circle cx={171.86987} cy={272} r={14} fill={color} />
+      <Circle cx={340.12988} cy={272} r={14} fill={color} />
+      <Rect x={67.122879} y={236} width={36} height={72} rx={8} stroke={color} strokeWidth={14} />
+      <Rect x={408.87665} y={236} width={36} height={72} rx={8} stroke={color} strokeWidth={14} />
       <Rect x={166} y={98} width={180} height={36} rx={8} stroke={color} strokeWidth={16} />
       <Line x1={196} y1={134} x2={196} y2={184} stroke={color} strokeWidth={12} />
       <Line x1={316} y1={134} x2={316} y2={184} stroke={color} strokeWidth={12} />
@@ -67,15 +63,19 @@ function OttoLogoRobotBase({ size = 64, color = "currentColor" }: OttoLogoProps)
 function OttoLogoWinkBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
-      <Circle cx={132} cy={280} r={70} stroke={color} strokeWidth={28} />
+      <Circle cx={145.57108} cy={280} r={70} stroke={color} strokeWidth={28} />
       <Line x1={144} y1={104} x2={248} y2={156} stroke={color} strokeWidth={28} />
       <Line x1={216} y1={146} x2={216} y2={364} stroke={color} strokeWidth={28} />
       <Line x1={264} y1={162} x2={360} y2={162} stroke={color} strokeWidth={28} />
       <Line x1={296} y1={162} x2={296} y2={364} stroke={color} strokeWidth={28} />
-      <Path d="M296 280 A84 84 0 0 1 464 280 Z" fill={color} />
-      <Path d="M310 280 A70 70 0 0 0 450 280" stroke={color} strokeWidth={28} fill="none" />
-      <Circle cx={132} cy={280} r={34} stroke={color} strokeWidth={20} />
-      <Circle cx={132} cy={280} r={11} fill={color} />
+      <Path d="M282.428918 280 A84 84 0 0 1 450.428918 280 Z" fill={color} />
+      <Path
+        d="M296.428918 280 A70 70 0 0 0 436.428918 280"
+        stroke={color}
+        strokeWidth={28}
+        fill="none"
+      />
+      <Circle cx={145.57108} cy={280} r={22} fill={color} />
     </Svg>
   );
 }
