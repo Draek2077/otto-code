@@ -34,6 +34,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck --workspace=@otto-code/app
 
+      # wrangler pages deploy doesn't auto-create the project; create it on first
+      # run. The create command fails when the project already exists, so tolerate
+      # that — a real auth/permission problem still surfaces in the deploy step.
+      - name: Ensure Cloudflare Pages project exists
+        run: npx wrangler pages project create otto-app --production-branch main || echo "Project already exists (or creation failed; deploy will surface real errors)"
+        working-directory: packages/app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 3910072adb29ec7ee1bdcc37d532765d
+
       - name: Build and deploy to Cloudflare Pages
         run: npm run deploy:web --workspace=@otto-code/app
         env:
