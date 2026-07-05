@@ -77,6 +77,8 @@ export const INLINE_REVIEW_COMMENT_HEIGHT = 72;
 export const INLINE_REVIEW_EDITOR_HEIGHT = 132;
 const INLINE_REVIEW_GAP = 6;
 export const SMALL_ACTION_HIT_SLOP = 8;
+const GUTTER_ACTION_ICON_SIZE = 22;
+const GUTTER_ACTION_GLYPH_SIZE = 16;
 const REVIEW_CANCEL_SHORTCUT_KEYS: ShortcutKey[] = ["Esc"];
 const REVIEW_SAVE_SHORTCUT_KEYS: ShortcutKey[] = ["mod", "Enter"];
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -352,12 +354,26 @@ export function InlineReviewGutterCell({
     () => [styles.gutterInner, lineHeightStyle],
     [lineHeightStyle],
   );
+  // Clamp to the row's own height so the button never overflows into a
+  // neighboring row — react-native-web gives every row its own stacking
+  // context, so an overflowing button can end up painted over by whichever
+  // adjacent row happens to come later in paint order.
+  const actionIconSize =
+    lineHeight !== undefined
+      ? Math.min(GUTTER_ACTION_ICON_SIZE, lineHeight)
+      : GUTTER_ACTION_ICON_SIZE;
+  const actionIconGlyphSize = Math.min(GUTTER_ACTION_GLYPH_SIZE, Math.max(actionIconSize - 6, 10));
   const actionIconStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       styles.gutterActionIcon,
-      lineHeight !== undefined && inlineUnistylesStyle({ top: Math.floor((lineHeight - 22) / 2) }),
+      lineHeight !== undefined &&
+        inlineUnistylesStyle({
+          width: actionIconSize,
+          height: actionIconSize,
+          top: Math.floor((lineHeight - actionIconSize) / 2),
+        }),
     ],
-    [lineHeight],
+    [actionIconSize, lineHeight],
   );
 
   return (
@@ -378,7 +394,7 @@ export function InlineReviewGutterCell({
           {children}
           {showAction ? (
             <View style={actionIconStyle} testID={actionTestID}>
-              <ThemedPlus size={16} uniProps={accentForegroundIconColorMapping} />
+              <ThemedPlus size={actionIconGlyphSize} uniProps={accentForegroundIconColorMapping} />
             </View>
           ) : null}
         </View>
@@ -667,9 +683,9 @@ const styles = StyleSheet.create((theme) => ({
   gutterActionIcon: {
     position: "absolute",
     right: -10,
-    top: Math.floor((theme.lineHeight.diff - 22) / 2),
-    width: 22,
-    height: 22,
+    top: Math.floor((theme.lineHeight.diff - GUTTER_ACTION_ICON_SIZE) / 2),
+    width: GUTTER_ACTION_ICON_SIZE,
+    height: GUTTER_ACTION_ICON_SIZE,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
