@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.3 - 2026-07-05
+
+### Changed
+
+- Refreshed otto-code.me with a redesigned landing page and sponsor page
+- fast-agent provider updated to 0.9.1
+
+### Fixed
+
+- Desktop auto-updates for Windows and Linux are published even if the macOS build fails
+- Web app deploys and CI test suites work on this fork again
+
 ## 0.3.2 - 2026-07-05
 
 ### Fixed
