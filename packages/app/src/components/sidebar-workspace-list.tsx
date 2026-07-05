@@ -2488,7 +2488,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   listContent: {
     paddingHorizontal: theme.spacing[2],
-    paddingTop: theme.spacing[2],
+    paddingTop: 0,
     paddingBottom: theme.spacing[4],
   },
   projectListContainer: {

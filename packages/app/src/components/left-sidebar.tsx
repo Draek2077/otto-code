@@ -313,6 +313,13 @@ function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
 }
 
+function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
+  return [
+    styles.footerIconButton,
+    (Boolean(hovered) || Boolean(pressed)) && styles.footerIconButtonHovered,
+  ];
+}
+
 function FooterIconButton({
   buttonRef,
   onPress,
@@ -333,7 +340,7 @@ function FooterIconButton({
   return (
     <Pressable
       ref={buttonRef}
-      style={styles.footerIconButton}
+      style={footerIconButtonStyle}
       testID={testID}
       nativeID={testID}
       collapsable={false}
@@ -517,11 +524,22 @@ function SidebarFooter({
   return (
     <View style={styles.sidebarFooter}>
       <View style={styles.footerIconRow}>
-        <SidebarHostPicker
+        <FooterIconButton
+          onPress={handleHome}
+          testID="sidebar-home"
+          accessibilityLabel={labels.home}
+          icon={Home}
           theme={theme}
-          onAddHost={handleAddHost}
-          onOpenHostSettings={handleOpenHostSettings}
         />
+        <FooterIconButton
+          onPress={handleSettings}
+          testID="sidebar-settings"
+          accessibilityLabel={labels.settings}
+          icon={Settings}
+          theme={theme}
+        />
+      </View>
+      <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <FooterIconButton
@@ -536,21 +554,10 @@ function SidebarFooter({
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
           </TooltipContent>
         </Tooltip>
-      </View>
-      <View style={styles.footerIconRow}>
-        <FooterIconButton
-          onPress={handleSettings}
-          testID="sidebar-settings"
-          accessibilityLabel={labels.settings}
-          icon={Settings}
+        <SidebarHostPicker
           theme={theme}
-        />
-        <FooterIconButton
-          onPress={handleHome}
-          testID="sidebar-home"
-          accessibilityLabel={labels.home}
-          icon={Home}
-          theme={theme}
+          onAddHost={handleAddHost}
+          onOpenHostSettings={handleOpenHostSettings}
         />
       </View>
     </View>
@@ -1178,12 +1185,15 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   footerIconButton: {
-    width: 28,
-    height: 28,
+    width: theme.spacing[8],
+    height: theme.spacing[8],
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    padding: 0,
+    borderRadius: theme.borderRadius.lg,
+  },
+  footerIconButtonHovered: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   tooltipRow: {
     flexDirection: "row",

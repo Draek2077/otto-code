@@ -123,6 +123,17 @@ const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
 
+// Windows identifies notification senders and routes toast clicks by
+// AppUserModelID, not app.getName(). Without this, Windows falls back to
+// Electron's own default identity, so toasts are labeled "Electron" and
+// clicking one launches a bare electron.exe instead of activating us.
+// Must match electron-builder's `appId` so the installed NSIS shortcut
+// (which electron-builder registers under this same AUMID) resolves back
+// to this app.
+if (process.platform === "win32") {
+  app.setAppUserModelId("ai.ottocode.desktop");
+}
+
 // CSP for the app shell's own session only (registered on defaultSession, which
 // the main window uses). Browser-webview guests run on separate
 // `persist:otto-browser-*` partitions and are untouched by this policy — they

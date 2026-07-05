@@ -715,6 +715,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       uiFontSize: settings.uiFontSize,
       codeFontSize: settings.codeFontSize,
       syntaxTheme: settings.syntaxTheme,
+      chatWidth: settings.chatWidth,
     });
   }, [
     settingsLoading,
@@ -722,6 +723,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     settings.monoFontFamily,
     settings.uiFontSize,
     settings.codeFontSize,
+    settings.chatWidth,
     settings.syntaxTheme,
   ]);
 

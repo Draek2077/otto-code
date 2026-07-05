@@ -1,7 +1,7 @@
-import React, { memo, useCallback, useMemo, type ReactNode } from "react";
+import React, { memo, useCallback, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import type { Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
@@ -162,14 +162,12 @@ function CompletedTurnFooter({
 }
 
 function TurnFooterRow({ children }: { children: ReactNode }) {
-  const rowStyle = useMemo(() => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow], []);
-  return <View style={rowStyle}>{children}</View>;
+  return <ChatWidthBounds style={turnFooterRowStyle}>{children}</ChatWidthBounds>;
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
   streamItemWrapper: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: "center",
     paddingHorizontal: theme.spacing[2],
   },
@@ -199,3 +197,5 @@ const stylesheet = StyleSheet.create((theme) => ({
     marginLeft: -2,
   },
 }));
+
+const turnFooterRowStyle = [stylesheet.streamItemWrapper, stylesheet.turnFooterRow];

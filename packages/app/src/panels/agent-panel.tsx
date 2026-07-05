@@ -61,6 +61,7 @@ import {
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
+import { useBrowserStore } from "@/stores/browser-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
@@ -1428,6 +1429,31 @@ function ActiveAgentComposer({
       if (workspaceKey) {
         unpinWorkspaceAgent(workspaceKey, agentId);
         hideWorkspaceAgent(workspaceKey, agentId);
+
+        // /clear disables the preview button for this chat (no agent tab is
+        // focused anymore), so every preview server for this cwd should stop
+        // instantly rather than keep running orphaned — not just close their
+        // tabs. previewListConfig's runningServers is the source of truth for
+        // "is a server running", since a server can outlive its bound tab.
+        const previewClient = useSessionStore.getState().sessions[serverId]?.client ?? null;
+        if (previewClient) {
+          void (async () => {
+            const config = await previewClient.previewListConfig(cwd).catch(() => null);
+            const browsersById = useBrowserStore.getState().browsersById;
+            const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey);
+            for (const server of config?.runningServers ?? []) {
+              void previewClient.previewStop(server.serverId).catch(() => undefined);
+              for (const tab of tabs) {
+                if (
+                  tab.target.kind === "browser" &&
+                  browsersById[tab.target.browserId]?.previewServerId === server.serverId
+                ) {
+                  closeWorkspaceTab(workspaceKey, tab.tabId);
+                }
+              }
+            }
+          })();
+        }
       }
 
       if (command.kind === "replace-agent-with-draft") {
@@ -1446,6 +1472,7 @@ function ActiveAgentComposer({
       agentId,
       archiveAgent,
       closeWorkspaceTab,
+      cwd,
       hideWorkspaceAgent,
       retargetCurrentTab,
       serverId,

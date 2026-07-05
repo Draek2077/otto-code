@@ -657,6 +657,18 @@ return { content: [{ type: "text", text: `No element matched: ${sel}` }], isErro
 7. **System-prompt workflow** — pair the tools with an injected verification
    workflow (§4, "prescribed agent workflow") so the agent knows when to verify,
    in what order, and that it must show proof rather than ask the user to check.
+   Otto implements this for openai-compat agents in
+   `openai-compat-agent.ts` (`buildPreviewWorkflowPrompt`), emitted only when the
+   preview/browser tool groups are actually exposed.
+8. **Deterministic tab enforcement** — descriptions steer, the daemon enforces.
+   Otto goes beyond guardrail text: `browser_new_tab` and `browser_navigate`
+   reject URLs that resolve to a running preview server's loopback port
+   (`findPreviewServerForUrl` in `browser-tools/tools.ts`), returning an error
+   that names the server's bound preview tab (or tells the agent to call
+   `preview_start` when none is bound). Navigating the bound tab itself is
+   allowed — that's how a wandered-off preview tab comes home. This closes the
+   "agent opens a second, detached tab on the same URL" failure mode that
+   description text alone cannot.
 
 ---
 

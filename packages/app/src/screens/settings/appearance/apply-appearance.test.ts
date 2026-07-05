@@ -32,6 +32,7 @@ interface FakeTheme {
     "4xl": number;
   };
   lineHeight: { diff: number };
+  layout: { chatMaxWidth: number | undefined };
   colors: { foreground: string; syntax: Record<string, string> };
 }
 
@@ -51,6 +52,7 @@ function makeFakeTheme(): FakeTheme {
       "4xl": 34,
     },
     lineHeight: { diff: 22 },
+    layout: { chatMaxWidth: 820 },
     colors: { foreground: "#fff", syntax: {} },
   };
 }
@@ -62,6 +64,7 @@ function makeInput(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
     uiFontSize: 16,
     codeFontSize: 12,
     syntaxTheme: "one",
+    chatWidth: "default",
     ...overrides,
   };
 }
@@ -165,5 +168,15 @@ describe("applyAppearance", () => {
     // makeFakeTheme().colorScheme === "dark" -> github resolves to the dark palette.
     expect(runCapturedUpdater().colors.syntax).toEqual(darkHighlightColors);
     expect(runCapturedUpdater().colors.syntax).toEqual(resolveSyntaxColors("github", "dark"));
+  });
+
+  it.each([
+    ["default", 820],
+    ["wide", 1200],
+    ["full", undefined],
+  ] as const)("resolves chatWidth %s to chatMaxWidth %s", (chatWidth, expected) => {
+    applyAppearance(makeInput({ chatWidth }));
+
+    expect(runCapturedUpdater().layout.chatMaxWidth).toBe(expected);
   });
 });

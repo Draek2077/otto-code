@@ -125,7 +125,8 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
     name: "run_command",
     kind: "execute",
     description:
-      "Run a shell command in the workspace directory and return its combined output and exit code. Long output is truncated.",
+      "Run a shell command in the workspace directory and return its combined output and exit code. Long output is truncated. " +
+      "Do not start long-running dev servers here — they block the shell and cannot be verified; when the preview tools are available, use preview_start instead.",
     parameters: {
       type: "object",
       properties: {

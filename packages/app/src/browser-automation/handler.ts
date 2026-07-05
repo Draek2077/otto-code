@@ -340,7 +340,22 @@ async function openBrowserTabForRequest(params: {
   }
 
   const url = command.args.url ?? "https://example.com";
-  const { browserId, url: normalizedUrl } = createWorkspaceBrowser({ initialUrl: url });
+  // preview_start sends preview metadata so the tab is born as the server's
+  // designated preview tab (icon, lifecycle) — "ready" because the daemon only
+  // opens the tab once the dev server is already up.
+  const preview = command.args.preview;
+  const { browserId, url: normalizedUrl } = createWorkspaceBrowser({
+    initialUrl: url,
+    ...(preview
+      ? {
+          isPreview: true,
+          previewServerId: preview.serverId,
+          previewServerName: preview.serverName,
+          previewCwd: preview.cwd,
+          previewStatus: "ready" as const,
+        }
+      : {}),
+  });
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   if (!workspaceKey) {
     return browserAutomationFailure({

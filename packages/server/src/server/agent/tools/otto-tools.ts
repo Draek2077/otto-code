@@ -1032,6 +1032,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       broker: options.browserToolsBroker,
       callerAgentId,
       resolveCallerAgent,
+      previewServers: options.previewDevServers ?? null,
     });
   }
 

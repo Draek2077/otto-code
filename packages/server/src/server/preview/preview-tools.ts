@@ -172,7 +172,14 @@ async function ensurePreviewTab(params: {
   try {
     const payload = await broker.execute({
       ...context,
-      command: { command: "new_tab", args: { url: server.url, layout: "split-right" } },
+      command: {
+        command: "new_tab",
+        args: {
+          url: server.url,
+          layout: "split-right",
+          preview: { serverId: server.serverId, serverName: server.name, cwd: server.cwd },
+        },
+      },
     });
     if (payload.ok && payload.result.command === "new_tab") {
       manager.bindTab(server.serverId, payload.result.browserId);

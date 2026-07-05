@@ -27,7 +27,7 @@ import {
   RotateCw,
   Rows2,
   Globe,
-  Play,
+  PlayFilled,
   Plus,
   SquarePen,
   SquareTerminal,
@@ -94,6 +94,10 @@ import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/p
 import { useSessionStore } from "@/stores/session-store";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
 import {
+  usePreviewRunningServersStore,
+  useHasRunningPreviewServer,
+} from "@/stores/preview-running-servers-store";
+import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
@@ -101,6 +105,9 @@ import {
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
+// Background refresh so the Preview icon reflects real server state without
+// requiring the user to open the picker first.
+const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedX = withUnistyles(X);
@@ -114,18 +121,18 @@ const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedGlobe = withUnistyles(Globe);
-const ThemedPlay = withUnistyles(Play);
+const ThemedPlayFilled = withUnistyles(PlayFilled);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 
 const AGENT_ICON = <ThemedSquarePen size={14} uniProps={mutedColorMapping} />;
 const TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
 const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
-const PREVIEW_ICON = <ThemedPlay size={14} uniProps={mutedColorMapping} />;
 const PREVIEW_BOOTSTRAP_PROMPT =
   "Detect this project's dev servers and save their configurations to `.claude/launch.json` " +
   "(create it if missing) using the format from the `preview_start` tool description. Then ask me " +
@@ -286,6 +293,7 @@ function WorkspacePreviewButton({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerServers, setPickerServers] = useState<PreviewConfiguredServer[]>([]);
   const runningServersRef = useRef<Map<string, PreviewRunningServer>>(new Map());
+  const hasRunningPreviewServer = useHasRunningPreviewServer(normalizedServerId);
 
   const startAndOpenPreview = useCallback(
     async (agentId: string, cwd: string, serverName: string) => {
@@ -343,6 +351,9 @@ function WorkspacePreviewButton({
         previewServerId: started.server.serverId,
         previewStatus: "ready",
       });
+      usePreviewRunningServersStore
+        .getState()
+        .markRunning(normalizedServerId, cwd, started.server.serverId);
       await client.previewBindTab(started.server.serverId, browserId).catch(() => undefined);
     },
     [normalizedServerId, normalizedWorkspaceId, paneId],
@@ -356,6 +367,7 @@ function WorkspacePreviewButton({
       }
 
       await client.previewStop(serverId).catch(() => undefined);
+      usePreviewRunningServersStore.getState().markStopped(normalizedServerId, serverId);
 
       // Close only the preview tab(s) bound to this specific server, not every browser tab.
       const workspaceKey = buildWorkspaceTabPersistenceKey({
@@ -380,6 +392,27 @@ function WorkspacePreviewButton({
     [normalizedServerId, normalizedWorkspaceId],
   );
 
+  // Fetches launch config + live running servers for `cwd` and records the
+  // running ones in the server-scoped store, independent of any tab/picker
+  // UI. Shared by the click flow (runPreviewFlow) and the background poll
+  // below, so the icon can turn accent-colored before the user ever opens it.
+  const fetchAndRecordRunningServers = useCallback(
+    async (cwd: string) => {
+      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
+      if (!client) {
+        return null;
+      }
+      const config = await client.previewListConfig(cwd);
+      usePreviewRunningServersStore.getState().replaceRunningForCwd(
+        normalizedServerId,
+        cwd,
+        (config.runningServers ?? []).filter((s) => s.status !== "exited").map((s) => s.serverId),
+      );
+      return config;
+    },
+    [normalizedServerId],
+  );
+
   const runPreviewFlow = useCallback(async () => {
     if (!focusedAgentId) {
       return;
@@ -393,8 +426,8 @@ function WorkspacePreviewButton({
 
     setIsBusy(true);
     try {
-      const config = await client.previewListConfig(cwd);
-      if (!config.configured || config.servers.length === 0) {
+      const config = await fetchAndRecordRunningServers(cwd);
+      if (!config || !config.configured || config.servers.length === 0) {
         await client.sendAgentMessage(focusedAgentId, PREVIEW_BOOTSTRAP_PROMPT);
         return;
       }
@@ -420,7 +453,35 @@ function WorkspacePreviewButton({
     } finally {
       setIsBusy(false);
     }
-  }, [focusedAgentId, normalizedServerId, startAndOpenPreview]);
+  }, [fetchAndRecordRunningServers, focusedAgentId, normalizedServerId, startAndOpenPreview]);
+
+  // Reactive, not a one-time getState() snapshot: if the agent record (and its
+  // cwd) hasn't loaded into the session store yet when this button mounts —
+  // e.g. right after opening a workspace or reconnecting — an imperative read
+  // would freeze at null forever and the poll below would never start until
+  // something else (like focusedAgentId changing) re-ran the effect.
+  const focusedAgentCwd = useSessionStore((state) =>
+    focusedAgentId
+      ? (state.sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd ?? null)
+      : null,
+  );
+
+  // Background refresh: poll for this pane's running preview servers as soon
+  // as a chat is focused, so the icon reflects real server state without the
+  // user having to open the picker first.
+  useEffect(() => {
+    if (!focusedAgentCwd) {
+      return;
+    }
+    const cwd = focusedAgentCwd;
+
+    const poll = () => {
+      void fetchAndRecordRunningServers(cwd).catch(() => undefined);
+    };
+    poll();
+    const intervalId = setInterval(poll, PREVIEW_SERVER_POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [fetchAndRecordRunningServers, focusedAgentCwd]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -508,7 +569,10 @@ function WorkspacePreviewButton({
             {isBusy ? (
               <ThemedActivityIndicator size="small" uniProps={mutedColorMapping} />
             ) : (
-              PREVIEW_ICON
+              <ThemedPlayFilled
+                size={14}
+                uniProps={hasRunningPreviewServer ? accentColorMapping : mutedColorMapping}
+              />
             )}
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -899,12 +963,14 @@ function useMiddleClickClose(onClose: () => void) {
 function TabHandleContent({
   presentation,
   isHighlighted,
+  isActiveTab,
   showLabel,
   tabLabelSkeletonStyle,
   tabLabelStyle,
 }: {
   presentation: WorkspaceTabPresentation;
   isHighlighted: boolean;
+  isActiveTab: boolean;
   showLabel: boolean;
   tabLabelSkeletonStyle: React.ComponentProps<typeof View>["style"];
   tabLabelStyle: React.ComponentProps<typeof Text>["style"];
@@ -917,7 +983,7 @@ function TabHandleContent({
   return (
     <View style={styles.tabHandle} dataSet={tabHandleDataSet}>
       <View style={styles.tabIcon}>
-        <WorkspaceTabIcon presentation={presentation} active={isHighlighted} />
+        <WorkspaceTabIcon presentation={presentation} active={isHighlighted} accent={isActiveTab} />
       </View>
       {showLabel && presentation.titleState === "loading" ? (
         <View style={tabLabelSkeletonStyle} />
@@ -986,6 +1052,7 @@ function TabChip({
   const tabChipStyle = useCallback(
     () => [
       styles.tab,
+      isActive && styles.tabActive,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       {
         minWidth: resolvedTabWidth,
@@ -993,7 +1060,7 @@ function TabChip({
         maxWidth: resolvedTabWidth,
       },
     ],
-    [isDragging, resolvedTabWidth],
+    [isActive, isDragging, resolvedTabWidth],
   );
 
   const handleTabHoverIn = useCallback(() => {
@@ -1038,10 +1105,6 @@ function TabChip({
   );
 
   const tabAccessibilityState = useMemo(() => ({ selected: isActive }), [isActive]);
-  const tabFocusIndicatorStyle = useMemo(
-    () => [styles.tabFocusIndicator, !isFocused && styles.tabFocusIndicatorUnfocused],
-    [isFocused],
-  );
   const tabLabelSkeletonStyle = useMemo(
     () => [styles.tabLabelSkeleton, showCloseButton && styles.tabLabelSkeletonWithCloseButton],
     [showCloseButton],
@@ -1076,10 +1139,13 @@ function TabChip({
               accessibilityState={tabAccessibilityState}
               aria-selected={isActive}
             >
-              {isActive && <View style={tabFocusIndicatorStyle} />}
+              {hovered && !isActive ? (
+                <View style={styles.tabHoverUnderlay} pointerEvents="none" />
+              ) : null}
               <TabHandleContent
                 presentation={presentation}
                 isHighlighted={isHighlighted}
+                isActiveTab={isActive && isFocused}
                 showLabel={showLabel}
                 tabLabelSkeletonStyle={tabLabelSkeletonStyle}
                 tabLabelStyle={tabLabelStyle}
@@ -1203,7 +1269,8 @@ export function WorkspaceDesktopTabsRow({
         0,
         tabsActionsWidth + (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH),
       ),
-      rowPaddingHorizontal: 0,
+      // Mirrors tabsContent's paddingHorizontal so width math stays exact.
+      rowPaddingHorizontal: 4,
       tabGap: 0,
       maxTabWidth: 200,
       tabIconWidth: 14,
@@ -1396,6 +1463,7 @@ export function WorkspaceDesktopTabsRow({
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
     >
+      <View style={styles.tabsBottomHairline} pointerEvents="none" />
       <ScrollView
         horizontal
         scrollEnabled={layout.requiresHorizontalScrollFallback}
@@ -1591,12 +1659,21 @@ const styles = StyleSheet.create((theme) => ({
   tabsContainer: {
     minWidth: 0,
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
     overflow: "visible",
+  },
+  // The row/pane separator is a positioned child rather than a borderBottom so
+  // the active tab (which bottom-aligns flush with the container edge) can
+  // paint over it and fuse with the pane content below.
+  tabsBottomHairline: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: theme.colors.border,
   },
   tabsScroll: {
     minWidth: 0,
@@ -1609,7 +1686,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabsContent: {
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "flex-end",
+    height: "100%",
+    paddingHorizontal: theme.spacing[1],
   },
   tabsActions: {
     flexDirection: "row",
@@ -1619,17 +1698,47 @@ const styles = StyleSheet.create((theme) => ({
   inlineAddButton: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "center",
     paddingHorizontal: theme.spacing[1],
   },
+  // Chip is 1px shorter than the row minus its top inset so its bottom edge
+  // lands exactly on the container edge, covering the hairline when active.
   tab: {
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT - theme.spacing[1],
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    // Constant border widths on every tab (transparent when inactive) so the
+    // label area doesn't shift by a pixel when a tab becomes active.
+    borderTopWidth: theme.borderWidth[1],
+    borderLeftWidth: theme.borderWidth[1],
+    borderRightWidth: theme.borderWidth[1],
+    borderTopColor: "transparent",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
     userSelect: "none",
+  },
+  // Hover wash is an inset underlay rather than a background on the chip so
+  // it sits 1px inside the chip bounds on top/left/right and 1px off the
+  // bottom edge (the chip's transparent 1px borders provide the side inset).
+  tabHoverUnderlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 1,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface1,
+  },
+  tabActive: {
+    backgroundColor: theme.colors.surface0,
+    borderTopColor: theme.colors.border,
+    borderLeftColor: theme.colors.border,
+    borderRightColor: theme.colors.border,
   },
   tabSlot: {
     position: "relative",
@@ -1645,17 +1754,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabIcon: {
     flexShrink: 0,
-  },
-  tabFocusIndicator: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: theme.colors.accent,
-  },
-  tabFocusIndicatorUnfocused: {
-    backgroundColor: theme.colors.borderAccent,
   },
   tabDropIndicator: {
     position: "absolute",

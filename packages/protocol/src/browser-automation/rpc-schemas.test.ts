@@ -503,6 +503,31 @@ describe("browser automation execute RPC schemas", () => {
     });
   });
 
+  test("new tab accepts preview tab metadata from preview_start", () => {
+    const parsed = BrowserAutomationExecuteRequestSchema.parse({
+      type: "browser.automation.execute.request",
+      requestId: "req-new-tab",
+      workspaceId: "workspace-1",
+      command: {
+        command: "new_tab",
+        args: {
+          url: "http://127.0.0.1:8202/",
+          layout: "split-right",
+          preview: { serverId: "srv_1", serverName: "forge-preview", cwd: "/repo" },
+        },
+      },
+    });
+
+    expect(parsed.command).toEqual({
+      command: "new_tab",
+      args: {
+        url: "http://127.0.0.1:8202/",
+        layout: "split-right",
+        preview: { serverId: "srv_1", serverName: "forge-preview", cwd: "/repo" },
+      },
+    });
+  });
+
   test("tab commands require a browser id from browser_new_tab or browser_list_tabs", () => {
     const parsed = BrowserAutomationExecuteRequestSchema.safeParse({
       type: "browser.automation.execute.request",

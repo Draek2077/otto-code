@@ -31,6 +31,8 @@ export function createMarkdownStyles(theme: Theme) {
     text: {
       ...webSelectableTextStyle,
       color: theme.colors.foreground,
+      fontSize: theme.fontSize.base,
+      lineHeight: Math.round(theme.fontSize.base * 1.4),
       flexShrink: 1,
       minWidth: 0,
       overflowWrap: "anywhere" as const,

@@ -33,7 +33,8 @@ import {
   Paperclip,
 } from "@/components/icons/material-icons";
 import Animated from "react-native-reanimated";
-import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { FOOTER_HEIGHT } from "@/constants/layout";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import {
   AgentControls,
   DraftAgentControls,
@@ -293,12 +294,12 @@ function renderComposerFooter(
   if (!footer && !footerInlineContent) return null;
   return (
     <View style={styles.footer}>
-      <View style={styles.footerContent}>
+      <ChatWidthBounds style={styles.footerContent}>
         <View style={styles.footerLeft}>
           {footer}
           {footerInlineContent}
         </View>
-      </View>
+      </ChatWidthBounds>
     </View>
   );
 }
@@ -1911,7 +1912,7 @@ export function Composer({
         <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
         {/* Input area */}
         <View style={inputAreaContainerStyle}>
-          <View style={styles.inputAreaContent}>
+          <ChatWidthBounds style={styles.inputAreaContent}>
             {queueList}
             {sendErrorNode}
 
@@ -1987,7 +1988,7 @@ export function Composer({
                 renderOption={renderGithubPickerOption}
               />
             </View>
-          </View>
+          </ChatWidthBounds>
         </View>
         {renderComposerFooter(footer, footerInlineContent)}
       </Animated.View>
@@ -2019,7 +2020,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   inputAreaContent: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     gap: theme.spacing[3],
   },
   footer: {
@@ -2039,7 +2039,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   footerContent: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

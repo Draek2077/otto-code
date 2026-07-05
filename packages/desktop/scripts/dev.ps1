@@ -6,6 +6,13 @@ $AppDir = (Resolve-Path "$DesktopDir\..\app").Path
 $RootDir = (Resolve-Path "$DesktopDir\..\..").Path
 $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 
+# Tie every child we spawn (Electron, the detached dev daemon it starts, and
+# any preview dev servers the daemon spawns) to this script's lifetime, so
+# Ctrl-C / closing the terminal tears the whole tree down. See the helper for
+# why nothing weaker works on Windows.
+. "$RootDir\scripts\dev-kill-on-close-job.ps1"
+Enable-OttoDevTreeTeardown
+
 # Build the Electron main process
 npm run build:main
 

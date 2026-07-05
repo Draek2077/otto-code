@@ -101,6 +101,8 @@ function WorkspaceTabPresentationResolverInner({
 interface WorkspaceTabIconProps {
   presentation: WorkspaceTabPresentation;
   active?: boolean;
+  /** Accent-colored icon — marks the selected tab in the desktop tabs row. */
+  accent?: boolean;
   size?: number;
   statusDotBorderColor?: string;
 }
@@ -111,10 +113,16 @@ const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMut
 export function WorkspaceTabIcon({
   presentation,
   active = false,
+  accent = false,
   size = 14,
   statusDotBorderColor,
 }: WorkspaceTabIconProps): ReactElement {
-  const iconColor = active ? styles.iconActive.color : styles.iconInactive.color;
+  let iconColor = styles.iconInactive.color;
+  if (accent) {
+    iconColor = styles.iconAccent.color;
+  } else if (active) {
+    iconColor = styles.iconActive.color;
+  }
   const bucket = presentation.statusBucket;
   let statusDotColor: string | null = null;
   if (bucket === "needs_input") statusDotColor = styles.statusDotNeedsInput.color;
@@ -252,6 +260,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   iconActive: {
     color: theme.colors.foreground,
+  },
+  iconAccent: {
+    color: theme.colors.accentBright,
   },
   iconInactive: {
     color: theme.colors.foregroundMuted,

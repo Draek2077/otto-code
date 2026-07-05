@@ -25,6 +25,21 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
 
+interface HomeQuote {
+  text: string;
+  attribution: string;
+}
+
+// Picked once per app launch and reused for every render/remount of this screen in the same run.
+let sessionQuoteIndex: number | undefined;
+
+function getSessionQuoteIndex(count: number): number {
+  if (sessionQuoteIndex === undefined || sessionQuoteIndex >= count) {
+    sessionQuoteIndex = Math.floor(Math.random() * count);
+  }
+  return sessionQuoteIndex;
+}
+
 export function OpenProjectScreen() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -37,6 +52,9 @@ export function OpenProjectScreen() {
   const openImportedProject = useOpenProject(importServerId);
   const [isPairDeviceOpen, setIsPairDeviceOpen] = useState(false);
   const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
+
+  const quotes = t("openProject.quotes", { returnObjects: true }) as HomeQuote[];
+  const quote = quotes[getSessionQuoteIndex(quotes.length)];
 
   const isCompactLayout = useIsCompactFormFactor();
 
@@ -95,8 +113,8 @@ export function OpenProjectScreen() {
           <OttoLogoWink size={104} />
         </View>
         <View style={styles.quote}>
-          <Text style={styles.quoteText}>“{t("openProject.quote.text")}”</Text>
-          <Text style={styles.quoteAttribution}>{t("openProject.quote.attribution")}</Text>
+          <Text style={styles.quoteText}>“{quote.text}”</Text>
+          <Text style={styles.quoteAttribution}>{quote.attribution}</Text>
         </View>
         <View style={styles.tiles}>
           <HomeTile
@@ -220,7 +238,7 @@ const styles = StyleSheet.create((theme) => ({
   quote: {
     alignItems: "center",
     maxWidth: 380,
-    marginBottom: theme.spacing[8],
+    marginBottom: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
   },
   quoteText: {
@@ -237,7 +255,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[1],
   },
   tiles: {
-    marginTop: { xs: theme.spacing[6], md: theme.spacing[12] },
+    marginTop: { xs: theme.spacing[4], md: theme.spacing[6] },
     width: "100%",
     maxWidth: 452,
     flexDirection: "row",

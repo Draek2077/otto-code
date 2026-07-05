@@ -655,10 +655,46 @@ export class OpenAICompatAgentSession implements AgentSession {
         "Prefer tools over guessing: inspect files before editing them and verify your changes.",
         "When the task is complete, reply with a concise summary of what you did.",
       ].join("\n"),
+      this.buildPreviewWorkflowPrompt(),
       config.systemPrompt?.trim(),
       config.daemonAppendSystemPrompt?.trim(),
     ];
     return parts.filter((part): part is string => Boolean(part)).join("\n\n");
+  }
+
+  /**
+   * Workflow doctrine for the preview/browser tool families. Tool descriptions
+   * alone don't reliably steer local models, so when both families are exposed
+   * the system prompt spells out the split: preview_start owns dev servers and
+   * their designated tab; browser_new_tab is for everything else.
+   */
+  private buildPreviewWorkflowPrompt(): string | null {
+    const hasTool = (name: string): boolean =>
+      Boolean(this.ottoTools?.getTool(name)) && this.isOttoToolGroupEnabled(name);
+    const hasPreview = hasTool("preview_start");
+    const hasBrowser = hasTool("browser_snapshot");
+    if (!hasPreview && !hasBrowser) {
+      return null;
+    }
+
+    const lines = ["## Verifying changes in the browser"];
+    if (hasPreview) {
+      lines.push(
+        "- Start dev servers with preview_start — never with run_command or other shell commands. It manages the process, its logs (preview_logs), and its preview tab.",
+      );
+    }
+    if (hasPreview && hasBrowser) {
+      lines.push(
+        "- preview_start returns browser.browserId: the server's designated preview tab, the same tab the user watches. Verify your changes against that browserId with browser_snapshot, browser_inspect, browser_logs, browser_click, and browser_screenshot.",
+        "- Never open a dev server URL with browser_new_tab or in another tab — the daemon rejects it. browser_new_tab is only for external sites and general browsing.",
+      );
+    }
+    if (hasBrowser) {
+      lines.push(
+        "- After changing code that a running dev server renders, verify it: reload or snapshot the page, check browser_logs for errors, then share proof (a snapshot or screenshot) instead of asking the user to check manually.",
+      );
+    }
+    return lines.join("\n");
   }
 
   private availableToolSpecs(): CompatToolSpec[] {

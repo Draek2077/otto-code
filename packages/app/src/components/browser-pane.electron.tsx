@@ -637,6 +637,13 @@ export function BrowserPane({
   const browserRef = useRef(browser);
   browserRef.current = browser;
   const pendingNavigationUrlRef = useRef<string | null>(null);
+  // A URL requested via navigate() before the webview's dom-ready fired.
+  // loadURL() throws ("must be attached to the DOM and dom-ready emitted")
+  // if called too early — most commonly when a preview tab mounts against an
+  // already-running server, so previewStatus is "ready" synchronously and the
+  // navigation effect fires before the guest page has ever loaded. We stash the
+  // URL here and flush it from handleDomReady.
+  const pendingLoadUrlRef = useRef<string | null>(null);
   const domReadyRef = useRef(false);
   const annotationMarkersRef = useRef<BrowserAnnotationMarker[]>([]);
   const [selectorMode, setSelectorMode] = useState<"annotate" | "screenshot" | null>(null);
@@ -941,6 +948,24 @@ export function BrowserPane({
     };
     const handleDomReady = () => {
       domReadyRef.current = true;
+      // Flush any navigation requested before the webview was ready (e.g. a
+      // preview tab mounted against an already-running server).
+      const pendingLoadUrl = pendingLoadUrlRef.current;
+      if (pendingLoadUrl && webview.loadURL) {
+        pendingLoadUrlRef.current = null;
+        void webview.loadURL(pendingLoadUrl).catch((error: unknown) => {
+          const message = getLoadUrlRejectionMessage(
+            error,
+            browserErrorLabelsRef.current.failedToLoad,
+          );
+          if (message) {
+            updateBrowserRef.current(browserIdRef.current, {
+              isLoading: false,
+              lastError: message,
+            });
+          }
+        });
+      }
       syncNavigationState();
       // The previous page's overlay is gone after a load; re-apply markers for
       // the freshly loaded document.
@@ -1025,6 +1050,11 @@ export function BrowserPane({
         return;
       }
       if (webview?.loadURL) {
+        if (!domReadyRef.current) {
+          // Webview not ready yet — defer; handleDomReady flushes this.
+          pendingLoadUrlRef.current = normalizedUrl;
+          return;
+        }
         void webview.loadURL(normalizedUrl).catch((error: unknown) => {
           const message = getLoadUrlRejectionMessage(error, browserErrorLabels.failedToLoad);
           if (!message) {

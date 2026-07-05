@@ -4,6 +4,13 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $env:PATH = "$ScriptDir\..\node_modules\.bin;$env:PATH"
 
+# Tie every child we spawn (daemon, Metro, and any preview dev servers the
+# daemon spawns with CREATE_NO_WINDOW — which Ctrl-C never reaches) to this
+# script's lifetime, so Ctrl-C / closing the terminal tears the whole tree
+# down. See the helper for why nothing weaker works on Windows.
+. "$ScriptDir\dev-kill-on-close-job.ps1"
+Enable-OttoDevTreeTeardown
+
 # Persistent checkout-local home, matching scripts/dev-home.sh. A throwaway home
 # would mint a new daemon keypair/serverId every run, and clients that remembered
 # the previous identity refuse the new one (host-runtime closes the connection on

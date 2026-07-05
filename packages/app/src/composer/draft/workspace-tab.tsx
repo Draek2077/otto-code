@@ -41,11 +41,8 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import type { UserMessageImageAttachment } from "@/types/stream";
-import {
-  COMPACT_FORM_FACTOR_WIDTH,
-  MAX_CONTENT_WIDTH,
-  useIsCompactFormFactor,
-} from "@/constants/layout";
+import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { isWeb } from "@/constants/platform";
 import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
@@ -695,9 +692,9 @@ export function WorkspaceDraftAgentTab({
       <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
         {importPillPress ? (
           <View style={styles.importPillRow}>
-            <View style={styles.importPillContent}>
+            <ChatWidthBounds style={styles.importPillContent}>
               <ComposerImportPill onPress={importPillPress} />
-            </View>
+            </ChatWidthBounds>
           </View>
         ) : null}
         <Composer
@@ -764,7 +761,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   importPillContent: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     flexDirection: "row",
   },
   errorContainer: {
