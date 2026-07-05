@@ -6,7 +6,7 @@ export function SiteHeader() {
   return (
     <header className="flex flex-col items-center gap-4 md:flex-row md:justify-between">
       <a href="/" className="flex items-center gap-3">
-        <img src="/logo.svg" alt="Otto" className="w-6 h-6" />
+        <img src="/logo-wink.svg" alt="Otto" className="w-12 h-12" />
         <span className="text-lg font-medium">Otto</span>
       </a>
       <div className="flex flex-wrap items-center justify-center gap-4">
@@ -38,7 +38,7 @@ export function SiteHeader() {
           href="/sponsor"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Sponsor
+          Support
         </a>
         <a
           href="https://discord.gg/jz8T2uahpH"

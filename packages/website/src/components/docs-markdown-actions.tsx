@@ -1,4 +1,4 @@
-import { Check, Copy, FileText } from "lucide-react";
+import { CheckIcon, CopyIcon, FileTextIcon } from "~/components/material-icons";
 import { useCallback, useEffect, useState } from "react";
 
 interface DocsMarkdownActionsProps {
@@ -26,7 +26,7 @@ export function DocsMarkdownActions({ content, markdownHref }: DocsMarkdownActio
         onClick={onCopy}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
       >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
+        {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
         {copied ? "Copied" : "Copy as markdown"}
       </button>
       <a
@@ -35,7 +35,7 @@ export function DocsMarkdownActions({ content, markdownHref }: DocsMarkdownActio
         rel="noreferrer"
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
       >
-        <FileText size={14} />
+        <FileTextIcon size={14} />
         View as markdown
       </a>
     </div>

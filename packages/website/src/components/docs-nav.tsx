@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon } from "~/components/material-icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type DocsNavNode } from "~/docs";
 
@@ -83,7 +83,7 @@ function GroupNode({
         )}
       >
         <span>{node.label}</span>
-        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {isOpen ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
       </button>
       {isOpen && (
         <div className="ml-3 pl-3 border-l border-border space-y-0.5">

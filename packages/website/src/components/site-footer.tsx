@@ -49,7 +49,7 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               href="/sponsor"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Sponsor
+              Support
             </a>
           </div>
         </div>
@@ -122,6 +122,14 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
               GitHub
+            </a>
+            <a
+              href="https://github.com/getpaseo/paseo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Paseo (upstream)
             </a>
           </div>
         </div>
