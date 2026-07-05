@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 - 2026-07-05
+
+### Changed
+
+- Otto now versions independently of the upstream Paseo 0.1.x line, starting at 0.3.0
+
 ## 0.1.104-beta.2 - 2026-07-03
 
 ### Added
