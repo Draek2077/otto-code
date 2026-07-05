@@ -1,13 +1,13 @@
 {
   "name": "@otto-code/desktop",
-  "version": "0.1.104-beta.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Otto desktop app (Electron wrapper)",
   "homepage": "https://otto-code.ai",
   "license": "AGPL-3.0-or-later",
   "author": {
-    "name": "Mohamed Boudra",
-    "email": "hello@moboudra.com"
+    "name": "Draekz",
+    "url": "https://github.com/Draek2077"
   },
   "repository": {
     "type": "git",
