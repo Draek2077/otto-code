@@ -1,5 +1,5 @@
 name = "otto-relay"
-account_id = "10ed39a1dbf316e30abd0c409bed40d6"
+account_id = "3910072adb29ec7ee1bdcc37d532765d"
 main = "src/cloudflare-adapter.ts"
 compatibility_date = "2024-12-01"
 
