@@ -51,6 +51,8 @@ In Otto-managed worktree services, use the injected service environment rather t
 
 **Windows gotcha:** `npm run dev:win` always spawns its own daemon — it has no mode to attach to one that's already running. If your Windows dev session already has a daemon on `6868` (e.g. from an earlier `dev:win`) and something else invokes `dev:win` again (a preview tool, a second terminal), the new daemon instance crash-loops fighting over the port. Use `npm run dev:app` instead when you just need Expo pointed at an already-running daemon; it never launches its own daemon.
 
+**Windows Ctrl-C teardown:** both Windows dev scripts (`scripts/dev.ps1` and `packages/desktop/scripts/dev.ps1`) attach themselves to a kill-on-close Windows Job Object via `scripts/dev-kill-on-close-job.ps1`, so every descendant — Electron, the detached dev daemon it spawns, and any preview dev servers the daemon spawns — is terminated by the kernel when the script exits (Ctrl-C, terminal close, or hard kill). Nothing weaker works: Ctrl-C's console event never reaches GUI-subsystem (Electron) or `CREATE_NO_WINDOW` children, parent-PID walks break once intermediates die, and `taskkill /T /F` has been observed failing with "Access is denied" on these orphans (kernel job termination — the same primitive as `Stop-Process` — has no such failure mode). Set `OTTO_DEV_KEEP_TREE=1` to opt out and let children outlive the script. This is dev-script-only; the packaged desktop app still manages the daemon's lifetime via the quit lifecycle (`daemon stop`), which in turn shuts down preview servers in the daemon's `stop()` path.
+
 ### Expo Router
 
 Route ownership, startup restore, and native blank-screen gotchas live in

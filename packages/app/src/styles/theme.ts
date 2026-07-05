@@ -8,6 +8,7 @@
 // from Paseo.
 import { Platform } from "react-native";
 import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
+import { resolveChatMaxWidth } from "@/constants/layout";
 
 export const baseColors = {
   // Base colors
@@ -744,10 +745,10 @@ export const DEFAULT_MONO_FONT_STACK: string = Platform.select({
   web: "JetBrainsMono_400Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
 });
 
-// `fontSize`, `fontFamily`, and `lineHeight` are deliberately widened to plain
-// `number`/`string` (not narrowed by `as const`) so the appearance updater can patch
-// them at runtime via `UnistylesRuntime.updateTheme`. The remaining tokens keep their
-// literal types.
+// `fontSize`, `fontFamily`, `lineHeight`, and `layout` are deliberately widened to
+// plain `number`/`string` (not narrowed by `as const`) so the appearance updater can
+// patch them at runtime via `UnistylesRuntime.updateTheme`. The remaining tokens keep
+// their literal types.
 interface CommonTheme {
   spacing: typeof SPACING;
   fontSize: Record<keyof typeof FONT_SIZE, number>;
@@ -758,6 +759,7 @@ interface CommonTheme {
   borderRadius: typeof BORDER_RADIUS;
   borderWidth: typeof BORDER_WIDTH;
   opacity: typeof OPACITY;
+  layout: { chatMaxWidth: number | undefined };
 }
 
 const commonTheme: CommonTheme = {
@@ -770,6 +772,7 @@ const commonTheme: CommonTheme = {
   borderRadius: BORDER_RADIUS,
   borderWidth: BORDER_WIDTH,
   opacity: OPACITY,
+  layout: { chatMaxWidth: resolveChatMaxWidth("default") },
 };
 
 const darkShadow = {

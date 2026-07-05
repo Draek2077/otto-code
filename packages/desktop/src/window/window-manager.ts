@@ -49,7 +49,15 @@ export function resolveSystemWindowTheme(): WindowTheme {
 }
 
 export function getWindowBackgroundColor(theme: WindowTheme): string {
-  return theme === "dark" ? "#181B1A" : "#ffffff";
+  // This paints before the renderer has loaded a theme, so it should look
+  // like a normal OS window in that theme rather than the app's own dark
+  // theme surface color (#181B1A) or a stark black/white. On Windows, match
+  // the native Fluent dark/light app-chrome background so the transition
+  // into the loaded UI doesn't read as an off color.
+  if (process.platform === "win32") {
+    return theme === "dark" ? "#202020" : "#f3f3f3";
+  }
+  return theme === "dark" ? "#000000" : "#ffffff";
 }
 
 export function createWindowControlsOverlayState(theme: WindowTheme): WindowControlsOverlayState {

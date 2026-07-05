@@ -1,5 +1,6 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@otto-code/highlight";
 import type { QueryClient } from "@tanstack/react-query";
+import type { ChatWidth } from "@/constants/layout";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
@@ -42,6 +43,7 @@ const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
   "workspaceList",
 ]);
+const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -71,6 +73,7 @@ export interface AppSettings {
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
   workspaceToolsPlacement: WorkspaceToolsPlacement;
+  chatWidth: ChatWidth;
 }
 
 export interface Settings extends AppSettings {
@@ -96,6 +99,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
+  chatWidth: "default",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -299,6 +303,12 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     VALID_WORKSPACE_TOOLS_PLACEMENTS.has(stored.workspaceToolsPlacement as WorkspaceToolsPlacement)
   ) {
     result.workspaceToolsPlacement = stored.workspaceToolsPlacement as WorkspaceToolsPlacement;
+  }
+  if (
+    typeof stored.chatWidth === "string" &&
+    VALID_CHAT_WIDTHS.has(stored.chatWidth as ChatWidth)
+  ) {
+    result.chatWidth = stored.chatWidth as ChatWidth;
   }
   return result;
 }

@@ -117,6 +117,7 @@ export const Pilcrow = createMaterialSymbolIcon("Pilcrow");
 export const Pin = createMaterialSymbolIcon("Pin");
 export const PinOff = createMaterialSymbolIcon("PinOff");
 export const Play = createMaterialSymbolIcon("Play");
+export const PlayFilled = createMaterialSymbolIcon("PlayFilled");
 export const Plug = createMaterialSymbolIcon("Plug");
 export const Plus = createMaterialSymbolIcon("Plus");
 export const Puzzle = createMaterialSymbolIcon("Puzzle");

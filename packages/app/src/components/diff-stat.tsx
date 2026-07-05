@@ -1,9 +1,11 @@
-import { View, Text } from "react-native";
+import { useMemo } from "react";
+import { View, Text, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 interface DiffStatProps {
   additions: number;
   deletions: number;
+  style?: StyleProp<ViewStyle>;
 }
 
 const compactFormatter = new Intl.NumberFormat("en-US", {
@@ -15,9 +17,10 @@ export function formatDiffCount(value: number): string {
   return compactFormatter.format(value).toLowerCase();
 }
 
-export function DiffStat({ additions, deletions }: DiffStatProps) {
+export function DiffStat({ additions, deletions, style }: DiffStatProps) {
+  const rowStyle = useMemo(() => (style ? [styles.row, style] : styles.row), [style]);
   return (
-    <View style={styles.row}>
+    <View style={rowStyle}>
       <Text style={styles.additions}>+{formatDiffCount(additions)}</Text>
       <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
     </View>

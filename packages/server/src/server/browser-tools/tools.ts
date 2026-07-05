@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
+import type { DevServerManager, PreviewServerSummary } from "../preview/dev-server-manager.js";
 import type {
   OttoToolConfig,
   OttoToolExecutionContext,
@@ -27,6 +28,13 @@ export interface RegisterBrowserToolsOptions {
   broker: Pick<BrowserToolsBroker, "execute">;
   callerAgentId?: string;
   resolveCallerAgent: () => CallerAgentContext | null;
+  /**
+   * Running preview dev servers, when the preview subsystem is enabled. Used to
+   * redirect browser_new_tab / browser_navigate calls that target a preview
+   * server's URL back to that server's designated preview tab, so agents can't
+   * end up verifying against a detached duplicate tab.
+   */
+  previewServers?: Pick<DevServerManager, "list"> | null;
 }
 
 const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
@@ -95,6 +103,78 @@ const BrowserWaitInputSchema = z
     message: "browser_wait requires exactly one of text or url",
   });
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+function urlPort(url: URL): number {
+  if (url.port) {
+    return Number(url.port);
+  }
+  return url.protocol === "https:" ? 443 : 80;
+}
+
+/**
+ * Find the running preview server a URL points at, if any. Preview servers
+ * always bind loopback, so a match means "loopback host + same port" — the
+ * agent may write localhost where the server registered 127.0.0.1.
+ */
+function findPreviewServerForUrl(params: {
+  previewServers: Pick<DevServerManager, "list"> | null | undefined;
+  cwd: string | undefined;
+  url: string;
+}): PreviewServerSummary | null {
+  const { previewServers, cwd, url } = params;
+  if (!previewServers || !cwd) {
+    return null;
+  }
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return null;
+  }
+  if (!LOOPBACK_HOSTS.has(target.hostname)) {
+    return null;
+  }
+  const port = urlPort(target);
+  for (const server of previewServers.list(cwd)) {
+    if (server.status !== "exited" && server.port === port) {
+      return server;
+    }
+  }
+  return null;
+}
+
+/**
+ * Deterministic backstop behind the tool-description guardrails: opening a
+ * preview server's URL anywhere but its designated tab is rejected with a
+ * message pointing at the right browserId (or at preview_start when no tab is
+ * bound yet), instead of trusting the agent to have read the descriptions.
+ */
+function previewTabRedirectResult(params: {
+  server: PreviewServerSummary;
+  context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string };
+}): OttoToolResult {
+  const { server, context } = params;
+  const message = server.boundBrowserId
+    ? `${server.url} belongs to the preview server "${server.name}" started with preview_start. ` +
+      `Use its designated preview tab instead of opening another one: pass browserId=${server.boundBrowserId} ` +
+      `to browser_snapshot, browser_navigate, browser_screenshot, and the other browser tools.`
+    : `${server.url} belongs to the preview server "${server.name}", which has no designated preview tab yet. ` +
+      `Call preview_start with name "${server.name}" — it opens (or re-finds) the tab and returns its browserId.`;
+  return browserToolResult({
+    payload: {
+      requestId: "browser-tools-preview-redirect",
+      ok: false,
+      error: {
+        code: "browser_denied",
+        message,
+        retryable: false,
+      },
+    },
+    context,
+  });
+}
+
 export function registerBrowserTools(options: RegisterBrowserToolsOptions): void {
   options.registerTool(
     "browser_list_tabs",
@@ -129,7 +209,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Create browser tab",
       description:
-        "Create a new Otto browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools.",
+        "Create a new Otto browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools. " +
+        "Do NOT use this to open or view a dev server — preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
       },
@@ -140,6 +221,16 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
         return missingWorkspace;
+      }
+      if (url) {
+        const previewServer = findPreviewServerForUrl({
+          previewServers: options.previewServers,
+          cwd: context.cwd,
+          url,
+        });
+        if (previewServer) {
+          return previewTabRedirectResult({ server: previewServer, context });
+        }
       }
       const payload = await options.broker.execute({
         agentId: context.agentId,
@@ -159,7 +250,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Snapshot browser page",
       description:
-        "Return a model-readable snapshot of a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Return a model-readable snapshot of a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -188,7 +279,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Click browser element",
       description:
-        "Click an element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Click an element in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
@@ -225,7 +316,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Fill browser element",
       description:
-        "Fill an input-like element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Fill an input-like element in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -258,7 +349,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Wait for browser condition",
       description:
-        "Wait until a Otto browser tab contains text or reaches a URL fragment. Use browserId from browser_new_tab or browser_list_tabs; waits up to 5s by default on the browser host.",
+        "Wait until a Otto browser tab contains text or reaches a URL fragment. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; waits up to 5s by default on the browser host.",
       inputSchema: BrowserWaitInputSchema,
       outputSchema: BrowserToolOutputSchema,
     },
@@ -289,7 +380,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Type into browser",
       description:
-        "Type text into an element, or into the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Type text into an element, or into the focused element when ref is omitted. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         text: z.string(),
         ref: BrowserRefInputSchema.optional(),
@@ -322,7 +413,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Press browser key",
       description:
-        "Dispatch a keypress to an element, or to the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Dispatch a keypress to an element, or to the focused element when ref is omitted. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         key: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
@@ -355,12 +446,24 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Navigate browser",
       description:
-        "Navigate a Otto browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
+        "Navigate a Otto browser tab to a URL. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; pass an http(s) URL or a scheme-less host URL, which is treated as http. " +
+        "Dev server URLs can only be opened in the server's designated preview tab — the browserId returned by preview_start.",
       inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
       outputSchema: BrowserToolOutputSchema,
     },
     async ({ url, browserId }) => {
       const context = resolveBrowserToolContext(options);
+      const previewServer = findPreviewServerForUrl({
+        previewServers: options.previewServers,
+        cwd: context.cwd,
+        url,
+      });
+      if (previewServer && previewServer.boundBrowserId !== browserId) {
+        return previewTabRedirectResult({
+          server: previewServer,
+          context: { ...context, browserId },
+        });
+      }
       const payload = await options.broker.execute({
         agentId: context.agentId,
         cwd: context.cwd,
@@ -384,21 +487,21 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       command: "back",
       title: "Browser back",
       description:
-        "Go back in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Go back in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing.",
     },
     {
       name: "browser_forward",
       command: "forward",
       title: "Browser forward",
       description:
-        "Go forward in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Go forward in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing.",
     },
     {
       name: "browser_reload",
       command: "reload",
       title: "Browser reload",
       description:
-        "Reload a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Reload a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing.",
     },
   ] as const) {
     options.registerTool(
@@ -433,7 +536,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs. Set fullPage to true to capture the full page.",
+        "Capture a PNG screenshot of a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing. Set fullPage to true to capture the full page.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         fullPage: z.boolean().default(false),
@@ -464,7 +567,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Upload files in browser",
       description:
-        "Set workspace files on a file input in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Set workspace files on a file input in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         filePaths: z.array(z.string().min(1)).min(1),
@@ -498,7 +601,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       command: "hover",
       title: "Hover browser element",
       description:
-        "Hover an element in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Hover an element in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
   ] as const) {
     options.registerTool(
@@ -534,7 +637,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Select browser option",
       description:
-        "Set a select element in a Otto browser tab to a value. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Set a select element in a Otto browser tab to a value. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -567,7 +670,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Drag browser element",
       description:
-        "Drag one element onto another in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
+        "Drag one element onto another in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         sourceRef: BrowserRefInputSchema,
         targetRef: BrowserRefInputSchema,
@@ -600,7 +703,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser logs",
       description:
-        "Read recent console messages and browser performance network entries for a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; maxEntries defaults to 50.",
+        "Read recent console messages and browser performance network entries for a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; maxEntries defaults to 50.",
       inputSchema: {
         maxEntries: z.number().int().positive().max(200).optional(),
         browserId: BrowserAutomationBrowserIdSchema,
@@ -755,7 +858,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Evaluate browser JavaScript",
       description:
-        "Evaluate a JavaScript function in a Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
+        "Evaluate a JavaScript function in a Otto browser tab. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
       inputSchema: {
         function: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
@@ -788,7 +891,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Scroll browser",
       description:
-        "Scroll a Otto browser tab by deltaX/deltaY CSS pixels. Use browserId from browser_new_tab or browser_list_tabs; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
+        "Scroll a Otto browser tab by deltaX/deltaY CSS pixels. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         ref: BrowserRefInputSchema.optional(),
@@ -823,7 +926,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Resize browser viewport",
       description:
-        "Resize a Otto browser tab's resident webview viewport. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Resize a Otto browser tab's resident webview viewport. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         width: z.number().int().positive(),
@@ -856,7 +959,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Close browser tab",
       description:
-        "Close a Otto browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from browser_new_tab or browser_list_tabs.",
+        "Close a Otto browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from preview_start when verifying a dev server, or from browser_new_tab / browser_list_tabs for general browsing.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },

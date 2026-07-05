@@ -9,6 +9,7 @@ import {
   type BrowserRecordPatch,
   createBrowserRecord,
   normalizeBrowserUrl,
+  type PreviewStatus,
   rehydrateBrowserRecord,
   removeBrowserFromIndex,
   sanitizeBrowsersForPersist,
@@ -24,6 +25,7 @@ interface BrowserStoreState extends BrowserIndexState {
     previewServerId?: string | null;
     previewServerName?: string | null;
     previewCwd?: string | null;
+    previewStatus?: PreviewStatus;
   }) => string;
   updateBrowser: (browserId: string, patch: BrowserRecordPatch) => void;
   removeBrowser: (browserId: string) => void;
@@ -54,6 +56,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
           previewServerId: input?.previewServerId,
           previewServerName: input?.previewServerName,
           previewCwd: input?.previewCwd,
+          previewStatus: input?.previewStatus,
         });
 
         set((state) => ({
@@ -107,6 +110,7 @@ export function createWorkspaceBrowser(input?: {
   previewServerId?: string | null;
   previewServerName?: string | null;
   previewCwd?: string | null;
+  previewStatus?: PreviewStatus;
 }): {
   browserId: string;
   url: string;

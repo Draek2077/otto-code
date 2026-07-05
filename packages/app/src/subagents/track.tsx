@@ -5,7 +5,8 @@ import { Archive, ChevronDown, ChevronRight, Unlink } from "@/components/icons/m
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { isNative } from "@/constants/platform";
 import {
   WorkspaceTabIcon,
@@ -75,7 +76,7 @@ export function SubagentsTrack({
 
   return (
     <View style={styles.outer} testID="subagents-track">
-      <View style={styles.track}>
+      <ChatWidthBounds style={styles.track}>
         <View style={surfaceStyle}>
           <Pressable
             accessibilityRole="button"
@@ -112,7 +113,7 @@ export function SubagentsTrack({
             </ScrollView>
           ) : null}
         </View>
-      </View>
+      </ChatWidthBounds>
     </View>
   );
 }
@@ -276,7 +277,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   track: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
     marginBottom: -theme.spacing[4],
   },
   surface: {

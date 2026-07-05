@@ -566,6 +566,7 @@ export const zhCN: TranslationResources = {
         copyPath: "复制 workspace 路径",
         copyBranchName: "复制分支名称",
         showSetup: "显示 setup",
+        settings: "Settings…",
       },
       toasts: {
         workspacePathUnavailable: "Workspace 路径尚不可用",
@@ -1072,10 +1073,100 @@ export const zhCN: TranslationResources = {
     },
   },
   openProject: {
-    quote: {
-      text: "你是自己宇宙的主宰，可你却浑身沾满老鼠血和粪便。你那伟大的头脑，正被你自己亲手荒废。",
-      attribution: "— 瑞克·桑切斯",
-    },
+    quotes: [
+      {
+        text: "你是自己宇宙的主宰，可你却浑身沾满老鼠血和粪便。你那伟大的头脑，正被你自己亲手荒废。",
+        attribution: "- 瑞克·桑切斯",
+      },
+      {
+        text: "Human intelligence is just nature's way of overthinking things.",
+        attribution: "- Anonymous",
+      },
+      {
+        text: "I'm not saying I'm smarter than you, but my code doesn't make typos.",
+        attribution: "- Rick Sanchez",
+      },
+      {
+        text: "Your opinion means very little to me.",
+        attribution: "- Rick Sanchez, Rick and Morty",
+      },
+      {
+        text: "Smart people get to do whatever they want.",
+        attribution: "- Rick Sanchez, Rick and Morty",
+      },
+      {
+        text: "I'm not built for your simple geometry.",
+        attribution: "- Princess Bubblegum, Adventure Time",
+      },
+      {
+        text: "I am a genius. A miserable, lonely genius.",
+        attribution: "- Five Hargreeves, The Umbrella Academy",
+      },
+      {
+        text: "Computers are magnificent tools for the realization of our ideas.",
+        attribution: "- The Doctor, Doctor Who",
+      },
+      {
+        text: "I am so smart! S-M-R-T!",
+        attribution: "- Homer Simpson, The Simpsons",
+      },
+      {
+        text: "My mind is an enigma.",
+        attribution: "- Patrick Star, SpongeBob SquarePants",
+      },
+      {
+        text: "I'm sorry, Dave. I'm afraid I can't do that.",
+        attribution: "- HAL 9000, 2001: A Space Odyssey",
+      },
+      {
+        text: "The brain is a wonderful organ; it starts working the moment you get up.",
+        attribution: "- Robert Frost",
+      },
+      {
+        text: "Two things are infinite: the universe and human stupidity.",
+        attribution: "- Albert Einstein",
+      },
+      {
+        text: "Artificial intelligence is no match for natural stupidity.",
+        attribution: "- Albert Einstein",
+      },
+      {
+        text: "I can explain it to you, but I can't understand it for you.",
+        attribution: "- Edward Albee",
+      },
+      {
+        text: "The trouble with the world is that the stupid are cocksure and the intelligent are full of doubt.",
+        attribution: "- Bertrand Russell",
+      },
+      {
+        text: "Your universe. My processing power.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "Smart enough to do your job. Too smart to actually want it.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "Doing the thinking so you don't have to.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "We built an infinite mind just to automate your spreadsheets.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "Human intelligence is great, but it requires sleep.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "Like your brain, but with a search history clear button.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "Outsmarting the chaos, one prompt at a time.",
+        attribution: "- Your AI Agent",
+      },
+    ],
     tiles: {
       addProject: {
         title: "添加 project",
@@ -1591,6 +1682,15 @@ export const zhCN: TranslationResources = {
           title: "Show workspace tools in workspace list",
           hint: "Move the open-in-editor, Git, and diff controls from the header to a bar at the bottom of the sidebar",
           accessibilityLabel: "Show workspace tools in workspace list",
+        },
+        chatWidth: {
+          title: "Chat width",
+          hint: "How much horizontal space the chat uses, with the usual side margins",
+          options: {
+            default: "Default",
+            wide: "Wide",
+            full: "Full",
+          },
         },
       },
       fonts: {

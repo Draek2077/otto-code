@@ -1,5 +1,6 @@
 import { UnistylesRuntime } from "react-native-unistyles";
 import { resolveSyntaxColors, type SyntaxThemeId } from "@otto-code/highlight";
+import { resolveChatMaxWidth, type ChatWidth } from "@/constants/layout";
 import {
   DEFAULT_UI_FONT_STACK,
   DEFAULT_MONO_FONT_STACK,
@@ -25,6 +26,7 @@ export interface AppearanceInput {
   uiFontSize: number; // already clamped
   codeFontSize: number; // already clamped
   syntaxTheme: SyntaxThemeId;
+  chatWidth: ChatWidth;
 }
 
 /**
@@ -61,6 +63,7 @@ export function applyAppearance(input: AppearanceInput): void {
   const ui = input.uiFontFamily.trim() || DEFAULT_UI_FONT_STACK;
   const mono = input.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
   const diffLineHeight = Math.round(input.codeFontSize * 1.5); // couple to code size
+  const layout = { chatMaxWidth: resolveChatMaxWidth(input.chatWidth) };
 
   for (const key of ALL_THEME_KEYS) {
     // Spread `...t` first — `updateTheme` replaces the stored theme, it does not
@@ -82,6 +85,7 @@ export function applyAppearance(input: AppearanceInput): void {
           fontFamily,
           fontSize,
           lineHeight,
+          layout,
           colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
         };
       }
@@ -90,6 +94,7 @@ export function applyAppearance(input: AppearanceInput): void {
         fontFamily,
         fontSize,
         lineHeight,
+        layout,
         colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
       };
     });

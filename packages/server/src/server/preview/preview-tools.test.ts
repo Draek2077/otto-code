@@ -144,7 +144,11 @@ describe("preview_start tab binding", () => {
     const newTabCall = harness.brokerCalls.find((call) => call.command.command === "new_tab");
     expect(newTabCall?.command).toEqual({
       command: "new_tab",
-      args: { url: SERVER_URL, layout: "split-right" },
+      args: {
+        url: SERVER_URL,
+        layout: "split-right",
+        preview: { serverId: "srv_test", serverName: "sample", cwd: "C:\\work\\project" },
+      },
     });
     expect(newTabCall?.workspaceId).toBe("wks_1");
   });

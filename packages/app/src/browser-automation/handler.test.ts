@@ -395,6 +395,46 @@ describe("mountBrowserAutomationHandler", () => {
     expect(layout?.root).toEqual(expect.objectContaining({ kind: "pane" }));
   });
 
+  test("new_tab with preview metadata creates the tab as a ready preview tab", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    browser.mount({ serverId: "server-1" });
+
+    const request = previewNewTabRequest();
+    if (request.command.command === "new_tab") {
+      request.command.args.preview = {
+        serverId: "srv_1",
+        serverName: "forge-preview",
+        cwd: "/repo",
+      };
+    }
+    browser.receive(request);
+    await flushAsyncWork();
+
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+    expect(useBrowserStore.getState().browsersById[result.browserId]).toMatchObject({
+      isPreview: true,
+      previewServerId: "srv_1",
+      previewServerName: "forge-preview",
+      previewCwd: "/repo",
+      previewStatus: "ready",
+    });
+  });
+
+  test("new_tab without preview metadata creates a plain browser tab", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+    expect(useBrowserStore.getState().browsersById[result.browserId]).toMatchObject({
+      isPreview: false,
+      previewServerId: null,
+      previewStatus: "ready",
+    });
+  });
+
   test("browser_new_tab returns a retryable timeout when the resident webview does not register", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.response = emptyListTabsPayload();

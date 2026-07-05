@@ -91,6 +91,19 @@ export const BrowserAutomationNewTabCommandSchema = z.object({
        * the pane the user was already looking at.
        */
       layout: z.enum(["default", "split-right"]).optional(),
+      /**
+       * Sent by preview_start when the tab is the designated preview tab for
+       * a dev server, so the app creates it with preview-tab identity (icon,
+       * lifecycle status) instead of a generic browser tab. Absent for plain
+       * browser_new_tab calls and from daemons older than this field.
+       */
+      preview: z
+        .object({
+          serverId: z.string().min(1),
+          serverName: z.string().min(1),
+          cwd: z.string().min(1),
+        })
+        .optional(),
     })
     .strict()
     .default({}),

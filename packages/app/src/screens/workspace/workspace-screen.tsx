@@ -66,7 +66,11 @@ import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useToast } from "@/contexts/toast-context";
-import { selectIsFileExplorerOpen, usePanelStore } from "@/stores/panel-store";
+import {
+  selectIsAgentListOpen,
+  selectIsFileExplorerOpen,
+  usePanelStore,
+} from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
   useSessionStore,
@@ -1082,6 +1086,10 @@ function WorkspaceHeaderMenu({
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
   }, [normalizedServerId, router]);
 
+  const handleOpenSettings = useCallback(() => {
+    router.push(buildSettingsHostRoute(normalizedServerId) as Href);
+  }, [normalizedServerId, router]);
+
   const renderTriggerIcon = useCallback(
     ({ hovered, open }: { hovered: boolean; open: boolean }) => (
       <WorkspaceHeaderMenuTriggerIcon hovered={hovered} open={open} isMobile={isMobile} />
@@ -1177,6 +1185,14 @@ function WorkspaceHeaderMenu({
           onSelect={handleEditProfiles}
         >
           {t("workspace.tabs.actions.editTerminalProfiles")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          testID="workspace-header-open-settings"
+          leading={menuSettingsIcon}
+          onSelect={handleOpenSettings}
+        >
+          {t("workspace.header.actions.settings")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1843,6 +1859,9 @@ function WorkspaceScreenContent({
   const isExplorerOpen = usePanelStore((state) =>
     selectIsFileExplorerOpen(state, { isCompact: isMobile }),
   );
+  const isSidebarOpen = usePanelStore((state) =>
+    selectIsAgentListOpen(state, { isCompact: isMobile }),
+  );
   const toggleFileExplorerForCheckout = usePanelStore(
     (state) => state.toggleFileExplorerForCheckout,
   );
@@ -1873,10 +1892,10 @@ function WorkspaceScreenContent({
   const explorerToggleStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       styles.sourceControlButton,
-      hasDiffStat && styles.sourceControlButtonWithStats,
-      (Boolean(hovered) || Boolean(pressed) || isExplorerOpen) && styles.sourceControlButtonHovered,
+      hasDiffStat && !isSidebarOpen && styles.sourceControlButtonWithStats,
+      (Boolean(hovered) || Boolean(pressed)) && styles.sourceControlButtonHovered,
     ],
-    [hasDiffStat, isExplorerOpen],
+    [hasDiffStat, isSidebarOpen],
   );
   const explorerToggleAccessibilityState = useMemo(
     () => ({ expanded: isExplorerOpen }),
@@ -3349,10 +3368,11 @@ function WorkspaceScreenContent({
                     return (
                       <>
                         <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
-                        {workspaceDescriptor?.diffStat ? (
+                        {workspaceDescriptor?.diffStat && !isSidebarOpen ? (
                           <DiffStat
                             additions={workspaceDescriptor.diffStat.additions}
                             deletions={workspaceDescriptor.diffStat.deletions}
+                            style={styles.sourceControlDiffStat}
                           />
                         ) : null}
                       </>
@@ -3441,6 +3461,7 @@ function WorkspaceScreenContent({
       isGitCheckout,
       handleToggleExplorer,
       isExplorerOpen,
+      isSidebarOpen,
       explorerToggleLabel,
       explorerToggleAccessibilityState,
       explorerToggleStyle,
@@ -3811,6 +3832,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
+    paddingRight: theme.spacing[2],
     gap: {
       xs: 0,
       md: theme.spacing[2],
@@ -3820,18 +3842,19 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[1],
-    paddingVertical: theme.spacing[1],
-    minHeight: Math.ceil(theme.fontSize.sm * 1.5) + theme.spacing[1] * 2,
-    minWidth: Math.ceil(theme.fontSize.sm * 1.5) + theme.spacing[1] * 2,
-    borderRadius: theme.borderRadius.md,
+    width: theme.spacing[8],
+    height: theme.spacing[8],
+    borderRadius: theme.borderRadius.lg,
   },
   sourceControlButtonWithStats: {
-    paddingHorizontal: theme.spacing[3],
+    width: undefined,
+    paddingHorizontal: theme.spacing[2],
   },
   sourceControlButtonHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  sourceControlDiffStat: {
+    paddingLeft: theme.spacing[2],
   },
   newTabActions: {
     flexDirection: "row",

@@ -13,7 +13,27 @@ export const HEADER_TOP_PADDING_MOBILE = 8;
 
 // Max width for chat content (stream view, input area, new agent form)
 export const MAX_CONTENT_WIDTH = 820;
+// "Wide" chat width option — a wider fixed cap than default, but still a cap:
+// on an ultra-wide monitor it stops growing here instead of tracking the
+// window. Only "full" (see resolveChatMaxWidth) is meant to track the window.
+export const WIDE_CONTENT_WIDTH = 1200;
 export const COMPACT_FORM_FACTOR_WIDTH = 500;
+
+export type ChatWidth = "default" | "wide" | "full";
+
+// "full" returns undefined (no maxWidth at all) rather than a very large
+// number — the chat surface already renders at `width: "100%"`, so removing
+// the cap entirely is what actually fills the window, with no ambiguity.
+export function resolveChatMaxWidth(chatWidth: ChatWidth): number | undefined {
+  switch (chatWidth) {
+    case "wide":
+      return WIDE_CONTENT_WIDTH;
+    case "full":
+      return undefined;
+    default:
+      return MAX_CONTENT_WIDTH;
+  }
+}
 
 // Desktop app constants for macOS traffic light buttons
 // These buttons (close/minimize/maximize) overlay the top-left corner

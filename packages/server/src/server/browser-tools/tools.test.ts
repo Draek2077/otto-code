@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
 import { registerBrowserTools, type RegisterBrowserToolsOptions } from "./tools.js";
+import type { PreviewServerSummary } from "../preview/dev-server-manager.js";
 import type {
   OttoToolConfig,
   OttoToolExecutionContext,
@@ -48,6 +49,7 @@ class BrowserToolHarness {
       workspaceId: "wks_workspace_a",
     },
     private readonly callerAgentId: string | null = "agent-1",
+    previewServers: PreviewServerSummary[] | null = null,
   ) {
     registerBrowserTools({
       registerTool: (name, config, handler) => {
@@ -56,6 +58,9 @@ class BrowserToolHarness {
       broker: this.broker as Pick<BrowserToolsBroker, "execute">,
       ...(this.callerAgentId ? { callerAgentId: this.callerAgentId } : {}),
       resolveCallerAgent: () => this.callerAgent,
+      previewServers: previewServers
+        ? { list: (cwd?: string) => previewServers.filter((s) => !cwd || s.cwd === cwd) }
+        : null,
     });
   }
 
@@ -1000,6 +1005,141 @@ describe("registerBrowserTools", () => {
       },
     ]);
     expect(response.content).toEqual([{ type: "text", text: "Browser wait matched text." }]);
+  });
+
+  describe("preview server tab enforcement", () => {
+    const PREVIEW_TAB_ID = "22222222-2222-4222-8222-222222222222";
+
+    function previewServer(overrides: Partial<PreviewServerSummary> = {}): PreviewServerSummary {
+      return {
+        serverId: "srv-1",
+        name: "forge-preview",
+        cwd: "/repo",
+        port: 8202,
+        url: "http://127.0.0.1:8202/",
+        status: "running",
+        pid: 4321,
+        exitCode: null,
+        boundBrowserId: PREVIEW_TAB_ID,
+        ...overrides,
+      };
+    }
+
+    function harnessWith(servers: PreviewServerSummary[]): BrowserToolHarness {
+      return new BrowserToolHarness(
+        { id: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
+        "agent-1",
+        servers,
+      );
+    }
+
+    test("new tab to a preview server URL is redirected to the bound tab", async () => {
+      const harness = harnessWith([previewServer()]);
+
+      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: {
+          code: "browser_denied",
+          message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
+          retryable: false,
+        },
+      });
+    });
+
+    test("new tab matches localhost spelling against a 127.0.0.1 server", async () => {
+      const harness = harnessWith([previewServer()]);
+
+      const response = await harness.execute("browser_new_tab", { url: "localhost:8202" });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: { code: "browser_denied" },
+      });
+    });
+
+    test("new tab to a preview server without a bound tab points at preview_start", async () => {
+      const harness = harnessWith([previewServer({ boundBrowserId: null })]);
+
+      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: {
+          code: "browser_denied",
+          message: expect.stringContaining('preview_start with name "forge-preview"'),
+        },
+      });
+    });
+
+    test("navigating another tab to a preview server URL is redirected", async () => {
+      const harness = harnessWith([previewServer()]);
+
+      const response = await harness.execute("browser_navigate", {
+        browserId: BROWSER_ID,
+        url: "http://localhost:8202/page",
+      });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: {
+          code: "browser_denied",
+          message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
+        },
+      });
+    });
+
+    test("navigating the bound preview tab to its server is allowed", async () => {
+      const harness = harnessWith([previewServer()]);
+      harness.broker.setResponse({
+        requestId: "req-navigate",
+        ok: true,
+        result: { command: "navigate", browserId: PREVIEW_TAB_ID, url: "http://127.0.0.1:8202/" },
+      });
+
+      const response = await harness.execute("browser_navigate", {
+        browserId: PREVIEW_TAB_ID,
+        url: "http://127.0.0.1:8202/",
+      });
+
+      expect(harness.broker.calls).toHaveLength(1);
+      expect(response.structuredContent).toMatchObject({ ok: true });
+    });
+
+    test("exited preview servers do not block their old URL", async () => {
+      const harness = harnessWith([previewServer({ status: "exited" })]);
+      harness.broker.setResponse(newTabPayload());
+
+      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
+
+      expect(harness.broker.calls).toHaveLength(1);
+      expect(response.structuredContent).toMatchObject({ ok: true });
+    });
+
+    test("non-preview URLs open new tabs normally", async () => {
+      const harness = harnessWith([previewServer()]);
+      harness.broker.setResponse(newTabPayload());
+
+      const response = await harness.execute("browser_new_tab", { url: "https://example.com" });
+
+      expect(harness.broker.calls).toHaveLength(1);
+      expect(response.structuredContent).toMatchObject({ ok: true });
+    });
+
+    test("preview servers in another cwd do not block the URL", async () => {
+      const harness = harnessWith([previewServer({ cwd: "/other-repo" })]);
+      harness.broker.setResponse(newTabPayload());
+
+      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
+
+      expect(harness.broker.calls).toHaveLength(1);
+      expect(response.structuredContent).toMatchObject({ ok: true });
+    });
   });
 
   test("tab tools keep empty context when there is no caller agent", async () => {

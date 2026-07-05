@@ -404,6 +404,44 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Chat width picker (Default / Wide / Full)
+// ---------------------------------------------------------------------------
+
+interface ChatWidthRowProps {
+  value: AppSettings["chatWidth"];
+  onChange: (chatWidth: AppSettings["chatWidth"]) => void;
+}
+
+function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
+  const { t } = useTranslation();
+  const options = useMemo<SegmentedControlOption<AppSettings["chatWidth"]>[]>(
+    () => [
+      { value: "default", label: t("settings.appearance.layout.chatWidth.options.default") },
+      { value: "wide", label: t("settings.appearance.layout.chatWidth.options.wide") },
+      { value: "full", label: t("settings.appearance.layout.chatWidth.options.full") },
+    ],
+    [t],
+  );
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.layout.chatWidth.title")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.appearance.layout.chatWidth.hint")}</Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-chat-width"
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Layout: compact sidebar top spacing + workspace tools placement (booleans)
 // ---------------------------------------------------------------------------
 
@@ -523,6 +561,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleChatWidthChange = useCallback(
+    (chatWidth: AppSettings["chatWidth"]) => {
+      void updateSettings({ chatWidth });
+    },
+    [updateSettings],
+  );
+
   const commitUiFontFamily = useCallback(
     (value: string) => {
       const sanitized = sanitizeFontFamily(value);
@@ -633,6 +678,7 @@ export function AppearanceSection() {
               onValueChange={handleWorkspaceToolsPlacementChange}
               testID="settings-workspace-tools-placement-switch"
             />
+            <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
           </View>
         </SettingsSection>
       ) : null}

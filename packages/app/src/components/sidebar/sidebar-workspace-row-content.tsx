@@ -403,7 +403,7 @@ const checksBadgeStyles = StyleSheet.create((theme) => ({
 export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   rowRight: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
   },
@@ -432,12 +432,14 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     minHeight: 20,
     flexShrink: 0,
     alignItems: "flex-end",
-    justifyContent: "flex-start",
+    justifyContent: "center",
   },
   trailingActionOverlay: {
     position: "absolute",
     top: 0,
+    bottom: 0,
     right: 0,
+    justifyContent: "center",
   },
 }));
 
@@ -491,7 +493,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceTitleRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
