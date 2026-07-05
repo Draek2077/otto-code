@@ -151,9 +151,9 @@ describe("test-daemon-connection connectToDaemon", () => {
 
     const plainResult = await connectToDaemon(
       {
-        id: "relay:relay.otto-code.ai:443",
+        id: "relay:relay.otto-code.me:443",
         type: "relay",
-        relayEndpoint: "relay.otto-code.ai:443",
+        relayEndpoint: "relay.otto-code.me:443",
         useTls: false,
         daemonPublicKeyB64: "pubkey",
       },
@@ -163,7 +163,7 @@ describe("test-daemon-connection connectToDaemon", () => {
     await plainResult.client.close();
 
     expect(probe.createdConfigs()[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
-    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.otto\.sh:443\/ws\?/);
+    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.otto-code\.me:443\/ws\?/);
   });
 
   it("surfaces auth rejection as an incorrect password", async () => {

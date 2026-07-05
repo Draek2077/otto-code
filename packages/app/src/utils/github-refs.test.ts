@@ -9,19 +9,19 @@ describe("normalizeGithubRemote", () => {
   it.each([
     [
       "https://github.com/otto-code-ai/otto-code",
-      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+      { owner: "otto-code-ai", repo: "otto-code", host: "github.com" },
     ],
     [
       "https://github.com/otto-code-ai/otto-code.git",
-      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+      { owner: "otto-code-ai", repo: "otto-code", host: "github.com" },
     ],
     [
       "git@github.com:otto-code-ai/otto-code.git",
-      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+      { owner: "otto-code-ai", repo: "otto-code", host: "github.com" },
     ],
     [
       "ssh://git@github.com/otto-code-ai/otto-code.git",
-      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+      { owner: "otto-code-ai", repo: "otto-code", host: "github.com" },
     ],
   ])("extracts GitHub identity from %s", (remoteUrl, expected) => {
     expect(normalizeGithubRemote(remoteUrl)).toEqual(expected);
@@ -45,7 +45,7 @@ describe("parseGithubRef", () => {
       kind: "pull",
       number: 994,
       owner: "otto-code-ai",
-      repo: "otto",
+      repo: "otto-code",
       url: "https://github.com/otto-code-ai/otto-code/pull/994",
     });
   });
@@ -57,7 +57,7 @@ describe("parseGithubRef", () => {
       kind: "issues",
       number: 456,
       owner: "otto-code-ai",
-      repo: "otto",
+      repo: "otto-code",
       url: "https://github.com/otto-code-ai/otto-code/issues/456",
     });
   });
@@ -68,7 +68,7 @@ describe("parseGithubRef", () => {
         kind: "pull",
         number: 994,
         owner: "otto-code-ai",
-        repo: "otto",
+        repo: "otto-code",
         url: "https://github.com/otto-code-ai/otto-code/pull/994",
       },
     );
@@ -102,7 +102,7 @@ describe("parseGithubRef", () => {
       kind: "pull",
       number: 994,
       owner: "otto-code-ai",
-      repo: "otto",
+      repo: "otto-code",
       url: "https://github.com/otto-code-ai/otto-code/pull/994",
     });
   });
@@ -122,14 +122,14 @@ describe("extractGithubRefs", () => {
         kind: "pull",
         number: 994,
         owner: "otto-code-ai",
-        repo: "otto",
+        repo: "otto-code",
         url: "https://github.com/otto-code-ai/otto-code/pull/994",
       },
       {
         kind: "issues",
         number: 456,
         owner: "otto-code-ai",
-        repo: "otto",
+        repo: "otto-code",
         url: "https://github.com/otto-code-ai/otto-code/issues/456",
       },
     ]);
