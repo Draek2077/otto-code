@@ -1019,6 +1019,7 @@ function SplitPaneView({
             paneId={pane.id}
             isFocused={isFocused}
             tabs={desktopTabRowItems}
+            focusedTab={activeTabDescriptor}
             normalizedServerId={normalizedServerId}
             normalizedWorkspaceId={normalizedWorkspaceId}
             setHoveredCloseTabKey={setHoveredCloseTabKey}

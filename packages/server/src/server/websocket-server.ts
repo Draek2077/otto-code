@@ -38,6 +38,7 @@ import { buildWorkspaceGitMetadataFromSnapshot } from "./workspace-git-metadata.
 import { PushTokenStore } from "./push/token-store.js";
 import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
+import type { DevServerManager } from "./preview/dev-server-manager.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
@@ -461,6 +462,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
+  private readonly previewDevServers: DevServerManager | null;
 
   constructor(
     server: HTTPServer,
@@ -515,6 +517,7 @@ export class VoiceAssistantWebSocketServer {
     },
     serviceProxyPublicBaseUrl?: string | null,
     browserToolsBroker?: BrowserToolsBroker | null,
+    previewDevServers?: DevServerManager | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -524,6 +527,7 @@ export class VoiceAssistantWebSocketServer {
     this.daemonVersion = daemonVersion.trim();
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = browserToolsBroker ?? null;
+    this.previewDevServers = previewDevServers ?? null;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -569,9 +573,10 @@ export class VoiceAssistantWebSocketServer {
       this.speech?.onReadinessChange((snapshot) => {
         this.publishSpeechReadiness(snapshot);
       }) ?? null;
-    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config) => {
+    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config, details) => {
       const nextAgentManagerState = this.providerSnapshotManager.applyMutableProviderConfig(
         config.providers,
+        details.removedProviderIds,
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
       this.broadcastDaemonConfigChanged(config);
@@ -1025,6 +1030,7 @@ export class VoiceAssistantWebSocketServer {
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
+      previewDevServers: this.previewDevServers,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
       serviceProxy: this.serviceProxy ?? undefined,
@@ -1233,6 +1239,8 @@ export class VoiceAssistantWebSocketServer {
         daemonSelfUpdate: true,
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: true,
+        // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
+        providerRemove: true,
       },
     };
   }

@@ -10,6 +10,7 @@ import {
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
+  type Ref,
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -306,12 +307,24 @@ type TriggerStyleProp = StyleProp<ViewStyle> | ((state: TriggerState) => StylePr
 export interface DropdownMenuTriggerProps extends Omit<PressableProps, "style" | "children"> {
   style?: TriggerStyleProp;
   children: ReactNode | ((state: TriggerState) => ReactNode);
+  triggerRef?: Ref<View | null>;
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref && typeof ref === "object") {
+    Object.assign(ref, { current: value });
+  }
 }
 
 export function DropdownMenuTrigger({
   children,
   disabled,
   style,
+  triggerRef,
   ...props
 }: DropdownMenuTriggerProps): ReactElement {
   const ctx = useDropdownMenuContext("DropdownMenuTrigger");
@@ -320,6 +333,14 @@ export function DropdownMenuTrigger({
     if (disabled) return;
     ctx.setOpen(!ctx.open);
   }, [disabled, ctx]);
+
+  const handleRef = useCallback(
+    (node: View | null) => {
+      assignRef(ctx.triggerRef, node);
+      assignRef(triggerRef, node);
+    },
+    [ctx.triggerRef, triggerRef],
+  );
 
   const pressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
@@ -342,7 +363,7 @@ export function DropdownMenuTrigger({
   return (
     <Pressable
       {...props}
-      ref={ctx.triggerRef}
+      ref={handleRef}
       collapsable={false}
       disabled={disabled}
       onPress={handlePress}

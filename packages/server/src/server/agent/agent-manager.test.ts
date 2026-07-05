@@ -1385,7 +1385,7 @@ test("resumeAgentFromPersistence replaces stored internal otto MCP with current 
     },
     registry: storage,
     logger,
-    mcpBaseUrl: "http://127.0.0.1:6768/mcp/agents",
+    mcpBaseUrl: "http://127.0.0.1:6868/mcp/agents",
     idFactory: () => "00000000-0000-4000-8000-000000000105",
   });
   const handle: AgentPersistenceHandle = {
@@ -1413,7 +1413,7 @@ test("resumeAgentFromPersistence replaces stored internal otto MCP with current 
   expect(client.resumeOverrides[0]?.mcpServers).toEqual({
     otto: {
       type: "http",
-      url: `http://127.0.0.1:6768/mcp/agents?callerAgentId=${snapshot.id}`,
+      url: `http://127.0.0.1:6868/mcp/agents?callerAgentId=${snapshot.id}`,
     },
     custom: {
       type: "stdio",

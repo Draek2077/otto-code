@@ -17,7 +17,7 @@ npm run dev                          # Start daemon + Expo in Tmux
 npm run build:server                 # Build: highlight + relay + protocol + client + server + cli
 npm run typecheck                    # Typecheck all packages
 npm run test                         # Test all packages
-npm run format                       # Format with Biome (in-place)
+npm run format                       # Format with oxfmt (in-place)
 ```
 
 ### Server package (`packages/server`)
@@ -59,7 +59,7 @@ npm run cli -- daemon status                 # Check daemon status
 
 ## Code Style
 
-### Biome (formatting only, no linting)
+### oxfmt (formatting; oxlint for linting)
 
 ```json
 {

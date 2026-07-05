@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
-import { getDesktopHost } from "@/desktop/host";
+import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
 import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
 import { isNative } from "@/constants/platform";
@@ -93,11 +93,29 @@ async function updateMacDockBadge(count?: number) {
   }
 }
 
+// The tray icon (all desktop platforms, not just mac) swaps to the amber wink
+// variant when something needs the user's attention — see packages/desktop/src/features/tray.ts.
+async function updateTrayAttention(status: FaviconStatus) {
+  if (isNative || !isElectronRuntime()) return;
+
+  const desktopWindow = getDesktopHost()?.window?.getCurrentWindow?.();
+  if (!desktopWindow || typeof desktopWindow.setTrayAttention !== "function") {
+    return;
+  }
+
+  try {
+    await desktopWindow.setTrayAttention(status === "attention");
+  } catch (error) {
+    console.warn("[useFaviconStatus] Failed to update tray attention state", error);
+  }
+}
+
 export function useFaviconStatus() {
   const { agents } = useAggregatedAgents();
   const workspaceStatuses = useWorkspaceStatusesForBadges();
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
+  const lastTrayAttentionRef = useRef<boolean | undefined>(undefined);
 
   // Listen for system color scheme changes
   useEffect(() => {
@@ -123,6 +141,12 @@ export function useFaviconStatus() {
     if (dockBadgeCount !== lastDockBadgeCountRef.current) {
       lastDockBadgeCountRef.current = dockBadgeCount;
       void updateMacDockBadge(dockBadgeCount);
+    }
+
+    const trayAttention = status === "attention";
+    if (trayAttention !== lastTrayAttentionRef.current) {
+      lastTrayAttentionRef.current = trayAttention;
+      void updateTrayAttention(status);
     }
   }, [agents, colorScheme, workspaceStatuses]);
 }

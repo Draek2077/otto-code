@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Image } from "react-native";
-import { Globe } from "lucide-react-native";
+import { Globe, Play } from "lucide-react-native";
 import invariant from "tiny-invariant";
 import { BrowserPane } from "@/components/browser-pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
@@ -22,12 +22,18 @@ function getBrowserLabel(input: { title: string; url: string }): string {
   }
 }
 
-function createBrowserTabIcon(faviconUrl: string | null) {
+function createBrowserTabIcon(input: { faviconUrl: string | null; isPreview: boolean }) {
   return function BrowserTabIcon({ size, color }: PanelIconProps) {
-    const source = useMemo(() => (faviconUrl ? { uri: faviconUrl } : undefined), []);
+    const source = useMemo(() => (input.faviconUrl ? { uri: input.faviconUrl } : undefined), []);
     const imageStyle = useMemo(() => ({ width: size, height: size, borderRadius: 3 }), [size]);
 
-    if (faviconUrl) {
+    // Preview tabs always show Play, even once a favicon loads, so they stay
+    // visually distinct from tabs the user opened themselves.
+    if (input.isPreview) {
+      return <Play size={size} color={color} />;
+    }
+
+    if (input.faviconUrl) {
       return <Image accessibilityIgnoresInvertColors source={source} style={imageStyle} />;
     }
 
@@ -41,7 +47,10 @@ function useBrowserPanelDescriptor(target: {
 }): PanelDescriptor {
   const browser = useBrowserStore((state) => state.browsersById[target.browserId] ?? null);
   const url = browser?.url ?? "https://example.com";
-  const icon = createBrowserTabIcon(browser?.faviconUrl ?? null);
+  const icon = createBrowserTabIcon({
+    faviconUrl: browser?.faviconUrl ?? null,
+    isPreview: browser?.isPreview ?? false,
+  });
 
   return {
     label: getBrowserLabel({ title: browser?.title ?? "", url }),

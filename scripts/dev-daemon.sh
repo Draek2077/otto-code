@@ -6,7 +6,7 @@ export PATH="$SCRIPT_DIR/../node_modules/.bin:$PATH"
 
 source "$SCRIPT_DIR/dev-home.sh"
 
-export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6768}"
+export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6868}"
 configure_dev_otto_home
 
 if [ -z "${OTTO_LOCAL_MODELS_DIR}" ]; then
@@ -21,6 +21,10 @@ echo "  Home:    ${OTTO_HOME}"
 echo "  Models:  ${OTTO_LOCAL_MODELS_DIR}"
 echo "  Listen:  ${OTTO_LISTEN}"
 echo "══════════════════════════════════════════════════════"
+
+# Relay off by default in dev: the hosted relay endpoint is not live yet, so the
+# daemon would just spam DNS-failure retries. Set OTTO_RELAY_ENABLED=true to opt in.
+export OTTO_RELAY_ENABLED="${OTTO_RELAY_ENABLED:-false}"
 
 export OTTO_CORS_ORIGINS="${OTTO_CORS_ORIGINS:-*}"
 export OTTO_NODE_INSPECT="${OTTO_NODE_INSPECT:---inspect=0}"

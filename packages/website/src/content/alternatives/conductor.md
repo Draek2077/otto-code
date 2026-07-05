@@ -78,7 +78,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 
 ## Comparison
 
-|                              | Otto                                                           | Conductor          |
+|                              | Otto                                                            | Conductor          |
 | ---------------------------- | --------------------------------------------------------------- | ------------------ |
 | License                      | Open source (AGPL-3.0)                                          | Closed source      |
 | Platforms                    | macOS, Linux, Windows                                           | macOS only         |

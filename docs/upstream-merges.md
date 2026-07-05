@@ -11,18 +11,18 @@ the rules on it.
 
 ## The naming map
 
-| Upstream | Otto |
-| --- | --- |
-| `Paseo` / `paseo` (prose, identifiers) | `Otto` / `otto` |
-| `@getpaseo/*` npm scope | `@otto-code/*` |
-| `getpaseo/paseo` GitHub repo | `otto-code-ai/otto-code` |
-| `getpaseo` org | `otto-code-ai` |
-| `paseo.sh` domain | `otto-code.ai` |
-| `PASEO_*` env vars | `OTTO_*` |
+| Upstream                                      | Otto                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `Paseo` / `paseo` (prose, identifiers)        | `Otto` / `otto`                                                  |
+| `@getpaseo/*` npm scope                       | `@otto-code/*`                                                   |
+| `getpaseo/paseo` GitHub repo                  | `otto-code-ai/otto-code`                                         |
+| `getpaseo` org                                | `otto-code-ai`                                                   |
+| `paseo.sh` domain                             | `otto-code.ai`                                                   |
+| `PASEO_*` env vars                            | `OTTO_*`                                                         |
 | `sh.paseo` / `.debug` / `.desktop` bundle ids | `ai.ottocode` / `.debug` / `.desktop` (no hyphens — reverse-DNS) |
-| `paseo` CLI command | `otto` |
-| `~/.paseo` data dir, `paseo.json` config | `~/.otto`, `otto.json` |
-| Default daemon port `6767` | `6868` |
+| `paseo` CLI command                           | `otto`                                                           |
+| `~/.paseo` data dir, `paseo.json` config      | `~/.otto`, `otto.json`                                           |
+| Default daemon port `6767`                    | `6868`                                                           |
 
 ## Merge procedure
 
@@ -43,7 +43,7 @@ perl -CSD scripts/rebrand-upstream.pl <file>
 git add <file>
 ```
 
-Only hand-merge when Otto has made *functional* (not naming) changes to the
+Only hand-merge when Otto has made _functional_ (not naming) changes to the
 same lines.
 
 ### 2. Rebrand anything new

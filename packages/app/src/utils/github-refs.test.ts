@@ -7,12 +7,18 @@ const sshRemote = "git@github.com:otto-code-ai/otto-code.git";
 
 describe("normalizeGithubRemote", () => {
   it.each([
-    ["https://github.com/otto-code-ai/otto-code", { owner: "otto-code-ai", repo: "otto", host: "github.com" }],
+    [
+      "https://github.com/otto-code-ai/otto-code",
+      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+    ],
     [
       "https://github.com/otto-code-ai/otto-code.git",
       { owner: "otto-code-ai", repo: "otto", host: "github.com" },
     ],
-    ["git@github.com:otto-code-ai/otto-code.git", { owner: "otto-code-ai", repo: "otto", host: "github.com" }],
+    [
+      "git@github.com:otto-code-ai/otto-code.git",
+      { owner: "otto-code-ai", repo: "otto", host: "github.com" },
+    ],
     [
       "ssh://git@github.com/otto-code-ai/otto-code.git",
       { owner: "otto-code-ai", repo: "otto", host: "github.com" },
@@ -45,7 +51,9 @@ describe("parseGithubRef", () => {
   });
 
   it("parses a matching issue URL", () => {
-    expect(parseGithubRef("https://github.com/otto-code-ai/otto-code/issues/456", httpsRemote)).toEqual({
+    expect(
+      parseGithubRef("https://github.com/otto-code-ai/otto-code/issues/456", httpsRemote),
+    ).toEqual({
       kind: "issues",
       number: 456,
       owner: "otto-code-ai",
@@ -55,18 +63,22 @@ describe("parseGithubRef", () => {
   });
 
   it("matches HTTPS pasted URLs against an SSH remote", () => {
-    expect(parseGithubRef("https://github.com/otto-code-ai/otto-code/pull/994", sshRemote)).toEqual({
-      kind: "pull",
-      number: 994,
-      owner: "otto-code-ai",
-      repo: "otto",
-      url: "https://github.com/otto-code-ai/otto-code/pull/994",
-    });
+    expect(parseGithubRef("https://github.com/otto-code-ai/otto-code/pull/994", sshRemote)).toEqual(
+      {
+        kind: "pull",
+        number: 994,
+        owner: "otto-code-ai",
+        repo: "otto",
+        url: "https://github.com/otto-code-ai/otto-code/pull/994",
+      },
+    );
   });
 
   it("ignores URLs for another owner or repo", () => {
     expect(parseGithubRef("https://github.com/other/otto/pull/994", httpsRemote)).toBeNull();
-    expect(parseGithubRef("https://github.com/otto-code-ai/other/pull/994", httpsRemote)).toBeNull();
+    expect(
+      parseGithubRef("https://github.com/otto-code-ai/other/pull/994", httpsRemote),
+    ).toBeNull();
   });
 
   it("returns null for non-GitHub remotes and empty text", () => {
@@ -125,6 +137,8 @@ describe("extractGithubRefs", () => {
 
   it("returns an empty array for empty text or null remote", () => {
     expect(extractGithubRefs("", httpsRemote)).toEqual([]);
-    expect(extractGithubRefs("https://github.com/otto-code-ai/otto-code/pull/994", null)).toEqual([]);
+    expect(extractGithubRefs("https://github.com/otto-code-ai/otto-code/pull/994", null)).toEqual(
+      [],
+    );
   });
 });

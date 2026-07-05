@@ -10,6 +10,7 @@ export const BrowserAutomationErrorCodeSchema = z.enum([
   "browser_denied",
   "browser_unsupported",
   "browser_stale_ref",
+  "browser_element_not_found",
   "browser_unknown_error",
 ]);
 
@@ -19,6 +20,8 @@ const BROWSER_AUTOMATION_BROWSER_ID_MESSAGE =
   "browserId must be a real id returned by browser_new_tab or browser_list_tabs";
 const BROWSER_AUTOMATION_WAIT_CONDITION_MESSAGE =
   "browser_wait requires exactly one of text or url";
+const BROWSER_AUTOMATION_INSPECT_TARGET_MESSAGE =
+  "browser_inspect requires exactly one of selector or ref";
 
 export const BROWSER_AUTOMATION_COMMAND_NAMES = [
   "list_tabs",
@@ -40,6 +43,8 @@ export const BROWSER_AUTOMATION_COMMAND_NAMES = [
   "drag",
   "logs",
   "evaluate",
+  "inspect",
+  "network",
   "scroll",
   "resize",
   "close_tab",
@@ -79,6 +84,13 @@ export const BrowserAutomationNewTabCommandSchema = z.object({
   args: z
     .object({
       url: BrowserAutomationHttpUrlSchema.optional(),
+      /**
+       * "split-right" opens the tab in its own pane to the right of whatever
+       * pane currently has focus, instead of joining that pane's tab strip.
+       * Used by preview_start so the preview tab is always visible alongside
+       * the pane the user was already looking at.
+       */
+      layout: z.enum(["default", "split-right"]).optional(),
     })
     .strict()
     .default({}),
@@ -209,6 +221,26 @@ export const BrowserAutomationEvaluateCommandSchema = z.object({
   }),
 });
 
+export const BrowserAutomationInspectCommandSchema = z.object({
+  command: z.literal("inspect"),
+  args: BrowserAutomationTabTargetSchema.extend({
+    selector: z.string().min(1).optional(),
+    ref: BrowserAutomationRefSchema.optional(),
+    styles: z.array(z.string().min(1)).max(50).optional(),
+  }).refine((args) => Number(Boolean(args.selector)) + Number(Boolean(args.ref)) === 1, {
+    message: BROWSER_AUTOMATION_INSPECT_TARGET_MESSAGE,
+  }),
+});
+
+export const BrowserAutomationNetworkCommandSchema = z.object({
+  command: z.literal("network"),
+  args: BrowserAutomationTabTargetSchema.extend({
+    filter: z.enum(["all", "failed"]).default("all"),
+    /** When set, fetch the response body for this captured request instead of listing. */
+    requestId: z.string().min(1).optional(),
+  }),
+});
+
 export const BrowserAutomationScrollCommandSchema = z.object({
   command: z.literal("scroll"),
   args: BrowserAutomationTabTargetSchema.extend({
@@ -251,6 +283,8 @@ export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationDragCommandSchema,
   BrowserAutomationLogsCommandSchema,
   BrowserAutomationEvaluateCommandSchema,
+  BrowserAutomationInspectCommandSchema,
+  BrowserAutomationNetworkCommandSchema,
   BrowserAutomationScrollCommandSchema,
   BrowserAutomationResizeCommandSchema,
   BrowserAutomationCloseTabCommandSchema,
@@ -433,6 +467,56 @@ export const BrowserAutomationEvaluateResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const BrowserAutomationInspectResultSchema = z.object({
+  command: z.literal("inspect"),
+  browserId: BrowserAutomationBrowserIdSchema,
+  selector: z.string().optional(),
+  ref: BrowserAutomationRefSchema.optional(),
+  /** How many elements matched the selector; the first match is inspected. */
+  matchCount: z.number().int().nonnegative(),
+  tagName: z.string(),
+  id: z.string(),
+  className: z.string(),
+  text: z.string(),
+  box: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }),
+  styles: z.record(z.string(), z.string()),
+});
+
+export const BrowserAutomationNetworkRequestEntrySchema = z.object({
+  requestId: z.string().min(1),
+  url: z.string(),
+  method: z.string(),
+  resourceType: z.string().optional(),
+  status: z.number().int().optional(),
+  statusText: z.string().optional(),
+  mimeType: z.string().optional(),
+  encodedDataLength: z.number().optional(),
+  /** CDP error text when the request failed at the network layer. */
+  failed: z.string().optional(),
+  finished: z.boolean().default(false),
+});
+
+export const BrowserAutomationNetworkResultSchema = z.object({
+  command: z.literal("network"),
+  browserId: BrowserAutomationBrowserIdSchema,
+  /** Present when listing captured requests (no requestId in args). */
+  requests: z.array(BrowserAutomationNetworkRequestEntrySchema).optional(),
+  /** Present when a specific requestId's body was fetched. */
+  body: z
+    .object({
+      requestId: z.string().min(1),
+      body: z.string(),
+      base64Encoded: z.boolean().default(false),
+      truncated: z.boolean().default(false),
+    })
+    .optional(),
+});
+
 export const BrowserAutomationScrollResultSchema = z.object({
   command: z.literal("scroll"),
   browserId: BrowserAutomationBrowserIdSchema,
@@ -475,6 +559,8 @@ export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationDragResultSchema,
   BrowserAutomationLogsResultSchema,
   BrowserAutomationEvaluateResultSchema,
+  BrowserAutomationInspectResultSchema,
+  BrowserAutomationNetworkResultSchema,
   BrowserAutomationScrollResultSchema,
   BrowserAutomationResizeResultSchema,
   BrowserAutomationCloseTabResultSchema,
@@ -533,6 +619,9 @@ export type BrowserAutomationConsoleLogEntry = z.infer<
 >;
 export type BrowserAutomationNetworkLogEntry = z.infer<
   typeof BrowserAutomationNetworkLogEntrySchema
+>;
+export type BrowserAutomationNetworkRequestEntry = z.infer<
+  typeof BrowserAutomationNetworkRequestEntrySchema
 >;
 export type BrowserAutomationDialogEvent = z.infer<typeof BrowserAutomationDialogEventSchema>;
 export type BrowserAutomationExecuteRequest = z.infer<typeof BrowserAutomationExecuteRequestSchema>;

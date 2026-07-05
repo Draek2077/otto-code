@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "otto-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:win"],
+      "port": 8081
+    },
+    {
+      "name": "website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:website"],
+      "port": 8082
+    },
+    {
+      "name": "otto-app-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "cross-env",
+        "APP_VARIANT=development",
+        "EXPO_PUBLIC_LOCAL_DAEMON=127.0.0.1:6868",
+        "npm",
+        "run",
+        "start:expo",
+        "--workspace=@otto-code/app",
+        "--",
+        "--port",
+        "8090"
+      ],
+      "port": 8090
+    }
+  ]
+}

@@ -118,10 +118,7 @@ describe("local daemon launch supervision", () => {
     vi.useFakeTimers();
     const runtime = new FakeDaemonRuntime();
 
-    const resultPromise = startLocalDaemonDetached(
-      { home: "/tmp/otto-test", mcp: false },
-      runtime,
-    );
+    const resultPromise = startLocalDaemonDetached({ home: "/tmp/otto-test", mcp: false }, runtime);
     await vi.advanceTimersByTimeAsync(1200);
     const result = await resultPromise;
 

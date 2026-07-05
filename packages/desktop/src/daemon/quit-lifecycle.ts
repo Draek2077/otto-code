@@ -1,5 +1,18 @@
 import type { DesktopSettingsStore } from "../settings/desktop-settings.js";
 
+// Set as soon as 'before-quit' fires, before any window gets a chance to close.
+// The tray's close-to-tray interception reads this to tell a real quit apart from
+// the user just clicking the window's close button.
+let appIsQuitting = false;
+
+export function markAppQuitting(): void {
+  appIsQuitting = true;
+}
+
+export function isAppQuitting(): boolean {
+  return appIsQuitting;
+}
+
 interface QuitLifecycleSettings {
   daemon: {
     keepRunningAfterQuit: boolean;

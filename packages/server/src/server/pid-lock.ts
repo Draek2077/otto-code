@@ -190,9 +190,7 @@ export async function getPidLockInfo(ottoHome: string): Promise<PidLockInfo | nu
   }
 }
 
-export async function isLocked(
-  ottoHome: string,
-): Promise<{ locked: boolean; info?: PidLockInfo }> {
+export async function isLocked(ottoHome: string): Promise<{ locked: boolean; info?: PidLockInfo }> {
   const info = await getPidLockInfo(ottoHome);
   if (!info) {
     return { locked: false };

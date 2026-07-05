@@ -500,6 +500,11 @@ export const es: TranslationResources = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "Fijar",
         unpinTarget: "Desfijar",
+        moreActions: "Más acciones",
+        preview: "Iniciar vista previa",
+        previewDisabledTooltip: "Abre un chat para previsualizar su servidor de desarrollo",
+        previewPickServer: "¿Qué servidor iniciar?",
+        previewStopServer: "Detener {{name}}",
       },
       explorer: {
         open: "Explorador abierto",
@@ -972,6 +977,17 @@ export const es: TranslationResources = {
       versionMismatch:
         "Las versiones de la aplicación y del demonio no coinciden. Actualice ambos a la misma versión para obtener la mejor experiencia.",
       loadFailed: "No se puede cargar el estado del demonio del escritorio.",
+    },
+    window: {
+      title: "Ventana",
+      minimizeToTray: {
+        title: "Minimizar a la bandeja al cerrar",
+        hint: "Cerrar la ventana oculta Otto en la bandeja del sistema en lugar de salir",
+      },
+      startMinimized: {
+        title: "Iniciar minimizado en la bandeja",
+        hint: "Inicia Otto oculto en la bandeja del sistema en lugar de mostrar la ventana",
+      },
     },
     updates: {
       status: {
@@ -1497,6 +1513,15 @@ export const es: TranslationResources = {
         description: "Líneas mantenidas en el búfer de terminal incorporado",
         accessibilityLabel: "Líneas del historial de terminal",
       },
+      previewServerCloseBehavior: {
+        label: "Servidor de vista previa al cerrar la pestaña",
+        description:
+          "Elige si cerrar una pestaña de vista previa también detiene su servidor de desarrollo.",
+        options: {
+          keepRunning: "Mantener en ejecución",
+          stopOnClose: "Detener al cerrar",
+        },
+      },
       language: {
         label: "Idioma",
         description: "Idioma de la aplicación",
@@ -1872,6 +1897,41 @@ export const es: TranslationResources = {
         error: "Error",
         available: "Disponible",
         notInstalled: "No instalado",
+        requiresBase: "Requiere {{name}}",
+      },
+      tools: {
+        title: "Herramientas de Otto",
+        description:
+          "Grupos de herramientas que este modelo puede usar. Desmarca un grupo para ocultarlo del modelo.",
+        globallyDisabled: "Desactivado en la configuración global",
+        saved: "Configuración de herramientas guardada",
+        saveFailed: "No se pudo guardar la configuración de herramientas",
+        groups: {
+          preview: "Servidores de vista previa",
+          browser: "Control del navegador",
+          agents: "Gestión de agentes",
+          terminals: "Terminales",
+          schedules: "Programaciones",
+          workspace: "Espacios de trabajo",
+        },
+      },
+      connection: {
+        title: "Conexión",
+        baseUrl: "URL del servidor",
+        apiKey: "Clave de API",
+        save: "Guardar conexión",
+        saving: "Guardando...",
+        saved: "Conexión guardada",
+        saveFailed: "No se pudo guardar la configuración de conexión",
+      },
+      remove: {
+        button: "Eliminar proveedor",
+        confirmTitle: "¿Eliminar {{name}}?",
+        confirmMessage:
+          "Esto elimina el proveedor y su configuración de este host. Los agentes ya creados conservan su historial.",
+        removing: "Eliminando...",
+        requiresUpdate: "Actualiza el host para eliminar proveedores.",
+        failed: "No se pudo eliminar el proveedor",
       },
       models: {
         one: "1 modelo",

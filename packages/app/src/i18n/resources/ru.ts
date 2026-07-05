@@ -499,6 +499,11 @@ export const ru: TranslationResources = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "Закрепить",
         unpinTarget: "Открепить",
+        moreActions: "Дополнительные действия",
+        preview: "Запустить предпросмотр",
+        previewDisabledTooltip: "Откройте чат, чтобы просмотреть его сервер разработки",
+        previewPickServer: "Какой сервер запустить?",
+        previewStopServer: "Остановить {{name}}",
       },
       explorer: {
         open: "Открыть проводник",
@@ -964,6 +969,17 @@ export const ru: TranslationResources = {
       versionMismatch:
         "Версии приложения и демона не совпадают. Обновите обе версии до одной и той же версии для лучшего опыта.",
       loadFailed: "Невозможно загрузить статус демона рабочего стола.",
+    },
+    window: {
+      title: "Окно",
+      minimizeToTray: {
+        title: "Сворачивать в трей при закрытии",
+        hint: "Закрытие окна скрывает Otto в системный трей вместо выхода",
+      },
+      startMinimized: {
+        title: "Запускать свёрнутым в трей",
+        hint: "Otto запускается скрытым в системном трее вместо отображения окна",
+      },
     },
     updates: {
       status: {
@@ -1487,6 +1503,15 @@ export const ru: TranslationResources = {
         description: "Строки, хранящиеся во встроенном буфере терминала.",
         accessibilityLabel: "Линии прокрутки Terminal",
       },
+      previewServerCloseBehavior: {
+        label: "Сервер предпросмотра при закрытии вкладки",
+        description:
+          "Выберите, останавливать ли сервер разработки при закрытии вкладки предпросмотра.",
+        options: {
+          keepRunning: "Оставить работающим",
+          stopOnClose: "Останавливать при закрытии",
+        },
+      },
       language: {
         label: "Язык",
         description: "Язык приложения",
@@ -1863,6 +1888,41 @@ export const ru: TranslationResources = {
         error: "Ошибка",
         available: "Доступный",
         notInstalled: "Не установлено",
+        requiresBase: "Требуется {{name}}",
+      },
+      tools: {
+        title: "Инструменты Otto",
+        description:
+          "Группы инструментов, которые может использовать эта модель. Снимите отметку, чтобы скрыть группу от модели.",
+        globallyDisabled: "Отключено в глобальных настройках",
+        saved: "Настройки инструментов сохранены",
+        saveFailed: "Не удалось сохранить настройки инструментов",
+        groups: {
+          preview: "Серверы предпросмотра",
+          browser: "Управление браузером",
+          agents: "Управление агентами",
+          terminals: "Терминалы",
+          schedules: "Расписания",
+          workspace: "Рабочие пространства",
+        },
+      },
+      connection: {
+        title: "Подключение",
+        baseUrl: "Адрес сервера",
+        apiKey: "API-ключ",
+        save: "Сохранить подключение",
+        saving: "Сохранение...",
+        saved: "Подключение сохранено",
+        saveFailed: "Не удалось сохранить настройки подключения",
+      },
+      remove: {
+        button: "Удалить провайдера",
+        confirmTitle: "Удалить {{name}}?",
+        confirmMessage:
+          "Провайдер и его конфигурация будут удалены с этого хоста. История уже созданных агентов сохранится.",
+        removing: "Удаление...",
+        requiresUpdate: "Обновите хост, чтобы удалять провайдеров.",
+        failed: "Не удалось удалить провайдера",
       },
       models: {
         one: "1 модель",

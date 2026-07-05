@@ -201,10 +201,7 @@ export function readOttoWorktreeRuntimePort(worktreeRoot: string): number | null
   return null;
 }
 
-function writeOttoWorktreeMetadataFile(
-  worktreeRoot: string,
-  metadata: OttoWorktreeMetadata,
-): void {
+function writeOttoWorktreeMetadataFile(worktreeRoot: string, metadata: OttoWorktreeMetadata): void {
   const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
   mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
   writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");

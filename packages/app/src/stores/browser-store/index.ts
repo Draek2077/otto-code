@@ -17,7 +17,11 @@ import {
 export type { BrowserRecord } from "./state";
 
 interface BrowserStoreState extends BrowserIndexState {
-  createBrowser: (input?: { initialUrl?: string }) => string;
+  createBrowser: (input?: {
+    initialUrl?: string;
+    isPreview?: boolean;
+    previewServerId?: string | null;
+  }) => string;
   updateBrowser: (browserId: string, patch: BrowserRecordPatch) => void;
   removeBrowser: (browserId: string) => void;
 }
@@ -43,6 +47,8 @@ export const useBrowserStore = create<BrowserStoreState>()(
           browserId,
           initialUrl: input?.initialUrl,
           now: Date.now(),
+          isPreview: input?.isPreview,
+          previewServerId: input?.previewServerId,
         });
 
         set((state) => ({
@@ -77,7 +83,11 @@ export function getBrowserRecord(browserId: string): BrowserRecord | null {
   return useBrowserStore.getState().browsersById[normalizedBrowserId] ?? null;
 }
 
-export function createWorkspaceBrowser(input?: { initialUrl?: string }): {
+export function createWorkspaceBrowser(input?: {
+  initialUrl?: string;
+  isPreview?: boolean;
+  previewServerId?: string | null;
+}): {
   browserId: string;
   url: string;
 } {

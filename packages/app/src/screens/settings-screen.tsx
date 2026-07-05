@@ -50,6 +50,7 @@ import {
   useSettings,
   parseTerminalScrollbackLines,
   type AppSettings,
+  type PreviewServerCloseBehavior,
   type SendBehavior,
   type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
@@ -217,6 +218,19 @@ function getSendBehaviorOptions(t: TFunction) {
   ];
 }
 
+function getPreviewServerCloseBehaviorOptions(t: TFunction) {
+  return [
+    {
+      value: "keep-running" as const,
+      label: t("settings.general.previewServerCloseBehavior.options.keepRunning"),
+    },
+    {
+      value: "stop-on-close" as const,
+      label: t("settings.general.previewServerCloseBehavior.options.stopOnClose"),
+    },
+  ];
+}
+
 function getServiceUrlBehaviorLabel(t: TFunction, value: ServiceUrlBehavior): string {
   const labels: Record<ServiceUrlBehavior, string> = {
     ask: t("settings.general.serviceUrls.options.ask"),
@@ -244,6 +258,7 @@ interface GeneralSectionProps {
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
+  handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
 }
 
 interface ServiceUrlBehaviorMenuItemProps {
@@ -300,10 +315,15 @@ function GeneralSection({
   handleServiceUrlBehaviorChange,
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
+  handlePreviewServerCloseBehaviorChange,
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
   const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
+  const previewServerCloseBehaviorOptions = useMemo(
+    () => getPreviewServerCloseBehaviorOptions(t),
+    [t],
+  );
   const sendBehaviorDescriptionKey =
     settings.sendBehavior === "interrupt"
       ? "settings.general.defaultSend.descriptions.interrupt"
@@ -431,6 +451,22 @@ function GeneralSection({
             selectTextOnFocus
             style={styles.terminalScrollbackInput}
             accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.general.previewServerCloseBehavior.label")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.general.previewServerCloseBehavior.description")}
+            </Text>
+          </View>
+          <SegmentedControl
+            size="sm"
+            value={settings.previewServerCloseBehavior}
+            onValueChange={handlePreviewServerCloseBehaviorChange}
+            options={previewServerCloseBehaviorOptions}
           />
         </View>
       </View>
@@ -1180,6 +1216,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handlePreviewServerCloseBehaviorChange = useCallback(
+    (behavior: PreviewServerCloseBehavior) => {
+      void updateSettings({ previewServerCloseBehavior: behavior });
+    },
+    [updateSettings],
+  );
+
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -1385,6 +1428,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLanguageChange={handleLanguageChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
+              handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
             />
           );
         case "daemon":

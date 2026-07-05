@@ -8,6 +8,10 @@ export interface BrowserRecord {
   faviconUrl: string | null;
   lastError: string | null;
   createdAt: number;
+  /** True for tabs opened by the Preview button / preview_start's tab binding — rendered with a distinct icon so they read as "the preview", not a user-opened browser tab. */
+  isPreview: boolean;
+  /** The dev server this tab previews, when isPreview is true. Lets closing/stopping target the exact server instead of every browser tab. */
+  previewServerId: string | null;
 }
 
 export type BrowserRecordPatch = Partial<Omit<BrowserRecord, "browserId" | "createdAt">>;
@@ -45,6 +49,8 @@ export function createBrowserRecord(input: {
   browserId: string;
   initialUrl: string | null | undefined;
   now: number;
+  isPreview?: boolean;
+  previewServerId?: string | null;
 }): BrowserRecord {
   return {
     browserId: input.browserId,
@@ -56,6 +62,8 @@ export function createBrowserRecord(input: {
     faviconUrl: null,
     lastError: null,
     createdAt: input.now,
+    isPreview: input.isPreview ?? false,
+    previewServerId: input.previewServerId ?? null,
   };
 }
 
@@ -86,7 +94,9 @@ export function applyBrowserPatch<S extends BrowserIndexState>(
     nextRecord.canGoBack === existing.canGoBack &&
     nextRecord.canGoForward === existing.canGoForward &&
     nextRecord.faviconUrl === existing.faviconUrl &&
-    nextRecord.lastError === existing.lastError
+    nextRecord.lastError === existing.lastError &&
+    nextRecord.isPreview === existing.isPreview &&
+    nextRecord.previewServerId === existing.previewServerId
   ) {
     return state;
   }

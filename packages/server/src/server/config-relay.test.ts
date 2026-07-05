@@ -189,9 +189,9 @@ describe("daemon trusted proxy config", () => {
 
   test("OTTO_TRUSTED_PROXIES supports explicit trust-all and trust-none modes", async () => {
     const trustAllHome = await createOttoHome({ version: 1 });
-    expect(
-      loadConfig(trustAllHome, { env: { OTTO_TRUSTED_PROXIES: "true" } }).trustedProxies,
-    ).toBe(true);
+    expect(loadConfig(trustAllHome, { env: { OTTO_TRUSTED_PROXIES: "true" } }).trustedProxies).toBe(
+      true,
+    );
 
     const trustNoneHome = await createOttoHome({ version: 1 });
     expect(

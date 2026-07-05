@@ -306,6 +306,12 @@ Gotchas:
 - **Mounted parsed content uses `AppearanceStyleBoundary`.** Markdown, syntax-highlighted code, and tool-call detail bodies can contain memoized/custom renderer trees that do not naturally re-run when runtime-patched appearance tokens change. Wrap the parsed surface once with `packages/app/src/components/appearance-style-boundary.tsx`; do not add local "appearance key" props at each callsite.
 - **Dynamic font tokens stay widened.** `fontFamily`, `fontSize`, and `lineHeight` on `commonTheme` are annotated `string`/`number` (not narrowed by `as const`) so the updater's return assigns; the platform default stacks live in `DEFAULT_UI_FONT_STACK` / `DEFAULT_MONO_FONT_STACK`.
 
+## Patched: `uniProps` leaked to the DOM on web
+
+Upstream `withUnistyles` (v3.2.4) merges the wrapper's full props — including the `uniProps` function itself — into the props spread onto the wrapped component. On web that forwards `uniProps` all the way to a DOM element, and React logs ``React does not recognize the `uniProps` prop on a DOM element`` for every `uniProps` callsite on screen. Harmless on native (RN drops unknown props) but it floods the web console — including the console channel browser-based verification tooling reads.
+
+Fixed by `patches/react-native-unistyles+3.2.4.patch` (applied via `scripts/postinstall-patches.mjs`), which strips `uniProps` from the pass-through props in the web `withUnistyles` before merging. When bumping the unistyles version, re-check whether upstream fixed this; if not, re-create the patch (`npx patch-package react-native-unistyles`) and update the filename in `patches/`.
+
 ## Debugging
 
 To inspect what the Babel plugin sees, temporarily enable [`debug: true`](https://www.unistyl.es/v3/other/babel-plugin#debug) in `packages/app/babel.config.js`:

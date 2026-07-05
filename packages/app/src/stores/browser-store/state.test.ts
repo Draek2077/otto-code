@@ -58,7 +58,22 @@ describe("createBrowserRecord", () => {
       faviconUrl: null,
       lastError: null,
       createdAt: 1000,
+      isPreview: false,
+      previewServerId: null,
     });
+  });
+
+  it("marks the record as a preview tab when requested", () => {
+    const record = createBrowserRecord({
+      browserId: "b1",
+      initialUrl: "http://127.0.0.1:8081",
+      now: 1000,
+      isPreview: true,
+      previewServerId: "srv_1",
+    });
+
+    expect(record.isPreview).toBe(true);
+    expect(record.previewServerId).toBe("srv_1");
   });
 });
 
@@ -91,6 +106,17 @@ describe("applyBrowserPatch", () => {
     const next = applyBrowserPatch(initial, "missing", { title: "x" });
 
     expect(next).toBe(initial);
+  });
+
+  it("applies an isPreview-only patch instead of treating it as a no-op", () => {
+    const initial = withRecords([
+      createBrowserRecord({ browserId: "b1", initialUrl: "https://a.test", now: 0 }),
+    ]);
+
+    const next = applyBrowserPatch(initial, "b1", { isPreview: true });
+
+    expect(next).not.toBe(initial);
+    expect(next.browsersById.b1?.isPreview).toBe(true);
   });
 
   it("returns the same state when the browser id is blank", () => {

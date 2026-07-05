@@ -185,6 +185,19 @@ function browserNewTabRequest(): BrowserAutomationExecuteRequest {
   };
 }
 
+function previewNewTabRequest(): BrowserAutomationExecuteRequest {
+  return {
+    type: "browser.automation.execute.request",
+    requestId: "req-new",
+    agentId: "agent-1",
+    workspaceId: "wks_workspace_a",
+    command: {
+      command: "new_tab",
+      args: { url: "https://example.com", layout: "split-right" },
+    },
+  };
+}
+
 function browserResizeRequest(
   browserId: string,
   input: { workspaceId?: string } = {},
@@ -337,6 +350,49 @@ describe("mountBrowserAutomationHandler", () => {
         command: { command: "list_tabs", args: {} },
       },
     ]);
+  });
+
+  test("preview new_tab with split-right layout opens a new pane instead of joining the focused pane", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) {
+      throw new Error("Expected workspace key");
+    }
+    const previousFocusedTabId = useWorkspaceLayoutStore
+      .getState()
+      .openTabFocused(workspaceKey, { kind: "draft", draftId: "human-draft" });
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(previewNewTabRequest());
+    await flushAsyncWork();
+
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(layout?.root).toEqual(expect.objectContaining({ kind: "group" }));
+    const openedTabs = workspaceBrowserTabs(workspaceKey, result.browserId);
+    expect(openedTabs).toHaveLength(1);
+    expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
+  });
+
+  test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) {
+      throw new Error("Expected workspace key");
+    }
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(previewNewTabRequest());
+    await flushAsyncWork();
+
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(layout?.root).toEqual(expect.objectContaining({ kind: "pane" }));
   });
 
   test("browser_new_tab returns a retryable timeout when the resident webview does not register", async () => {

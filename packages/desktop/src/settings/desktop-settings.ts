@@ -10,11 +10,16 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  tray: {
+    minimizeOnClose: boolean;
+    startMinimized: boolean;
+  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  tray?: Partial<DesktopSettings["tray"]>;
 }
 
 interface PersistedDesktopSettingsDocument {
@@ -36,6 +41,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: true,
+  },
+  tray: {
+    minimizeOnClose: true,
+    startMinimized: false,
   },
 };
 
@@ -69,6 +78,7 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
     settings: {
       releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
       daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
+      tray: { ...DEFAULT_DESKTOP_SETTINGS.tray },
     },
     migrations: {
       legacyRendererSettingsImported: false,
@@ -80,6 +90,7 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
   const result: DesktopSettings = {
     releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
+    tray: { ...DEFAULT_DESKTOP_SETTINGS.tray },
   };
 
   if (!isRecord(input)) {
@@ -100,6 +111,18 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     const keepRunningAfterQuit = coerceBoolean(input.daemon.keepRunningAfterQuit);
     if (keepRunningAfterQuit !== null) {
       result.daemon.keepRunningAfterQuit = keepRunningAfterQuit;
+    }
+  }
+
+  if (isRecord(input.tray)) {
+    const minimizeOnClose = coerceBoolean(input.tray.minimizeOnClose);
+    if (minimizeOnClose !== null) {
+      result.tray.minimizeOnClose = minimizeOnClose;
+    }
+
+    const startMinimized = coerceBoolean(input.tray.startMinimized);
+    if (startMinimized !== null) {
+      result.tray.startMinimized = startMinimized;
     }
   }
 
@@ -130,6 +153,21 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
     if (Object.keys(daemonPatch).length > 0) {
       patch.daemon = daemonPatch;
+    }
+  }
+
+  if (isRecord(input.tray)) {
+    const trayPatch: Partial<DesktopSettings["tray"]> = {};
+    const minimizeOnClose = coerceBoolean(input.tray.minimizeOnClose);
+    if (minimizeOnClose !== null) {
+      trayPatch.minimizeOnClose = minimizeOnClose;
+    }
+    const startMinimized = coerceBoolean(input.tray.startMinimized);
+    if (startMinimized !== null) {
+      trayPatch.startMinimized = startMinimized;
+    }
+    if (Object.keys(trayPatch).length > 0) {
+      patch.tray = trayPatch;
     }
   }
 
@@ -164,6 +202,7 @@ function mergeDesktopSettings(
   return {
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     daemon: { ...current.daemon, ...patch.daemon },
+    tray: { ...current.tray, ...patch.tray },
   };
 }
 

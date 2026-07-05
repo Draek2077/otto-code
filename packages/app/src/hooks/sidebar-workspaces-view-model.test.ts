@@ -219,8 +219,16 @@ describe("shared sidebar workspace model", () => {
           projectName: "otto-code-ai/otto-code",
           iconWorkingDir: "/repo/otto-code-ai/otto-code",
           hosts: [
-            { serverId: "host-a", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
-            { serverId: "host-b", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
+            {
+              serverId: "host-a",
+              iconWorkingDir: "/repo/otto-code-ai/otto-code",
+              canCreateWorktree: true,
+            },
+            {
+              serverId: "host-b",
+              iconWorkingDir: "/repo/otto-code-ai/otto-code",
+              canCreateWorktree: true,
+            },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
         }),
@@ -271,8 +279,16 @@ describe("shared sidebar workspace model", () => {
       expect.objectContaining({
         projectKey: "otto-code-ai/otto-code",
         hosts: [
-          { serverId: "host-a", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
-          { serverId: "host-b", iconWorkingDir: "/repo/otto-code-ai/otto-code", canCreateWorktree: true },
+          {
+            serverId: "host-a",
+            iconWorkingDir: "/repo/otto-code-ai/otto-code",
+            canCreateWorktree: true,
+          },
+          {
+            serverId: "host-b",
+            iconWorkingDir: "/repo/otto-code-ai/otto-code",
+            canCreateWorktree: true,
+          },
         ],
         workspaces: [
           expect.objectContaining({
@@ -294,7 +310,9 @@ describe("shared sidebar workspace model", () => {
         ["host-b:feature", "running", "feature/status-flow"],
       ],
     );
-    expect(model.projectNamesByKey).toEqual(new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]));
+    expect(model.projectNamesByKey).toEqual(
+      new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]),
+    );
   });
 });
 

@@ -354,10 +354,7 @@ export function onboardCommand(): Command {
     });
 }
 
-async function resolveAndPersistVoice(
-  ottoHome: string,
-  options: OnboardOptions,
-): Promise<boolean> {
+async function resolveAndPersistVoice(ottoHome: string, options: OnboardOptions): Promise<boolean> {
   let persisted = loadPersistedConfig(ottoHome) as OnboardPersistedConfig;
   const persistedVoiceSelection = resolvePersistedVoiceSelection(persisted);
   const shouldPrompt = options.voice === "ask" || options.voice === undefined;

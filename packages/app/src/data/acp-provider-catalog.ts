@@ -1,5 +1,12 @@
 import { ACP_PROVIDER_ICON_SVGS } from "@/assets/acp-provider-icons";
 
+export interface AcpProviderCatalogModel {
+  id: string;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
 export interface AcpProviderCatalogEntry {
   id: string;
   title: string;
@@ -7,9 +14,26 @@ export interface AcpProviderCatalogEntry {
   version: string;
   iconSvg: string | null;
   installLink: string;
-  command: readonly [string, ...string[]];
+  /**
+   * Provider type the installed config entry extends. Most catalog entries
+   * are ACP agents ("acp"). "openai-compatible" entries are served natively
+   * by the daemon against an OpenAI-compatible HTTP endpoint (LM Studio,
+   * Ollama, vLLM, ...) — no external binary. A built-in provider id (e.g.
+   * "codex") runs that agent binary against a custom endpoint.
+   */
+  extends: "acp" | "codex" | "openai-compatible";
+  /** Featured entries are pinned to the top of the Add provider list. */
+  featured: boolean;
+  /** Spawn command for ACP entries. Non-ACP presets use the base provider's binary. */
+  command?: readonly [string, ...string[]];
   env?: Readonly<Record<string, string>>;
   params?: Readonly<Record<string, unknown>>;
+  /**
+   * Static model list for presets whose base provider cannot discover models
+   * from the endpoint (Codex-based presets). Users edit these in config.json
+   * to match the models their endpoint actually serves.
+   */
+  models?: readonly AcpProviderCatalogModel[];
 }
 
 const CATALOG_DATA = [
@@ -262,6 +286,20 @@ const CATALOG_DATA = [
     command: ["kimi", "acp"],
   },
   {
+    id: "lmstudio",
+    title: "LM Studio",
+    description:
+      "Run local models served by LM Studio's OpenAI-compatible server as coding agents with file and shell tools. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
+    version: "manual",
+    iconId: null,
+    installLink: "https://lmstudio.ai/docs/app/api",
+    extends: "openai-compatible",
+    featured: true,
+    env: {
+      OPENAI_BASE_URL: "http://localhost:1234/v1",
+    },
+  },
+  {
     id: "minion-code",
     title: "Minion Code",
     description:
@@ -360,14 +398,21 @@ const CATALOG_DATA = [
   },
 ] as const;
 
-export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
+const catalogEntries: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
   id: entry.id,
   title: entry.title,
   description: entry.description,
   version: entry.version,
   installLink: entry.installLink,
-  command: entry.command,
+  extends: "extends" in entry ? entry.extends : "acp",
+  featured: "featured" in entry ? entry.featured : false,
+  command: "command" in entry ? entry.command : undefined,
   env: "env" in entry ? entry.env : undefined,
   params: "params" in entry ? entry.params : undefined,
   iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,
 }));
+
+export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = [
+  ...catalogEntries.filter((entry) => entry.featured),
+  ...catalogEntries.filter((entry) => !entry.featured),
+];

@@ -54,7 +54,7 @@ Each agent is stored as a separate JSON file, grouped by project directory.
 | `lastActivityAt`     | `string?` (ISO 8601)                     | Last activity timestamp                                                                                                                                                                                                                                                                                                                                                             |
 | `lastUserMessageAt`  | `string?` (ISO 8601)                     | Last user message timestamp                                                                                                                                                                                                                                                                                                                                                         |
 | `title`              | `string?`                                | User-visible title                                                                                                                                                                                                                                                                                                                                                                  |
-| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). `otto.parent-agent-id` is set automatically for `create_agent` subagent relationships — see [agent-lifecycle.md](./agent-lifecycle.md)                                                                                                                                                                                                            |
+| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). `otto.parent-agent-id` is set automatically for `create_agent` subagent relationships — see [agent-lifecycle.md](./agent-lifecycle.md)                                                                                                                                                                                                             |
 | `lastStatus`         | `AgentStatus`                            | One of: `"initializing"`, `"idle"`, `"running"`, `"error"`, `"closed"`                                                                                                                                                                                                                                                                                                              |
 | `lastModeId`         | `string?`                                | Last active mode ID                                                                                                                                                                                                                                                                                                                                                                 |
 | `config`             | `SerializableConfig?`                    | Agent session configuration (see below)                                                                                                                                                                                                                                                                                                                                             |
@@ -201,8 +201,8 @@ Local speech model ids are intentionally narrow: STT uses `parakeet-tdt-0.6b-v2-
 
 Set these to select OpenAI instead of local speech:
 
-| Env var                        | Applies to                      |
-| ------------------------------ | ------------------------------- |
+| Env var                       | Applies to                      |
+| ----------------------------- | ------------------------------- |
 | `OTTO_VOICE_STT_PROVIDER`     | Voice mode STT provider         |
 | `OTTO_DICTATION_STT_PROVIDER` | Composer dictation STT provider |
 | `OTTO_VOICE_TTS_PROVIDER`     | Voice mode TTS provider         |
@@ -481,9 +481,9 @@ These small files are not validated as full Zod schemas but are persisted under 
 
 | Path                  | Format                                                         | Notes                                                                             |
 | --------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$OTTO_HOME` daemon ID. Overridable via `OTTO_SERVER_ID` env.        |
+| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$OTTO_HOME` daemon ID. Overridable via `OTTO_SERVER_ID` env.          |
 | `daemon-keypair.json` | `{ v: 2, publicKeyB64, secretKeyB64 }` (libsodium box keypair) | E2EE relay identity. Written with mode `0600`. Regenerated if file is unreadable. |
-| `otto.pid`           | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$OTTO_HOME`.                         |
+| `otto.pid`            | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$OTTO_HOME`.                          |
 | `daemon.log`          | Pino log output                                                | Default location; path/rotation configurable via `log.file` in `config.json`.     |
 
 ---

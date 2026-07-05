@@ -495,6 +495,11 @@ export const en = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "Pin",
         unpinTarget: "Unpin",
+        moreActions: "More actions",
+        preview: "Start preview",
+        previewDisabledTooltip: "Start the chat to use Preview",
+        previewPickServer: "Start which server?",
+        previewStopServer: "Stop {{name}}",
       },
       explorer: {
         open: "Open explorer",
@@ -952,6 +957,17 @@ export const en = {
       versionMismatch:
         "App and daemon versions don't match. Update both to the same version for the best experience.",
       loadFailed: "Unable to load desktop daemon status.",
+    },
+    window: {
+      title: "Window",
+      minimizeToTray: {
+        title: "Minimize to tray on close",
+        hint: "Closing the window hides Otto to the system tray instead of quitting",
+      },
+      startMinimized: {
+        title: "Start minimized to tray",
+        hint: "Launch Otto hidden in the system tray instead of showing the window",
+      },
     },
     updates: {
       status: {
@@ -1464,6 +1480,14 @@ export const en = {
         description: "Lines kept in the built-in terminal buffer",
         accessibilityLabel: "Terminal scrollback lines",
       },
+      previewServerCloseBehavior: {
+        label: "Preview server on tab close",
+        description: "Choose whether closing a preview tab also stops its dev server.",
+        options: {
+          keepRunning: "Keep running",
+          stopOnClose: "Stop on close",
+        },
+      },
       language: {
         label: "Language",
         description: "App language",
@@ -1708,7 +1732,7 @@ export const en = {
         unavailable: "Connect to this host to manage orchestration",
         enableTools: {
           title: "Enable Otto tools",
-          hint: "Agents will be able to manage worktrees, agents and schedules",
+          hint: "Agents will be able to manage worktrees, agents, schedules, and preview dev servers",
           accessibilityLabel: "Inject Otto tools",
         },
         systemPrompt: {
@@ -1837,6 +1861,40 @@ export const en = {
         error: "Error",
         available: "Available",
         notInstalled: "Not installed",
+        requiresBase: "Requires {{name}}",
+      },
+      connection: {
+        title: "Connection",
+        baseUrl: "Server URL",
+        apiKey: "API key",
+        save: "Save connection",
+        saving: "Saving...",
+        saved: "Connection saved",
+        saveFailed: "Failed to save connection settings",
+      },
+      tools: {
+        title: "Otto tools",
+        description: "Tool groups this model can use. Uncheck a group to hide it from the model.",
+        globallyDisabled: "Disabled in global settings",
+        saved: "Tool settings saved",
+        saveFailed: "Failed to save tool settings",
+        groups: {
+          preview: "Preview servers",
+          browser: "Browser control",
+          agents: "Agent management",
+          terminals: "Terminals",
+          schedules: "Schedules",
+          workspace: "Workspaces",
+        },
+      },
+      remove: {
+        button: "Remove provider",
+        confirmTitle: "Remove {{name}}?",
+        confirmMessage:
+          "This deletes the provider and its configuration from this host. Agents already created with it keep their history.",
+        removing: "Removing...",
+        requiresUpdate: "Update the host to remove providers.",
+        failed: "Failed to remove provider",
       },
       models: {
         one: "1 model",

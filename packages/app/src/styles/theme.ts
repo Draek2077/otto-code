@@ -486,19 +486,23 @@ export const OPACITY = {
   100: 1,
 } as const;
 
-// Platform default font stacks — copied verbatim from constants/theme.ts `Fonts`
-// (sans -> ui, mono -> mono). These seed the dynamic `fontFamily` theme token and
-// are the fallback an empty user-supplied family resolves to at apply time.
+// Default font stacks. Otto bundles Inter (ui) and JetBrains Mono (mono) — both
+// OFL-licensed, free for commercial use — via @expo-google-fonts and loads them
+// with `useFonts` in `app/_layout.tsx`, so the family name below is registered on
+// every platform (native and web) before first render. Web keeps a CSS fallback
+// chain in case the webfont fails to load; native fontFamily takes a single name,
+// so it has none. These seed the dynamic `fontFamily` theme token and are the
+// fallback an empty user-supplied family resolves to at apply time.
 export const DEFAULT_UI_FONT_STACK: string = Platform.select({
-  ios: "system-ui",
-  default: "normal",
-  web: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  ios: "Inter_400Regular",
+  default: "Inter_400Regular",
+  web: "Inter_400Regular, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 });
 
 export const DEFAULT_MONO_FONT_STACK: string = Platform.select({
-  ios: "ui-monospace",
-  default: "monospace",
-  web: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  ios: "JetBrainsMono_400Regular",
+  default: "JetBrainsMono_400Regular",
+  web: "JetBrainsMono_400Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
 });
 
 // `fontSize`, `fontFamily`, and `lineHeight` are deliberately widened to plain

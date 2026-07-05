@@ -136,15 +136,15 @@ The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/o
 
 Daemon-client architecture: the daemon owns agent lifecycle, state, and the WebSocket API. Tools, CLI, mobile, and desktop apps are all clients.
 
-|                | Default                                                         |
-| -------------- | --------------------------------------------------------------- |
+|                | Default                                                        |
+| -------------- | -------------------------------------------------------------- |
 | Listen address | `127.0.0.1:6868` (override `OTTO_LISTEN`)                      |
-| Home           | `~/.otto` (override `OTTO_HOME`)                              |
+| Home           | `~/.otto` (override `OTTO_HOME`)                               |
 | Daemon log     | `$OTTO_HOME/daemon.log`                                        |
 | Agent state    | `$OTTO_HOME/agents/<id>.json`                                  |
 | Worktrees      | `$OTTO_HOME/worktrees/` (or `worktrees.root` in `config.json`) |
-| PID file       | `$OTTO_HOME/otto.pid`                                         |
-| Health         | `GET http://127.0.0.1:6868/api/health`                          |
+| PID file       | `$OTTO_HOME/otto.pid`                                          |
+| Health         | `GET http://127.0.0.1:6868/api/health`                         |
 
 Debug order:
 

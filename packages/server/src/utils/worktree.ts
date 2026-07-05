@@ -1003,11 +1003,7 @@ export async function resolveOttoWorktreeRootForCwd(
     return null;
   }
 
-  const worktreesRoot = await getOttoWorktreesRoot(
-    cwd,
-    options?.ottoHome,
-    options?.worktreesRoot,
-  );
+  const worktreesRoot = await getOttoWorktreesRoot(cwd, options?.ottoHome, options?.worktreesRoot);
   const resolvedRoot = normalizePathForOwnership(worktreesRoot) + sep;
 
   let worktreeRoot: string | null = null;

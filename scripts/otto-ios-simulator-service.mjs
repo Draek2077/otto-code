@@ -13,11 +13,10 @@ const ottoPort = requiredEnv("OTTO_PORT");
 const worktreePath = process.env.OTTO_WORKTREE_PATH || rootDir;
 const worktreeName = process.env.OTTO_BRANCH_NAME || basename(worktreePath);
 const worktreeHash = createHash("sha1").update(worktreePath).digest("hex").slice(0, 8);
-const simulatorName =
-  process.env.OTTO_IOS_SIMULATOR_NAME || `Otto ${worktreeName} ${worktreeHash}`;
+const simulatorName = process.env.OTTO_IOS_SIMULATOR_NAME || `Otto ${worktreeName} ${worktreeHash}`;
 const daemonEndpoint =
   process.env.OTTO_DEV_DAEMON_ENDPOINT ||
-  `localhost:${process.env.OTTO_SERVICE_DAEMON_PORT || "6768"}`;
+  `localhost:${process.env.OTTO_SERVICE_DAEMON_PORT || "6868"}`;
 
 const env = {
   ...process.env,

@@ -4,6 +4,14 @@ Otto is a mobile app for monitoring and controlling your local AI coding agents 
 
 **Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, and Pi.
 
+## Why this fork exists
+
+This repo (otto-code) is a fork whose primary mission is to build a **Preview Server + MCP + browser verification subsystem** into Otto, equivalent to the built-in `Claude_Preview` MCP server in the Claude Code app: agents start dev servers from a launch config, then verify browser-rendered changes via accessibility snapshots, DOM inspection, console/network capture, click/fill interaction, viewport resize, and screenshots — showing proof instead of asking the user to check manually.
+
+The blueprint is [docs/preview-mcp-implementation.md](docs/preview-mcp-implementation.md) — verbatim tool schemas for all 13 `preview_*` tools, the MCP wire format, inferred implementation mechanics (Playwright/CDP), a rebuild checklist, and the hard parts (process tree-kill on Windows, readiness races, session isolation, token economy, guardrail-bearing tool descriptions). Read it before working on anything preview-related.
+
+Groundwork already in the tree: the daemon has a browser-tools subsystem (`packages/server/src/server/browser-tools/` — broker, agent-facing `browser_*` tools, accessibility snapshot, trusted input, dialogs, evaluate, tab controls) built on the protocol's `browser-automation` RPC schemas, with hosting generalized beyond the desktop app. The preview work extends this; don't build a parallel browser stack.
+
 ## Repository map
 
 This is an npm workspace monorepo:
@@ -21,47 +29,53 @@ This is an npm workspace monorepo:
 
 At the start of non-trivial work, list `docs/` and skim anything relevant to the task. When you learn something meta worth preserving — a gotcha, a convention, a workflow, a piece of system context that will outlive the current task — update an existing doc or propose a new one. Code-level facts belong in inline comments next to the code; system, process, and gotcha-level facts belong in `docs/`.
 
-| Doc                                                                | What's in it                                                                                                                   |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| [docs/product.md](docs/product.md)                                 | What Otto is, who it's for, where it's going                                                                                  |
-| [docs/architecture.md](docs/architecture.md)                       | System design, package layering, WebSocket protocol, agent lifecycle, data flow                                                |
-| [docs/agent-lifecycle.md](docs/agent-lifecycle.md)                 | Agent states, parent/child relationships, archive semantics, tabs vs archive, subagents track                                  |
-| [docs/data-model.md](docs/data-model.md)                           | File-based JSON persistence, Zod schemas, atomic writes, no migrations                                                         |
-| [docs/glossary.md](docs/glossary.md)                               | Authoritative terminology — UI label wins, no synonyms                                                                         |
-| [docs/coding-standards.md](docs/coding-standards.md)               | Type hygiene, error handling, state design, React patterns, file organization                                                  |
-| [docs/design.md](docs/design.md)                                   | Theme tokens — colors, fonts, spacing, radii, icons                                                                            |
-| [docs/hover.md](docs/hover.md)                                     | Hover — the canonical pattern (plain View + onPointerEnter/Leave, separate inner Pressable) and the three ways agents break it |
-| [docs/unistyles.md](docs/unistyles.md)                             | Unistyles gotchas — `useUnistyles()` is forbidden, alternatives in order                                                       |
-| [docs/floating-panels.md](docs/floating-panels.md)                 | Anchored popovers — Portal/Modal escape for Android, lifecycle gates, keyboard-shared-value, status-bar offset, the flash      |
-| [docs/expo-router.md](docs/expo-router.md)                         | Expo Router route ownership, startup restore, and native blank-screen gotchas                                                  |
-| [docs/file-icons.md](docs/file-icons.md)                           | Material icon theme integration for the file explorer                                                                          |
-| [docs/providers.md](docs/providers.md)                             | Adding a new agent provider end-to-end                                                                                         |
-| [docs/custom-providers.md](docs/custom-providers.md)               | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                              |
-| [docs/service-proxy.md](docs/service-proxy.md)                     | Service proxy: exposing workspace scripts at public URLs, DNS setup, reverse proxy config                                      |
-| [docs/development.md](docs/development.md)                         | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP                                                     |
-| [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                 | WebSocket RPC naming convention — dotted namespaces and `.request`/`.response` pairs                                           |
-| [docs/terminal-performance.md](docs/terminal-performance.md)       | Terminal latency pipeline, coalescing/backpressure invariants, benchmark + perf spec usage                                     |
-| [docs/testing.md](docs/testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization                                                     |
-| [docs/mobile-testing.md](docs/mobile-testing.md)                   | Maestro and mobile test workflows                                                                                              |
-| [docs/ad-hoc-daemon-testing.md](docs/ad-hoc-daemon-testing.md)     | Isolated in-process daemon test harness                                                                                        |
-| [docs/browser-capture-harness.md](docs/browser-capture-harness.md) | Real-Electron browser screenshot harness and compositor-surface gotcha                                                         |
-| [docs/android.md](docs/android.md)                                 | App variants, local/cloud builds, EAS workflows                                                                                |
-| [docs/docker.md](docs/docker.md)                                   | Running the daemon and bundled web UI in Docker, volumes, agent images, security                                               |
-| [docs/release.md](docs/release.md)                                 | Release playbook, draft releases, completion checklist                                                                         |
-| [docs/terminal-activity.md](docs/terminal-activity.md)             | Terminal activity indicators — source-agnostic tracker, agent hook reporting, adding a new hook provider                       |
-| [SECURITY.md](SECURITY.md)                                         | Relay threat model, E2E encryption, DNS rebinding, agent auth                                                                  |
+| Doc                                                                              | What's in it                                                                                                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [docs/product.md](docs/product.md)                                               | What Otto is, who it's for, where it's going                                                                                   |
+| [docs/architecture.md](docs/architecture.md)                                     | System design, package layering, WebSocket protocol, agent lifecycle, data flow                                                |
+| [docs/preview-mcp-implementation.md](docs/preview-mcp-implementation.md)         | The fork's charter: rebuild notes for the Claude Preview MCP server — tool schemas, wire format, implementation blueprint      |
+| [docs/upstream-merges.md](docs/upstream-merges.md)                               | Ingesting upstream Paseo changes — remote setup, rebrand tooling, merge playbook                                               |
+| [docs/agent-lifecycle.md](docs/agent-lifecycle.md)                               | Agent states, parent/child relationships, archive semantics, tabs vs archive, subagents track                                  |
+| [docs/data-model.md](docs/data-model.md)                                         | File-based JSON persistence, Zod schemas, atomic writes, no migrations                                                         |
+| [docs/glossary.md](docs/glossary.md)                                             | Authoritative terminology — UI label wins, no synonyms                                                                         |
+| [docs/coding-standards.md](docs/coding-standards.md)                             | Type hygiene, error handling, state design, React patterns, file organization                                                  |
+| [docs/design.md](docs/design.md)                                                 | Theme tokens — colors, fonts, spacing, radii, icons                                                                            |
+| [docs/hover.md](docs/hover.md)                                                   | Hover — the canonical pattern (plain View + onPointerEnter/Leave, separate inner Pressable) and the three ways agents break it |
+| [docs/unistyles.md](docs/unistyles.md)                                           | Unistyles gotchas — `useUnistyles()` is forbidden, alternatives in order                                                       |
+| [docs/floating-panels.md](docs/floating-panels.md)                               | Anchored popovers — Portal/Modal escape for Android, lifecycle gates, keyboard-shared-value, status-bar offset, the flash      |
+| [docs/expo-router.md](docs/expo-router.md)                                       | Expo Router route ownership, startup restore, and native blank-screen gotchas                                                  |
+| [docs/file-icons.md](docs/file-icons.md)                                         | Material icon theme integration for the file explorer                                                                          |
+| [docs/providers.md](docs/providers.md)                                           | Adding a new agent provider end-to-end                                                                                         |
+| [docs/custom-providers.md](docs/custom-providers.md)                             | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                              |
+| [docs/service-proxy.md](docs/service-proxy.md)                                   | Service proxy: exposing workspace scripts at public URLs, DNS setup, reverse proxy config                                      |
+| [docs/development.md](docs/development.md)                                       | Dev server, build sync gotchas, CLI reference, agent state, Playwright MCP                                                     |
+| [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                               | WebSocket RPC naming convention — dotted namespaces and `.request`/`.response` pairs                                           |
+| [docs/terminal-performance.md](docs/terminal-performance.md)                     | Terminal latency pipeline, coalescing/backpressure invariants, benchmark + perf spec usage                                     |
+| [docs/testing.md](docs/testing.md)                                               | TDD workflow, determinism, real dependencies over mocks, test organization                                                     |
+| [docs/mobile-testing.md](docs/mobile-testing.md)                                 | Maestro and mobile test workflows                                                                                              |
+| [docs/ad-hoc-daemon-testing.md](docs/ad-hoc-daemon-testing.md)                   | Isolated in-process daemon test harness                                                                                        |
+| [docs/browser-capture-harness.md](docs/browser-capture-harness.md)               | Real-Electron browser screenshot harness and compositor-surface gotcha                                                         |
+| [docs/android.md](docs/android.md)                                               | App variants, local/cloud builds, EAS workflows                                                                                |
+| [docs/docker.md](docs/docker.md)                                                 | Running the daemon and bundled web UI in Docker, volumes, agent images, security                                               |
+| [docs/release.md](docs/release.md)                                               | Release playbook, draft releases, completion checklist                                                                         |
+| [docs/terminal-activity.md](docs/terminal-activity.md)                           | Terminal activity indicators — source-agnostic tracker, agent hook reporting, adding a new hook provider                       |
+| [docs/timeline-sync.md](docs/timeline-sync.md)                                   | Agent chat delivery paths — live events vs timeline backfill                                                                   |
+| [docs/i18n.md](docs/i18n.md)                                                     | Client UI translations in `packages/app/src/i18n`                                                                              |
+| [docs/opencode-global-event-baseline.md](docs/opencode-global-event-baseline.md) | OpenCode global event verification baseline (dated snapshot)                                                                   |
+| [SECURITY.md](SECURITY.md)                                                       | Relay threat model, E2E encryption, DNS rebinding, agent auth                                                                  |
 
 ## Quick start
 
 ```bash
 npm run dev                          # Start the dev daemon
+npm run dev:win                      # Windows: daemon (localhost:6868) + Expo together via scripts/dev.ps1
 npm run dev:app                      # Start Expo against the dev daemon
 npm run dev:desktop                  # Start Electron desktop dev
 npm run cli -- ls -a -g              # List all agents
 npm run cli -- daemon status         # Check daemon status
 npm run typecheck                    # Always run after changes
 npm run lint                         # Always run after changes
-npm run format                       # Auto-format with Biome
+npm run format                       # Auto-format with oxfmt
 npm run format:check                 # Check formatting without writing
 ```
 
@@ -86,7 +100,7 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   - `npm run build:client` — rebuild protocol and client declarations.
   - `npm run build:server` — rebuild highlight, relay, protocol, client, server, and CLI when server/CLI types may be stale.
   - Do not patch inferred callback parameters or add local duplicate types just to silence stale declaration errors.
-- **Run `npm run format` before committing.** This repo uses Biome for formatting. Do not manually fix formatting — let the formatter handle it.
+- **Run `npm run format` before committing.** This repo uses oxfmt for formatting (oxlint for linting). Do not manually fix formatting — let the formatter handle it.
 - **Always use npm scripts for linting and formatting.** Do not run tools directly with `npx eslint`, `npx oxfmt`, `npx oxlint`, or package-local binaries. For targeted checks, pass file paths through the npm script:
   - `npm run lint -- packages/app/src/components/message.tsx`
   - `npm run format:files -- CLAUDE.md packages/app/src/components/message.tsx`

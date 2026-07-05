@@ -96,7 +96,7 @@ Superset is free for one seat with local workspaces only. Team features and sync
 
 ## Comparison
 
-|                              | Otto                                                 | Superset                               |
+|                              | Otto                                                  | Superset                               |
 | ---------------------------- | ----------------------------------------------------- | -------------------------------------- |
 | License                      | Open source (AGPL-3.0)                                | Source-available (Elastic License 2.0) |
 | Platforms                    | macOS, Linux, Windows                                 | macOS only                             |

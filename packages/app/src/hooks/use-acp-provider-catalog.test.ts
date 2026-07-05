@@ -20,9 +20,26 @@ describe("ACP provider catalog", () => {
       expect(entry.title).not.toBe("");
       expect(entry.description).not.toBe("");
       expect(entry.installLink).toMatch(/^https:\/\//);
-      expect(entry.command.length).toBeGreaterThan(0);
-      expect(entry.command[0]).not.toBe("");
+      if (entry.extends === "acp") {
+        expect(entry.command).toBeDefined();
+        expect(entry.command?.length).toBeGreaterThan(0);
+        expect(entry.command?.[0]).not.toBe("");
+      } else {
+        // Endpoint presets need env routing (base URL) instead of a command.
+        expect(entry.env).toBeDefined();
+      }
     }
+  });
+
+  it("lists featured entries before the rest of the catalog", () => {
+    const firstNonFeaturedIndex = ACP_PROVIDER_CATALOG.findIndex((entry) => !entry.featured);
+    const lastFeaturedIndex = ACP_PROVIDER_CATALOG.map((entry) => entry.featured).lastIndexOf(true);
+
+    expect(ACP_PROVIDER_CATALOG.some((entry) => entry.featured)).toBe(true);
+    expect(lastFeaturedIndex).toBeLessThan(firstNonFeaturedIndex);
+    expect(ACP_PROVIDER_CATALOG.filter((entry) => entry.featured)).toContainEqual(
+      expect.objectContaining({ id: "lmstudio" }),
+    );
   });
 
   it("bundles SVG icons for catalog entries that declare an icon", () => {
@@ -65,6 +82,18 @@ describe("ACP provider catalog", () => {
 
     expect(patch.providers?.auggie?.env).toEqual({
       AUGMENT_DISABLE_AUTO_UPDATE: "1",
+    });
+  });
+
+  it("maps the LM Studio preset to a native openai-compatible provider config patch", () => {
+    const patch = buildAcpProviderConfigPatch(findProvider("lmstudio"));
+    const lmstudio = patch.providers?.lmstudio;
+
+    expect(lmstudio?.extends).toBe("openai-compatible");
+    expect(lmstudio?.command).toBeUndefined();
+    expect(lmstudio?.models).toBeUndefined();
+    expect(lmstudio?.env).toEqual({
+      OPENAI_BASE_URL: "http://localhost:1234/v1",
     });
   });
 

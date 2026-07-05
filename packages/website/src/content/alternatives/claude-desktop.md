@@ -95,7 +95,7 @@ Claude supports voice in Claude's own mobile and app surfaces. Claude Code itsel
 
 ## Comparison
 
-|                              | Otto                                                           | Claude Desktop                    |
+|                              | Otto                                                            | Claude Desktop                    |
 | ---------------------------- | --------------------------------------------------------------- | --------------------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Not published as open source      |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows                    |

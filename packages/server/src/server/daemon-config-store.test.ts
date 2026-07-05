@@ -375,4 +375,121 @@ describe("DaemonConfigStore", () => {
       env: {},
     });
   });
+
+  test("null provider patch removes the entry from runtime config and config.json", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const configPath = path.join(ottoHome, "config.json");
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          agents: {
+            providers: {
+              lmstudio: {
+                extends: "codex",
+                label: "LM Studio",
+                env: { OPENAI_BASE_URL: "http://localhost:1234/v1" },
+              },
+              gemini: {
+                extends: "acp",
+                label: "Gemini",
+                command: ["gemini", "--acp"],
+              },
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {
+          lmstudio: {
+            extends: "codex",
+            label: "LM Studio",
+            env: { OPENAI_BASE_URL: "http://localhost:1234/v1" },
+          },
+          gemini: {
+            extends: "acp",
+            label: "Gemini",
+            command: ["gemini", "--acp"],
+          },
+        },
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    const removals: string[][] = [];
+    store.onChange((_config, details) => {
+      removals.push(details.removedProviderIds);
+    });
+
+    const next = store.patch({ providers: { lmstudio: null } });
+
+    expect(next.providers.lmstudio).toBeUndefined();
+    expect(next.providers.gemini).toBeDefined();
+    expect(removals).toEqual([["lmstudio"]]);
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.agents?.providers?.lmstudio).toBeUndefined();
+    expect(persisted.agents?.providers?.gemini).toBeDefined();
+  });
+
+  test("removing the last provider drops the providers key from config.json", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const configPath = path.join(ottoHome, "config.json");
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          agents: {
+            providers: {
+              lmstudio: {
+                extends: "codex",
+                label: "LM Studio",
+              },
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {
+          lmstudio: { extends: "codex", label: "LM Studio" },
+        },
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    store.patch({ providers: { lmstudio: null } });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.agents?.providers).toBeUndefined();
+  });
 });

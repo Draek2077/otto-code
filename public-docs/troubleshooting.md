@@ -67,8 +67,8 @@ This login-shell step runs on macOS and Linux. On Windows, Otto uses the environ
 
 Desktop app log location:
 
-| Platform | Path                            |
-| -------- | ------------------------------- |
+| Platform | Path                           |
+| -------- | ------------------------------ |
 | macOS    | `~/Library/Logs/Otto/main.log` |
 | Linux    | `~/.config/Otto/logs/main.log` |
 | Windows  | `%APPDATA%\Otto\logs\main.log` |

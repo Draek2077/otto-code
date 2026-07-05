@@ -43,6 +43,33 @@ export const ProviderProfileModelSchema = z.object({
   thinkingOptions: z.array(ProviderProfileThinkingOptionSchema).optional(),
 });
 
+/**
+ * Coarse categories for Otto's agent-facing tool catalog. Providers that receive
+ * Otto tools natively (see the openai-compat provider) can be scoped to a subset
+ * of these groups; omitting the selection means all groups. Kept deliberately
+ * coarse — users pick groups, not individual tools.
+ */
+export const OTTO_TOOL_GROUPS = [
+  "preview",
+  "browser",
+  "agents",
+  "terminals",
+  "schedules",
+  "workspace",
+] as const;
+
+export type OttoToolGroup = (typeof OTTO_TOOL_GROUPS)[number];
+
+/** Map an Otto tool name to its group. Unknown/lifecycle tools fall under "agents". */
+export function ottoToolGroupForName(name: string): OttoToolGroup {
+  if (name.startsWith("preview_")) return "preview";
+  if (name.startsWith("browser_")) return "browser";
+  if (name.includes("terminal")) return "terminals";
+  if (name.includes("schedule") || name === "create_heartbeat") return "schedules";
+  if (name.includes("worktree") || name.includes("workspace")) return "workspace";
+  return "agents";
+}
+
 export const ProviderOverrideSchema = z.object({
   extends: z.string().optional(),
   label: z.string().optional(),
@@ -53,6 +80,11 @@ export const ProviderOverrideSchema = z.object({
   models: z.array(ProviderProfileModelSchema).optional(),
   additionalModels: z.array(ProviderProfileModelSchema).optional(),
   disallowedTools: z.array(z.string()).optional(),
+  /**
+   * Which Otto tool groups to inject for this provider (natively-injected
+   * providers only). Omitted = all groups. Empty array = no Otto tools.
+   */
+  ottoToolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });
@@ -64,7 +96,14 @@ export const ProviderOverridesSchema = z
   .record(z.string(), ProviderOverrideSchema)
   .superRefine((providers, ctx) => {
     const builtinProviderIdSet = new Set<string>(BUILTIN_PROVIDER_IDS);
-    const validExtendsValues = new Set<string>([...BUILTIN_PROVIDER_IDS, "acp"]);
+    // "acp" spawns a generic ACP agent process; "openai-compatible" is served
+    // natively by the daemon against an OpenAI-compatible HTTP endpoint
+    // (LM Studio, Ollama, vLLM, ...) — no external binary involved.
+    const validExtendsValues = new Set<string>([
+      ...BUILTIN_PROVIDER_IDS,
+      "acp",
+      "openai-compatible",
+    ]);
 
     for (const [providerId, provider] of Object.entries(providers)) {
       if (!PROVIDER_ID_PATTERN.test(providerId)) {

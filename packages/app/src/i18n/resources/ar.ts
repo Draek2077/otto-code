@@ -495,6 +495,11 @@ export const ar: TranslationResources = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "تثبيت",
         unpinTarget: "إلغاء التثبيت",
+        moreActions: "المزيد من الإجراءات",
+        preview: "بدء المعاينة",
+        previewDisabledTooltip: "افتح محادثة لمعاينة خادم التطوير الخاص بها",
+        previewPickServer: "ما الخادم الذي تريد تشغيله؟",
+        previewStopServer: "إيقاف {{name}}",
       },
       explorer: {
         open: "افتح المستكشف",
@@ -661,8 +666,7 @@ export const ar: TranslationResources = {
           updateNoBase: "التحديث غير متاح لأننا لم نتمكن من تحديد الفرع الأساسي",
           updateDirty: "التحديث غير متاح أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           updateCurrent: "التحديث غير متاح لأن هذا الفرع محدث بالفعل باستخدام{{baseRef}}",
-          archiveNotWorktree:
-            "الأرشيف غير متاح هنا لأنه لم يتم إنشاء مساحة العمل هذه كشجرة عمل Otto",
+          archiveNotWorktree: "الأرشيف غير متاح هنا لأنه لم يتم إنشاء مساحة العمل هذه كشجرة عمل Otto",
           mergePrNoGithub: "دمج PR غير متاح الآن لأن GitHub غير متصل",
           mergePrMissing: "دمج PR غير متاح لأنه لا يوجد طلب سحب حتى الآن",
           mergePrDraft: "دمج PR غير متاح لأن طلب السحب لا يزال مسودة",
@@ -945,6 +949,17 @@ export const ar: TranslationResources = {
       versionMismatch:
         "إصدارا التطبيق والبرنامج الخفي غير متطابقين. قم بتحديث كلاهما إلى نفس الإصدار للحصول على أفضل تجربة.",
       loadFailed: "غير قادر على تحميل حالة البرنامج الخفي لسطح المكتب.",
+    },
+    window: {
+      title: "النافذة",
+      minimizeToTray: {
+        title: "التصغير إلى شريط النظام عند الإغلاق",
+        hint: "إغلاق النافذة يخفي Otto إلى شريط النظام بدلاً من الإنهاء",
+      },
+      startMinimized: {
+        title: "البدء مصغّرًا في شريط النظام",
+        hint: "تشغيل Otto مخفيًا في شريط النظام بدلاً من إظهار النافذة",
+      },
     },
     updates: {
       status: {
@@ -1457,6 +1472,14 @@ export const ar: TranslationResources = {
         description: "يتم الاحتفاظ بالخطوط في المخزن المؤقت الطرفي المدمج",
         accessibilityLabel: "خطوط التمرير Terminal",
       },
+      previewServerCloseBehavior: {
+        label: "خادم المعاينة عند إغلاق التبويب",
+        description: "اختر ما إذا كان إغلاق تبويب المعاينة سيوقف أيضًا خادم التطوير الخاص به.",
+        options: {
+          keepRunning: "إبقاء التشغيل",
+          stopOnClose: "الإيقاف عند الإغلاق",
+        },
+      },
       language: {
         label: "لغة",
         description: "لغة التطبيق",
@@ -1828,6 +1851,41 @@ export const ar: TranslationResources = {
         error: "خطأ",
         available: "متاح",
         notInstalled: "غير مثبت",
+        requiresBase: "يتطلب {{name}}",
+      },
+      tools: {
+        title: "أدوات Otto",
+        description:
+          "مجموعات الأدوات التي يمكن لهذا النموذج استخدامها. ألغِ تحديد مجموعة لإخفائها عن النموذج.",
+        globallyDisabled: "معطّل في الإعدادات العامة",
+        saved: "تم حفظ إعدادات الأدوات",
+        saveFailed: "تعذّر حفظ إعدادات الأدوات",
+        groups: {
+          preview: "خوادم المعاينة",
+          browser: "التحكم في المتصفح",
+          agents: "إدارة الوكلاء",
+          terminals: "الطرفيات",
+          schedules: "الجداول",
+          workspace: "مساحات العمل",
+        },
+      },
+      connection: {
+        title: "الاتصال",
+        baseUrl: "عنوان الخادم",
+        apiKey: "مفتاح API",
+        save: "حفظ الاتصال",
+        saving: "جارٍ الحفظ...",
+        saved: "تم حفظ الاتصال",
+        saveFailed: "فشل حفظ إعدادات الاتصال",
+      },
+      remove: {
+        button: "إزالة الموفر",
+        confirmTitle: "إزالة {{name}}؟",
+        confirmMessage:
+          "سيؤدي هذا إلى حذف الموفر وإعداداته من هذا المضيف. يحتفظ الوكلاء المنشأون به بسجلهم.",
+        removing: "جارٍ الإزالة...",
+        requiresUpdate: "حدِّث المضيف لإزالة الموفرين.",
+        failed: "فشلت إزالة الموفر",
       },
       models: {
         one: "1 نموذج",

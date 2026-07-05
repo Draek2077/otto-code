@@ -79,10 +79,7 @@ export const createTempGitRepo = async (
   execSync("git config commit.gpgsign false", { cwd: repoPath, stdio: "ignore" });
   await writeFile(path.join(repoPath, "README.md"), "# Temp Repo\n");
   if (options?.ottoConfig) {
-    await writeFile(
-      path.join(repoPath, "otto.json"),
-      JSON.stringify(options.ottoConfig, null, 2),
-    );
+    await writeFile(path.join(repoPath, "otto.json"), JSON.stringify(options.ottoConfig, null, 2));
   }
   for (const file of options?.files ?? []) {
     const filePath = path.join(repoPath, file.path);

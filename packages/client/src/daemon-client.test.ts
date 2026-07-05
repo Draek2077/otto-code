@@ -3082,6 +3082,208 @@ test("requests GitHub auto-merge disable via namespaced RPC", async () => {
   });
 });
 
+test("requests preview server config via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.previewListConfig("/tmp/project", "req-preview-list");
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("preview.list_config.request");
+  expect(request.cwd).toBe("/tmp/project");
+  expect(request.requestId).toBe("req-preview-list");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "preview.list_config.response",
+        payload: {
+          cwd: "/tmp/project",
+          configured: true,
+          servers: [{ name: "otto-dev", port: 8081 }],
+          error: null,
+          requestId: "req-preview-list",
+        },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    cwd: "/tmp/project",
+    configured: true,
+    servers: [{ name: "otto-dev", port: 8081 }],
+    error: null,
+    requestId: "req-preview-list",
+  });
+});
+
+test("starts a preview server via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.previewStart("/tmp/project", "otto-dev", "req-preview-start");
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("preview.start.request");
+  expect(request.cwd).toBe("/tmp/project");
+  expect(request.name).toBe("otto-dev");
+  expect(request.requestId).toBe("req-preview-start");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "preview.start.response",
+        payload: {
+          cwd: "/tmp/project",
+          success: true,
+          reused: false,
+          server: {
+            serverId: "srv_1",
+            name: "otto-dev",
+            url: "http://127.0.0.1:8081/",
+            port: 8081,
+            status: "running",
+            boundBrowserId: null,
+          },
+          error: null,
+          requestId: "req-preview-start",
+        },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    cwd: "/tmp/project",
+    success: true,
+    reused: false,
+    server: {
+      serverId: "srv_1",
+      name: "otto-dev",
+      url: "http://127.0.0.1:8081/",
+      port: 8081,
+      status: "running",
+      boundBrowserId: null,
+    },
+    error: null,
+    requestId: "req-preview-start",
+  });
+});
+
+test("binds a browser tab to a preview server via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.previewBindTab("srv_1", "browser-1", "req-preview-bind");
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("preview.bind_tab.request");
+  expect(request.serverId).toBe("srv_1");
+  expect(request.browserId).toBe("browser-1");
+  expect(request.requestId).toBe("req-preview-bind");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "preview.bind_tab.response",
+        payload: { success: true, error: null, requestId: "req-preview-bind" },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    success: true,
+    error: null,
+    requestId: "req-preview-bind",
+  });
+});
+
+test("stops a preview server via namespaced RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const promise = client.previewStop("srv_1", "req-preview-stop");
+
+  expect(mock.sent).toHaveLength(1);
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request.type).toBe("preview.stop.request");
+  expect(request.serverId).toBe("srv_1");
+  expect(request.requestId).toBe("req-preview-stop");
+
+  mock.triggerMessage(
+    JSON.stringify({
+      type: "session",
+      message: {
+        type: "preview.stop.response",
+        payload: { success: true, error: null, requestId: "req-preview-stop" },
+      },
+    }),
+  );
+
+  await expect(promise).resolves.toEqual({
+    success: true,
+    error: null,
+    requestId: "req-preview-stop",
+  });
+});
+
 test("requests GitHub check details via namespaced RPC", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

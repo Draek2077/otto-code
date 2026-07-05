@@ -36,10 +36,7 @@ import {
   WorktreeSetupError,
 } from "../utils/worktree.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
-import type {
-  CreateOttoWorktreeInput,
-  CreateOttoWorktreeResult,
-} from "./otto-worktree-service.js";
+import type { CreateOttoWorktreeInput, CreateOttoWorktreeResult } from "./otto-worktree-service.js";
 import type { ArchiveDependencies } from "./workspace-archive-service.js";
 import { toWorktreeWireError } from "./worktree-errors.js";
 import {

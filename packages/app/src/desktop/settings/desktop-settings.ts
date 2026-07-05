@@ -17,11 +17,16 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  tray: {
+    minimizeOnClose: boolean;
+    startMinimized: boolean;
+  };
 }
 
 export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  tray?: Partial<DesktopSettings["tray"]>;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -29,6 +34,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: true,
+  },
+  tray: {
+    minimizeOnClose: true,
+    startMinimized: false,
   },
 };
 
@@ -145,6 +154,7 @@ export async function migrateLegacyDesktopSettings(input: {
 function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
+  const tray = isRecord(record.tray) ? record.tray : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
@@ -157,6 +167,16 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
         typeof daemon.keepRunningAfterQuit === "boolean"
           ? daemon.keepRunningAfterQuit
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
+    },
+    tray: {
+      minimizeOnClose:
+        typeof tray.minimizeOnClose === "boolean"
+          ? tray.minimizeOnClose
+          : DEFAULT_DESKTOP_SETTINGS.tray.minimizeOnClose,
+      startMinimized:
+        typeof tray.startMinimized === "boolean"
+          ? tray.startMinimized
+          : DEFAULT_DESKTOP_SETTINGS.tray.startMinimized,
     },
   };
 }
@@ -171,6 +191,10 @@ function mergeDesktopSettings(
       ...current.daemon,
       ...updates.daemon,
     },
+    tray: {
+      ...current.tray,
+      ...updates.tray,
+    },
   };
 }
 
@@ -178,6 +202,7 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
   return {
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
+    ...(updates.tray ? { tray: updates.tray } : {}),
   };
 }
 

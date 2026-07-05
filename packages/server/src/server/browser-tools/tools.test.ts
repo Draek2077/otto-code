@@ -577,6 +577,8 @@ describe("registerBrowserTools", () => {
       "browser_select",
       "browser_drag",
       "browser_logs",
+      "browser_inspect",
+      "browser_network",
       "browser_evaluate",
       "browser_scroll",
       "browser_resize",

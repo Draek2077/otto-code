@@ -24,6 +24,7 @@ Provider IDs must be lowercase alphanumeric with hyphens (`/^[a-z][a-z0-9-]*$/`)
 - [Extending a built-in provider](#extending-a-built-in-provider)
 - [Z.AI (Zhipu) coding plan](#zai-zhipu-coding-plan)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
+- [LM Studio (local models)](#lm-studio-local-models)
 - [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai-compatible-endpoint)
 - [Multiple profiles for the same provider](#multiple-profiles-for-the-same-provider)
 - [Custom binary for a provider](#custom-binary-for-a-provider)
@@ -182,6 +183,71 @@ For pay-as-you-go, use `ANTHROPIC_API_KEY` with a standard Model Studio key (`sk
 - The coding plan is for personal use only in interactive coding tools
 - Web search (`WebSearch` tool) is an Anthropic-only server-side feature — third-party endpoints don't support it. Add `"disallowedTools": ["WebSearch"]` to avoid errors.
 - Official docs: [alibabacloud.com/help/en/model-studio/claude-code-coding-plan](https://www.alibabacloud.com/help/en/model-studio/claude-code-coding-plan)
+
+---
+
+## LM Studio (local models)
+
+[LM Studio](https://lmstudio.ai) runs open models locally and exposes an OpenAI-compatible server (default `http://localhost:1234`). Otto talks to it **natively** — the daemon connects to the endpoint directly with `extends: "openai-compatible"`. No agent CLI is involved.
+
+LM Studio ships as a featured preset in the in-app **Add provider** catalog. Installing it creates the config below; the Server URL and API key are editable afterwards in the provider's settings sheet (Connection section).
+
+### Setup
+
+1. Install [LM Studio](https://lmstudio.ai) and download the models you want
+2. Start the local server (Developer tab → Start Server, or `lms server start`)
+3. Install the preset from Settings → Add provider, or add the entry manually:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "lmstudio": {
+        "extends": "openai-compatible",
+        "label": "LM Studio",
+        "env": {
+          "OPENAI_BASE_URL": "http://localhost:1234/v1"
+        }
+      }
+    }
+  }
+}
+```
+
+### How it works
+
+- **Models are discovered automatically** from `GET {OPENAI_BASE_URL}/models` — whatever the server has downloaded shows up in the model picker. Setting `models` in the config replaces discovery with a static list.
+- **Status reflects reachability, not installation.** When the server is running the provider shows Available with the discovered model count; when it isn't, the row shows an error explaining that the endpoint can't be reached.
+- Chat turns stream over `POST {OPENAI_BASE_URL}/chat/completions` (SSE). Reasoning deltas (`reasoning_content`) are rendered as thinking output.
+- **Function-calling models get a built-in coding toolset** executed by the daemon in the agent's cwd: `read_file`, `list_dir`, `grep_search`, `write_file`, `edit_file`, `run_command`. Tool calls stream as timeline items like any other agent's.
+- **Otto's tool catalog is injected too.** Because this provider can't host an MCP client, the daemon injects Otto's agent tools (`browser_*`, `preview_*`, agent management, terminals, schedules, workspace) directly into the model's tool list, so a local model can drive previews and browser verification like Claude Code does. Excluded in `plan` mode (those tools can take actions); the built-in coding tools win on any name collision.
+- **Scope the Otto tools with `ottoToolGroups`.** Omit it for all groups (the default); set it to a subset to keep the prompt small and the model focused. Groups: `preview`, `browser`, `agents`, `terminals`, `schedules`, `workspace`.
+
+  ```json
+  {
+    "agents": {
+      "providers": {
+        "lmstudio": {
+          "extends": "openai-compatible",
+          "label": "LM Studio",
+          "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
+          "ottoToolGroups": ["preview", "browser"]
+        }
+      }
+    }
+  }
+  ```
+
+- **Permission modes** mirror the other providers: `default` (Always Ask — prompts before edits and commands), `acceptEdits` (auto-approves file edits, still asks for commands), `plan` (Read Only — only read tools are offered to the model, and Otto tools are withheld), and `bypassPermissions` (unattended).
+- `OPENAI_API_KEY` is optional — set it if your server requires an API key (LM Studio local servers accept requests without one).
+- `/v1` is appended to the URL automatically if missing. Remote servers (e.g. LM Studio on another machine over Tailscale) work by pointing `OPENAI_BASE_URL` at that host.
+- The same `extends: "openai-compatible"` entry works for any OpenAI-compatible server: Ollama (`http://localhost:11434/v1`), vLLM, llama.cpp server, gateways.
+
+### Current limitations
+
+- Tool use requires a model that supports OpenAI function calling; models without it fall back to plain chat (the `tools` payload is ignored by the server or the model simply never calls them).
+- No MCP server passthrough yet — the toolset is the built-in daemon one.
+- Custom providers can be removed from the UI (provider settings → Remove provider) on daemons with the `providerRemove` feature.
 
 ---
 
@@ -409,7 +475,7 @@ The [Agent Client Protocol (ACP)](https://agentclientprotocol.com) is an open st
 
 ACP agents communicate over JSON-RPC 2.0 on stdio. Otto spawns the agent process and talks to it through stdin/stdout.
 
-Otto also ships an in-app ACP provider catalog for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. Catalog entries create the same `extends: "acp"` provider config shown below.
+Otto also ships an in-app provider catalog (Settings → Add provider) for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. ACP catalog entries create the same `extends: "acp"` provider config shown below. The catalog also carries featured endpoint presets (e.g. [LM Studio](#lm-studio-local-models)) that use the native `extends: "openai-compatible"` provider type instead.
 
 ### Adding a generic ACP provider
 
@@ -661,7 +727,10 @@ Use `disallowedTools` to disable unsupported tools:
 
 Built-in providers: `claude`, `codex`, `copilot`, `opencode`, `pi`, `omp`
 
-Special value: `acp` — creates a generic ACP provider (requires `command`)
+Special values:
+
+- `acp` — creates a generic ACP provider (requires `command`)
+- `openai-compatible` — served natively by the daemon against an OpenAI-compatible HTTP endpoint (requires `env.OPENAI_BASE_URL`; see [LM Studio](#lm-studio-local-models))
 
 ### Full example
 

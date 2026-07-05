@@ -163,7 +163,7 @@ export class ProviderSnapshotManager {
   private readonly extraClients: Partial<Record<AgentProvider, AgentClient>>;
   private runtimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private providerOverrides: Record<string, ProviderOverride> | undefined;
-  private readonly baseProviderOverrides: Record<string, ProviderOverride> | undefined;
+  private baseProviderOverrides: Record<string, ProviderOverride> | undefined;
   private providerRegistry: Record<AgentProvider, ProviderDefinition>;
   private providerClients: Record<AgentProvider, AgentClient>;
 
@@ -369,7 +369,16 @@ export class ProviderSnapshotManager {
 
   applyMutableProviderConfig(
     mutableProviders: MutableDaemonConfig["providers"] | undefined,
+    removedProviderIds?: string[],
   ): AgentManagerProviderState {
+    if (removedProviderIds?.length && this.baseProviderOverrides) {
+      const removed = new Set(removedProviderIds);
+      this.baseProviderOverrides = Object.fromEntries(
+        Object.entries(this.baseProviderOverrides).filter(
+          ([providerId]) => !removed.has(providerId),
+        ),
+      );
+    }
     this.providerOverrides = applyMutableProviderConfigToOverrides(
       this.baseProviderOverrides,
       mutableProviders,

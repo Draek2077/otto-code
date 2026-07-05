@@ -113,18 +113,18 @@ or `compose.environment`; Otto passes them to launched agents.
 
 ## Volumes
 
-| Mount         | Purpose                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
+| Mount        | Purpose                                                                |
+| ------------ | ---------------------------------------------------------------------- |
 | `/home/otto` | Otto state under `.otto` plus agent config such as `.codex`, `.claude` |
-| `/workspace`  | Code that Otto and launched agents can read and write                   |
+| `/workspace` | Code that Otto and launched agents can read and write                  |
 
 The image defaults:
 
-| Variable       | Default              |
-| -------------- | -------------------- |
-| `HOME`         | `/home/otto`        |
+| Variable      | Default            |
+| ------------- | ------------------ |
+| `HOME`        | `/home/otto`       |
 | `OTTO_HOME`   | `/home/otto/.otto` |
-| `OTTO_LISTEN` | `0.0.0.0:6868`       |
+| `OTTO_LISTEN` | `0.0.0.0:6868`     |
 
 If you bind-mount host directories on Linux, make sure the container user can
 write them. The built-in `otto` user has uid/gid `1000:1000`. For a different

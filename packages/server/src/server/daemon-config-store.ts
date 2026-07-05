@@ -20,7 +20,12 @@ interface LoggerLike {
   info(...args: unknown[]): void;
 }
 
-type ConfigListener = (config: MutableDaemonConfig) => void;
+export interface ConfigChangeDetails {
+  /** Provider ids whose config entries were removed by this patch. */
+  removedProviderIds: string[];
+}
+
+type ConfigListener = (config: MutableDaemonConfig, details: ConfigChangeDetails) => void;
 type FieldChangeHandler = (value: unknown) => void;
 
 function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
@@ -100,7 +105,11 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
-    const next = MutableDaemonConfigSchema.parse(deepMerge(this.current, parsedPatch));
+    const { patch: prunedPatch, removedProviderIds } = extractProviderRemovals(parsedPatch);
+    const base = removedProviderIds.length
+      ? removeProviders(this.current, removedProviderIds)
+      : this.current;
+    const next = MutableDaemonConfigSchema.parse(deepMerge(base, prunedPatch));
 
     const changedFieldPaths = Array.from(this.fieldChangeHandlers.keys()).filter((path) => {
       return !isEqualValue(getValueAtPath(this.current, path), getValueAtPath(next, path));
@@ -112,7 +121,7 @@ export class DaemonConfigStore {
 
     // Persist before updating in-memory state so that if persistence fails,
     // runtime and disk stay consistent.
-    this.persistConfig(next);
+    this.persistConfig(next, removedProviderIds);
     this.current = next;
 
     for (const path of changedFieldPaths) {
@@ -127,7 +136,7 @@ export class DaemonConfigStore {
     }
 
     for (const listener of this.changeListeners) {
-      listener(next);
+      listener(next, { removedProviderIds });
     }
 
     return next;
@@ -157,25 +166,77 @@ export class DaemonConfigStore {
     };
   }
 
-  private persistConfig(config: MutableDaemonConfig): void {
+  private persistConfig(config: MutableDaemonConfig, removedProviderIds: string[]): void {
     const persisted = loadPersistedConfig(this.ottoHome, this.logger);
     const nextPersisted = mergeMutableConfigIntoPersistedConfig({
       persisted,
       mutable: config,
+      removedProviderIds,
     });
     savePersistedConfig(this.ottoHome, nextPersisted, this.logger);
   }
 }
 
+function extractProviderRemovals(patch: MutableDaemonConfigPatch): {
+  patch: MutableDaemonConfigPatch;
+  removedProviderIds: string[];
+} {
+  const providers = patch.providers;
+  if (!providers) {
+    return { patch, removedProviderIds: [] };
+  }
+
+  const removedProviderIds = Object.entries(providers)
+    .filter(([, value]) => value === null)
+    .map(([providerId]) => providerId);
+  if (removedProviderIds.length === 0) {
+    return { patch, removedProviderIds };
+  }
+
+  const remainingProviders = Object.fromEntries(
+    Object.entries(providers).filter(([, value]) => value !== null),
+  );
+  return {
+    patch: { ...patch, providers: remainingProviders },
+    removedProviderIds,
+  };
+}
+
+function removeProviders(
+  config: MutableDaemonConfig,
+  removedProviderIds: string[],
+): MutableDaemonConfig {
+  const removed = new Set(removedProviderIds);
+  return {
+    ...config,
+    providers: Object.fromEntries(
+      Object.entries(config.providers).filter(([providerId]) => !removed.has(providerId)),
+    ),
+  };
+}
+
 function mergeMutableConfigIntoPersistedConfig(params: {
   persisted: PersistedConfig;
   mutable: MutableDaemonConfig;
+  removedProviderIds: string[];
 }): PersistedConfig {
-  const { persisted, mutable } = params;
+  const { persisted, mutable, removedProviderIds } = params;
   const browserToolsEnabled = readBrowserToolsEnabled(mutable);
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
+  const removedProviders = new Set(removedProviderIds);
+  const persistedOverrides = persisted.agents?.providers as
+    | Record<string, ProviderOverride>
+    | undefined;
+  const retainedOverrides =
+    persistedOverrides && removedProviders.size > 0
+      ? Object.fromEntries(
+          Object.entries(persistedOverrides).filter(
+            ([providerId]) => !removedProviders.has(providerId),
+          ),
+        )
+      : persistedOverrides;
   const providerOverrides = applyMutableProviderConfigToOverrides(
-    persisted.agents?.providers as Record<string, ProviderOverride> | undefined,
+    retainedOverrides,
     mutable.providers,
   );
   const persistedAgents = persisted.agents as Record<string, unknown> | undefined;
@@ -190,6 +251,16 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     nextAgents = {
       ...persistedAgents,
       providers: providerOverrides,
+      ...(shouldPersistMetadataGeneration
+        ? { metadataGeneration: persistedMetadataGeneration }
+        : {}),
+    } as PersistedConfig["agents"];
+  } else if (removedProviders.size > 0 && persistedOverrides) {
+    // The last provider override was removed — drop the providers key so the
+    // removed entry does not survive in config.json.
+    const { providers: _removed, ...agentsWithoutProviders } = persistedAgents ?? {};
+    nextAgents = {
+      ...agentsWithoutProviders,
       ...(shouldPersistMetadataGeneration
         ? { metadataGeneration: persistedMetadataGeneration }
         : {}),

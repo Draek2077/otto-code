@@ -83,6 +83,7 @@ import {
 } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { useSettings } from "@/hooks/use-settings";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import {
@@ -1773,6 +1774,7 @@ function WorkspaceScreenContent({
     onTerminalCreateFailed: handleTerminalCreateFailed,
   });
   const { archiveAgent } = useArchiveAgent();
+  const { settings } = useSettings();
 
   const { checkoutQuery, isCheckoutStatusLoading } = useWorkspaceCheckoutStatus({
     client,
@@ -1928,13 +1930,24 @@ function WorkspaceScreenContent({
       }
       if (input.target?.kind === "browser") {
         const { browserId } = input.target;
+        // Check isPreview/previewServerId BEFORE removing the record
+        const browserRecord = useBrowserStore.getState().browsersById[browserId];
         useBrowserStore.getState().removeBrowser(browserId);
         removeResidentBrowserWebview(browserId);
         void getDesktopHost()?.browser?.clearPartition?.(browserId);
+
+        // Auto-stop this tab's own preview server if the setting is enabled.
+        if (
+          browserRecord?.isPreview &&
+          browserRecord.previewServerId &&
+          settings.previewServerCloseBehavior === "stop-on-close"
+        ) {
+          void client?.previewStop(browserRecord.previewServerId).catch(() => undefined);
+        }
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
-    [closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, unpinWorkspaceAgent],
+    [client, closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, settings, unpinWorkspaceAgent],
   );
 
   const focusedPaneTabState = useMemo(

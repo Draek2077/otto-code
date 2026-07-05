@@ -78,10 +78,7 @@ describe("ProjectConfigSession", () => {
     "read resolves a symlink to an active root via realpath",
     async () => {
       const repoRoot = makeRoot();
-      writeFileSync(
-        join(repoRoot, "otto.json"),
-        JSON.stringify({ worktree: { setup: "npm ci" } }),
-      );
+      writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
       const linkRoot = join(makeRoot(), "link");
       symlinkSync(repoRoot, linkRoot, "dir");
       const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);

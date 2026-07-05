@@ -1,7 +1,10 @@
 import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { FileTransferOpcode, type FileTransferFrame } from "@otto-code/protocol/binary-frames/index";
+import {
+  FileTransferOpcode,
+  type FileTransferFrame,
+} from "@otto-code/protocol/binary-frames/index";
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import type { FileUploadRequest, FileUploadResponse } from "../messages.js";
 

@@ -5,7 +5,7 @@ import type {
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
-import type { TabContents, BrowserRegistry, TabImage } from "./service.js";
+import type { TabContents, BrowserRegistry, TabImage, CapturedNetworkRequest } from "./service.js";
 import { CdpSessionQueue } from "./cdp-session-queue.js";
 import {
   dialogAcceptValue,
@@ -104,7 +104,139 @@ export function adaptWebContents(contents: BrowserAutomationWebContents): TabCon
         }
         return contents.debugger.sendCommand(command, params ?? {});
       }),
+    startNetworkCapture: async () => {
+      observeNetworkEvents(contents);
+      if (networkCaptureEnabledContentsIds.has(contents.id)) {
+        return;
+      }
+      await cdpQueue.run(async () => {
+        if (!contents.debugger.isAttached()) {
+          contents.debugger.attach("1.3");
+        }
+        await contents.debugger.sendCommand("Network.enable", {});
+      });
+      networkCaptureEnabledContentsIds.add(contents.id);
+    },
+    getNetworkRequests: () => [...getNetworkLog(contents.id).values()],
+    getNetworkResponseBody: async (requestId: string) => {
+      if (!getNetworkLog(contents.id).has(requestId)) {
+        return null;
+      }
+      const raw = (await cdpQueue.run(async () => {
+        if (!contents.debugger.isAttached()) {
+          contents.debugger.attach("1.3");
+        }
+        return contents.debugger.sendCommand("Network.getResponseBody", { requestId });
+      })) as { body?: unknown; base64Encoded?: unknown } | null;
+      if (!raw || typeof raw.body !== "string") {
+        return null;
+      }
+      return { body: raw.body, base64Encoded: raw.base64Encoded === true };
+    },
   };
+}
+
+const MAX_NETWORK_ENTRIES_PER_TAB = 500;
+const networkLogByContentsId = new Map<number, Map<string, CapturedNetworkRequest>>();
+const networkCaptureEnabledContentsIds = new Set<number>();
+const networkObservedContentsIds = new Set<number>();
+
+function getNetworkLog(contentsId: number): Map<string, CapturedNetworkRequest> {
+  const existing = networkLogByContentsId.get(contentsId);
+  if (existing) {
+    return existing;
+  }
+  const log = new Map<string, CapturedNetworkRequest>();
+  networkLogByContentsId.set(contentsId, log);
+  return log;
+}
+
+function observeNetworkEvents(contents: BrowserAutomationWebContents): void {
+  if (networkObservedContentsIds.has(contents.id)) {
+    return;
+  }
+  networkObservedContentsIds.add(contents.id);
+  contents.debugger.on?.("message", (_event, method, params) => {
+    if (!method.startsWith("Network.")) {
+      return;
+    }
+    applyNetworkEvent(getNetworkLog(contents.id), method, params ?? {});
+  });
+}
+
+function applyNetworkEvent(
+  log: Map<string, CapturedNetworkRequest>,
+  method: string,
+  params: Record<string, unknown>,
+): void {
+  const requestId = typeof params.requestId === "string" ? params.requestId : null;
+  if (!requestId) {
+    return;
+  }
+  if (method === "Network.requestWillBeSent") {
+    recordRequestStart(log, requestId, params);
+    return;
+  }
+  const entry = log.get(requestId);
+  if (!entry) {
+    return;
+  }
+  if (method === "Network.responseReceived") {
+    recordResponse(entry, params);
+    return;
+  }
+  if (method === "Network.loadingFinished") {
+    entry.finished = true;
+    if (typeof params.encodedDataLength === "number") {
+      entry.encodedDataLength = params.encodedDataLength;
+    }
+    return;
+  }
+  if (method === "Network.loadingFailed") {
+    entry.finished = true;
+    entry.failed = typeof params.errorText === "string" ? params.errorText : "failed";
+  }
+}
+
+function recordRequestStart(
+  log: Map<string, CapturedNetworkRequest>,
+  requestId: string,
+  params: Record<string, unknown>,
+): void {
+  const request =
+    params.request && typeof params.request === "object"
+      ? (params.request as Record<string, unknown>)
+      : {};
+  log.set(requestId, {
+    requestId,
+    url: typeof request.url === "string" ? request.url : "",
+    method: typeof request.method === "string" ? request.method : "GET",
+    ...(typeof params.type === "string" ? { resourceType: params.type } : {}),
+    finished: false,
+  });
+  while (log.size > MAX_NETWORK_ENTRIES_PER_TAB) {
+    const oldestKey = log.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    log.delete(oldestKey);
+  }
+}
+
+function recordResponse(entry: CapturedNetworkRequest, params: Record<string, unknown>): void {
+  const response =
+    params.response && typeof params.response === "object"
+      ? (params.response as Record<string, unknown>)
+      : {};
+  if (typeof response.status === "number") {
+    entry.status = response.status;
+  }
+  if (typeof response.statusText === "string") {
+    entry.statusText = response.statusText;
+  }
+  if (typeof response.mimeType === "string") {
+    entry.mimeType = response.mimeType;
+  }
 }
 
 function getCdpQueue(contentsId: number): CdpSessionQueue {
@@ -133,6 +265,9 @@ function observeConsoleMessages(contents: BrowserAutomationWebContents): void {
     consoleMessagesByContentsId.delete(contents.id);
     cdpQueuesByContentsId.delete(contents.id);
     dialogMonitorsByContentsId.delete(contents.id);
+    networkLogByContentsId.delete(contents.id);
+    networkCaptureEnabledContentsIds.delete(contents.id);
+    networkObservedContentsIds.delete(contents.id);
   });
 }
 

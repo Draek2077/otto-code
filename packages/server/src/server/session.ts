@@ -153,6 +153,8 @@ import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
+import type { DevServerManager } from "./preview/dev-server-manager.js";
+import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
@@ -437,6 +439,7 @@ export interface SessionOptions {
   sttLanguage?: string;
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
+  previewDevServers?: DevServerManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   serviceProxy?: ServiceProxySubsystem;
@@ -568,6 +571,7 @@ export class Session {
     appVisibilityChangedAt: Date;
   } | null = null;
   private readonly terminalManager: TerminalManager | null;
+  private readonly previewDevServers: DevServerManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
@@ -624,6 +628,7 @@ export class Session {
       sttLanguage,
       tts,
       terminalManager,
+      previewDevServers,
       providerSnapshotManager,
       providerUsageService,
       serviceProxy,
@@ -799,6 +804,7 @@ export class Session {
     });
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
+    this.previewDevServers = previewDevServers ?? null;
     this.terminalController = new TerminalSessionController({
       terminalManager,
       emit: (msg) => this.emit(msg),
@@ -1368,6 +1374,7 @@ export class Session {
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
+      this.dispatchPreviewMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -1592,6 +1599,21 @@ export class Session {
         return this.checkoutSession.handleStashPopRequest(msg);
       case "stash_list_request":
         return this.checkoutSession.handleStashListRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchPreviewMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "preview.list_config.request":
+        return this.handlePreviewListConfigRequest(msg.cwd, msg.requestId);
+      case "preview.start.request":
+        return this.handlePreviewStartRequest(msg.cwd, msg.name, msg.requestId);
+      case "preview.bind_tab.request":
+        return this.handlePreviewBindTabRequest(msg.serverId, msg.browserId, msg.requestId);
+      case "preview.stop.request":
+        return this.handlePreviewStopRequest(msg.serverId, msg.requestId);
       default:
         return undefined;
     }
@@ -2311,6 +2333,186 @@ export class Session {
           title: null,
           error: getErrorMessageOr(error, "Failed to set workspace title"),
         },
+      });
+    }
+  }
+
+  /**
+   * UI-initiated preview RPCs behind the Preview toolbar button. Mirrors what
+   * the agent-facing preview_* tools do (packages/server/src/server/preview/preview-tools.ts)
+   * but is driven by the app directly instead of an agent tool call — the
+   * caller creates and places the browser tab itself, then reports the
+   * binding back via preview.bind_tab so a later agent preview_start call
+   * finds the same designated tab.
+   */
+  private async handlePreviewListConfigRequest(cwd: string, requestId: string): Promise<void> {
+    try {
+      const config = await readLaunchConfig(cwd);
+
+      // Collect running servers from DevServerManager
+      let runningServers: Array<{
+        serverId: string;
+        name: string;
+        url: string;
+        port: number;
+        status: "starting" | "running" | "exited";
+      }> = [];
+
+      if (this.previewDevServers) {
+        // Reconcile against reality (port probes), not just the in-memory map:
+        // the map is wiped on daemon restart while the detached dev-server child
+        // keeps serving, so a plain list() would report a live preview as "not
+        // started" after every tsx-watch restart in dev. See reconcileRunning.
+        const reconciled = await this.previewDevServers.reconcileRunning({
+          cwd,
+          configured:
+            config?.configurations.map((entry) => ({
+              name: entry.name,
+              port: entry.port,
+            })) ?? [],
+        });
+        runningServers = reconciled.map((s) => ({
+          serverId: s.serverId,
+          name: s.name,
+          url: s.url,
+          port: s.port,
+          status: s.status,
+        }));
+      }
+
+      this.emit({
+        type: "preview.list_config.response",
+        payload: {
+          requestId,
+          cwd,
+          configured: config !== null,
+          servers:
+            config?.configurations.map((entry) => ({ name: entry.name, port: entry.port })) ?? [],
+          runningServers,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "preview.list_config.response",
+        payload: {
+          requestId,
+          cwd,
+          configured: false,
+          servers: [],
+          error: error instanceof LaunchConfigError ? error.message : getErrorMessage(error),
+        },
+      });
+    }
+  }
+
+  private async handlePreviewStartRequest(
+    cwd: string,
+    name: string,
+    requestId: string,
+  ): Promise<void> {
+    if (!this.previewDevServers) {
+      this.emit({
+        type: "preview.start.response",
+        payload: {
+          requestId,
+          cwd,
+          success: false,
+          server: null,
+          reused: false,
+          error: "Preview servers are disabled on this daemon.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const started = await this.previewDevServers.start({ cwd, name });
+      this.emit({
+        type: "preview.start.response",
+        payload: {
+          requestId,
+          cwd,
+          success: true,
+          reused: started.reused,
+          server: {
+            serverId: started.server.serverId,
+            name: started.server.name,
+            url: started.server.url,
+            port: started.server.port,
+            status: started.server.status,
+            boundBrowserId: started.server.boundBrowserId,
+          },
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "preview.start.response",
+        payload: {
+          requestId,
+          cwd,
+          success: false,
+          server: null,
+          reused: false,
+          error: getErrorMessage(error),
+        },
+      });
+    }
+  }
+
+  private async handlePreviewBindTabRequest(
+    serverId: string,
+    browserId: string,
+    requestId: string,
+  ): Promise<void> {
+    if (!this.previewDevServers) {
+      this.emit({
+        type: "preview.bind_tab.response",
+        payload: {
+          requestId,
+          success: false,
+          error: "Preview servers are disabled on this daemon.",
+        },
+      });
+      return;
+    }
+    try {
+      this.previewDevServers.bindTab(serverId, browserId);
+      this.emit({
+        type: "preview.bind_tab.response",
+        payload: { requestId, success: true, error: null },
+      });
+    } catch (error) {
+      this.emit({
+        type: "preview.bind_tab.response",
+        payload: { requestId, success: false, error: getErrorMessage(error) },
+      });
+    }
+  }
+
+  private async handlePreviewStopRequest(serverId: string, requestId: string): Promise<void> {
+    if (!this.previewDevServers) {
+      this.emit({
+        type: "preview.stop.response",
+        payload: {
+          requestId,
+          success: false,
+          error: "Preview servers are disabled on this daemon.",
+        },
+      });
+      return;
+    }
+    try {
+      await this.previewDevServers.stop(serverId);
+      this.emit({
+        type: "preview.stop.response",
+        payload: { requestId, success: true, error: null },
+      });
+    } catch (error) {
+      this.emit({
+        type: "preview.stop.response",
+        payload: { requestId, success: false, error: getErrorMessage(error) },
       });
     }
   }

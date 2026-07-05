@@ -89,7 +89,7 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 
 ## Comparison
 
-|                              | Otto                                                           | Codex App                    |
+|                              | Otto                                                            | Codex App                    |
 | ---------------------------- | --------------------------------------------------------------- | ---------------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Not published as open source |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows               |
