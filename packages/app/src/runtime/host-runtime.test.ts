@@ -776,7 +776,9 @@ describe("HostRuntimeController", () => {
       status: "available",
       latencyMs: 12,
     });
-    expect(snapshot.probeByConnectionId.get("relay:relay.otto-code.ai:443")).toEqual(initialRelayProbe);
+    expect(snapshot.probeByConnectionId.get("relay:relay.otto-code.ai:443")).toEqual(
+      initialRelayProbe,
+    );
   });
 
   it("switches only after the faster alternative wins consecutive probes", async () => {

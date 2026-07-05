@@ -8,6 +8,7 @@ import type {
   BrowserAutomationExecuteResponse,
   BrowserAutomationExecuteRequest,
   BrowserAutomationNetworkLogEntry,
+  BrowserAutomationNetworkRequestEntry,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { waitForActionableTarget, type ActionabilityResult } from "./actionability.js";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
@@ -41,6 +42,26 @@ export interface TabContents {
     task: () => Promise<T>,
   ): Promise<{ result: T; dialogs: BrowserAutomationDialogEvent[] }>;
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
+  /** Begin (or ensure) CDP network capture for this tab. Idempotent. */
+  startNetworkCapture?(): Promise<void>;
+  getNetworkRequests?(): CapturedNetworkRequest[];
+  getNetworkResponseBody?(
+    requestId: string,
+  ): Promise<{ body: string; base64Encoded: boolean } | null>;
+}
+
+/** One captured CDP network exchange, accumulated across Network.* events. */
+export interface CapturedNetworkRequest {
+  requestId: string;
+  url: string;
+  method: string;
+  resourceType?: string;
+  status?: number;
+  statusText?: string;
+  mimeType?: string;
+  encodedDataLength?: number;
+  failed?: string;
+  finished: boolean;
 }
 
 export interface TabImage {
@@ -449,6 +470,14 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       snapshotEngine,
     );
   },
+  inspect: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
+    const inspectCommand = command as Extract<BrowserAutomationCommand, { command: "inspect" }>;
+    return executeInspect(requestId, workspaceId, inspectCommand.args, registry, snapshotEngine);
+  },
+  network: ({ command, requestId, workspaceId, registry }) => {
+    const networkCommand = command as Extract<BrowserAutomationCommand, { command: "network" }>;
+    return executeNetwork(requestId, workspaceId, networkCommand.args, registry);
+  },
   scroll: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const scrollCommand = command as Extract<BrowserAutomationCommand, { command: "scroll" }>;
     return executeScroll(
@@ -835,6 +864,325 @@ async function executeEvaluate(
         browserId: target.browserId,
         resultJson: capped.resultJson,
         truncated: result.truncated || capped.truncated,
+      },
+    };
+  });
+}
+
+/** Computed properties returned by inspect when the caller doesn't ask for specific ones. */
+const INSPECT_DEFAULT_STYLE_PROPS = [
+  "color",
+  "background-color",
+  "font-size",
+  "font-family",
+  "font-weight",
+  "line-height",
+  "padding",
+  "margin",
+  "border",
+  "border-radius",
+  "display",
+  "position",
+  "width",
+  "height",
+  "opacity",
+  "visibility",
+];
+
+interface InspectScriptSuccess {
+  status: "ok";
+  matchCount: number;
+  tagName: string;
+  id: string;
+  className: string;
+  text: string;
+  box: { x: number; y: number; width: number; height: number };
+  styles: Record<string, string>;
+}
+
+type InspectScriptResult =
+  | InspectScriptSuccess
+  | { status: "not_found"; matchCount: number }
+  | { status: "error"; message: string };
+
+function buildInspectScript(
+  elementExpression: string,
+  matchCountExpression: string,
+  styleProps: string[],
+): string {
+  return String.raw`(() => {
+    try {
+      const el = ${elementExpression};
+      const matchCount = ${matchCountExpression};
+      if (!el) {
+        return JSON.stringify({ status: "not_found", matchCount: matchCount || 0 });
+      }
+      const cs = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      const styles = {};
+      for (const prop of ${JSON.stringify(styleProps)}) {
+        styles[prop] = cs.getPropertyValue(prop);
+      }
+      return JSON.stringify({
+        status: "ok",
+        matchCount: matchCount || 1,
+        tagName: el.tagName || "",
+        id: el.id || "",
+        className: typeof el.className === "string" ? el.className : String(el.className || ""),
+        text: (el.textContent || "").trim().slice(0, 200),
+        box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        styles,
+      });
+    } catch (error) {
+      const message = error && error.message ? String(error.message) : String(error);
+      return JSON.stringify({ status: "error", message });
+    }
+  })()`;
+}
+
+function parseInspectScriptResult(raw: unknown): InspectScriptResult | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.status === "error" && typeof record.message === "string") {
+    return { status: "error", message: record.message };
+  }
+  if (record.status === "not_found" && typeof record.matchCount === "number") {
+    return { status: "not_found", matchCount: record.matchCount };
+  }
+  if (record.status !== "ok") {
+    return null;
+  }
+  return parseInspectSuccess(record);
+}
+
+function parseInspectSuccess(record: Record<string, unknown>): InspectScriptSuccess | null {
+  const box = record.box as Record<string, unknown> | undefined;
+  const styles = record.styles as Record<string, unknown> | undefined;
+  if (
+    typeof record.matchCount !== "number" ||
+    typeof record.tagName !== "string" ||
+    typeof record.id !== "string" ||
+    typeof record.className !== "string" ||
+    typeof record.text !== "string" ||
+    !box ||
+    typeof box.x !== "number" ||
+    typeof box.y !== "number" ||
+    typeof box.width !== "number" ||
+    typeof box.height !== "number" ||
+    !styles
+  ) {
+    return null;
+  }
+  const styleEntries = Object.entries(styles).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return {
+    status: "ok",
+    matchCount: record.matchCount,
+    tagName: record.tagName,
+    id: record.id,
+    className: record.className,
+    text: record.text,
+    box: { x: box.x, y: box.y, width: box.width, height: box.height },
+    styles: Object.fromEntries(styleEntries),
+  };
+}
+
+const MAX_NETWORK_LIST_ENTRIES = 100;
+const MAX_NETWORK_BODY_CHARS = 30_000;
+
+function toNetworkRequestEntry(
+  entry: CapturedNetworkRequest,
+): BrowserAutomationNetworkRequestEntry {
+  return {
+    requestId: entry.requestId,
+    url: entry.url,
+    method: entry.method,
+    finished: entry.finished,
+    ...(entry.resourceType !== undefined ? { resourceType: entry.resourceType } : {}),
+    ...(entry.status !== undefined ? { status: entry.status } : {}),
+    ...(entry.statusText !== undefined ? { statusText: entry.statusText } : {}),
+    ...(entry.mimeType !== undefined ? { mimeType: entry.mimeType } : {}),
+    ...(entry.encodedDataLength !== undefined
+      ? { encodedDataLength: entry.encodedDataLength }
+      : {}),
+    ...(entry.failed !== undefined ? { failed: entry.failed } : {}),
+  };
+}
+
+async function executeNetwork(
+  requestId: string,
+  workspaceId: string | undefined,
+  args: { browserId: string; filter: "all" | "failed"; requestId?: string },
+  registry: BrowserRegistry,
+): Promise<AutomationCommandPayload> {
+  const target = resolveTabTarget({ requestId, workspaceId, browserId: args.browserId, registry });
+  if ("ok" in target) {
+    return target;
+  }
+  const { contents } = target;
+  if (
+    !contents.startNetworkCapture ||
+    !contents.getNetworkRequests ||
+    !contents.getNetworkResponseBody
+  ) {
+    return fail(
+      requestId,
+      "browser_unsupported",
+      "Network capture is not supported by this browser host.",
+    );
+  }
+  return withDialogCapture(contents, async () => {
+    try {
+      await contents.startNetworkCapture?.();
+    } catch (error) {
+      return fail(
+        requestId,
+        "browser_unknown_error",
+        `Failed to start network capture: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (args.requestId) {
+      let body: { body: string; base64Encoded: boolean } | null = null;
+      try {
+        body = (await contents.getNetworkResponseBody?.(args.requestId)) ?? null;
+      } catch (error) {
+        return fail(
+          requestId,
+          "browser_unknown_error",
+          `Failed to fetch response body: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (!body) {
+        return fail(
+          requestId,
+          "browser_unknown_error",
+          `No captured request with id ${args.requestId} — call browser_network without requestId to list captured requests.`,
+        );
+      }
+      const truncated = body.body.length > MAX_NETWORK_BODY_CHARS;
+      return {
+        requestId,
+        ok: true,
+        result: {
+          command: "network",
+          browserId: target.browserId,
+          body: {
+            requestId: args.requestId,
+            body: truncated ? body.body.slice(0, MAX_NETWORK_BODY_CHARS) : body.body,
+            base64Encoded: body.base64Encoded,
+            truncated,
+          },
+        },
+      };
+    }
+
+    let requests = contents.getNetworkRequests?.() ?? [];
+    if (args.filter === "failed") {
+      requests = requests.filter(
+        (entry) =>
+          entry.failed !== undefined || (entry.status !== undefined && entry.status >= 400),
+      );
+    }
+    return {
+      requestId,
+      ok: true,
+      result: {
+        command: "network",
+        browserId: target.browserId,
+        requests: requests.slice(-MAX_NETWORK_LIST_ENTRIES).map(toNetworkRequestEntry),
+      },
+    };
+  });
+}
+
+async function executeInspect(
+  requestId: string,
+  workspaceId: string | undefined,
+  args: { browserId: string; selector?: string; ref?: string; styles?: string[] },
+  registry: BrowserRegistry,
+  snapshotEngine: BrowserSnapshotEngine,
+): Promise<AutomationCommandPayload> {
+  const target = resolveTabTarget({ requestId, workspaceId, browserId: args.browserId, registry });
+  if ("ok" in target) {
+    return target;
+  }
+  return withDialogCapture(target.contents, async () => {
+    let elementExpression: string;
+    let matchCountExpression: string;
+    if (args.ref) {
+      const expression = snapshotEngine.runtimeElementExpression({
+        browserId: target.browserId,
+        ref: args.ref,
+      });
+      if (typeof expression !== "string") {
+        return staleRefFailure(requestId, args.ref);
+      }
+      elementExpression = expression;
+      matchCountExpression = "1";
+    } else {
+      const selectorJson = JSON.stringify(args.selector ?? "");
+      elementExpression = `document.querySelector(${selectorJson})`;
+      matchCountExpression = `document.querySelectorAll(${selectorJson}).length`;
+    }
+
+    let raw: unknown;
+    try {
+      raw = await target.contents.executeJavaScript(
+        buildInspectScript(
+          elementExpression,
+          matchCountExpression,
+          args.styles && args.styles.length > 0 ? args.styles : INSPECT_DEFAULT_STYLE_PROPS,
+        ),
+      );
+    } catch (error) {
+      return fail(requestId, "browser_unknown_error", evaluateErrorMessage(error));
+    }
+
+    const parsed = parseInspectScriptResult(raw);
+    if (!parsed) {
+      return fail(requestId, "browser_unknown_error", "inspect returned an unexpected result");
+    }
+    if (parsed.status === "error") {
+      return fail(requestId, "browser_unknown_error", parsed.message);
+    }
+    if (parsed.status === "not_found") {
+      if (args.ref) {
+        return staleRefFailure(requestId, args.ref);
+      }
+      return fail(
+        requestId,
+        "browser_element_not_found",
+        `No element matched selector: ${args.selector}`,
+      );
+    }
+    return {
+      requestId,
+      ok: true,
+      result: {
+        command: "inspect",
+        browserId: target.browserId,
+        ...(args.selector ? { selector: args.selector } : {}),
+        ...(args.ref ? { ref: args.ref } : {}),
+        matchCount: parsed.matchCount,
+        tagName: parsed.tagName,
+        id: parsed.id,
+        className: parsed.className,
+        text: parsed.text,
+        box: parsed.box,
+        styles: parsed.styles,
       },
     };
   });

@@ -99,8 +99,8 @@ server {
 
 The listen address and public base URL can also be set via environment variables, which take precedence over `config.json`:
 
-| Variable                              | Description                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------- |
+| Variable                             | Description                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------- |
 | `OTTO_SERVICE_PROXY_ENABLED`         | Compatibility shim; `false` suppresses optional public/listen layers only |
 | `OTTO_SERVICE_PROXY_LISTEN`          | Starts the optional service-only listener, e.g. `0.0.0.0:8080`            |
 | `OTTO_SERVICE_PROXY_PUBLIC_BASE_URL` | Adds public service aliases and links                                     |

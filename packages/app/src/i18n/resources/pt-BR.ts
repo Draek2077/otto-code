@@ -499,6 +499,11 @@ export const ptBR: TranslationResources = {
         editTerminalProfiles: "Editar perfis…",
         pinTarget: "Fixar",
         unpinTarget: "Desafixar",
+        moreActions: "Mais ações",
+        preview: "Iniciar visualização",
+        previewDisabledTooltip: "Abra um chat para visualizar seu servidor de desenvolvimento",
+        previewPickServer: "Iniciar qual servidor?",
+        previewStopServer: "Parar {{name}}",
       },
       explorer: {
         open: "Abrir explorador",
@@ -963,6 +968,17 @@ export const ptBR: TranslationResources = {
       versionMismatch:
         "As versões do app e do daemon não coincidem. Atualize ambos para a mesma versão para a melhor experiência.",
       loadFailed: "Não foi possível carregar o status do daemon desktop.",
+    },
+    window: {
+      title: "Janela",
+      minimizeToTray: {
+        title: "Minimizar para a bandeja ao fechar",
+        hint: "Fechar a janela oculta o Otto na bandeja do sistema em vez de sair",
+      },
+      startMinimized: {
+        title: "Iniciar minimizado na bandeja",
+        hint: "Inicia o Otto oculto na bandeja do sistema em vez de mostrar a janela",
+      },
     },
     updates: {
       status: {
@@ -1482,6 +1498,15 @@ export const ptBR: TranslationResources = {
         description: "Linhas mantidas no buffer do terminal integrado",
         accessibilityLabel: "Linhas do scrollback do terminal",
       },
+      previewServerCloseBehavior: {
+        label: "Servidor de pré-visualização ao fechar a aba",
+        description:
+          "Escolha se fechar uma aba de pré-visualização também para o servidor de desenvolvimento.",
+        options: {
+          keepRunning: "Manter em execução",
+          stopOnClose: "Parar ao fechar",
+        },
+      },
       language: {
         label: "Idioma",
         description: "Idioma do app",
@@ -1858,6 +1883,41 @@ export const ptBR: TranslationResources = {
         error: "Erro",
         available: "Disponível",
         notInstalled: "Não instalado",
+        requiresBase: "Requer {{name}}",
+      },
+      tools: {
+        title: "Ferramentas do Otto",
+        description:
+          "Grupos de ferramentas que este modelo pode usar. Desmarque um grupo para ocultá-lo do modelo.",
+        globallyDisabled: "Desativado nas configurações globais",
+        saved: "Configurações de ferramentas salvas",
+        saveFailed: "Falha ao salvar as configurações de ferramentas",
+        groups: {
+          preview: "Servidores de pré-visualização",
+          browser: "Controle do navegador",
+          agents: "Gerenciamento de agentes",
+          terminals: "Terminais",
+          schedules: "Agendamentos",
+          workspace: "Espaços de trabalho",
+        },
+      },
+      connection: {
+        title: "Conexão",
+        baseUrl: "URL do servidor",
+        apiKey: "Chave de API",
+        save: "Salvar conexão",
+        saving: "Salvando...",
+        saved: "Conexão salva",
+        saveFailed: "Falha ao salvar as configurações de conexão",
+      },
+      remove: {
+        button: "Remover provedor",
+        confirmTitle: "Remover {{name}}?",
+        confirmMessage:
+          "Isso exclui o provedor e sua configuração deste host. Agentes já criados com ele mantêm o histórico.",
+        removing: "Removendo...",
+        requiresUpdate: "Atualize o host para remover provedores.",
+        failed: "Falha ao remover o provedor",
       },
       models: {
         one: "1 modelo",

@@ -302,16 +302,10 @@ describe("installSkills / updateSkills", () => {
     expect(status).toEqual({ state: "up-to-date", ops: [] });
     expect(await getSkillsStatus(sandbox.targets)).toEqual({ state: "up-to-date", ops: [] });
     expect(
-      await fs.readFile(
-        path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"),
-        "utf-8",
-      ),
+      await fs.readFile(path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"), "utf-8"),
     ).toBe("user guard");
     expect(
-      await fs.readFile(
-        path.join(sandbox.targets.claudeDir, "otto", "notes", "local.md"),
-        "utf-8",
-      ),
+      await fs.readFile(path.join(sandbox.targets.claudeDir, "otto", "notes", "local.md"), "utf-8"),
     ).toBe("claude notes");
     expect(
       await fs.readFile(
@@ -352,10 +346,7 @@ describe("installSkills / updateSkills", () => {
       await fs.readFile(path.join(sandbox.targets.agentsDir, "otto", "SKILL.md"), "utf-8"),
     ).toBe("otto-v1");
     expect(
-      await fs.readFile(
-        path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"),
-        "utf-8",
-      ),
+      await fs.readFile(path.join(sandbox.targets.agentsDir, "otto", "hooks", "guard.sh"), "utf-8"),
     ).toBe("user guard");
   });
 

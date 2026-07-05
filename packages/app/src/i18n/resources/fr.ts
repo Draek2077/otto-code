@@ -500,6 +500,11 @@ export const fr: TranslationResources = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "Épingler",
         unpinTarget: "Détacher",
+        moreActions: "Plus d'actions",
+        preview: "Démarrer l'aperçu",
+        previewDisabledTooltip: "Ouvrez un chat pour prévisualiser son serveur de développement",
+        previewPickServer: "Démarrer quel serveur ?",
+        previewStopServer: "Arrêter {{name}}",
       },
       explorer: {
         open: "Ouvrir l'explorateur",
@@ -971,6 +976,17 @@ export const fr: TranslationResources = {
       versionMismatch:
         "Les versions de l'application et du démon ne correspondent pas. Mettez à jour les deux vers la même version pour une meilleure expérience.",
       loadFailed: "Impossible de charger l'état du démon de bureau.",
+    },
+    window: {
+      title: "Fenêtre",
+      minimizeToTray: {
+        title: "Réduire dans la barre d'état à la fermeture",
+        hint: "Fermer la fenêtre masque Otto dans la barre d'état système au lieu de quitter",
+      },
+      startMinimized: {
+        title: "Démarrer réduit dans la barre d'état",
+        hint: "Lance Otto masqué dans la barre d'état système au lieu d'afficher la fenêtre",
+      },
     },
     updates: {
       status: {
@@ -1500,6 +1516,15 @@ export const fr: TranslationResources = {
         description: "Lignes conservées dans le tampon du terminal intégré",
         accessibilityLabel: "Lignes de défilementTerminal",
       },
+      previewServerCloseBehavior: {
+        label: "Serveur de prévisualisation à la fermeture de l'onglet",
+        description:
+          "Choisissez si la fermeture d'un onglet de prévisualisation arrête aussi son serveur de développement.",
+        options: {
+          keepRunning: "Continuer l'exécution",
+          stopOnClose: "Arrêter à la fermeture",
+        },
+      },
       language: {
         label: "Langue",
         description: "Langue de l'application",
@@ -1877,6 +1902,41 @@ export const fr: TranslationResources = {
         error: "Erreur",
         available: "Disponible",
         notInstalled: "Non installé",
+        requiresBase: "Nécessite {{name}}",
+      },
+      tools: {
+        title: "Outils Otto",
+        description:
+          "Groupes d'outils que ce modèle peut utiliser. Décochez un groupe pour le masquer au modèle.",
+        globallyDisabled: "Désactivé dans les paramètres globaux",
+        saved: "Paramètres des outils enregistrés",
+        saveFailed: "Échec de l'enregistrement des paramètres des outils",
+        groups: {
+          preview: "Serveurs de prévisualisation",
+          browser: "Contrôle du navigateur",
+          agents: "Gestion des agents",
+          terminals: "Terminaux",
+          schedules: "Planifications",
+          workspace: "Espaces de travail",
+        },
+      },
+      connection: {
+        title: "Connexion",
+        baseUrl: "URL du serveur",
+        apiKey: "Clé d'API",
+        save: "Enregistrer la connexion",
+        saving: "Enregistrement...",
+        saved: "Connexion enregistrée",
+        saveFailed: "Échec de l'enregistrement des paramètres de connexion",
+      },
+      remove: {
+        button: "Supprimer le fournisseur",
+        confirmTitle: "Supprimer {{name}} ?",
+        confirmMessage:
+          "Le fournisseur et sa configuration seront supprimés de cet hôte. Les agents déjà créés conservent leur historique.",
+        removing: "Suppression...",
+        requiresUpdate: "Mettez à jour l'hôte pour supprimer des fournisseurs.",
+        failed: "Échec de la suppression du fournisseur",
       },
       models: {
         one: "1 modèle",

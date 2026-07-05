@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
@@ -207,6 +207,7 @@ interface SessionForTestOptions {
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
+  previewDevServers?: SessionOptions["previewDevServers"];
   serviceProxy?: SessionOptions["serviceProxy"];
   scriptRuntimeStore?: SessionOptions["scriptRuntimeStore"];
   getDaemonTcpPort?: () => number | null;
@@ -294,6 +295,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     stt: options.stt ?? null,
     tts: null,
     terminalManager: options.terminalManager ?? null,
+    previewDevServers: options.previewDevServers,
     providerSnapshotManager:
       options.providerSnapshotManager ?? createProviderSnapshotManagerStub().manager,
     serviceProxy: options.serviceProxy,
@@ -306,6 +308,310 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     daemonRuntimeConfig: options.daemonRuntimeConfig,
   });
 }
+
+describe("preview RPCs", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeProjectRoot(): string {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "preview-rpc-session-test-")));
+    tempDirs.push(root);
+    return root;
+  }
+
+  function fakePreviewDevServers(overrides: {
+    start?: ReturnType<typeof vi.fn>;
+    bindTab?: ReturnType<typeof vi.fn>;
+    stop?: ReturnType<typeof vi.fn>;
+  }): SessionOptions["previewDevServers"] {
+    return {
+      start: overrides.start ?? vi.fn(),
+      stop: overrides.stop ?? vi.fn(),
+      list: vi.fn(() => []),
+      logs: vi.fn(() => []),
+      bindTab: overrides.bindTab ?? vi.fn(),
+      boundTab: vi.fn(() => null),
+    } as unknown as SessionOptions["previewDevServers"];
+  }
+
+  test("preview.list_config.request reports unconfigured when launch.json is missing", async () => {
+    const cwd = makeProjectRoot();
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+
+    await session.handleMessage({
+      type: "preview.list_config.request",
+      cwd,
+      requestId: "req-list-1",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.list_config.response",
+        payload: {
+          requestId: "req-list-1",
+          cwd,
+          configured: false,
+          servers: [],
+          runningServers: [],
+          error: null,
+        },
+      },
+    ]);
+  });
+
+  test("preview.list_config.request lists configured servers", async () => {
+    const cwd = makeProjectRoot();
+    mkdirSync(join(cwd, ".claude"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".claude", "launch.json"),
+      JSON.stringify({
+        version: "0.0.1",
+        configurations: [
+          { name: "otto-dev", runtimeExecutable: "npm", runtimeArgs: ["run", "dev"], port: 8081 },
+          {
+            name: "website",
+            runtimeExecutable: "npm",
+            runtimeArgs: ["run", "dev:web"],
+            port: 8082,
+          },
+        ],
+      }),
+    );
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+
+    await session.handleMessage({
+      type: "preview.list_config.request",
+      cwd,
+      requestId: "req-list-2",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.list_config.response",
+        payload: {
+          requestId: "req-list-2",
+          cwd,
+          configured: true,
+          servers: [
+            { name: "otto-dev", port: 8081 },
+            { name: "website", port: 8082 },
+          ],
+          runningServers: [],
+          error: null,
+        },
+      },
+    ]);
+  });
+
+  test("preview.start.request starts a server and reports its summary", async () => {
+    const cwd = makeProjectRoot();
+    const start = vi.fn().mockResolvedValue({
+      server: {
+        serverId: "srv_1",
+        name: "otto-dev",
+        cwd,
+        port: 8081,
+        url: "http://127.0.0.1:8081/",
+        status: "running",
+        pid: 123,
+        exitCode: null,
+        boundBrowserId: null,
+      },
+      reused: false,
+      logTail: ["listening"],
+    });
+    const messages: unknown[] = [];
+    const session = createSessionForTest({
+      messages,
+      previewDevServers: fakePreviewDevServers({ start }),
+    });
+
+    await session.handleMessage({
+      type: "preview.start.request",
+      cwd,
+      name: "otto-dev",
+      requestId: "req-start-1",
+    });
+
+    expect(start).toHaveBeenCalledWith({ cwd, name: "otto-dev" });
+    expect(messages).toEqual([
+      {
+        type: "preview.start.response",
+        payload: {
+          requestId: "req-start-1",
+          cwd,
+          success: true,
+          reused: false,
+          server: {
+            serverId: "srv_1",
+            name: "otto-dev",
+            url: "http://127.0.0.1:8081/",
+            port: 8081,
+            status: "running",
+            boundBrowserId: null,
+          },
+          error: null,
+        },
+      },
+    ]);
+  });
+
+  test("preview.start.request reports the failure when the server can't start", async () => {
+    const cwd = makeProjectRoot();
+    const start = vi.fn().mockRejectedValue(new Error("Port 8081 is already in use"));
+    const messages: unknown[] = [];
+    const session = createSessionForTest({
+      messages,
+      previewDevServers: fakePreviewDevServers({ start }),
+    });
+
+    await session.handleMessage({
+      type: "preview.start.request",
+      cwd,
+      name: "otto-dev",
+      requestId: "req-start-2",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.start.response",
+        payload: {
+          requestId: "req-start-2",
+          cwd,
+          success: false,
+          reused: false,
+          server: null,
+          error: "Port 8081 is already in use",
+        },
+      },
+    ]);
+  });
+
+  test("preview.start.request reports disabled when no DevServerManager is wired", async () => {
+    const cwd = makeProjectRoot();
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+
+    await session.handleMessage({
+      type: "preview.start.request",
+      cwd,
+      name: "otto-dev",
+      requestId: "req-start-3",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.start.response",
+        payload: {
+          requestId: "req-start-3",
+          cwd,
+          success: false,
+          reused: false,
+          server: null,
+          error: "Preview servers are disabled on this daemon.",
+        },
+      },
+    ]);
+  });
+
+  test("preview.bind_tab.request binds the browser tab to the server", async () => {
+    const bindTab = vi.fn();
+    const messages: unknown[] = [];
+    const session = createSessionForTest({
+      messages,
+      previewDevServers: fakePreviewDevServers({ bindTab }),
+    });
+
+    await session.handleMessage({
+      type: "preview.bind_tab.request",
+      serverId: "srv_1",
+      browserId: "browser-1",
+      requestId: "req-bind-1",
+    });
+
+    expect(bindTab).toHaveBeenCalledWith("srv_1", "browser-1");
+    expect(messages).toEqual([
+      {
+        type: "preview.bind_tab.response",
+        payload: { requestId: "req-bind-1", success: true, error: null },
+      },
+    ]);
+  });
+
+  test("preview.stop.request stops the server", async () => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const messages: unknown[] = [];
+    const session = createSessionForTest({
+      messages,
+      previewDevServers: fakePreviewDevServers({ stop }),
+    });
+
+    await session.handleMessage({
+      type: "preview.stop.request",
+      serverId: "srv_1",
+      requestId: "req-stop-1",
+    });
+
+    expect(stop).toHaveBeenCalledWith("srv_1");
+    expect(messages).toEqual([
+      {
+        type: "preview.stop.response",
+        payload: { requestId: "req-stop-1", success: true, error: null },
+      },
+    ]);
+  });
+
+  test("preview.stop.request reports the failure when the server can't be stopped", async () => {
+    const stop = vi.fn().mockRejectedValue(new Error('Unknown serverId "srv_1".'));
+    const messages: unknown[] = [];
+    const session = createSessionForTest({
+      messages,
+      previewDevServers: fakePreviewDevServers({ stop }),
+    });
+
+    await session.handleMessage({
+      type: "preview.stop.request",
+      serverId: "srv_1",
+      requestId: "req-stop-2",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.stop.response",
+        payload: { requestId: "req-stop-2", success: false, error: 'Unknown serverId "srv_1".' },
+      },
+    ]);
+  });
+
+  test("preview.stop.request reports disabled when no DevServerManager is wired", async () => {
+    const messages: unknown[] = [];
+    const session = createSessionForTest({ messages });
+
+    await session.handleMessage({
+      type: "preview.stop.request",
+      serverId: "srv_1",
+      requestId: "req-stop-3",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "preview.stop.response",
+        payload: {
+          requestId: "req-stop-3",
+          success: false,
+          error: "Preview servers are disabled on this daemon.",
+        },
+      },
+    ]);
+  });
+});
 
 describe("file explorer binary responses", () => {
   const tempDirs: string[] = [];
@@ -799,10 +1105,7 @@ describe("project config RPC authorization", () => {
     "read_project_config_request accepts a symlink to an active project root",
     async () => {
       const repoRoot = makeRoot();
-      writeFileSync(
-        join(repoRoot, "otto.json"),
-        JSON.stringify({ worktree: { setup: "npm ci" } }),
-      );
+      writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
       const linkRoot = join(makeRoot(), "link");
       symlinkSync(repoRoot, linkRoot, "dir");
       const messages: unknown[] = [];

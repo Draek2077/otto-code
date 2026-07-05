@@ -11,15 +11,19 @@ export function getAcpProviderCatalog(): AcpProviderCatalogItem[] {
 export function buildAcpProviderConfigPatch(
   entry: AcpProviderCatalogItem,
 ): MutableDaemonConfigPatch {
+  if (entry.extends === "acp" && !entry.command) {
+    throw new Error(`Catalog entry '${entry.id}' extends "acp" but declares no command`);
+  }
   return {
     providers: {
       [entry.id]: {
-        extends: "acp",
+        extends: entry.extends,
         label: entry.title,
         description: entry.description,
-        command: [...entry.command],
+        ...(entry.command ? { command: [...entry.command] } : {}),
         env: entry.env ? { ...entry.env } : {},
         ...(entry.params ? { params: { ...entry.params } } : {}),
+        ...(entry.models ? { models: entry.models.map((model) => ({ ...model })) } : {}),
       },
     },
   };

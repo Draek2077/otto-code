@@ -486,6 +486,23 @@ describe("browser automation execute RPC schemas", () => {
     });
   });
 
+  test("new tab accepts a split-right layout hint", () => {
+    const parsed = BrowserAutomationExecuteRequestSchema.parse({
+      type: "browser.automation.execute.request",
+      requestId: "req-new-tab",
+      workspaceId: "workspace-1",
+      command: {
+        command: "new_tab",
+        args: { url: "https://example.com", layout: "split-right" },
+      },
+    });
+
+    expect(parsed.command).toEqual({
+      command: "new_tab",
+      args: { url: "https://example.com", layout: "split-right" },
+    });
+  });
+
   test("tab commands require a browser id from browser_new_tab or browser_list_tabs", () => {
     const parsed = BrowserAutomationExecuteRequestSchema.safeParse({
       type: "browser.automation.execute.request",
@@ -618,6 +635,126 @@ describe("browser automation execute RPC schemas", () => {
       expect(parsed.command).toEqual(expected);
     },
   );
+
+  test("inspect requires exactly one of selector or ref", () => {
+    const buildRequest = (args: Record<string, unknown>) => ({
+      type: "browser.automation.execute.request",
+      requestId: "req-inspect",
+      command: { command: "inspect", args },
+    });
+
+    expect(
+      BrowserAutomationExecuteRequestSchema.safeParse(
+        buildRequest({ browserId: BROWSER_ID, selector: ".btn" }),
+      ).success,
+    ).toBe(true);
+    expect(
+      BrowserAutomationExecuteRequestSchema.safeParse(
+        buildRequest({ browserId: BROWSER_ID, ref: "@e1", styles: ["color"] }),
+      ).success,
+    ).toBe(true);
+    expect(
+      BrowserAutomationExecuteRequestSchema.safeParse(
+        buildRequest({ browserId: BROWSER_ID, selector: ".btn", ref: "@e1" }),
+      ),
+    ).toMatchObject({
+      success: false,
+      error: {
+        issues: [
+          expect.objectContaining({
+            message: "browser_inspect requires exactly one of selector or ref",
+          }),
+        ],
+      },
+    });
+    expect(
+      BrowserAutomationExecuteRequestSchema.safeParse(buildRequest({ browserId: BROWSER_ID }))
+        .success,
+    ).toBe(false);
+  });
+
+  test("inspect responses parse styles, box, and match count", () => {
+    const parsed = BrowserAutomationExecuteResponseSchema.safeParse({
+      type: "browser.automation.execute.response",
+      payload: {
+        requestId: "req-inspect",
+        ok: true,
+        result: {
+          command: "inspect",
+          browserId: BROWSER_ID,
+          selector: ".btn",
+          matchCount: 2,
+          tagName: "BUTTON",
+          id: "save",
+          className: "btn primary",
+          text: "Save",
+          box: { x: 10, y: 20, width: 120, height: 32 },
+          styles: { color: "rgb(255, 255, 255)" },
+        },
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  test("network defaults the filter and accepts an optional requestId", () => {
+    const parsed = BrowserAutomationExecuteRequestSchema.parse({
+      type: "browser.automation.execute.request",
+      requestId: "req-network",
+      command: { command: "network", args: { browserId: BROWSER_ID } },
+    });
+    expect(parsed.command).toEqual({
+      command: "network",
+      args: { browserId: BROWSER_ID, filter: "all" },
+    });
+
+    const withBody = BrowserAutomationExecuteRequestSchema.parse({
+      type: "browser.automation.execute.request",
+      requestId: "req-network",
+      command: {
+        command: "network",
+        args: { browserId: BROWSER_ID, filter: "failed", requestId: "55.1" },
+      },
+    });
+    expect(withBody.command.args).toMatchObject({ filter: "failed", requestId: "55.1" });
+  });
+
+  test("network responses parse both list and body variants", () => {
+    const list = BrowserAutomationExecuteResponseSchema.safeParse({
+      type: "browser.automation.execute.response",
+      payload: {
+        requestId: "req-network",
+        ok: true,
+        result: {
+          command: "network",
+          browserId: BROWSER_ID,
+          requests: [
+            {
+              requestId: "55.1",
+              url: "https://a.test/api",
+              method: "GET",
+              status: 200,
+              finished: true,
+            },
+          ],
+        },
+      },
+    });
+    expect(list.success).toBe(true);
+
+    const body = BrowserAutomationExecuteResponseSchema.safeParse({
+      type: "browser.automation.execute.response",
+      payload: {
+        requestId: "req-network",
+        ok: true,
+        result: {
+          command: "network",
+          browserId: BROWSER_ID,
+          body: { requestId: "55.1", body: '{"ok":true}', base64Encoded: false, truncated: false },
+        },
+      },
+    });
+    expect(body.success).toBe(true);
+  });
 
   test("navigate rejects non-http URLs at the protocol boundary", () => {
     const parsed = BrowserAutomationExecuteRequestSchema.safeParse({

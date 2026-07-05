@@ -495,6 +495,11 @@ export const zhCN: TranslationResources = {
         editTerminalProfiles: "Edit profiles…",
         pinTarget: "固定",
         unpinTarget: "取消固定",
+        moreActions: "更多操作",
+        preview: "启动预览",
+        previewDisabledTooltip: "打开聊天以预览其开发服务器",
+        previewPickServer: "启动哪个服务器?",
+        previewStopServer: "停止 {{name}}",
       },
       explorer: {
         open: "打开 explorer",
@@ -934,6 +939,17 @@ export const zhCN: TranslationResources = {
       openAdvancedSettings: "打开 daemon 高级设置",
       versionMismatch: "App 和 daemon 版本不匹配。请将两者更新到相同版本，以获得最佳体验。",
       loadFailed: "无法加载桌面 daemon 状态。",
+    },
+    window: {
+      title: "窗口",
+      minimizeToTray: {
+        title: "关闭时最小化到托盘",
+        hint: "关闭窗口会将 Otto 隐藏到系统托盘，而不是退出",
+      },
+      startMinimized: {
+        title: "启动时最小化到托盘",
+        hint: "启动 Otto 时隐藏在系统托盘中，而不显示窗口",
+      },
     },
     updates: {
       status: {
@@ -1439,6 +1455,14 @@ export const zhCN: TranslationResources = {
         description: "内置终端缓冲区保留的行数",
         accessibilityLabel: "终端回滚行数",
       },
+      previewServerCloseBehavior: {
+        label: "关闭标签页时的预览服务器",
+        description: "选择关闭预览标签页时是否同时停止其开发服务器。",
+        options: {
+          keepRunning: "保持运行",
+          stopOnClose: "关闭时停止",
+        },
+      },
       language: {
         label: "语言",
         description: "应用语言",
@@ -1805,6 +1829,40 @@ export const zhCN: TranslationResources = {
         error: "错误",
         available: "可用",
         notInstalled: "未安装",
+        requiresBase: "需要 {{name}}",
+      },
+      tools: {
+        title: "Otto 工具",
+        description: "此模型可使用的工具组。取消选中某个组即可对模型隐藏。",
+        globallyDisabled: "已在全局设置中禁用",
+        saved: "工具设置已保存",
+        saveFailed: "无法保存工具设置",
+        groups: {
+          preview: "预览服务器",
+          browser: "浏览器控制",
+          agents: "代理管理",
+          terminals: "终端",
+          schedules: "计划任务",
+          workspace: "工作区",
+        },
+      },
+      connection: {
+        title: "连接",
+        baseUrl: "服务器地址",
+        apiKey: "API 密钥",
+        save: "保存连接",
+        saving: "正在保存...",
+        saved: "连接已保存",
+        saveFailed: "保存连接设置失败",
+      },
+      remove: {
+        button: "移除 Provider",
+        confirmTitle: "移除 {{name}}？",
+        confirmMessage:
+          "这将从此 Host 删除该 Provider 及其配置。已用它创建的 Agent 会保留历史记录。",
+        removing: "正在移除...",
+        requiresUpdate: "请更新 Host 以移除 Provider。",
+        failed: "移除 Provider 失败",
       },
       models: {
         one: "1 个 Model",

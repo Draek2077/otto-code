@@ -8,7 +8,7 @@ import type {
   BrowserAutomationExecuteRequest,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
-import type { BrowserRegistry, TabContents, TabImage } from "./service.js";
+import type { BrowserRegistry, CapturedNetworkRequest, TabContents, TabImage } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
 
 const BROWSER_A = "11111111-1111-4111-8111-111111111111";
@@ -51,6 +51,10 @@ class FakeTab implements TabContents {
     children?: unknown[];
   }> = [];
   public actionScriptResult: unknown = true;
+  public inspectScriptResult: unknown = null;
+  public capturedNetworkRequests: CapturedNetworkRequest[] = [];
+  public networkBodies: Record<string, { body: string; base64Encoded: boolean }> = {};
+  public networkCaptureStarts = 0;
   public evaluateScriptResult: unknown = { ok: true, resultJson: "null" };
   public evaluateScriptThrows = false;
   public evaluateScriptErrorMessage = "page failed";
@@ -134,6 +138,9 @@ class FakeTab implements TabContents {
     if (code.includes("element.focus({ preventScroll: true })")) {
       return { editable: this.keypressTargetEditable };
     }
+    if (code.includes("getComputedStyle(el)")) {
+      return this.inspectScriptResult;
+    }
     if (code.includes("__OTTO_BROWSER_EVALUATE__")) {
       if (this.evaluateScriptThrows) {
         throw new Error(this.evaluateScriptErrorMessage);
@@ -187,6 +194,21 @@ class FakeTab implements TabContents {
 
   public getConsoleMessages(): BrowserAutomationConsoleLogEntry[] {
     return this.consoleMessages;
+  }
+
+  public async startNetworkCapture(): Promise<void> {
+    this.networkCaptureStarts += 1;
+    this.actions.push("network:enable");
+  }
+
+  public getNetworkRequests(): CapturedNetworkRequest[] {
+    return this.capturedNetworkRequests;
+  }
+
+  public async getNetworkResponseBody(
+    requestId: string,
+  ): Promise<{ body: string; base64Encoded: boolean } | null> {
+    return this.networkBodies[requestId] ?? null;
   }
 
   public async captureDialogs<T>(
@@ -1435,9 +1457,7 @@ describe("executeAutomationCommand", () => {
         truncated: false,
       },
     });
-    expect(containsScript(browser.tab, '"@e1"', "__OTTO_BROWSER_AUTOMATION__?.resolve")).toBe(
-      true,
-    );
+    expect(containsScript(browser.tab, '"@e1"', "__OTTO_BROWSER_AUTOMATION__?.resolve")).toBe(true);
   });
 
   test("evaluate returns stale ref when the target ref cannot be resolved", async () => {
@@ -1978,5 +1998,206 @@ describe("executeAutomationCommand", () => {
       },
       { command: "DOM.describeNode", params: { objectId: "object-1" } },
     ]);
+  });
+});
+
+describe("inspect", () => {
+  test("returns computed styles and box for a selector match", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.inspectScriptResult = JSON.stringify({
+      status: "ok",
+      matchCount: 2,
+      tagName: "BUTTON",
+      id: "save",
+      className: "btn primary",
+      text: "Save",
+      box: { x: 10, y: 20, width: 120, height: 32 },
+      styles: { color: "rgb(255, 255, 255)", "background-color": "rgb(0, 0, 255)" },
+    });
+
+    const result = await browser.execute({
+      command: "inspect",
+      args: { browserId: BROWSER_A, selector: ".btn" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-inspect",
+      ok: true,
+      result: {
+        command: "inspect",
+        browserId: BROWSER_A,
+        selector: ".btn",
+        matchCount: 2,
+        tagName: "BUTTON",
+        id: "save",
+        className: "btn primary",
+        text: "Save",
+        box: { x: 10, y: 20, width: 120, height: 32 },
+        styles: { color: "rgb(255, 255, 255)", "background-color": "rgb(0, 0, 255)" },
+      },
+    });
+    expect(
+      browser.tab.scripts.some((script) => script.includes('document.querySelector(".btn")')),
+    ).toBe(true);
+  });
+
+  test("honors a caller-provided styles list", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.inspectScriptResult = JSON.stringify({
+      status: "ok",
+      matchCount: 1,
+      tagName: "DIV",
+      id: "",
+      className: "",
+      text: "",
+      box: { x: 0, y: 0, width: 100, height: 50 },
+      styles: { padding: "8px" },
+    });
+
+    await browser.execute({
+      command: "inspect",
+      args: { browserId: BROWSER_A, selector: "#panel", styles: ["padding"] },
+    });
+
+    const script = browser.tab.scripts.find((entry) => entry.includes("getComputedStyle(el)"));
+    expect(script).toContain('["padding"]');
+    expect(script).not.toContain("font-family");
+  });
+
+  test("returns browser_element_not_found when no element matches the selector", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.inspectScriptResult = JSON.stringify({ status: "not_found", matchCount: 0 });
+
+    const result = await browser.execute({
+      command: "inspect",
+      args: { browserId: BROWSER_A, selector: "#missing" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-inspect",
+      ok: false,
+      error: {
+        code: "browser_element_not_found",
+        message: "No element matched selector: #missing",
+        retryable: false,
+      },
+    });
+  });
+
+  test("maps a not-found ref to a stale ref failure", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "inspect",
+      args: { browserId: BROWSER_A, ref: "@e1" },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("browser_stale_ref");
+    }
+  });
+});
+
+describe("network", () => {
+  test("starts capture and lists requests with status codes", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.capturedNetworkRequests = [
+      {
+        requestId: "55.1",
+        url: "https://a.test/api/items",
+        method: "GET",
+        resourceType: "Fetch",
+        status: 200,
+        statusText: "OK",
+        mimeType: "application/json",
+        encodedDataLength: 512,
+        finished: true,
+      },
+      {
+        requestId: "55.2",
+        url: "https://a.test/api/save",
+        method: "POST",
+        status: 500,
+        statusText: "Internal Server Error",
+        finished: true,
+      },
+    ];
+
+    const result = await browser.execute({
+      command: "network",
+      args: { browserId: BROWSER_A, filter: "all" },
+    });
+
+    expect(browser.tab.networkCaptureStarts).toBe(1);
+    expect(result.ok).toBe(true);
+    if (result.ok && result.result.command === "network") {
+      expect(result.result.requests?.map((entry) => entry.requestId)).toEqual(["55.1", "55.2"]);
+      expect(result.result.requests?.[0]?.status).toBe(200);
+      expect(result.result.body).toBeUndefined();
+    }
+  });
+
+  test("filters to failed requests including network-layer failures", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.capturedNetworkRequests = [
+      { requestId: "1", url: "https://a.test/ok", method: "GET", status: 200, finished: true },
+      { requestId: "2", url: "https://a.test/boom", method: "GET", status: 503, finished: true },
+      {
+        requestId: "3",
+        url: "https://a.test/refused",
+        method: "GET",
+        failed: "net::ERR_CONNECTION_REFUSED",
+        finished: true,
+      },
+    ];
+
+    const result = await browser.execute({
+      command: "network",
+      args: { browserId: BROWSER_A, filter: "failed" },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.result.command === "network") {
+      expect(result.result.requests?.map((entry) => entry.requestId)).toEqual(["2", "3"]);
+    }
+  });
+
+  test("fetches a response body by requestId", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.capturedNetworkRequests = [
+      { requestId: "55.1", url: "https://a.test/api", method: "GET", status: 200, finished: true },
+    ];
+    browser.tab.networkBodies["55.1"] = { body: '{"ok":true}', base64Encoded: false };
+
+    const result = await browser.execute({
+      command: "network",
+      args: { browserId: BROWSER_A, filter: "all", requestId: "55.1" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-network",
+      ok: true,
+      result: {
+        command: "network",
+        browserId: BROWSER_A,
+        body: { requestId: "55.1", body: '{"ok":true}', base64Encoded: false, truncated: false },
+      },
+    });
+  });
+
+  test("reports unknown requestIds with guidance", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "network",
+      args: { browserId: BROWSER_A, filter: "all", requestId: "nope" },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("browser_unknown_error");
+      expect(result.error.message).toContain("No captured request with id nope");
+    }
   });
 });

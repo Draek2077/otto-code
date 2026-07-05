@@ -27,6 +27,7 @@ import {
   RotateCw,
   Rows2,
   Globe,
+  Play,
   Plus,
   SquarePen,
   SquareTerminal,
@@ -89,6 +90,13 @@ import { runPinnedTabTarget, type TabTargetHandlers } from "@/workspace-pins/run
 import type { PinnedTabTarget } from "@/workspace-pins/target";
 import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
+import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
+import { useSessionStore } from "@/stores/session-store";
+import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
+import {
+  buildWorkspaceTabPersistenceKey,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
@@ -106,15 +114,22 @@ const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedGlobe = withUnistyles(Globe);
+const ThemedPlay = withUnistyles(Play);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 const AGENT_ICON = <ThemedSquarePen size={14} uniProps={mutedColorMapping} />;
 const TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
 const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
+const PREVIEW_ICON = <ThemedPlay size={14} uniProps={mutedColorMapping} />;
+const PREVIEW_BOOTSTRAP_PROMPT =
+  "Detect this project's dev servers and save their configurations to `.claude/launch.json` " +
+  "(create it if missing) using the format from the `preview_start` tool description. Then ask me " +
+  "which ones to start, and call `preview_start` for each one I pick.";
 
 const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
@@ -126,6 +141,13 @@ function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackTyp
 
 function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function previewServerStopButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
+  return [
+    styles.previewServerStopButton,
+    (hovered || pressed) && styles.previewServerStopButtonActive,
+  ];
 }
 
 function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
@@ -208,6 +230,328 @@ function WorkspaceInlineAddTabButton({
   );
 }
 
+interface WorkspacePreviewButtonProps {
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  paneId?: string;
+  focusedAgentId: string | null;
+}
+
+/**
+ * Starts (or reuses) the focused chat's dev server and opens its designated
+ * preview tab in a split pane to the right — the UI-driven counterpart to the
+ * agent-facing preview_start tool. Disabled unless the pane's active tab is a
+ * chat, since the server to preview is resolved from that agent's cwd.
+ */
+function WorkspacePreviewButton({
+  normalizedServerId,
+  normalizedWorkspaceId,
+  paneId,
+  focusedAgentId,
+}: WorkspacePreviewButtonProps) {
+  const { t } = useTranslation();
+  const [isBusy, setIsBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerServers, setPickerServers] = useState<PreviewConfiguredServer[]>([]);
+  const runningServersRef = useRef<Map<string, PreviewRunningServer>>(new Map());
+
+  const startAndOpenPreview = useCallback(
+    async (agentId: string, cwd: string, serverName: string) => {
+      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
+      if (!client) {
+        return;
+      }
+      const started = await client.previewStart(cwd, serverName);
+      if (!started.success || !started.server) {
+        await client
+          .sendAgentMessage(
+            agentId,
+            `I tried to start the "${serverName}" preview server but it failed: ${
+              started.error ?? "unknown error"
+            }`,
+          )
+          .catch(() => undefined);
+        return;
+      }
+
+      const { browserId } = createWorkspaceBrowser({
+        initialUrl: started.server.url,
+        isPreview: true,
+        previewServerId: started.server.serverId,
+      });
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+      });
+      if (workspaceKey && paneId) {
+        const layoutStore = useWorkspaceLayoutStore.getState();
+        const newTabId = layoutStore.openTabInBackground(workspaceKey, {
+          kind: "browser",
+          browserId,
+        });
+        if (newTabId) {
+          layoutStore.splitPane(workspaceKey, {
+            tabId: newTabId,
+            targetPaneId: paneId,
+            position: "right",
+          });
+        }
+      }
+      await client.previewBindTab(started.server.serverId, browserId).catch(() => undefined);
+    },
+    [normalizedServerId, normalizedWorkspaceId, paneId],
+  );
+
+  const stopServer = useCallback(
+    async (serverId: string, serverName: string, port: number) => {
+      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
+      if (!client) {
+        return;
+      }
+
+      await client.previewStop(serverId).catch(() => undefined);
+
+      // Close only the preview tab(s) bound to this specific server, not every browser tab.
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+      });
+
+      if (workspaceKey) {
+        const layoutStore = useWorkspaceLayoutStore.getState();
+        const browsersById = useBrowserStore.getState().browsersById;
+        const allTabs = layoutStore.getWorkspaceTabs(workspaceKey);
+        const portNeedle = `:${port}`;
+        for (const tab of allTabs) {
+          if (tab.target.kind !== "browser") {
+            continue;
+          }
+          const browser = browsersById[tab.target.browserId];
+          if (!browser?.isPreview) {
+            continue;
+          }
+          // Match on the exact server id, or — for a server reconciled after a
+          // daemon restart, whose tab still holds the pre-restart id — on the
+          // dev-server port in the tab's URL.
+          const matchesId = browser.previewServerId === serverId;
+          const matchesPort = browser.url.includes(portNeedle);
+          if (matchesId || matchesPort) {
+            layoutStore.closeTab(workspaceKey, tab.tabId);
+          }
+        }
+      }
+
+      // Update running servers state to reflect the stop
+      const map = runningServersRef.current;
+      map.delete(serverName);
+    },
+    [normalizedServerId, normalizedWorkspaceId],
+  );
+
+  const runPreviewFlow = useCallback(async () => {
+    if (!focusedAgentId) {
+      return;
+    }
+    const session = useSessionStore.getState().sessions[normalizedServerId];
+    const client = session?.client ?? null;
+    const cwd = session?.agents.get(focusedAgentId)?.cwd ?? null;
+    if (!client || !cwd) {
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      const config = await client.previewListConfig(cwd);
+      if (!config.configured || config.servers.length === 0) {
+        await client.sendAgentMessage(focusedAgentId, PREVIEW_BOOTSTRAP_PROMPT);
+        return;
+      }
+
+      // Store running servers from the response
+      const map = new Map<string, PreviewRunningServer>();
+      if (config.runningServers && config.runningServers.length > 0) {
+        for (const s of config.runningServers) {
+          map.set(s.name, s);
+        }
+      }
+      runningServersRef.current = map;
+
+      // Skip the picker only when there's a single configured server that isn't
+      // already running — otherwise fall through so the user can see it's running
+      // and gets the option to close it, same as the multi-server case.
+      if (config.servers.length === 1 && !map.has(config.servers[0]!.name)) {
+        await startAndOpenPreview(focusedAgentId, cwd, config.servers[0]!.name);
+        return;
+      }
+      setPickerServers(config.servers);
+      setPickerOpen(true);
+    } finally {
+      setIsBusy(false);
+    }
+  }, [focusedAgentId, normalizedServerId, startAndOpenPreview]);
+
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) {
+        setPickerOpen(false);
+        return;
+      }
+      void runPreviewFlow();
+    },
+    [runPreviewFlow],
+  );
+
+  const handlePickServer = useCallback(
+    (serverName: string) => {
+      // Prevent duplicate starts - server is already running
+      if (runningServersRef.current.has(serverName)) {
+        return;
+      }
+
+      if (!focusedAgentId) {
+        return;
+      }
+      const cwd = useSessionStore
+        .getState()
+        .sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd;
+      setPickerOpen(false);
+      if (cwd) {
+        void startAndOpenPreview(focusedAgentId, cwd, serverName);
+      }
+    },
+    [focusedAgentId, normalizedServerId, startAndOpenPreview],
+  );
+
+  const disabled = !focusedAgentId || isBusy;
+  const label = focusedAgentId
+    ? t("workspace.tabs.actions.preview")
+    : t("workspace.tabs.actions.previewDisabledTooltip");
+
+  const previewButtonStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.newTabActionButton,
+      (hovered || pressed) && styles.newTabActionButtonHovered,
+      disabled && styles.newTabActionButtonDisabled,
+    ],
+    [disabled],
+  );
+
+  const handleStopServer = useCallback(
+    (serverName: string) => {
+      setPickerOpen(false);
+      const running = runningServersRef.current.get(serverName);
+      if (running) {
+        void stopServer(running.serverId, serverName, running.port);
+      }
+    },
+    [stopServer],
+  );
+
+  return (
+    <DropdownMenu open={pickerOpen} onOpenChange={handleOpenChange}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild triggerRefProp="triggerRef" disabled={false}>
+          <DropdownMenuTrigger
+            testID="workspace-preview-button"
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            style={previewButtonStyle}
+          >
+            {isBusy ? (
+              <ThemedActivityIndicator size="small" uniProps={mutedColorMapping} />
+            ) : (
+              PREVIEW_ICON
+            )}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <Text style={styles.newTabTooltipText}>{label}</Text>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
+        <DropdownMenuLabel>{t("workspace.tabs.actions.previewPickServer")}</DropdownMenuLabel>
+        {pickerServers.map((server) => {
+          const isRunning = runningServersRef.current.has(server.name);
+          return (
+            <PreviewServerMenuItem
+              key={server.name}
+              server={server}
+              onSelect={handlePickServer}
+              onStop={handleStopServer}
+              isRunning={isRunning}
+            />
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function PreviewServerMenuItem({
+  server,
+  onSelect,
+  onStop,
+  isRunning,
+}: {
+  server: PreviewConfiguredServer;
+  onSelect: (serverName: string) => void;
+  onStop?: (serverName: string) => void;
+  isRunning: boolean;
+}) {
+  const { t } = useTranslation();
+  const handleSelect = useCallback(() => onSelect(server.name), [onSelect, server.name]);
+  const handleStop = useCallback(() => onStop?.(server.name), [onStop, server.name]);
+  const idleDot = useMemo(() => <View style={styles.previewServerIdleDot} />, []);
+
+  // Not started yet: a normal menu item that starts the server on click. The
+  // hollow ring in the leading slot marks it "not running" and keeps the label
+  // aligned with the running rows (which fill the same slot with a green dot).
+  if (!isRunning) {
+    return (
+      <DropdownMenuItem
+        testID={`workspace-preview-pick-${server.name}`}
+        onSelect={handleSelect}
+        leading={idleDot}
+      >
+        {`${server.name} (:${server.port})`}
+      </DropdownMenuItem>
+    );
+  }
+
+  // Running: a status row matching the menu item's metrics — filled green dot,
+  // label, and a stop button pushed to the right edge. Rendered as a plain View
+  // (not a menu-item button) so the stop control is the only interactive
+  // element, avoiding a <button> nested inside a <button>.
+  return (
+    <View style={styles.previewServerRunningRow}>
+      <View style={styles.previewServerDotSlot}>
+        <View style={styles.previewServerRunningDot} />
+      </View>
+      <Text style={styles.previewServerRunningLabel} numberOfLines={1}>
+        {`${server.name} (:${server.port})`}
+      </Text>
+      {onStop ? (
+        <Pressable
+          testID={`workspace-preview-stop-${server.name}`}
+          onPress={handleStop}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.tabs.actions.previewStopServer", { name: server.name })}
+          style={previewServerStopButtonStyle}
+        >
+          {({ hovered, pressed }) => (
+            <ThemedX
+              size={14}
+              uniProps={hovered || pressed ? destructiveColorMapping : mutedColorMapping}
+            />
+          )}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 interface WorkspaceTabRowExtrasProps {
   onCreateAgentTab: () => void;
   onCreateTerminal: () => void;
@@ -215,7 +559,11 @@ interface WorkspaceTabRowExtrasProps {
   onCreateTerminalWithProfile: (profile: TerminalProfileInput) => void;
   onEditProfiles: () => void;
   normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  paneId?: string;
+  focusedAgentId: string | null;
   showCreateBrowserTab: boolean;
+  showPreviewButton: boolean;
   terminalDisabled: boolean;
 }
 
@@ -226,7 +574,11 @@ function WorkspaceTabRowExtras({
   onCreateTerminalWithProfile,
   onEditProfiles,
   normalizedServerId,
+  normalizedWorkspaceId,
+  paneId,
+  focusedAgentId,
   showCreateBrowserTab,
+  showPreviewButton,
   terminalDisabled,
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
@@ -315,6 +667,14 @@ function WorkspaceTabRowExtras({
         </DropdownMenuContent>
       </DropdownMenu>
       <PinnedTargetsRow launchers={launchers} testIdPrefix="workspace-pinned-target" />
+      {showPreviewButton ? (
+        <WorkspacePreviewButton
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          paneId={paneId}
+          focusedAgentId={focusedAgentId}
+        />
+      ) : null}
     </>
   );
 }
@@ -412,6 +772,7 @@ interface WorkspaceDesktopTabsRowProps {
   paneId?: string;
   isFocused?: boolean;
   tabs: WorkspaceDesktopTabRowItem[];
+  focusedTab?: WorkspaceTabDescriptor | null;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
@@ -732,6 +1093,7 @@ export function WorkspaceDesktopTabsRow({
   paneId,
   isFocused = false,
   tabs,
+  focusedTab = null,
   normalizedServerId,
   normalizedWorkspaceId,
   setHoveredCloseTabKey,
@@ -832,6 +1194,16 @@ export function WorkspaceDesktopTabsRow({
       }),
     [fallbackTabLabels, tabs],
   );
+  const browsersById = useBrowserStore((state) => state.browsersById);
+  const paneHasPreviewTab = useMemo(
+    () =>
+      tabs.some(
+        (item) =>
+          item.tab.target.kind === "browser" &&
+          browsersById[item.tab.target.browserId]?.isPreview === true,
+      ),
+    [browsersById, tabs],
+  );
 
   const { layout } = useWorkspaceTabLayout({
     tabLabelLengths,
@@ -877,6 +1249,8 @@ export function WorkspaceDesktopTabsRow({
   const handleCreateBrowser = useCallback(() => {
     onCreateBrowserTab({ paneId });
   }, [onCreateBrowserTab, paneId]);
+
+  const focusedAgentId = focusedTab?.target.kind === "agent" ? focusedTab.target.agentId : null;
 
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
@@ -1001,7 +1375,11 @@ export function WorkspaceDesktopTabsRow({
           onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
           onEditProfiles={handleEditProfiles}
           normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          paneId={paneId}
+          focusedAgentId={focusedAgentId}
           showCreateBrowserTab={showCreateBrowserTab}
+          showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab}
           terminalDisabled={terminalDisabled}
         />
         {showPaneSplitActions ? (
@@ -1328,6 +1706,54 @@ const styles = StyleSheet.create((theme) => ({
   terminalProfileIconWrapper: {
     width: 14,
     height: 14,
+  },
+  // Running-server row — mirrors DropdownMenuItem's `item` metrics so it lines up
+  // with the idle menu items above/below it.
+  previewServerRunningRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 36,
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderWidth: theme.borderWidth[1],
+    borderColor: "transparent",
+  },
+  // 16px slot matching the item's leadingSlot so the dot (and thus the label)
+  // aligns with the idle rows' leading ring.
+  previewServerDotSlot: {
+    width: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewServerRunningLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+    fontWeight: theme.fontWeight.normal,
+  },
+  previewServerRunningDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: theme.colors.success,
+  },
+  previewServerIdleDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.foregroundMuted,
+    backgroundColor: "transparent",
+  },
+  previewServerStopButton: {
+    marginLeft: "auto",
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
+  },
+  previewServerStopButtonActive: {
+    backgroundColor: theme.colors.surface2,
   },
 }));
 

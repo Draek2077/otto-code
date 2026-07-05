@@ -105,10 +105,8 @@ import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
-import {
-  createOttoToolCatalog,
-  type OttoToolHostDependencies,
-} from "./agent/tools/otto-tools.js";
+import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
+import { DevServerManager } from "./preview/dev-server-manager.js";
 import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
@@ -436,13 +434,10 @@ function resolveExpressTrustProxySetting(config: OttoDaemonConfig): true | strin
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
-      const providerConfig: MutableDaemonConfig["providers"][string] = {};
-      if (override.enabled !== undefined) {
-        providerConfig.enabled = override.enabled;
-      }
-      if (override.additionalModels) {
-        providerConfig.additionalModels = override.additionalModels;
-      }
+      // Carry the full override so clients can inspect and edit custom
+      // provider config (extends, env, models). The provider config schema is
+      // passthrough, and persistence re-validates via ProviderOverrideSchema.
+      const providerConfig: MutableDaemonConfig["providers"][string] = { ...override };
       return [providerId, providerConfig];
     }),
   );
@@ -483,6 +478,7 @@ export async function createOttoDaemon(
   const browserToolsBroker = new BrowserToolsBroker({
     policy: browserToolsPolicy,
   });
+  const previewDevServers = new DevServerManager({ logger });
 
   const serverId = getOrCreateServerId(config.ottoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
@@ -982,6 +978,7 @@ export async function createOttoDaemon(
     ensureWorkspaceForCreate: ensureWorkspaceForCreateExternal,
     createOttoWorktree: createOttoWorktreeForTools,
     browserToolsBroker,
+    previewDevServers,
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -1252,6 +1249,7 @@ export async function createOttoDaemon(
               },
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
+              previewDevServers,
             );
 
             if (relayEnabled) {
@@ -1314,6 +1312,9 @@ export async function createOttoDaemon(
 
   const stop = async () => {
     scriptHealthMonitor.stop();
+    // Dev servers first: they are children of this daemon and hold ports the
+    // next daemon instance may want.
+    await previewDevServers.shutdown().catch(() => undefined);
     await closeAllAgents(logger, agentManager);
     await agentManager.flush().catch(() => undefined);
     detachAgentStoragePersistence();

@@ -76,6 +76,8 @@ import {
 } from "../../worktree/commands.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
+import { registerPreviewTools } from "../../preview/preview-tools.js";
+import type { DevServerManager } from "../../preview/dev-server-manager.js";
 import type {
   OttoToolCatalog,
   OttoToolConfig,
@@ -107,6 +109,7 @@ export interface OttoToolHostDependencies {
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: (cwd: string) => Promise<string>;
   browserToolsBroker?: BrowserToolsBroker | null;
+  previewDevServers?: DevServerManager | null;
   ottoHome?: string;
   worktreesRoot?: string;
   /**
@@ -1028,6 +1031,15 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       registerTool,
       broker: options.browserToolsBroker,
       callerAgentId,
+      resolveCallerAgent,
+    });
+  }
+
+  if (options.previewDevServers) {
+    registerPreviewTools({
+      registerTool,
+      manager: options.previewDevServers,
+      broker: options.browserToolsBroker ?? null,
       resolveCallerAgent,
     });
   }

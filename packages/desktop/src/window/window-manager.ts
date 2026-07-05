@@ -11,6 +11,7 @@ import {
 } from "electron";
 
 import type { WindowState, WindowStateStore } from "../settings/window-state.js";
+import { setTrayAttention } from "../features/tray.js";
 
 const WINDOW_STATE_SAVE_DEBOUNCE_MS = 400;
 
@@ -207,6 +208,10 @@ export function registerWindowManager(): void {
         });
       }
     }
+  });
+
+  ipcMain.handle("otto:window:setTrayAttention", (_event, active?: unknown) => {
+    setTrayAttention(active === true);
   });
 
   ipcMain.handle("otto:window:updateWindowControls", (event, update?: unknown) => {

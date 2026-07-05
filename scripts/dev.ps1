@@ -4,26 +4,15 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $env:PATH = "$ScriptDir\..\node_modules\.bin;$env:PATH"
 
-# Derive OTTO_HOME: stable name for worktrees, temporary dir otherwise
+# Persistent checkout-local home, matching scripts/dev-home.sh. A throwaway home
+# would mint a new daemon keypair/serverId every run, and clients that remembered
+# the previous identity refuse the new one (host-runtime closes the connection on
+# serverId mismatch) — the home must survive restarts.
 if (-not $env:OTTO_HOME) {
-    $GitDir = git rev-parse --git-dir 2>$null
-    $GitCommonDir = git rev-parse --git-common-dir 2>$null
-
-    if ($GitDir -and $GitCommonDir -and ($GitDir -ne $GitCommonDir)) {
-        # Inside a worktree — derive a stable home from the worktree name
-        $WorktreeRoot = git rev-parse --show-toplevel
-        $WorktreeName = (Split-Path -Leaf $WorktreeRoot).ToLower() -replace '[^a-z0-9-]', '-' -replace '-+', '-' -replace '^-|-$', ''
-        $env:OTTO_HOME = "$env:USERPROFILE\.otto-$WorktreeName"
-        New-Item -ItemType Directory -Force -Path $env:OTTO_HOME | Out-Null
-    } else {
-        $env:OTTO_HOME = Join-Path ([System.IO.Path]::GetTempPath()) "otto-dev-$([System.Guid]::NewGuid().ToString('N').Substring(0,6))"
-        New-Item -ItemType Directory -Force -Path $env:OTTO_HOME | Out-Null
-        # Register cleanup on exit
-        $TempOttoHome = $env:OTTO_HOME
-        Register-EngineEvent PowerShell.Exiting -Action {
-            Remove-Item -Recurse -Force $TempOttoHome -ErrorAction SilentlyContinue
-        } | Out-Null
-    }
+    $RepoRoot = git rev-parse --show-toplevel 2>$null
+    if (-not $RepoRoot) { $RepoRoot = Split-Path -Parent $ScriptDir }
+    $env:OTTO_HOME = Join-Path ($RepoRoot -replace '/', '\') ".dev\otto-home"
+    New-Item -ItemType Directory -Force -Path $env:OTTO_HOME | Out-Null
 }
 
 # Share speech models with the main install to avoid duplicate downloads
@@ -38,9 +27,13 @@ Write-Host @"
 ======================================================
   Home:    $($env:OTTO_HOME)
   Models:  $($env:OTTO_LOCAL_MODELS_DIR)
-  Daemon:  localhost:6768
+  Daemon:  localhost:6868
 ======================================================
 "@
+
+# Relay off by default in dev: the hosted relay endpoint is not live yet, so the
+# daemon would just spam DNS-failure retries. Set OTTO_RELAY_ENABLED=true to opt in.
+if (-not $env:OTTO_RELAY_ENABLED) { $env:OTTO_RELAY_ENABLED = "false" }
 
 # Allow any origin in dev so Electron on random ports all work.
 # SECURITY: wildcard CORS is unsafe in production — only acceptable here because
@@ -49,8 +42,8 @@ $env:OTTO_CORS_ORIGINS = "*"
 
 # Configure the app to auto-connect to this daemon on localhost
 $env:APP_VARIANT = "development"
-$env:EXPO_PUBLIC_LOCAL_DAEMON = "localhost:6768"
-$env:OTTO_LISTEN = "127.0.0.1:6768"
+$env:EXPO_PUBLIC_LOCAL_DAEMON = "localhost:6868"
+$env:OTTO_LISTEN = "127.0.0.1:6868"
 $env:BROWSER = "none"
 
 # Run both with concurrently

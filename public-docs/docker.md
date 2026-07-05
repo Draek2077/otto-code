@@ -99,10 +99,10 @@ Agent credentials persist in `/home/otto`.
 
 Mount two paths for most deployments:
 
-| Mount         | Purpose                                                                   |
-| ------------- | ------------------------------------------------------------------------- |
+| Mount        | Purpose                                                                  |
+| ------------ | ------------------------------------------------------------------------ |
 | `/home/otto` | Otto state plus agent config and credentials such as `.codex`, `.claude` |
-| `/workspace`  | Code that Otto and launched agents can read and write                    |
+| `/workspace` | Code that Otto and launched agents can read and write                    |
 
 On Linux, the built-in `otto` user is uid/gid `1000:1000`. Make mounted directories writable by that user, or run the container with Docker's `--user` / Compose `user:` option.
 

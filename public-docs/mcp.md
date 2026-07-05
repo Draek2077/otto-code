@@ -61,8 +61,8 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Worktrees
 
-| Tool               | Function                                                                      |
-| ------------------ | ----------------------------------------------------------------------------- |
+| Tool               | Function                                                                     |
+| ------------------ | ---------------------------------------------------------------------------- |
 | `list_worktrees`   | List Otto-managed git worktrees for a repository.                            |
 | `create_worktree`  | Create a Otto-managed git worktree from a branch, base branch, or GitHub PR. |
 | `archive_worktree` | Delete a Otto-managed git worktree.                                          |

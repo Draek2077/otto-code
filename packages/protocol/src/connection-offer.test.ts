@@ -37,7 +37,9 @@ describe("connection offer", () => {
     });
     const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(offer));
 
-    expect(parseConnectionOfferFromUrl(`https://app.otto-code.ai/#offer=${encoded}`)).toEqual(offer);
+    expect(parseConnectionOfferFromUrl(`https://app.otto-code.ai/#offer=${encoded}`)).toEqual(
+      offer,
+    );
   });
 
   it("leaves relay TLS unset when absent", () => {

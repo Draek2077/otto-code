@@ -95,7 +95,7 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 
 ## Comparison
 
-|                              | Otto                                                           | OpenCode Desktop                |
+|                              | Otto                                                            | OpenCode Desktop                |
 | ---------------------------- | --------------------------------------------------------------- | ------------------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source                     |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS, Linux, Windows           |

@@ -74,7 +74,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. OpenChamber
 
 ## Comparison
 
-|                              | Otto                                                           | OpenChamber       |
+|                              | Otto                                                            | OpenChamber       |
 | ---------------------------- | --------------------------------------------------------------- | ----------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source (MIT) |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS             |

@@ -91,8 +91,7 @@ function invalidateCheckoutGitQueries(serverId: string, cwd: string) {
 
 function invalidateWorktreeList() {
   void appQueryClient.invalidateQueries({
-    predicate: (query) =>
-      Array.isArray(query.queryKey) && query.queryKey[0] === "ottoWorktreeList",
+    predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === "ottoWorktreeList",
   });
   void appQueryClient.invalidateQueries({
     predicate: (query) =>
@@ -144,8 +143,7 @@ interface WorktreeArchiveSnapshot {
 function isWorktreeListQuery(input: { queryKey: QueryKey; serverId: string }): boolean {
   return (
     Array.isArray(input.queryKey) &&
-    (input.queryKey[0] === "ottoWorktreeList" ||
-      input.queryKey[0] === "sidebarOttoWorktreeList") &&
+    (input.queryKey[0] === "ottoWorktreeList" || input.queryKey[0] === "sidebarOttoWorktreeList") &&
     input.queryKey[1] === input.serverId
   );
 }

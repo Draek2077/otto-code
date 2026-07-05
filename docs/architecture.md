@@ -62,9 +62,9 @@ All paths are under `packages/server/src/`.
 | `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing       |
 | `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations        |
 | `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management      |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$OTTO_HOME/agents/`                        |
-| `server/agent/tools/`           | Transport-neutral Otto tool catalog for subagents, permissions, worktrees   |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Otto tool catalog with the MCP SDK      |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$OTTO_HOME/agents/`                         |
+| `server/agent/tools/`           | Transport-neutral Otto tool catalog for subagents, permissions, worktrees    |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Otto tool catalog with the MCP SDK       |
 | `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                              |
 | `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                |
 | `server/schedule/`              | Cron-based scheduled agents                                                  |

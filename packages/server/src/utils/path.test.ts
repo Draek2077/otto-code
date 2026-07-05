@@ -29,8 +29,6 @@ describe("path equivalence", () => {
     expect(
       isPathInsideRoot("C:\\Otto\\node_modules", "c:/otto/node_modules/@otto-code/server"),
     ).toBe(true);
-    expect(isPathInsideRoot("C:\\Otto\\node_modules", "C:\\Otto\\node_modules-other")).toBe(
-      false,
-    );
+    expect(isPathInsideRoot("C:\\Otto\\node_modules", "C:\\Otto\\node_modules-other")).toBe(false);
   });
 });

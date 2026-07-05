@@ -9,6 +9,9 @@ import { createWorkspaceBrowser, getBrowserRecord, useBrowserStore } from "@/sto
 import {
   buildWorkspaceTabPersistenceKey,
   collectAllTabs,
+  createDefaultLayout,
+  findPaneById,
+  normalizeLayout,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 
@@ -293,6 +296,20 @@ function findWorkspaceBrowserTab(input: {
   return tab ? { workspaceKey, tabId: tab.tabId } : null;
 }
 
+/**
+ * Pane to split right when opening a preview tab, or null if there's nothing
+ * to split from (fresh/empty workspace layout — the tab can just take the
+ * focused pane as-is).
+ */
+function findSplitRightTarget(workspaceKey: string): string | null {
+  const layout = normalizeLayout(
+    useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey] ?? createDefaultLayout(),
+  );
+  const focusedPaneId = layout.focusedPaneId;
+  const focusedPaneHadTabs = (findPaneById(layout.root, focusedPaneId)?.tabIds.length ?? 0) > 0;
+  return focusedPaneId && focusedPaneHadTabs ? focusedPaneId : null;
+}
+
 async function openBrowserTabForRequest(params: {
   request: BrowserAutomationExecuteRequest;
   serverId?: string;
@@ -332,10 +349,22 @@ async function openBrowserTabForRequest(params: {
       message: "Cannot create a browser tab without a workspace context.",
     });
   }
-  useWorkspaceLayoutStore.getState().openTabInBackground(workspaceKey, {
+
+  const wantsSplitRight = command.args.layout === "split-right";
+  const splitTarget = wantsSplitRight ? findSplitRightTarget(workspaceKey) : null;
+
+  const newTabId = useWorkspaceLayoutStore.getState().openTabInBackground(workspaceKey, {
     kind: "browser",
     browserId,
   });
+
+  if (newTabId && splitTarget) {
+    useWorkspaceLayoutStore.getState().splitPane(workspaceKey, {
+      tabId: newTabId,
+      targetPaneId: splitTarget,
+      position: "right",
+    });
+  }
 
   await browserHost?.registerWorkspaceBrowser?.({ browserId, workspaceId });
 

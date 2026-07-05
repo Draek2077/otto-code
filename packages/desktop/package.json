@@ -19,7 +19,7 @@
     "build:main": "tsc -p tsconfig.json",
     "capture-harness": "./capture-harness/run.sh",
     "dev": "./scripts/dev.sh",
-    "dev:win": "powershell ./scripts/dev.ps1",
+    "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },

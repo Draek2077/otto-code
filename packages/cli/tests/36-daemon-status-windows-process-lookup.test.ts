@@ -62,10 +62,7 @@ try {
     `daemon restart should succeed:\nstdout:\n${start.stdout}\nstderr:\n${start.stderr}`,
   );
 
-  const statusResult = await runLocalOtto(
-    ["daemon", "status", "--home", ottoHome, "--json"],
-    env,
-  );
+  const statusResult = await runLocalOtto(["daemon", "status", "--home", ottoHome, "--json"], env);
   assert.strictEqual(
     statusResult.exitCode,
     0,

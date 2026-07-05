@@ -27,11 +27,15 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
+import { useSessionStore } from "@/stores/session-store";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { formatTimeAgo } from "@/utils/time";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 import type { AgentModelDefinition, AgentProvider } from "@otto-code/protocol/agent-types";
+import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
+import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import { Switch } from "@/components/ui/switch";
 import {
   resolveProviderDiscoveredModels,
   type ProviderDiscoveredModelsCache,
@@ -140,6 +144,383 @@ function SectionHeader({ title, count, hint }: { title: string; count?: number; 
         ) : null}
         {hint ? <Text style={settingsStyles.sectionHeaderTitle}>{hint}</Text> : null}
       </View>
+    </View>
+  );
+}
+
+interface ProviderConnectionDescriptor {
+  baseUrlKey: string;
+  apiKeyKey: string;
+  baseUrl: string;
+  apiKey: string;
+}
+
+function readProviderConfigEntry(
+  config: MutableDaemonConfig | null,
+  provider: string,
+): Record<string, unknown> | null {
+  const entry = config?.providers?.[provider];
+  return entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
+}
+
+function readProviderExtends(entry: Record<string, unknown> | null): string | null {
+  const value = entry?.["extends"];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readProviderEnv(entry: Record<string, unknown> | null): Record<string, string> {
+  const env = entry?.["env"];
+  if (!env || typeof env !== "object" || Array.isArray(env)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(env as Record<string, unknown>).filter(
+      (pair): pair is [string, string] => typeof pair[1] === "string",
+    ),
+  );
+}
+
+function resolveProviderConnection(
+  entry: Record<string, unknown> | null,
+  extendsProvider: string | null,
+): ProviderConnectionDescriptor | null {
+  const env = readProviderEnv(entry);
+  if (extendsProvider === "codex" || extendsProvider === "openai-compatible") {
+    return {
+      baseUrlKey: "OPENAI_BASE_URL",
+      apiKeyKey: "OPENAI_API_KEY",
+      baseUrl: env["OPENAI_BASE_URL"] ?? "",
+      apiKey: env["OPENAI_API_KEY"] ?? "",
+    };
+  }
+  if (extendsProvider === "claude") {
+    // Third-party Anthropic-compatible endpoints use AUTH_TOKEN; keep editing
+    // API_KEY when that is what the entry already uses.
+    const apiKeyKey =
+      env["ANTHROPIC_AUTH_TOKEN"] === undefined && env["ANTHROPIC_API_KEY"] !== undefined
+        ? "ANTHROPIC_API_KEY"
+        : "ANTHROPIC_AUTH_TOKEN";
+    return {
+      baseUrlKey: "ANTHROPIC_BASE_URL",
+      apiKeyKey,
+      baseUrl: env["ANTHROPIC_BASE_URL"] ?? "",
+      apiKey: env[apiKeyKey] ?? "",
+    };
+  }
+  return null;
+}
+
+function ProviderConnectionSection({
+  provider,
+  connection,
+  patchConfig,
+  refresh,
+}: {
+  provider: string;
+  connection: ProviderConnectionDescriptor;
+  patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
+  refresh: (providers?: AgentProvider[]) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const { theme } = useUnistyles();
+  const toast = useToast();
+  const [baseUrl, setBaseUrl] = useState(connection.baseUrl);
+  const [apiKey, setApiKey] = useState(connection.apiKey);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isDirty = baseUrl.trim() !== connection.baseUrl || apiKey.trim() !== connection.apiKey;
+  const canSave = isDirty && baseUrl.trim().length > 0 && !saving;
+
+  const handleSave = useCallback(() => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    void patchConfig({
+      providers: {
+        [provider]: {
+          env: {
+            [connection.baseUrlKey]: baseUrl.trim(),
+            [connection.apiKeyKey]: apiKey.trim(),
+          },
+        },
+      },
+    })
+      .then(() => refresh([provider]))
+      .then(() => toast.show(t("settings.providers.connection.saved"), { variant: "success" }))
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : t("settings.providers.connection.saveFailed"),
+        );
+      })
+      .finally(() => setSaving(false));
+  }, [apiKey, baseUrl, canSave, connection, patchConfig, provider, refresh, t, toast]);
+
+  return (
+    <View style={sheetStyles.section}>
+      <SectionHeader title={t("settings.providers.connection.title")} />
+      <View style={sheetStyles.connectionCard}>
+        <View style={sheetStyles.formGroup}>
+          <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.baseUrl")}</Text>
+          <AdaptiveTextInput
+            initialValue={baseUrl}
+            resetKey={`connection-url-${provider}`}
+            value={baseUrl}
+            onChangeText={setBaseUrl}
+            placeholder="http://localhost:1234/v1"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            testID="provider-connection-base-url"
+            // @ts-expect-error - outlineStyle is web-only
+            style={FORM_INPUT_STYLE}
+          />
+          <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.apiKey")}</Text>
+          <AdaptiveTextInput
+            initialValue={apiKey}
+            resetKey={`connection-key-${provider}`}
+            value={apiKey}
+            onChangeText={setApiKey}
+            placeholderTextColor={theme.colors.foregroundMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            testID="provider-connection-api-key"
+            // @ts-expect-error - outlineStyle is web-only
+            style={FORM_INPUT_STYLE}
+          />
+          {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
+          <View style={sheetStyles.formActions}>
+            <Button
+              variant="default"
+              size="sm"
+              onPress={handleSave}
+              disabled={!canSave}
+              loading={saving}
+              testID="provider-connection-save"
+            >
+              {saving
+                ? t("settings.providers.connection.saving")
+                : t("settings.providers.connection.save")}
+            </Button>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
+  switch (group) {
+    case "preview":
+      return t("settings.providers.tools.groups.preview");
+    case "browser":
+      return t("settings.providers.tools.groups.browser");
+    case "agents":
+      return t("settings.providers.tools.groups.agents");
+    case "terminals":
+      return t("settings.providers.tools.groups.terminals");
+    case "schedules":
+      return t("settings.providers.tools.groups.schedules");
+    case "workspace":
+      return t("settings.providers.tools.groups.workspace");
+  }
+}
+
+function ToolGroupToggleRow({
+  group,
+  label,
+  enabled,
+  disabled,
+  onToggle,
+}: {
+  group: OttoToolGroup;
+  label: string;
+  enabled: boolean;
+  disabled: boolean;
+  onToggle: (group: OttoToolGroup, next: boolean) => void;
+}) {
+  const handleChange = useCallback((next: boolean) => onToggle(group, next), [group, onToggle]);
+  return (
+    <View style={sheetStyles.toolGroupRow}>
+      <Text style={sheetStyles.toolGroupLabel}>{label}</Text>
+      <Switch
+        value={enabled}
+        onValueChange={handleChange}
+        disabled={disabled}
+        testID={`provider-tool-group-${group}`}
+      />
+    </View>
+  );
+}
+
+/**
+ * Per-provider selection of which Otto tool groups are injected into the model
+ * (natively-injected providers like openai-compatible). Absent config = all
+ * groups. Each toggle writes the full enabled list back to config.json.
+ */
+function ProviderToolGroupsSection({
+  provider,
+  selectedGroups,
+  patchConfig,
+  refresh,
+}: {
+  provider: string;
+  selectedGroups: readonly OttoToolGroup[] | null;
+  patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
+  refresh: (providers?: AgentProvider[]) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [savingGroup, setSavingGroup] = useState<OttoToolGroup | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const enabled = useMemo(
+    () => new Set<OttoToolGroup>(selectedGroups ?? OTTO_TOOL_GROUPS),
+    [selectedGroups],
+  );
+
+  const handleToggle = useCallback(
+    (group: OttoToolGroup, next: boolean) => {
+      const nextSet = new Set(enabled);
+      if (next) {
+        nextSet.add(group);
+      } else {
+        nextSet.delete(group);
+      }
+      const nextGroups = OTTO_TOOL_GROUPS.filter((candidate) => nextSet.has(candidate));
+      setSavingGroup(group);
+      setError(null);
+      void patchConfig({ providers: { [provider]: { ottoToolGroups: nextGroups } } })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.tools.saveFailed"));
+        })
+        .finally(() => setSavingGroup((current) => (current === group ? null : current)));
+    },
+    [enabled, patchConfig, provider, refresh, t],
+  );
+
+  return (
+    <View style={sheetStyles.section}>
+      <SectionHeader title={t("settings.providers.tools.title")} />
+      <View style={sheetStyles.connectionCard}>
+        <Text style={sheetStyles.formLabel}>{t("settings.providers.tools.description")}</Text>
+        {OTTO_TOOL_GROUPS.map((group) => (
+          <ToolGroupToggleRow
+            key={group}
+            group={group}
+            label={toolGroupLabel(t, group)}
+            enabled={enabled.has(group)}
+            disabled={savingGroup !== null}
+            onToggle={handleToggle}
+          />
+        ))}
+        {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function ProviderRemoveSection({
+  provider,
+  providerLabel,
+  supportsRemove,
+  patchConfig,
+  onRemoved,
+}: {
+  provider: string;
+  providerLabel: string;
+  supportsRemove: boolean;
+  patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
+  onRemoved: () => void;
+}) {
+  const { t } = useTranslation();
+  const { theme } = useUnistyles();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const handleOpenConfirm = useCallback(() => setConfirming(true), []);
+  const handleCloseConfirm = useCallback(() => setConfirming(false), []);
+  const handleConfirmRemove = useCallback(() => {
+    setRemoving(true);
+    void patchConfig({ providers: { [provider]: null } })
+      .then(() => {
+        setConfirming(false);
+        onRemoved();
+        return;
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : t("settings.providers.remove.failed"));
+      })
+      .finally(() => setRemoving(false));
+  }, [onRemoved, patchConfig, provider, t, toast]);
+
+  const removeIcon = useMemo(
+    () => <Trash2 size={theme.iconSize.sm} color={theme.colors.destructive} />,
+    [theme.colors.destructive, theme.iconSize.sm],
+  );
+  const confirmHeader = useMemo<SheetHeader>(
+    () => ({ title: t("settings.providers.remove.confirmTitle", { name: providerLabel }) }),
+    [providerLabel, t],
+  );
+
+  return (
+    <View style={sheetStyles.section}>
+      <View style={sheetStyles.removeRow}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={removeIcon}
+          onPress={handleOpenConfirm}
+          disabled={!supportsRemove}
+          textStyle={sheetStyles.destructiveText}
+          testID="provider-remove-button"
+        >
+          {t("settings.providers.remove.button")}
+        </Button>
+        {!supportsRemove ? (
+          <Text style={sheetStyles.mutedText}>{t("settings.providers.remove.requiresUpdate")}</Text>
+        ) : null}
+      </View>
+      {confirming ? (
+        <AdaptiveModalSheet
+          header={confirmHeader}
+          visible
+          onClose={handleCloseConfirm}
+          desktopMaxWidth={420}
+          snapPoints={ADD_SNAP_POINTS}
+          testID="provider-remove-confirm-sheet"
+        >
+          <View style={sheetStyles.formGroup}>
+            <Text style={sheetStyles.mutedText}>
+              {t("settings.providers.remove.confirmMessage")}
+            </Text>
+            <View style={sheetStyles.formActions}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onPress={handleCloseConfirm}
+                disabled={removing}
+              >
+                {t("common.actions.cancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onPress={handleConfirmRemove}
+                disabled={removing}
+                loading={removing}
+                testID="provider-remove-confirm"
+              >
+                {removing
+                  ? t("settings.providers.remove.removing")
+                  : t("settings.providers.remove.button")}
+              </Button>
+            </View>
+          </View>
+        </AdaptiveModalSheet>
+      ) : null}
     </View>
   );
 }
@@ -596,6 +977,19 @@ export function ProviderDiagnosticSheet({
     () => config?.providers?.[provider]?.additionalModels ?? [],
     [config?.providers, provider],
   );
+  const providerConfigEntry = readProviderConfigEntry(config, provider);
+  const providerExtends = readProviderExtends(providerConfigEntry);
+  const isCustomProvider = providerExtends !== null;
+  const connection = useMemo(
+    () => resolveProviderConnection(providerConfigEntry, providerExtends),
+    [providerConfigEntry, providerExtends],
+  );
+  const supportsProviderRemove = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.providerRemove === true,
+  );
+  const handleRemoved = useCallback(() => {
+    onClose();
+  }, [onClose]);
   const providerSnapshotRefreshing = providerEntry?.status === "loading";
   const providerErrorMessage =
     providerEntry?.status === "error"
@@ -701,6 +1095,24 @@ export function ProviderDiagnosticSheet({
         })}
         snapPoints={MAIN_SNAP_POINTS}
       >
+        {connection ? (
+          <ProviderConnectionSection
+            key={`connection-${provider}`}
+            provider={provider}
+            connection={connection}
+            patchConfig={patchConfig}
+            refresh={refresh}
+          />
+        ) : null}
+        {providerExtends === "openai-compatible" ? (
+          <ProviderToolGroupsSection
+            key={`tools-${provider}`}
+            provider={provider}
+            selectedGroups={config?.providers?.[provider]?.ottoToolGroups ?? null}
+            patchConfig={patchConfig}
+            refresh={refresh}
+          />
+        ) : null}
         <ProviderModalBody
           discoveredCount={discoveredModels.length}
           additionalCount={additionalModels.length}
@@ -715,6 +1127,15 @@ export function ProviderDiagnosticSheet({
           onDeleteCustom={handleDeleteCustom}
           theme={theme}
         />
+        {isCustomProvider ? (
+          <ProviderRemoveSection
+            provider={provider}
+            providerLabel={providerLabel}
+            supportsRemove={supportsProviderRemove}
+            patchConfig={patchConfig}
+            onRemoved={handleRemoved}
+          />
+        ) : null}
       </AdaptiveModalSheet>
       <AddCustomModelSubSheet
         provider={provider}
@@ -852,9 +1273,36 @@ const sheetStyles = StyleSheet.create((theme) => ({
   formGroup: {
     gap: theme.spacing[3],
   },
+  connectionCard: {
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+    padding: theme.spacing[4],
+  },
+  removeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  destructiveText: {
+    color: theme.colors.destructive,
+  },
   formLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
+  },
+  toolGroupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  toolGroupLabel: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   formActions: {

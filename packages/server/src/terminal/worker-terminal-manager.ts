@@ -3,7 +3,10 @@ import { fork } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
 import type { TerminalState } from "@otto-code/protocol/messages";
-import type { TerminalActivity, TerminalActivityState } from "@otto-code/protocol/terminal-activity";
+import type {
+  TerminalActivity,
+  TerminalActivityState,
+} from "@otto-code/protocol/terminal-activity";
 import { deriveTerminalActivityStatusBucket } from "@otto-code/protocol/terminal-activity";
 import type {
   ClientMessage,

@@ -80,7 +80,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 
 ## Comparison
 
-|                              | Otto                                                           | Happy Coder            |
+|                              | Otto                                                            | Happy Coder            |
 | ---------------------------- | --------------------------------------------------------------- | ---------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source (MIT)      |
 | Desktop app                  | macOS, Linux, Windows                                           | —                      |

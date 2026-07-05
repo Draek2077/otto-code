@@ -32,6 +32,7 @@ import {
 } from "@/screens/settings/terminal-profile-edit-modal";
 import { startDesktopDaemon, stopDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
+import { DesktopWindowBehaviorSection } from "@/desktop/components/desktop-window-behavior-section";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
@@ -357,6 +358,8 @@ export function HostSettingsPage({
       <HostStatusBadges serverId={serverId} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
+
+      {isLocalDaemon ? <DesktopWindowBehaviorSection /> : null}
 
       {!isLocalDaemon ? <UpdateDaemonCard host={host} /> : null}
 

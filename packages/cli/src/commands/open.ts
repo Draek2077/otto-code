@@ -5,10 +5,7 @@ import { spawnProcess } from "@otto-code/server";
 
 function findDesktopApp(): string | null {
   if (process.platform === "darwin") {
-    const candidates = [
-      "/Applications/Otto.app",
-      path.join(homedir(), "Applications", "Otto.app"),
-    ];
+    const candidates = ["/Applications/Otto.app", path.join(homedir(), "Applications", "Otto.app")];
 
     for (const candidate of candidates) {
       if (existsSync(candidate)) {

@@ -38,6 +38,7 @@ import {
   type ServiceUrlBehavior,
   type Settings,
   type SettingsDeps,
+  type PreviewServerCloseBehavior,
   type WorkspaceTitleSource,
 } from "./storage";
 
@@ -68,6 +69,7 @@ export type {
   ServiceUrlBehavior,
   Settings,
   SettingsDeps,
+  PreviewServerCloseBehavior,
   WorkspaceTitleSource,
 };
 

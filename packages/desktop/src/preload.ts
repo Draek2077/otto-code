@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
         };
       },
       setBadgeCount: (count?: number) => ipcRenderer.invoke("otto:window:setBadgeCount", count),
+      setTrayAttention: (active: boolean) =>
+        ipcRenderer.invoke("otto:window:setTrayAttention", active),
     }),
   },
   dialog: {

@@ -34,6 +34,7 @@ import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
+import { OpenAICompatAgentClient, OPENAI_COMPAT_EXTENDS } from "./providers/openai-compat-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
@@ -666,6 +667,11 @@ function addDerivedProviders(
       continue;
     }
 
+    if (override.extends === OPENAI_COMPAT_EXTENDS) {
+      resolvedProviders.set(providerId, resolveOpenAICompatProvider(providerId, override));
+      continue;
+    }
+
     const baseProviderId = override.extends;
     const baseProvider = resolvedProviders.get(baseProviderId);
     if (!baseProvider) {
@@ -703,6 +709,41 @@ function addDerivedProviders(
         }),
     });
   }
+}
+
+function resolveOpenAICompatProvider(
+  providerId: string,
+  override: ProviderOverride,
+): ResolvedProvider {
+  const label = override.label ?? providerId;
+  return {
+    definition: createDerivedDefinition(
+      providerId,
+      {
+        id: providerId,
+        label,
+        description: override.description ?? "OpenAI-compatible endpoint",
+        defaultModeId: null,
+        modes: [],
+      },
+      override,
+    ),
+    runtimeSettings: toRuntimeSettings(override),
+    profileModels: override.models ?? [],
+    additionalModels: override.additionalModels ?? [],
+    profileModelsAreAdditive: false,
+    enabled: override.enabled !== false,
+    derivedFromProviderId: null,
+    providerParams: override.params,
+    createBaseClient: (logger) =>
+      new OpenAICompatAgentClient({
+        logger,
+        providerId,
+        label,
+        env: override.env,
+        ottoToolGroups: override.ottoToolGroups,
+      }),
+  };
 }
 
 export function buildProviderRegistry(

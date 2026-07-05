@@ -88,7 +88,7 @@ resolve_dev_daemon_endpoint() {
     return
   fi
 
-  case "${OTTO_LISTEN:-127.0.0.1:6768}" in
+  case "${OTTO_LISTEN:-127.0.0.1:6868}" in
     0.0.0.0:*) echo "localhost:${OTTO_LISTEN#0.0.0.0:}" ;;
     127.0.0.1:*) echo "localhost:${OTTO_LISTEN#127.0.0.1:}" ;;
     *) echo "$OTTO_LISTEN" ;;
@@ -127,7 +127,7 @@ configure_dev_command_env() {
     if [ -n "${OTTO_SERVICE_DAEMON_PORT:-}" ]; then
       export OTTO_LISTEN="0.0.0.0:${OTTO_SERVICE_DAEMON_PORT}"
     else
-      export OTTO_LISTEN="127.0.0.1:6768"
+      export OTTO_LISTEN="127.0.0.1:6868"
     fi
   fi
 

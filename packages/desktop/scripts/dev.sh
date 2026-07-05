@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
 source "$ROOT_DIR/scripts/dev-home.sh"
 
 export PATH="$ROOT_DIR/node_modules/.bin:$PATH"
-export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6768}"
+export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6868}"
 configure_dev_otto_home
 
 DEV_ROOT="${OTTO_DEV_ROOT:-$(default_dev_otto_root)}"

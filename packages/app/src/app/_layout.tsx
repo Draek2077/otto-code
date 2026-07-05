@@ -2,8 +2,12 @@ import "@/styles/unistyles";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
+import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono/400Regular";
+import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
+import * as SplashScreen from "expo-splash-screen";
 import {
   Stack,
   useGlobalSearchParams,
@@ -115,6 +119,11 @@ import {
 } from "@/utils/os-notifications";
 
 polyfillCrypto();
+
+// Keep the native splash up until Otto's bundled fonts (Inter, JetBrains Mono)
+// are registered, so the app never flashes system fonts before swapping to the
+// default theme fonts. No-op on web (there is no native splash to hold).
+void SplashScreen.preventAutoHideAsync();
 
 export interface HostRuntimeBootstrapState {
   splashError: string | null;
@@ -1023,6 +1032,18 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <GestureHandlerRootView style={flexStyle}>
       <View style={layoutStyles.surfaceFill}>

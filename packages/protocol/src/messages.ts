@@ -4,6 +4,7 @@ import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@otto-code/protocol/agent-title-limits";
 import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
+import { OTTO_TOOL_GROUPS } from "./provider-config.js";
 import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ChatCreateRequestSchema,
@@ -105,6 +106,7 @@ const MutableDaemonProviderConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     additionalModels: z.array(MutableDaemonProviderModelSchema).optional(),
+    ottoToolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
   })
   .passthrough();
 
@@ -160,8 +162,11 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    // A null entry removes the provider's config entirely (custom provider
+    // uninstall). Gated by server_info features.providerRemove — old daemons
+    // reject null values.
     providers: z
-      .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
+      .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough().nullable())
       .optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
@@ -1575,6 +1580,37 @@ export const CheckoutPrStatusRequestSchema = z.object({
   requestId: z.string(),
 });
 
+/**
+ * UI-initiated preview RPCs (the Preview toolbar button), distinct from the
+ * agent-facing preview_* tools in packages/server/src/server/preview/preview-tools.ts.
+ * Both sides drive the same DevServerManager; only the caller differs.
+ */
+export const PreviewListConfigRequestSchema = z.object({
+  type: z.literal("preview.list_config.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+export const PreviewStartRequestSchema = z.object({
+  type: z.literal("preview.start.request"),
+  cwd: z.string(),
+  name: z.string(),
+  requestId: z.string(),
+});
+
+export const PreviewBindTabRequestSchema = z.object({
+  type: z.literal("preview.bind_tab.request"),
+  serverId: z.string(),
+  browserId: z.string(),
+  requestId: z.string(),
+});
+
+export const PreviewStopRequestSchema = z.object({
+  type: z.literal("preview.stop.request"),
+  serverId: z.string(),
+  requestId: z.string(),
+});
+
 export const PullRequestTimelineRequestSchema = z.object({
   type: z.literal("pull_request_timeline_request"),
   cwd: z.string(),
@@ -2108,6 +2144,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrMergeRequestSchema,
   CheckoutGithubSetAutoMergeRequestSchema,
   CheckoutGithubGetCheckDetailsRequestSchema,
+  PreviewListConfigRequestSchema,
+  PreviewStartRequestSchema,
+  PreviewBindTabRequestSchema,
+  PreviewStopRequestSchema,
   CheckoutPrStatusRequestSchema,
   PullRequestTimelineRequestSchema,
   CheckoutSwitchBranchRequestSchema,
@@ -2365,6 +2405,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonSelfUpdate: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
+        // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
+        providerRemove: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3476,6 +3518,72 @@ export const CheckoutGithubSetAutoMergeResponseSchema = z.object({
   }),
 });
 
+export const PreviewConfiguredServerSchema = z.object({
+  name: z.string(),
+  port: z.number().int().positive(),
+});
+
+export const PreviewServerStatusSchema = z.enum(["starting", "running", "exited"]);
+
+export const PreviewRunningServerSchema = z.object({
+  serverId: z.string(),
+  name: z.string(),
+  url: z.string(),
+  port: z.number().int().positive(),
+  status: PreviewServerStatusSchema,
+});
+
+export const PreviewListConfigResponseSchema = z.object({
+  type: z.literal("preview.list_config.response"),
+  payload: z.object({
+    cwd: z.string(),
+    configured: z.boolean(),
+    servers: z.array(PreviewConfiguredServerSchema),
+    runningServers: z.array(PreviewRunningServerSchema).optional(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const PreviewServerSummaryPayloadSchema = z.object({
+  serverId: z.string(),
+  name: z.string(),
+  url: z.string(),
+  port: z.number().int().positive(),
+  status: z.enum(["starting", "running", "exited"]),
+  boundBrowserId: z.string().nullable(),
+});
+
+export const PreviewStartResponseSchema = z.object({
+  type: z.literal("preview.start.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    server: PreviewServerSummaryPayloadSchema.nullable(),
+    reused: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const PreviewBindTabResponseSchema = z.object({
+  type: z.literal("preview.bind_tab.response"),
+  payload: z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const PreviewStopResponseSchema = z.object({
+  type: z.literal("preview.stop.response"),
+  payload: z.object({
+    success: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 const CheckoutGithubCheckAnnotationSchema = z.object({
   path: z.string().optional(),
   startLine: z.number().optional(),
@@ -4245,6 +4353,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
   CheckoutGithubGetCheckDetailsResponseSchema,
+  PreviewListConfigResponseSchema,
+  PreviewStartResponseSchema,
+  PreviewBindTabResponseSchema,
+  PreviewStopResponseSchema,
   CheckoutPrStatusResponseSchema,
   PullRequestTimelineResponseSchema,
   CheckoutSwitchBranchResponseSchema,
@@ -4552,6 +4664,18 @@ export type CheckoutGithubSetAutoMergeResponse = z.infer<
 export type CheckoutGithubGetCheckDetailsRequest = z.infer<
   typeof CheckoutGithubGetCheckDetailsRequestSchema
 >;
+export type PreviewListConfigRequest = z.infer<typeof PreviewListConfigRequestSchema>;
+export type PreviewConfiguredServer = z.infer<typeof PreviewConfiguredServerSchema>;
+export type PreviewRunningServer = z.infer<typeof PreviewRunningServerSchema>;
+export type PreviewServerStatus = z.infer<typeof PreviewServerStatusSchema>;
+export type PreviewListConfigResponse = z.infer<typeof PreviewListConfigResponseSchema>;
+export type PreviewStartRequest = z.infer<typeof PreviewStartRequestSchema>;
+export type PreviewServerSummaryPayload = z.infer<typeof PreviewServerSummaryPayloadSchema>;
+export type PreviewStartResponse = z.infer<typeof PreviewStartResponseSchema>;
+export type PreviewBindTabRequest = z.infer<typeof PreviewBindTabRequestSchema>;
+export type PreviewBindTabResponse = z.infer<typeof PreviewBindTabResponseSchema>;
+export type PreviewStopRequest = z.infer<typeof PreviewStopRequestSchema>;
+export type PreviewStopResponse = z.infer<typeof PreviewStopResponseSchema>;
 export type CheckoutGithubCheckDetails = z.infer<typeof CheckoutGithubCheckDetailsSchema>;
 export type CheckoutGithubGetCheckDetailsResponse = z.infer<
   typeof CheckoutGithubGetCheckDetailsResponseSchema

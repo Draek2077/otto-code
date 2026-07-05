@@ -3082,10 +3082,14 @@ describe("GitHubService", () => {
 
     try {
       execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
-      execFileSync("git", ["remote", "add", "origin", "git@github.com:otto-code-ai/otto-code.git"], {
-        cwd,
-        stdio: "ignore",
-      });
+      execFileSync(
+        "git",
+        ["remote", "add", "origin", "git@github.com:otto-code-ai/otto-code.git"],
+        {
+          cwd,
+          stdio: "ignore",
+        },
+      );
 
       await expect(resolveGitHubRepo(cwd)).resolves.toBe("otto-code-ai/otto-code");
     } finally {

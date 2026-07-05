@@ -15,7 +15,7 @@ npm run dev:desktop
 
 Root checkout dev is intentionally split across terminals:
 
-- `npm run dev:server` runs the daemon on `127.0.0.1:6768`.
+- `npm run dev:server` runs the daemon on `127.0.0.1:6868`.
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
@@ -26,7 +26,7 @@ Root checkout dev is intentionally split across terminals:
 `OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
 
 - The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/otto-home.ts`).
-- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
+- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app. The home must persist across daemon restarts: it holds the daemon keypair, and a fresh home mints a new `serverId` that already-paired clients reject (host-runtime closes connections on serverId mismatch and re-probes forever — the UI symptom is a workspaces list that never finishes loading). Never point dev scripts at a throwaway/temp home.
 - **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/otto-home` and configured dev daemon endpoint.
 - **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/.dev/otto-home` from `$OTTO_SOURCE_CHECKOUT_PATH/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
@@ -42,12 +42,14 @@ OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived work
 ### Daemon endpoints
 
 - Stable daemon launched by the desktop app: `localhost:6868`.
-- Root checkout dev daemon: `localhost:6768`.
+- Root checkout dev daemon: `localhost:6868`.
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev` (Windows): `localhost:6868` for the daemon.
+- `npm run dev:win` (Windows): `localhost:6868` for the daemon; runs daemon + Expo together via `scripts/dev.ps1`.
 
 In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
+
+**Windows gotcha:** `npm run dev:win` always spawns its own daemon — it has no mode to attach to one that's already running. If your Windows dev session already has a daemon on `6868` (e.g. from an earlier `dev:win`) and something else invokes `dev:win` again (a preview tool, a second terminal), the new daemon instance crash-loops fighting over the port. Use `npm run dev:app` instead when you just need Expo pointed at an already-running daemon; it never launches its own daemon.
 
 ### Expo Router
 
@@ -189,13 +191,13 @@ of commands. Both run sequentially.
 
 Every `scripts` entry with `"type": "service"` receives these environment variables:
 
-| Variable                    | Value                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Variable                   | Value                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `OTTO_SERVICE_<NAME>_URL`  | Proxied URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts.                       |
 | `OTTO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
-| `OTTO_URL`                 | Self alias for `OTTO_SERVICE_<SELF>_URL`.                                                                                |
-| `OTTO_PORT`                | Self alias for `OTTO_SERVICE_<SELF>_PORT`.                                                                               |
-| `HOST`                      | Bind host for the service process.                                                                                        |
+| `OTTO_URL`                 | Self alias for `OTTO_SERVICE_<SELF>_URL`.                                                                                 |
+| `OTTO_PORT`                | Self alias for `OTTO_SERVICE_<SELF>_PORT`.                                                                                |
+| `HOST`                     | Bind host for the service process.                                                                                        |
 
 Service proxy hostnames use the double-dash shape: `web--feature-auth--project.localhost` or, on the default branch, `web--project.localhost`. Optional public aliases use the same leftmost label under the configured public base host.
 

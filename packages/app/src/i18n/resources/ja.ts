@@ -500,6 +500,11 @@ export const ja: TranslationResources = {
         editTerminalProfiles: "プロファイルを編集…",
         pinTarget: "ピン留め",
         unpinTarget: "ピン留めを解除",
+        moreActions: "その他のアクション",
+        preview: "プレビューを開始",
+        previewDisabledTooltip: "チャットを開いて開発サーバーをプレビュー",
+        previewPickServer: "どのサーバーを起動しますか?",
+        previewStopServer: "{{name}} を停止",
       },
       explorer: {
         open: "エクスプローラーを開く",
@@ -957,6 +962,17 @@ export const ja: TranslationResources = {
       versionMismatch:
         "アプリとデーモンのバージョンが一致しません。最良の体験のために両方を同じバージョンに更新してください。",
       loadFailed: "デスクトップデーモンのステータスを読み込めません。",
+    },
+    window: {
+      title: "ウィンドウ",
+      minimizeToTray: {
+        title: "閉じるときにトレイに最小化",
+        hint: "ウィンドウを閉じると終了せずにOttoをシステムトレイに隠します",
+      },
+      startMinimized: {
+        title: "トレイに最小化して起動",
+        hint: "ウィンドウを表示せずOttoをシステムトレイに隠した状態で起動します",
+      },
     },
     updates: {
       status: {
@@ -1473,6 +1489,14 @@ export const ja: TranslationResources = {
         description: "組み込みターミナルバッファに保持する行数",
         accessibilityLabel: "ターミナルスクロールバック行数",
       },
+      previewServerCloseBehavior: {
+        label: "タブを閉じたときのプレビューサーバー",
+        description: "プレビュータブを閉じたときに開発サーバーも停止するかどうかを選択します。",
+        options: {
+          keepRunning: "実行を継続",
+          stopOnClose: "閉じたときに停止",
+        },
+      },
       language: {
         label: "言語",
         description: "アプリの言語",
@@ -1850,6 +1874,41 @@ export const ja: TranslationResources = {
         error: "エラー",
         available: "利用可能",
         notInstalled: "未インストール",
+        requiresBase: "{{name}} が必要です",
+      },
+      tools: {
+        title: "Otto ツール",
+        description:
+          "このモデルが使用できるツールグループ。グループのチェックを外すとモデルから隠せます。",
+        globallyDisabled: "グローバル設定で無効",
+        saved: "ツール設定を保存しました",
+        saveFailed: "ツール設定の保存に失敗しました",
+        groups: {
+          preview: "プレビューサーバー",
+          browser: "ブラウザ制御",
+          agents: "エージェント管理",
+          terminals: "ターミナル",
+          schedules: "スケジュール",
+          workspace: "ワークスペース",
+        },
+      },
+      connection: {
+        title: "接続",
+        baseUrl: "サーバー URL",
+        apiKey: "API キー",
+        save: "接続を保存",
+        saving: "保存中...",
+        saved: "接続を保存しました",
+        saveFailed: "接続設定の保存に失敗しました",
+      },
+      remove: {
+        button: "プロバイダーを削除",
+        confirmTitle: "{{name}} を削除しますか？",
+        confirmMessage:
+          "このホストからプロバイダーとその設定が削除されます。作成済みのエージェントの履歴は保持されます。",
+        removing: "削除中...",
+        requiresUpdate: "プロバイダーを削除するにはホストを更新してください。",
+        failed: "プロバイダーの削除に失敗しました",
       },
       models: {
         one: "1つのモデル",

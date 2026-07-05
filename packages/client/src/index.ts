@@ -75,10 +75,7 @@ export interface OttoClientConfig {
 
 export type OttoWorkspace = WorkspaceDescriptorPayload;
 export type OttoAgent = AgentSnapshotPayload;
-export type OttoWorkspaceListOptions = Omit<
-  FetchWorkspacesRequestMessage,
-  "type" | "requestId"
-> & {
+export type OttoWorkspaceListOptions = Omit<FetchWorkspacesRequestMessage, "type" | "requestId"> & {
   requestId?: string;
 };
 

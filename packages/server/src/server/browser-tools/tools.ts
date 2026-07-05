@@ -627,6 +627,130 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
   );
 
   options.registerTool(
+    "browser_inspect",
+    {
+      title: "Inspect browser element",
+      description:
+        "Inspect a DOM element in a Otto browser tab by CSS selector or snapshot ref. Returns tag/id/class, text content, bounding box, and computed styles. " +
+        "BEST tool for verifying visual properties like colors, fonts, spacing, and dimensions — more accurate than screenshots. " +
+        "Pass styles to select which CSS properties to return; defaults to common layout and typography properties. Use browserId from preview_start, browser_new_tab, or browser_list_tabs.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+        selector: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("CSS selector (e.g., '.button', '#header'); the first match is inspected"),
+        ref: BrowserRefInputSchema.optional().describe(
+          "Element ref from the latest browser_snapshot (alternative to selector)",
+        ),
+        styles: z
+          .array(z.string().min(1))
+          .max(50)
+          .optional()
+          .describe("CSS properties to return (e.g., ['padding', 'color'])"),
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({
+      browserId,
+      selector,
+      ref,
+      styles,
+    }: {
+      browserId: string;
+      selector?: string;
+      ref?: string;
+      styles?: string[];
+    }) => {
+      if (Number(Boolean(selector)) + Number(Boolean(ref)) !== 1) {
+        return browserToolResult({
+          payload: {
+            requestId: "browser-tools-inspect-target",
+            ok: false,
+            error: {
+              code: "browser_denied",
+              message: "browser_inspect requires exactly one of selector or ref",
+              retryable: false,
+            },
+          },
+          context: resolveBrowserToolContext(options),
+        });
+      }
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "inspect",
+          args: {
+            browserId,
+            ...(selector ? { selector } : {}),
+            ...(ref ? { ref } : {}),
+            ...(styles && styles.length > 0 ? { styles } : {}),
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
+
+  options.registerTool(
+    "browser_network",
+    {
+      title: "Inspect browser network traffic",
+      description:
+        "List captured network requests in a Otto browser tab, or fetch a specific response body. " +
+        "Without requestId, lists requests with method, URL, status, and requestId. With requestId, returns that request's full response body (useful for inspecting API payloads). " +
+        "Capture starts on the first call for a tab — reload the page (browser_reload) after the first call to record its traffic. " +
+        "Use filter 'failed' to show only 4xx/5xx and network errors. Use browserId from preview_start, browser_new_tab, or browser_list_tabs.",
+      inputSchema: {
+        browserId: BrowserAutomationBrowserIdSchema,
+        filter: z
+          .enum(["all", "failed"])
+          .optional()
+          .describe("Filter: 'all' (default) or 'failed' (4xx/5xx and network errors)"),
+        requestId: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "If provided, returns the response body for this captured request instead of listing",
+          ),
+      },
+      outputSchema: BrowserToolOutputSchema,
+    },
+    async ({
+      browserId,
+      filter,
+      requestId,
+    }: {
+      browserId: string;
+      filter?: "all" | "failed";
+      requestId?: string;
+    }) => {
+      const context = resolveBrowserToolContext(options);
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+
+        command: {
+          command: "network",
+          args: {
+            browserId,
+            filter: filter ?? "all",
+            ...(requestId ? { requestId } : {}),
+          },
+        },
+      });
+      return browserToolResult({ payload, context: { ...context, browserId } });
+    },
+  );
+
+  options.registerTool(
     "browser_evaluate",
     {
       title: "Evaluate browser JavaScript",

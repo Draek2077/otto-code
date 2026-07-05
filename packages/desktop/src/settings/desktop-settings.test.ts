@@ -85,6 +85,10 @@ describe("desktop-settings", () => {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
       },
+      tray: {
+        minimizeOnClose: true,
+        startMinimized: false,
+      },
     });
   });
 
@@ -105,6 +109,10 @@ describe("desktop-settings", () => {
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
+      },
+      tray: {
+        minimizeOnClose: true,
+        startMinimized: false,
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
@@ -188,6 +196,10 @@ describe("desktop-settings", () => {
       daemon: {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,
+      },
+      tray: {
+        minimizeOnClose: true,
+        startMinimized: false,
       },
     });
     expect(ignoredSecondMigration).toEqual(migrated);

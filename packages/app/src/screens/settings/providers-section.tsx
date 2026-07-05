@@ -35,6 +35,7 @@ function getProviderStatus(
   status: string,
   enabled: boolean,
   modelCount: number,
+  requiresBaseName: string | null,
   t: TFunction,
 ): ProviderStatus {
   if (!enabled)
@@ -52,11 +53,41 @@ function getProviderStatus(
       modelCount: modelCount > 0 ? modelCount : null,
     };
   }
+  if (requiresBaseName) {
+    // Endpoint providers (e.g. LM Studio via the Codex CLI) don't install
+    // anything themselves — what's missing is the base agent binary.
+    return {
+      tone: "warning",
+      label: t("settings.providers.statuses.requiresBase", { name: requiresBaseName }),
+      modelCount: null,
+    };
+  }
   return {
     tone: "warning",
     label: t("settings.providers.statuses.notInstalled"),
     modelCount: null,
   };
+}
+
+function resolveRequiresBaseName(
+  providerConfig: unknown,
+  entries: ProviderEntry[] | undefined,
+): string | null {
+  if (!providerConfig || typeof providerConfig !== "object") {
+    return null;
+  }
+  const extendsValue = (providerConfig as Record<string, unknown>)["extends"];
+  if (
+    typeof extendsValue !== "string" ||
+    extendsValue.length === 0 ||
+    extendsValue === "acp" ||
+    // Served natively by the daemon — no base CLI to install.
+    extendsValue === "openai-compatible"
+  ) {
+    return null;
+  }
+  const base = entries?.find((candidate) => candidate.provider === extendsValue);
+  return base?.label ?? extendsValue;
 }
 
 interface ProviderRowProps {
@@ -65,6 +96,7 @@ interface ProviderRowProps {
   enabled: boolean;
   isToggling: boolean;
   isFirst: boolean;
+  requiresBaseName: string | null;
   onPress: (providerId: string) => void;
   onToggleEnabled: (providerId: string, enabled: boolean) => void;
 }
@@ -75,6 +107,7 @@ function ProviderRow({
   enabled,
   isToggling,
   isFirst,
+  requiresBaseName,
   onPress,
   onToggleEnabled,
 }: ProviderRowProps) {
@@ -89,7 +122,7 @@ function ProviderRow({
       ? entry.error.trim()
       : null;
   const modelCount = entry.models?.length ?? 0;
-  const providerStatus = getProviderStatus(entry.status, enabled, modelCount, t);
+  const providerStatus = getProviderStatus(entry.status, enabled, modelCount, requiresBaseName, t);
 
   const handlePress = useCallback(() => {
     onPress(def.id);
@@ -204,7 +237,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
   const { t } = useTranslation();
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { entries, isLoading, refresh } = useProvidersSnapshot(serverId);
-  const { patchConfig } = useDaemonConfig(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
   const openProviderSettings = useProviderSettingsStore((state) => state.open);
   const [pendingProviderId, setPendingProviderId] = useState<string | null>(null);
   const [installingProviderId, setInstallingProviderId] = useState<string | null>(null);
@@ -285,6 +318,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
                   enabled={entry.enabled ?? true}
                   isToggling={pendingProviderId === def.id}
                   isFirst={index === 0}
+                  requiresBaseName={resolveRequiresBaseName(config?.providers?.[def.id], entries)}
                   onPress={handleOpenProviderSettings}
                   onToggleEnabled={handleToggleEnabled}
                 />

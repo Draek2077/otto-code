@@ -471,24 +471,16 @@ describe.skipIf(isPlatform("win32"))("worktree-bootstrap POSIX-only", () => {
       const apiEnv = readEnvFile(apiEnvPath);
       const webEnv = readEnvFile(webEnvPath);
 
-      expect(apiEnv.OTTO_SERVICE_API_URL).toBe(
-        "http://api--feature-peer-env--repo.localhost:6868",
-      );
-      expect(apiEnv.OTTO_SERVICE_WEB_URL).toBe(
-        "http://web--feature-peer-env--repo.localhost:6868",
-      );
+      expect(apiEnv.OTTO_SERVICE_API_URL).toBe("http://api--feature-peer-env--repo.localhost:6868");
+      expect(apiEnv.OTTO_SERVICE_WEB_URL).toBe("http://web--feature-peer-env--repo.localhost:6868");
       expect(apiEnv.OTTO_SERVICE_API_PORT).toEqual(expect.stringMatching(/^\d+$/));
       expect(apiEnv.OTTO_SERVICE_WEB_PORT).toEqual(expect.stringMatching(/^\d+$/));
       expect(apiEnv.OTTO_URL).toBe(apiEnv.OTTO_SERVICE_API_URL);
       expect(apiEnv.OTTO_PORT).toBe(apiEnv.OTTO_SERVICE_API_PORT);
       expect(apiEnv).not.toHaveProperty("PORT");
 
-      expect(webEnv.OTTO_SERVICE_API_URL).toBe(
-        "http://api--feature-peer-env--repo.localhost:6868",
-      );
-      expect(webEnv.OTTO_SERVICE_WEB_URL).toBe(
-        "http://web--feature-peer-env--repo.localhost:6868",
-      );
+      expect(webEnv.OTTO_SERVICE_API_URL).toBe("http://api--feature-peer-env--repo.localhost:6868");
+      expect(webEnv.OTTO_SERVICE_WEB_URL).toBe("http://web--feature-peer-env--repo.localhost:6868");
       expect(webEnv.OTTO_SERVICE_API_PORT).toBe(apiEnv.OTTO_SERVICE_API_PORT);
       expect(webEnv.OTTO_SERVICE_WEB_PORT).toBe(apiEnv.OTTO_SERVICE_WEB_PORT);
       expect(webEnv.OTTO_URL).toBe(webEnv.OTTO_SERVICE_WEB_URL);

@@ -70,10 +70,19 @@ import {
 import {
   createBeforeQuitHandler,
   stopDesktopManagedDaemonOnQuitIfNeeded,
+  markAppQuitting,
+  isAppQuitting,
 } from "./daemon/quit-lifecycle.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
+import {
+  getCachedMinimizeOnCloseSetting,
+  refreshTrayVisibility,
+  setCachedMinimizeOnCloseSetting,
+  shouldHideWindowOnClose,
+  type TrayLifecycleOptions,
+} from "./features/tray.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "otto";
@@ -113,6 +122,52 @@ const FORWARDED_OTTO_SHORTCUT_KEYS = new Set([
 const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
+
+// CSP for the app shell's own session only (registered on defaultSession, which
+// the main window uses). Browser-webview guests run on separate
+// `persist:otto-browser-*` partitions and are untouched by this policy — they
+// browse arbitrary third-party sites, so imposing our own CSP there would be
+// both wrong (it's not our content) and easily broken by real-world pages.
+//
+// connect-src stays wide open (any http/https/ws/wss origin): Otto's core
+// multi-host feature lets users point the renderer at arbitrary daemon hosts
+// (LAN, Tailscale, the relay), so a fixed allowlist would break that. The
+// actual security value here is script-src/object-src/base-uri — blocking
+// injected/inline script execution and foreign navigation targets.
+const CSP_SHARED_DIRECTIVES = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "media-src 'self' blob: data:",
+  "worker-src 'self' blob:",
+  "connect-src 'self' http: https: ws: wss:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+];
+
+// Dev loads the Expo/Metro dev server, whose Fast Refresh relies on eval'd
+// source maps. The packaged app loads static otto:// assets and doesn't need it.
+const DEV_CONTENT_SECURITY_POLICY = [
+  "script-src 'self' 'unsafe-eval'",
+  ...CSP_SHARED_DIRECTIVES,
+].join("; ");
+const PROD_CONTENT_SECURITY_POLICY = ["script-src 'self'", ...CSP_SHARED_DIRECTIVES].join("; ");
+
+function registerAppShellContentSecurityPolicy(): void {
+  const csp = app.isPackaged ? PROD_CONTENT_SECURITY_POLICY : DEV_CONTENT_SECURITY_POLICY;
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers: Record<string, string[]> = { ...details.responseHeaders };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "content-security-policy") {
+        delete headers[key];
+      }
+    }
+    headers["Content-Security-Policy"] = [csp];
+    callback({ responseHeaders: headers });
+  });
+}
 
 function readBrowserWorkspaceInput(
   input: unknown,
@@ -510,6 +565,26 @@ function getWindowIconPath(): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
+function showMostRecentWindowOrCreateOne(): void {
+  const existing = BrowserWindow.getAllWindows().find((win) => !win.isDestroyed());
+  if (existing) {
+    if (existing.isMinimized()) {
+      existing.restore();
+    }
+    existing.show();
+    existing.focus();
+    return;
+  }
+  void createWindow({ restoreWindowState: true }).catch((error) => {
+    log.error("[tray] failed to create window from tray", error);
+  });
+}
+
+const TRAY_LIFECYCLE_OPTIONS: TrayLifecycleOptions = {
+  onShowWindow: showMostRecentWindowOrCreateOne,
+  onQuit: () => app.quit(),
+};
+
 function applyAppIcon(): void {
   if (process.platform !== "darwin") {
     return;
@@ -558,6 +633,17 @@ async function createWindow(
     ? clampWindowStateToWorkAreas(savedWindowState, getWorkAreasPrimaryFirst())
     : null;
 
+  // Only the first window of a session honors "start minimized to tray" — a
+  // window opened later (⌘N, second-instance, "Open in new window") is an
+  // explicit ask to see it. Mac has no tray-only mode to start into (see
+  // shouldHideWindowOnClose's darwin exemption): the dock already keeps Otto
+  // running with zero windows, so "minimized" there would just mean invisible
+  // with no way back short of the dock icon.
+  const shouldStartMinimizedToTray =
+    restoreWindowState &&
+    process.platform !== "darwin" &&
+    (await getDesktopSettingsStore().get()).tray.startMinimized;
+
   const title = devWorktreeName ? `${APP_NAME} (${devWorktreeName})` : APP_NAME;
   const mainWindow = new BrowserWindow({
     title,
@@ -582,6 +668,28 @@ async function createWindow(
   mainWindow.on("closed", () => {
     pendingOpenProjectStore.delete(webContentsId);
   });
+
+  // Windows/Linux: hide the last visible window to the tray instead of letting it
+  // close, unless the user opted out or an app quit is already in flight. macOS's
+  // native close behavior is untouched — the dock already keeps Otto running with
+  // zero windows open, which is this feature's mac equivalent.
+  mainWindow.on("close", (event) => {
+    const otherVisibleWindowCount = BrowserWindow.getAllWindows().filter(
+      (win) => win !== mainWindow && !win.isDestroyed() && win.isVisible(),
+    ).length;
+    const shouldHide = shouldHideWindowOnClose({
+      platform: process.platform,
+      minimizeOnCloseEnabled: getCachedMinimizeOnCloseSetting(),
+      isQuitting: isAppQuitting(),
+      otherVisibleWindowCount,
+    });
+    if (shouldHide) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+  mainWindow.on("hide", () => refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS));
+  mainWindow.on("show", () => refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS));
 
   if (devWorktreeName) {
     app.dock?.setBadge(devWorktreeName);
@@ -675,7 +783,14 @@ async function createWindow(
   });
 
   mainWindow.once("ready-to-show", () => {
+    if (shouldStartMinimizedToTray) {
+      // Window stays hidden (created with show: false); surface the tray icon
+      // immediately instead of waiting for a hide/show transition to trigger it.
+      refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS);
+      return;
+    }
     mainWindow.show();
+    mainWindow.focus();
   });
 
   if (!app.isPackaged) {
@@ -807,6 +922,8 @@ async function bootstrap(): Promise<void> {
 
   await app.whenReady();
 
+  registerAppShellContentSecurityPolicy();
+
   const appDistDir = getAppDistDir();
   protocol.handle(APP_SCHEME, (request) => {
     const { pathname, search, hash } = new URL(request.url);
@@ -846,7 +963,13 @@ async function bootstrap(): Promise<void> {
   if (await runDesktopSmokeIfRequested()) {
     return;
   }
-  registerDaemonManager();
+
+  const initialDesktopSettings = await getDesktopSettingsStore().get();
+  setCachedMinimizeOnCloseSetting(initialDesktopSettings.tray.minimizeOnClose);
+  registerDaemonManager({
+    onDesktopSettingsChanged: (settings) =>
+      setCachedMinimizeOnCloseSetting(settings.tray.minimizeOnClose),
+  });
   registerWindowManager();
   registerDialogHandlers();
   registerNotificationHandlers();
@@ -903,6 +1026,13 @@ function showDaemonShutdownDialog(): void {
   }
 }
 
+// Runs before any window-close attempt in a real quit (app.quit()/Cmd+Q both fire
+// 'before-quit' first), so the tray's close-to-tray interception can tell a real
+// quit apart from the user clicking the window's close button.
+app.on("before-quit", () => {
+  markAppQuitting();
+});
+
 app.on(
   "before-quit",
   createBeforeQuitHandler({
@@ -924,5 +1054,10 @@ app.on(
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
+    return;
   }
+  // mac's native close behavior already leaves the app running with no windows
+  // (the dock icon persists); that state is this feature's mac equivalent of
+  // "minimized to tray," so show the tray icon the same way the other platforms do.
+  refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS);
 });

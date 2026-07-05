@@ -29,9 +29,7 @@ describe("resolveNewAgentWorkingDir", () => {
       mainRepoRoot: "/repo/main",
     } as unknown as CheckoutStatusPayload;
 
-    expect(resolveNewAgentWorkingDir("/repo/.otto/worktrees/feature", checkout)).toBe(
-      "/repo/main",
-    );
+    expect(resolveNewAgentWorkingDir("/repo/.otto/worktrees/feature", checkout)).toBe("/repo/main");
   });
 });
 

@@ -1,6 +1,9 @@
 import os from "node:os";
 
-import { ConnectionOfferV2Schema, type ConnectionOffer } from "@otto-code/protocol/connection-offer";
+import {
+  ConnectionOfferV2Schema,
+  type ConnectionOffer,
+} from "@otto-code/protocol/connection-offer";
 
 interface BuildOfferEndpointsArgs {
   listenHost: string;

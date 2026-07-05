@@ -22,9 +22,7 @@ describe("isVoicePermissionAllowed", () => {
   });
 
   test("denies non-speak tool names", () => {
-    expect(isVoicePermissionAllowed(buildRequest({ name: "mcp__otto__create_agent" }))).toBe(
-      false,
-    );
+    expect(isVoicePermissionAllowed(buildRequest({ name: "mcp__otto__create_agent" }))).toBe(false);
     expect(isVoicePermissionAllowed(buildRequest({ name: "otto_create_agent" }))).toBe(false);
   });
 

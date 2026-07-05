@@ -40,6 +40,10 @@ import type {
   CheckoutPrMergeMethod,
   CheckoutGithubSetAutoMergeResponse,
   CheckoutGithubGetCheckDetailsResponse,
+  PreviewListConfigResponse,
+  PreviewStartResponse,
+  PreviewBindTabResponse,
+  PreviewStopResponse,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
   CheckoutSwitchBranchResponse,
@@ -308,6 +312,10 @@ type CheckoutRefreshPayload = CheckoutRefreshResponse["payload"];
 type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrMergePayload = CheckoutPrMergeResponse["payload"];
 type CheckoutGithubSetAutoMergePayload = CheckoutGithubSetAutoMergeResponse["payload"];
+type PreviewListConfigPayload = PreviewListConfigResponse["payload"];
+type PreviewStartPayload = PreviewStartResponse["payload"];
+type PreviewBindTabPayload = PreviewBindTabResponse["payload"];
+type PreviewStopPayload = PreviewStopResponse["payload"];
 type CheckoutGithubGetCheckDetailsPayload = CheckoutGithubGetCheckDetailsResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type PullRequestTimelinePayload = PullRequestTimelineResponse["payload"];
@@ -3284,6 +3292,52 @@ export class DaemonClient {
         cwd,
         enabled: input.enabled,
         ...(input.enabled ? { mergeMethod: input.method } : {}),
+      },
+    });
+  }
+
+  async previewListConfig(cwd: string, requestId?: string): Promise<PreviewListConfigPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"preview.list_config.response">({
+      requestId,
+      message: {
+        type: "preview.list_config.request",
+        cwd,
+      },
+    });
+  }
+
+  async previewStart(cwd: string, name: string, requestId?: string): Promise<PreviewStartPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"preview.start.response">({
+      requestId,
+      message: {
+        type: "preview.start.request",
+        cwd,
+        name,
+      },
+    });
+  }
+
+  async previewBindTab(
+    serverId: string,
+    browserId: string,
+    requestId?: string,
+  ): Promise<PreviewBindTabPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"preview.bind_tab.response">({
+      requestId,
+      message: {
+        type: "preview.bind_tab.request",
+        serverId,
+        browserId,
+      },
+    });
+  }
+
+  async previewStop(serverId: string, requestId?: string): Promise<PreviewStopPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"preview.stop.response">({
+      requestId,
+      message: {
+        type: "preview.stop.request",
+        serverId,
       },
     });
   }

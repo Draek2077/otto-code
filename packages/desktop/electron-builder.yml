@@ -21,6 +21,18 @@ extraResources:
     to: app-dist
   - from: ../../skills
     to: skills
+  - from: assets/tray-icon.png
+    to: tray-icon.png
+  - from: assets/tray-icon-attention.png
+    to: tray-icon-attention.png
+  - from: assets/tray-icon-mac.png
+    to: tray-icon-mac.png
+  - from: assets/tray-icon-mac@2x.png
+    to: tray-icon-mac@2x.png
+  - from: assets/tray-icon-mac-attention.png
+    to: tray-icon-mac-attention.png
+  - from: assets/tray-icon-mac-attention@2x.png
+    to: tray-icon-mac-attention@2x.png
 publish:
   provider: github
   owner: otto-code-ai
