@@ -12,7 +12,7 @@ const renderDiscordIcon = (color: string) => <DiscordIcon color={color} size={14
 
 export function CommunityLinks() {
   const handleOpenGitHub = useCallback(() => {
-    void openExternalUrl("https://github.com/otto-code-ai/otto-code");
+    void openExternalUrl("https://github.com/Draek2077/otto-code");
   }, []);
 
   const handleOpenSponsor = useCallback(() => {

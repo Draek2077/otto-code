@@ -77,7 +77,7 @@ function Privacy() {
           <p>
             If you have questions about privacy, open an issue on{" "}
             <a
-              href="https://github.com/otto-code-ai/otto-code"
+              href="https://github.com/Draek2077/otto-code"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-white/90"

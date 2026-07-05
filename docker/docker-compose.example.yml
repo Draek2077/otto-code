@@ -4,7 +4,7 @@
 # For any network-reachable deployment, change OTTO_PASSWORD first.
 services:
   otto:
-    image: ghcr.io/otto-code-ai/otto-code:latest
+    image: ghcr.io/draek2077/otto:latest
     container_name: otto
     restart: unless-stopped
     ports:

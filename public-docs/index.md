@@ -12,7 +12,7 @@ Otto runs your coding agents on your machine and gives you a mobile, desktop, we
 
 ## Desktop app (recommended)
 
-Download from [otto-code.ai/download](https://otto-code.ai/download) or the [GitHub releases page](https://github.com/otto-code-ai/otto-code/releases). Open it and you're done.
+Download from [otto-code.me/download](https://otto-code.me/download) or the [GitHub releases page](https://github.com/Draek2077/otto-code/releases). Open it and you're done.
 
 The desktop app bundles its own daemon and starts it automatically, no separate install required. On first launch you'll see a brief startup screen, then connect from your phone by scanning the QR code in Settings.
 
@@ -41,7 +41,7 @@ docker run -d --name otto \
   -e OTTO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/otto-code-ai/otto-code:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Then open `http://localhost:6868`.
@@ -55,8 +55,8 @@ The image runs the daemon and serves the bundled web UI. It does not bundle agen
 - [Providers](/docs/providers), what a provider is and how Otto wraps existing CLIs.
 - [CLI reference](/docs/cli), every command.
 - [Self-hosting the web UI](/docs/web-ui), serve the browser app from your own daemon.
-- [GitHub repo](https://github.com/otto-code-ai/otto-code)
-- [Report an issue](https://github.com/otto-code-ai/otto-code/issues)
+- [GitHub repo](https://github.com/Draek2077/otto-code)
+- [Report an issue](https://github.com/Draek2077/otto-code/issues)
 
 ## Prerequisites
 

@@ -151,7 +151,7 @@ buildNpmPackage rec {
 
   meta = {
     description = "Otto desktop app (Electron wrapper)";
-    homepage = "https://github.com/otto-code-ai/otto-code";
+    homepage = "https://github.com/Draek2077/otto-code";
     license = lib.licenses.agpl3Plus;
     mainProgram = "otto-desktop";
     platforms = lib.platforms.linux;

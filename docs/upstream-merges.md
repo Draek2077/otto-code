@@ -15,9 +15,9 @@ the rules on it.
 | --------------------------------------------- | ---------------------------------------------------------------- |
 | `Paseo` / `paseo` (prose, identifiers)        | `Otto` / `otto`                                                  |
 | `@getpaseo/*` npm scope                       | `@otto-code/*`                                                   |
-| `getpaseo/paseo` GitHub repo                  | `otto-code-ai/otto-code`                                         |
-| `getpaseo` org                                | `otto-code-ai`                                                   |
-| `paseo.sh` domain                             | `otto-code.ai`                                                   |
+| `getpaseo/paseo` GitHub repo                  | `Draek2077/otto-code`                                            |
+| `getpaseo` org                                | `Draek2077`                                                      |
+| `paseo.sh` domain                             | `otto-code.me`                                                   |
 | `PASEO_*` env vars                            | `OTTO_*`                                                         |
 | `sh.paseo` / `.debug` / `.desktop` bundle ids | `ai.ottocode` / `.debug` / `.desktop` (no hyphens — reverse-DNS) |
 | `paseo` CLI command                           | `otto`                                                           |

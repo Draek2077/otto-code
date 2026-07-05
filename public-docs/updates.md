@@ -64,7 +64,7 @@ The app will check for beta updates from then on.
 
 Desktop releases and the CLI are usually available first. App Store and Play Store releases can lag behind because they go through review.
 
-There is no beta channel in the app stores right now — only stable builds are submitted. If you want early Android builds, download the APK from the [GitHub releases page](https://github.com/otto-code-ai/otto-code/releases).
+There is no beta channel in the app stores right now — only stable builds are submitted. If you want early Android builds, download the APK from the [GitHub releases page](https://github.com/Draek2077/otto-code/releases).
 
 ## What to do if something breaks
 

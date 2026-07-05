@@ -23,8 +23,8 @@ import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 
 const DEFAULT_PORT = 6868;
-const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.ai:443";
-const DEFAULT_APP_BASE_URL = "https://app.otto-code.ai";
+const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.me:443";
+const DEFAULT_APP_BASE_URL = "https://app.otto-code.me";
 const DEFAULT_TRUSTED_PROXIES = ["loopback"];
 
 export function resolveBundledWebUiDistDir(moduleUrl: string | URL = import.meta.url): string {

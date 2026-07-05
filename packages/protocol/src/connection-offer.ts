@@ -46,7 +46,7 @@ function extractOfferFragmentEncoded(input: string): string | null {
 }
 
 /**
- * Parse a pairing-offer URL of the form `https://app.otto-code.ai/#offer=<base64url>`.
+ * Parse a pairing-offer URL of the form `https://app.otto-code.me/#offer=<base64url>`.
  *
  * Returns `null` if the input has no `#offer=` fragment. Throws if the fragment
  * exists but the payload is malformed or fails schema validation.

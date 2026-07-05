@@ -40,7 +40,7 @@ on:
           - "false"
           - "true"
       publish_latest:
-        description: "Also publish ghcr.io/otto-code-ai/otto-code:latest. Ignored for prereleases."
+        description: "Also publish ghcr.io/draek2077/otto:latest. Ignored for prereleases."
         required: false
         default: "false"
         type: choice

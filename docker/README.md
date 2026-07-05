@@ -11,7 +11,7 @@ docker run -d --name otto \
   -e OTTO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/otto-code-ai/otto-code:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Then open `http://localhost:6868`.
@@ -20,7 +20,7 @@ The base image intentionally does not bundle agent CLIs. Extend it with the
 agents you use:
 
 ```Dockerfile
-FROM ghcr.io/otto-code-ai/otto-code:latest
+FROM ghcr.io/draek2077/otto:latest
 
 USER root
 RUN npm install -g @openai/codex @anthropic-ai/claude-code

@@ -16,7 +16,7 @@ export type RelayRole = "server" | "client";
 export type RelayProtocolVersion = "1" | "2";
 
 export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "2";
-export const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.ai:443";
+export const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.me:443";
 
 export function normalizeRelayProtocolVersion(
   value: unknown,

@@ -124,7 +124,7 @@ Use `OTTO_HOME` to run multiple isolated daemon instances.
 
 ## Connecting to a remote daemon
 
-`--host` accepts either a local target (`host:port`, a unix socket, or a Windows pipe) or a pairing offer URL, the same `https://app.otto-code.ai/#offer=...` link the mobile app uses for QR pairing. With an offer URL the CLI connects through the Otto relay with end-to-end encryption, so you can drive a daemon on another machine without exposing it to the network.
+`--host` accepts either a local target (`host:port`, a unix socket, or a Windows pipe) or a pairing offer URL, the same `https://app.otto-code.me/#offer=...` link the mobile app uses for QR pairing. With an offer URL the CLI connects through the Otto relay with end-to-end encryption, so you can drive a daemon on another machine without exposing it to the network.
 
 Get an offer URL from the daemon you want to control:
 
@@ -135,7 +135,7 @@ otto daemon pair --json   # prints { url, qr, ... }
 Use it from anywhere:
 
 ```bash
-otto ls --host 'https://app.otto-code.ai/#offer=eyJ2IjoyLC...'
+otto ls --host 'https://app.otto-code.me/#offer=eyJ2IjoyLC...'
 otto run --host "$OFFER_URL" "fix the failing tests"
 ```
 
@@ -181,7 +181,7 @@ otto ls -q                    # IDs only (quiet)
 
 ## Global options
 
-- `--host <target>`, connect to a different daemon (`host:port`, unix socket, or `https://app.otto-code.ai/#offer=...` for relay). See [Connecting to a remote daemon](#connecting-to-a-remote-daemon).
+- `--host <target>`, connect to a different daemon (`host:port`, unix socket, or `https://app.otto-code.me/#offer=...` for relay). See [Connecting to a remote daemon](#connecting-to-a-remote-daemon).
 - `--json`, JSON output
 - `-q, --quiet`, minimal output
 - `--no-color`, disable colors

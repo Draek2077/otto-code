@@ -31,11 +31,11 @@ export async function generateLocalPairingOffer(args: {
     };
   }
 
-  const relayEndpoint = args.relayEndpoint ?? "relay.otto-code.ai:443";
+  const relayEndpoint = args.relayEndpoint ?? "relay.otto-code.me:443";
   const relayPublicEndpoint = args.relayPublicEndpoint ?? relayEndpoint;
-  const relayUseTls = args.relayUseTls ?? relayEndpoint === "relay.otto-code.ai:443";
+  const relayUseTls = args.relayUseTls ?? relayEndpoint === "relay.otto-code.me:443";
   const relayPublicUseTls = args.relayPublicUseTls ?? relayUseTls;
-  const appBaseUrl = args.appBaseUrl ?? "https://app.otto-code.ai";
+  const appBaseUrl = args.appBaseUrl ?? "https://app.otto-code.me";
   const serverId = getOrCreateServerId(args.ottoHome, { logger: args.logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(args.ottoHome, args.logger);
   const offer = await createConnectionOfferV2({

@@ -1,7 +1,7 @@
 import * as React from "react";
 
 export function releaseBase(version: string) {
-  return `https://github.com/otto-code-ai/otto-code/releases/download/v${version}`;
+  return `https://github.com/Draek2077/otto-code/releases/download/v${version}`;
 }
 
 export interface ReleaseAssetInfo {
@@ -28,7 +28,7 @@ export function downloadUrls(release: ReleaseAssetInfo) {
 
 export const appStoreUrl = "https://apps.apple.com/app/otto-pocket-engineer/id6758887924";
 export const playStoreUrl = "https://play.google.com/store/apps/details?id=ai.ottocode";
-export const webAppUrl = "https://app.otto-code.ai";
+export const webAppUrl = "https://app.otto-code.me";
 
 type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
 

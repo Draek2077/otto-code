@@ -75,7 +75,7 @@ export async function openDesktopWithProject(projectPath: string): Promise<void>
     const desktopApp = findDesktopApp();
     if (!desktopApp) {
       throw new Error(
-        "Otto desktop app not found. Install it from https://github.com/otto-code-ai/otto-code/releases",
+        "Otto desktop app not found. Install it from https://github.com/Draek2077/otto-code/releases",
       );
     }
 

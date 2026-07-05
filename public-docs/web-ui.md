@@ -8,7 +8,7 @@ category: Getting started
 
 # Self-hosting the web UI
 
-Otto's daemon can serve the browser web app itself, from the same address it already uses for the API. You don't need the hosted app at [app.otto-code.ai](https://app.otto-code.ai): point a browser at your own daemon and you get the full UI, connected to your own agents, on infrastructure you control.
+Otto's daemon can serve the browser web app itself, from the same address it already uses for the API. You don't need the hosted app at [app.otto-code.me](https://app.otto-code.me): point a browser at your own daemon and you get the full UI, connected to your own agents, on infrastructure you control.
 
 This is useful when you want to:
 
@@ -217,7 +217,7 @@ Self-hosting the web UI puts you in charge of who can reach the daemon. The esse
 - **Keep the daemon on localhost when you can** and let a reverse proxy or tunnel be the only exposed surface.
 - **Review your host allowlist** when serving on a custom domain.
 
-For the full threat model, relay encryption, and DNS-rebinding details, see [Security](/docs/security) and [SECURITY.md](https://github.com/otto-code-ai/otto-code/blob/main/SECURITY.md).
+For the full threat model, relay encryption, and DNS-rebinding details, see [Security](/docs/security) and [SECURITY.md](https://github.com/Draek2077/otto-code/blob/main/SECURITY.md).
 
 ## Troubleshooting
 

@@ -5,7 +5,7 @@
 #
 # Then set `image: otto-with-agents` in docker/docker-compose.example.yml.
 
-FROM ghcr.io/otto-code-ai/otto-code:latest
+FROM ghcr.io/draek2077/otto:latest
 
 USER root
 RUN npm install -g \

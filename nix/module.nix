@@ -94,7 +94,7 @@ in
         description = ''
           How the daemon reaches the relay when `relay.enable = true`:
 
-          - `"hosted"` (default): use the upstream `app.otto-code.ai` relay.
+          - `"hosted"` (default): use the upstream `app.otto-code.me` relay.
             Preserves the current behavior; no extra options needed.
           - `"remote"`: connect to a self-hosted relay at
             `relay.host:relay.port`. Sets `OTTO_RELAY_ENDPOINT` and
@@ -159,7 +159,7 @@ in
       default = { };
       example = lib.literalExpression ''
         {
-          OTTO_RELAY_ENDPOINT = "relay.otto-code.ai:443";
+          OTTO_RELAY_ENDPOINT = "relay.otto-code.me:443";
         }
       '';
       description = "Extra environment variables for the Otto daemon.";

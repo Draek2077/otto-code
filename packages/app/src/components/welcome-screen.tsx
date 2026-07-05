@@ -184,7 +184,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   }, [router]);
 
   const handleOpenOttoSite = useCallback(() => {
-    void openExternalUrl("https://otto-code.ai");
+    void openExternalUrl("https://otto-code.me");
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -273,7 +273,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
             <Text style={styles.subtitle}>{t("onboarding.subtitle")}</Text>
             {isNative ? (
               <Pressable style={styles.setupLink} onPress={handleOpenOttoSite}>
-                <Text style={styles.setupLinkText}>otto-code.ai</Text>
+                <Text style={styles.setupLinkText}>otto-code.me</Text>
                 <ExternalLink size={14} color={theme.colors.accent} />
               </Pressable>
             ) : null}

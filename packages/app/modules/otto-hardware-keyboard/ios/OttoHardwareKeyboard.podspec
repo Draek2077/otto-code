@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
   s.description    = 'Hardware keyboard shortcuts for Otto'
   s.license        = 'AGPL-3.0-or-later'
   s.author         = 'Otto'
-  s.homepage       = 'https://otto-code.ai'
+  s.homepage       = 'https://otto-code.me'
   s.platforms      = { :ios => '13.4' }
   s.swift_version  = '5.4'
   s.source         = { :path => '.' }

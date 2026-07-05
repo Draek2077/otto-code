@@ -2,7 +2,7 @@ import startEntry from "@tanstack/react-start/server-entry";
 import { getDoc } from "~/docs";
 import { buildLlmsTxt } from "~/llms";
 
-const CANONICAL_HOST = "otto-code.ai";
+const CANONICAL_HOST = "otto-code.me";
 
 type FetchArgs = Parameters<typeof startEntry.fetch>;
 

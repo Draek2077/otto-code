@@ -5,11 +5,11 @@
 <h1 align="center">Otto</h1>
 
 <p align="center">
-  <a href="https://github.com/otto-code-ai/otto-code/stargazers">
-    <img src="https://img.shields.io/github/stars/otto-code-ai/otto-code?style=flat&logo=github" alt="GitHub stars">
+  <a href="https://github.com/Draek2077/otto-code/stargazers">
+    <img src="https://img.shields.io/github/stars/Draek2077/otto-code?style=flat&logo=github" alt="GitHub stars">
   </a>
-  <a href="https://github.com/otto-code-ai/otto-code/releases">
-    <img src="https://img.shields.io/github/v/release/otto-code-ai/otto-code?style=flat&logo=github" alt="GitHub release">
+  <a href="https://github.com/Draek2077/otto-code/releases">
+    <img src="https://img.shields.io/github/v/release/Draek2077/otto-code?style=flat&logo=github" alt="GitHub release">
   </a>
   <a href="https://x.com/moboudra">
     <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
@@ -30,11 +30,11 @@
 > under AGPL-3.0. See [NOTICE](NOTICE) for full attribution and a summary of changes.
 
 <p align="center">
-  <img src="https://otto-code.ai/hero-mockup.png" alt="Otto app screenshot" width="100%">
+  <img src="https://otto-code.me/hero-mockup.png" alt="Otto app screenshot" width="100%">
 </p>
 
 <p align="center">
-  <img src="https://otto-code.ai/mobile-mockup.png" alt="Otto mobile app" width="100%">
+  <img src="https://otto-code.me/mobile-mockup.png" alt="Otto mobile app" width="100%">
 </p>
 
 > [!NOTE]
@@ -67,7 +67,7 @@ You need at least one agent CLI installed and configured with your credentials:
 
 ### Desktop app (recommended)
 
-Download it from [otto-code.ai/download](https://otto-code.ai/download) or the [GitHub releases page](https://github.com/otto-code-ai/otto-code/releases). Open the app and the daemon starts automatically. Nothing else to install.
+Download it from [otto-code.me/download](https://otto-code.me/download) or the [GitHub releases page](https://github.com/Draek2077/otto-code/releases). Open the app and the daemon starts automatically. Nothing else to install.
 
 To connect from your phone, scan the QR code shown in Settings.
 
@@ -84,8 +84,8 @@ This shows a QR code in the terminal. Connect from any client. This path is usef
 
 For full setup and configuration, see:
 
-- [Docs](https://otto-code.ai/docs)
-- [Configuration reference](https://otto-code.ai/docs/configuration)
+- [Docs](https://otto-code.me/docs)
+- [Configuration reference](https://otto-code.me/docs/configuration)
 
 ### Docker
 
@@ -97,7 +97,7 @@ docker run -d --name otto \
   -e OTTO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/otto-code-ai/otto-code:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Open `http://localhost:6868` after it starts. Extend the base image with the agent CLIs you use, then provide credentials through environment variables or the persistent `/home/otto` volume. See the [Docker documentation](docs/docker.md) for full setup details.
@@ -118,14 +118,14 @@ otto send abc123 "also add tests" # follow-up task
 otto --host workstation.local:6868 run "run the full test suite"
 ```
 
-See the [full CLI reference](https://otto-code.ai/docs/cli) for more.
+See the [full CLI reference](https://otto-code.me/docs/cli) for more.
 
 ## Skills
 
 Skills teach your agent to use Otto to orchestrate other agents.
 
 ```bash
-npx skills add otto-code-ai/otto-code
+npx skills add Draek2077/otto-code
 ```
 
 Then use them in any agent conversation:
@@ -144,7 +144,7 @@ Quick monorepo package map:
 - `packages/cli`: `otto` CLI for daemon and agent workflows
 - `packages/desktop`: Electron desktop app
 - `packages/relay`: Relay package for remote connectivity
-- `packages/website`: Marketing site and documentation (`otto-code.ai`)
+- `packages/website`: Marketing site and documentation (`otto-code.me`)
 
 Common commands:
 
@@ -173,11 +173,11 @@ npm run typecheck
 ---
 
 <p align="center">
-  <a href="https://star-history.com/#otto-code-ai/otto-code&Date">
+  <a href="https://star-history.com/#Draek2077/otto-code&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date&theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date">
-      <img src="https://api.star-history.com/svg?repos=otto-code-ai/otto-code&type=Date" alt="Star history chart for otto-code-ai/otto-code" width="600" style="max-width: 100%;">
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date&theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date">
+      <img src="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date" alt="Star history chart for Draek2077/otto-code" width="600" style="max-width: 100%;">
     </picture>
   </a>
 </p>

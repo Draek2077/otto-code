@@ -1164,11 +1164,11 @@ export async function createOttoDaemon(
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
             const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.otto-code.ai:443";
+            const relayEndpoint = config.relayEndpoint ?? "relay.otto-code.me:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.otto-code.ai:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.otto-code.me:443";
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
-            const appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.ai";
+            const appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.me";
 
             if (boundListenTarget.type === "tcp") {
               logger.info(

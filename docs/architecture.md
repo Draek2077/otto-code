@@ -142,7 +142,7 @@ Electron wrapper for macOS, Linux, and Windows.
 
 ### `packages/website` — Marketing site
 
-TanStack Router + Cloudflare Workers. Serves otto-code.ai.
+TanStack Router + Cloudflare Workers. Serves otto-code.me.
 
 ## WebSocket protocol
 

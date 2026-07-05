@@ -185,7 +185,7 @@ function Download() {
               <TerminalIcon className="h-5 w-5 text-foreground" />
               <span className="font-medium">Nix</span>
             </div>
-            <CodeBlock size="sm">nix run github:otto-code-ai/otto-code</CodeBlock>
+            <CodeBlock size="sm">nix run github:Draek2077/otto-code</CodeBlock>
           </div>
         </div>
       </section>
@@ -193,7 +193,7 @@ function Download() {
       <p className="text-center text-xs text-muted-foreground mt-8">
         All releases are available on{" "}
         <a
-          href="https://github.com/otto-code-ai/otto-code/releases"
+          href="https://github.com/Draek2077/otto-code/releases"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-foreground transition-colors"

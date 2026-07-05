@@ -37,7 +37,7 @@ Minimal example that configures listening address, hostnames, and MCP:
 
 ```json
 {
-  "$schema": "https://otto-code.ai/schemas/otto.config.v1.json",
+  "$schema": "https://otto-code.me/schemas/otto.config.v1.json",
   "version": 1,
   "daemon": {
     "listen": "127.0.0.1:6868",
@@ -53,7 +53,7 @@ Minimal example that configures listening address, hostnames, and MCP:
 
 Agent providers, both the first-class ones Otto ships with and custom entries you add under `agents.providers`, are documented on their own page.
 
-See [Providers](/docs/providers) for the mental model and [Supported providers](/docs/supported-providers) for the full list of agents Otto can launch. For pointing Claude at Anthropic-compatible endpoints (Z.AI, Alibaba/Qwen), multiple profiles, custom binaries, ACP agents, and the `additionalModels` merge behavior, see [Custom providers](/docs/custom-providers). The full field reference lives on GitHub at [docs/custom-providers.md](https://github.com/otto-code-ai/otto-code/blob/main/docs/custom-providers.md).
+See [Providers](/docs/providers) for the mental model and [Supported providers](/docs/supported-providers) for the full list of agents Otto can launch. For pointing Claude at Anthropic-compatible endpoints (Z.AI, Alibaba/Qwen), multiple profiles, custom binaries, ACP agents, and the `additionalModels` merge behavior, see [Custom providers](/docs/custom-providers). The full field reference lives on GitHub at [docs/custom-providers.md](https://github.com/Draek2077/otto-code/blob/main/docs/custom-providers.md).
 
 ## Worktrees
 
@@ -219,5 +219,5 @@ In the mobile app, enter the password in the direct connection setup screen.
 For editor autocomplete/validation, set `$schema` to:
 
 ```
-https://otto-code.ai/schemas/otto.config.v1.json
+https://otto-code.me/schemas/otto.config.v1.json
 ```

@@ -20,4 +20,4 @@ Projects built by the Otto community. These **aren't official Otto projects** an
 
 ## Add your project
 
-Built something for Otto, a relay, a deployment recipe, an integration, a client? Open a pull request or an issue on [GitHub](https://github.com/otto-code-ai/otto-code) to get it listed here.
+Built something for Otto, a relay, a deployment recipe, an integration, a client? Open a pull request or an issue on [GitHub](https://github.com/Draek2077/otto-code) to get it listed here.
