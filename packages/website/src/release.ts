@@ -15,8 +15,10 @@ interface GitHubRelease {
 const LINUX_APPIMAGE_ASSET_PATTERN =
   /^Otto-(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)-)?x86_64\.AppImage$/;
 
+// COMPAT(macOS-signing): macOS builds aren't notarized on this fork yet (no Apple
+// Developer Program membership), so releases have no signed .dmg asset. Drop this
+// gate once Apple signing is configured and releases reliably include a mac asset.
 const REQUIRED_ASSET_PATTERNS = [
-  /Otto-.*-arm64\.dmg$/, // Mac Apple Silicon
   LINUX_APPIMAGE_ASSET_PATTERN, // Linux AppImage
   /Otto-Setup-.*\.exe$/, // Windows (any arch)
 ];
