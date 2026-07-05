@@ -394,7 +394,13 @@ jobs:
 
   finalize-rollout:
     needs: [publish-macos, publish-linux, publish-windows]
-    if: ${{ always() && (needs.publish-macos.result == 'success' || needs.publish-macos.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
+    # COMPAT(macOS-signing): macOS builds fail on this fork (no Apple Developer
+    # Program certs), so unlike upstream this gate tolerates a publish-macos
+    # failure — otherwise Windows/Linux auto-update manifests would never
+    # publish. The assemble step below already skips the mac manifest unless
+    # publish-macos succeeded. Restore the macOS success requirement once Apple
+    # signing is configured.
+    if: ${{ always() && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-windows.result == 'success' || needs.publish-macos.result == 'success') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
