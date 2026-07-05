@@ -1,29 +1,17 @@
 import { StyleSheet } from "react-native-unistyles";
-import {
-  lightTheme,
-  daylightTheme,
-  pastelTheme,
-  darkTheme,
-  darkEvergreenTheme,
-  darkZincTheme,
-  darkMidnightTheme,
-  darkClaudeTheme,
-  darkGhosttyTheme,
-  darkCyberpunkTheme,
-} from "./theme";
+import { daylightTheme, darkTheme } from "./theme";
 
+// Only two Unistyles theme keys are ever registered — `light`/`dark`. Every
+// other named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as
+// plain data, copied into these two keys at runtime by
+// `screens/settings/appearance/apply-color-scheme.ts`. See that file for why:
+// Unistyles' adaptive-theme mechanism hardcodes switching between the
+// literal keys `light`/`dark` and cannot target an arbitrary named theme.
+// Seed content here is today's default pair (Daylight/Twilight).
 StyleSheet.configure({
   themes: {
-    light: lightTheme,
-    daylight: daylightTheme,
-    pastel: pastelTheme,
+    light: daylightTheme,
     dark: darkTheme,
-    darkEvergreen: darkEvergreenTheme,
-    darkZinc: darkZincTheme,
-    darkMidnight: darkMidnightTheme,
-    darkClaude: darkClaudeTheme,
-    darkGhostty: darkGhosttyTheme,
-    darkCyberpunk: darkCyberpunkTheme,
   },
   breakpoints: {
     xs: 0,
@@ -39,16 +27,8 @@ StyleSheet.configure({
 
 // Type augmentation for TypeScript
 interface AppThemes {
-  light: typeof lightTheme;
-  daylight: typeof daylightTheme;
-  pastel: typeof pastelTheme;
+  light: typeof daylightTheme;
   dark: typeof darkTheme;
-  darkEvergreen: typeof darkEvergreenTheme;
-  darkZinc: typeof darkZincTheme;
-  darkMidnight: typeof darkMidnightTheme;
-  darkClaude: typeof darkClaudeTheme;
-  darkGhostty: typeof darkGhosttyTheme;
-  darkCyberpunk: typeof darkCyberpunkTheme;
 }
 
 interface AppBreakpoints {

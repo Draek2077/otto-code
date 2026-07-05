@@ -30,8 +30,8 @@ import {
   Tablet,
   Wrench,
   X,
-  type LucideIcon,
-} from "lucide-react-native";
+  type IconComponent,
+} from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
@@ -117,7 +117,7 @@ interface DeviceSizePreset {
   /** Fixed CSS width, or null for "fill the available area". */
   width: number | null;
   height: number | null;
-  icon: LucideIcon;
+  icon: IconComponent;
 }
 
 // Viewport presets for the in-app browser. "responsive" fills the pane; the
@@ -519,7 +519,7 @@ const deviceMutedIconMapping = (theme: { colors: { foregroundMuted: string } }) 
   color: theme.colors.foregroundMuted,
 });
 
-function resolveThemedDeviceIcon(icon: LucideIcon): typeof ThemedMaximize {
+function resolveThemedDeviceIcon(icon: IconComponent): typeof ThemedMaximize {
   if (icon === Smartphone) return ThemedSmartphone;
   if (icon === Tablet) return ThemedTablet;
   if (icon === Monitor) return ThemedMonitor;

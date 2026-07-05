@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, Square } from "lucide-react-native";
+import { Mic, MicOff, Square } from "@/components/icons/material-icons";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
@@ -61,9 +61,9 @@ export function RealtimeVoiceOverlay({
           style={muteButtonStyle}
         >
           {isMuted ? (
-            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} strokeWidth={2.5} />
+            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} />
           ) : (
-            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
+            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} />
           )}
         </Pressable>
 
@@ -77,12 +77,7 @@ export function RealtimeVoiceOverlay({
           {isSwitching ? (
             <ActivityIndicator size="small" color={theme.colors.palette.white} />
           ) : (
-            <Square
-              size={theme.iconSize.lg}
-              color={theme.colors.palette.white}
-              fill={theme.colors.palette.white}
-              strokeWidth={2.5}
-            />
+            <Square size={theme.iconSize.lg} color={theme.colors.palette.white} />
           )}
         </Pressable>
       </View>

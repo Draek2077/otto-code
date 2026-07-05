@@ -1,4 +1,4 @@
-import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
+import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { withUnistyles } from "react-native-unistyles";
 
 // Otto's mark: the letters O·T·T·O drawn as a robot face (O's = eyes, T bars = brows,
@@ -62,6 +62,24 @@ function OttoLogoRobotBase({ size = 64, color = "currentColor" }: OttoLogoProps)
   );
 }
 
+// Expression variant: raised left brow + winking right eye. Reserved for fun
+// surfaces (branding/README.md) — geometry mirrors branding/otto-icon-wink.svg.
+function OttoLogoWinkBase({ size = 64, color = "currentColor" }: OttoLogoProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 512 512" fill="none">
+      <Circle cx={132} cy={280} r={70} stroke={color} strokeWidth={28} />
+      <Line x1={144} y1={104} x2={248} y2={156} stroke={color} strokeWidth={28} />
+      <Line x1={216} y1={146} x2={216} y2={364} stroke={color} strokeWidth={28} />
+      <Line x1={264} y1={162} x2={360} y2={162} stroke={color} strokeWidth={28} />
+      <Line x1={296} y1={162} x2={296} y2={364} stroke={color} strokeWidth={28} />
+      <Path d="M296 280 A84 84 0 0 1 464 280 Z" fill={color} />
+      <Path d="M310 280 A70 70 0 0 0 450 280" stroke={color} strokeWidth={28} fill="none" />
+      <Circle cx={132} cy={280} r={34} stroke={color} strokeWidth={20} />
+      <Circle cx={132} cy={280} r={11} fill={color} />
+    </Svg>
+  );
+}
+
 const themedForeground = (theme: { colors: { foreground: string } }) => ({
   color: theme.colors.foreground,
 });
@@ -73,3 +91,4 @@ export const OttoLogo = withUnistyles(OttoLogoBase, themedForeground);
 // pulses the robot layer's opacity while the wordmark stays solid.
 export const OttoLogoWordmark = withUnistyles(OttoLogoWordmarkBase, themedForeground);
 export const OttoLogoRobot = withUnistyles(OttoLogoRobotBase, themedForeground);
+export const OttoLogoWink = withUnistyles(OttoLogoWinkBase, themedForeground);

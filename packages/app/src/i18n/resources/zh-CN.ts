@@ -1072,6 +1072,10 @@ export const zhCN: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "你是自己宇宙的主宰，可你却浑身沾满老鼠血和粪便。你那伟大的头脑，正被你自己亲手荒废。",
+      attribution: "— 瑞克·桑切斯",
+    },
     tiles: {
       addProject: {
         title: "添加 project",
@@ -1554,22 +1558,26 @@ export const zhCN: TranslationResources = {
       theme: {
         title: "主题",
         accessibilityLabel: "主题：{{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
+        mode: "模式",
+        modes: {
+          light: "浅色",
+          dark: "深色",
+          system: "系统",
         },
         options: {
-          light: "Light",
-          dark: "Dark",
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "系统",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Folder } from "lucide-react-native";
+import { Folder } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getOpenProjectFailureReason, type OpenProjectFailureReason } from "@/hooks/open-project";
 import { useOpenProject } from "@/hooks/use-open-project";
@@ -57,7 +57,7 @@ function PathRow({ option, active, onSelect }: PathRowProps) {
     <Pressable style={pressableStyle} onPress={handlePress}>
       <View style={styles.rowContent}>
         <View style={styles.iconSlot}>
-          <Folder size={16} strokeWidth={2.2} color={theme.colors.foregroundMuted} />
+          <Folder size={16} color={theme.colors.foregroundMuted} />
         </View>
         <Text style={rowTextStyle} numberOfLines={1}>
           {shortenPath(path)}

@@ -174,7 +174,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   turnFooterRow: {
-    marginTop: theme.spacing[4],
+    marginTop: 0,
   },
   turnFooterSlot: {
     flexDirection: "row",

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ArrowUpRight, Terminal, Blocks, Check } from "lucide-react-native";
+import { ArrowUpRight, Terminal, Blocks, Check } from "@/components/icons/material-icons";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { Button } from "@/components/ui/button";

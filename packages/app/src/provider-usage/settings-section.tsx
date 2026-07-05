@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react-native";
+import { RefreshCw } from "@/components/icons/material-icons";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";

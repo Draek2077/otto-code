@@ -45,7 +45,7 @@ import {
   Scissors,
   MicVocal,
   FileSymlink,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -734,7 +734,7 @@ interface AssistantMessageProps {
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
-    paddingVertical: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
     ...(isWeb ? { userSelect: "text" as const } : {}),
   },
   containerCompactTop: {
@@ -1200,7 +1200,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   containerLastInSequence: {
-    marginBottom: theme.spacing[4],
+    marginBottom: theme.spacing[2],
   },
   pressable: {
     borderRadius: theme.borderRadius.lg,
@@ -2338,7 +2338,7 @@ export const TodoListCard = memo(function TodoListCard({
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
-  icon?: ComponentType<{ size?: number; color?: string }>;
+  icon?: ComponentType<{ size: number; color: string }>;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
@@ -2546,6 +2546,7 @@ function ExpandableBadgeLabelRow({
 // with a tight viewBox per icon — see option (2) in the design discussion.
 const LUCIDE_TOOL_ICON_NUDGE_LEFT: ViewStyle = { marginLeft: -1 };
 const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
+const TRIANGLE_ALERT_ICON_OPACITY: ViewStyle = { opacity: 0.8 };
 
 function renderExpandableBadgeIcon({
   isError,
@@ -2559,7 +2560,11 @@ function renderExpandableBadgeIcon({
   if (isError) {
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
-        <ThemedTriangleAlertIcon size={12} opacity={0.8} uniProps={destructiveColorMapping} />
+        <ThemedTriangleAlertIcon
+          size={12}
+          style={TRIANGLE_ALERT_ICON_OPACITY}
+          uniProps={destructiveColorMapping}
+        />
       </View>
     );
   }

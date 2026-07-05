@@ -24,7 +24,14 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
+import {
+  ArrowUp,
+  Mic,
+  MicOff,
+  CornerDownLeft,
+  Plus,
+  Square,
+} from "@/components/icons/material-icons";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "@/components/dictation-controls";
@@ -150,11 +157,9 @@ export interface MessageInputRef {
   getNativeElement?: () => HTMLElement | null;
 }
 
-const MIN_INPUT_HEIGHT_MOBILE = 30;
-const MIN_INPUT_HEIGHT_DESKTOP = 46;
+const MIN_INPUT_HEIGHT = 32;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
-const MIN_INPUT_HEIGHT = isWeb ? MIN_INPUT_HEIGHT_DESKTOP : MIN_INPUT_HEIGHT_MOBILE;
 const ATTACHMENT_SHEET_SNAP_POINTS = ["34%", "45%"];
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
@@ -388,7 +393,7 @@ function VoiceButtonIcon({
   buttonIconSize: number;
 }) {
   if (isDictating) {
-    return <Square size={buttonIconSize} color="white" fill="white" />;
+    return <Square size={buttonIconSize} color="white" />;
   }
   const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
   if (isMutedRealtime) {
@@ -1935,7 +1940,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
-    borderRadius: theme.borderRadius["2xl"],
+    borderRadius: theme.borderRadius.md,
     paddingVertical: {
       xs: theme.spacing[2],
       md: theme.spacing[4],
@@ -1982,6 +1987,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "flex-end",
     justifyContent: "space-between",
     marginHorizontal: -6,
+    marginBottom: -6,
   },
   leftButtonGroup: {
     minWidth: 0,

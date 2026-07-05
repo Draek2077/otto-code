@@ -15,7 +15,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "@/components/icons/material-icons";
 import Markdown, {
   MarkdownIt,
   type ASTNode,

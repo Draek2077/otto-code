@@ -1086,6 +1086,10 @@ export const ar: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "أنت سيد كونك، ومع ذلك فأنت تقطر بدماء الفئران والبراز. عقلك الهائل يتلاشى حرفيًا بيدك أنت.",
+      attribution: "— ريك سانشيز",
+    },
     tiles: {
       addProject: {
         title: "أضف مشروعًا",
@@ -1571,22 +1575,26 @@ export const ar: TranslationResources = {
       theme: {
         title: "سمة",
         accessibilityLabel: "الموضوع:{{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "الوضع",
+        modes: {
           light: "ضوء",
           dark: "مظلم",
+          system: "نظام",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "نظام",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

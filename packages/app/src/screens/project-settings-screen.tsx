@@ -5,7 +5,15 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronDown, MoreVertical, Pencil, Plus, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  MoreVertical,
+  Pencil,
+  Plus,
+  X,
+} from "@/components/icons/material-icons";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { HostPicker as SharedHostPicker, HostStatusDotSlot } from "@/components/hosts/host-picker";
 import type {

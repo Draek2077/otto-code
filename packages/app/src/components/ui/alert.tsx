@@ -1,4 +1,10 @@
-import { AlertTriangle, CheckCircle2, Info, XCircle, type LucideIcon } from "lucide-react-native";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  XCircle,
+  type IconComponent,
+} from "@/components/icons/material-icons";
 import { type ReactNode, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -14,7 +20,7 @@ export interface AlertProps {
   testID?: string;
 }
 
-const VARIANT_ICON: Record<Exclude<AlertVariant, "default">, LucideIcon> = {
+const VARIANT_ICON: Record<Exclude<AlertVariant, "default">, IconComponent> = {
   info: Info,
   success: CheckCircle2,
   warning: AlertTriangle,

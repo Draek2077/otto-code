@@ -1113,6 +1113,10 @@ export const ru: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "Ты властелин своей вселенной, и всё же ты весь в крысиной крови и фекалиях. Твой колоссальный разум буквально чахнет по твоей же вине.",
+      attribution: "— Рик Санчез",
+    },
     tiles: {
       addProject: {
         title: "Добавить проект",
@@ -1604,22 +1608,26 @@ export const ru: TranslationResources = {
       theme: {
         title: "Тема",
         accessibilityLabel: "Тема:{{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "Режим",
+        modes: {
           light: "Свет",
           dark: "Темный",
+          system: "Система",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "Система",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

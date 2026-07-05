@@ -31,7 +31,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
@@ -99,8 +99,9 @@ import {
 } from "@/runtime/host-runtime";
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
+import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { usePanelStore } from "@/stores/panel-store";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
 import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
@@ -422,7 +423,22 @@ interface AppContainerProps {
   chromeEnabled?: boolean;
 }
 
-const THEME_CYCLE_ORDER: ThemeName[] = ["dark", "zinc", "midnight", "claude", "ghostty", "light"];
+// Quick-cycle keyboard shortcut. System is deliberately excluded — its effect
+// depends on the live OS scheme, which would make a manual cycle shortcut
+// non-deterministic. Each step is an explicit (mode, variant) pair rather than
+// a flat theme name, since there's no longer a single `settings.theme` value.
+type ThemeCycleStep =
+  | { colorSchemeMode: "dark"; darkTheme: DarkThemeName }
+  | { colorSchemeMode: "light"; lightTheme: LightThemeName };
+
+const THEME_CYCLE_ORDER: ThemeCycleStep[] = [
+  { colorSchemeMode: "dark", darkTheme: "dark" }, // Twilight
+  { colorSchemeMode: "dark", darkTheme: "zinc" }, // Graphite
+  { colorSchemeMode: "dark", darkTheme: "midnight" }, // Nightfall
+  { colorSchemeMode: "dark", darkTheme: "claude" }, // Ember
+  { colorSchemeMode: "dark", darkTheme: "ghostty" }, // Slate
+  { colorSchemeMode: "light", lightTheme: "daylight" }, // Daylight
+];
 
 function AppContainer({
   children,
@@ -440,10 +456,19 @@ function AppContainer({
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const cycleTheme = useCallback(() => {
-    const currentIndex = THEME_CYCLE_ORDER.indexOf(settings.theme as ThemeName);
+    // -1 (current mode is System, not in the cycle) wraps to index 0 — the
+    // same graceful fallback the previous flat-list cycle already had for any
+    // "current value not in the list" case.
+    const currentIndex = THEME_CYCLE_ORDER.findIndex(
+      (step) =>
+        step.colorSchemeMode === settings.colorSchemeMode &&
+        (step.colorSchemeMode === "dark"
+          ? step.darkTheme === settings.darkTheme
+          : step.lightTheme === settings.lightTheme),
+    );
     const nextIndex = (currentIndex + 1) % THEME_CYCLE_ORDER.length;
-    void updateSettings({ theme: THEME_CYCLE_ORDER[nextIndex] });
-  }, [settings.theme, updateSettings]);
+    void updateSettings(THEME_CYCLE_ORDER[nextIndex]);
+  }, [settings.colorSchemeMode, settings.darkTheme, settings.lightTheme, updateSettings]);
 
   const isCompactLayout = useIsCompactFormFactor();
   useCompactWebViewportZoomLock(isCompactLayout);
@@ -667,16 +692,17 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
 
-  // Apply theme setting on mount and when it changes
+  // Apply theme setting on mount and when it changes. Keyed on all three
+  // fields together (not split into separate effects) so the mirror repaint
+  // in applyColorScheme always runs before the mode switch, never after.
   useEffect(() => {
     if (settingsLoading) return;
-    if (settings.theme === "auto") {
-      UnistylesRuntime.setAdaptiveThemes(true);
-    } else {
-      UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[settings.theme]);
-    }
-  }, [settingsLoading, settings.theme]);
+    applyColorScheme({
+      colorSchemeMode: settings.colorSchemeMode,
+      lightTheme: settings.lightTheme,
+      darkTheme: settings.darkTheme,
+    });
+  }, [settingsLoading, settings.colorSchemeMode, settings.lightTheme, settings.darkTheme]);
 
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch

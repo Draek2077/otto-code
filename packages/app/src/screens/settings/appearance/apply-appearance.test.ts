@@ -8,15 +8,8 @@ import { applyAppearance, type AppearanceInput } from "./apply-appearance";
 const { updateTheme } = vi.hoisted(() => ({ updateTheme: vi.fn() }));
 vi.mock("react-native-unistyles", () => ({ UnistylesRuntime: { updateTheme } }));
 
-// The six registered Unistyles theme keys, in the order applyAppearance patches them.
-const ALL_THEME_KEYS = [
-  "light",
-  "dark",
-  "darkZinc",
-  "darkMidnight",
-  "darkClaude",
-  "darkGhostty",
-] as const;
+// The two registered Unistyles theme keys, in the order applyAppearance patches them.
+const ALL_THEME_KEYS = ["light", "dark"] as const;
 
 // The signature of the updater passed to UnistylesRuntime.updateTheme.
 type ThemeUpdater = (theme: FakeTheme) => FakeTheme;
@@ -87,7 +80,7 @@ describe("applyAppearance", () => {
   it("patches every registered Unistyles theme exactly once", () => {
     applyAppearance(makeInput());
 
-    expect(updateTheme).toHaveBeenCalledTimes(6);
+    expect(updateTheme).toHaveBeenCalledTimes(2);
     expect(updateTheme.mock.calls.map((call) => call[0])).toEqual([...ALL_THEME_KEYS]);
   });
 

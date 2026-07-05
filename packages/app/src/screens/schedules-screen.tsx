@@ -8,7 +8,7 @@ import {
 } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { Plus } from "lucide-react-native";
+import { Plus } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { HostFilter } from "@/components/hosts/host-filter";

@@ -8,7 +8,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
-import { X } from "lucide-react-native";
+import { X } from "@/components/icons/material-icons";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import {
   IsolatedBottomSheetModal,

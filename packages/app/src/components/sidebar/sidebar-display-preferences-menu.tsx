@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Settings2 } from "lucide-react-native";
+import { Settings2 } from "@/components/icons/material-icons";
 import type { Theme } from "@/styles/theme";
 import {
   DropdownMenu,

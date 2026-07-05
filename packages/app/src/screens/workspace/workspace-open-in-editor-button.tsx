@@ -8,7 +8,7 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { useMutation } from "@tanstack/react-query";
-import { Check, ChevronDown } from "lucide-react-native";
+import { Check, ChevronDown } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditorAppIcon } from "@/components/icons/editor-app-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";

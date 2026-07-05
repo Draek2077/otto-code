@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
-import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
-import { OttoLogo } from "@/components/icons/otto-logo";
+import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material-icons";
+import { OttoLogoWink } from "@/components/icons/otto-logo";
 import { CommunityLinks } from "@/components/community-links";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
@@ -92,7 +92,11 @@ export function OpenProjectScreen() {
       <View style={styles.content}>
         <TitlebarDragRegion />
         <View style={styles.logo}>
-          <OttoLogo size={52} />
+          <OttoLogoWink size={104} />
+        </View>
+        <View style={styles.quote}>
+          <Text style={styles.quoteText}>“{t("openProject.quote.text")}”</Text>
+          <Text style={styles.quoteAttribution}>{t("openProject.quote.attribution")}</Text>
         </View>
         <View style={styles.tiles}>
           <HomeTile
@@ -211,7 +215,26 @@ const styles = StyleSheet.create((theme) => ({
     },
   },
   logo: {
+    marginBottom: theme.spacing[4],
+  },
+  quote: {
+    alignItems: "center",
+    maxWidth: 380,
     marginBottom: theme.spacing[8],
+    paddingHorizontal: theme.spacing[4],
+  },
+  quoteText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontStyle: "italic",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  quoteAttribution: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    textAlign: "center",
+    marginTop: theme.spacing[1],
   },
   tiles: {
     marginTop: { xs: theme.spacing[6], md: theme.spacing[12] },

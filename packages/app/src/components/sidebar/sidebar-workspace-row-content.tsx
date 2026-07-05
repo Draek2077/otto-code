@@ -17,7 +17,7 @@ import {
   Globe,
   Monitor,
   SquareTerminal,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { SyncedLoader } from "@/components/synced-loader";

@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ChevronDown, Folder } from "lucide-react-native";
+import { ChevronDown, Folder } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";

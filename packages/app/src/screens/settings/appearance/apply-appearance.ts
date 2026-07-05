@@ -11,18 +11,10 @@ import { applyRootUiFont } from "./apply-root-font";
 // All registered Unistyles keys — pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
 // is assignable to `UnistylesRuntime.updateTheme`'s first argument with no cast.
-const ALL_THEME_KEYS = [
-  "light",
-  "daylight",
-  "pastel",
-  "dark",
-  "darkEvergreen",
-  "darkZinc",
-  "darkMidnight",
-  "darkClaude",
-  "darkGhostty",
-  "darkCyberpunk",
-] as const;
+// Only two keys are ever registered (see `styles/unistyles.ts`); every named
+// theme variant is repainted into one of these two by
+// `apply-color-scheme.ts`, not registered under its own key.
+const ALL_THEME_KEYS = ["light", "dark"] as const;
 
 // The UI font size at which the FONT_SIZE ramp is authored (1.0 scale factor).
 const BASE_UI_REFERENCE = FONT_SIZE.base; // 16

@@ -9,7 +9,7 @@ import {
   Server,
   Settings,
   X,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -536,18 +536,20 @@ function SidebarFooter({
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
           </TooltipContent>
         </Tooltip>
-        <FooterIconButton
-          onPress={handleHome}
-          testID="sidebar-home"
-          accessibilityLabel={labels.home}
-          icon={Home}
-          theme={theme}
-        />
+      </View>
+      <View style={styles.footerIconRow}>
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
           accessibilityLabel={labels.settings}
           icon={Settings}
+          theme={theme}
+        />
+        <FooterIconButton
+          onPress={handleHome}
+          testID="sidebar-home"
+          accessibilityLabel={labels.home}
+          icon={Home}
           theme={theme}
         />
       </View>
@@ -1163,7 +1165,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,

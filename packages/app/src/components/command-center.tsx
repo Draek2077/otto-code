@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Home, Plus, Settings } from "lucide-react-native";
+import { Home, Plus, Settings } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useCommandCenter } from "@/hooks/use-command-center";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
@@ -130,11 +130,11 @@ function CommandCenterActionRow({
   const action = item.action;
   let actionIcon: React.ReactNode = null;
   if (action.icon === "plus") {
-    actionIcon = <Plus size={16} strokeWidth={2.4} color={theme.colors.foregroundMuted} />;
+    actionIcon = <Plus size={16} color={theme.colors.foregroundMuted} />;
   } else if (action.icon === "settings") {
-    actionIcon = <Settings size={16} strokeWidth={2.2} color={theme.colors.foregroundMuted} />;
+    actionIcon = <Settings size={16} color={theme.colors.foregroundMuted} />;
   } else if (action.icon === "home") {
-    actionIcon = <Home size={16} strokeWidth={2.2} color={theme.colors.foregroundMuted} />;
+    actionIcon = <Home size={16} color={theme.colors.foregroundMuted} />;
   }
   const titleStyle = useMemo(
     () => [styles.title, { color: theme.colors.foreground }],

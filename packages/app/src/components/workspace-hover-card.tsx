@@ -22,7 +22,7 @@ import {
   Folder,
   GitBranch,
   Server,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";

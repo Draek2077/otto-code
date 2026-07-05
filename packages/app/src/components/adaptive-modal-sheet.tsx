@@ -14,7 +14,7 @@ import {
   type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated from "react-native-reanimated";
-import { ArrowLeft, Search, X } from "lucide-react-native";
+import { ArrowLeft, Search, X } from "@/components/icons/material-icons";
 import {
   IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,

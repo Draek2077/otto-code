@@ -10,7 +10,13 @@ import {
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Archive, CircleCheck, Copy, MoreVertical, Pencil } from "lucide-react-native";
+import {
+  Archive,
+  CircleCheck,
+  Copy,
+  MoreVertical,
+  Pencil,
+} from "@/components/icons/material-icons";
 import { useMutation } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import type { Theme } from "@/styles/theme";

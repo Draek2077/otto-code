@@ -39,7 +39,7 @@ vi.mock("react-native-unistyles", () => ({
   useUnistyles: () => ({ theme }),
 }));
 
-vi.mock("lucide-react-native", () => {
+vi.mock("@/components/icons/material-icons", () => {
   const X = (props: Record<string, unknown>) => React.createElement("span", props);
   return { X };
 });

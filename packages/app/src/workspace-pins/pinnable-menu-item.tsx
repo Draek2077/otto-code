@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { Pin, PinOff } from "lucide-react-native";
+import { Pin, PinOff } from "@/components/icons/material-icons";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";

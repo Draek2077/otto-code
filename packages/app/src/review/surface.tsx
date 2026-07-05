@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Plus, Trash2 } from "lucide-react-native";
+import { Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
 import {
   Pressable,
   type PressableStateCallbackType,
@@ -378,7 +378,7 @@ export function InlineReviewGutterCell({
           {children}
           {showAction ? (
             <View style={actionIconStyle} testID={actionTestID}>
-              <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+              <ThemedPlus size={16} uniProps={accentForegroundIconColorMapping} />
             </View>
           ) : null}
         </View>

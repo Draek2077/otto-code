@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown } from "@/components/icons/material-icons";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 export type { ComboboxOption } from "@/components/ui/combobox";
