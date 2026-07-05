@@ -63,7 +63,7 @@ function makeInput(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
     monoFontFamily: "",
     uiFontSize: 16,
     codeFontSize: 12,
-    syntaxTheme: "one",
+    syntaxTheme: "default",
     chatWidth: "default",
     ...overrides,
   };
@@ -156,10 +156,10 @@ describe("applyAppearance", () => {
   });
 
   it("swaps colors.syntax to the resolved palette for the named theme", () => {
-    applyAppearance(makeInput({ syntaxTheme: "dracula" }));
+    applyAppearance(makeInput({ syntaxTheme: "nightshade" }));
 
     const { colors } = runCapturedUpdater();
-    expect(colors.syntax).toEqual(resolveSyntaxColors("dracula", "dark"));
+    expect(colors.syntax).toEqual(resolveSyntaxColors("nightshade", "dark"));
   });
 
   it("resolves a syntax theme using the theme's own color scheme", () => {

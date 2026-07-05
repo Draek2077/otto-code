@@ -253,7 +253,7 @@ async function useCodeFont(page: Page, codeFontSize: number): Promise<void> {
           monoFontFamily: "",
           uiFontSize: 16,
           codeFontSize: fontSize,
-          syntaxTheme: "one",
+          syntaxTheme: "default",
         }),
       );
     },
