@@ -557,7 +557,7 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     home,
     listen,
     relayEnabled: config.relayEnabled ?? true,
-    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.otto-code.ai:443",
+    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.otto-code.me:443",
     relayUseTls: config.relayUseTls ?? false,
     relayPublicUseTls: config.relayPublicUseTls ?? config.relayUseTls ?? false,
     logPath,

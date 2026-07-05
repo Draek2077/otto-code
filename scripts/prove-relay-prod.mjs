@@ -23,8 +23,8 @@ const args = parseArgs(process.argv);
 const serverId = args["server-id"] ?? process.env.OTTO_SERVER_ID;
 const daemonPublicKeyB64 = args["daemon-public-key-b64"] ?? process.env.OTTO_DAEMON_PUBLIC_KEY_B64;
 const relayEndpoint =
-  args["relay-endpoint"] ?? process.env.OTTO_RELAY_ENDPOINT ?? "relay.otto-code.ai:443";
-const baseUrl = args["base-url"] ?? process.env.OTTO_APP_URL ?? "https://app.otto-code.ai";
+  args["relay-endpoint"] ?? process.env.OTTO_RELAY_ENDPOINT ?? "relay.otto-code.me:443";
+const baseUrl = args["base-url"] ?? process.env.OTTO_APP_URL ?? "https://app.otto-code.me";
 const timeoutMs = Number(args["timeout-ms"] ?? process.env.OTTO_PROVE_TIMEOUT_MS ?? 60_000);
 const stabilityMs = Number(args["stability-ms"] ?? process.env.OTTO_PROVE_STABILITY_MS ?? 30_000);
 

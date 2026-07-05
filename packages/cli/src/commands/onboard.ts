@@ -300,9 +300,9 @@ function printNextSteps(pairingUrl: string | null, ottoHome: string, richUi: boo
     pairingUrl
       ? "1. Open Otto and scan the QR code above, or paste the pairing link."
       : "1. Open Otto and connect to your daemon.",
-    "2. Web app: https://app.otto-code.ai",
-    "3. Desktop app: https://github.com/otto-code-ai/otto-code/releases/latest",
-    "4. Docs: https://otto-code.ai/docs",
+    "2. Web app: https://app.otto-code.me",
+    "3. Desktop app: https://github.com/Draek2077/otto-code/releases/latest",
+    "4. Docs: https://otto-code.me/docs",
     '5. Example: otto run --output-schema schema.json "extract fields"',
   ];
   const quickReferenceLines = [

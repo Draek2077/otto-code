@@ -123,7 +123,7 @@ buildNpmPackage rec {
 
   meta = {
     description = "Self-hosted daemon for Claude Code, Codex, and OpenCode";
-    homepage = "https://github.com/otto-code-ai/otto-code";
+    homepage = "https://github.com/Draek2077/otto-code";
     license = lib.licenses.agpl3Plus;
     mainProgram = "otto";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;

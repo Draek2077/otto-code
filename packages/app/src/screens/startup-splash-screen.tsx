@@ -29,8 +29,8 @@ interface StartupSplashScreenProps {
   };
 }
 
-const GITHUB_ISSUE_URL = "https://github.com/otto-code-ai/otto-code/issues/new";
-const DOCS_URL = "https://otto-code.ai/docs";
+const GITHUB_ISSUE_URL = "https://github.com/Draek2077/otto-code/issues/new";
+const DOCS_URL = "https://otto-code.me/docs";
 
 const LOGO_SIZE = 96;
 const PULSE_HALF_MS = 1400;

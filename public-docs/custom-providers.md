@@ -18,7 +18,7 @@ Everything beyond the [supported providers](/docs/supported-providers) lives und
 
 Provider IDs must be lowercase alphanumeric with hyphens (`/^[a-z][a-z0-9-]*$/`). Every custom entry needs `extends` (a first-class provider ID or `"acp"`) and a `label`.
 
-The examples below are a quick tour. The full, up-to-date reference is on GitHub: [docs/custom-providers.md](https://github.com/otto-code-ai/otto-code/blob/main/docs/custom-providers.md).
+The examples below are a quick tour. The full, up-to-date reference is on GitHub: [docs/custom-providers.md](https://github.com/Draek2077/otto-code/blob/main/docs/custom-providers.md).
 
 ## Extending a first-class provider
 
@@ -190,4 +190,4 @@ Any agent that speaks [ACP](https://agentclientprotocol.com) over stdio can be a
 
 ## Full reference
 
-For the complete field reference (`extends`, `label`, `command`, `env`, `models`, `additionalModels`, `disallowedTools`, `enabled`, `order`), model and thinking-option schemas, and deeper examples for each plan, see [docs/custom-providers.md](https://github.com/otto-code-ai/otto-code/blob/main/docs/custom-providers.md) on GitHub.
+For the complete field reference (`extends`, `label`, `command`, `env`, `models`, `additionalModels`, `disallowedTools`, `enabled`, `order`), model and thinking-option schemas, and deeper examples for each plan, see [docs/custom-providers.md](https://github.com/Draek2077/otto-code/blob/main/docs/custom-providers.md) on GitHub.

@@ -30,7 +30,7 @@ docker run -d --name otto \
   -e OTTO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/otto-code-ai/otto-code:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Then open:
@@ -57,7 +57,7 @@ Minimal example:
 ```yaml
 services:
   otto:
-    image: ghcr.io/otto-code-ai/otto-code:latest
+    image: ghcr.io/draek2077/otto:latest
     restart: unless-stopped
     ports:
       - "6868:6868"
@@ -77,7 +77,7 @@ releases to third-party agent release cycles.
 Create a child image for the agents you use:
 
 ```Dockerfile
-FROM ghcr.io/otto-code-ai/otto-code:latest
+FROM ghcr.io/draek2077/otto:latest
 
 USER root
 RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
@@ -204,9 +204,9 @@ docker build \
 
 The Docker workflow builds the image on pull requests and on `main` as a
 non-publishing check. Stable `vX.Y.Z` tag pushes publish
-`ghcr.io/otto-code-ai/otto-code:X.Y.Z` and `ghcr.io/otto-code-ai/otto-code:latest`. Beta tags
+`ghcr.io/draek2077/otto:X.Y.Z` and `ghcr.io/draek2077/otto:latest`. Beta tags
 publish only the exact prerelease tag, such as
-`ghcr.io/otto-code-ai/otto-code:0.1.102-beta.1`, and do not update `latest`.
+`ghcr.io/draek2077/otto:0.1.102-beta.1`, and do not update `latest`.
 
 To replace a Docker image in place without rebuilding desktop, APK, or EAS
 mobile release artifacts, dispatch the Docker workflow manually instead of

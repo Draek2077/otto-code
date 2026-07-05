@@ -17,8 +17,8 @@ import {
 } from "@/desktop/daemon/desktop-daemon";
 import { useCliInstall, useSkillsStatus } from "@/desktop/hooks/use-install-status";
 
-const CLI_DOCS_URL = "https://otto-code.ai/docs/cli";
-const SKILLS_DOCS_URL = "https://otto-code.ai/docs/skills";
+const CLI_DOCS_URL = "https://otto-code.me/docs/cli";
+const SKILLS_DOCS_URL = "https://otto-code.me/docs/skills";
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 
 const OP_KIND_ORDER: Record<SkillOp["kind"], number> = { add: 0, update: 1, delete: 2 };

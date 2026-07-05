@@ -25,4 +25,4 @@ Either way, **you install the underlying CLI**. Otto runs it.
 
 - [Supported providers](/docs/supported-providers), the full list with install links.
 - [Custom providers](/docs/custom-providers), add your own provider, point an existing one at a different endpoint, run multiple profiles, or override the binary in `~/.otto/config.json`.
-- [otto-code.ai/agents](/agents), per-agent landing page for each supported provider.
+- [otto-code.me/agents](/agents), per-agent landing page for each supported provider.

@@ -59,7 +59,7 @@ export function SiteHeader() {
           </svg>
         </a>
         <a
-          href="https://github.com/otto-code-ai/otto-code"
+          href="https://github.com/Draek2077/otto-code"
           target="_blank"
           rel="noopener noreferrer"
           aria-label={stars ? `GitHub, ${stars} stars` : "GitHub"}

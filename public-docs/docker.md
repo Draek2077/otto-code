@@ -10,7 +10,7 @@ category: Getting started
 
 The official Otto Docker image runs the daemon and serves the bundled browser UI from the same HTTP origin. It is meant for servers, dev boxes, NAS devices, homelab hosts, and other places where you want Otto running without the desktop app.
 
-Docker images follow the stable Otto release cadence. `ghcr.io/otto-code-ai/otto-code:latest` points at the latest stable release, not an arbitrary `main` build.
+Docker images follow the stable Otto release cadence. `ghcr.io/draek2077/otto:latest` points at the latest stable release, not an arbitrary `main` build.
 
 ```bash
 docker run -d --name otto \
@@ -18,7 +18,7 @@ docker run -d --name otto \
   -e OTTO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/otto-code-ai/otto-code:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Then open:
@@ -46,7 +46,7 @@ The image does not bundle agent CLIs such as Claude Code, Codex, OpenCode, Copil
 ```yaml
 services:
   otto:
-    image: ghcr.io/otto-code-ai/otto-code:latest
+    image: ghcr.io/draek2077/otto:latest
     container_name: otto
     restart: unless-stopped
     ports:
@@ -70,7 +70,7 @@ docker compose up -d
 Create a child image for the providers you want available:
 
 ```Dockerfile
-FROM ghcr.io/otto-code-ai/otto-code:latest
+FROM ghcr.io/draek2077/otto:latest
 
 USER root
 RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai

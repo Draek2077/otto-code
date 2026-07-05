@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 main = "./src/server-entry.ts"
 
 routes = [
-  { pattern = "otto-code.ai", custom_domain = true },
-  { pattern = "www.otto-code.ai", custom_domain = true },
+  { pattern = "otto-code.me", custom_domain = true },
+  { pattern = "www.otto-code.me", custom_domain = true },
 ]
 
 [observability]

@@ -15,7 +15,7 @@ Otto ships orchestration skills that teach coding agents (Claude Code, Codex) ho
 Two ways to install:
 
 - **Desktop app:** Settings → Integrations → Install
-- **Manual:** `npx skills add otto-code-ai/otto-code`, this installs to `~/.agents/skills/` and sets up symlinks for each agent.
+- **Manual:** `npx skills add Draek2077/otto-code`, this installs to `~/.agents/skills/` and sets up symlinks for each agent.
 
 When the desktop app finds installed Otto skills, it keeps the bundled skills up to date on startup. If automatic update fails, use Settings → Integrations → Update or the manual command above.
 

@@ -2,7 +2,7 @@ import { getAlternativePages } from "~/data/alternative-pages";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import { type Doc, getDocs } from "~/docs";
 
-const SITE_URL = "https://otto-code.ai";
+const SITE_URL = "https://otto-code.me";
 
 const PRODUCT_PREAMBLE = `# Otto
 
@@ -14,7 +14,7 @@ A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships
 
 Otto supports every major coding agent: Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, Gemini, Cline, Goose, Amp, Aider, and 30+ others. Each agent runs as its own process; Otto handles I/O, persistence, git worktree isolation, schedules, and skills.
 
-Distribution: native apps for Mac, Windows, Linux, iOS, and Android; web app; Homebrew; npm. Source: AGPL-3.0 at https://github.com/otto-code-ai/otto-code. Marketing site: https://otto-code.ai.
+Distribution: native apps for Mac, Windows, Linux, iOS, and Android; web app; Homebrew; npm. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
 `;
 
 function docLine(doc: Doc): string {
@@ -63,6 +63,6 @@ ${agents}
 - [Otto Cloud](${SITE_URL}/cloud): Waitlist for the hosted multi-user version of Otto.
 - [Blog](${SITE_URL}/blog): Updates and technical posts from the Otto team.
 - [Privacy](${SITE_URL}/privacy): Privacy policy.
-- [GitHub](https://github.com/otto-code-ai/otto-code): Source code, issues, and releases.
+- [GitHub](https://github.com/Draek2077/otto-code): Source code, issues, and releases.
 `;
 }

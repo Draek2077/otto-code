@@ -8,7 +8,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const repoRoot = path.resolve(__dirname, "../..");
-const siteHost = "https://otto-code.ai";
+const siteHost = "https://otto-code.me";
 
 function discoverDocsRoutes(): string[] {
   const docsDir = path.join(repoRoot, "public-docs");

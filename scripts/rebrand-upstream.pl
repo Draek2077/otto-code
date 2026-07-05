@@ -15,10 +15,10 @@ while (my $f = shift @ARGV) {
   # --- npm scope ---
   $s =~ s/\@getpaseo/\@otto-code/g;
   # --- GitHub org / repo URLs ---
-  $s =~ s/getpaseo\/paseo/otto-code-ai\/otto-code/g;
-  $s =~ s/getpaseo/otto-code-ai/g;
+  $s =~ s/getpaseo\/paseo/Draek2077\/otto-code/g;
+  $s =~ s/getpaseo/Draek2077/g;
   # --- marketing domain ---
-  $s =~ s/paseo\.sh/otto-code.ai/g;
+  $s =~ s/paseo\.sh/otto-code.me/g;
   # --- env vars ---
   $s =~ s/PASEO_/OTTO_/g;
   # --- generic brand collapse ---

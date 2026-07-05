@@ -329,14 +329,14 @@ const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   daemon: {
     listen: "127.0.0.1:6868",
     cors: {
-      allowedOrigins: ["https://app.otto-code.ai"],
+      allowedOrigins: ["https://app.otto-code.me"],
     },
     relay: {
       enabled: true,
     },
   },
   app: {
-    baseUrl: "https://app.otto-code.ai",
+    baseUrl: "https://app.otto-code.me",
   },
 }) as PersistedConfig;
 

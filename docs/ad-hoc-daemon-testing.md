@@ -34,8 +34,8 @@ const daemon = await createOttoDaemon(
     agentClients: {},
     agentStoragePath: path.join(ottoHome, "agents"),
     relayEnabled: false,
-    relayEndpoint: "relay.otto-code.ai:443",
-    appBaseUrl: "https://app.otto-code.ai",
+    relayEndpoint: "relay.otto-code.me:443",
+    appBaseUrl: "https://app.otto-code.me",
     // Add custom config here, e.g.:
     // providerOverrides: { ... },
   },

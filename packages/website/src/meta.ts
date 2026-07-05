@@ -1,4 +1,4 @@
-const SITE_ORIGIN = "https://otto-code.ai";
+const SITE_ORIGIN = "https://otto-code.me";
 
 export function pageMeta(title: string, description: string, path: string) {
   const url = `${SITE_ORIGIN}${path}`;

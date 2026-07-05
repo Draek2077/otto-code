@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "description": "Otto desktop app (Electron wrapper)",
-  "homepage": "https://otto-code.ai",
+  "homepage": "https://otto-code.me",
   "license": "AGPL-3.0-or-later",
   "author": {
     "name": "Draekz",
