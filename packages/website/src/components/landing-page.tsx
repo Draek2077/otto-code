@@ -43,7 +43,6 @@ import {
   GlobeIcon,
 } from "~/downloads";
 import { useRelease } from "~/routes/__root";
-import { Mic } from "lucide-react";
 import { HeroMockup } from "~/components/hero-mockup";
 import { ClaudeIcon } from "~/components/mockup";
 import { FAQItem } from "~/components/faq-item";
@@ -87,17 +86,20 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       <div className="bg-background">
         <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
           <div className="space-y-24">
-            <SocialProofWall />
+            <BuiltOnPaseoSection />
+            <RedesignSection />
             <MultiProviderSection />
+            <OpenAICompatibleSection />
             <SelfHostedSection />
             <WorkflowSection />
+            <PreviewVerificationSection />
             <SplitPanelsSection />
             <ServiceProxySection />
             <ShortcutsSection />
             <LocalVoiceSection />
             <CLISection />
             <FAQ />
-            <SponsorCTA />
+            <PaseoCreditCTA />
           </div>
         </main>
         <SiteFooter />
@@ -131,88 +133,6 @@ const CURSOR_BADGE_ICON = <CursorIcon className="h-6 w-6" />;
 
 const FEATURED_AGENT_COUNT = 5;
 const ADDITIONAL_AGENT_COUNT = AGENT_PAGES.length - FEATURED_AGENT_COUNT;
-
-const SOCIAL_PROOF_TWEETS = [
-  {
-    name: "Cam",
-    handle: "@ceeebeeebeee",
-    date: "Apr 6, 2026",
-    avatar: "/social-proof/ceeebeeebeee.jpg",
-    url: "https://x.com/ceeebeeebeee/status/2041008798798864537",
-    text: "without a doubt the most slept on orchestrator right now. Open source, every OS, and a mobile experience that truly blew me away.",
-  },
-  {
-    name: "Erik Sherman",
-    handle: "@erikksherman",
-    date: "Apr 11, 2026",
-    avatar: "/social-proof/erikksherman.jpg",
-    url: "https://x.com/erikksherman/status/2043011630590751008",
-    text: "control agents from anywhere - mac, phone, web. one simple change transformed my health while INCREASING productivity",
-  },
-  {
-    name: "Aman Kumar Jagdev",
-    handle: "@amankumarjagdev",
-    date: "Apr 16, 2026",
-    avatar: "/social-proof/amankumarjagdev.jpg",
-    url: "https://x.com/amankumarjagdev/status/2044815258414674307",
-    text: "I have tried 100s of agent orchestrator, cli and gui. the best one i have found. Please give it a try! it's really good",
-  },
-  {
-    name: "RUI",
-    handle: "@tietougongshiba",
-    date: "May 3, 2026",
-    avatar: "/social-proof/tietougongshiba.jpg",
-    url: "https://x.com/tietougongshiba/status/2050886374941925754",
-    text: "Being able to check and manage agent progress from my phone while I'm out is so convenient.",
-  },
-  {
-    name: "Jason Torres",
-    handle: "@jasontorres",
-    date: "May 11, 2026",
-    avatar: "/social-proof/jasontorres.jpg",
-    url: "https://x.com/jasontorres/status/2053875385515790731",
-    text: "Can interchange between Codex, Claude Code, Opencode, Pi. Stable mobile and desktop apps connected through a secure relay from your VMs.",
-  },
-  {
-    name: "A9",
-    handle: "@aadtyn",
-    date: "May 29, 2026",
-    avatar: "/social-proof/aadtyn.jpg",
-    url: "https://x.com/aadtyn/status/2060371229773803943",
-    text: "cross platform agent orchestration with inbuilt relay and tailscale / self host daemon options + the best UI ive seen in this segment",
-  },
-  {
-    name: "boris evstratov",
-    handle: "@bevstratov",
-    date: "May 30, 2026",
-    avatar: "/social-proof/bevstratov.jpg",
-    url: "https://x.com/bevstratov/status/2060733983042781550",
-    text: "It’s an incredible piece of software. The last building block I needed to fully work from my phone. everything super smooth.",
-  },
-  {
-    name: "Arnold Gamboa",
-    handle: "@arnoldgamboa",
-    date: "May 28, 2026",
-    avatar: "/social-proof/arnoldgamboa.jpg",
-    url: "https://x.com/arnoldgamboa/status/2059832028099436921",
-    text: "Otto is a really good interface for Pi. It’s not the only thing it does, but that’s my current use case for now.",
-  },
-  {
-    name: "Dong",
-    handle: "@dongnaebi",
-    date: "Apr 12, 2026",
-    avatar: "/social-proof/dongnaebi.jpg",
-    url: "https://x.com/dongnaebi/status/2043162391941398735",
-    text: "Otto is the best software I've used this year. Absolutely amazing!",
-  },
-] as const;
-
-const SOCIAL_PROOF_ROWS = [
-  { id: "top", tweets: SOCIAL_PROOF_TWEETS.slice(0, 5), reverse: false },
-  { id: "bottom", tweets: SOCIAL_PROOF_TWEETS.slice(5), reverse: true },
-] as const;
-
-type SocialProofTweet = (typeof SOCIAL_PROOF_TWEETS)[number];
 
 function AgentBadge({ name, icon }: { name: string; icon: React.ReactNode }) {
   const [hovered, setHovered] = React.useState(false);
@@ -274,7 +194,28 @@ function SectionTitle({ title, description }: { title: string; description: stri
   );
 }
 
-function SocialProofWall() {
+const PASEO_PILLARS = [
+  {
+    title: "From Paseo",
+    items: [
+      "Multi-provider agent orchestration",
+      "Self-hosted daemon, your machines",
+      "Mobile, desktop, web, and CLI clients",
+      "E2E encrypted relay for remote access",
+    ],
+  },
+  {
+    title: "The Otto twist",
+    items: [
+      "Refreshed, refined UI",
+      "In-browser preview verification for agents",
+      "OpenAI-compatible model providers",
+      "Local models via LM Studio, Ollama & friends",
+    ],
+  },
+] as const;
+
+function BuiltOnPaseoSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -283,72 +224,127 @@ function SocialProofWall() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Loved by developers"
-        description="See what developers are saying about Otto."
+        title="Proudly built on Paseo"
+        description="Otto is an open-source fork of Paseo — everything Paseo can do, plus a unique twist on top."
       />
 
-      <div className="social-proof-marquee space-y-4 overflow-hidden">
-        {SOCIAL_PROOF_ROWS.map((row) => (
-          <SocialProofRow key={row.id} tweets={row.tweets} reverse={row.reverse} />
-        ))}
+      <div className="space-y-4">
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>{" "}
+          is a phenomenal piece of open-source engineering by{" "}
+          <a
+            href="https://github.com/boudra"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Mo
+          </a>
+          : a self-hosted daemon that orchestrates coding agents across desktop, mobile, web, and
+          CLI. Otto keeps that full foundation intact — with upstream history preserved — and builds
+          on it. That&apos;s the open-source community working exactly as it should, and we&apos;re
+          not shy about it.
+        </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Otto is a personal project. It started as one developer wanting to shape Paseo around a
+          specific workflow, using AI coding agents to fork, refactor, and extend it — the same kind
+          of agent-driven development Otto is built to run. Every change is customization on top of
+          Mo&apos;s work, and all credit for the underlying platform belongs to him.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {PASEO_PILLARS.map((pillar) => (
+            <div
+              key={pillar.title}
+              className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
+            >
+              <p className="mb-3 text-sm font-medium text-white/80">{pillar.title}</p>
+              <ul className="space-y-2">
+                {pillar.items.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-white/60">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/70" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
     </motion.section>
   );
 }
 
-function SocialProofRow({
-  tweets,
-  reverse,
-}: {
-  tweets: readonly SocialProofTweet[];
-  reverse: boolean;
-}) {
+const LIGHT_THEMES = ["Daylight", "Meadow", "Terracotta", "Horizon", "Powder", "Pastel"] as const;
+const DARK_THEMES = [
+  "Dark",
+  "Evergreen",
+  "Zinc",
+  "Midnight",
+  "Claude",
+  "Ghostty",
+  "Cyberpunk",
+] as const;
+
+const CUSTOMIZATION_OPTIONS = [
+  "UI and monospace fonts",
+  "Interface and code text sizes",
+  "Syntax highlighting themes",
+  "Chat column width",
+  "Light / dark / adaptive mode",
+] as const;
+
+function ThemeChip({ name, dark }: { name: string; dark: boolean }) {
   return (
-    <div className="social-proof-row">
-      <div className={`social-proof-track ${reverse ? "social-proof-track-reverse" : ""}`}>
-        <div className="flex shrink-0 gap-4 pr-4">
-          {tweets.map((tweet) => (
-            <SocialProofCard key={tweet.url} tweet={tweet} />
-          ))}
-        </div>
-        <div className="flex shrink-0 gap-4 pr-4" aria-hidden="true">
-          {tweets.map((tweet) => (
-            <SocialProofCard key={`${tweet.url}-clone`} tweet={tweet} inert />
-          ))}
-        </div>
-      </div>
-    </div>
+    <span
+      className={`rounded-full border px-3 py-1 text-xs ${
+        dark
+          ? "border-white/10 bg-white/[0.04] text-white/70"
+          : "border-white/15 bg-white/[0.9] text-black/70"
+      }`}
+    >
+      {name}
+    </span>
   );
 }
 
-function SocialProofCard({ tweet, inert }: { tweet: SocialProofTweet; inert?: boolean }) {
+function RedesignSection() {
   return (
-    <a
-      href={tweet.url}
-      target="_blank"
-      rel="noreferrer"
-      tabIndex={inert ? -1 : undefined}
-      className="group flex h-[154px] w-[320px] shrink-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.05] md:w-[420px]"
-      aria-label={`Read ${tweet.name}'s original post`}
+    <FeatureSection
+      title="A new look, made yours"
+      description="Otto brings a refreshed look and feel on top of Paseo — cleaner surfaces, refined spacing, and a UI that stays familiar to anyone who has used a modern coding tool. Then it hands you the dials: pick from a full set of light and dark themes and tune the details until it feels like your environment."
     >
-      <div>
-        <div className="flex min-w-0 items-center gap-3">
-          <img
-            src={tweet.avatar}
-            alt=""
-            width={28}
-            height={28}
-            loading="lazy"
-            decoding="async"
-            className="h-7 w-7 shrink-0 rounded-full bg-white/10 object-cover"
-          />
-          <p className="truncate text-sm font-medium text-white/60">{tweet.handle}</p>
+      <div className="space-y-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white/80">Themes</p>
+          <div className="flex flex-wrap gap-2">
+            {DARK_THEMES.map((name) => (
+              <ThemeChip key={name} name={name} dark />
+            ))}
+            {LIGHT_THEMES.map((name) => (
+              <ThemeChip key={name} name={name} dark={false} />
+            ))}
+          </div>
         </div>
-        <p className="social-proof-card-text mt-4 text-sm leading-relaxed text-white/72">
-          {tweet.text}
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white/80">Tune everything else</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CUSTOMIZATION_OPTIONS.map((option) => (
+              <div key={option} className="flex items-start gap-2 text-sm text-white/60">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/70" />
+                {option}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </a>
+    </FeatureSection>
   );
 }
 
@@ -364,7 +360,7 @@ function MultiProviderSection() {
   return (
     <FeatureSection
       title="Works with your tools"
-      description="Run your agents from one interface. Otto uses each provider's native harness, so your subscriptions, skills, config, and MCP servers keep working."
+      description="Run your agents from one interface. Otto uses each provider's native harness, so your subscriptions, skills, config, and MCP servers keep working — and any OpenAI-compatible endpoint can join them."
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {providers.map((p) => (
@@ -387,80 +383,81 @@ function MultiProviderSection() {
   );
 }
 
+const OPENAI_COMPATIBLE_ENDPOINTS = [
+  "LM Studio",
+  "Ollama",
+  "vLLM",
+  "Z.AI",
+  "Alibaba Qwen",
+  "Any OpenAI-compatible API",
+] as const;
+
+function OpenAICompatibleSection() {
+  return (
+    <FeatureSection
+      title="Bring any model"
+      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider — with the same tools, browser access, and workflow as the built-in ones. Run models locally or on your own server; your prompts never have to leave your network."
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
+          <div
+            key={name}
+            className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+          >
+            <span className="font-medium">{name}</span>
+          </div>
+        ))}
+      </div>
+    </FeatureSection>
+  );
+}
+
+// Generic UI icons — Material Symbols (outlined family), matching the app's icon
+// set (docs/ui-icons.md). Brand/provider logos below keep their own marks.
+function MaterialGlyph({ path, ...props }: { path: string } & React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 -960 960 960"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+const MONITOR_PATH =
+  "M260-120v-73l47-47H140q-24 0-42-18t-18-42v-480q0-24 18-42t42-18h680q24 0 42 18t18 42v480q0 24-18 42t-42 18H652l48 47v73H260ZM140-300h680v-480H140v480Zm0 0v-480 480Z";
+const GLOBE_PATH =
+  "M480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm-.27-60q142.38 0 241.19-99.5T820-480v-13q-6 26-27.41 43.5Q771.19-432 742-432h-80q-33 0-56.5-23.5T582-512v-40H422v-80q0-33 23.5-56.5T502-712h40v-22q0-16 13.5-40t30.5-29q-25-8-51.36-12.5Q508.29-820 480-820q-141 0-240.5 98.81T140-480h150q66 0 113 47t47 113v40H330v105q34 17 71.7 26t78.3 9Z";
+const MOBILE_PATH =
+  "M260-40q-24.75 0-42.37-17.63Q200-75.25 200-100v-760q0-24 18-42t42-18h438q24.75 0 42.38 17.62Q758-884.75 758-860v150q18 3 30 16.95 12 13.96 12 31.63V-587q0 19-12 33t-30 17v437q0 24.75-17.62 42.37Q722.75-40 698-40H260Zm0-60h438v-760H260v760Zm0 0v-760 760Zm240-629q9-9 9-21t-9-21q-9-9-21-9t-21 9q-9 9-9 21t9 21q9 9 21 9t21-9Z";
+const SERVER_PATH =
+  "M286.88-717q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5Zm0 414q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5ZM154-839h651q16 0 25.5 9.5t9.5 25.81V-535q0 17.42-9.5 29.21T805-494H154q-15 0-24.5-11.79T120-535v-268.69q0-16.31 9.5-25.81T154-839Zm26 60v225h600v-225H180Zm-26 353h647q15 0 27 12.5t12 28.53V-121q0 20-12 30.5T801-80H159q-16 0-27.5-10.5T120-121v-263.97q0-16.03 9.5-28.53T154-426Zm26 60v226h600v-226H180Zm0-413v225-225Zm0 413v226-226Z";
+const FOLDER_PATH =
+  "M140-160q-24 0-42-18.5T80-220v-520q0-23 18-41.5t42-18.5h281l60 60h339q23 0 41.5 18.5T880-680v460q0 23-18.5 41.5T820-160H140Zm0-60h680v-460H456l-60-60H140v520Zm0 0v-520 520Z";
+const MIC_PATH =
+  "M408-453.92q-29-30.91-29-75.08v-251q0-41.67 29.44-70.83Q437.88-880 479.94-880t71.56 29.17Q581-821.67 581-780v251q0 44.17-29 75.08Q523-423 480-423t-72-30.92ZM480-651Zm-30 531v-136q-106-11-178-89t-72-184h60q0 91 64.29 153t155.5 62q91.21 0 155.71-62Q700-438 700-529h60q0 106-72 184t-178 89v136h-60Zm59.5-376.5Q521-510 521-529v-251q0-17-11.79-28.5T480-820q-17.42 0-29.21 11.5T439-780v251q0 19 11.5 32.5T480-483q18 0 29.5-13.5Z";
+const ARROW_DOWN_PATH = "M450-800v526L202-522l-42 42 320 320 320-320-42-42-248 248v-526h-60Z";
+const ARROW_FORWARD_PATH = "M686-450H160v-60h526L438-758l42-42 320 320-320 320-42-42 248-248Z";
+const COPY_PATH =
+  "M300-200q-24 0-42-18t-18-42v-560q0-24 18-42t42-18h440q24 0 42 18t18 42v560q0 24-18 42t-42 18H300Zm0-60h440v-560H300v560ZM180-80q-24 0-42-18t-18-42v-620h60v620h500v60H180Zm120-180v-560 560Z";
+const CHECK_PATH = "M378-246 154-470l43-43 181 181 384-384 43 43-427 427Z";
+const TERMINAL_PATH =
+  "M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z";
+
+function ServerIcon(props: React.SVGProps<SVGSVGElement>) {
+  return <MaterialGlyph path={SERVER_PATH} {...props} />;
+}
+
 function SelfHostedDiagram() {
   const clients = [
-    {
-      name: "Desktop",
-      icon: (
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <path d="M8 21h8M12 17v4" />
-        </svg>
-      ),
-    },
-    {
-      name: "Web",
-      icon: (
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-        </svg>
-      ),
-    },
-    {
-      name: "Mobile",
-      icon: (
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="5" y="2" width="14" height="20" rx="2" />
-          <path d="M12 18h.01" />
-        </svg>
-      ),
-    },
-    {
-      name: "CLI",
-      icon: (
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
-      ),
-    },
+    { name: "Desktop", icon: <MaterialGlyph path={MONITOR_PATH} width={28} height={28} /> },
+    { name: "Web", icon: <MaterialGlyph path={GLOBE_PATH} width={28} height={28} /> },
+    { name: "Mobile", icon: <MaterialGlyph path={MOBILE_PATH} width={28} height={28} /> },
+    { name: "CLI", icon: <MaterialGlyph path={TERMINAL_PATH} width={28} height={28} /> },
   ];
   const hosts = ["MacBook Pro", "Hetzner VM", "Dev server"];
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -552,21 +549,7 @@ function SelfHostedDiagram() {
               className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
             >
               <span className="text-white/80">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="8" rx="2" />
-                  <rect x="2" y="14" width="20" height="8" rx="2" />
-                  <circle cx="6" cy="6" r="1" />
-                  <circle cx="6" cy="18" r="1" />
-                </svg>
+                <ServerIcon width={28} height={28} />
               </span>
               <span className="font-medium">{h}</span>
             </div>
@@ -635,21 +618,7 @@ function SelfHostedDiagram() {
               className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
             >
               <span className="text-white/80">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="8" rx="2" />
-                  <rect x="2" y="14" width="20" height="8" rx="2" />
-                  <circle cx="6" cy="6" r="1" />
-                  <circle cx="6" cy="18" r="1" />
-                </svg>
+                <ServerIcon width={28} height={28} />
               </span>
               <span className="font-medium">{h}</span>
             </div>
@@ -837,6 +806,41 @@ function ShipPanel() {
   );
 }
 
+const PREVIEW_CHECKS = [
+  { label: "Dev server started from launch config", status: "web.fix-auth.my-app.localhost" },
+  { label: "Accessibility snapshot matches expected content", status: "passed" },
+  { label: "Console and network clean", status: "0 errors" },
+  { label: "Clicked through the login flow", status: "passed" },
+  { label: "Screenshot attached as proof", status: "1 capture" },
+] as const;
+
+function PreviewVerificationSection() {
+  return (
+    <FeatureSection
+      title="Agents that prove their work"
+      description="Otto ships a rebuilt, more functional preview server system. Agents start your dev server from a launch config, open the app in a browser pane, and verify their own changes — reading accessibility snapshots, inspecting the DOM, checking the console and network, clicking and filling forms, resizing the viewport, and capturing screenshots. You get proof, not 'should work now, can you check?'"
+    >
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+        <BrowserChrome />
+        <div className="space-y-2 p-5">
+          {PREVIEW_CHECKS.map((check) => (
+            <div
+              key={check.label}
+              className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs"
+            >
+              <span className="flex items-center gap-2.5 text-white/70">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                {check.label}
+              </span>
+              <span className="shrink-0 font-mono text-white/35">{check.status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </FeatureSection>
+  );
+}
+
 function SplitPanelsSection() {
   return (
     <FeatureSection
@@ -885,19 +889,7 @@ function ServiceProxySection() {
         <div className="px-5 py-4 space-y-3">
           {/* Project */}
           <div className="flex items-center gap-2.5">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-white/40"
-            >
-              <path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z" />
-            </svg>
+            <MaterialGlyph path={FOLDER_PATH} width={16} height={16} className="text-white/40" />
             <span className="text-sm font-medium text-white/60">my-app</span>
           </div>
 
@@ -1170,7 +1162,7 @@ function LocalVoiceSection() {
           {/* User dictation */}
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-              <Mic size={16} className="text-white/60" />
+              <MaterialGlyph path={MIC_PATH} width={16} height={16} className="text-white/60" />
             </div>
             <div className="pt-1">
               <StreamingWords
@@ -1536,25 +1528,9 @@ function CLICodeBlock({ children }: { children: string }) {
         title="Copy to clipboard"
       >
         {copied ? (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-          >
-            <path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z" />
-          </svg>
+          <MaterialGlyph path={CHECK_PATH} width={14} height={14} />
         ) : (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-          >
-            <path d="M216,28H88A20,20,0,0,0,68,48V76H40A20,20,0,0,0,20,96V216a20,20,0,0,0,20,20H168a20,20,0,0,0,20-20V188h28a20,20,0,0,0,20-20V48A20,20,0,0,0,216,28ZM164,212H44V100H164Zm48-48H188V96a20,20,0,0,0-20-20H92V52H212Z" />
-          </svg>
+          <MaterialGlyph path={COPY_PATH} width={14} height={14} />
         )}
       </button>
       <pre className="p-4 pr-10 text-xs leading-relaxed overflow-x-auto text-white/70 font-mono whitespace-pre">
@@ -1656,19 +1632,7 @@ function PhoneShowcase() {
         transition={DURATION_05}
         className="flex flex-col items-center gap-1.5 px-6"
       >
-        <svg
-          width="24"
-          height="24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          viewBox="0 0 24 24"
-          className="text-white/20"
-        >
-          <path d="M12 5v14M5 12l7 7 7-7" />
-        </svg>
+        <MaterialGlyph path={ARROW_DOWN_PATH} width={24} height={24} className="text-white/20" />
         <p className="text-lg text-white/80 text-center">
           When you want to step away from your desk,
           <br className="md:hidden" /> you can.
@@ -1794,19 +1758,7 @@ function CLISection() {
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         Full CLI reference
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="12"
-          height="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          viewBox="0 0 24 24"
-        >
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
+        <MaterialGlyph path={ARROW_FORWARD_PATH} width={12} height={12} />
       </a>
     </FeatureSection>
   );
@@ -1823,6 +1775,23 @@ function FAQ() {
     >
       <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
+        <FAQItem question="How is Otto related to Paseo?">
+          Otto is an open-source fork of{" "}
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>
+          , with full upstream history preserved. We&apos;re proud of that lineage — Paseo is a
+          fantastic platform to build on. Otto tracks upstream improvements and adds its own
+          direction on top: a refreshed UI, in-browser preview verification for agents, and
+          OpenAI-compatible model providers. Otto is an independent project and isn&apos;t
+          affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
+          testimonials are theirs, not ours.
+        </FAQItem>
         <FAQItem question="Is this free?">
           Yes. Otto is free and open source. You need Claude Code, Codex, Cursor, OpenCode, or Pi
           installed with your own credentials. Voice is local-first by default and can optionally
@@ -1878,7 +1847,6 @@ function FAQ() {
             inference APIs directly. From the provider&apos;s perspective, usage through Otto is
             indistinguishable from running the provider yourself.
           </p>
-          <p>I&apos;ve been using Otto with all providers for months without issue.</p>
         </FAQItem>
         <FAQItem question="How do worktrees work?">
           When you launch an agent with the worktree option (from the app, desktop, or CLI), Otto
@@ -1894,7 +1862,7 @@ function FAQ() {
   );
 }
 
-function SponsorCTA() {
+function PaseoCreditCTA() {
   return (
     <motion.div
       initial={FADE_IN_UP}
@@ -1905,17 +1873,33 @@ function SponsorCTA() {
     >
       <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
         <p>
-          Otto is an independent open source project for running coding agents across your own
-          machines, phone, desktop, and CLI.
+          Otto is an independent open-source fork of{" "}
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>
+          , created by{" "}
+          <a
+            href="https://github.com/boudra"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Mo
+          </a>
+          . None of this would exist without the platform Mo built and shares under an open-source
+          license — that generosity is what makes projects like Otto possible.
         </p>
         <p>
-          It&apos;s built around freedom of choice: use the provider you want, run it on your own
-          infrastructure, and keep your workflow portable.
+          Otto doesn&apos;t take sponsorships or donations. If you&apos;d like to support this work,
+          please support Mo directly — he&apos;s the author of the platform it&apos;s all built on.
         </p>
-        <p>If you like Otto, sponsorship is the best way to support continued development.</p>
-        <p>- Mo</p>
       </div>
-      <div className="pt-2">
+      <div className="flex flex-wrap gap-3 pt-2">
         <a
           href="https://github.com/sponsors/boudra"
           target="_blank"
@@ -1932,7 +1916,7 @@ function SponsorCTA() {
           >
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
-          Sponsor on GitHub
+          Sponsor Mo on GitHub
         </a>
       </div>
     </motion.div>

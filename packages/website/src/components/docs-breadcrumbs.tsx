@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
+import { ChevronRightIcon } from "~/components/material-icons";
 import { type Doc, type DocsNavNode, getDocBreadcrumbGroups } from "~/docs";
 
 interface DocsBreadcrumbsProps {
@@ -20,12 +20,12 @@ export function DocsBreadcrumbs({ doc, tree }: DocsBreadcrumbsProps) {
         </li>
         {groups.map((group) => (
           <li key={group.label} className="flex items-center gap-2">
-            <ChevronRight size={14} className="text-border" />
+            <ChevronRightIcon size={14} className="text-border" />
             <span>{group.label}</span>
           </li>
         ))}
         <li className="flex items-center gap-2">
-          <ChevronRight size={14} className="text-border" />
+          <ChevronRightIcon size={14} className="text-border" />
           <span className="text-foreground">{doc.frontmatter.nav}</span>
         </li>
       </ol>

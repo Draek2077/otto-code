@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Menu, X } from "lucide-react";
+import { CloseIcon, MenuIcon } from "~/components/material-icons";
 import { useCallback, useMemo, useState } from "react";
 import { DocsBreadcrumbs } from "~/components/docs-breadcrumbs";
 import { DocsNav } from "~/components/docs-nav";
@@ -28,7 +28,7 @@ function DocsLayout() {
       <header className="lg:hidden sticky top-0 z-50 bg-background border-b border-border">
         <div className="flex items-center justify-between p-4">
           <Link to="/" className="flex items-center gap-3">
-            <img src="/logo.svg" alt="Otto" className="w-6 h-6" />
+            <img src="/logo-wink.svg" alt="Otto" className="w-12 h-12" />
             <span className="text-lg font-medium">Otto</span>
           </Link>
           <button
@@ -38,7 +38,7 @@ function DocsLayout() {
             aria-expanded={mobileNavOpen}
             className="-mr-2 p-2 text-muted-foreground hover:text-foreground transition-colors"
           >
-            {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileNavOpen ? <CloseIcon size={20} /> : <MenuIcon size={20} />}
           </button>
         </div>
         {mobileNavOpen && (
@@ -52,7 +52,7 @@ function DocsLayout() {
         {/* Desktop sidebar */}
         <aside className="hidden lg:block sticky top-0 h-screen w-60 shrink-0 border-r border-border p-6 overflow-y-auto">
           <Link to="/" className="flex items-center gap-3 mb-8">
-            <img src="/logo.svg" alt="Otto" className="w-6 h-6" />
+            <img src="/logo-wink.svg" alt="Otto" className="w-12 h-12" />
             <span className="text-lg font-medium">Otto</span>
           </Link>
           <DocsNav nodes={tree} />
