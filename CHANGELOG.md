@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-07-05
+
+### Changed
+
+- Desktop downloads and auto-updates now come from this fork's own release page
+
 ## 0.3.0 - 2026-07-05
 
 ### Changed
