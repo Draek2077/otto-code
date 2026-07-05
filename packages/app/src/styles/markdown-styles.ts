@@ -19,10 +19,10 @@ export function createMarkdownStyles(theme: Theme) {
     body: {
       ...webSelectableTextStyle,
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.base,
-      // Prose line-height scales with the UI ramp (≈22 at base 16), NOT the
-      // code-size-coupled lineHeight.diff token used by code/diff surfaces.
-      lineHeight: Math.round(theme.fontSize.base * 1.4),
+      // Prose matches the UI's own text size (sidebar rows, tab titles), not
+      // fontSize.base — chat is a working surface, not a document.
+      fontSize: theme.fontSize.sm,
+      lineHeight: Math.round(theme.fontSize.sm * 1.4),
       flexShrink: 1,
       minWidth: 0,
       width: "100%" as const,
@@ -31,8 +31,8 @@ export function createMarkdownStyles(theme: Theme) {
     text: {
       ...webSelectableTextStyle,
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.base,
-      lineHeight: Math.round(theme.fontSize.base * 1.4),
+      fontSize: theme.fontSize.sm,
+      lineHeight: Math.round(theme.fontSize.sm * 1.4),
       flexShrink: 1,
       minWidth: 0,
       overflowWrap: "anywhere" as const,
@@ -286,17 +286,17 @@ export function createMarkdownStyles(theme: Theme) {
       ...webSelectableTextStyle,
       color: theme.colors.foregroundMuted,
       marginRight: 4,
-      fontSize: theme.fontSize.base,
-      lineHeight: 22,
+      fontSize: theme.fontSize.sm,
+      lineHeight: 20,
     },
 
     ordered_list_icon: {
       ...webSelectableTextStyle,
       color: theme.colors.foregroundMuted,
       marginRight: 4,
-      fontSize: theme.fontSize.base,
+      fontSize: theme.fontSize.sm,
       fontWeight: theme.fontWeight.normal,
-      lineHeight: 22,
+      lineHeight: 20,
       minWidth: 12,
     },
 
