@@ -1,6 +1,6 @@
-import type { HighlightStyle } from "./types.js";
+import type { DiffBackgroundColors, HighlightStyle } from "./types.js";
 
-export const darkHighlightColors: Record<HighlightStyle, string> = {
+export const darkHighlightColors: Record<HighlightStyle, string> & DiffBackgroundColors = {
   keyword: "#ff7b72",
   comment: "#8b949e",
   string: "#a5d6ff",
@@ -21,9 +21,11 @@ export const darkHighlightColors: Record<HighlightStyle, string> = {
   meta: "#8b949e",
   heading: "#79c0ff",
   link: "#a5d6ff",
+  diffAdded: "rgba(46, 160, 67, 0.15)",
+  diffRemoved: "rgba(248, 81, 73, 0.1)",
 };
 
-export const lightHighlightColors: Record<HighlightStyle, string> = {
+export const lightHighlightColors: Record<HighlightStyle, string> & DiffBackgroundColors = {
   keyword: "#cf222e",
   comment: "#6e7781",
   string: "#0a3069",
@@ -44,4 +46,6 @@ export const lightHighlightColors: Record<HighlightStyle, string> = {
   meta: "#6e7781",
   heading: "#0550ae",
   link: "#0a3069",
+  diffAdded: "rgba(46, 160, 67, 0.15)",
+  diffRemoved: "rgba(248, 81, 73, 0.1)",
 };

@@ -8,6 +8,7 @@ import { diffLinePrefix } from "@/utils/diff-highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { withAlpha } from "@/styles/rgba-alpha";
 import { getCodeInsets } from "./code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
@@ -246,22 +247,22 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
     },
     addLine: {
-      backgroundColor: "rgba(46, 160, 67, 0.15)",
+      backgroundColor: theme.colors.syntax.diffAdded,
     },
     addText: {
       color: theme.colors.foreground,
     },
     removeLine: {
-      backgroundColor: "rgba(248, 81, 73, 0.1)",
+      backgroundColor: theme.colors.syntax.diffRemoved,
     },
     removeText: {
       color: theme.colors.foreground,
     },
     addHighlight: {
-      backgroundColor: "rgba(46, 160, 67, 0.4)",
+      backgroundColor: withAlpha(theme.colors.syntax.diffAdded, 0.4),
     },
     removeHighlight: {
-      backgroundColor: "rgba(248, 81, 73, 0.35)",
+      backgroundColor: withAlpha(theme.colors.syntax.diffRemoved, 0.35),
     },
     contextLine: {
       backgroundColor: theme.colors.surface1,

@@ -14,12 +14,6 @@ import { CHANGED_LINE_INDICES, PREVIEW_AFTER, PREVIEW_BEFORE } from "./preview-s
 // Snippets are TypeScript; the cache keys grammar selection off the extension.
 const PREVIEW_EXTENSION = "ts";
 
-// GitHub diff tints, matching git/diff-pane.tsx (addLineContainer /
-// removeLineContainer). Hardcoded rgba is the documented diff exception to the
-// "no raw hex outside the palette" rule (docs/design.md §13).
-const REMOVED_TINT = "rgba(248, 81, 73, 0.1)";
-const ADDED_TINT = "rgba(46, 160, 67, 0.15)";
-
 // Zero-width space keeps blank lines at full line height.
 const ZERO_WIDTH = "​";
 
@@ -189,10 +183,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
   },
   addRow: {
-    backgroundColor: ADDED_TINT,
+    backgroundColor: theme.colors.syntax.diffAdded,
   },
   removeRow: {
-    backgroundColor: REMOVED_TINT,
+    backgroundColor: theme.colors.syntax.diffRemoved,
   },
   codeLine: {
     fontFamily: theme.fontFamily.mono,

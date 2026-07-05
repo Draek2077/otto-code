@@ -67,7 +67,7 @@ export interface AppSettings {
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
-  syntaxTheme: SyntaxThemeId; // default "one"
+  syntaxTheme: SyntaxThemeId; // default "default"
   workspaceTitleSource: WorkspaceTitleSource;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
@@ -93,7 +93,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
-  syntaxTheme: "one",
+  syntaxTheme: "default",
   workspaceTitleSource: "title",
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
