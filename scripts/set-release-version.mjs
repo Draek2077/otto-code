@@ -68,9 +68,7 @@ if (args.print) {
 // unmodified instead of being re-parsed by cmd.exe.
 const npmExecPath = process.env.npm_execpath;
 const [command, prefixArgs] =
-  npmExecPath && process.platform === "win32"
-    ? [process.execPath, [npmExecPath]]
-    : ["npm", []];
+  npmExecPath && process.platform === "win32" ? [process.execPath, [npmExecPath]] : ["npm", []];
 
 execFileSync(
   command,
