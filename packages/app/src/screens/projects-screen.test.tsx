@@ -106,7 +106,7 @@ vi.mock("react-native-unistyles", () => ({
   useUnistyles: () => ({ theme }),
 }));
 
-vi.mock("lucide-react-native", () => {
+vi.mock("@/components/icons/material-icons", () => {
   const icon = (name: string) => {
     const Icon = () => React.createElement("span", { "data-icon": name });
     Icon.displayName = name;

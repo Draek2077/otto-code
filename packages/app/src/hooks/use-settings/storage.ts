@@ -2,7 +2,7 @@ import { isSyntaxThemeId, type SyntaxThemeId } from "@otto-code/highlight";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 
 export const APP_SETTINGS_KEY = "@otto:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
@@ -14,8 +14,28 @@ export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
+export type ColorSchemeMode = "light" | "dark" | "system";
 
-const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
+const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
+  "daylight",
+  "meadow",
+  "terracotta",
+  "horizon",
+  "powder",
+  "pastel",
+];
+const DARK_THEME_NAMES: readonly DarkThemeName[] = [
+  "dark",
+  "evergreen",
+  "zinc",
+  "midnight",
+  "claude",
+  "ghostty",
+  "cyberpunk",
+];
+const VALID_LIGHT_THEMES = new Set<string>(LIGHT_THEME_NAMES);
+const VALID_DARK_THEMES = new Set<string>(DARK_THEME_NAMES);
+const VALID_COLOR_SCHEME_MODES = new Set<ColorSchemeMode>(["light", "dark", "system"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
 const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
@@ -34,7 +54,9 @@ export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
 
 export interface AppSettings {
-  theme: ThemeName | "auto";
+  colorSchemeMode: ColorSchemeMode;
+  lightTheme: LightThemeName;
+  darkTheme: DarkThemeName;
   language: AppLanguage;
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
@@ -57,7 +79,9 @@ export interface Settings extends AppSettings {
 }
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
-  theme: "auto",
+  colorSchemeMode: "system",
+  lightTheme: "daylight",
+  darkTheme: "dark",
   language: "system",
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
@@ -115,8 +139,12 @@ export async function loadAppSettingsFromStorage(deps: SettingsDeps): Promise<Ap
   try {
     const stored = await deps.storage.getItem(APP_SETTINGS_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Partial<AppSettings>;
-      return { ...DEFAULT_CLIENT_SETTINGS, ...pickAppSettings(parsed) };
+      const parsed = JSON.parse(stored) as Record<string, unknown>;
+      return {
+        ...DEFAULT_CLIENT_SETTINGS,
+        ...migrateLegacyThemeField(parsed),
+        ...pickAppSettings(parsed as Partial<AppSettings>),
+      };
     }
 
     const legacyStored = await deps.storage.getItem(LEGACY_SETTINGS_KEY);
@@ -164,10 +192,46 @@ export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Setti
   };
 }
 
+// Migrates a stored `theme: ThemeName | "auto"` value (the schema this app used
+// before the mode/variant split) into the new `colorSchemeMode`/`lightTheme`/
+// `darkTheme` fields. Only runs when the new fields are entirely absent, so it
+// never re-fires on already-migrated data. Operates on the raw untyped parse
+// result (not `Partial<AppSettings>`) since `theme` isn't part of the current
+// schema at all anymore.
+function migrateLegacyThemeField(stored: Record<string, unknown>): Partial<AppSettings> {
+  const legacyTheme = stored.theme;
+  if (typeof legacyTheme !== "string" || stored.colorSchemeMode !== undefined) {
+    return {};
+  }
+  if (legacyTheme === "auto") {
+    return { colorSchemeMode: "system" };
+  }
+  if (legacyTheme === "light") {
+    // The plain neutral "Light" theme was retired; Daylight absorbs it.
+    return { colorSchemeMode: "light", lightTheme: "daylight" };
+  }
+  if (VALID_LIGHT_THEMES.has(legacyTheme)) {
+    return { colorSchemeMode: "light", lightTheme: legacyTheme as LightThemeName };
+  }
+  if (VALID_DARK_THEMES.has(legacyTheme)) {
+    return { colorSchemeMode: "dark", darkTheme: legacyTheme as DarkThemeName };
+  }
+  return {};
+}
+
 function pickThemeAndBehaviorSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
-  if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
-    result.theme = stored.theme;
+  if (
+    typeof stored.colorSchemeMode === "string" &&
+    VALID_COLOR_SCHEME_MODES.has(stored.colorSchemeMode)
+  ) {
+    result.colorSchemeMode = stored.colorSchemeMode;
+  }
+  if (typeof stored.lightTheme === "string" && VALID_LIGHT_THEMES.has(stored.lightTheme)) {
+    result.lightTheme = stored.lightTheme;
+  }
+  if (typeof stored.darkTheme === "string" && VALID_DARK_THEMES.has(stored.darkTheme)) {
+    result.darkTheme = stored.darkTheme;
   }
   const language = parseAppLanguage(stored.language);
   if (language !== null) {
@@ -263,11 +327,16 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
 }
 
 function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {
-  const result: Partial<AppSettings> = {};
-  if (legacy.theme === "dark" || legacy.theme === "light" || legacy.theme === "auto") {
-    result.theme = legacy.theme;
+  if (legacy.theme === "auto") {
+    return { colorSchemeMode: "system" };
   }
-  return result;
+  if (legacy.theme === "light") {
+    return { colorSchemeMode: "light", lightTheme: "daylight" };
+  }
+  if (legacy.theme === "dark") {
+    return { colorSchemeMode: "dark", darkTheme: "dark" };
+  }
+  return {};
 }
 
 export function parseTerminalScrollbackLines(value: unknown): number | null {

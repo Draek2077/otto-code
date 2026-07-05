@@ -32,7 +32,7 @@ import {
   SquarePen,
   SquareTerminal,
   X,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useRouter, type Href } from "expo-router";

@@ -33,7 +33,7 @@ import {
   SquarePen,
   SquareTerminal,
   X,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -1016,6 +1016,36 @@ function WorkspaceHeaderMenuTriggerIcon({
   return <Icon size={16} uniProps={colorMapping} />;
 }
 
+function headerActionTriggerStyle({
+  hovered,
+  pressed,
+  open,
+}: {
+  hovered?: boolean;
+  pressed?: boolean;
+  open?: boolean;
+}) {
+  return [
+    styles.headerActionButton,
+    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && styles.headerActionButtonHovered,
+  ];
+}
+
+function compactHeaderActionTriggerStyle({
+  hovered,
+  pressed,
+  open,
+}: {
+  hovered?: boolean;
+  pressed?: boolean;
+  open?: boolean;
+}) {
+  return [
+    styles.compactHeaderActionButton,
+    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && styles.headerActionButtonHovered,
+  ];
+}
+
 function WorkspaceHeaderMenu({
   normalizedServerId,
   currentBranchName,
@@ -1063,7 +1093,7 @@ function WorkspaceHeaderMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         testID="workspace-header-menu-trigger"
-        style={isMobile ? styles.compactHeaderActionButton : styles.headerActionButton}
+        style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
         accessibilityRole="button"
         accessibilityLabel={t("workspace.header.actions.workspaceActions")}
       >
@@ -3720,10 +3750,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     overflow: "hidden",
     flexShrink: 1,
-    flexGrow: {
-      xs: 1,
-      md: 0,
-    },
+    flexGrow: 1,
     flexDirection: {
       xs: "column",
       md: "row",
@@ -3769,6 +3796,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
   },
+  headerActionButtonHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
   compactHeaderActionButton: {
     width: theme.spacing[8],
     height: theme.spacing[8],
@@ -3780,6 +3810,7 @@ const styles = StyleSheet.create((theme) => ({
   compactHeaderMenuCluster: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 0,
     gap: {
       xs: 0,
       md: theme.spacing[2],

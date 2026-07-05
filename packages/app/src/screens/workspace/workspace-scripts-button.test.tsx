@@ -113,7 +113,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   useDropdownMenuClose: () => () => {},
 }));
 
-vi.mock("lucide-react-native", () => {
+vi.mock("@/components/icons/material-icons", () => {
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", {
       "data-icon": name,

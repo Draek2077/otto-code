@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronRight, CircleAlert, SquareTerminal } from "lucide-react-native";
+import {
+  CheckCircle2,
+  ChevronRight,
+  CircleAlert,
+  SquareTerminal,
+} from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,

@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { FileText } from "lucide-react-native";
+import { FileText } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
 import { FilePane } from "@/components/file-pane";

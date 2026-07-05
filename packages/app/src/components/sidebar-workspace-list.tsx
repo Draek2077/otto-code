@@ -47,7 +47,7 @@ import {
   MoreVertical,
   Plus,
   Trash2,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";

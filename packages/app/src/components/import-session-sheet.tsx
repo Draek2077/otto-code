@@ -7,7 +7,7 @@ import type {
   FetchRecentProviderSessionEntry,
 } from "@otto-code/client/internal/daemon-client";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import { ChevronDown, Inbox, Layers, RotateCw } from "lucide-react-native";
+import { ChevronDown, Inbox, Layers, RotateCw } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -179,7 +179,7 @@ function SheetEmptyState({ title }: { title: string }) {
   return (
     <View style={styles.emptyState} testID="import-session-empty-state">
       <View style={styles.emptyStateIcon}>
-        <Inbox size={theme.iconSize.lg} color={theme.colors.foregroundMuted} strokeWidth={1.5} />
+        <Inbox size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
       </View>
       <Text style={styles.emptyStateTitle}>{title}</Text>
     </View>

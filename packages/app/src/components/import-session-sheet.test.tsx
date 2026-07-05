@@ -64,7 +64,7 @@ vi.mock("@/components/provider-icons", () => ({
   getProviderIcon: () => () => null,
 }));
 
-vi.mock("lucide-react-native", () => {
+vi.mock("@/components/icons/material-icons", () => {
   const icon = (name: string) => {
     const Icon = () => React.createElement("span", { "data-icon": name });
     Icon.displayName = name;

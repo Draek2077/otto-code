@@ -45,7 +45,7 @@ import {
   RotateCw,
   Upload,
   WrapText,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import {
   useCheckoutDiffQuery,
   type ParsedDiffFile,

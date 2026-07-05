@@ -3,7 +3,8 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, Monitor, Moon, Sun } from "lucide-react-native";
+import { ChevronDown, Monitor, Moon, Sun } from "@/components/icons/material-icons";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import {
   SYNTAX_THEME_OPTIONS,
@@ -14,8 +15,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -29,12 +28,16 @@ import {
   useAppSettings,
   type AppSettings,
 } from "@/hooks/use-settings";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
   ICON_SIZE,
   THEME_SWATCHES,
+  type DarkThemeName,
+  type LightThemeName,
   type Theme,
+  type ThemeVariantName,
 } from "@/styles/theme";
 import { isNative } from "@/constants/platform";
 import { settingsStyles } from "@/styles/settings";
@@ -46,16 +49,12 @@ import { AppearancePreview } from "./appearance-preview";
 // feature does not scale icons.
 // ---------------------------------------------------------------------------
 
-const ThemedSun = withUnistyles(Sun);
-const ThemedMoon = withUnistyles(Moon);
-const ThemedMonitor = withUnistyles(Monitor);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
-  const labelKeys: Record<AppSettings["theme"], string> = {
-    light: "settings.appearance.theme.options.light",
+function getThemeLabel(t: TFunction, value: ThemeVariantName): string {
+  const labelKeys: Record<ThemeVariantName, string> = {
     dark: "settings.appearance.theme.options.dark",
     daylight: "settings.appearance.theme.options.daylight",
     evergreen: "settings.appearance.theme.options.evergreen",
@@ -65,15 +64,26 @@ function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
     ghostty: "settings.appearance.theme.options.ghostty",
     cyberpunk: "settings.appearance.theme.options.cyberpunk",
     pastel: "settings.appearance.theme.options.pastel",
-    auto: "settings.appearance.theme.options.auto",
+    meadow: "settings.appearance.theme.options.meadow",
+    terracotta: "settings.appearance.theme.options.terracotta",
+    horizon: "settings.appearance.theme.options.horizon",
+    powder: "settings.appearance.theme.options.powder",
   };
   return t(labelKeys[value]);
 }
 
-// The menu is grouped by color scheme: the neutral defaults (Light/Dark) lead
-// their group, followed by the tinted variants.
-const LIGHT_THEMES: readonly AppSettings["theme"][] = ["light", "daylight", "pastel"];
-const DARK_THEMES: readonly AppSettings["theme"][] = [
+// Each list leads with the spectrum's neutral default (Daylight/Twilight),
+// followed by its tinted variants. Only one list is ever shown at a time,
+// scoped to the current mode (see `AppearanceSection`'s `effectiveSpectrum`).
+const LIGHT_THEMES: readonly LightThemeName[] = [
+  "daylight",
+  "meadow",
+  "terracotta",
+  "horizon",
+  "powder",
+  "pastel",
+];
+const DARK_THEMES: readonly DarkThemeName[] = [
   "dark",
   "evergreen",
   "zinc",
@@ -104,25 +114,56 @@ function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
 }
 
 // ---------------------------------------------------------------------------
-// Theme picker
+// Mode picker (Light / Dark / System)
 // ---------------------------------------------------------------------------
 
-interface ThemeLeadingProps {
-  themeValue: AppSettings["theme"];
+interface ModeRowProps {
+  value: AppSettings["colorSchemeMode"];
+  onChange: (mode: AppSettings["colorSchemeMode"]) => void;
 }
 
-function ThemeLeading({ themeValue }: ThemeLeadingProps) {
-  switch (themeValue) {
-    case "light":
-      return <ThemedSun size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
-    case "dark":
-      return <ThemedMoon size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
-    case "auto":
-      return <ThemedMonitor size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
-    default:
-      return <ThemeSwatch color={THEME_SWATCHES[themeValue]} />;
-  }
+function ModeRow({ value, onChange }: ModeRowProps) {
+  const { t } = useTranslation();
+  const options = useMemo<SegmentedControlOption<AppSettings["colorSchemeMode"]>[]>(
+    () => [
+      {
+        value: "light",
+        label: t("settings.appearance.theme.modes.light"),
+        icon: ({ color, size }) => <Sun color={color} size={size} />,
+      },
+      {
+        value: "dark",
+        label: t("settings.appearance.theme.modes.dark"),
+        icon: ({ color, size }) => <Moon color={color} size={size} />,
+      },
+      {
+        value: "system",
+        label: t("settings.appearance.theme.modes.system"),
+        icon: ({ color, size }) => <Monitor color={color} size={size} />,
+      },
+    ],
+    [t],
+  );
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.mode")}</Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-color-scheme-mode"
+      />
+    </View>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Theme variant picker — scoped to whichever spectrum is currently effective
+// (see `AppearanceSection`'s `effectiveSpectrum`); never shows both lists.
+// ---------------------------------------------------------------------------
 
 interface ThemeSwatchProps {
   color: string;
@@ -134,9 +175,9 @@ function ThemeSwatch({ color }: ThemeSwatchProps) {
 }
 
 interface ThemeMenuItemProps {
-  themeValue: AppSettings["theme"];
+  themeValue: ThemeVariantName;
   selected: boolean;
-  onChange: (theme: AppSettings["theme"]) => void;
+  onChange: (theme: ThemeVariantName) => void;
 }
 
 function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
@@ -144,7 +185,7 @@ function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
   const handleSelect = useCallback(() => {
     onChange(themeValue);
   }, [onChange, themeValue]);
-  const leading = useMemo(() => <ThemeLeading themeValue={themeValue} />, [themeValue]);
+  const leading = useMemo(() => <ThemeSwatch color={THEME_SWATCHES[themeValue]} />, [themeValue]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
       {getThemeLabel(t, themeValue)}
@@ -153,15 +194,16 @@ function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
 }
 
 interface ThemeRowProps {
-  value: AppSettings["theme"];
-  onChange: (theme: AppSettings["theme"]) => void;
+  list: readonly ThemeVariantName[];
+  value: ThemeVariantName;
+  onChange: (theme: ThemeVariantName) => void;
 }
 
-function ThemeRow({ value, onChange }: ThemeRowProps) {
+function ThemeRow({ list, value, onChange }: ThemeRowProps) {
   const { t } = useTranslation();
   const selectedLabel = getThemeLabel(t, value);
   return (
-    <View style={settingsStyles.row}>
+    <View style={styles.rowWithBorder}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.title")}</Text>
       </View>
@@ -172,25 +214,12 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
             value: selectedLabel,
           })}
         >
-          <ThemeLeading themeValue={value} />
+          <ThemeSwatch color={THEME_SWATCHES[value]} />
           <Text style={styles.triggerText}>{selectedLabel}</Text>
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
-          <ThemeMenuItem themeValue="auto" selected={value === "auto"} onChange={onChange} />
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("settings.appearance.theme.groups.light")}</DropdownMenuLabel>
-          {LIGHT_THEMES.map((themeValue) => (
-            <ThemeMenuItem
-              key={themeValue}
-              themeValue={themeValue}
-              selected={value === themeValue}
-              onChange={onChange}
-            />
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("settings.appearance.theme.groups.dark")}</DropdownMenuLabel>
-          {DARK_THEMES.map((themeValue) => (
+          {list.map((themeValue) => (
             <ThemeMenuItem
               key={themeValue}
               themeValue={themeValue}
@@ -438,11 +467,37 @@ export function AppearanceSection() {
     setCodeSizeDraft(String(settings.codeFontSize));
   }, [settings.codeFontSize]);
 
-  const handleThemeChange = useCallback(
-    (theme: AppSettings["theme"]) => {
-      void updateSettings({ theme });
+  // When mode is System, the variant list is scoped to whichever spectrum the
+  // OS is CURRENTLY reporting (not a fixed neutral pair) — this re-renders
+  // live if the OS scheme flips while the settings screen is open.
+  const osColorScheme = useColorScheme();
+  let effectiveSpectrum: "light" | "dark";
+  if (settings.colorSchemeMode === "system") {
+    effectiveSpectrum = osColorScheme === "dark" ? "dark" : "light";
+  } else {
+    effectiveSpectrum = settings.colorSchemeMode;
+  }
+  const scopedThemeList = effectiveSpectrum === "light" ? LIGHT_THEMES : DARK_THEMES;
+  const scopedThemeValue = effectiveSpectrum === "light" ? settings.lightTheme : settings.darkTheme;
+
+  const handleModeChange = useCallback(
+    (colorSchemeMode: AppSettings["colorSchemeMode"]) => {
+      void updateSettings({ colorSchemeMode });
     },
     [updateSettings],
+  );
+
+  // Only ever updates the spectrum currently shown — never colorSchemeMode —
+  // so switching modes back and forth never resets a per-spectrum pick.
+  const handleThemeVariantChange = useCallback(
+    (variant: ThemeVariantName) => {
+      if (effectiveSpectrum === "light") {
+        void updateSettings({ lightTheme: variant as LightThemeName });
+      } else {
+        void updateSettings({ darkTheme: variant as DarkThemeName });
+      }
+    },
+    [effectiveSpectrum, updateSettings],
   );
 
   const handleSyntaxThemeChange = useCallback(
@@ -545,7 +600,12 @@ export function AppearanceSection() {
     <View>
       <SettingsSection title={t("settings.appearance.theme.title")}>
         <View style={settingsStyles.card}>
-          <ThemeRow value={settings.theme} onChange={handleThemeChange} />
+          <ModeRow value={settings.colorSchemeMode} onChange={handleModeChange} />
+          <ThemeRow
+            list={scopedThemeList}
+            value={scopedThemeValue}
+            onChange={handleThemeVariantChange}
+          />
         </View>
       </SettingsSection>
       {showLayoutSection ? (

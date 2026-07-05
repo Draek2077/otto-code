@@ -18,7 +18,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight } from "@/components/icons/material-icons";
 
 type ProviderDefinition = ReturnType<typeof buildProviderDefinitions>[number];
 type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entries"]>[number];

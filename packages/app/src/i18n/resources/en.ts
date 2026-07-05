@@ -1094,6 +1094,10 @@ export const en = {
     },
   },
   openProject: {
+    quote: {
+      text: "You are the master of your universe, and yet you are dripping with rat blood and feces. Your enormous mind literally vegetating by your own hand.",
+      attribution: "— Rick Sanchez",
+    },
     tiles: {
       addProject: {
         title: "Add a project",
@@ -1579,22 +1583,26 @@ export const en = {
       theme: {
         title: "Theme",
         accessibilityLabel: "Theme: {{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "Mode",
+        modes: {
           light: "Light",
           dark: "Dark",
+          system: "System",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "System",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

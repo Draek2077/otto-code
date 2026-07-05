@@ -1101,6 +1101,10 @@ export const ja: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "お前は自分の宇宙の支配者だ、それなのにネズミの血と糞にまみれている。お前の偉大な頭脳は、自らの手で文字通り腐らせているんだ。",
+      attribution: "― リック・サンチェス",
+    },
     tiles: {
       addProject: {
         title: "プロジェクトを追加",
@@ -1588,22 +1592,26 @@ export const ja: TranslationResources = {
       theme: {
         title: "テーマ",
         accessibilityLabel: "テーマ: {{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "モード",
+        modes: {
           light: "ライト",
           dark: "ダーク",
+          system: "システム",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "システム",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

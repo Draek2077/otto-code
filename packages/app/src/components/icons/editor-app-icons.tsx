@@ -1,4 +1,4 @@
-import { SquareTerminal } from "lucide-react-native";
+import { SquareTerminal } from "@/components/icons/material-icons";
 import { useMemo } from "react";
 import { Image, type ImageSourcePropType } from "react-native";
 import { isKnownEditorTargetId, type EditorTargetId } from "@/workspace/editor-targets";
@@ -6,7 +6,7 @@ import { isKnownEditorTargetId, type EditorTargetId } from "@/workspace/editor-t
 interface EditorAppIconProps {
   editorId: EditorTargetId;
   size?: number;
-  color?: string;
+  color: string;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports */

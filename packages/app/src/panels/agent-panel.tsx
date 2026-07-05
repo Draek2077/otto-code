@@ -1,6 +1,6 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { TFunction } from "i18next";
-import { SquarePen } from "lucide-react-native";
+import { SquarePen } from "@/components/icons/material-icons";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";

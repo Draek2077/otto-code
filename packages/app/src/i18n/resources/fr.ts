@@ -1125,6 +1125,10 @@ export const fr: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "Tu es le maître de ton univers, et pourtant tu dégoulines de sang de rat et d'excréments. Ton esprit immense végète littéralement de tes propres mains.",
+      attribution: "— Rick Sanchez",
+    },
     tiles: {
       addProject: {
         title: "Ajouter un projet",
@@ -1617,22 +1621,26 @@ export const fr: TranslationResources = {
       theme: {
         title: "Thème",
         accessibilityLabel: "Thème:{{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "Mode",
+        modes: {
           light: "Lumière",
           dark: "Sombre",
+          system: "Système",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "Système",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

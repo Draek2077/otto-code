@@ -32,7 +32,7 @@ import {
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Check, File, Folder, Search } from "lucide-react-native";
+import { Check, File, Folder, Search } from "@/components/icons/material-icons";
 import {
   flip,
   offset as floatingOffset,

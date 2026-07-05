@@ -1123,6 +1123,10 @@ export const es: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "Eres el amo de tu universo, y aun así estás empapado de sangre de rata y heces. Tu enorme mente literalmente se marchita por tu propia mano.",
+      attribution: "— Rick Sanchez",
+    },
     tiles: {
       addProject: {
         title: "Agregar un proyecto",
@@ -1613,22 +1617,26 @@ export const es: TranslationResources = {
       theme: {
         title: "Tema",
         accessibilityLabel: "Tema:{{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "Modo",
+        modes: {
           light: "Luz",
           dark: "Oscuro",
+          system: "Sistema",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "Sistema",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

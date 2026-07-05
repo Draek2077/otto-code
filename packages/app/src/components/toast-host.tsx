@@ -6,7 +6,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { AlertTriangle, CheckCircle2 } from "lucide-react-native";
+import { AlertTriangle, CheckCircle2 } from "@/components/icons/material-icons";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import {
   HEADER_INNER_HEIGHT,

@@ -2,7 +2,13 @@ import { Fragment, useCallback, useMemo, type ReactElement } from "react";
 import type { GestureResponderEvent } from "react-native";
 import { Pressable, Text, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, ExternalLink, Globe, Play, SquareTerminal } from "lucide-react-native";
+import {
+  ChevronDown,
+  ExternalLink,
+  Globe,
+  Play,
+  SquareTerminal,
+} from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
@@ -67,9 +73,6 @@ const greenColorMapping = (theme: Theme) => ({
 const redColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.red[500],
 });
-const playFillTransparent = { fill: "transparent" };
-const ghostPlayStroke = { strokeWidth: 1.5 };
-
 interface ScriptActionButtonChildrenProps {
   hovered?: boolean;
   icon: ScriptActionIcon;
@@ -86,7 +89,7 @@ function ScriptActionButtonChildren({
     icon === "view" ? (
       <ThemedSquareTerminal size={10} uniProps={colorMapping} />
     ) : (
-      <ThemedPlay size={10} uniProps={colorMapping} {...playFillTransparent} />
+      <ThemedPlay size={10} uniProps={colorMapping} />
     );
   const labelStyle = hovered ? actionButtonLabelHoveredStyle : styles.actionButtonLabel;
   return (
@@ -437,8 +440,6 @@ export function WorkspaceScriptsButton({
   const hasAnyRunning = scripts.some((s) => s.lifecycle === "running");
   const triggerPlayMapping = hasAnyRunning ? blueColorMapping : mutedColorMapping;
   const triggerIconSize = presentation === "ghost" ? GHOST_TRIGGER_ICON_SIZE : 14;
-  const triggerPlayProps =
-    presentation === "ghost" ? { ...playFillTransparent, ...ghostPlayStroke } : playFillTransparent;
 
   return (
     <View style={styles.row}>
@@ -451,11 +452,7 @@ export function WorkspaceScriptsButton({
             accessibilityLabel={t("workspace.scripts.accessibility.trigger")}
           >
             <View style={styles.splitButtonContent}>
-              <ThemedPlay
-                size={triggerIconSize}
-                uniProps={triggerPlayMapping}
-                {...triggerPlayProps}
-              />
+              <ThemedPlay size={triggerIconSize} uniProps={triggerPlayMapping} />
               {!hideLabels && (
                 <Text style={styles.splitButtonText}>{t("workspace.scripts.title")}</Text>
               )}

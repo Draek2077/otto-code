@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement, type ReactNode } from "react";
+import { useCallback, type ReactElement, type ReactNode } from "react";
 import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -42,7 +42,14 @@ export function HeaderToggleButton({
       ? ({ "aria-expanded": expandedState } as Record<string, boolean>)
       : null;
 
-  const combinedStyle = useMemo(() => [headerIconSlotStyle.slot, style], [style]);
+  const combinedStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      headerIconSlotStyle.slot,
+      !disabled && (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
+      style,
+    ],
+    [disabled, style],
+  );
 
   return (
     <Tooltip delayDuration={tooltipDelayDuration} enabledOnDesktop enabledOnMobile={false}>
@@ -75,6 +82,9 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
       md: theme.spacing[2],
     },
     borderRadius: theme.borderRadius.lg,
+  },
+  slotHovered: {
+    backgroundColor: theme.colors.surface2,
   },
 }));
 

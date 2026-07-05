@@ -33,7 +33,7 @@ import {
   Plus,
   FolderGit2,
   SquareTerminal,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -57,6 +57,7 @@ import {
 } from "@/hooks/use-settings";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import { usePanelStore } from "@/stores/panel-store";
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
@@ -75,6 +76,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/component
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
+import { DesktopWindowBehaviorSection } from "@/desktop/components/desktop-window-behavior-section";
 import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
@@ -499,6 +501,7 @@ function GeneralSection({
           </View>
         </View>
       </SettingsSection>
+      <DesktopWindowBehaviorSection />
     </Fragment>
   );
 }
@@ -1059,10 +1062,16 @@ function SettingsSidebar({
   const items = SIDEBAR_SECTION_ITEMS.filter((item) => !item.desktopOnly || isDesktopApp);
   const insets = useSafeAreaInsets();
   const padding = useWindowControlsPadding("sidebar");
+  const { settings } = useAppSettings();
+  const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const outerContainerStyle = useMemo(
-    () => [isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer],
-    [isDesktop],
+    () => [
+      isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer,
+      isDesktop ? { width: sidebarWidth } : null,
+    ],
+    [isDesktop, sidebarWidth],
   );
   const innerContainerStyle = useMemo(
     () => [{ flex: 1 }, isDesktop ? { paddingTop: insets.top } : null],
@@ -1138,7 +1147,7 @@ function SettingsSidebar({
         <View style={innerContainerStyle}>
           <View style={sidebarStyles.sidebarDragArea}>
             <TitlebarDragRegion />
-            {padding.top > 0 ? <View style={paddingTopStyle} /> : null}
+            {showTopSpacer ? <View style={paddingTopStyle} /> : null}
             <SidebarHeaderRow
               icon={ArrowLeft}
               label={t("settings.backToWorkspace")}
@@ -1730,7 +1739,6 @@ const desktopStyles = StyleSheet.create((theme) => ({
 
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {
-    width: 320,
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
@@ -1748,7 +1756,7 @@ const sidebarStyles = StyleSheet.create((theme) => ({
   list: {
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
-    gap: theme.spacing[1],
+    gap: 1,
   },
   groupLabel: {
     fontSize: theme.fontSize.sm,

@@ -25,7 +25,7 @@ import {
   CircleCheck,
   CircleDot,
   CircleX,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { DiffStat } from "@/components/diff-stat";
 import { useToast } from "@/contexts/toast-context";
 import { useMutation } from "@tanstack/react-query";

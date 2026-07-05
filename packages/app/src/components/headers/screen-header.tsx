@@ -54,12 +54,15 @@ export function ScreenHeader({
         paddingLeft: baseHorizontalPadding + padding.left,
         paddingRight: baseHorizontalPadding + padding.right,
       },
-      borderless && styles.borderless,
     ],
-    [baseHorizontalPadding, padding.left, padding.right, borderless],
+    [baseHorizontalPadding, padding.left, padding.right],
   );
   const leftCombinedStyle = useMemo(() => [styles.left, leftStyle], [leftStyle]);
   const rightCombinedStyle = useMemo(() => [styles.right, rightStyle], [rightStyle]);
+  const borderLineStyle = useMemo(
+    () => [styles.borderLine, borderless && styles.borderLineHidden],
+    [borderless],
+  );
 
   return (
     <View style={styles.header}>
@@ -68,6 +71,7 @@ export function ScreenHeader({
           <TitlebarDragRegion />
           <View style={leftCombinedStyle}>{left}</View>
           <View style={rightCombinedStyle}>{right}</View>
+          <View pointerEvents="none" style={borderLineStyle} />
         </View>
       </View>
     </View>
@@ -89,8 +93,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
     userSelect: "none",
   },
   left: {
@@ -106,7 +108,19 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     flexShrink: 0,
   },
-  borderless: {
-    borderBottomColor: "transparent",
+  // Rendered as an absolutely-positioned overlay (not a real borderBottomWidth)
+  // so it doesn't shrink `row`'s content box by 1px on only one side — that
+  // asymmetry is what pushed the centered header content up and left a visible
+  // gap above this line.
+  borderLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: theme.borderWidth[1],
+    backgroundColor: theme.colors.border,
+  },
+  borderLineHidden: {
+    backgroundColor: "transparent",
   },
 }));

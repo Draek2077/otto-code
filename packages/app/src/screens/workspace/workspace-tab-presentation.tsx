@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Check } from "lucide-react-native";
+import { Check } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";

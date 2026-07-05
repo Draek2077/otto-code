@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, SquarePen, SquareTerminal } from "lucide-react-native";
+import { Globe, SquarePen, SquareTerminal } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import {
   getTerminalProfileIcon,

@@ -26,7 +26,7 @@ import {
   EyeOff,
   MoreVertical,
   RotateCw,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-store";

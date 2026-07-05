@@ -12,7 +12,7 @@ import Animated, {
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { BookOpen, Copy, RotateCw, TriangleAlert } from "lucide-react-native";
+import { BookOpen, Copy, RotateCw, TriangleAlert } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { OttoLogo, OttoLogoRobot, OttoLogoWordmark } from "@/components/icons/otto-logo";
 import { Button } from "@/components/ui/button";

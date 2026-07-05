@@ -1109,6 +1109,10 @@ export const ptBR: TranslationResources = {
     },
   },
   openProject: {
+    quote: {
+      text: "Você é o mestre do seu universo, e mesmo assim está escorrendo sangue de rato e fezes. Sua mente enorme literalmente vegetando pelas suas próprias mãos.",
+      attribution: "— Rick Sanchez",
+    },
     tiles: {
       addProject: {
         title: "Adicionar um projeto",
@@ -1598,22 +1602,26 @@ export const ptBR: TranslationResources = {
       theme: {
         title: "Tema",
         accessibilityLabel: "Tema: {{value}}",
-        groups: {
-          light: "Light themes",
-          dark: "Dark themes",
-        },
-        options: {
+        mode: "Modo",
+        modes: {
           light: "Claro",
           dark: "Escuro",
+          system: "Sistema",
+        },
+        options: {
+          dark: "Twilight",
           daylight: "Daylight",
           evergreen: "Evergreen",
           zinc: "Graphite",
           midnight: "Nightfall",
           claude: "Ember",
-          ghostty: "Slate Terminal",
+          ghostty: "Slate",
           cyberpunk: "Neotokyo",
           pastel: "Sherbet",
-          auto: "Sistema",
+          meadow: "Meadow",
+          terracotta: "Terracotta",
+          horizon: "Horizon",
+          powder: "Powder",
         },
       },
       layout: {

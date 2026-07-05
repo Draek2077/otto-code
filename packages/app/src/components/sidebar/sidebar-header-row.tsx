@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { LucideIcon } from "lucide-react-native";
+import type { IconComponent } from "@/components/icons/material-icons";
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
 import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
@@ -14,7 +14,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.for
 type SidebarHeaderRowVariant = "header" | "compact";
 
 interface SidebarHeaderRowProps {
-  icon: LucideIcon;
+  icon: IconComponent;
   label: string;
   onPress: () => void;
   isActive?: boolean;
@@ -133,7 +133,9 @@ const styles = StyleSheet.create((theme) => ({
     // compact header entries sit tight against the workspace list below.
     minHeight: 36,
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    // Match the item rows' inner padding (list wrapper + item both spacing[2])
+    // so the icon aligns on one vertical edge with the rows below it.
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
   },
   // Compact header entries (New workspace / History) sit tighter than the
@@ -141,8 +143,6 @@ const styles = StyleSheet.create((theme) => ({
   buttonCompact: {
     minHeight: 32,
     paddingVertical: theme.spacing[1.5],
-    // Match the project rows' inner padding so the icons align on one vertical
-    // edge with the workspace list below (base button uses a wider spacing[3]).
     paddingHorizontal: theme.spacing[2],
   },
   buttonHovered: {

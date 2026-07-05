@@ -12,7 +12,14 @@ import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
-import { AlertTriangle, ChevronRight, Search, Settings, Star } from "lucide-react-native";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Search,
+  Settings,
+  Star,
+  StarFilled,
+} from "@/components/icons/material-icons";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -183,13 +190,8 @@ function ModelRow({
             if (isFavorite) starColor = theme.colors.palette.amber[500];
             else if (hovered) starColor = theme.colors.foregroundMuted;
             else starColor = theme.colors.border;
-            return (
-              <Star
-                size={16}
-                color={starColor}
-                fill={isFavorite ? theme.colors.palette.amber[500] : "transparent"}
-              />
-            );
+            const StarIcon = isFavorite ? StarFilled : Star;
+            return <StarIcon size={16} color={starColor} />;
           }}
         </Pressable>
       ) : null,

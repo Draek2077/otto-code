@@ -148,8 +148,14 @@ export function useSettings(): UseSettingsReturn {
   const updateSettings = useCallback(
     async (updates: Partial<Settings>) => {
       const appUpdates: Partial<AppSettings> = {};
-      if (updates.theme !== undefined) {
-        appUpdates.theme = updates.theme;
+      if (updates.colorSchemeMode !== undefined) {
+        appUpdates.colorSchemeMode = updates.colorSchemeMode;
+      }
+      if (updates.lightTheme !== undefined) {
+        appUpdates.lightTheme = updates.lightTheme;
+      }
+      if (updates.darkTheme !== undefined) {
+        appUpdates.darkTheme = updates.darkTheme;
       }
       if (updates.language !== undefined) {
         appUpdates.language = updates.language;

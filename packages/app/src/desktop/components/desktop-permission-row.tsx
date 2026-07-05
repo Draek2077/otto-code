@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check } from "lucide-react-native";
+import { Check } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { settingsStyles } from "@/styles/settings";
 import type { DesktopPermissionStatus } from "@/desktop/permissions/desktop-permissions";

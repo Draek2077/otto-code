@@ -29,7 +29,7 @@ import {
 } from "react-native";
 import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check, CheckCircle } from "lucide-react-native";
+import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";

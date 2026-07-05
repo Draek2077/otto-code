@@ -5,7 +5,7 @@ import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { useQuery } from "@tanstack/react-query";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { RotateCw, Copy, Check } from "lucide-react-native";
+import { RotateCw, Copy, Check } from "@/components/icons/material-icons";
 import { settingsStyles } from "@/styles/settings";
 import { Button } from "@/components/ui/button";
 import { getDesktopDaemonPairing, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";

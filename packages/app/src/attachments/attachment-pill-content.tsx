@@ -6,7 +6,7 @@ import {
   GitPullRequest,
   MessageSquareCode,
   MousePointer2,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";

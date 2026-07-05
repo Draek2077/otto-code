@@ -10,7 +10,7 @@ import {
   RotateCw,
   SquareTerminal,
   Trash2,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,7 +32,6 @@ import {
 } from "@/screens/settings/terminal-profile-edit-modal";
 import { startDesktopDaemon, stopDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
-import { DesktopWindowBehaviorSection } from "@/desktop/components/desktop-window-behavior-section";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
@@ -358,8 +357,6 @@ export function HostSettingsPage({
       <HostStatusBadges serverId={serverId} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
-
-      {isLocalDaemon ? <DesktopWindowBehaviorSection /> : null}
 
       {!isLocalDaemon ? <UpdateDaemonCard host={host} /> : null}
 

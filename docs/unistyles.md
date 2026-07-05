@@ -235,7 +235,7 @@ Do not import `theme` from `@/styles/theme` for live UI colors. That export is a
 Wrap the icon (or other leaf component) with `withUnistyles` instead, so only that node re-renders when the theme changes:
 
 ```tsx
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
@@ -293,14 +293,23 @@ If we ever need to avoid the transition entirely, store at least the theme prefe
 
 ## Runtime Theme Patching For User Preferences
 
-Appearance settings (UI/mono font family, font sizes, syntax-highlight theme) are applied by patching every registered theme at runtime with `UnistylesRuntime.updateTheme(name, updater)` — not by threading preference reads through components. `applyAppearance` in `packages/app/src/screens/settings/appearance/apply-appearance.ts` runs from a `ProvidersWrapper` effect on settings load/change and loops all six theme keys, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
+Appearance settings (UI/mono font family, font sizes, syntax-highlight theme) are applied by patching every registered theme at runtime with `UnistylesRuntime.updateTheme(name, updater)` — not by threading preference reads through components. `applyAppearance` in `packages/app/src/screens/settings/appearance/apply-appearance.ts` runs from a `ProvidersWrapper` effect on settings load/change and loops `ALL_THEME_KEYS`, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
 
 This works without `useUnistyles()` because every consumer already reads these tokens through `StyleSheet.create((theme) => …)` (or the `withUnistyles`/`uniProps` path for the markdown renderer), so patching the theme repaints tracked views through the native ShadowRegistry with no React re-render.
 
+### Only two registered theme keys: `light`/`dark` as repaintable mirrors
+
+Only two Unistyles theme keys are ever registered (`packages/app/src/styles/unistyles.ts`'s `StyleSheet.configure({ themes: { light, dark } })`) — not one key per named variant (Meadow, Ember, Slate, ...). This is a hard constraint, not a style choice: `schemeToTheme()` inside `react-native-unistyles` hardcodes the literal strings `'light'`/`'dark'`, and `UnistylesRuntime.setAdaptiveThemes(true)` always resolves to `setTheme(schemeToTheme(colorScheme))` — adaptive mode can only ever toggle between whatever is registered under those two literal keys, never an arbitrary named theme.
+
+Otto's appearance settings let a user pick a specific variant per spectrum (e.g. Meadow for light, Ember for dark) and have System mode auto-swap between those two specific picks as the OS scheme flips. The only way to make that work is to keep the `light`/`dark` keys perpetually repainted with `colors`/`shadow` copied from whichever variant is the user's current pick — `packages/app/src/screens/settings/appearance/apply-color-scheme.ts`'s `applyColorScheme` does this, sourcing from the 13 named variant objects in `theme.ts` (`meadowTheme`, `darkGhosttyTheme`, etc.), which are exported as plain data and never passed to `StyleSheet.configure` themselves. This repaint runs regardless of which mode is active (explicit Light/Dark or System), so switching modes back and forth never loses or resets a per-spectrum pick, and there's no staleness window — do not "simplify" this by re-registering variant keys individually; it would break System mode's ability to target an arbitrary variant.
+
+**Always repaint before switching adaptive/pinned state, never after** — `applyColorScheme` repaints both mirrors first, then calls `setAdaptiveThemes`/`setTheme`, so there is no frame where a mirror still shows a stale variant.
+
 Gotchas:
 
-- **Patch all themes, not just the active one.** The active theme can change and adaptive mode can flip light/dark; patching every key keeps the active key current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant. The effect depends on the settings values (not on `theme`), so it cannot loop.
-- **Narrow the discriminated union before spreading.** `updateTheme`'s updater returns the theme union; spreading the union widens `colorScheme` to `"light" | "dark"`, which is assignable to neither concrete member. Branch on `t.colorScheme` so each branch spreads a single narrowed theme type (no `as`).
+- **Patch all registered themes, not just the active one.** The active theme can change and adaptive mode can flip light/dark; patching every key keeps the active key current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant. The effect depends on the settings values (not on the resolved theme), so it cannot loop.
+- **Narrow the discriminated union before spreading.** `updateTheme`'s updater returns the theme union; spreading the union widens `colorScheme` to `"light" | "dark"`, which is assignable to neither concrete member. Branch on `t.colorScheme` so each branch spreads a single narrowed theme type (no `as`). Both `applyAppearance` and `applyColorScheme` need this.
+- **`colors.syntax` is owned by `applyAppearance`, not `applyColorScheme`.** When repainting `colors` from a variant's source palette, carry the mirror's _existing_ `colors.syntax` forward (`{ ...source.colors, syntax: t.colors.syntax }`) instead of the source variant's own syntax value, so the two patchers stay commutative regardless of call order.
 - **`lineHeight.diff` is the code/diff line-height axis** — it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with the UI ramp (`Math.round(theme.fontSize.base * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
 - **High-churn draft values** (live-while-typing in the appearance preview) bypass the theme: apply them as inline styles marked with `inlineUnistylesStyle` so per-keystroke values don't grow the `#unistyles-web` CSS registry.
 - **Mounted parsed content uses `AppearanceStyleBoundary`.** Markdown, syntax-highlighted code, and tool-call detail bodies can contain memoized/custom renderer trees that do not naturally re-run when runtime-patched appearance tokens change. Wrap the parsed surface once with `packages/app/src/components/appearance-style-boundary.tsx`; do not add local "appearance key" props at each callsite.

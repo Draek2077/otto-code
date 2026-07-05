@@ -31,7 +31,7 @@ import {
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { Check, CheckCircle } from "lucide-react-native";
+import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { BottomSheetBackdrop, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {

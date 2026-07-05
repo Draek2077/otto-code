@@ -93,7 +93,7 @@ vi.mock("react-native-unistyles", () => ({
   useUnistyles: () => ({ theme }),
 }));
 
-vi.mock("lucide-react-native", () => {
+vi.mock("@/components/icons/material-icons", () => {
   const icon = (name: string) => () => React.createElement("span", { "data-icon": name });
   return {
     ChevronRight: icon("ChevronRight"),

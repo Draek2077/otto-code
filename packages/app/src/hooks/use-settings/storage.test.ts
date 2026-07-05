@@ -33,12 +33,14 @@ function makeDeps(
 }
 
 describe("loadAppSettingsFromStorage", () => {
-  it("defaults theme to auto when storage is empty", async () => {
+  it("defaults color scheme mode to system when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.theme).toBe("auto");
+    expect(result.colorSchemeMode).toBe("system");
+    expect(result.lightTheme).toBe("daylight");
+    expect(result.darkTheme).toBe("dark");
   });
 
   it("seeds storage with the client defaults when nothing is persisted", async () => {
@@ -132,7 +134,8 @@ describe("loadAppSettingsFromStorage", () => {
 
     expect(result).toEqual({
       ...DEFAULT_CLIENT_SETTINGS,
-      theme: "dark",
+      colorSchemeMode: "dark",
+      darkTheme: "dark",
     });
     expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(JSON.stringify(result));
   });
@@ -159,6 +162,91 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.language).toBe("system");
+  });
+});
+
+describe("migrating a persisted `theme` field (current AppSettings schema)", () => {
+  it("maps auto to system mode", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "auto" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("system");
+  });
+
+  it("folds the retired plain light theme into daylight", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "light" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("light");
+    expect(result.lightTheme).toBe("daylight");
+  });
+
+  it("maps a light variant name to light mode with that variant", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "meadow" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("light");
+    expect(result.lightTheme).toBe("meadow");
+  });
+
+  it("maps the plain dark theme to dark mode", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("dark");
+    expect(result.darkTheme).toBe("dark");
+  });
+
+  it("maps a dark variant name to dark mode with that variant", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "ghostty" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("dark");
+    expect(result.darkTheme).toBe("ghostty");
+  });
+
+  it("does not re-run when the new fields are already present", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          theme: "ghostty", // stale leftover from before migration; must be ignored
+          colorSchemeMode: "light",
+          lightTheme: "meadow",
+          darkTheme: "claude",
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.colorSchemeMode).toBe("light");
+    expect(result.lightTheme).toBe("meadow");
+    expect(result.darkTheme).toBe("claude");
   });
 });
 
@@ -193,7 +281,8 @@ describe("loadSettingsFromStorage", () => {
 
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      theme: "light",
+      colorSchemeMode: "light",
+      lightTheme: "daylight",
     });
   });
 
@@ -236,7 +325,8 @@ describe("loadSettingsFromStorage", () => {
     ]);
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      theme: "light",
+      colorSchemeMode: "light",
+      lightTheme: "daylight",
       manageBuiltInDaemon: false,
       releaseChannel: "beta",
     });
@@ -256,7 +346,8 @@ describe("loadSettingsFromStorage", () => {
     expect(desktop.migrationsApplied).toEqual([]);
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      theme: "light",
+      colorSchemeMode: "light",
+      lightTheme: "daylight",
     });
   });
 });

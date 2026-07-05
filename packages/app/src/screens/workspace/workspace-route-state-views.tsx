@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { ArrowLeftToLine, RotateCw, Settings } from "lucide-react-native";
+import { ArrowLeftToLine, RotateCw, Settings } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "lucide-react-native";
+import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { VolumeMeter } from "./volume-meter";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -195,7 +195,7 @@ export function DictationOverlay({
         accessibilityLabel={t("message.dictation.cancel")}
         style={overlayCancelButtonStyle}
       >
-        <X size={theme.iconSize.lg} color={theme.colors.accentForeground} strokeWidth={2.5} />
+        <X size={theme.iconSize.lg} color={theme.colors.accentForeground} />
       </Pressable>
 
       <View style={overlayStyles.centerContainer}>
@@ -231,7 +231,7 @@ export function DictationOverlay({
             accessibilityLabel={t("message.dictation.retry")}
             style={overlayRetryButtonStyle}
           >
-            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
+            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} />
           </Pressable>
         ) : null}
         {!actionsDisabled && !isFailed ? (
@@ -242,11 +242,7 @@ export function DictationOverlay({
               accessibilityLabel={t("message.dictation.insert")}
               style={OVERLAY_ACCEPT_BUTTON_STYLE}
             >
-              <Pencil
-                size={theme.iconSize.lg}
-                color={theme.colors.accentForeground}
-                strokeWidth={2.5}
-              />
+              <Pencil size={theme.iconSize.lg} color={theme.colors.accentForeground} />
             </Pressable>
             <Pressable
               onPress={onAcceptAndSend}
@@ -254,7 +250,7 @@ export function DictationOverlay({
               accessibilityLabel={t("message.dictation.insertAndSend")}
               style={overlayConfirmButtonStyle}
             >
-              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
+              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} />
             </Pressable>
           </>
         ) : null}

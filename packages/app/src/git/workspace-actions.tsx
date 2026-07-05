@@ -7,7 +7,7 @@ import {
   GitMerge,
   RefreshCcw,
   Upload,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitActionsSplitButton } from "@/git/actions-split-button";
 import { useGitActions } from "@/git/use-actions";

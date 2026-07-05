@@ -1,7 +1,8 @@
 // PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
 // inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
 // variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
-// `daylight`/`evergreen`/`cyberpunk`/`pastel`) were created in Otto. During
+// `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
+// `meadow`/`terracotta`/`horizon`/`powder`) were created in Otto. During
 // upstream merges, resolve
 // conflicts in this file in favor of the Otto side — do not pull theme changes
 // from Paseo.
@@ -114,17 +115,25 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName =
-  | "light"
+// Light spectrum: the neutral default (Daylight, first) plus tinted variants.
+// The plain neutral "Light" theme was retired — Daylight is now the sole
+// neutral light theme and the light half of the System pair.
+export type LightThemeName = "daylight" | "meadow" | "terracotta" | "horizon" | "powder" | "pastel";
+
+// Dark spectrum: the neutral default (`dark`, displayed as "Twilight", first)
+// plus tinted variants.
+export type DarkThemeName =
   | "dark"
-  | "daylight"
   | "evergreen"
   | "zinc"
   | "midnight"
   | "claude"
   | "ghostty"
-  | "cyberpunk"
-  | "pastel";
+  | "cyberpunk";
+
+// Any selectable theme variant, light or dark. Used for swatches and label
+// lookups that operate across both spectrums.
+export type ThemeVariantName = LightThemeName | DarkThemeName;
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -156,7 +165,8 @@ const darkStatusColors = {
 
 // ---------------------------------------------------------------------------
 // Light theme variant builder — mirrors the dark builder below so multiple
-// light themes (Daylight, Sherbet) share one semantic-color shape.
+// light themes (Daylight, Sherbet, Meadow, Terracotta, Horizon, Powder) share
+// one semantic-color shape.
 // ---------------------------------------------------------------------------
 
 interface LightThemeConfig {
@@ -261,32 +271,12 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
   };
 }
 
-// Light — the neutral default light theme. Plain white/zinc, deliberately
-// non-flashy: this is the theme people who "just want light mode" get, and
-// the light half of the System (auto) pair.
-const lightColors = buildLightSemanticColors({
-  surface0: "#ffffff",
-  surface1: "#fafafa",
-  surface2: "#f4f4f5",
-  surface3: "#e4e4e7",
-  surface4: "#d4d4d8",
-  surfaceDiffEmpty: "#f6f6f6",
-  surfaceSidebar: "#f4f4f5",
-  surfaceSidebarHover: "#e9e9ec",
-  foreground: "#1a1a1e",
-  foregroundMuted: "#71717a",
-  scrollbarHandle: "#3f3f46",
-  border: "#e4e4e7",
-  borderAccent: "#ececf1",
-  accent: "#20744A",
-  accentBright: "#239956",
-  destructive: "#b04138", // dark warm red on white — calm but unambiguously red
-});
-
-// Daylight — crisp high-contrast light variant. Muted text and borders
-// darkened a step from the neutral Light values so secondary text clears
-// WCAG AA (foregroundMuted #62626b on #ffffff ≈ 5.6:1) and panel edges read
-// clearly.
+// Daylight — the neutral default light theme, crisp and high-contrast:
+// deliberately non-flashy, this is the theme people who "just want light
+// mode" get, and the light half of the System (auto) pair. Muted text and
+// borders are a step darker than a plain white/zinc bg so secondary text
+// clears WCAG AA (foregroundMuted #62626b on #ffffff ≈ 5.6:1) and panel edges
+// read clearly.
 const daylightColors = buildLightSemanticColors({
   surface0: "#ffffff",
   surface1: "#fafafa",
@@ -325,6 +315,92 @@ const sherbetColors = buildLightSemanticColors({
   borderAccent: "#f0e0d5",
   accent: "#b83280",
   accentBright: "#99286b",
+  destructive: "#b04138",
+});
+
+// Meadow — sage-tinted light variant of the brand green, mirroring dark
+// Evergreen: same accent hue as neutral Light, surfaces lifted with a soft
+// green undertone instead of pure white/zinc.
+const meadowColors = buildLightSemanticColors({
+  surface0: "#f6faf7",
+  surface1: "#eef6f1",
+  surface2: "#e3eee7",
+  surface3: "#cfe0d6",
+  surface4: "#b7cdc0",
+  surfaceDiffEmpty: "#eef5f0",
+  surfaceSidebar: "#eef6f1",
+  surfaceSidebarHover: "#e3eee7",
+  foreground: "#16261d",
+  foregroundMuted: "#5c6f64",
+  scrollbarHandle: "#3f4a44",
+  border: "#dbe8e0",
+  borderAccent: "#e3eee7",
+  accent: "#20744A",
+  accentBright: "#1f8a52",
+  destructive: "#b04138",
+});
+
+// Terracotta — warm clay-tinted light variant, mirroring dark Ember. Cream
+// surfaces with a burnt-orange accent darkened enough to read on white.
+const terracottaColors = buildLightSemanticColors({
+  surface0: "#fdf8f5",
+  surface1: "#f9f1ec",
+  surface2: "#f3e6dd",
+  surface3: "#e6d0c1",
+  surface4: "#d6b8a4",
+  surfaceDiffEmpty: "#f7ede4",
+  surfaceSidebar: "#f8efe8",
+  surfaceSidebarHover: "#f1e2d5",
+  foreground: "#2e2019",
+  foregroundMuted: "#75655a",
+  scrollbarHandle: "#5c4c40",
+  border: "#ecdccd",
+  borderAccent: "#f1e2d5",
+  accent: "#b8552f",
+  accentBright: "#9c4526",
+  destructive: "#b04138",
+});
+
+// Horizon — crisp blue-tinted light variant, mirroring dark Nightfall. Pale
+// sky-blue surfaces with a saturated, high-contrast blue accent.
+const horizonColors = buildLightSemanticColors({
+  surface0: "#f6f9fd",
+  surface1: "#eef4fb",
+  surface2: "#e1ebf7",
+  surface3: "#c6d9ef",
+  surface4: "#a9c3e2",
+  surfaceDiffEmpty: "#eef3fa",
+  surfaceSidebar: "#eef4fb",
+  surfaceSidebarHover: "#e1ebf7",
+  foreground: "#161e2e",
+  foregroundMuted: "#5a6b85",
+  scrollbarHandle: "#3f4d63",
+  border: "#d7e4f3",
+  borderAccent: "#e1ebf7",
+  accent: "#2159c9",
+  accentBright: "#1a49a8",
+  destructive: "#b04138",
+});
+
+// Powder — muted blue-grey light variant, mirroring dark Slate. Foggier and
+// greyer than Horizon, with a desaturated slate-blue accent instead of a
+// saturated one.
+const powderColors = buildLightSemanticColors({
+  surface0: "#f6f7f9",
+  surface1: "#eef0f4",
+  surface2: "#e3e7ee",
+  surface3: "#cbd2de",
+  surface4: "#b0b9ca",
+  surfaceDiffEmpty: "#eef1f5",
+  surfaceSidebar: "#eef0f4",
+  surfaceSidebarHover: "#e3e7ee",
+  foreground: "#1e222b",
+  foregroundMuted: "#636c7d",
+  scrollbarHandle: "#454e5f",
+  border: "#dde1e9",
+  borderAccent: "#e3e7ee",
+  accent: "#4a6fa5",
+  accentBright: "#3a5a8a",
   destructive: "#b04138",
 });
 
@@ -432,11 +508,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // Dark tint definitions
 // ---------------------------------------------------------------------------
 
-// Dark — the neutral default dark theme. Untinted zinc surfaces with Otto's
-// green kept only as the accent, deliberately non-flashy: this is the theme
-// people who "just want dark mode" get, and the dark half of the System
-// (auto) pair. Distinct from Graphite, which deepens the base and goes
-// monochrome (near-white accent).
+// Dark (displayed as "Twilight") — the neutral default dark theme. Untinted
+// zinc surfaces with Otto's green kept only as the accent, deliberately
+// non-flashy: this is the theme people who "just want dark mode" get, and the
+// dark half of the System (auto) pair. Distinct from Graphite, which deepens
+// the base and goes monochrome (near-white accent).
 const neutralDarkColors = buildDarkSemanticColors({
   surface0: "#18181b",
   surface1: "#1f1f22",
@@ -537,10 +613,10 @@ const emberDarkColors = buildDarkSemanticColors({
   destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the ember accent
 });
 
-// Slate Terminal — blue-grey terminal look (Ghostty-default lineage). Sidebar
+// Slate — blue-grey terminal look (Ghostty-default lineage). Sidebar
 // deepened and borders lifted so the panes actually separate; the light blue
 // accent gets dark text instead of unreadable white.
-const slateTerminalDarkColors = buildDarkSemanticColors({
+const slateDarkColors = buildDarkSemanticColors({
   surface0: "#282c34",
   surface1: "#2f333d",
   surface2: "#383c48",
@@ -769,54 +845,38 @@ export const darkEvergreenTheme = buildDarkTheme(evergreenDarkColors);
 export const darkZincTheme = buildDarkTheme(graphiteDarkColors);
 export const darkMidnightTheme = buildDarkTheme(nightfallDarkColors);
 export const darkClaudeTheme = buildDarkTheme(emberDarkColors);
-export const darkGhosttyTheme = buildDarkTheme(slateTerminalDarkColors);
+export const darkGhosttyTheme = buildDarkTheme(slateDarkColors);
 export const darkCyberpunkTheme = buildDarkTheme(neotokyoDarkColors);
 
-export const lightTheme = buildLightTheme(lightColors);
 export const daylightTheme = buildLightTheme(daylightColors);
 export const pastelTheme = buildLightTheme(sherbetColors);
+export const meadowTheme = buildLightTheme(meadowColors);
+export const terracottaTheme = buildLightTheme(terracottaColors);
+export const horizonTheme = buildLightTheme(horizonColors);
+export const powderTheme = buildLightTheme(powderColors);
 
 // Keep compatibility with existing code
 export const theme = darkTheme;
 
 // Export a union type that works for both themes
-export type Theme = typeof darkTheme | typeof lightTheme;
+export type Theme = typeof darkTheme | typeof daylightTheme;
 
-type UnistylesThemeKey =
-  | "light"
-  | "daylight"
-  | "pastel"
-  | "dark"
-  | "darkEvergreen"
-  | "darkZinc"
-  | "darkMidnight"
-  | "darkClaude"
-  | "darkGhostty"
-  | "darkCyberpunk";
-
-// Storage keys are frozen for back-compat (a persisted `theme: "zinc"` must
-// keep resolving) — the user-facing names live in i18n
-// (`settings.appearance.theme.options.*`). `light`/`dark` are the neutral
-// defaults (and the System/auto pair); the variants are zinc=Graphite,
-// midnight=Nightfall, claude=Ember, ghostty=Slate Terminal,
-// cyberpunk=Neotokyo, pastel=Sherbet, plus daylight/evergreen.
-export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
-  light: "light",
-  daylight: "daylight",
-  pastel: "pastel",
-  dark: "dark",
-  evergreen: "darkEvergreen",
-  zinc: "darkZinc",
-  midnight: "darkMidnight",
-  claude: "darkClaude",
-  ghostty: "darkGhostty",
-  cyberpunk: "darkCyberpunk",
-};
-
-export const THEME_SWATCHES: Record<ThemeName, string> = {
-  light: "#ffffff",
+// Only two Unistyles theme keys are ever registered (`light`/`dark`, see
+// `styles/unistyles.ts`) — Unistyles' adaptive-theme mechanism hardcodes
+// switching between those two literal keys and cannot be pointed at an
+// arbitrary named theme. Every variant below (including the neutral
+// Daylight/Twilight pair) is exported here as plain data only; nothing but
+// `screens/settings/appearance/apply-color-scheme.ts` reads these exports,
+// which repaints the two registered `light`/`dark` mirror keys to match
+// whichever variant is the user's current per-spectrum preference, for both
+// explicit Light/Dark mode and System (adaptive) mode alike.
+export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
   daylight: "#f4f4f5",
   pastel: "#e8a3c8",
+  meadow: "#2f8f5c",
+  terracotta: "#c2663a",
+  horizon: "#3b6fd1",
+  powder: "#7d93b3",
   dark: "#3f3f46",
   evergreen: "#2D8B62",
   zinc: "#808080",

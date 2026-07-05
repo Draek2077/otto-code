@@ -31,7 +31,7 @@ import {
   Github,
   Image as ImageIcon,
   Paperclip,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import Animated from "react-native-reanimated";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import {
@@ -830,7 +830,7 @@ function ComposerCancelButton({
   const icon = isCancellingAgent ? (
     <ActivityIndicator size="small" color="white" />
   ) : (
-    <Square size={buttonIconSize} color="white" fill="white" />
+    <Square size={buttonIconSize} color="white" />
   );
   const shortcutNode = agentInterruptKeys ? <Shortcut chord={agentInterruptKeys} /> : null;
   return (

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { QrCode, Link2, ClipboardPaste } from "lucide-react-native";
+import { QrCode, Link2, ClipboardPaste } from "@/components/icons/material-icons";
 import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
 import { isNative } from "@/constants/platform";
 

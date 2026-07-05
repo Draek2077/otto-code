@@ -12,7 +12,13 @@ import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { Bot, ShieldAlert, ShieldCheck, ShieldOff, ShieldQuestionMark } from "lucide-react-native";
+import {
+  Bot,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldOff,
+  ShieldQuestionMark,
+} from "@/components/icons/material-icons";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
@@ -45,8 +51,8 @@ function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompac
 }
 
 interface ModeIconProps {
-  size?: number;
-  color?: string;
+  size: number;
+  color: string;
 }
 
 const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {

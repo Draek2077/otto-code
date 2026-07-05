@@ -9,12 +9,12 @@ import {
   Sparkles,
   SquareTerminal,
   Wrench,
-} from "lucide-react-native";
+} from "@/components/icons/material-icons";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { OttoLogo } from "@/components/icons/otto-logo";
 import { resolveToolCallIconName, type ToolCallIcon } from "./tool-call-icon-name";
 
-export type ToolCallIconComponent = ComponentType<{ size?: number; color?: string }>;
+export type ToolCallIconComponent = ComponentType<{ size: number; color: string }>;
 
 const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
   wrench: Wrench,
