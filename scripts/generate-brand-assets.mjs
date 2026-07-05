@@ -46,7 +46,7 @@ function tileSvg(faceInner, badge) {
     : "";
   return wrap(
     `<rect width="512" height="512" rx="${TILE_RADIUS}" fill="black"/>` +
-      faceAt(faceInner, "white", 46, 46, 420) +
+      faceAt(faceInner, "white", 24, 24, 464) +
       badgeCircle,
   );
 }
@@ -183,6 +183,20 @@ for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
 }
 await writeFile(path.join(desktopAssets, "icon.icns"), buildIcns(icnsSizes));
 console.log("wrote packages/desktop/assets/icon.icns");
+
+// Linux/notification fallback sizes: electron-builder's `icon: assets` directory target
+// (electron-builder.yml) and the notification icon fallback chain (notifications.ts) both
+// expect loose NxN.png files alongside icon.png/ico/icns.
+const looseSizes = [
+  [32, "32x32.png"],
+  [64, "64x64.png"],
+  [128, "128x128.png"],
+  [256, "128x128@2x.png"],
+];
+for (const [size, name] of looseSizes) {
+  const inner = size <= SMALL_FACE_MAX_PX ? faceSmall : face;
+  await png(tileSvg(inner, null), size, path.join(desktopAssets, name));
+}
 
 // Website: white face for the header/docs logo, tile for the favicon.
 await writeFile(

@@ -1,12 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <g stroke="currentColor" stroke-width="28">
-    <circle cx="132" cy="280" r="70"/>
+    <circle cx="145.57108" cy="280" r="70"/>
     <line x1="144" y1="104" x2="248" y2="156"/>
     <line x1="216" y1="146" x2="216" y2="364"/>
     <line x1="264" y1="162" x2="360" y2="162"/>
     <line x1="296" y1="162" x2="296" y2="364"/>
-    <path d="M296 280 A84 84 0 0 1 464 280 Z" fill="currentColor" stroke="none"/>
-    <path d="M310 280 A70 70 0 0 0 450 280"/>
-    <circle cx="132" cy="280" r="22" fill="currentColor" stroke="none"/>
+    <g transform="translate(-13.571082)">
+      <path d="m 296,280 a 84,84 0 0 1 168,0 z" fill="currentColor" stroke="none"/>
+      <path d="m 310,280 a 70,70 0 0 0 140,0"/>
+    </g>
+    <circle cx="145.57108" cy="280" r="22" fill="currentColor" stroke="none"/>
   </g>
 </svg>
