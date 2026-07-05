@@ -1,5 +1,5 @@
 name = "otto-website"
-account_id = "10ed39a1dbf316e30abd0c409bed40d6"
+account_id = "3910072adb29ec7ee1bdcc37d532765d"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 main = "./src/server-entry.ts"
@@ -14,4 +14,4 @@ enabled = true
 
 [[kv_namespaces]]
 binding = "WEBSITE_CACHE"
-id = "cb4d8779806544e9b673142a80c1eb5f"
+id = "493815c47d094194b0cdb2f600457788"
