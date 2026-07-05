@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/protocol",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Otto shared protocol schemas and wire types",
   "files": [
     "dist",
