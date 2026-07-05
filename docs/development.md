@@ -5,6 +5,19 @@
 - Node.js (see `.tool-versions` for exact version)
 - npm workspaces (comes with Node)
 
+### Windows: npm script shell
+
+Some repo scripts (e.g. `scripts/dev-home.sh`) use bash syntax, but npm on
+Windows defaults to `cmd.exe` for script execution regardless of the invoking
+shell, which breaks them. Point npm at Git Bash in your **global** npm config,
+not a repo-committed `.npmrc` — a project-level override applies to every
+`npm ci`/`npm install` in CI too, and GitHub Actions runners are Linux, where
+a hardcoded Windows path doesn't exist and breaks every workflow:
+
+```powershell
+npm config set script-shell "C:\Program Files\Git\bin\bash.exe" --location=global
+```
+
 ## Running the dev server
 
 ```bash
