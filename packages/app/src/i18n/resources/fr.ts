@@ -447,6 +447,18 @@ export const fr: TranslationResources = {
         invalidUrl: "NavigateurURLinvalide",
         unsupportedProtocol: "Navigateur non pris en charge bloquéURL:{{protocol}}",
       },
+      preview: {
+        starting: "Starting preview server…",
+        error: {
+          title: "Preview server failed to start",
+          retry: "Try again",
+        },
+        needsStart: {
+          title: "Preview server isn't running",
+          description: "Start it to load this tab.",
+          action: "Start preview server",
+        },
+      },
     },
     terminal: {
       hostDisconnected: "Hostn'est pas connecté",
@@ -1541,6 +1553,14 @@ export const fr: TranslationResources = {
         },
       },
     },
+    preview: {
+      title: "Preview",
+      autoStartOnRestore: {
+        label: "Auto-start on restore",
+        description:
+          "Automatically relaunch a saved preview tab's dev server when it's restored. When off, restored tabs show a button to start it manually.",
+      },
+    },
     diagnostics: {
       title: "Diagnostic",
       testAudio: "Tester le son",
@@ -1597,14 +1617,35 @@ export const fr: TranslationResources = {
       theme: {
         title: "Thème",
         accessibilityLabel: "Thème:{{value}}",
+        groups: {
+          light: "Light themes",
+          dark: "Dark themes",
+        },
         options: {
           light: "Lumière",
           dark: "Sombre",
-          zinc: "Zinc",
-          midnight: "Minuit",
-          claude: "Claude",
-          ghostty: "Fantôme",
+          daylight: "Daylight",
+          evergreen: "Evergreen",
+          zinc: "Graphite",
+          midnight: "Nightfall",
+          claude: "Ember",
+          ghostty: "Slate Terminal",
+          cyberpunk: "Neotokyo",
+          pastel: "Sherbet",
           auto: "Système",
+        },
+      },
+      layout: {
+        title: "Layout",
+        compactSidebarTopSpacing: {
+          title: "Reduce space above sidebar",
+          hint: 'Collapse the extra space reserved above "+ New workspace" for desktop window controls',
+          accessibilityLabel: "Reduce space above sidebar",
+        },
+        workspaceToolsInList: {
+          title: "Show workspace tools in workspace list",
+          hint: "Move the open-in-editor, Git, and diff controls from the header to a bar at the bottom of the sidebar",
+          accessibilityLabel: "Show workspace tools in workspace list",
         },
       },
       fonts: {

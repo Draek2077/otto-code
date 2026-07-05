@@ -5,6 +5,19 @@ import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { FormField, FormTextInput } from "@/components/ui/form-field";
+import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
+
+// Common shell binaries — still fully freeform via allowCustomValue, since a
+// custom wrapper script or an uncommon shell path is entirely valid too.
+const SHELL_COMMAND_PRESETS: ComboboxOption[] = [
+  { id: "bash", label: "bash" },
+  { id: "zsh", label: "zsh" },
+  { id: "fish", label: "fish" },
+  { id: "pwsh", label: "PowerShell (pwsh)" },
+  { id: "cmd.exe", label: "Command Prompt (cmd.exe)" },
+  { id: "/bin/bash", label: "/bin/bash" },
+  { id: "/opt/homebrew/bin/fish", label: "/opt/homebrew/bin/fish (Homebrew fish)" },
+];
 
 export interface ProfileDraft {
   name: string;
@@ -42,7 +55,6 @@ export function TerminalProfileEditModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
-  const commandInputRef = useRef<TextInput>(null);
   const argsInputRef = useRef<TextInput>(null);
 
   const handleNameChange = useCallback((value: string) => {
@@ -53,6 +65,7 @@ export function TerminalProfileEditModal({
   const handleCommandChange = useCallback((value: string) => {
     setCommand(value);
     setFieldErrors((current) => ({ ...current, command: undefined }));
+    argsInputRef.current?.focus();
   }, []);
 
   const handleArgsChange = useCallback((value: string) => {
@@ -115,14 +128,6 @@ export function TerminalProfileEditModal({
     onClose();
   }, [isPending, onClose]);
 
-  const handleNameSubmit = useCallback(() => {
-    commandInputRef.current?.focus();
-  }, []);
-
-  const handleCommandSubmit = useCallback(() => {
-    argsInputRef.current?.focus();
-  }, []);
-
   const handleArgsSubmit = useCallback(() => {
     void handleSave();
   }, [handleSave]);
@@ -153,8 +158,7 @@ export function TerminalProfileEditModal({
             autoCapitalize="none"
             autoCorrect={false}
             editable={!isPending}
-            returnKeyType="next"
-            onSubmitEditing={handleNameSubmit}
+            returnKeyType="done"
             nativeID="terminal-profile-name-input"
             accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
             testID="terminal-profile-name-input"
@@ -166,19 +170,11 @@ export function TerminalProfileEditModal({
           error={commandError}
           testID="terminal-profile-command-field"
         >
-          <FormTextInput
-            ref={commandInputRef}
-            initialValue={initialDraft.command}
-            resetKey={visible ? "open" : "closed"}
-            onChangeText={handleCommandChange}
+          <TextFieldPicker
+            value={command}
+            onChange={handleCommandChange}
+            options={SHELL_COMMAND_PRESETS}
             placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isPending}
-            returnKeyType="next"
-            onSubmitEditing={handleCommandSubmit}
-            nativeID="terminal-profile-command-input"
-            accessibilityLabel={t("settings.host.terminalProfiles.commandLabel")}
             testID="terminal-profile-command-input"
           />
         </FormField>

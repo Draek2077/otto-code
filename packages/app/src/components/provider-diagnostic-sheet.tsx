@@ -36,6 +36,7 @@ import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
+import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 import {
   resolveProviderDiscoveredModels,
   type ProviderDiscoveredModelsCache,
@@ -210,6 +211,26 @@ function resolveProviderConnection(
   return null;
 }
 
+// Known base URLs for the two connection env-var families (see
+// docs/custom-providers.md). Still fully freeform via allowCustomValue -
+// these are suggestions, not a closed list.
+const OPENAI_COMPATIBLE_BASE_URL_PRESETS: ComboboxOption[] = [
+  { id: "http://localhost:1234/v1", label: "LM Studio (localhost:1234)" },
+  { id: "http://localhost:11434/v1", label: "Ollama (localhost:11434)" },
+];
+
+const CLAUDE_COMPATIBLE_BASE_URL_PRESETS: ComboboxOption[] = [
+  { id: "https://api.z.ai/api/anthropic", label: "Z.AI" },
+  {
+    id: "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
+    label: "Alibaba/Qwen (coding plan)",
+  },
+  {
+    id: "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+    label: "Alibaba/Qwen (pay-as-you-go)",
+  },
+];
+
 function ProviderConnectionSection({
   provider,
   connection,
@@ -231,6 +252,10 @@ function ProviderConnectionSection({
 
   const isDirty = baseUrl.trim() !== connection.baseUrl || apiKey.trim() !== connection.apiKey;
   const canSave = isDirty && baseUrl.trim().length > 0 && !saving;
+  const baseUrlPresets =
+    connection.baseUrlKey === "OPENAI_BASE_URL"
+      ? OPENAI_COMPATIBLE_BASE_URL_PRESETS
+      : CLAUDE_COMPATIBLE_BASE_URL_PRESETS;
 
   const handleSave = useCallback(() => {
     if (!canSave) return;
@@ -262,18 +287,12 @@ function ProviderConnectionSection({
       <View style={sheetStyles.connectionCard}>
         <View style={sheetStyles.formGroup}>
           <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.baseUrl")}</Text>
-          <AdaptiveTextInput
-            initialValue={baseUrl}
-            resetKey={`connection-url-${provider}`}
+          <TextFieldPicker
             value={baseUrl}
-            onChangeText={setBaseUrl}
+            onChange={setBaseUrl}
+            options={baseUrlPresets}
             placeholder="http://localhost:1234/v1"
-            placeholderTextColor={theme.colors.foregroundMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
             testID="provider-connection-base-url"
-            // @ts-expect-error - outlineStyle is web-only
-            style={FORM_INPUT_STYLE}
           />
           <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.apiKey")}</Text>
           <AdaptiveTextInput
@@ -525,22 +544,42 @@ function ProviderRemoveSection({
   );
 }
 
+const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
+
+// Known model IDs for providers extending "claude" with a third-party
+// Anthropic-compatible endpoint (Z.AI, Alibaba/Qwen — see
+// docs/custom-providers.md). Still fully freeform via allowCustomValue.
+const CLAUDE_COMPATIBLE_MODEL_ID_PRESETS: ComboboxOption[] = [
+  { id: "glm-5.1", label: "GLM 5.1" },
+  { id: "glm-5-turbo", label: "GLM 5 Turbo" },
+  { id: "glm-4.7", label: "GLM 4.7" },
+  { id: "glm-4.5-air", label: "GLM 4.5 Air" },
+  { id: "qwen3.5-plus", label: "Qwen 3.5 Plus" },
+  { id: "qwen3-coder-next", label: "Qwen 3 Coder Next" },
+  { id: "qwen3-max", label: "Qwen 3 Max" },
+  { id: "qwen3.5-flash", label: "Qwen 3.5 Flash" },
+  { id: "kimi-k2.5", label: "Kimi K2.5" },
+];
+
 function AddCustomModelSubSheet({
   provider,
   serverId,
+  extendsProvider,
   visible,
   onClose,
   refresh,
 }: {
   provider: string;
   serverId: string;
+  extendsProvider: string | null;
   visible: boolean;
   onClose: () => void;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const { config, patchConfig } = useDaemonConfig(serverId);
+  const modelIdPresets =
+    extendsProvider === "claude" ? CLAUDE_COMPATIBLE_MODEL_ID_PRESETS : EMPTY_COMBOBOX_OPTIONS;
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -594,19 +633,12 @@ function AddCustomModelSubSheet({
     >
       <View style={sheetStyles.formGroup}>
         <Text style={sheetStyles.formLabel}>{t("settings.providers.models.modelId")}</Text>
-        <AdaptiveTextInput
-          initialValue={input}
-          resetKey={`add-custom-${visible}`}
+        <TextFieldPicker
           value={input}
-          onChangeText={setInput}
-          onSubmitEditing={handleAdd}
+          onChange={setInput}
+          options={modelIdPresets}
           placeholder={t("settings.providers.models.modelIdPlaceholder")}
-          placeholderTextColor={theme.colors.foregroundMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="done"
-          // @ts-expect-error - outlineStyle is web-only
-          style={FORM_INPUT_STYLE}
+          testID="add-custom-model-id"
         />
         {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
         <View style={sheetStyles.formActions}>
@@ -1140,6 +1172,7 @@ export function ProviderDiagnosticSheet({
       <AddCustomModelSubSheet
         provider={provider}
         serverId={serverId}
+        extendsProvider={providerExtends}
         visible={addSheetOpen}
         onClose={handleCloseAddSheet}
         refresh={refresh}

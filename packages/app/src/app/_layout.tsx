@@ -679,8 +679,8 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   }, [settingsLoading, settings.theme]);
 
   // Apply font / size / syntax appearance settings on mount and when they change.
-  // Sibling to the theme effect above; order is irrelevant because both patch all
-  // six registered theme keys, so the active key is always current.
+  // Sibling to the theme effect above; order is irrelevant because both patch
+  // all registered theme keys, so the active key is always current.
   useEffect(() => {
     if (settingsLoading) return;
     applyAppearance({

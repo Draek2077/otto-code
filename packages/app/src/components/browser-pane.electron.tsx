@@ -8,7 +8,15 @@ import {
   type ReactNode,
   createElement,
 } from "react";
-import { Pressable, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import {
   ArrowLeft,
   ArrowRight,
@@ -55,6 +63,9 @@ import {
   releaseResidentBrowserWebview,
   takeResidentBrowserWebview,
 } from "./browser-webview-resident";
+import { useAppSettings } from "@/hooks/use-settings";
+import { useSessionStore } from "@/stores/session-store";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -613,7 +624,14 @@ export function BrowserPane({
   const webviewRef = useRef<ElectronWebview | null>(null);
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const urlInputRef = useRef<WebTextInput | null>(null);
-  const initialUrlRef = useRef(browser?.url ?? "https://example.com");
+  // A preview tab that isn't confirmed "ready" has no real page to show yet —
+  // point the webview at about:blank rather than navigating to a stale/default
+  // URL, so no ERR_CONNECTION_REFUSED can surface before the server is known-up.
+  const initialUrlRef = useRef(
+    browser?.isPreview && browser.previewStatus !== "ready"
+      ? "about:blank"
+      : (browser?.url ?? "https://example.com"),
+  );
   const browserIdRef = useRef(browserId);
   browserIdRef.current = browserId;
   const browserRef = useRef(browser);
@@ -665,6 +683,18 @@ export function BrowserPane({
     () => [styles.metaError, { color: theme.colors.palette.red[500] }],
     [theme.colors.palette.red],
   );
+  const previewOverlayTitleStyle = useMemo(
+    () => [styles.previewOverlayTitle, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  const previewOverlayHintStyle = useMemo(
+    () => [styles.previewOverlayHint, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  const previewOverlayErrorStyle = useMemo(
+    () => [styles.previewOverlayHint, { color: theme.colors.palette.red[500] }],
+    [theme.colors.palette.red],
+  );
   const browserErrorLabels = useMemo(
     () => ({
       failedToLoad: t("workspace.browser.errors.failedToLoad"),
@@ -684,6 +714,95 @@ export function BrowserPane({
 
   const updateBrowserRef = useRef(updateBrowser);
   updateBrowserRef.current = updateBrowser;
+
+  const { settings: appSettings } = useAppSettings();
+
+  // Shared by the restore-bootstrap effect below and the "Start preview
+  // server" / "Try again" overlay buttons — (re)starts the dev server for a
+  // preview tab and reuses previewStart's own "already running" short-circuit.
+  const startPreviewFlow = useCallback(
+    async (client: DaemonClient, previewCwd: string, previewServerName: string) => {
+      updateBrowserRef.current(browserIdRef.current, {
+        previewStatus: "starting",
+        lastError: null,
+      });
+      try {
+        const started = await client.previewStart(previewCwd, previewServerName);
+        if (!started.success || !started.server) {
+          updateBrowserRef.current(browserIdRef.current, {
+            previewStatus: "error",
+            lastError: started.error ?? browserErrorLabelsRef.current.failedToLoad,
+          });
+          return;
+        }
+        updateBrowserRef.current(browserIdRef.current, {
+          url: started.server.url,
+          previewServerId: started.server.serverId,
+          previewStatus: "ready",
+        });
+        await client
+          .previewBindTab(started.server.serverId, browserIdRef.current)
+          .catch(() => undefined);
+      } catch (error) {
+        updateBrowserRef.current(browserIdRef.current, {
+          previewStatus: "error",
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [],
+  );
+
+  const handleStartPreviewPress = useCallback(() => {
+    const current = browserRef.current;
+    if (!current?.previewCwd || !current.previewServerName) {
+      return;
+    }
+    const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
+    if (!client) {
+      return;
+    }
+    void startPreviewFlow(client, current.previewCwd, current.previewServerName);
+  }, [serverId, startPreviewFlow]);
+
+  // Bootstraps a preview tab restored from persisted storage (previewStatus
+  // was forced back to "idle" on load — see sanitizeBrowsersForPersist). Only
+  // fires once per browserId, and only for tabs nobody has already kicked off
+  // a start for: a freshly-created tab from the Preview button is already
+  // "starting" by the time this component mounts, so this only matters for
+  // restored tabs.
+  const restoreBootstrappedRef = useRef(false);
+  useEffect(() => {
+    if (restoreBootstrappedRef.current) {
+      return;
+    }
+    if (!browser?.isPreview || browser.previewStatus !== "idle") {
+      return;
+    }
+    if (!browser.previewCwd || !browser.previewServerName) {
+      return;
+    }
+    const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
+    if (!client) {
+      // Session/workspace not available — leave the tab inert rather than
+      // showing a watermark whose button can't do anything.
+      return;
+    }
+    restoreBootstrappedRef.current = true;
+    if (!appSettings.previewAutoStartOnRestore) {
+      updateBrowserRef.current(browserIdRef.current, { previewStatus: "needs-start" });
+      return;
+    }
+    void startPreviewFlow(client, browser.previewCwd, browser.previewServerName);
+  }, [
+    appSettings.previewAutoStartOnRestore,
+    browser?.isPreview,
+    browser?.previewCwd,
+    browser?.previewServerName,
+    browser?.previewStatus,
+    serverId,
+    startPreviewFlow,
+  ]);
 
   const selectUrlBar = useCallback(() => {
     window.setTimeout(() => {
@@ -924,6 +1043,26 @@ export function BrowserPane({
     },
     [browserErrorLabels],
   );
+
+  // Fires the actual (first, or retried) navigation once a preview tab's dev
+  // server is confirmed ready — the mount effect above pointed the webview at
+  // about:blank until now, which is what keeps a connection-refused flash from
+  // ever appearing during startup.
+  const previewNavigatedForStatusRef = useRef(false);
+  useEffect(() => {
+    if (!browser?.isPreview) {
+      return;
+    }
+    if (browser.previewStatus !== "ready") {
+      previewNavigatedForStatusRef.current = false;
+      return;
+    }
+    if (previewNavigatedForStatusRef.current) {
+      return;
+    }
+    previewNavigatedForStatusRef.current = true;
+    navigate(browser.url);
+  }, [browser?.isPreview, browser?.previewStatus, browser?.url, navigate]);
 
   const handleBack = useCallback(() => {
     webviewRef.current?.goBack?.();
@@ -1671,7 +1810,7 @@ export function BrowserPane({
           </ToolbarButton>
         </View>
       </View>
-      {browser?.lastError ? (
+      {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
         <View style={styles.errorRow}>
           <Text numberOfLines={1} style={errorTextStyle}>
             {browser.lastError}
@@ -1683,6 +1822,48 @@ export function BrowserPane({
           ref: setWebviewHostNode,
           style: webviewHostStyle,
         })}
+        {browser?.isPreview && browser.previewStatus !== "ready" ? (
+          <View style={styles.previewOverlay} pointerEvents="box-none">
+            <View style={styles.previewOverlayCard}>
+              {browser.previewStatus === "starting" ? (
+                <>
+                  <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+                  <Text style={previewOverlayTitleStyle}>
+                    {t("workspace.browser.preview.starting")}
+                  </Text>
+                </>
+              ) : null}
+              {browser.previewStatus === "error" ? (
+                <>
+                  <Text style={previewOverlayTitleStyle}>
+                    {t("workspace.browser.preview.error.title")}
+                  </Text>
+                  {browser.lastError ? (
+                    <Text style={previewOverlayErrorStyle} numberOfLines={4}>
+                      {browser.lastError}
+                    </Text>
+                  ) : null}
+                  <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
+                    {t("workspace.browser.preview.error.retry")}
+                  </Button>
+                </>
+              ) : null}
+              {browser.previewStatus === "needs-start" ? (
+                <>
+                  <Text style={previewOverlayTitleStyle}>
+                    {t("workspace.browser.preview.needsStart.title")}
+                  </Text>
+                  <Text style={previewOverlayHintStyle}>
+                    {t("workspace.browser.preview.needsStart.description")}
+                  </Text>
+                  <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
+                    {t("workspace.browser.preview.needsStart.action")}
+                  </Button>
+                </>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
         {pendingSelection ? (
           <BrowserElementAnnotationCard
             selection={pendingSelection}
@@ -1881,6 +2062,31 @@ const styles = StyleSheet.create((theme) => ({
   toolbarTooltipText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.popoverForeground,
+  },
+  previewOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: theme.spacing[4],
+    backgroundColor: theme.colors.surface0,
+  },
+  previewOverlayCard: {
+    maxWidth: 420,
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  previewOverlayTitle: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  previewOverlayHint: {
+    fontSize: theme.fontSize.xs,
+    textAlign: "center",
   },
   annotationOverlay: {
     position: "absolute",

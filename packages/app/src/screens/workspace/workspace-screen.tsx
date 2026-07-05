@@ -3286,7 +3286,7 @@ function WorkspaceScreenContent({
             hideLabels
           />
         ) : null}
-        {!isMobile && workspaceDirectory ? (
+        {!isMobile && workspaceDirectory && settings.workspaceToolsPlacement !== "workspaceList" ? (
           <WorkspaceOpenInEditorButton
             serverId={normalizedServerId}
             cwd={workspaceDirectory}
@@ -3296,7 +3296,7 @@ function WorkspaceScreenContent({
         ) : null}
         {!isMobile && isGitCheckout ? (
           <>
-            {workspaceDirectory ? (
+            {workspaceDirectory && settings.workspaceToolsPlacement !== "workspaceList" ? (
               <WorkspaceGitActions
                 serverId={normalizedServerId}
                 cwd={workspaceDirectory}
@@ -3414,6 +3414,7 @@ function WorkspaceScreenContent({
       explorerToggleLabel,
       explorerToggleAccessibilityState,
       explorerToggleStyle,
+      settings.workspaceToolsPlacement,
       t,
     ],
   );

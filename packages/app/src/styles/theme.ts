@@ -1,3 +1,10 @@
+// PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
+// inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
+// variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
+// `daylight`/`evergreen`/`cyberpunk`/`pastel`) were created in Otto. During
+// upstream merges, resolve
+// conflicts in this file in favor of the Otto side — do not pull theme changes
+// from Paseo.
 import { Platform } from "react-native";
 import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
 
@@ -107,7 +114,17 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty";
+export type ThemeName =
+  | "light"
+  | "dark"
+  | "daylight"
+  | "evergreen"
+  | "zinc"
+  | "midnight"
+  | "claude"
+  | "ghostty"
+  | "cyberpunk"
+  | "pastel";
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -137,85 +154,179 @@ const darkStatusColors = {
   statusMerged: "#9333ea", // purple-600
 };
 
-// Semantic color tokens - Layer-based system
-const lightSemanticColors = {
-  // Surfaces (layers) - shifted one step lighter
-  surface0: "#ffffff", // App background
-  surface1: "#fafafa", // Subtle hover (was zinc-100, now zinc-50)
-  surface2: "#f4f4f5", // Elevated: badges, inputs, sheets (was zinc-200, now zinc-100)
-  surface3: "#e4e4e7", // Highest elevation (was zinc-300, now zinc-200)
-  surface4: "#d4d4d8", // Extra emphasis (was zinc-400, now zinc-300)
-  surfaceDiffEmpty: "#f6f6f6", // Empty side of split diff rows, between surface1 and surface2 and biased toward surface2
-  surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
-  surfaceSidebarHover: "#e9e9ec", // Sidebar hover (darker in light mode)
-  surfaceWorkspace: "#ffffff", // Workspace main background
+// ---------------------------------------------------------------------------
+// Light theme variant builder — mirrors the dark builder below so multiple
+// light themes (Daylight, Sherbet) share one semantic-color shape.
+// ---------------------------------------------------------------------------
 
-  // Text
+interface LightThemeConfig {
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  surface3: string;
+  surface4: string;
+  surfaceDiffEmpty: string;
+  surfaceSidebar: string;
+  surfaceSidebarHover: string;
+  foreground: string;
+  foregroundMuted: string;
+  scrollbarHandle: string;
+  border: string;
+  borderAccent: string;
+  accent: string;
+  accentBright: string;
+  destructive: string;
+}
+
+const lightTerminalAnsi = {
+  red: "#dc2626",
+  green: "#16a34a",
+  yellow: "#ca8a04",
+  blue: "#2563eb",
+  magenta: "#9333ea",
+  cyan: "#0891b2",
+  brightRed: "#ef4444",
+  brightGreen: "#22c55e",
+  brightYellow: "#f59e0b",
+  brightBlue: "#3b82f6",
+  brightMagenta: "#a855f7",
+  brightCyan: "#06b6d4",
+} as const;
+
+function buildLightSemanticColors(tint: LightThemeConfig) {
+  return {
+    // Surfaces (layers)
+    surface0: tint.surface0, // App background
+    surface1: tint.surface1, // Subtle hover
+    surface2: tint.surface2, // Elevated: badges, inputs, sheets
+    surface3: tint.surface3, // Highest elevation
+    surface4: tint.surface4, // Extra emphasis
+    surfaceDiffEmpty: tint.surfaceDiffEmpty, // Empty side of split diff rows
+    surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
+    surfaceSidebarHover: tint.surfaceSidebarHover,
+    surfaceWorkspace: tint.surface0, // Workspace main background
+
+    // Text
+    foreground: tint.foreground,
+    foregroundMuted: tint.foregroundMuted,
+
+    // Controls
+    scrollbarHandle: tint.scrollbarHandle,
+
+    // Borders
+    border: tint.border,
+    borderAccent: tint.borderAccent, // Softer accent border for low-emphasis outlines
+
+    // Brand
+    accent: tint.accent,
+    accentBright: tint.accentBright,
+    accentForeground: "#ffffff",
+
+    // Semantic
+    destructive: tint.destructive,
+    destructiveForeground: "#ffffff",
+    success: tint.accent,
+    successForeground: "#ffffff",
+
+    // Legacy aliases (for gradual migration)
+    background: tint.surface0,
+    popover: tint.surface0,
+    popoverForeground: tint.foreground,
+    primary: tint.foreground,
+    primaryForeground: tint.surface1,
+    secondary: tint.surface2,
+    secondaryForeground: tint.foreground,
+    muted: tint.surface2,
+    mutedForeground: tint.foregroundMuted,
+    accentBorder: tint.borderAccent,
+    input: tint.surface2,
+    ring: tint.foreground,
+
+    ...lightDiffColors,
+    ...lightStatusColors,
+
+    terminal: {
+      background: tint.surface0,
+      foreground: tint.foreground,
+      cursor: tint.foreground,
+      cursorAccent: tint.surface0,
+      selectionBackground: "rgba(0, 0, 0, 0.15)",
+      selectionForeground: tint.foreground,
+      black: tint.foreground,
+      white: "#ffffff",
+      brightBlack: "#3f3f46",
+      brightWhite: tint.surface1,
+      ...lightTerminalAnsi,
+    },
+  };
+}
+
+// Light — the neutral default light theme. Plain white/zinc, deliberately
+// non-flashy: this is the theme people who "just want light mode" get, and
+// the light half of the System (auto) pair.
+const lightColors = buildLightSemanticColors({
+  surface0: "#ffffff",
+  surface1: "#fafafa",
+  surface2: "#f4f4f5",
+  surface3: "#e4e4e7",
+  surface4: "#d4d4d8",
+  surfaceDiffEmpty: "#f6f6f6",
+  surfaceSidebar: "#f4f4f5",
+  surfaceSidebarHover: "#e9e9ec",
   foreground: "#1a1a1e",
   foregroundMuted: "#71717a",
-
-  // Controls
-  scrollbarHandle: "#3f3f46", // zinc-700
-
-  // Borders - shifted one step lighter
-  border: "#e4e4e7", // (was zinc-200, now zinc-200 - keep for contrast)
-  borderAccent: "#ececf1", // Softer accent border for low-emphasis outlines
-
-  // Brand
+  scrollbarHandle: "#3f3f46",
+  border: "#e4e4e7",
+  borderAccent: "#ececf1",
   accent: "#20744A",
   accentBright: "#239956",
-  accentForeground: "#ffffff",
-
-  // Semantic
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
-  destructiveForeground: "#ffffff",
-  success: "#20744A",
-  successForeground: "#ffffff",
+});
 
-  // Legacy aliases (for gradual migration)
-  background: "#ffffff",
-  popover: "#ffffff",
-  popoverForeground: "#1a1a1e",
-  primary: "#18181b",
-  primaryForeground: "#fafafa",
-  secondary: "#f4f4f5",
-  secondaryForeground: "#1a1a1e",
-  muted: "#f4f4f5",
-  mutedForeground: "#71717a",
-  accentBorder: "#ececf1",
-  input: "#f4f4f5",
-  ring: "#18181b",
+// Daylight — crisp high-contrast light variant. Muted text and borders
+// darkened a step from the neutral Light values so secondary text clears
+// WCAG AA (foregroundMuted #62626b on #ffffff ≈ 5.6:1) and panel edges read
+// clearly.
+const daylightColors = buildLightSemanticColors({
+  surface0: "#ffffff",
+  surface1: "#fafafa",
+  surface2: "#f4f4f5",
+  surface3: "#e4e4e7",
+  surface4: "#d4d4d8",
+  surfaceDiffEmpty: "#f6f6f6",
+  surfaceSidebar: "#f4f4f5",
+  surfaceSidebarHover: "#e9e9ec",
+  foreground: "#1a1a1e",
+  foregroundMuted: "#62626b", // was #71717a — stronger secondary text
+  scrollbarHandle: "#3f3f46",
+  border: "#dcdce0", // was #e4e4e7 — clearer panel separation
+  borderAccent: "#ececf1",
+  accent: "#20744A",
+  accentBright: "#1d8a4e", // darker than the old #239956 so accent text reads on white
+  destructive: "#b04138", // dark warm red on white — calm but unambiguously red
+});
 
-  ...lightDiffColors,
-  ...lightStatusColors,
-
-  terminal: {
-    background: "#ffffff",
-    foreground: "#1a1a1e",
-    cursor: "#1a1a1e",
-    cursorAccent: "#ffffff",
-    selectionBackground: "rgba(0, 0, 0, 0.15)",
-    selectionForeground: "#1a1a1e",
-
-    black: "#1a1a1e",
-    red: "#dc2626",
-    green: "#16a34a",
-    yellow: "#ca8a04",
-    blue: "#2563eb",
-    magenta: "#9333ea",
-    cyan: "#0891b2",
-    white: "#ffffff",
-
-    brightBlack: "#3f3f46",
-    brightRed: "#ef4444",
-    brightGreen: "#22c55e",
-    brightYellow: "#f59e0b",
-    brightBlue: "#3b82f6",
-    brightMagenta: "#a855f7",
-    brightCyan: "#06b6d4",
-    brightWhite: "#fafafa",
-  },
-} as const;
+// Sherbet — soft pastel peach surfaces with a saturated raspberry accent and
+// dark plum text. Deliberately NOT washed out: body text ≈13:1 on surface0,
+// muted text ≈5:1 on the elevated surface, accent on white ≈5.5:1.
+const sherbetColors = buildLightSemanticColors({
+  surface0: "#fdf7f2",
+  surface1: "#f9efe8",
+  surface2: "#f4e6dd",
+  surface3: "#e9d4c8",
+  surface4: "#dbbfb0",
+  surfaceDiffEmpty: "#f6ebe2",
+  surfaceSidebar: "#f7ebe2",
+  surfaceSidebarHover: "#f0e0d3",
+  foreground: "#2b2233",
+  foregroundMuted: "#6b5f6e",
+  scrollbarHandle: "#55495a",
+  border: "#e8d5ca",
+  borderAccent: "#f0e0d5",
+  accent: "#b83280",
+  accentBright: "#99286b",
+  destructive: "#b04138",
+});
 
 // ---------------------------------------------------------------------------
 // Dark theme variant builder
@@ -321,27 +432,12 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // Dark tint definitions
 // ---------------------------------------------------------------------------
 
-// Otto — subtle teal-green tint (default)
-const ottoDarkColors = buildDarkSemanticColors({
-  surface0: "#181B1A",
-  surface1: "#1E2120",
-  surface2: "#272A29",
-  surface3: "#434645",
-  surface4: "#595B5B",
-  surfaceDiffEmpty: "#252827",
-  surfaceSidebar: "#141716",
-  surfaceSidebarHover: "#1c1f1e",
-  foregroundMuted: "#A1A5A4",
-  scrollbarHandle: "#717574",
-  border: "#252B2A",
-  borderAccent: "#2F3534",
-  accent: "#20744A",
-  accentBright: "#7ccba0",
-  destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
-});
-
-// Zinc — neutral gray, no tint
-const zincDarkColors = buildDarkSemanticColors({
+// Dark — the neutral default dark theme. Untinted zinc surfaces with Otto's
+// green kept only as the accent, deliberately non-flashy: this is the theme
+// people who "just want dark mode" get, and the dark half of the System
+// (auto) pair. Distinct from Graphite, which deepens the base and goes
+// monochrome (near-white accent).
+const neutralDarkColors = buildDarkSemanticColors({
   surface0: "#18181b",
   surface1: "#1f1f22",
   surface2: "#27272a",
@@ -350,71 +446,138 @@ const zincDarkColors = buildDarkSemanticColors({
   surfaceDiffEmpty: "#242427",
   surfaceSidebar: "#131316",
   surfaceSidebarHover: "#1b1b1e",
-  foregroundMuted: "#a1a1aa",
-  scrollbarHandle: "#71717a",
-  border: "#27272a",
-  borderAccent: "#303036",
-  accent: "#e4e4e7",
-  accentBright: "#fafafa",
-  accentForeground: "#18181b", // monochrome zinc accent is near-white — needs dark text
+  foregroundMuted: "#a9a9b2",
+  scrollbarHandle: "#7b7b84",
+  border: "#2b2b30",
+  borderAccent: "#36363d",
+  accent: "#20744A",
+  accentBright: "#8ce0af",
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
 });
 
-// Midnight — subtle blue tint
-const midnightDarkColors = buildDarkSemanticColors({
-  surface0: "#161820",
-  surface1: "#1c1e27",
+// Evergreen — Otto's teal-green identity. Muted text, borders, and the bright
+// accent all lifted a step so panels separate and secondary text clears WCAG
+// AA against the elevated surface.
+const evergreenDarkColors = buildDarkSemanticColors({
+  surface0: "#181B1A",
+  surface1: "#1E2120",
+  surface2: "#272A29",
+  surface3: "#434645",
+  surface4: "#595B5B",
+  surfaceDiffEmpty: "#252827",
+  surfaceSidebar: "#141716",
+  surfaceSidebarHover: "#1c1f1e",
+  foregroundMuted: "#aab0ae", // was #A1A5A4
+  scrollbarHandle: "#7d8280",
+  border: "#2c3331", // was #252B2A — clearer panel separation
+  borderAccent: "#3a4240",
+  accent: "#20744A",
+  accentBright: "#8ce0af", // was #7ccba0 — brighter accent text on dark surfaces
+  destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
+});
+
+// Graphite — monochrome. Surfaces deepened toward true black and borders
+// lifted so the near-white accent lands on real contrast instead of gray soup.
+const graphiteDarkColors = buildDarkSemanticColors({
+  surface0: "#141417", // was #18181b — deeper base
+  surface1: "#1c1c1f",
+  surface2: "#27272a",
+  surface3: "#3f3f46",
+  surface4: "#52525b",
+  surfaceDiffEmpty: "#212124",
+  surfaceSidebar: "#0f0f11",
+  surfaceSidebarHover: "#17171a",
+  foregroundMuted: "#b0b0b8", // was #a1a1aa
+  scrollbarHandle: "#83838d",
+  border: "#2e2e33", // was #27272a — no longer identical to surface2
+  borderAccent: "#3a3a41",
+  accent: "#e4e4e7",
+  accentBright: "#ffffff",
+  accentForeground: "#141417", // monochrome accent is near-white — needs dark text
+  destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
+});
+
+// Nightfall — deep blue night. Base surfaces deepened and the accent blue
+// brightened so the blue tint reads as intentional, not haze.
+const nightfallDarkColors = buildDarkSemanticColors({
+  surface0: "#12141d", // was #161820 — deeper base
+  surface1: "#181a24",
   surface2: "#252731",
   surface3: "#3c3e4c",
   surface4: "#535564",
-  surfaceDiffEmpty: "#222430",
-  surfaceSidebar: "#121420",
-  surfaceSidebarHover: "#1a1c28",
-  foregroundMuted: "#9a9db0",
-  scrollbarHandle: "#6b6e82",
-  border: "#242636",
-  borderAccent: "#2e3040",
+  surfaceDiffEmpty: "#20222d",
+  surfaceSidebar: "#0e101a",
+  surfaceSidebarHover: "#161826",
+  foregroundMuted: "#a6aabf", // was #9a9db0
+  scrollbarHandle: "#787c94",
+  border: "#2a2c3f", // was #242636
+  borderAccent: "#383a50",
   accent: "#3b6fcf",
-  accentBright: "#7eaaeb",
+  accentBright: "#92bcff", // was #7eaaeb
   destructive: "#c44a52", // red with a hint of cool lean against the blue tint
 });
 
-// Claude — warm neutral with subtle orange undertone
-const claudeDarkColors = buildDarkSemanticColors({
-  surface0: "#1f1f1e",
-  surface1: "#262523",
+// Ember — warm charcoal with a saturated orange-red accent. Saturation and
+// muted-text brightness boosted over the old washed-tan look.
+const emberDarkColors = buildDarkSemanticColors({
+  surface0: "#1c1b1a", // was #1f1f1e
+  surface1: "#242220",
   surface2: "#2f2d2b",
   surface3: "#4a4745",
   surface4: "#605d5b",
   surfaceDiffEmpty: "#2a2826",
-  surfaceSidebar: "#1a1918",
-  surfaceSidebarHover: "#222120",
-  foregroundMuted: "#ada9a5",
-  scrollbarHandle: "#78746f",
-  border: "#2c2a27",
-  borderAccent: "#36332f",
-  accent: "#d97757",
-  accentBright: "#e89a7f",
-  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the Claude orange accent
+  surfaceSidebar: "#161514",
+  surfaceSidebarHover: "#1e1d1c",
+  foregroundMuted: "#b8b3ae", // was #ada9a5
+  scrollbarHandle: "#847f7a",
+  border: "#35322e", // was #2c2a27
+  borderAccent: "#423e39",
+  accent: "#d96b45", // was #d97757 — more saturated ember
+  accentBright: "#ffab88", // was #e89a7f
+  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the ember accent
 });
 
-// Ghostty — blue-tinted dark based on Ghostty default background
-const ghosttyDarkColors = buildDarkSemanticColors({
+// Slate Terminal — blue-grey terminal look (Ghostty-default lineage). Sidebar
+// deepened and borders lifted so the panes actually separate; the light blue
+// accent gets dark text instead of unreadable white.
+const slateTerminalDarkColors = buildDarkSemanticColors({
   surface0: "#282c34",
   surface1: "#2f333d",
   surface2: "#383c48",
   surface3: "#4a4f5e",
   surface4: "#5b6175",
   surfaceDiffEmpty: "#323643",
-  surfaceSidebar: "#21252d",
-  surfaceSidebarHover: "#292d36",
+  surfaceSidebar: "#1e222a", // was #21252d
+  surfaceSidebarHover: "#262a33",
   foregroundMuted: "#c8ccd8",
   scrollbarHandle: "#a0a4b2",
-  border: "#353a47",
-  borderAccent: "#3f4454",
+  border: "#3d4352", // was #353a47
+  borderAccent: "#4a5062",
   accent: "#89b4fa",
-  accentBright: "#b4d0fc",
+  accentBright: "#c4dafd",
+  accentForeground: "#14181f", // light blue accent — needs dark text (white was ~2:1)
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
+});
+
+// Neotokyo — near-black surfaces with neon magenta accents. Built for maximum
+// contrast: base sits close to black, borders are visibly violet, and the
+// accent pair is a deep magenta (white text ≈5.5:1) with a neon bright.
+const neotokyoDarkColors = buildDarkSemanticColors({
+  surface0: "#0b0b12",
+  surface1: "#12121b",
+  surface2: "#1a1a26",
+  surface3: "#2d2d40",
+  surface4: "#3f3f58",
+  surfaceDiffEmpty: "#16161f",
+  surfaceSidebar: "#07070c",
+  surfaceSidebarHover: "#10101a",
+  foregroundMuted: "#a2a6c8",
+  scrollbarHandle: "#7478a2",
+  border: "#23233a",
+  borderAccent: "#2f2f4e",
+  accent: "#c2188f",
+  accentBright: "#ff5ad1",
+  destructive: "#d94848", // clearly red so errors never blur into the magenta accent
 });
 
 export const SPACING = {
@@ -567,41 +730,51 @@ function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColor
   } as const;
 }
 
-export const darkTheme = buildDarkTheme(ottoDarkColors);
-export const darkZincTheme = buildDarkTheme(zincDarkColors);
-export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
-export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
-export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
-
-export const lightTheme = {
-  colorScheme: "light" as const,
-  colors: {
-    ...lightSemanticColors,
-    palette: baseColors,
-    syntax: lightHighlightColors,
+const lightShadow = {
+  sm: {
+    shadowColor: "rgba(0, 0, 0, 0.02)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
   },
-  shadow: {
-    sm: {
-      shadowColor: "rgba(0, 0, 0, 0.02)",
-      shadowOffset: { width: 0, height: 2 },
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    md: {
-      shadowColor: "rgba(0, 0, 0, 0.04)",
-      shadowOffset: { width: 0, height: 4 },
-      shadowRadius: 16,
-      elevation: 4,
-    },
-    lg: {
-      shadowColor: "rgba(0, 0, 0, 0.08)",
-      shadowOffset: { width: 0, height: 8 },
-      shadowRadius: 24,
-      elevation: 8,
-    },
+  md: {
+    shadowColor: "rgba(0, 0, 0, 0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 16,
+    elevation: 4,
   },
-  ...commonTheme,
+  lg: {
+    shadowColor: "rgba(0, 0, 0, 0.08)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
 } as const;
+
+function buildLightTheme(semanticColors: ReturnType<typeof buildLightSemanticColors>) {
+  return {
+    colorScheme: "light" as const,
+    colors: {
+      ...semanticColors,
+      palette: baseColors,
+      syntax: lightHighlightColors,
+    },
+    shadow: lightShadow,
+    ...commonTheme,
+  } as const;
+}
+
+export const darkTheme = buildDarkTheme(neutralDarkColors);
+export const darkEvergreenTheme = buildDarkTheme(evergreenDarkColors);
+export const darkZincTheme = buildDarkTheme(graphiteDarkColors);
+export const darkMidnightTheme = buildDarkTheme(nightfallDarkColors);
+export const darkClaudeTheme = buildDarkTheme(emberDarkColors);
+export const darkGhosttyTheme = buildDarkTheme(slateTerminalDarkColors);
+export const darkCyberpunkTheme = buildDarkTheme(neotokyoDarkColors);
+
+export const lightTheme = buildLightTheme(lightColors);
+export const daylightTheme = buildLightTheme(daylightColors);
+export const pastelTheme = buildLightTheme(sherbetColors);
 
 // Keep compatibility with existing code
 export const theme = darkTheme;
@@ -611,26 +784,44 @@ export type Theme = typeof darkTheme | typeof lightTheme;
 
 type UnistylesThemeKey =
   | "light"
+  | "daylight"
+  | "pastel"
   | "dark"
+  | "darkEvergreen"
   | "darkZinc"
   | "darkMidnight"
   | "darkClaude"
-  | "darkGhostty";
+  | "darkGhostty"
+  | "darkCyberpunk";
 
+// Storage keys are frozen for back-compat (a persisted `theme: "zinc"` must
+// keep resolving) — the user-facing names live in i18n
+// (`settings.appearance.theme.options.*`). `light`/`dark` are the neutral
+// defaults (and the System/auto pair); the variants are zinc=Graphite,
+// midnight=Nightfall, claude=Ember, ghostty=Slate Terminal,
+// cyberpunk=Neotokyo, pastel=Sherbet, plus daylight/evergreen.
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
+  daylight: "daylight",
+  pastel: "pastel",
   dark: "dark",
+  evergreen: "darkEvergreen",
   zinc: "darkZinc",
   midnight: "darkMidnight",
   claude: "darkClaude",
   ghostty: "darkGhostty",
+  cyberpunk: "darkCyberpunk",
 };
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
   light: "#ffffff",
-  dark: "#2D8B62",
+  daylight: "#f4f4f5",
+  pastel: "#e8a3c8",
+  dark: "#3f3f46",
+  evergreen: "#2D8B62",
   zinc: "#808080",
   midnight: "#4A6BA8",
-  claude: "#D97757",
+  claude: "#D96B45",
   ghostty: "#8caaee",
+  cyberpunk: "#ff5ad1",
 };

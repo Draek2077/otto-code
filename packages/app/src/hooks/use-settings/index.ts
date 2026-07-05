@@ -40,6 +40,7 @@ import {
   type SettingsDeps,
   type PreviewServerCloseBehavior,
   type WorkspaceTitleSource,
+  type WorkspaceToolsPlacement,
 } from "./storage";
 
 export {
@@ -71,6 +72,7 @@ export type {
   SettingsDeps,
   PreviewServerCloseBehavior,
   WorkspaceTitleSource,
+  WorkspaceToolsPlacement,
 };
 
 const productionDeps: SettingsDeps = {

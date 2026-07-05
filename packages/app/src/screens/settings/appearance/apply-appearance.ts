@@ -8,16 +8,20 @@ import {
 } from "@/styles/theme";
 import { applyRootUiFont } from "./apply-root-font";
 
-// All six registered Unistyles keys — pinned literal (greppable, type-checked).
+// All registered Unistyles keys — pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
 // is assignable to `UnistylesRuntime.updateTheme`'s first argument with no cast.
 const ALL_THEME_KEYS = [
   "light",
+  "daylight",
+  "pastel",
   "dark",
+  "darkEvergreen",
   "darkZinc",
   "darkMidnight",
   "darkClaude",
   "darkGhostty",
+  "darkCyberpunk",
 ] as const;
 
 // The UI font size at which the FONT_SIZE ramp is authored (1.0 scale factor).
@@ -57,7 +61,7 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
 
 /**
  * Patch every registered Unistyles theme with the user's appearance choices.
- * All six keys are patched because the active theme can change and adaptive mode
+ * All keys are patched because the active theme can change and adaptive mode
  * can flip light/dark — patching all keys keeps the active key always current and
  * makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant.
  */
