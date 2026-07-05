@@ -9,6 +9,7 @@ import {
   type BrowserRecordPatch,
   createBrowserRecord,
   normalizeBrowserUrl,
+  rehydrateBrowserRecord,
   removeBrowserFromIndex,
   sanitizeBrowsersForPersist,
   trimNonEmpty,
@@ -21,6 +22,8 @@ interface BrowserStoreState extends BrowserIndexState {
     initialUrl?: string;
     isPreview?: boolean;
     previewServerId?: string | null;
+    previewServerName?: string | null;
+    previewCwd?: string | null;
   }) => string;
   updateBrowser: (browserId: string, patch: BrowserRecordPatch) => void;
   removeBrowser: (browserId: string) => void;
@@ -49,6 +52,8 @@ export const useBrowserStore = create<BrowserStoreState>()(
           now: Date.now(),
           isPreview: input?.isPreview,
           previewServerId: input?.previewServerId,
+          previewServerName: input?.previewServerName,
+          previewCwd: input?.previewCwd,
         });
 
         set((state) => ({
@@ -71,6 +76,19 @@ export const useBrowserStore = create<BrowserStoreState>()(
       name: "workspace-browser-store",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => sanitizeBrowsersForPersist(state),
+      merge: (persistedState, currentState) => {
+        const persistedBrowsersById =
+          (persistedState as Partial<BrowserIndexState> | undefined)?.browsersById ?? {};
+        return {
+          ...currentState,
+          browsersById: Object.fromEntries(
+            Object.entries(persistedBrowsersById).map(([browserId, raw]) => [
+              browserId,
+              rehydrateBrowserRecord(browserId, raw),
+            ]),
+          ),
+        };
+      },
     },
   ),
 );
@@ -87,6 +105,8 @@ export function createWorkspaceBrowser(input?: {
   initialUrl?: string;
   isPreview?: boolean;
   previewServerId?: string | null;
+  previewServerName?: string | null;
+  previewCwd?: string | null;
 }): {
   browserId: string;
   url: string;

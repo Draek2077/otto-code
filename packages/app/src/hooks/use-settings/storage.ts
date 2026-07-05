@@ -13,10 +13,15 @@ export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
+export type WorkspaceToolsPlacement = "header" | "workspaceList";
 
 const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
+const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
+  "header",
+  "workspaceList",
+]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -41,6 +46,9 @@ export interface AppSettings {
   syntaxTheme: SyntaxThemeId; // default "one"
   workspaceTitleSource: WorkspaceTitleSource;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
+  previewAutoStartOnRestore: boolean;
+  compactSidebarTopSpacing: boolean;
+  workspaceToolsPlacement: WorkspaceToolsPlacement;
 }
 
 export interface Settings extends AppSettings {
@@ -61,6 +69,9 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   syntaxTheme: "one",
   workspaceTitleSource: "title",
   previewServerCloseBehavior: "keep-running",
+  previewAutoStartOnRestore: false,
+  compactSidebarTopSpacing: false,
+  workspaceToolsPlacement: "header",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -153,7 +164,7 @@ export async function loadSettingsFromStorage(deps: SettingsDeps): Promise<Setti
   };
 }
 
-function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+function pickThemeAndBehaviorSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
     result.theme = stored.theme;
@@ -171,10 +182,11 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   ) {
     result.serviceUrlBehavior = stored.serviceUrlBehavior;
   }
-  const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
-  if (terminalScrollbackLines !== null) {
-    result.terminalScrollbackLines = terminalScrollbackLines;
-  }
+  return result;
+}
+
+function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
   const uiFontFamily = sanitizeFontFamily(stored.uiFontFamily);
   if (uiFontFamily !== null) {
     result.uiFontFamily = uiFontFamily;
@@ -200,13 +212,54 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
   }
+  return result;
+}
+
+function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
+  if (terminalScrollbackLines !== null) {
+    result.terminalScrollbackLines = terminalScrollbackLines;
+  }
   if (
     typeof stored.workspaceTitleSource === "string" &&
     VALID_WORKSPACE_TITLE_SOURCES.has(stored.workspaceTitleSource)
   ) {
     result.workspaceTitleSource = stored.workspaceTitleSource;
   }
+  if (typeof stored.compactSidebarTopSpacing === "boolean") {
+    result.compactSidebarTopSpacing = stored.compactSidebarTopSpacing;
+  }
+  if (
+    typeof stored.workspaceToolsPlacement === "string" &&
+    VALID_WORKSPACE_TOOLS_PLACEMENTS.has(stored.workspaceToolsPlacement as WorkspaceToolsPlacement)
+  ) {
+    result.workspaceToolsPlacement = stored.workspaceToolsPlacement as WorkspaceToolsPlacement;
+  }
   return result;
+}
+
+function pickPreviewSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (
+    stored.previewServerCloseBehavior === "keep-running" ||
+    stored.previewServerCloseBehavior === "stop-on-close"
+  ) {
+    result.previewServerCloseBehavior = stored.previewServerCloseBehavior;
+  }
+  if (typeof stored.previewAutoStartOnRestore === "boolean") {
+    result.previewAutoStartOnRestore = stored.previewAutoStartOnRestore;
+  }
+  return result;
+}
+
+function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  return {
+    ...pickThemeAndBehaviorSettings(stored),
+    ...pickFontSettings(stored),
+    ...pickWorkspaceLayoutSettings(stored),
+    ...pickPreviewSettings(stored),
+  };
 }
 
 function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {

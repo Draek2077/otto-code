@@ -150,6 +150,38 @@ function previewServerStopButtonStyle({ hovered, pressed }: PressableStateCallba
   ];
 }
 
+/**
+ * Finds an already-open tab bound to the given preview dev server, so
+ * re-selecting a running server from the picker can jump back to it instead
+ * of no-op'ing (the tab may have been closed while the server itself, per the
+ * "keep-running" close behavior, kept going).
+ */
+function findOpenPreviewTab(input: {
+  workspaceKey: string;
+  serverId: string;
+  port: number;
+}): string | null {
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const browsersById = useBrowserStore.getState().browsersById;
+  const allTabs = layoutStore.getWorkspaceTabs(input.workspaceKey);
+  const portNeedle = `:${input.port}`;
+  for (const tab of allTabs) {
+    if (tab.target.kind !== "browser") {
+      continue;
+    }
+    const browser = browsersById[tab.target.browserId];
+    if (!browser?.isPreview) {
+      continue;
+    }
+    const matchesId = browser.previewServerId === input.serverId;
+    const matchesPort = browser.url.includes(portNeedle);
+    if (matchesId || matchesPort) {
+      return tab.tabId;
+    }
+  }
+  return null;
+}
+
 function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
   const nextWidth = Math.round(event.nativeEvent.layout.width);
   setWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
@@ -261,23 +293,14 @@ function WorkspacePreviewButton({
       if (!client) {
         return;
       }
-      const started = await client.previewStart(cwd, serverName);
-      if (!started.success || !started.server) {
-        await client
-          .sendAgentMessage(
-            agentId,
-            `I tried to start the "${serverName}" preview server but it failed: ${
-              started.error ?? "unknown error"
-            }`,
-          )
-          .catch(() => undefined);
-        return;
-      }
 
+      // Open the tab immediately, before the (possibly slow) start RPC resolves,
+      // so the UI never blocks on a cold dev server. BrowserPane shows a centered
+      // spinner while previewStatus is "starting" and only navigates once ready.
       const { browserId } = createWorkspaceBrowser({
-        initialUrl: started.server.url,
         isPreview: true,
-        previewServerId: started.server.serverId,
+        previewServerName: serverName,
+        previewCwd: cwd,
       });
       const workspaceKey = buildWorkspaceTabPersistenceKey({
         serverId: normalizedServerId,
@@ -297,6 +320,29 @@ function WorkspacePreviewButton({
           });
         }
       }
+
+      const started = await client.previewStart(cwd, serverName);
+      if (!started.success || !started.server) {
+        useBrowserStore.getState().updateBrowser(browserId, {
+          previewStatus: "error",
+          lastError: started.error ?? "unknown error",
+        });
+        await client
+          .sendAgentMessage(
+            agentId,
+            `I tried to start the "${serverName}" preview server but it failed: ${
+              started.error ?? "unknown error"
+            }`,
+          )
+          .catch(() => undefined);
+        return;
+      }
+
+      useBrowserStore.getState().updateBrowser(browserId, {
+        url: started.server.url,
+        previewServerId: started.server.serverId,
+        previewStatus: "ready",
+      });
       await client.previewBindTab(started.server.serverId, browserId).catch(() => undefined);
     },
     [normalizedServerId, normalizedWorkspaceId, paneId],
@@ -318,26 +364,12 @@ function WorkspacePreviewButton({
       });
 
       if (workspaceKey) {
-        const layoutStore = useWorkspaceLayoutStore.getState();
-        const browsersById = useBrowserStore.getState().browsersById;
-        const allTabs = layoutStore.getWorkspaceTabs(workspaceKey);
-        const portNeedle = `:${port}`;
-        for (const tab of allTabs) {
-          if (tab.target.kind !== "browser") {
-            continue;
-          }
-          const browser = browsersById[tab.target.browserId];
-          if (!browser?.isPreview) {
-            continue;
-          }
-          // Match on the exact server id, or — for a server reconciled after a
-          // daemon restart, whose tab still holds the pre-restart id — on the
-          // dev-server port in the tab's URL.
-          const matchesId = browser.previewServerId === serverId;
-          const matchesPort = browser.url.includes(portNeedle);
-          if (matchesId || matchesPort) {
-            layoutStore.closeTab(workspaceKey, tab.tabId);
-          }
+        // Match on the exact server id, or — for a server reconciled after a
+        // daemon restart, whose tab still holds the pre-restart id — on the
+        // dev-server port in the tab's URL.
+        const tabId = findOpenPreviewTab({ workspaceKey, serverId, port });
+        if (tabId) {
+          useWorkspaceLayoutStore.getState().closeTab(workspaceKey, tabId);
         }
       }
 
@@ -403,9 +435,25 @@ function WorkspacePreviewButton({
 
   const handlePickServer = useCallback(
     (serverName: string) => {
-      // Prevent duplicate starts - server is already running
-      if (runningServersRef.current.has(serverName)) {
-        return;
+      setPickerOpen(false);
+
+      // Already running: if its tab is still open, just jump back to it. If the
+      // tab was closed (keep-running left the server up), fall through to
+      // startAndOpenPreview — previewStart reuses the running process, so this
+      // just rebinds a fresh tab instead of restarting anything.
+      const running = runningServersRef.current.get(serverName);
+      if (running) {
+        const workspaceKey = buildWorkspaceTabPersistenceKey({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+        });
+        const existingTabId = workspaceKey
+          ? findOpenPreviewTab({ workspaceKey, serverId: running.serverId, port: running.port })
+          : null;
+        if (existingTabId && workspaceKey) {
+          useWorkspaceLayoutStore.getState().focusTab(workspaceKey, existingTabId);
+          return;
+        }
       }
 
       if (!focusedAgentId) {
@@ -414,12 +462,11 @@ function WorkspacePreviewButton({
       const cwd = useSessionStore
         .getState()
         .sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd;
-      setPickerOpen(false);
       if (cwd) {
         void startAndOpenPreview(focusedAgentId, cwd, serverName);
       }
     },
-    [focusedAgentId, normalizedServerId, startAndOpenPreview],
+    [focusedAgentId, normalizedServerId, normalizedWorkspaceId, startAndOpenPreview],
   );
 
   const disabled = !focusedAgentId || isBusy;
@@ -520,11 +567,18 @@ function PreviewServerMenuItem({
   }
 
   // Running: a status row matching the menu item's metrics — filled green dot,
-  // label, and a stop button pushed to the right edge. Rendered as a plain View
-  // (not a menu-item button) so the stop control is the only interactive
-  // element, avoiding a <button> nested inside a <button>.
+  // label, and a stop button pushed to the right edge. The row itself is
+  // pressable (jumps back to / reopens the bound tab — see handlePickServer's
+  // "get back in" path); the stop button is a separately-hit-testable control
+  // nested inside it, not a menu-item button-in-button.
   return (
-    <View style={styles.previewServerRunningRow}>
+    <Pressable
+      testID={`workspace-preview-pick-${server.name}`}
+      onPress={handleSelect}
+      accessibilityRole="button"
+      accessibilityLabel={`${server.name} (:${server.port})`}
+      style={styles.previewServerRunningRow}
+    >
       <View style={styles.previewServerDotSlot}>
         <View style={styles.previewServerRunningDot} />
       </View>
@@ -548,7 +602,7 @@ function PreviewServerMenuItem({
           )}
         </Pressable>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 

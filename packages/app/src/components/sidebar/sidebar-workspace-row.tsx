@@ -1,4 +1,12 @@
-import { memo, useCallback, useMemo, useState, type Ref } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  type PropsWithChildren,
+  type ReactElement,
+  type Ref,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -16,6 +24,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useToast } from "@/contexts/toast-context";
@@ -342,6 +356,36 @@ function WorkspaceRowBody({
           scriptIconKind = hasRunningService ? "service" : "command";
         }
         const workspaceRowStyle = getWorkspaceRowStyle({ isDragging, selected, isHovered });
+        const rowContent = (
+          <SidebarWorkspaceRowContent
+            workspace={workspace}
+            subtitle={subtitle}
+            scriptIconKind={scriptIconKind}
+            isHovered={isHovered}
+            isLoading={isArchiving || isCreating}
+            isCreating={isCreating}
+            shortcutNumber={shortcutNumber}
+            showShortcutBadge={showShortcutBadge}
+          >
+            <WorkspaceRowTrailingActions
+              workspace={workspace}
+              isHovered={isHovered}
+              isTouchPlatform={isTouchPlatform}
+              isCreating={isCreating}
+              showShortcutBadge={showShortcutBadge}
+              shortcutNumber={shortcutNumber}
+              archiveLabel={archiveLabel}
+              archiveStatus={archiveStatus}
+              archivePendingLabel={archivePendingLabel}
+              archiveShortcutKeys={archiveShortcutKeys}
+              onArchive={onArchive}
+              onCopyBranchName={onCopyBranchName}
+              onCopyPath={onCopyPath}
+              onRename={onRename}
+              onMarkAsRead={onMarkAsRead}
+            />
+          </SidebarWorkspaceRowContent>
+        );
         return (
           <View
             {...(draggable ? dragAttributes : {})}
@@ -352,47 +396,59 @@ function WorkspaceRowBody({
             style={styles.workspaceRowContainer}
             {...hoverHandlers}
           >
-            <Pressable
-              disabled={isArchiving}
-              aria-selected={selected}
-              accessibilityRole="button"
-              accessibilityState={accessibilityState}
-              style={workspaceRowStyle}
-              onPressIn={draggable ? interaction.handlePressIn : undefined}
-              onTouchMove={draggable ? interaction.handleTouchMove : undefined}
-              onPressOut={draggable ? interaction.handlePressOut : undefined}
-              onPress={handlePress}
-              testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
-            >
-              <SidebarWorkspaceRowContent
-                workspace={workspace}
-                subtitle={subtitle}
-                scriptIconKind={scriptIconKind}
-                isHovered={isHovered}
-                isLoading={isArchiving || isCreating}
-                isCreating={isCreating}
-                shortcutNumber={shortcutNumber}
-                showShortcutBadge={showShortcutBadge}
+            {onArchive ? (
+              <ContextMenu>
+                <ContextMenuTrigger
+                  enabledOnMobile={false}
+                  disabled={isArchiving}
+                  aria-selected={selected}
+                  accessibilityRole="button"
+                  accessibilityState={accessibilityState}
+                  style={workspaceRowStyle}
+                  onPressIn={draggable ? interaction.handlePressIn : undefined}
+                  onTouchMove={draggable ? interaction.handleTouchMove : undefined}
+                  onPressOut={draggable ? interaction.handlePressOut : undefined}
+                  onPress={handlePress}
+                  testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
+                >
+                  {rowContent}
+                </ContextMenuTrigger>
+                <ContextMenuContent
+                  align="start"
+                  width={260}
+                  testID={`sidebar-workspace-context-menu-${workspace.workspaceKey}`}
+                >
+                  <WorkspaceMenuItems
+                    ItemComponent={ContextMenuItem}
+                    workspaceKey={workspace.workspaceKey}
+                    onCopyPath={onCopyPath}
+                    onCopyBranchName={onCopyBranchName}
+                    onRename={onRename}
+                    onMarkAsRead={onMarkAsRead}
+                    onArchive={onArchive}
+                    archiveLabel={archiveLabel}
+                    archiveStatus={archiveStatus}
+                    archivePendingLabel={archivePendingLabel}
+                    archiveShortcutKeys={archiveShortcutKeys}
+                  />
+                </ContextMenuContent>
+              </ContextMenu>
+            ) : (
+              <Pressable
+                disabled={isArchiving}
+                aria-selected={selected}
+                accessibilityRole="button"
+                accessibilityState={accessibilityState}
+                style={workspaceRowStyle}
+                onPressIn={draggable ? interaction.handlePressIn : undefined}
+                onTouchMove={draggable ? interaction.handleTouchMove : undefined}
+                onPressOut={draggable ? interaction.handlePressOut : undefined}
+                onPress={handlePress}
+                testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
               >
-                <WorkspaceRowTrailingActions
-                  workspace={workspace}
-                  isHovered={isHovered}
-                  isTouchPlatform={isTouchPlatform}
-                  isCreating={isCreating}
-                  showShortcutBadge={showShortcutBadge}
-                  shortcutNumber={shortcutNumber}
-                  archiveLabel={archiveLabel}
-                  archiveStatus={archiveStatus}
-                  archivePendingLabel={archivePendingLabel}
-                  archiveShortcutKeys={archiveShortcutKeys}
-                  onArchive={onArchive}
-                  onCopyBranchName={onCopyBranchName}
-                  onCopyPath={onCopyPath}
-                  onRename={onRename}
-                  onMarkAsRead={onMarkAsRead}
-                />
-              </SidebarWorkspaceRowContent>
-            </Pressable>
+                {rowContent}
+              </Pressable>
+            )}
           </View>
         );
       }}
@@ -478,7 +534,105 @@ function WorkspaceRowTrailingActions({
   );
 }
 
-function WorkspaceKebabMenu({
+/** Common shape shared by `DropdownMenuItem` and `ContextMenuItem` — lets the
+ * kebab dropdown and the right-click context menu render identical items from
+ * one source instead of maintaining two copies that can drift apart. */
+export type WorkspaceMenuItemComponent = (
+  props: PropsWithChildren<{
+    testID?: string;
+    leading?: ReactElement | null;
+    trailing?: ReactElement | null;
+    onSelect?: () => void;
+    status?: "idle" | "pending" | "success";
+    pendingLabel?: string;
+  }>,
+) => ReactElement;
+
+export interface WorkspaceMenuItemsProps {
+  ItemComponent: WorkspaceMenuItemComponent;
+  workspaceKey: string;
+  onCopyPath?: () => void;
+  onCopyBranchName?: () => void;
+  onRename?: () => void;
+  onMarkAsRead?: () => void;
+  onArchive: () => void;
+  archiveLabel?: string;
+  archiveStatus?: "idle" | "pending" | "success";
+  archivePendingLabel?: string;
+  archiveShortcutKeys?: ShortcutKey[][] | null;
+}
+
+export function WorkspaceMenuItems({
+  ItemComponent: Item,
+  workspaceKey,
+  onCopyPath,
+  onCopyBranchName,
+  onRename,
+  onMarkAsRead,
+  onArchive,
+  archiveLabel,
+  archiveStatus,
+  archivePendingLabel,
+  archiveShortcutKeys,
+}: WorkspaceMenuItemsProps) {
+  const { t } = useTranslation();
+  const archiveTrailing = useMemo(
+    () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
+    [archiveShortcutKeys],
+  );
+  return (
+    <>
+      {onCopyPath ? (
+        <Item
+          testID={`sidebar-workspace-menu-copy-path-${workspaceKey}`}
+          leading={copyLeadingIcon}
+          onSelect={onCopyPath}
+        >
+          {t("sidebar.workspace.actions.copyPath")}
+        </Item>
+      ) : null}
+      {onCopyBranchName ? (
+        <Item
+          testID={`sidebar-workspace-menu-copy-branch-name-${workspaceKey}`}
+          leading={copyLeadingIcon}
+          onSelect={onCopyBranchName}
+        >
+          {t("sidebar.workspace.actions.copyBranchName")}
+        </Item>
+      ) : null}
+      {onRename ? (
+        <Item
+          testID={`sidebar-workspace-menu-rename-${workspaceKey}`}
+          leading={renameLeadingIcon}
+          onSelect={onRename}
+        >
+          {t("sidebar.workspace.actions.rename")}
+        </Item>
+      ) : null}
+      {onMarkAsRead ? (
+        <Item
+          testID={`sidebar-workspace-menu-mark-as-read-${workspaceKey}`}
+          leading={markAsReadLeadingIcon}
+          onSelect={onMarkAsRead}
+        >
+          Mark as read
+        </Item>
+      ) : null}
+      <Item
+        testID={`sidebar-workspace-menu-archive-${workspaceKey}`}
+        leading={archiveLeadingIcon}
+        trailing={archiveTrailing}
+        status={archiveStatus}
+        pendingLabel={archivePendingLabel}
+        onSelect={onArchive}
+      >
+        {archiveLabel ?? t("sidebar.workspace.actions.archive")}
+      </Item>
+    </>
+  );
+}
+
+export function WorkspaceKebabMenu({
   workspaceKey,
   onCopyPath,
   onCopyBranchName,
@@ -502,10 +656,6 @@ function WorkspaceKebabMenu({
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
   const { t } = useTranslation();
-  const archiveTrailing = useMemo(
-    () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
-    [archiveShortcutKeys],
-  );
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -518,52 +668,19 @@ function WorkspaceKebabMenu({
         {renderKebabTriggerIcon}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={260}>
-        {onCopyPath ? (
-          <DropdownMenuItem
-            testID={`sidebar-workspace-menu-copy-path-${workspaceKey}`}
-            leading={copyLeadingIcon}
-            onSelect={onCopyPath}
-          >
-            {t("sidebar.workspace.actions.copyPath")}
-          </DropdownMenuItem>
-        ) : null}
-        {onCopyBranchName ? (
-          <DropdownMenuItem
-            testID={`sidebar-workspace-menu-copy-branch-name-${workspaceKey}`}
-            leading={copyLeadingIcon}
-            onSelect={onCopyBranchName}
-          >
-            {t("sidebar.workspace.actions.copyBranchName")}
-          </DropdownMenuItem>
-        ) : null}
-        {onRename ? (
-          <DropdownMenuItem
-            testID={`sidebar-workspace-menu-rename-${workspaceKey}`}
-            leading={renameLeadingIcon}
-            onSelect={onRename}
-          >
-            {t("sidebar.workspace.actions.rename")}
-          </DropdownMenuItem>
-        ) : null}
-        {onMarkAsRead ? (
-          <DropdownMenuItem
-            testID={`sidebar-workspace-menu-mark-as-read-${workspaceKey}`}
-            leading={markAsReadLeadingIcon}
-            onSelect={onMarkAsRead}
-          >
-            Mark as read
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          testID={`sidebar-workspace-menu-archive-${workspaceKey}`}
-          leading={archiveLeadingIcon}
-          trailing={archiveTrailing}
-          status={archiveStatus}
-          pendingLabel={archivePendingLabel}
-          onSelect={onArchive}
-        >
-          {archiveLabel ?? t("sidebar.workspace.actions.archive")}
-        </DropdownMenuItem>
+        <WorkspaceMenuItems
+          ItemComponent={DropdownMenuItem}
+          workspaceKey={workspaceKey}
+          onCopyPath={onCopyPath}
+          onCopyBranchName={onCopyBranchName}
+          onRename={onRename}
+          onMarkAsRead={onMarkAsRead}
+          onArchive={onArchive}
+          archiveLabel={archiveLabel}
+          archiveStatus={archiveStatus}
+          archivePendingLabel={archivePendingLabel}
+          archiveShortcutKeys={archiveShortcutKeys}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

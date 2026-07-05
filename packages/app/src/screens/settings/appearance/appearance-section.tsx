@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, Monitor, Moon, Sun } from "lucide-react-native";
+import { Switch } from "@/components/ui/switch";
 import {
   SYNTAX_THEME_OPTIONS,
   type SyntaxThemeId,
@@ -13,6 +14,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -55,21 +57,30 @@ function getThemeLabel(t: TFunction, value: AppSettings["theme"]): string {
   const labelKeys: Record<AppSettings["theme"], string> = {
     light: "settings.appearance.theme.options.light",
     dark: "settings.appearance.theme.options.dark",
+    daylight: "settings.appearance.theme.options.daylight",
+    evergreen: "settings.appearance.theme.options.evergreen",
     zinc: "settings.appearance.theme.options.zinc",
     midnight: "settings.appearance.theme.options.midnight",
     claude: "settings.appearance.theme.options.claude",
     ghostty: "settings.appearance.theme.options.ghostty",
+    cyberpunk: "settings.appearance.theme.options.cyberpunk",
+    pastel: "settings.appearance.theme.options.pastel",
     auto: "settings.appearance.theme.options.auto",
   };
   return t(labelKeys[value]);
 }
 
-const PRIMARY_THEMES: readonly AppSettings["theme"][] = ["light", "dark", "auto"];
-const DARK_VARIANT_THEMES: readonly AppSettings["theme"][] = [
+// The menu is grouped by color scheme: the neutral defaults (Light/Dark) lead
+// their group, followed by the tinted variants.
+const LIGHT_THEMES: readonly AppSettings["theme"][] = ["light", "daylight", "pastel"];
+const DARK_THEMES: readonly AppSettings["theme"][] = [
+  "dark",
+  "evergreen",
   "zinc",
   "midnight",
   "claude",
   "ghostty",
+  "cyberpunk",
 ];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");
@@ -166,7 +177,10 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
           <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
-          {PRIMARY_THEMES.map((themeValue) => (
+          <ThemeMenuItem themeValue="auto" selected={value === "auto"} onChange={onChange} />
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>{t("settings.appearance.theme.groups.light")}</DropdownMenuLabel>
+          {LIGHT_THEMES.map((themeValue) => (
             <ThemeMenuItem
               key={themeValue}
               themeValue={themeValue}
@@ -175,7 +189,8 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
             />
           ))}
           <DropdownMenuSeparator />
-          {DARK_VARIANT_THEMES.map((themeValue) => (
+          <DropdownMenuLabel>{t("settings.appearance.theme.groups.dark")}</DropdownMenuLabel>
+          {DARK_THEMES.map((themeValue) => (
             <ThemeMenuItem
               key={themeValue}
               themeValue={themeValue}
@@ -360,6 +375,45 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Layout: compact sidebar top spacing + workspace tools placement (booleans)
+// ---------------------------------------------------------------------------
+
+interface LayoutToggleRowProps {
+  title: string;
+  hint: string;
+  accessibilityLabel: string;
+  value: boolean;
+  withBorder: boolean;
+  onValueChange: (value: boolean) => void;
+  testID?: string;
+}
+
+function LayoutToggleRow({
+  title,
+  hint,
+  accessibilityLabel,
+  value,
+  withBorder,
+  onValueChange,
+  testID,
+}: LayoutToggleRowProps) {
+  return (
+    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <Text style={settingsStyles.rowHint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -367,6 +421,7 @@ export function AppearanceSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
   const showFontFamilyRows = !isNative;
+  const showLayoutSection = !isNative;
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
@@ -393,6 +448,22 @@ export function AppearanceSection() {
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
+    },
+    [updateSettings],
+  );
+
+  const handleCompactSidebarTopSpacingChange = useCallback(
+    (compactSidebarTopSpacing: boolean) => {
+      void updateSettings({ compactSidebarTopSpacing });
+    },
+    [updateSettings],
+  );
+
+  const handleWorkspaceToolsPlacementChange = useCallback(
+    (showInWorkspaceList: boolean) => {
+      void updateSettings({
+        workspaceToolsPlacement: showInWorkspaceList ? "workspaceList" : "header",
+      });
     },
     [updateSettings],
   );
@@ -477,6 +548,34 @@ export function AppearanceSection() {
           <ThemeRow value={settings.theme} onChange={handleThemeChange} />
         </View>
       </SettingsSection>
+      {showLayoutSection ? (
+        <SettingsSection title={t("settings.appearance.layout.title")}>
+          <View style={settingsStyles.card}>
+            <LayoutToggleRow
+              title={t("settings.appearance.layout.compactSidebarTopSpacing.title")}
+              hint={t("settings.appearance.layout.compactSidebarTopSpacing.hint")}
+              accessibilityLabel={t(
+                "settings.appearance.layout.compactSidebarTopSpacing.accessibilityLabel",
+              )}
+              value={settings.compactSidebarTopSpacing}
+              withBorder={false}
+              onValueChange={handleCompactSidebarTopSpacingChange}
+              testID="settings-compact-sidebar-top-spacing-switch"
+            />
+            <LayoutToggleRow
+              title={t("settings.appearance.layout.workspaceToolsInList.title")}
+              hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
+              accessibilityLabel={t(
+                "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
+              )}
+              value={settings.workspaceToolsPlacement === "workspaceList"}
+              withBorder
+              onValueChange={handleWorkspaceToolsPlacementChange}
+              testID="settings-workspace-tools-placement-switch"
+            />
+          </View>
+        </SettingsSection>
+      ) : null}
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (

@@ -70,6 +70,7 @@ import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-
 import { Button } from "@/components/ui/button";
 import { CommunityLinks } from "@/components/community-links";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
@@ -259,6 +260,7 @@ interface GeneralSectionProps {
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
   handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
+  handlePreviewAutoStartOnRestoreChange: (enabled: boolean) => void;
 }
 
 interface ServiceUrlBehaviorMenuItemProps {
@@ -316,6 +318,7 @@ function GeneralSection({
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
   handlePreviewServerCloseBehaviorChange,
+  handlePreviewAutoStartOnRestoreChange,
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
@@ -364,113 +367,139 @@ function GeneralSection({
   }, [settings.terminalScrollbackLines]);
 
   return (
-    <SettingsSection title={t("settings.general.title")}>
-      <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
-            <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
+    <Fragment>
+      <SettingsSection title={t("settings.general.title")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
+              <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
+            </View>
+            <SegmentedControl
+              size="sm"
+              value={settings.sendBehavior}
+              onValueChange={handleSendBehaviorChange}
+              options={sendBehaviorOptions}
+            />
           </View>
-          <SegmentedControl
-            size="sm"
-            value={settings.sendBehavior}
-            onValueChange={handleSendBehaviorChange}
-            options={sendBehaviorOptions}
-          />
-        </View>
-        <View style={ROW_WITH_BORDER_STYLE}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("settings.general.language.description")}</Text>
-          </View>
-          <DropdownMenu>
-            <DropdownTrigger
-              accessibilityRole="button"
-              accessibilityLabel={selectedLanguageLabel}
-              style={themeTriggerStyle}
-            >
-              <Text style={styles.themeTriggerText}>{selectedLanguageLabel}</Text>
-            </DropdownTrigger>
-            <DropdownMenuContent side="bottom" align="end" width={300}>
-              {LANGUAGE_OPTIONS.map((option) => (
-                <LanguageMenuItem
-                  key={option.value}
-                  value={option.value}
-                  activeLocale={activeLocale}
-                  selected={settings.language === option.value}
-                  onChange={handleLanguageChange}
-                />
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </View>
-        {isDesktopApp ? (
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.general.serviceUrls.label")}</Text>
+              <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
               <Text style={settingsStyles.rowHint}>
-                {t("settings.general.serviceUrls.description")}
+                {t("settings.general.language.description")}
               </Text>
             </View>
             <DropdownMenu>
-              <DropdownTrigger style={themeTriggerStyle}>
-                <Text style={styles.themeTriggerText}>
-                  {getServiceUrlBehaviorLabel(t, settings.serviceUrlBehavior)}
-                </Text>
+              <DropdownTrigger
+                accessibilityRole="button"
+                accessibilityLabel={selectedLanguageLabel}
+                style={themeTriggerStyle}
+              >
+                <Text style={styles.themeTriggerText}>{selectedLanguageLabel}</Text>
               </DropdownTrigger>
-              <DropdownMenuContent side="bottom" align="end" width={200}>
-                {SERVICE_URL_BEHAVIOR_VALUES.map((value) => (
-                  <ServiceUrlBehaviorMenuItem
-                    key={value}
-                    value={value}
-                    label={getServiceUrlBehaviorLabel(t, value)}
-                    selected={settings.serviceUrlBehavior === value}
-                    onChange={handleServiceUrlBehaviorChange}
+              <DropdownMenuContent side="bottom" align="end" width={300}>
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <LanguageMenuItem
+                    key={option.value}
+                    value={option.value}
+                    activeLocale={activeLocale}
+                    selected={settings.language === option.value}
+                    onChange={handleLanguageChange}
                   />
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </View>
-        ) : null}
-        <View style={ROW_WITH_BORDER_STYLE}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
-              {t("settings.general.terminalScrollback.label")}
-            </Text>
-            <Text style={settingsStyles.rowHint}>
-              {t("settings.general.terminalScrollback.description")}
-            </Text>
+          {isDesktopApp ? (
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.general.serviceUrls.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.general.serviceUrls.description")}
+                </Text>
+              </View>
+              <DropdownMenu>
+                <DropdownTrigger style={themeTriggerStyle}>
+                  <Text style={styles.themeTriggerText}>
+                    {getServiceUrlBehaviorLabel(t, settings.serviceUrlBehavior)}
+                  </Text>
+                </DropdownTrigger>
+                <DropdownMenuContent side="bottom" align="end" width={200}>
+                  {SERVICE_URL_BEHAVIOR_VALUES.map((value) => (
+                    <ServiceUrlBehaviorMenuItem
+                      key={value}
+                      value={value}
+                      label={getServiceUrlBehaviorLabel(t, value)}
+                      selected={settings.serviceUrlBehavior === value}
+                      onChange={handleServiceUrlBehaviorChange}
+                    />
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </View>
+          ) : null}
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.terminalScrollback.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.terminalScrollback.description")}
+              </Text>
+            </View>
+            <TextInput
+              value={terminalScrollbackValue}
+              onChangeText={handleTerminalScrollbackChangeText}
+              onBlur={commitTerminalScrollback}
+              onSubmitEditing={commitTerminalScrollback}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              selectTextOnFocus
+              style={styles.terminalScrollbackInput}
+              accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
+            />
           </View>
-          <TextInput
-            value={terminalScrollbackValue}
-            onChangeText={handleTerminalScrollbackChangeText}
-            onBlur={commitTerminalScrollback}
-            onSubmitEditing={commitTerminalScrollback}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            selectTextOnFocus
-            style={styles.terminalScrollbackInput}
-            accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
-          />
         </View>
-        <View style={ROW_WITH_BORDER_STYLE}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
-              {t("settings.general.previewServerCloseBehavior.label")}
-            </Text>
-            <Text style={settingsStyles.rowHint}>
-              {t("settings.general.previewServerCloseBehavior.description")}
-            </Text>
+      </SettingsSection>
+      <SettingsSection title={t("settings.preview.title")}>
+        <View style={settingsStyles.card}>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.previewServerCloseBehavior.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.previewServerCloseBehavior.description")}
+              </Text>
+            </View>
+            <SegmentedControl
+              size="sm"
+              value={settings.previewServerCloseBehavior}
+              onValueChange={handlePreviewServerCloseBehaviorChange}
+              options={previewServerCloseBehaviorOptions}
+            />
           </View>
-          <SegmentedControl
-            size="sm"
-            value={settings.previewServerCloseBehavior}
-            onValueChange={handlePreviewServerCloseBehaviorChange}
-            options={previewServerCloseBehaviorOptions}
-          />
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.preview.autoStartOnRestore.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.preview.autoStartOnRestore.description")}
+              </Text>
+            </View>
+            <Switch
+              value={settings.previewAutoStartOnRestore}
+              onValueChange={handlePreviewAutoStartOnRestoreChange}
+              accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
+              testID="settings-preview-auto-start-on-restore-switch"
+            />
+          </View>
         </View>
-      </View>
-    </SettingsSection>
+      </SettingsSection>
+    </Fragment>
   );
 }
 
@@ -1223,6 +1252,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handlePreviewAutoStartOnRestoreChange = useCallback(
+    (enabled: boolean) => {
+      void updateSettings({ previewAutoStartOnRestore: enabled });
+    },
+    [updateSettings],
+  );
+
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -1429,6 +1465,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleLanguageChange={handleLanguageChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
               handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
+              handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
             />
           );
         case "daemon":

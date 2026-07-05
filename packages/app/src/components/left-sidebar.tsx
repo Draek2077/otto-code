@@ -42,6 +42,7 @@ import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
+import { useAppSettings } from "@/hooks/use-settings";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
 import {
@@ -76,6 +77,7 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -871,6 +873,8 @@ function DesktopSidebar({
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const padding = useWindowControlsPadding("sidebar");
+  const { settings } = useAppSettings();
+  const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -933,7 +937,7 @@ function DesktopSidebar({
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
           <TitlebarDragRegion />
-          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+          {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNewWorkspaceHeaderRow
               label={labels.newWorkspace}
@@ -977,6 +981,8 @@ function DesktopSidebar({
             onAddProject={handleOpenProject}
           />
         )}
+
+        <SidebarActiveWorkspaceTools />
 
         <SidebarCalloutSlot />
 
