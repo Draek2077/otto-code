@@ -60,3 +60,11 @@ Pick any of these from the in-app provider catalog. Each entry is a one-click in
 - [VT Code](https://github.com/vinhnx/VTCode/blob/main/docs/guides/zed-acp.md), open-source multi-provider coding agent.
 
 The in-app catalog is the canonical, version-pinned source. Anything not listed here can still be added manually, see [Custom providers](/docs/custom-providers).
+
+## Local & OpenAI-compatible endpoints
+
+No CLI required, Otto talks to these directly as an HTTP endpoint. See [Local models](/docs/local-models) for how this mechanism works.
+
+- [LM Studio](https://lmstudio.ai), run open models locally with a one-click GUI. Featured preset in the in-app catalog.
+- [Ollama](https://ollama.com), run open models locally from the command line.
+- Any other OpenAI-compatible server, vLLM, llama.cpp's server mode, LocalAI, or a hosted gateway that speaks the same API shape.
