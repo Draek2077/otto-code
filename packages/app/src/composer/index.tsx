@@ -3,6 +3,7 @@ import {
   Pressable,
   Text,
   ActivityIndicator,
+  Keyboard,
   type PressableStateCallbackType,
 } from "react-native";
 import type { TFunction } from "i18next";
@@ -22,7 +23,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
   ArrowUp,
-  Square,
+  Stop,
   Pencil,
   AudioLines,
   CircleDot,
@@ -831,7 +832,7 @@ function ComposerCancelButton({
   const icon = isCancellingAgent ? (
     <ActivityIndicator size="small" color="white" />
   ) : (
-    <Square size={buttonIconSize} color="white" />
+    <Stop size={buttonIconSize} color="white" />
   );
   const shortcutNode = agentInterruptKeys ? <Shortcut chord={agentInterruptKeys} /> : null;
   return (
@@ -1073,15 +1074,26 @@ export function Composer({
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`,
   );
 
+  // On mobile the chat layout reflows at send time as if the keyboard were
+  // already gone, so the soft keyboard must start dismissing immediately with
+  // the send — not linger over the response. Hardware-keyboard sends (soft
+  // keyboard not visible) keep focus so the user can type the next message.
+  const dismissKeyboardOnSubmit = useCallback(() => {
+    if (blurOnSubmit || (isNative && Keyboard.isVisible())) {
+      messageInputRef.current?.blur();
+      if (isNative) {
+        Keyboard.dismiss();
+      }
+    }
+  }, [blurOnSubmit]);
+
   const runClientSlashCommand = useCallback(
     (command: ClientSlashCommand): boolean => {
       if (command.execution !== "immediate" || !onClientSlashCommand) {
         return false;
       }
 
-      if (blurOnSubmit) {
-        messageInputRef.current?.blur();
-      }
+      dismissKeyboardOnSubmit();
       clearDraft("sent");
       setUserInput("");
       setSelectedAttachments([]);
@@ -1099,8 +1111,8 @@ export function Composer({
       return true;
     },
     [
-      blurOnSubmit,
       clearDraft,
+      dismissKeyboardOnSubmit,
       onClientSlashCommand,
       resetSuppression,
       setSelectedAttachments,
@@ -1327,15 +1339,13 @@ export function Composer({
         return;
       }
 
-      if (blurOnSubmit) {
-        messageInputRef.current?.blur();
-      }
+      dismissKeyboardOnSubmit();
       void sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
     },
     [
       attachments,
-      blurOnSubmit,
       buildOutgoingAttachments,
+      dismissKeyboardOnSubmit,
       runClientSlashCommand,
       sendMessageWithContent,
     ],
@@ -1579,9 +1589,16 @@ export function Composer({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
+      dismissKeyboardOnSubmit();
       queueMessage(payload.text, outgoingAttachments);
     },
-    [attachments, buildOutgoingAttachments, queueMessage, runClientSlashCommand],
+    [
+      attachments,
+      buildOutgoingAttachments,
+      dismissKeyboardOnSubmit,
+      queueMessage,
+      runClientSlashCommand,
+    ],
   );
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
@@ -2065,13 +2082,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
     gap: theme.spacing[3],
   },
   cancelButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.palette.red[600],
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: theme.spacing[1],
   },
   rightControls: {
     flexDirection: "row",

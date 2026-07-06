@@ -1,0 +1,31 @@
+diff --git a/node_modules/react-native-markdown-display/src/lib/AstRenderer.js b/node_modules/react-native-markdown-display/src/lib/AstRenderer.js
+index 608e945..925ef9d 100644
+--- a/node_modules/react-native-markdown-display/src/lib/AstRenderer.js
++++ b/node_modules/react-native-markdown-display/src/lib/AstRenderer.js
+@@ -180,7 +180,9 @@ export default class AstRenderer {
+    * @return {*}
+    */
+   render = (nodes) => {
+-    const root = {type: 'body', key: getUniqueID(), children: nodes};
++    // Stable root key: a fresh key per render() remounts the entire body
++    // subtree on every re-parse even when child node keys are stable.
++    const root = {type: 'body', key: 'rnmd_root', children: nodes};
+     return this.renderNode(root, [], true);
+   };
+ }
+diff --git a/node_modules/react-native-markdown-display/src/lib/util/tokensToAST.js b/node_modules/react-native-markdown-display/src/lib/util/tokensToAST.js
+index b0ed265..e5f5547 100644
+--- a/node_modules/react-native-markdown-display/src/lib/util/tokensToAST.js
++++ b/node_modules/react-native-markdown-display/src/lib/util/tokensToAST.js
+@@ -27,7 +27,10 @@ function createNode(token, tokenIndex) {
+     sourceMeta: token.meta,
+     block: token.block,
+     markup: token.markup,
+-    key: getUniqueID() + '_' + type,
++    // Position-stable key: getUniqueID() mints new keys on every parse, which
++    // remounts the whole rendered subtree whenever streamed markdown re-parses.
++    // tokenIndex is unique among siblings created from one token array.
++    key: 'rnmd_' + tokenIndex + '_' + type,
+     content,
+     tokenIndex,
+     index: 0,

@@ -1879,8 +1879,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   }, [client, fileLinkActions, markdownParser, serverId, workspaceRoot]);
 
   const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
+  // Index-only keys: block boundaries are append-only while a message streams
+  // (splitMarkdownBlocks is a forward scan, so appended text never reshapes
+  // earlier blocks). A content-derived key churns on every flush while the
+  // tail block streams in, remounting its native views each time.
   const keyedBlocks = useMemo(
-    () => blocks.map((block, index) => ({ key: `${index}:${block.slice(0, 32)}`, block })),
+    () => blocks.map((block, index) => ({ key: String(index), block })),
     [blocks],
   );
 

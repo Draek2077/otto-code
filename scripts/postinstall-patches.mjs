@@ -14,6 +14,10 @@ const patchedPackages = [
     patchPrefix: "react-native-gesture-handler+",
   },
   {
+    nodeModulesPath: "node_modules/react-native-markdown-display",
+    patchPrefix: "react-native-markdown-display+",
+  },
+  {
     nodeModulesPath: "node_modules/react-native-unistyles",
     patchPrefix: "react-native-unistyles+",
   },
