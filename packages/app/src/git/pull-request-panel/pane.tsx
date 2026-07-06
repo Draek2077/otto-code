@@ -49,7 +49,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { type Theme, useIconSize } from "@/styles/theme";
 import { PrActivitySkeleton } from "./activity-skeleton";
 import {
   collapseActivity,
@@ -201,6 +201,7 @@ export function PullRequestPane({
   workspaceAttachmentScopeKey?: string;
 }) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const toast = useToast();
   const daemonClient = useHostRuntimeClient(serverId);
   const canFetchGitHubCheckDetails = useSessionStore(
@@ -461,12 +462,9 @@ export function PullRequestPane({
             >
               <View style={styles.refreshIcon}>
                 {isRefreshing ? (
-                  <ThemedLoadingSpinner
-                    size={ICON_SIZE.sm}
-                    uniProps={foregroundMutedColorMapping}
-                  />
+                  <ThemedLoadingSpinner size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
                 ) : (
-                  <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+                  <ThemedRotateCw size={iconSize.sm} uniProps={foregroundMutedColorMapping} />
                 )}
               </View>
             </Pressable>
@@ -1352,8 +1350,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   refreshIcon: {
-    width: ICON_SIZE.md,
-    height: ICON_SIZE.md,
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Settings2 } from "@/components/icons/material-icons";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +17,12 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 
 const ThemedSettings2 = withUnistyles(Settings2);
-const filterColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// `size` is folded into uniProps (not a static prop) so it repaints from the live,
+// compact-doubled `theme.iconSize` the same way `color` already does.
+const filterColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 const GROUP_MODE_ITEMS: Array<{ value: SidebarGroupMode; label: string }> = [
   { value: "project", label: "Project" },
@@ -79,7 +84,7 @@ export function SidebarDisplayPreferencesMenu() {
         accessibilityLabel="Display preferences"
         testID="sidebar-display-preferences-menu"
       >
-        <ThemedSettings2 size={14} uniProps={filterColorMapping} />
+        <ThemedSettings2 uniProps={filterColorMapping} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={220} testID="sidebar-display-preferences-content">
         <View style={styles.menuHeader}>
@@ -196,8 +201,8 @@ function HostFilterItem({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
@@ -210,11 +215,18 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
   },
   menuHeaderLabel: {
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },
   optionLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
 }));

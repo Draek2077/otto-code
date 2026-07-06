@@ -3,10 +3,13 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Import as ImportIcon } from "@/components/icons/material-icons";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 
 const ThemedImportIcon = withUnistyles(ImportIcon);
-const iconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const iconColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 interface ComposerImportPillProps {
   onPress: () => void;
@@ -31,7 +34,7 @@ export function ComposerImportPill({ onPress, disabled = false }: ComposerImport
         onHoverOut={handleHoverOut}
         style={bodyStyle}
       >
-        <ThemedImportIcon size={14} uniProps={iconColorMapping} />
+        <ThemedImportIcon uniProps={iconColorMapping} />
         <Text style={styles.label} numberOfLines={1}>
           {t("importSession.title")}
         </Text>
@@ -47,9 +50,9 @@ const styles = StyleSheet.create((theme) => ({
   body: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    gap: compactUp(theme.spacing[2]),
+    paddingHorizontal: compactUp(theme.spacing[3]),
+    paddingVertical: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
@@ -60,6 +63,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
 }));

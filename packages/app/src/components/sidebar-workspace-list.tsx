@@ -33,7 +33,7 @@ import {
   type ActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { compactUp, type Theme } from "@/styles/theme";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import { DiffStat } from "@/components/diff-stat";
@@ -156,6 +156,16 @@ const foregroundColorMapping = (theme: Theme) => ({
 });
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+});
+// `size` folded into uniProps (not a static prop) so the per-project "+"/kebab
+// trigger icons repaint from the live, compact-doubled `theme.iconSize`.
+const foregroundSmMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.sm,
+});
+const foregroundMutedSmMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
 });
 const redColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.red[500],
@@ -538,12 +548,7 @@ const openInNewWindowLeadingIcon = (
 );
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
-  return (
-    <ThemedMoreVertical
-      size={14}
-      uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
-    />
-  );
+  return <ThemedMoreVertical uniProps={hovered ? foregroundSmMapping : foregroundMutedSmMapping} />;
 }
 
 function ProjectKebabMenu({
@@ -851,10 +856,7 @@ function NewWorktreeButton({
                 <ThemedActivityIndicator size={14} uniProps={foregroundMutedColorMapping} />
               ) : (
                 <ThemedPlus
-                  size={15}
-                  uniProps={
-                    hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
-                  }
+                  uniProps={hovered || pressed ? foregroundSmMapping : foregroundMutedSmMapping}
                 />
               )
             }
@@ -2616,7 +2618,9 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   projectIconFallbackText: {
-    fontSize: 9,
+    // Raw literal (no matching `theme.fontSize` token this small) — scaled explicitly
+    // alongside `projectLeadingVisualSlot`'s `theme.iconSize.md` box doubling.
+    fontSize: compactUp(9),
   },
   projectTitle: {
     color: theme.colors.foreground,
@@ -2642,8 +2646,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   projectIconActionButton: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -2662,8 +2666,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectKebabButton: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -2676,8 +2680,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   projectTrailingControlSlot: {
-    width: 24,
-    height: 24,
+    width: compactUp(24),
+    height: compactUp(24),
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,

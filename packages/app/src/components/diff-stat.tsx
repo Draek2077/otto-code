@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { View, Text, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { compactUp } from "@/styles/theme";
 
 interface DiffStatProps {
   additions: number;
@@ -31,8 +32,8 @@ const styles = StyleSheet.create((theme) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    height: 20,
-    gap: 4,
+    height: compactUp(20),
+    gap: compactUp(4),
     flexShrink: 0,
   },
   additions: {

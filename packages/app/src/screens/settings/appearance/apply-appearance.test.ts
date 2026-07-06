@@ -34,6 +34,7 @@ interface FakeTheme {
   lineHeight: { diff: number };
   layout: { chatMaxWidth: number | undefined };
   colors: { foreground: string; syntax: Record<string, string> };
+  iconSize: { xs: number; sm: number; md: number; lg: number };
 }
 
 function makeFakeTheme(): FakeTheme {
@@ -54,6 +55,7 @@ function makeFakeTheme(): FakeTheme {
     lineHeight: { diff: 22 },
     layout: { chatMaxWidth: 820 },
     colors: { foreground: "#fff", syntax: {} },
+    iconSize: { xs: 12, sm: 14, md: 16, lg: 20 },
   };
 }
 
@@ -65,6 +67,7 @@ function makeInput(overrides: Partial<AppearanceInput> = {}): AppearanceInput {
     codeFontSize: 12,
     syntaxTheme: "default",
     chatWidth: "default",
+    isCompact: false,
     ...overrides,
   };
 }
@@ -178,5 +181,57 @@ describe("applyAppearance", () => {
     applyAppearance(makeInput({ chatWidth }));
 
     expect(runCapturedUpdater().layout.chatMaxWidth).toBe(expected);
+  });
+
+  it("leaves iconSize at authored values when not compact", () => {
+    applyAppearance(makeInput({ isCompact: false }));
+
+    expect(runCapturedUpdater().iconSize).toEqual({ xs: 12, sm: 14, md: 16, lg: 20 });
+  });
+
+  it("doubles every iconSize token when compact", () => {
+    applyAppearance(makeInput({ isCompact: true }));
+
+    expect(runCapturedUpdater().iconSize).toEqual({ xs: 24, sm: 28, md: 32, lg: 40 });
+  });
+
+  it("bumps the interface font size by 2px before scaling the ramp when compact", () => {
+    applyAppearance(makeInput({ uiFontSize: 14, isCompact: true }));
+
+    // effective uiSize = 14 + 2 = 16 -> r = 1.0 -> ramp at authored values.
+    expect(runCapturedUpdater().fontSize.base).toBe(16);
+  });
+
+  it("bumps a non-default interface font size by 2px when compact, preserving ratios", () => {
+    applyAppearance(makeInput({ uiFontSize: 16, isCompact: true }));
+
+    // effective uiSize = 16 + 2 = 18 -> r = 1.125
+    const { fontSize } = runCapturedUpdater();
+    expect(fontSize.base).toBe(18); // round(16 * 1.125)
+    expect(fontSize.sm).toBe(16); // round(14 * 1.125) = round(15.75)
+  });
+
+  it("does not bump the interface font size when not compact", () => {
+    applyAppearance(makeInput({ uiFontSize: 16, isCompact: false }));
+
+    expect(runCapturedUpdater().fontSize.base).toBe(16);
+  });
+
+  it("bumps the code (mono) font size by 2px when compact", () => {
+    applyAppearance(makeInput({ codeFontSize: 12, isCompact: true }));
+
+    expect(runCapturedUpdater().fontSize.code).toBe(14);
+  });
+
+  it("does not bump the code (mono) font size when not compact", () => {
+    applyAppearance(makeInput({ codeFontSize: 12, isCompact: false }));
+
+    expect(runCapturedUpdater().fontSize.code).toBe(12);
+  });
+
+  it("couples lineHeight.diff to the compact-bumped code font size", () => {
+    applyAppearance(makeInput({ codeFontSize: 12, isCompact: true }));
+
+    expect(runCapturedUpdater().lineHeight.diff).toBe(Math.round(14 * 1.5)); // 21
   });
 });

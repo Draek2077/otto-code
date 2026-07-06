@@ -54,10 +54,9 @@ import {
 } from "@/utils/project-config-form";
 import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
+import { useIconSize } from "@/styles/theme";
 
 const SCRIPT_SERVICE_TYPE = "service";
-
-const ICON_SIZE = 14;
 
 interface MetadataPromptField {
   titleKey: string;
@@ -445,6 +444,7 @@ function ProjectConfigForm({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const iconSize = useIconSize();
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
@@ -605,10 +605,10 @@ function ProjectConfigForm({
         accessibilityLabel={t("settings.project.scripts.actions.add")}
         testID="scripts-add-button"
       >
-        <Plus size={ICON_SIZE} color={styles.iconColor.color} />
+        <Plus size={iconSize.sm} color={styles.iconColor.color} />
       </Pressable>
     ),
-    [handleAddScript, t],
+    [handleAddScript, t, iconSize.sm],
   );
 
   const setupDocsLink = useMemo(
@@ -805,6 +805,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const iconSize = useIconSize();
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(project.projectCustomName ?? "");
 
@@ -859,7 +860,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
           hitSlop={8}
           style={styles.nameEditorIconButton}
         >
-          <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
+          <Pencil size={iconSize.sm} color={styles.iconColor.color} />
         </Pressable>
         {project.projectCustomName ? (
           <Pressable
@@ -900,7 +901,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
         hitSlop={8}
         style={styles.nameEditorIconButton}
       >
-        <Check size={ICON_SIZE} color={styles.iconColor.color} />
+        <Check size={iconSize.sm} color={styles.iconColor.color} />
       </Pressable>
       <Pressable
         testID="project-name-cancel-button"
@@ -910,7 +911,7 @@ function ProjectNameEditor({ project, client }: ProjectNameEditorProps) {
         hitSlop={8}
         style={styles.nameEditorIconButton}
       >
-        <X size={ICON_SIZE} color={styles.iconColor.color} />
+        <X size={iconSize.sm} color={styles.iconColor.color} />
       </Pressable>
     </View>
   );
@@ -966,6 +967,7 @@ interface HostPickerProps {
 
 function HostPicker({ hosts, selectedHost, onSelectHost }: HostPickerProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View | null>(null);
   const hostOptions = useMemo(
@@ -999,7 +1001,7 @@ function HostPicker({ hosts, selectedHost, onSelectHost }: HostPickerProps) {
         <Text style={styles.hostName} numberOfLines={1}>
           {selectedHost.serverName}
         </Text>
-        <ChevronDown size={ICON_SIZE} color={styles.chevronColor.color} />
+        <ChevronDown size={iconSize.sm} color={styles.chevronColor.color} />
       </Pressable>
     </SharedHostPicker>
   );
@@ -1042,6 +1044,7 @@ interface ScriptRowProps {
 
 function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
   const rowStyle = isFirst ? styles.scriptRow : styles.scriptRowWithBorder;
@@ -1062,7 +1065,7 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
           testID={`script-row-menu-${script.id}`}
           style={styles.scriptKebab}
         >
-          <MoreVertical size={ICON_SIZE} color={styles.chevronColor.color} />
+          <MoreVertical size={iconSize.sm} color={styles.chevronColor.color} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" minWidth={160}>
           <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>

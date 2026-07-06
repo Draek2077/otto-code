@@ -32,7 +32,6 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
-  ICON_SIZE,
   THEME_SWATCHES,
   type DarkThemeName,
   type LightThemeName,
@@ -45,13 +44,17 @@ import { AppearancePreview } from "./appearance-preview";
 
 // ---------------------------------------------------------------------------
 // Theme-reactive leaf icons (withUnistyles + uniProps color mapping — no
-// useUnistyles). Icon sizes read the static ICON_SIZE token; the appearance
-// feature does not scale icons.
+// useUnistyles). `size` is folded into the mapping (not a static prop) so it
+// repaints from the live, compact-doubled `theme.iconSize` the same way `color`
+// already does.
 // ---------------------------------------------------------------------------
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 function getThemeLabel(t: TFunction, value: ThemeVariantName): string {
   const labelKeys: Record<ThemeVariantName, string> = {
@@ -216,7 +219,7 @@ function ThemeRow({ list, value, onChange }: ThemeRowProps) {
         >
           <ThemeSwatch color={THEME_SWATCHES[value]} />
           <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+          <ThemedChevronDown uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
           {list.map((themeValue) => (
@@ -386,7 +389,7 @@ function SyntaxRow({ value, onChange }: SyntaxRowProps) {
           })}
         >
           <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />
+          <ThemedChevronDown uniProps={mutedColorMapping} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" align="end" width={200}>
           {SYNTAX_THEME_OPTIONS.map((option) => (
@@ -770,9 +773,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   swatch: {
-    width: ICON_SIZE.md,
-    height: ICON_SIZE.md,
-    borderRadius: ICON_SIZE.md / 2,
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
+    borderRadius: theme.iconSize.md / 2,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
   },

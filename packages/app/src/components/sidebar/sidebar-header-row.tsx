@@ -3,13 +3,20 @@ import { Pressable, Text, View, type PressableStateCallbackType } from "react-na
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { IconComponent } from "@/components/icons/material-icons";
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
-import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// `size` is folded into uniProps (not a static prop) so it repaints from the live,
+// compact-doubled `theme.iconSize` the same way `color` already does.
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.sm,
+});
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 type SidebarHeaderRowVariant = "header" | "compact";
 
@@ -64,7 +71,6 @@ export function SidebarHeaderRow({
       return (
         <>
           <ThemedIcon
-            size={ICON_SIZE.sm}
             uniProps={isHighlighted ? foregroundColorMapping : foregroundMutedColorMapping}
           />
           <SidebarHeaderRowLabel label={label} isHighlighted={isHighlighted} />
@@ -149,7 +155,11 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   label: {
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },

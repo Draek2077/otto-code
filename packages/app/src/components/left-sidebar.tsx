@@ -74,6 +74,7 @@ import {
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { compactUp } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -1042,7 +1043,7 @@ function WorkspacesSectionHeader() {
             >
               {({ hovered, pressed }) => (
                 <Search
-                  size={14}
+                  size={theme.iconSize.sm}
                   color={
                     hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
                   }
@@ -1119,7 +1120,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacesSectionTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
   },
   workspacesSectionActions: {
@@ -1128,8 +1133,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   workspacesHeaderIconButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,

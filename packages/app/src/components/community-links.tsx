@@ -6,11 +6,24 @@ import { Button } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { DiscordIcon } from "@/components/icons/discord-icon";
 import { openExternalUrl } from "@/utils/open-external-url";
-
-const renderGitHubIcon = (color: string) => <GitHubIcon color={color} size={14} />;
-const renderDiscordIcon = (color: string) => <DiscordIcon color={color} size={14} />;
+import { useIconSize } from "@/styles/theme";
 
 export function CommunityLinks() {
+  const iconSize = useIconSize();
+
+  const renderGitHubIcon = useCallback(
+    (color: string) => <GitHubIcon color={color} size={iconSize.sm} />,
+    [iconSize.sm],
+  );
+  const renderHeartIcon = useCallback(
+    (color: string) => <Heart color={color} size={iconSize.sm} />,
+    [iconSize.sm],
+  );
+  const renderDiscordIcon = useCallback(
+    (color: string) => <DiscordIcon color={color} size={iconSize.sm} />,
+    [iconSize.sm],
+  );
+
   const handleOpenGitHub = useCallback(() => {
     void openExternalUrl("https://github.com/Draek2077/otto-code");
   }, []);
@@ -28,7 +41,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={renderGitHubIcon}
+        renderLeftIcon={renderGitHubIcon}
         onPress={handleOpenGitHub}
         testID="community-links-github-star"
       >
@@ -37,7 +50,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={Heart}
+        renderLeftIcon={renderHeartIcon}
         onPress={handleOpenSponsor}
         testID="community-links-sponsor"
       >
@@ -46,7 +59,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={renderDiscordIcon}
+        renderLeftIcon={renderDiscordIcon}
         onPress={handleOpenDiscord}
         testID="community-links-discord"
       >

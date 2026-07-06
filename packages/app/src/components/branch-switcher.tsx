@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import type { Theme } from "@/styles/theme";
+import { useIconSize, type Theme } from "@/styles/theme";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
@@ -35,6 +35,7 @@ export function BranchSwitcher({
   testID = "workspace-header-branch-switcher",
 }: BranchSwitcherProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -64,8 +65,8 @@ export function BranchSwitcher({
   );
 
   const branchLeadingSlot = useMemo(
-    () => <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />,
-    [],
+    () => <ThemedGitBranch size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+    [iconSize.sm],
   );
 
   const renderBranchOption = useCallback<NonNullable<ComboboxProps["renderOption"]>>(
@@ -94,11 +95,11 @@ export function BranchSwitcher({
         accessibilityRole="button"
         accessibilityLabel={t("branchSwitcher.currentBranch", { branchName: currentBranchName })}
       >
-        <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedGitBranch size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.branchLabel} numberOfLines={1}>
           {currentBranchName}
         </Text>
-        <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
       </Pressable>
       <Combobox
         options={branchOptions}
@@ -141,7 +142,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   branchLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,

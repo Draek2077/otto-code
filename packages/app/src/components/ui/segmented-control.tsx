@@ -194,10 +194,17 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   labelSm: {
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   labelMd: {
-    fontSize: theme.fontSize.base,
+    fontSize: {
+      xs: theme.fontSize.base + 2,
+      md: theme.fontSize.base,
+    },
   },
   labelSelected: {
     color: theme.colors.foreground,

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { PanelLeft } from "@/components/icons/material-icons";
+import { compactUp } from "@/styles/theme";
 import { ScreenHeader } from "./screen-header";
 import { ScreenTitle } from "./screen-title";
 import { HeaderToggleButton } from "./header-toggle-button";
@@ -111,17 +112,17 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   mobileMenuIcon: {
-    width: MOBILE_MENU_LINE_WIDTH,
-    height: 12,
+    width: compactUp(MOBILE_MENU_LINE_WIDTH),
+    height: compactUp(12),
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
   mobileMenuLine: {
-    width: MOBILE_MENU_LINE_WIDTH,
-    height: MOBILE_MENU_LINE_HEIGHT,
+    width: compactUp(MOBILE_MENU_LINE_WIDTH),
+    height: compactUp(MOBILE_MENU_LINE_HEIGHT),
     borderRadius: theme.borderRadius.full,
   },
   mobileMenuLineShort: {
-    width: MOBILE_MENU_LINE_SHORT_WIDTH,
+    width: compactUp(MOBILE_MENU_LINE_SHORT_WIDTH),
   },
 }));

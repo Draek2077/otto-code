@@ -38,6 +38,13 @@ const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// Folds the compact-aware icon size into the mapping — `uniProps` mappings read
+// the live theme, so this stays reactive to the mobile icon-doubling patch, unlike
+// a plain `size={14}` literal.
+const foregroundMutedSmMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 const syncedLoaderColorMapping = (theme: Theme) => ({
   color:
@@ -244,7 +251,7 @@ function WorkspaceStatusIndicator({
       : DEFAULT_STATUS_DOT_OFFSET;
   return (
     <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
-      <KindIcon size={14} uniProps={foregroundMutedColorMapping} />
+      <KindIcon uniProps={foregroundMutedSmMapping} />
       {dotColorStyle ? (
         <StatusDotOverlay
           dotColorStyle={dotColorStyle}
@@ -532,7 +539,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceBranchText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: "400",
     lineHeight: 20,
     opacity: 0.76,

@@ -58,7 +58,7 @@ import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { formatLatency } from "@/utils/latency";
-import { ICON_SIZE } from "@/styles/theme";
+import { useIconSize } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
@@ -84,13 +84,23 @@ function DynamicProviderIcon({ iconKey, size, color = "" }: DynamicProviderIconP
 const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+// These two module-level icon consts can't call `useIconSize()` (not components), so
+// `size` is folded into a dedicated mapping instead — repaints from the live,
+// compact-doubled `theme.iconSize` the same way `color` already does.
+const mutedIconSmMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
+const destructiveIconSmMapping = (theme: Theme) => ({
+  color: theme.colors.destructive,
+  size: theme.iconSize.sm,
+});
 
-const moveUpIcon = <ThemedArrowUp size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const moveDownIcon = <ThemedArrowDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const editProfileIcon = <ThemedProfilePencil size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
-const removeProfileIcon = <ThemedTrash2 size={ICON_SIZE.sm} uniProps={destructiveColorMapping} />;
-const addProfileIcon = <ThemedPlus size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+const moveUpIcon = <ThemedArrowUp uniProps={mutedIconSmMapping} />;
+const moveDownIcon = <ThemedArrowDown uniProps={mutedIconSmMapping} />;
+const editProfileIcon = <ThemedProfilePencil uniProps={mutedIconSmMapping} />;
+const removeProfileIcon = <ThemedTrash2 uniProps={destructiveIconSmMapping} />;
+const addProfileIcon = <ThemedPlus uniProps={mutedIconSmMapping} />;
 
 function formatHostConnectionLabel(connection: HostConnection, t: TFunction): string {
   if (connection.type === "relay") {
@@ -1409,6 +1419,7 @@ function TerminalProfileRow({
   onMoveDown,
 }: TerminalProfileRowProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
 
   const handleEdit = useCallback(() => onEdit(profile.id), [onEdit, profile.id]);
   const handleRemove = useCallback(() => onRemove(profile.id), [onRemove, profile.id]);
@@ -1433,11 +1444,11 @@ function TerminalProfileRow({
         {icon ? (
           <ThemedDynamicProviderIcon
             iconKey={icon}
-            size={ICON_SIZE.md}
+            size={iconSize.md}
             uniProps={mutedColorMapping}
           />
         ) : (
-          <ThemedProfileSquareTerminal size={ICON_SIZE.md} uniProps={mutedColorMapping} />
+          <ThemedProfileSquareTerminal size={iconSize.md} uniProps={mutedColorMapping} />
         )}
       </View>
       <View style={settingsStyles.rowContent}>
@@ -1741,6 +1752,7 @@ const terminalProfileStyles = StyleSheet.create((theme) => ({
     width: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
+    paddingLeft: 5,
   },
   rowActions: {
     flexDirection: "row",
@@ -1796,7 +1808,11 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
   },
   statusText: {
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
   },
   badgePill: {
@@ -1812,7 +1828,10 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 200,
   },
   badgeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,

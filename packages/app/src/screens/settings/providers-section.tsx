@@ -14,6 +14,7 @@ import {
 } from "@/hooks/use-acp-provider-catalog";
 import { ProviderCatalogList } from "@/components/provider-catalog-list";
 import { getProviderIcon } from "@/components/provider-icons";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -113,6 +114,7 @@ function ProviderRow({
 }: ProviderRowProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const isCompact = useIsCompactFormFactor();
   const ProviderIcon = getProviderIcon(def.id);
   const providerError =
     enabled &&
@@ -160,12 +162,14 @@ function ProviderRow({
             />
             <ProviderIcon size={theme.iconSize.md} color={theme.colors.foreground} />
             <View style={styles.textColumn}>
-              <View style={styles.titleRow}>
+              <View style={isCompact ? styles.titleRowStacked : styles.titleRow}>
                 <Text style={settingsStyles.rowTitle} numberOfLines={1}>
                   {def.label}
                 </Text>
-                <Text style={styles.separator}>·</Text>
-                <StatusIndicator status={providerStatus} />
+                <View style={styles.statusGroup}>
+                  {isCompact ? null : <Text style={styles.separator}>·</Text>}
+                  <StatusIndicator status={providerStatus} />
+                </View>
               </View>
               {providerError ? (
                 <Text style={styles.errorText} numberOfLines={3}>
@@ -381,6 +385,16 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  titleRowStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: theme.spacing[1],
+  },
+  statusGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],

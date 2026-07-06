@@ -691,6 +691,7 @@ function MobileGestureWrapper({
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
+  const isCompactLayout = useIsCompactFormFactor();
 
   // Apply theme setting on mount and when it changes. Keyed on all three
   // fields together (not split into separate effects) so the mirror repaint
@@ -706,7 +707,8 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch
-  // all registered theme keys, so the active key is always current.
+  // all registered theme keys, so the active key is always current. Also re-runs on
+  // compact-layout changes so fontSize/iconSize repaint when crossing the breakpoint.
   useEffect(() => {
     if (settingsLoading) return;
     applyAppearance({
@@ -716,6 +718,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       codeFontSize: settings.codeFontSize,
       syntaxTheme: settings.syntaxTheme,
       chatWidth: settings.chatWidth,
+      isCompact: isCompactLayout,
     });
   }, [
     settingsLoading,
@@ -725,6 +728,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     settings.codeFontSize,
     settings.chatWidth,
     settings.syntaxTheme,
+    isCompactLayout,
   ]);
 
   return (

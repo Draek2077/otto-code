@@ -146,13 +146,13 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <IconComponent size={20} color={theme.colors.foreground} />
+          <IconComponent size={theme.iconSize.lg} color={theme.colors.foreground} />
           <Text style={styles.headerTitle} numberOfLines={1}>
             {displayName}
           </Text>
         </View>
         <Pressable onPress={onClose} style={styles.closeButton}>
-          <X size={20} color={theme.colors.foregroundMuted} />
+          <X size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
         </Pressable>
       </View>
 

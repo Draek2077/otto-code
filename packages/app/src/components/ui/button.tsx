@@ -17,46 +17,41 @@ import type {
   ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { compactUp } from "@/styles/theme";
 
 type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive";
 type ButtonSize = "xs" | "sm" | "md" | "lg";
 
-type LeftIcon =
-  | ReactElement
-  | ComponentType<{ color: string; size: number }>
-  | ((color: string) => ReactElement)
-  | null;
-
-const ICON_SIZE: Record<ButtonSize, number> = { xs: 12, sm: 14, md: 16, lg: 20 };
+type LeftIcon = ReactElement | ComponentType<{ color: string; size: number }> | null;
 
 const styles = StyleSheet.create((theme) => ({
   base: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing[2],
+    gap: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: "transparent",
   },
   md: {
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
+    paddingVertical: compactUp(theme.spacing[3]),
+    paddingHorizontal: compactUp(theme.spacing[4]),
   },
   xs: {
-    minHeight: 28,
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[3],
+    minHeight: compactUp(28),
+    paddingVertical: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[3]),
     borderRadius: theme.borderRadius.md,
   },
   sm: {
-    paddingVertical: theme.spacing[1.5],
-    paddingHorizontal: theme.spacing[3],
+    paddingVertical: compactUp(theme.spacing[1.5]),
+    paddingHorizontal: compactUp(theme.spacing[3]),
     borderRadius: theme.borderRadius.md,
   },
   lg: {
-    paddingVertical: theme.spacing[4],
-    paddingHorizontal: theme.spacing[6],
+    paddingVertical: compactUp(theme.spacing[4]),
+    paddingHorizontal: compactUp(theme.spacing[6]),
     borderRadius: theme.borderRadius.xl,
   },
   default: {
@@ -87,11 +82,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   text: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
   },
   textXs: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   textDefault: {
     color: theme.colors.accentForeground,
@@ -112,6 +114,7 @@ export function Button({
   variant = "secondary",
   size = "md",
   leftIcon,
+  renderLeftIcon,
   trailing,
   style,
   textStyle,
@@ -124,6 +127,7 @@ export function Button({
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
+    renderLeftIcon?: (color: string) => ReactElement;
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
@@ -211,6 +215,12 @@ export function Button({
       );
     }
 
+    const color = resolveIconColor();
+
+    if (renderLeftIcon) {
+      return <View>{renderLeftIcon(color)}</View>;
+    }
+
     if (!leftIcon) return null;
 
     // Pre-rendered element — pass through
@@ -218,20 +228,9 @@ export function Button({
       return <View>{leftIcon}</View>;
     }
 
-    const color = resolveIconColor();
-    const iconSize = ICON_SIZE[size];
-
-    // Render function
-    if (
-      typeof leftIcon === "function" &&
-      !leftIcon.prototype?.isReactComponent &&
-      leftIcon.length > 0
-    ) {
-      return <View>{(leftIcon as (color: string) => ReactElement)(color)}</View>;
-    }
-
     // Component type
     const Icon = leftIcon as ComponentType<{ color: string; size: number }>;
+    const iconSize = theme.iconSize[size];
     return (
       <View>
         <Icon color={color} size={iconSize} />

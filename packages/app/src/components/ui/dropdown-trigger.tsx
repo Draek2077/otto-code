@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown } from "@/components/icons/material-icons";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import { DropdownMenuTrigger, type DropdownMenuTriggerProps } from "@/components/ui/dropdown-menu";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
@@ -12,8 +12,11 @@ interface DropdownTriggerProps extends Omit<DropdownMenuTriggerProps, "children"
   chevron?: ReactNode | null;
 }
 
+// `size` is folded into uniProps (not a static prop) so it repaints from the live,
+// compact-doubled `theme.iconSize` the same way `color` already does.
 const chevronColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
 });
 
 export function DropdownTrigger({
@@ -28,7 +31,7 @@ export function DropdownTrigger({
         {chevron !== null &&
           (chevron ?? (
             <View style={styles.chevronContainer}>
-              <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />
+              <ThemedChevronDown uniProps={chevronColorMapping} />
             </View>
           ))}
       </View>

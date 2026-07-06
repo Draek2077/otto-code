@@ -204,7 +204,7 @@ function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: H
       testID={testID}
       style={pressableStyle}
     >
-      <Icon size={20} color={iconColor} />
+      <Icon size={theme.iconSize.lg} color={iconColor} />
       <View style={styles.tileText}>
         <Text style={styles.tileTitle}>{title}</Text>
         <Text style={styles.tileDescription}>{description}</Text>

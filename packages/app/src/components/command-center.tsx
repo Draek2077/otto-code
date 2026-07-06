@@ -617,7 +617,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingTop: 0,
     paddingBottom: theme.spacing[2],
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   sectionDivider: {
     height: 1,

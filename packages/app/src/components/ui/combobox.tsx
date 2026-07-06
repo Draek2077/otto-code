@@ -33,6 +33,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, File, Folder, Search } from "@/components/icons/material-icons";
+import { compactUp } from "@/styles/theme";
 import {
   flip,
   offset as floatingOffset,
@@ -188,7 +189,7 @@ export function SearchInput({
 
   return (
     <View style={styles.searchInputContainer}>
-      <Search size={16} color={theme.colors.foregroundMuted} />
+      <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       {useBottomSheetInput ? (
         <AdaptiveTextInput
           ref={inputRef}
@@ -255,13 +256,13 @@ export function ComboboxItem({
   } else if (kind === "directory") {
     leadingContent = (
       <View style={styles.comboboxItemLeadingSlot}>
-        <Folder size={16} color={theme.colors.foregroundMuted} />
+        <Folder size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </View>
     );
   } else if (kind === "file") {
     leadingContent = (
       <View style={styles.comboboxItemLeadingSlot}>
-        <File size={16} color={theme.colors.foregroundMuted} />
+        <File size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </View>
     );
   }
@@ -298,7 +299,9 @@ export function ComboboxItem({
       {selected || trailingSlot ? (
         <View style={styles.comboboxItemTrailingContainer}>
           <View style={styles.comboboxItemTrailingSlot}>
-            {selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null}
+            {selected ? (
+              <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            ) : null}
           </View>
           {trailingSlot}
         </View>
@@ -1610,7 +1613,10 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     paddingVertical: theme.spacing[3],
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   comboboxItem: {
     flexDirection: "row",
@@ -1646,7 +1652,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.55,
   },
   comboboxItemTrailingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1666,17 +1672,25 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   comboboxItemLeadingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
   comboboxItemLabel: {
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale) — this
+    // list renders inside sheets/popovers that can hold onto stale sizing.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     color: theme.colors.foreground,
     flexShrink: 0,
   },
   comboboxItemDescription: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
