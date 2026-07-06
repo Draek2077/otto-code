@@ -114,6 +114,15 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const scrollToBottom = useCallback(
     (animated: boolean) => {
+      // While pinned at offset 0 the inverted FlatList keeps growing content
+      // anchored natively, so the sticky re-stick issued on every stream flush
+      // (~48ms) doesn't need a scroll command. Re-issuing scrollToOffset here
+      // aborts in-flight touch/momentum handling and restarts scroll state on
+      // every flush, which shows up as jitter and flashing while streaming.
+      if (!animated && scrollOffsetYRef.current <= 1) {
+        onNearBottomChange(true);
+        return;
+      }
       programmaticScrollEventBudgetRef.current = 3;
       flatListRef.current?.scrollToOffset({
         offset: 0,
