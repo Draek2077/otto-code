@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.1 - 2026-07-06
+
+### Added
+
+- New "Black tab background" option in Appearance settings paints the active chat tab and pane pure black, even in light mode
+
+### Improved
+
+- The composer toolbar keeps the mode selector and context usage ring inline at every screen size instead of dropping them below the input box
+- Composer toolbar buttons shrink together to stay usable on narrow screens instead of wrapping or clipping
+- Font size settings use a slider instead of typing a number
+- Reasoning effort shows a Brain icon in the composer toolbar
+- fast-agent provider updated to 0.9.2
+
+### Fixed
+
+- Clearing or resetting an agent no longer stops unrelated dev servers sharing the same port, which could crash the app
+- Toast notifications triggered from bottom sheets, like New Workspace, no longer crash the app
+- The working indicator animation no longer freezes when the OS has reduced motion enabled
+
 ## 0.4.0 - 2026-07-06
 
 ### Added
