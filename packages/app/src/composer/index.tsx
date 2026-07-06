@@ -41,6 +41,7 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
+import { useCachedContextWindowUsage } from "@/hooks/use-cached-context-window-usage";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -222,14 +223,9 @@ interface RenderContextWindowMeterArgs {
   serverId: string;
   agentId: string;
   provider: string | null;
-  pending: boolean;
 }
 
-function renderContextWindowMeter(args: RenderContextWindowMeterArgs): ReactElement | null {
-  const hasData = args.contextWindowMaxTokens !== null && args.contextWindowUsedTokens !== null;
-  if (!hasData && !args.pending) {
-    return null;
-  }
+function renderContextWindowMeter(args: RenderContextWindowMeterArgs): ReactElement {
   return (
     <ContextWindowMeter
       maxTokens={args.contextWindowMaxTokens}
@@ -238,7 +234,6 @@ function renderContextWindowMeter(args: RenderContextWindowMeterArgs): ReactElem
       serverId={args.serverId}
       agentId={args.agentId}
       provider={args.provider}
-      pending={args.pending}
     />
   );
 }
@@ -1677,33 +1672,34 @@ export function Composer({
     ],
   );
 
-  const { contextWindowMaxTokens, contextWindowUsedTokens } = resolveContextWindowValues(
+  const liveContextWindowValues = resolveContextWindowValues(
     agentState.contextWindowMaxTokens,
     agentState.contextWindowUsedTokens,
   );
 
-  const contextWindowPending =
-    agentState.status === "initializing" || agentState.status === "running";
+  const contextWindowUsage = useCachedContextWindowUsage(serverId, agentId, {
+    maxTokens: liveContextWindowValues.contextWindowMaxTokens,
+    usedTokens: liveContextWindowValues.contextWindowUsedTokens,
+    totalCostUsd: agentState.totalCostUsd,
+  });
 
   const contextWindowMeter = useMemo(
     () =>
       renderContextWindowMeter({
-        contextWindowMaxTokens,
-        contextWindowUsedTokens,
-        totalCostUsd: agentState.totalCostUsd,
+        contextWindowMaxTokens: contextWindowUsage.maxTokens,
+        contextWindowUsedTokens: contextWindowUsage.usedTokens,
+        totalCostUsd: contextWindowUsage.totalCostUsd,
         serverId,
         agentId,
         provider: agentState.provider,
-        pending: contextWindowPending,
       }),
     [
-      contextWindowMaxTokens,
-      contextWindowUsedTokens,
-      agentState.totalCostUsd,
+      contextWindowUsage.maxTokens,
+      contextWindowUsage.usedTokens,
+      contextWindowUsage.totalCostUsd,
       serverId,
       agentId,
       agentState.provider,
-      contextWindowPending,
     ],
   );
 
