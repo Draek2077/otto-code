@@ -315,6 +315,16 @@ Gotchas:
 - **Mounted parsed content uses `AppearanceStyleBoundary`.** Markdown, syntax-highlighted code, and tool-call detail bodies can contain memoized/custom renderer trees that do not naturally re-run when runtime-patched appearance tokens change. Wrap the parsed surface once with `packages/app/src/components/appearance-style-boundary.tsx`; do not add local "appearance key" props at each callsite.
 - **Dynamic font tokens stay widened.** `fontFamily`, `fontSize`, and `lineHeight` on `commonTheme` are annotated `string`/`number` (not narrowed by `as const`) so the updater's return assigns; the platform default stacks live in `DEFAULT_UI_FONT_STACK` / `DEFAULT_MONO_FONT_STACK`.
 
+## `ScopedTheme` Does Not Stick On Web
+
+`ScopedTheme` (used by the Black tab background setting to force the `black` theme inside chat panes) works by setting a registry-level "scoped theme" flag during the renders that pass through its marker children — styles registered in that window are computed against the scoped theme. That model breaks on web for any live subtree: when a deep child re-renders on its own (chat-stream updates, hover state, ...), its render never passes through the markers, `getClassName` recomputes with no scope, and the element's class flips back to the app theme. The scope silently unwinds; on first implementation the tab chip went black but the chat pane stayed app-themed.
+
+The web fix relies on how Unistyles themes work there: with the default `CSSVars` mode, every generated class references `var(--...)` and each registered theme's variables are emitted under `:root.<name>` in the `#unistyles-web` style tag. `components/black-chat-scope.web.tsx` wraps the pane in a `display: contents` DOM element carrying `.otto-black-chat-scope`, and `styles/black-chat-scope.ts` mirrors the generated `:root.black{...}` block verbatim under that class (re-synced by `applyColorScheme`/`applyAppearance` after every repaint). CSS cascading then wins regardless of re-renders. Copying the generated rule — instead of serializing the theme ourselves — guarantees the variable names match whatever the installed Unistyles version emits.
+
+`ScopedTheme` still wraps the subtree inside the DOM wrapper: `withUnistyles`/`uniProps` consumers (icon colors) resolve real values through React, not CSS vars, and they capture their scoped theme at mount — the two mechanisms cover each other's gaps. Native keeps plain `ScopedTheme`.
+
+If you scope another subtree to a named theme on web, reuse `BlackChatScope`'s pattern; do not reach for `ScopedTheme` alone.
+
 ## Patched: `uniProps` leaked to the DOM on web
 
 Upstream `withUnistyles` (v3.2.4) merges the wrapper's full props — including the `uniProps` function itself — into the props spread onto the wrapped component. On web that forwards `uniProps` all the way to a DOM element, and React logs ``React does not recognize the `uniProps` prop on a DOM element`` for every `uniProps` callsite on screen. Harmless on native (RN drops unknown props) but it floods the web console — including the console channel browser-based verification tooling reads.
