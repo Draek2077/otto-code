@@ -157,6 +157,33 @@ through two entry points that both call into the same `DevServerManager`:
 under an `ext:<port>` id) — that's internal wiring for the tab-binding
 behavior described above, not something a user interacts with directly.
 
+### External (`ext:`) servers and the bulk-stop rule
+
+A running server with an `ext:<port>` id was **not** spawned by the daemon —
+it's whatever process happens to be listening on a configured port, adopted
+by port probe. Stopping one resolves the port's owning PIDs and tree-kills
+them. That is safe only as a deliberate user action (the tab row's "Stop
+server" button), never as part of automatic cleanup: if the workspace is this
+repo itself, the `otto-dev` launch config claims port 8081, so the "external
+server" is the dev stack's own Metro — killing it takes down Electron
+(`concurrently --kill-others`) and, with `keepRunningAfterQuit` off, the
+daemon too, which presents as the whole app crashing. This actually happened
+via the `/clear` sweep in `agent-panel.tsx`, which stopped every running
+server for the cwd; it now filters with `isExternalPreviewServerId()`
+(exported from `@otto-code/protocol/messages` alongside
+`EXTERNAL_PREVIEW_SERVER_ID_PREFIX`). Any future path that stops preview
+servers in bulk must apply the same filter.
+
+The daemon also enforces this independently of client behavior. Bootstrap
+wires `DevServerManager.setProtectedPortsProvider()` with the daemon's own
+listen port plus the loopback origin ports of currently connected clients
+(`VoiceAssistantWebSocketServer.getConnectedClientOriginPorts()` — a
+connected client's origin port is the dev server hosting the UI itself).
+`stopExternal` refuses to stop an `ext:` server on a protected port with a
+clear error, and additionally skips `process.pid`/`process.ppid` if the port
+lookup ever resolves to the daemon's own process. Explicit "Stop server" on a
+genuinely third-party port still works.
+
 ## launch.json
 
 `.claude/launch.json`, resolved relative to the workspace's `cwd`

@@ -3526,6 +3526,16 @@ export const PreviewListConfigResponseSchema = z.object({
   }),
 });
 
+// Preview servers the daemon did not spawn (port-probed from launch.json, e.g.
+// a dev server the user started by hand) are addressed by an "ext:<port>" id.
+// Stopping one tree-kills whatever process owns the port, so bulk cleanup paths
+// must skip external servers and only explicit user action may stop them.
+export const EXTERNAL_PREVIEW_SERVER_ID_PREFIX = "ext:";
+
+export function isExternalPreviewServerId(serverId: string): boolean {
+  return serverId.startsWith(EXTERNAL_PREVIEW_SERVER_ID_PREFIX);
+}
+
 export const PreviewServerSummaryPayloadSchema = z.object({
   serverId: z.string(),
   name: z.string(),

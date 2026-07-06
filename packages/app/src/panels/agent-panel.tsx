@@ -1,4 +1,5 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { isExternalPreviewServerId } from "@otto-code/protocol/messages";
 import type { TFunction } from "i18next";
 import { SquarePen } from "@/components/icons/material-icons";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1440,13 +1441,21 @@ function ActiveAgentComposer({
         // instantly rather than keep running orphaned — not just close their
         // tabs. previewListConfig's runningServers is the source of truth for
         // "is a server running", since a server can outlive its bound tab.
+        // External ("ext:") servers are excluded: those are port-probed
+        // processes the daemon never spawned (e.g. the user's own dev server —
+        // possibly the very Metro serving this app), and stopping one
+        // tree-kills whatever owns the port. Only explicit user action may
+        // stop an external server.
         const previewClient = useSessionStore.getState().sessions[serverId]?.client ?? null;
         if (previewClient) {
           void (async () => {
             const config = await previewClient.previewListConfig(cwd).catch(() => null);
             const browsersById = useBrowserStore.getState().browsersById;
             const tabs = useWorkspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey);
-            for (const server of config?.runningServers ?? []) {
+            const managedServers = (config?.runningServers ?? []).filter(
+              (server) => !isExternalPreviewServerId(server.serverId),
+            );
+            for (const server of managedServers) {
               void previewClient.previewStop(server.serverId).catch(() => undefined);
               usePreviewRunningServersStore.getState().markStopped(serverId, server.serverId);
               for (const tab of tabs) {

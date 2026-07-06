@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as net from "node:net";
+import { EXTERNAL_PREVIEW_SERVER_ID_PREFIX } from "@otto-code/protocol/messages";
 import type { Logger } from "pino";
 
 import {
@@ -30,7 +31,7 @@ const PORT_PROBE_TIMEOUT_MS = 1_000;
 /** Keyword grep used by the `level: "error"` log filter (matches the Claude Preview contract). */
 const ERROR_LINE_PATTERN = /error|exception|failed|fatal/i;
 /** serverId prefix for running servers observed by port probe, not by in-memory record. */
-const EXTERNAL_SERVER_ID_PREFIX = "ext:";
+const EXTERNAL_SERVER_ID_PREFIX = EXTERNAL_PREVIEW_SERVER_ID_PREFIX;
 
 export type PreviewServerStatus = "starting" | "running" | "exited";
 
@@ -86,6 +87,7 @@ export class DevServerManager {
   private readonly pollIntervalMs: number;
   private readonly stopTimeoutMs: number;
   private readonly servers = new Map<string, PreviewServerRecord>();
+  private getProtectedPorts: () => number[] = () => [];
 
   constructor(options: DevServerManagerOptions) {
     this.logger = options.logger;
@@ -93,6 +95,17 @@ export class DevServerManager {
     this.readinessTimeoutMs = options.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.stopTimeoutMs = options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
+  }
+
+  /**
+   * Ports the daemon must never tree-kill via an external (`ext:<port>`) stop:
+   * its own listen port and the loopback origins of currently connected
+   * clients (e.g. the Metro dev server serving the Otto app itself — killing
+   * it takes down the app issuing the request). Wired lazily from bootstrap
+   * because the websocket server is constructed after this manager.
+   */
+  setProtectedPortsProvider(provider: () => number[]): void {
+    this.getProtectedPorts = provider;
   }
 
   async start(input: { cwd: string; name: string }): Promise<StartPreviewServerResult> {
@@ -195,8 +208,24 @@ export class DevServerManager {
     if (!Number.isInteger(port) || port <= 0) {
       throw new Error(`Invalid external preview server id "${serverId}".`);
     }
+    if (this.getProtectedPorts().includes(port)) {
+      throw new Error(
+        `Refusing to stop "${serverId}": port ${port} belongs to Otto's own runtime ` +
+          `(the daemon or a dev server hosting a connected Otto client).`,
+      );
+    }
     const pids = await listListeningPids(port);
+    // Never kill our own process tree even if the port lookup resolves to us
+    // (stale pid reuse, misconfigured launch.json port, etc.).
+    const selfPids = new Set([process.pid, process.ppid]);
     for (const pid of pids) {
+      if (selfPids.has(pid)) {
+        this.logger.warn(
+          { serverId, port, pid },
+          "Skipping external preview stop for the daemon's own process",
+        );
+        continue;
+      }
       await killPidTree(pid).catch(() => {});
     }
     return {
