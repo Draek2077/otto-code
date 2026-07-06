@@ -145,6 +145,7 @@ export const SquareTerminal = createMaterialSymbolIcon("SquareTerminal");
 export const Star = createMaterialSymbolIcon("Star");
 export const StarFilled = createMaterialSymbolIcon("StarFilled");
 export const Stethoscope = createMaterialSymbolIcon("Stethoscope");
+export const Stop = createMaterialSymbolIcon("Stop");
 export const Sun = createMaterialSymbolIcon("Sun");
 export const Tablet = createMaterialSymbolIcon("Tablet");
 export const Terminal = createMaterialSymbolIcon("Terminal");
