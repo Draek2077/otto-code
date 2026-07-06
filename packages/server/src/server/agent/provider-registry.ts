@@ -668,7 +668,7 @@ function addDerivedProviders(
     }
 
     if (override.extends === OPENAI_COMPAT_EXTENDS) {
-      resolvedProviders.set(providerId, resolveOpenAICompatProvider(providerId, override));
+      resolvedProviders.set(providerId, resolveOpenAICompatProvider(providerId, override, options));
       continue;
     }
 
@@ -714,6 +714,7 @@ function addDerivedProviders(
 function resolveOpenAICompatProvider(
   providerId: string,
   override: ProviderOverride,
+  options: Pick<BuildProviderRegistryOptions, "managedProcesses">,
 ): ResolvedProvider {
   const label = override.label ?? providerId;
   return {
@@ -742,6 +743,9 @@ function resolveOpenAICompatProvider(
         label,
         env: override.env,
         ottoToolGroups: override.ottoToolGroups,
+        mcpServers: override.mcpServers,
+        mcpToolPermissions: override.mcpToolPermissions,
+        managedProcesses: options.managedProcesses,
       }),
   };
 }

@@ -247,6 +247,15 @@ function truncateOutput(text: string, maxChars: number): { text: string; truncat
   return { text: text.slice(0, maxChars), truncated: true };
 }
 
+/**
+ * Cap text fed back to the model as a tool result. Shared with MCP tool
+ * results, which are untrusted external content and must not blow the context.
+ */
+export function capToolOutput(text: string): string {
+  const { text: capped, truncated } = truncateOutput(text, MAX_TOOL_OUTPUT_CHARS);
+  return truncated ? `${capped}\n[truncated]` : capped;
+}
+
 function errorOutcome(message: string, detail: ToolCallDetail): CompatToolOutcome {
   return { output: message, detail, isError: true };
 }

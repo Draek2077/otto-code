@@ -4,7 +4,7 @@ import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@otto-code/protocol/agent-title-limits";
 import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
-import { OTTO_TOOL_GROUPS } from "./provider-config.js";
+import { McpServerConfigSchema, OTTO_TOOL_GROUPS } from "./provider-config.js";
 import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ChatCreateRequestSchema,
@@ -305,34 +305,6 @@ const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   contextWindowMaxTokens: z.number().optional(),
   contextWindowUsedTokens: z.number().optional(),
 });
-
-const McpStdioServerConfigSchema = z.object({
-  type: z.literal("stdio"),
-  command: z.string(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  alwaysLoad: z.boolean().optional(),
-});
-
-const McpHttpServerConfigSchema = z.object({
-  type: z.literal("http"),
-  url: z.string(),
-  headers: z.record(z.string(), z.string()).optional(),
-  alwaysLoad: z.boolean().optional(),
-});
-
-const McpSseServerConfigSchema = z.object({
-  type: z.literal("sse"),
-  url: z.string(),
-  headers: z.record(z.string(), z.string()).optional(),
-  alwaysLoad: z.boolean().optional(),
-});
-
-const McpServerConfigSchema = z.discriminatedUnion("type", [
-  McpStdioServerConfigSchema,
-  McpHttpServerConfigSchema,
-  McpSseServerConfigSchema,
-]);
 
 const AgentSessionConfigSchema = z.object({
   provider: AgentProviderSchema,

@@ -1,11 +1,14 @@
 import * as fs from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { z } from "zod";
 
-import type { AgentStreamEvent } from "../agent-sdk-types.js";
+import type { AgentStreamEvent, McpServerConfig } from "../agent-sdk-types.js";
 import { OpenAICompatAgentClient, normalizeOpenAICompatBaseUrl } from "./openai-compat-agent.js";
 import { executeCompatTool } from "./openai-compat-tools.js";
 
@@ -37,7 +40,8 @@ async function startEndpoint(options?: {
   v1ContextLength?: number;
   /** Serve LM Studio's native /api/v0/models listing with loaded_context_length. */
   nativeContextLength?: number;
-}): Promise<TestEndpoint> {
+}): Promise<TestEndpoint & { completionBodies: Array<Record<string, unknown>> }> {
+  const completionBodies: Array<Record<string, unknown>> = [];
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/v1/models") {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -76,6 +80,7 @@ async function startEndpoint(options?: {
       });
       req.on("end", () => {
         const request = JSON.parse(body) as { model: string; messages: unknown[] };
+        completionBodies.push(request as unknown as Record<string, unknown>);
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -117,7 +122,7 @@ async function startEndpoint(options?: {
     server.listen(0, "127.0.0.1", resolve);
   });
   const { port } = server.address() as AddressInfo;
-  return { server, baseUrl: `http://127.0.0.1:${port}` };
+  return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies };
 }
 
 function createClient(baseUrl: string): OpenAICompatAgentClient {
@@ -189,7 +194,8 @@ describe("OpenAICompatAgentClient", () => {
     const messages = persistence?.metadata?.messages as Array<{ role: string; content: string }>;
     expect(messages[0]?.role).toBe("system");
     expect(messages.slice(1)).toEqual([
-      { role: "user", content: "Say hello" },
+      // The persisted messageId ties the message to its timeline item for rewind.
+      { role: "user", content: "Say hello", messageId: expect.any(String) },
       { role: "assistant", content: "Hello from test-model-a" },
     ]);
   });
@@ -428,6 +434,195 @@ async function makeTempCwd(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "otto-compat-tools-"));
 }
 
+describe("OpenAICompatAgentSession reasoning effort", () => {
+  test("omits reasoning_effort by default and sends it after setFeature", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]).not.toHaveProperty("reasoning_effort");
+    expect(session.features).toEqual([
+      expect.objectContaining({ id: "reasoning_effort", value: "off" }),
+    ]);
+
+    await session.setFeature?.("reasoning_effort", "high");
+    await session.run("Say hello again");
+    expect(endpoint.completionBodies[1]?.reasoning_effort).toBe("high");
+    expect(session.features).toEqual([
+      expect.objectContaining({ id: "reasoning_effort", value: "high" }),
+    ]);
+  });
+
+  test("restores reasoning effort from featureValues", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      featureValues: { reasoning_effort: "low" },
+    });
+
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("low");
+  });
+
+  test("rejects unknown features and invalid values", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await expect(session.setFeature?.("reasoning_effort", "extreme")).rejects.toThrow(
+      /Invalid reasoning effort/,
+    );
+    await expect(session.setFeature?.("unknown_feature", true)).rejects.toThrow(/Unknown feature/);
+  });
+
+  test("listFeatures seeds the draft select from featureValues", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+
+    await expect(
+      client.listFeatures({ provider: "lmstudio", cwd: process.cwd() }),
+    ).resolves.toEqual([expect.objectContaining({ id: "reasoning_effort", value: "off" })]);
+    await expect(
+      client.listFeatures({
+        provider: "lmstudio",
+        cwd: process.cwd(),
+        featureValues: { reasoning_effort: "medium" },
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "reasoning_effort", value: "medium" })]);
+  });
+});
+
+describe("OpenAICompatAgentSession rewind", () => {
+  function userMessageIds(events: AgentStreamEvent[]): string[] {
+    return events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "user_message" && event.item.messageId
+        ? [event.item.messageId]
+        : [],
+    );
+  }
+
+  test("revertConversation truncates the conversation and replayable history", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First question");
+    await session.run("Second question");
+    const [, secondId] = userMessageIds(events);
+    expect(secondId).toBeDefined();
+
+    await session.revertConversation?.({ messageId: secondId! });
+
+    // The next request no longer carries the reverted turn.
+    await session.run("Different question");
+    const lastBody = endpoint.completionBodies.at(-1) as { messages: Array<{ content: string }> };
+    const contents = lastBody.messages.map((message) => message.content);
+    expect(contents).toContain("First question");
+    expect(contents).toContain("Different question");
+    expect(contents).not.toContain("Second question");
+
+    // messageId is provider-internal and never sent to the endpoint.
+    for (const message of lastBody.messages) {
+      expect(message).not.toHaveProperty("messageId");
+    }
+  });
+
+  test("streamHistory replays only the retained conversation after rewind", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First question");
+    await session.run("Second question");
+    const [, secondId] = userMessageIds(events);
+    await session.revertConversation?.({ messageId: secondId! });
+
+    const replayed: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      replayed.push(event);
+    }
+    const texts = replayed.flatMap((event) =>
+      event.type === "timeline" &&
+      (event.item.type === "user_message" || event.item.type === "assistant_message")
+        ? [event.item.text]
+        : [],
+    );
+    expect(texts).toEqual(["First question", "Hello from test-model-a"]);
+  });
+
+  test("rewind by persisted messageId works across resume", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    await session.run("First question");
+    await session.run("Second question");
+    const [, secondId] = userMessageIds(events);
+
+    const resumed = await client.resumeSession(session.describePersistence()!);
+
+    // The resumed session replays the same user message ids it persisted.
+    const replayedIds: string[] = [];
+    for await (const event of resumed.streamHistory()) {
+      if (event.type === "timeline" && event.item.type === "user_message" && event.item.messageId) {
+        replayedIds.push(event.item.messageId);
+      }
+    }
+    expect(replayedIds).toContain(secondId);
+
+    await resumed.revertConversation?.({ messageId: secondId! });
+    await resumed.run("Third question");
+    const lastBody = endpoint.completionBodies.at(-1) as { messages: Array<{ content: string }> };
+    const contents = lastBody.messages.map((message) => message.content);
+    expect(contents).toContain("First question");
+    expect(contents).not.toContain("Second question");
+  });
+
+  test("rewind to an unknown message fails with a clear error", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    await session.run("First question");
+
+    await expect(session.revertConversation?.({ messageId: "missing" })).rejects.toThrow(
+      /Message not found/,
+    );
+  });
+});
+
 describe("OpenAICompatAgentSession tool loop", () => {
   test("executes streamed tool calls and feeds results back to the model", async () => {
     const endpoint = await startToolEndpoint();
@@ -547,6 +742,453 @@ describe("OpenAICompatAgentSession tool loop", () => {
       (tool) => (tool as { function: { name: string } }).function.name,
     );
     expect(toolNames).toEqual(["read_file", "list_dir", "grep_search"]);
+  });
+});
+
+async function respondWithMcpFixture(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: string,
+): Promise<void> {
+  const mcpServer = new McpServer({ name: "otto-mcp-fixture", version: "1.0.0" });
+  mcpServer.tool("echo", { text: z.string() }, async ({ text }) => ({
+    content: [{ type: "text", text: `E:${text}` }],
+  }));
+  mcpServer.registerTool(
+    "lookup",
+    { inputSchema: { key: z.string() }, annotations: { readOnlyHint: true } },
+    async ({ key }) => ({ content: [{ type: "text", text: `V:${key}` }] }),
+  );
+  mcpServer.registerPrompt(
+    "review",
+    { description: "Review something", argsSchema: { target: z.string() } },
+    async ({ target }) => ({
+      messages: [{ role: "user", content: { type: "text", text: `Please review ${target}.` } }],
+    }),
+  );
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  res.on("close", () => {
+    void transport.close();
+    void mcpServer.close();
+  });
+  await mcpServer.connect(transport);
+  await transport.handleRequest(req, res, body ? JSON.parse(body) : undefined);
+}
+
+/** In-process stateless HTTP MCP server exposing echo (mutating) + lookup (readOnlyHint). */
+async function startMcpFixtureServer(): Promise<{ url: string }> {
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      respondWithMcpFixture(req, res, body).catch(() => {
+        if (!res.headersSent) {
+          res.writeHead(500);
+        }
+        res.end();
+      });
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}/mcp` };
+}
+
+/**
+ * OpenAI endpoint whose first round streams a call to the given tool and whose
+ * second round streams a final answer.
+ */
+async function startMcpDrivingEndpoint(
+  toolName: string,
+  argumentsJson: string,
+): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as RecordedRequest);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        if (requests.length === 1) {
+          res.write(
+            sseChunk({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_mcp",
+                        function: { name: toolName, arguments: argumentsJson },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            }),
+          );
+        } else {
+          res.write(
+            sseChunk({ choices: [{ delta: { content: "Done." }, finish_reason: "stop" }] }),
+          );
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
+function createMcpClient(
+  baseUrl: string,
+  options: {
+    mcpServers?: Record<string, McpServerConfig>;
+    mcpToolPermissions?: "always-ask" | "trust-read-only";
+  },
+): OpenAICompatAgentClient {
+  return new OpenAICompatAgentClient({
+    providerId: "lmstudio",
+    label: "LM Studio",
+    env: { OPENAI_BASE_URL: baseUrl },
+    mcpServers: options.mcpServers,
+    mcpToolPermissions: options.mcpToolPermissions,
+  });
+}
+
+function toolPayloadNames(request: RecordedRequest | undefined): string[] {
+  return (request?.tools ?? []).map(
+    (tool) => (tool as { function: { name: string } }).function.name,
+  );
+}
+
+describe("OpenAICompatAgentSession MCP tools", () => {
+  test("offers MCP tools to the model and dispatches calls through the loop", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startMcpDrivingEndpoint(
+      "mcp_alpha_echo",
+      JSON.stringify({ text: "hi" }),
+    );
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Use the echo tool");
+    expect(result.finalText).toBe("Done.");
+
+    expect(toolPayloadNames(endpoint.requests[0])).toContain("mcp_alpha_echo");
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    expect(toolMessage?.content).toBe("E:hi");
+
+    const toolItems = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
+    );
+    expect(toolItems.map((item) => item.status)).toEqual(["running", "completed"]);
+    expect(toolItems[0]?.name).toBe("mcp_alpha_echo");
+
+    await session.close();
+  });
+
+  test("plan mode never exposes MCP tools", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      modeId: "plan",
+    });
+
+    await session.run("Look around");
+    const names = toolPayloadNames(endpoint.completionBodies[0] as unknown as RecordedRequest);
+    expect(names).toEqual(["read_file", "list_dir", "grep_search"]);
+
+    await session.close();
+  });
+
+  test("per-agent servers override provider-level servers of the same name", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      // Provider-level entry is unreachable; the per-agent entry must win.
+      mcpServers: { alpha: { type: "http", url: "http://127.0.0.1:9/mcp" } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Say hello");
+    expect(toolPayloadNames(endpoint.completionBodies[0] as unknown as RecordedRequest)).toContain(
+      "mcp_alpha_echo",
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "error" &&
+          event.item.message.includes("MCP server"),
+      ),
+    ).toBe(false);
+
+    await session.close();
+  });
+
+  test("strips the daemon-injected internal otto MCP server", async () => {
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {});
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      // The manager injects this into every launch config; this provider gets
+      // Otto tools natively, so connecting to it over MCP would double them.
+      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:9/mcp/agents" } },
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Say hello");
+    // No connection attempt: no failure warning, no mcp_ tools offered.
+    expect(
+      events.some(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "error" &&
+          event.item.message.includes("otto"),
+      ),
+    ).toBe(false);
+    const names = toolPayloadNames(endpoint.completionBodies[0] as unknown as RecordedRequest);
+    expect(names.filter((name) => name.startsWith("mcp_"))).toEqual([]);
+
+    await session.close();
+  });
+
+  test("failed MCP servers surface one timeline warning and the session survives", async () => {
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { broken: { type: "http", url: "http://127.0.0.1:9/mcp" } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Say hello");
+    expect(result.finalText).toBe("Hello from test-model-a");
+    const warnings = events.filter(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "error" &&
+        event.item.message.includes("MCP server 'broken' unavailable"),
+    );
+    expect(warnings).toHaveLength(1);
+
+    // The warning is announced once, not per turn.
+    await session.run("Say hello again");
+    const repeated = events.filter(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "error" &&
+        event.item.message.includes("MCP server 'broken' unavailable"),
+    );
+    expect(repeated).toHaveLength(1);
+
+    await session.close();
+  });
+});
+
+describe("OpenAICompatAgentSession MCP prompts as slash commands", () => {
+  test("lists MCP prompts as slash commands", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await expect(session.listCommands?.()).resolves.toEqual([
+      {
+        name: "mcp_alpha_review",
+        description: "Review something",
+        argumentHint: "target",
+      },
+    ]);
+
+    await session.close();
+  });
+
+  test("resolves a /prompt command into the model prompt, timeline keeps the typed text", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("/mcp_alpha_review the diff");
+
+    const body = endpoint.completionBodies[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userMessage = body.messages.find((message) => message.role === "user");
+    expect(userMessage?.content).toBe("Please review the diff.");
+
+    const typed = events.find(
+      (event) => event.type === "timeline" && event.item.type === "user_message",
+    );
+    expect(
+      typed?.type === "timeline" && typed.item.type === "user_message" && typed.item.text,
+    ).toBe("/mcp_alpha_review the diff");
+
+    await session.close();
+  });
+
+  test("unknown slash commands fall back to plain prompt text", async () => {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startEndpoint();
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("/mcp_alpha_missing do things");
+    const body = endpoint.completionBodies[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userMessage = body.messages.find((message) => message.role === "user");
+    expect(userMessage?.content).toBe("/mcp_alpha_missing do things");
+
+    await session.close();
+  });
+});
+
+describe("OpenAICompatAgentSession MCP permission gating", () => {
+  async function runGatingScenario(options: {
+    toolName: string;
+    argumentsJson: string;
+    modeId: string;
+    mcpToolPermissions?: "always-ask" | "trust-read-only";
+  }): Promise<{ permissionRequests: string[]; toolResult: unknown }> {
+    const mcp = await startMcpFixtureServer();
+    const endpoint = await startMcpDrivingEndpoint(options.toolName, options.argumentsJson);
+    const client = createMcpClient(endpoint.baseUrl, {
+      mcpServers: { alpha: { type: "http", url: mcp.url } },
+      mcpToolPermissions: options.mcpToolPermissions,
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      modeId: options.modeId,
+    });
+    const permissionRequests: string[] = [];
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") {
+        permissionRequests.push(event.request.title);
+        void session.respondToPermission(event.request.id, { behavior: "allow" });
+      }
+    });
+
+    await session.run("Go");
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    await session.close();
+    return { permissionRequests, toolResult: toolMessage?.content };
+  }
+
+  test("default mode always asks, even for read-only tools under trust-read-only", async () => {
+    const outcome = await runGatingScenario({
+      toolName: "mcp_alpha_lookup",
+      argumentsJson: JSON.stringify({ key: "k" }),
+      modeId: "default",
+      mcpToolPermissions: "trust-read-only",
+    });
+    expect(outcome.permissionRequests).toEqual(["alpha: lookup"]);
+    expect(outcome.toolResult).toBe("V:k");
+  });
+
+  test("acceptEdits with always-ask (default) asks for every MCP tool", async () => {
+    const outcome = await runGatingScenario({
+      toolName: "mcp_alpha_lookup",
+      argumentsJson: JSON.stringify({ key: "k" }),
+      modeId: "acceptEdits",
+    });
+    expect(outcome.permissionRequests).toEqual(["alpha: lookup"]);
+  });
+
+  test("acceptEdits with trust-read-only auto-approves readOnlyHint tools", async () => {
+    const outcome = await runGatingScenario({
+      toolName: "mcp_alpha_lookup",
+      argumentsJson: JSON.stringify({ key: "k" }),
+      modeId: "acceptEdits",
+      mcpToolPermissions: "trust-read-only",
+    });
+    expect(outcome.permissionRequests).toEqual([]);
+    expect(outcome.toolResult).toBe("V:k");
+  });
+
+  test("acceptEdits with trust-read-only still asks for tools without the hint", async () => {
+    const outcome = await runGatingScenario({
+      toolName: "mcp_alpha_echo",
+      argumentsJson: JSON.stringify({ text: "hi" }),
+      modeId: "acceptEdits",
+      mcpToolPermissions: "trust-read-only",
+    });
+    expect(outcome.permissionRequests).toEqual(["alpha: echo"]);
   });
 });
 
