@@ -1,4 +1,5 @@
 import { UnistylesRuntime } from "react-native-unistyles";
+import { syncBlackChatScopeVars } from "@/styles/black-chat-scope";
 import {
   BLACK_TAB_SURFACE_OVERRIDES,
   daylightTheme,
@@ -95,6 +96,10 @@ export function applyColorScheme(input: ColorSchemeInput): void {
       shadow: darkSource.shadow,
     };
   });
+
+  // Web: mirror the freshly repainted `black` variables onto the chat-scope
+  // class so wrapped chat panes pick up the new variant (no-op on native).
+  syncBlackChatScopeVars();
 
   if (input.colorSchemeMode === "system") {
     UnistylesRuntime.setAdaptiveThemes(true);
