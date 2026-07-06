@@ -53,11 +53,15 @@ describe("applyColorScheme", () => {
     setTheme.mockClear();
   });
 
-  it("repaints both the light and dark mirror keys exactly once, regardless of mode", () => {
+  it("repaints the light, dark, and black mirror keys exactly once, regardless of mode", () => {
     applyColorScheme(makeInput());
 
-    expect(updateTheme).toHaveBeenCalledTimes(2);
-    expect(updateTheme.mock.calls.map((call) => call[0]).sort()).toEqual(["dark", "light"]);
+    expect(updateTheme).toHaveBeenCalledTimes(3);
+    expect(updateTheme.mock.calls.map((call) => call[0]).sort()).toEqual([
+      "black",
+      "dark",
+      "light",
+    ]);
   });
 
   it("repaints the mirrors before engaging the mode", () => {
@@ -68,7 +72,13 @@ describe("applyColorScheme", () => {
 
     applyColorScheme(makeInput({ colorSchemeMode: "dark" }));
 
-    expect(order).toEqual(["repaint:light", "repaint:dark", "setAdaptiveThemes", "setTheme:dark"]);
+    expect(order).toEqual([
+      "repaint:light",
+      "repaint:dark",
+      "repaint:black",
+      "setAdaptiveThemes",
+      "setTheme:dark",
+    ]);
   });
 
   it("engages adaptive mode and does not pin a theme when mode is system", () => {
