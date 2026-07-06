@@ -1856,6 +1856,48 @@ export class VoiceAssistantWebSocketServer {
     };
   }
 
+  /**
+   * Loopback ports that currently serve a connected Otto client, derived from
+   * socket Origin headers (e.g. the Metro dev server hosting the app in dev).
+   * The preview subsystem treats these as protected: tree-killing whatever
+   * listens there would take down the client issuing the request.
+   */
+  getConnectedClientOriginPorts(): number[] {
+    const ports = new Set<number>();
+    for (const identity of this.socketIdentities.values()) {
+      if (!identity.origin) {
+        continue;
+      }
+      let originUrl: URL;
+      try {
+        originUrl = new URL(identity.origin);
+      } catch {
+        continue;
+      }
+      const hostname = originUrl.hostname;
+      const isLoopback =
+        hostname === "localhost" ||
+        hostname.startsWith("127.") ||
+        hostname === "[::1]" ||
+        hostname === "::1";
+      if (!isLoopback) {
+        continue;
+      }
+      let port: number;
+      if (originUrl.port) {
+        port = Number.parseInt(originUrl.port, 10);
+      } else if (originUrl.protocol === "https:") {
+        port = 443;
+      } else {
+        port = 80;
+      }
+      if (Number.isInteger(port) && port > 0) {
+        ports.add(port);
+      }
+    }
+    return [...ports];
+  }
+
   private flushRuntimeMetrics(options?: { final?: boolean }): void {
     const runtimeMetrics = this.runtimeMetrics.snapshotAndReset();
     const activeConnections = new Set<SessionConnection>(this.sessions.values()).size;

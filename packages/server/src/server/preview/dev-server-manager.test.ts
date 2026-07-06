@@ -177,6 +177,46 @@ describe("DevServerManager", () => {
     );
   });
 
+  test("refuses to stop an external server on a protected port", async () => {
+    const manager = createManager();
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      manager.setProtectedPortsProvider(() => [port]);
+
+      await expect(manager.stop(`ext:${port}`)).rejects.toThrow(/Otto's own runtime/);
+      expect(listener.listening).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("skips its own process when an external stop resolves to the daemon's pid", async () => {
+    const manager = createManager();
+    // Listener owned by the test (= "daemon") process itself: the pid lookup
+    // resolves to process.pid, which the self-pid guard must skip — otherwise
+    // this very test run would be tree-killed.
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      const stopped = await manager.stop(`ext:${port}`);
+      expect(stopped.status).toBe("exited");
+      expect(listener.listening).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
   test("fails fast when the configured command exits before binding the port", async () => {
     const port = await findFreePort();
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-preview-crash-"));

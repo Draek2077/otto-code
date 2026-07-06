@@ -1252,6 +1252,22 @@ export async function createOttoDaemon(
               previewDevServers,
             );
 
+            // Sanity guard: never let preview "stop external server" tree-kill
+            // Otto's own runtime — the daemon's listen port or a loopback dev
+            // server hosting a connected client (e.g. Metro serving this app).
+            const wsServerForProtectedPorts = wsServer;
+            previewDevServers.setProtectedPortsProvider(() => {
+              const ports = new Set<number>();
+              const bound = boundListenTarget ?? listenTarget;
+              if (bound.type === "tcp") {
+                ports.add(bound.port);
+              }
+              for (const port of wsServerForProtectedPorts.getConnectedClientOriginPorts()) {
+                ports.add(port);
+              }
+              return [...ports];
+            });
+
             if (relayEnabled) {
               const offer = await createConnectionOfferV2({
                 serverId,
