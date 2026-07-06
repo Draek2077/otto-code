@@ -40,6 +40,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useToast } from "@/contexts/toast-context";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
@@ -497,10 +498,12 @@ function WorkspaceRowTrailingActions({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
+  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
-  const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
+  const shouldRenderActionSlot = Boolean(onArchive || (showDiffStat && workspace.diffStat));
 
   return (
     <>
@@ -510,9 +513,11 @@ function WorkspaceRowTrailingActions({
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
           <SidebarWorkspaceTrailingActionBase
-            visible={Boolean(workspace.diffStat && !showKebabInSlot && !showShortcut)}
+            visible={Boolean(
+              showDiffStat && workspace.diffStat && !showKebabInSlot && !showShortcut,
+            )}
           >
-            {workspace.diffStat ? (
+            {showDiffStat && workspace.diffStat ? (
               <DiffStat
                 additions={workspace.diffStat.additions}
                 deletions={workspace.diffStat.deletions}

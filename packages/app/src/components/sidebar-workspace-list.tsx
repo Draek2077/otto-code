@@ -53,6 +53,7 @@ import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useHostFeatureMap } from "@/runtime/host-features";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import {
@@ -661,10 +662,12 @@ function WorkspaceRowRightGroup({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
+  const { settings } = useAppSettings();
+  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
-  const shouldRenderActionSlot = Boolean(onArchive || workspace.diffStat);
+  const shouldRenderActionSlot = Boolean(onArchive || (showDiffStat && workspace.diffStat));
 
   return (
     <>
@@ -674,9 +677,11 @@ function WorkspaceRowRightGroup({
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
           <SidebarWorkspaceTrailingActionBase
-            visible={Boolean(workspace.diffStat && !showKebabInSlot && !showShortcut)}
+            visible={Boolean(
+              showDiffStat && workspace.diffStat && !showKebabInSlot && !showShortcut,
+            )}
           >
-            {workspace.diffStat ? (
+            {showDiffStat && workspace.diffStat ? (
               <DiffStat
                 additions={workspace.diffStat.additions}
                 deletions={workspace.diffStat.deletions}
