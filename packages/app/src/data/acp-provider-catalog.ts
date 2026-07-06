@@ -286,10 +286,10 @@ const CATALOG_DATA = [
     command: ["kimi", "acp"],
   },
   {
-    id: "lmstudio",
-    title: "LM Studio",
+    id: "openai-compatible",
+    title: "OpenAI Compatible",
     description:
-      "Run local models served by LM Studio's OpenAI-compatible server as coding agents with file and shell tools. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
+      "Connect any OpenAI-compatible server (LM Studio, Ollama, vLLM, llama.cpp, a hosted gateway, ...) as a coding agent with file and shell tools. Defaults to LM Studio's local port; edit the URL for anything else. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
     version: "manual",
     iconId: null,
     installLink: "https://lmstudio.ai/docs/app/api",
