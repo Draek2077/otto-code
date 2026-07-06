@@ -72,6 +72,7 @@ export function CommunityLinks() {
 const styles = StyleSheet.create(() => ({
   row: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
     alignItems: "center",
     gap: 0,
