@@ -184,6 +184,22 @@ clear error, and additionally skips `process.pid`/`process.ppid` if the port
 lookup ever resolves to the daemon's own process. Explicit "Stop server" on a
 genuinely third-party port still works.
 
+Beyond protected ports, `ext:` stops are restricted to ports the daemon has
+itself observed as configured preview servers: `reconcileRunning` records
+which workspace's launch.json listed each externally-running port, and
+`stopExternal` refuses any port without such an observation — and re-reads
+that workspace's launch.json at stop time in case the config changed. This
+closes the hole where an agent could pass an arbitrary `ext:<port>` id to
+`preview_stop` and tree-kill an unrelated local service (a database, sshd,
+another project's server).
+
+Agent-initiated stops and log reads are additionally workspace-scoped: the
+`preview_stop` / `preview_logs` tools pass the caller agent's cwd, and the
+manager rejects servers belonging to a different workspace
+(`DevServerManager.stop`'s `requireCwd` option). User-initiated stops via the
+`preview.stop.request` RPC stay unscoped — the user may stop any server the
+UI lists.
+
 ## launch.json
 
 `.claude/launch.json`, resolved relative to the workspace's `cwd`

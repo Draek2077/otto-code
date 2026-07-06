@@ -221,6 +221,7 @@ Local inference servers like [LM Studio](https://lmstudio.ai), [Ollama](https://
 - Chat turns stream over `POST {OPENAI_BASE_URL}/chat/completions` (SSE). Reasoning deltas (`reasoning_content`) are rendered as thinking output.
 - **Function-calling models get a built-in coding toolset** executed by the daemon in the agent's cwd: `read_file`, `list_dir`, `grep_search`, `write_file`, `edit_file`, `run_command`. Tool calls stream as timeline items like any other agent's.
 - **Otto's tool catalog is injected too.** Because there is no agent binary to host an MCP client, the daemon injects Otto's agent tools (`browser_*`, `preview_*`, agent management, terminals, schedules, workspace) directly into the model's tool list, so a local model can drive previews and browser verification like Claude Code does. Excluded in `plan` mode (those tools can take actions); the built-in coding tools win on any name collision.
+- **Otto tools are permission-gated by class** (`openai-compat-otto-tool-permissions.ts`). CLI providers get prompting from their own permission system in front of the MCP client; here the daemon prompts itself. Read-only tools (`browser_snapshot`, `preview_logs`, `list_agents`, …) never prompt. "Interact" tools (browser clicks/typing/navigation, `preview_start`/`preview_stop`) prompt in `default` mode and auto-approve in `acceptEdits`, like file edits. "Execute" tools (`browser_evaluate`, `browser_upload`, terminal creation and keystrokes, agent creation/mode changes, schedule and worktree mutation — and any unclassified tool) prompt in `default` **and** `acceptEdits`, like shell commands. `bypassPermissions` auto-approves everything.
 - **Scope the Otto tools with `ottoToolGroups`.** Omit it for all groups (the default); set it to a subset to keep the prompt small and the model focused. Groups: `preview`, `browser`, `agents`, `terminals`, `schedules`, `workspace`.
 
   ```json
@@ -238,7 +239,7 @@ Local inference servers like [LM Studio](https://lmstudio.ai), [Ollama](https://
   }
   ```
 
-- **Permission modes** mirror the other providers: `default` (Always Ask — prompts before edits and commands), `acceptEdits` (auto-approves file edits, still asks for commands), `plan` (Read Only — only read tools are offered to the model, and Otto and MCP tools are withheld), and `bypassPermissions` (unattended).
+- **Permission modes** mirror the other providers: `default` (Always Ask — prompts before edits, commands, and non-read-only Otto/MCP tools), `acceptEdits` (auto-approves file edits and browser/preview interaction, still asks for commands and execute-class tools), `plan` (Read Only — only read tools are offered to the model, and Otto and MCP tools are withheld), and `bypassPermissions` (unattended).
 - **Reasoning effort** is a per-agent feature select (Off / Low / Medium / High). Off (the default) omits the `reasoning_effort` parameter entirely, so strict servers are unaffected until you opt in.
 - **Rewind conversation** is supported: the daemon owns this provider's transcript, so rewinding truncates the conversation at the chosen user message. Persistence keeps the last 40 messages, so on a resumed agent only that window is rewindable.
 - `OPENAI_API_KEY` is optional — set it if your server requires an API key (LM Studio local servers accept requests without one).

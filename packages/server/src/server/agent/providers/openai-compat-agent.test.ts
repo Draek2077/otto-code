@@ -1192,6 +1192,117 @@ describe("OpenAICompatAgentSession MCP permission gating", () => {
   });
 });
 
+describe("OpenAICompatAgentSession Otto tool permission gating", () => {
+  function fakeOttoCatalog(executedNames: string[]) {
+    const handler = async () => ({
+      content: [{ type: "text" as const, text: "otto-tool-done" }],
+    });
+    const tools = new Map(
+      ["browser_snapshot", "browser_click", "create_terminal"].map((name) => [
+        name,
+        { name, description: `${name} test tool`, handler },
+      ]),
+    );
+    return {
+      tools,
+      getTool: (name: string) => tools.get(name),
+      executeTool: async (name: string) => {
+        executedNames.push(name);
+        return handler();
+      },
+    };
+  }
+
+  async function runOttoGatingScenario(options: {
+    toolName: string;
+    modeId: string;
+    respond?: "allow" | "deny";
+  }): Promise<{ permissionRequests: string[]; executed: string[]; toolResult: unknown }> {
+    const endpoint = await startMcpDrivingEndpoint(options.toolName, "{}");
+    const client = createClient(endpoint.baseUrl);
+    const executed: string[] = [];
+    const session = await client.createSession(
+      {
+        provider: "lmstudio",
+        cwd: process.cwd(),
+        model: "test-model-a",
+        modeId: options.modeId,
+      },
+      { ottoTools: fakeOttoCatalog(executed) },
+    );
+    const permissionRequests: string[] = [];
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") {
+        permissionRequests.push(event.request.name);
+        void session.respondToPermission(event.request.id, {
+          behavior: options.respond ?? "allow",
+        });
+      }
+    });
+
+    await session.run("Go");
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    await session.close();
+    return { permissionRequests, executed, toolResult: toolMessage?.content };
+  }
+
+  test("read-only Otto tools run without a prompt in default mode", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "browser_snapshot",
+      modeId: "default",
+    });
+    expect(outcome.permissionRequests).toEqual([]);
+    expect(outcome.executed).toEqual(["browser_snapshot"]);
+  });
+
+  test("interact-class Otto tools prompt in default mode", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "browser_click",
+      modeId: "default",
+    });
+    expect(outcome.permissionRequests).toEqual(["browser_click"]);
+    expect(outcome.executed).toEqual(["browser_click"]);
+  });
+
+  test("interact-class Otto tools auto-approve in acceptEdits", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "browser_click",
+      modeId: "acceptEdits",
+    });
+    expect(outcome.permissionRequests).toEqual([]);
+    expect(outcome.executed).toEqual(["browser_click"]);
+  });
+
+  test("execute-class Otto tools prompt even in acceptEdits", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "create_terminal",
+      modeId: "acceptEdits",
+    });
+    expect(outcome.permissionRequests).toEqual(["create_terminal"]);
+    expect(outcome.executed).toEqual(["create_terminal"]);
+  });
+
+  test("denied Otto tool is not executed and the model is told", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "create_terminal",
+      modeId: "default",
+      respond: "deny",
+    });
+    expect(outcome.permissionRequests).toEqual(["create_terminal"]);
+    expect(outcome.executed).toEqual([]);
+    expect(outcome.toolResult).toContain("declined");
+  });
+
+  test("bypassPermissions auto-approves execute-class Otto tools", async () => {
+    const outcome = await runOttoGatingScenario({
+      toolName: "create_terminal",
+      modeId: "bypassPermissions",
+    });
+    expect(outcome.permissionRequests).toEqual([]);
+    expect(outcome.executed).toEqual(["create_terminal"]);
+  });
+});
+
 describe("executeCompatTool", () => {
   test("edit_file replaces a unique string and rejects ambiguous matches", async () => {
     const cwd = await makeTempCwd();

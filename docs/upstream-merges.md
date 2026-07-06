@@ -64,12 +64,32 @@ git ls-files | grep -i paseo   # then git mv each, applying Paseo->Otto / paseo-
 ### 3. Audit — must be clean before committing
 
 ```bash
-git grep -ilE 'paseo|getpaseo' -- ':!LICENSE' ':!NOTICE' ':!README*' ':!CHANGELOG.md' ':!docs/upstream-merges.md'
+git grep -ilE 'paseo|getpaseo' -- \
+  ':!LICENSE' ':!NOTICE' ':!README*' ':!CHANGELOG.md' \
+  ':!CLAUDE.md' ':!docs/upstream-merges.md' ':!docs/fork-release-guide.md' \
+  ':!scripts/rebrand-upstream.pl' \
+  ':!packages/website/src/components/landing-page.tsx' \
+  ':!packages/website/src/components/site-footer.tsx' \
+  ':!packages/website/src/routes/index.tsx' \
+  ':!packages/website/src/routes/sponsor.tsx' \
+  ':!packages/app/src/styles/theme.ts'
 ```
 
-Expected output: **nothing**. `LICENSE`, `NOTICE`, and the README credits
-intentionally keep Paseo references for AGPL attribution; everything else must
-be Otto.
+Expected output: **nothing**. The excluded files keep Paseo references on
+purpose:
+
+- `LICENSE`, `NOTICE`, and the README credits — AGPL attribution.
+- `CLAUDE.md`, `docs/upstream-merges.md`, `docs/fork-release-guide.md`, and
+  `scripts/rebrand-upstream.pl` — they document the fork relationship and the
+  rebrand rules themselves.
+- The website landing/footer/sponsor pages — public "built on Paseo" credit
+  and the sponsorship page pointing at upstream's author.
+- `packages/app/src/styles/theme.ts` — comments recording which themes are
+  inherited from upstream.
+
+Anything outside this list must be Otto. If a merge adds a new intentional
+reference (e.g. more credit copy), add it to the exclusion list here in the
+same commit.
 
 Also check the port didn't sneak back:
 

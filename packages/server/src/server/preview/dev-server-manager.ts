@@ -88,6 +88,14 @@ export class DevServerManager {
   private readonly stopTimeoutMs: number;
   private readonly servers = new Map<string, PreviewServerRecord>();
   private getProtectedPorts: () => number[] = () => [];
+  /**
+   * Ports reconcileRunning has reported as externally-running configured
+   * servers, keyed to the workspace whose launch.json listed them. External
+   * (`ext:<port>`) stops tree-kill whatever listens on the port, so only these
+   * observed ports are stoppable — never an arbitrary number an agent passes
+   * to preview_stop.
+   */
+  private readonly externalPortCwds = new Map<number, string>();
 
   constructor(options: DevServerManagerOptions) {
     this.logger = options.logger;
@@ -139,14 +147,22 @@ export class DevServerManager {
     return { server: summarize(record), reused: false, logTail: tail(record.log, 20) };
   }
 
-  async stop(serverId: string): Promise<PreviewServerSummary> {
+  /**
+   * `requireCwd` scopes the stop to one workspace: agent-facing tools pass
+   * their caller's cwd so an agent can only stop servers of its own workspace,
+   * while user-initiated UI stops omit it.
+   */
+  async stop(serverId: string, options?: { requireCwd?: string }): Promise<PreviewServerSummary> {
     // Externally-observed servers (see reconcileRunning) carry no in-memory
     // record — the daemon that spawned them is gone. Address them by port:
     // find whatever is listening and tree-kill it.
     if (serverId.startsWith(EXTERNAL_SERVER_ID_PREFIX)) {
-      return this.stopExternal(serverId);
+      return this.stopExternal(serverId, options?.requireCwd);
     }
     const record = this.requireServer(serverId);
+    if (options?.requireCwd !== undefined && record.cwd !== options.requireCwd) {
+      throw new Error(`Server "${serverId}" belongs to a different workspace.`);
+    }
     if (record.status !== "exited") {
       await this.killTree(record);
       await this.waitForExit(record);
@@ -187,6 +203,7 @@ export class DevServerManager {
         continue;
       }
       if (await isPortOpen(entry.port)) {
+        this.externalPortCwds.set(entry.port, input.cwd);
         external.push({
           serverId: `${EXTERNAL_SERVER_ID_PREFIX}${entry.port}`,
           name: entry.name,
@@ -203,7 +220,7 @@ export class DevServerManager {
     return [...managed, ...external];
   }
 
-  private async stopExternal(serverId: string): Promise<PreviewServerSummary> {
+  private async stopExternal(serverId: string, requireCwd?: string): Promise<PreviewServerSummary> {
     const port = Number.parseInt(serverId.slice(EXTERNAL_SERVER_ID_PREFIX.length), 10);
     if (!Number.isInteger(port) || port <= 0) {
       throw new Error(`Invalid external preview server id "${serverId}".`);
@@ -212,6 +229,26 @@ export class DevServerManager {
       throw new Error(
         `Refusing to stop "${serverId}": port ${port} belongs to Otto's own runtime ` +
           `(the daemon or a dev server hosting a connected Otto client).`,
+      );
+    }
+    // Only ports we ourselves observed as configured preview servers are
+    // stoppable, and the launch config must still list the port at stop time —
+    // otherwise this would be a primitive for killing arbitrary local services.
+    const cwd = this.externalPortCwds.get(port);
+    if (!cwd) {
+      throw new Error(
+        `Refusing to stop "${serverId}": port ${port} is not a preview server this daemon ` +
+          `has observed. Only servers reported by ${LAUNCH_CONFIG_RELATIVE_PATH} can be stopped.`,
+      );
+    }
+    if (requireCwd !== undefined && cwd !== requireCwd) {
+      throw new Error(`Server "${serverId}" belongs to a different workspace.`);
+    }
+    const config = await readLaunchConfig(cwd).catch(() => null);
+    if (!config?.configurations.some((entry) => entry.port === port)) {
+      throw new Error(
+        `Refusing to stop "${serverId}": port ${port} is no longer configured in ` +
+          `${LAUNCH_CONFIG_RELATIVE_PATH} for ${cwd}.`,
       );
     }
     const pids = await listListeningPids(port);
