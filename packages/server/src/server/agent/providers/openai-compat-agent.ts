@@ -44,6 +44,7 @@ import {
   type OpenAICompatReasoningEffort,
 } from "./openai-compat-feature-definitions.js";
 import { OpenAICompatMcpManager, type McpToolBinding } from "./openai-compat-mcp.js";
+import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
@@ -1354,6 +1355,22 @@ export class OpenAICompatAgentSession implements AgentSession {
     return outcome.output;
   }
 
+  /**
+   * Otto tools skip prompts only when classified read-only; "interact" tools
+   * are auto-approved in acceptEdits like file edits, and "execute" tools
+   * always prompt outside bypassPermissions. CLI providers get this gating
+   * from their own permission system in front of the MCP client — here the
+   * daemon is the runtime, so it prompts itself.
+   * See openai-compat-otto-tool-permissions.ts.
+   */
+  private ottoToolNeedsApproval(name: string): boolean {
+    const kind = ottoToolPermissionKind(name);
+    if (kind === "read") return false;
+    if (this.modeId === "bypassPermissions") return false;
+    if (this.modeId === "acceptEdits") return kind === "execute";
+    return true;
+  }
+
   private async executeOttoToolCall(
     turn: ActiveTurn,
     call: AccumulatedToolCall,
@@ -1363,6 +1380,29 @@ export class OpenAICompatAgentSession implements AgentSession {
     const catalog = this.ottoTools;
     if (!catalog) {
       return `Error: tool ${call.name} is not available`;
+    }
+    const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
+    if (this.ottoToolNeedsApproval(tool.name)) {
+      const response = await this.requestPermission(turn, {
+        name: tool.name,
+        title: tool.name,
+        description:
+          ottoToolPermissionKind(tool.name) === "execute"
+            ? "Wants to run an Otto tool that can execute code or manage agents"
+            : "Wants to interact with the Otto browser or preview servers",
+        args,
+        detail,
+      });
+      if (response.behavior === "deny") {
+        this.emitToolItem(turn, call, "failed", detail, "Denied by user");
+        if (response.interrupt) {
+          turn.abort.abort();
+        }
+        const message = response.message?.trim();
+        return message
+          ? `The user declined this tool call: ${message}`
+          : "The user declined this tool call.";
+      }
     }
     this.emitToolItem(turn, call, "running", { type: "unknown", input: args, output: null }, null);
     try {

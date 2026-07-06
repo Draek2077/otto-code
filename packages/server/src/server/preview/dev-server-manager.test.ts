@@ -69,6 +69,24 @@ async function createProject(port: number): Promise<string> {
   return cwd;
 }
 
+/** Workspace whose launch.json lists `port` under the name "external" — the
+ * server itself is expected to be started by the test, not the manager. */
+async function createExternalProject(port: number): Promise<string> {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "otto-preview-ext-"));
+  await fs.mkdir(path.join(cwd, ".claude"), { recursive: true });
+  await fs.writeFile(
+    path.join(cwd, ".claude", "launch.json"),
+    JSON.stringify({
+      version: "0.0.1",
+      configurations: [
+        { name: "external", runtimeExecutable: "node", runtimeArgs: ["server.js"], port },
+      ],
+    }),
+    "utf8",
+  );
+  return cwd;
+}
+
 async function waitForPortClosed(port: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -209,12 +227,76 @@ describe("DevServerManager", () => {
       });
     });
     try {
+      // External stops require the port to have been observed as a configured
+      // server first (see externalPortCwds).
+      const cwd = await createExternalProject(port);
+      await manager.reconcileRunning({ cwd, configured: [{ name: "external", port }] });
       const stopped = await manager.stop(`ext:${port}`);
       expect(stopped.status).toBe("exited");
       expect(listener.listening).toBe(true);
     } finally {
       await new Promise<void>((resolve) => listener.close(() => resolve()));
     }
+  });
+
+  test("refuses to stop an external port it never observed as a configured server", async () => {
+    const manager = createManager();
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      // No reconcileRunning happened for this port — an agent guessing
+      // `ext:<port>` ids must not be able to tree-kill arbitrary services.
+      await expect(manager.stop(`ext:${port}`)).rejects.toThrow(/not a preview server/);
+      expect(listener.listening).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("refuses external stop when launch.json no longer lists the port", async () => {
+    const manager = createManager();
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      const cwd = await createExternalProject(port);
+      await manager.reconcileRunning({ cwd, configured: [{ name: "external", port }] });
+      // Config changed after the observation: the stale observation alone must
+      // not authorize the kill.
+      await fs.writeFile(
+        path.join(cwd, ".claude", "launch.json"),
+        JSON.stringify({ version: "0.0.1", configurations: [] }),
+        "utf8",
+      );
+      await expect(manager.stop(`ext:${port}`)).rejects.toThrow(/no longer configured/);
+      expect(listener.listening).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("stop with requireCwd refuses servers of a different workspace", async () => {
+    const port = await findFreePort();
+    const cwd = await createProject(port);
+    const manager = createManager();
+    const { server } = await manager.start({ cwd, name: "sample" });
+
+    await expect(
+      manager.stop(server.serverId, { requireCwd: path.join(cwd, "elsewhere") }),
+    ).rejects.toThrow(/different workspace/);
+    expect(manager.list(cwd)).toHaveLength(1);
+
+    const stopped = await manager.stop(server.serverId, { requireCwd: cwd });
+    expect(stopped.status).toBe("exited");
   });
 
   test("fails fast when the configured command exits before binding the port", async () => {

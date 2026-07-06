@@ -17,7 +17,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,
@@ -48,6 +48,13 @@ import {
   resolveProviderDiscoveredModels,
   type ProviderDiscoveredModelsCache,
 } from "./provider-diagnostic-models";
+
+// Themed leaf per docs/unistyles.md "Static Theme Imports" — only the icon
+// re-renders on theme changes, not the row that hosts it.
+const ThemedRemoveIcon = withUnistyles(Trash2, (theme) => ({
+  size: theme.iconSize.sm,
+  color: theme.colors.destructive,
+}));
 
 interface ProviderDiagnosticSheetProps {
   provider: string;
@@ -100,7 +107,6 @@ function CustomModelRow({
   onDelete: (modelId: string) => void;
 }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const handleDelete = useCallback(() => onDelete(model.id), [model.id, onDelete]);
   const deleteButtonStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -133,7 +139,7 @@ function CustomModelRow({
         accessibilityRole="button"
         accessibilityLabel={t("settings.providers.models.removeModel", { id: model.id })}
       >
-        <Trash2 size={theme.iconSize.sm} color={theme.colors.destructive} />
+        <ThemedRemoveIcon />
       </Pressable>
     </View>
   );
@@ -250,7 +256,6 @@ function ProviderConnectionSection({
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const toast = useToast();
   const [baseUrl, setBaseUrl] = useState(connection.baseUrl);
   const [apiKey, setApiKey] = useState(connection.apiKey);
@@ -307,7 +312,6 @@ function ProviderConnectionSection({
             resetKey={`connection-key-${provider}`}
             value={apiKey}
             onChangeText={setApiKey}
-            placeholderTextColor={theme.colors.foregroundMuted}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
@@ -461,7 +465,6 @@ function ProviderRemoveSection({
   onRemoved: () => void;
 }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -482,10 +485,7 @@ function ProviderRemoveSection({
       .finally(() => setRemoving(false));
   }, [onRemoved, patchConfig, provider, t, toast]);
 
-  const removeIcon = useMemo(
-    () => <Trash2 size={theme.iconSize.sm} color={theme.colors.destructive} />,
-    [theme.colors.destructive, theme.iconSize.sm],
-  );
+  const removeIcon = useMemo(() => <ThemedRemoveIcon />, []);
   const confirmHeader = useMemo<SheetHeader>(
     () => ({ title: t("settings.providers.remove.confirmTitle", { name: providerLabel }) }),
     [providerLabel, t],

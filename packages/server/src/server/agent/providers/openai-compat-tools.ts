@@ -38,6 +38,8 @@ const MAX_GREP_MATCHES = 100;
 const MAX_GREP_FILE_BYTES = 1024 * 1024;
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 const MAX_COMMAND_TIMEOUT_MS = 600_000;
+/** Stop buffering command output past this point — only the head is ever shown. */
+const MAX_COMMAND_BUFFER_BYTES = 1024 * 1024;
 const SKIPPED_DIRECTORIES = new Set([
   ".git",
   "node_modules",
@@ -591,12 +593,13 @@ async function runShellCommand(
   };
   signal?.addEventListener("abort", onAbort, { once: true });
 
-  child.stdout?.on("data", (chunk: Buffer) => {
-    output += chunk.toString("utf8");
-  });
-  child.stderr?.on("data", (chunk: Buffer) => {
-    output += chunk.toString("utf8");
-  });
+  const append = (chunk: Buffer) => {
+    if (output.length < MAX_COMMAND_BUFFER_BYTES) {
+      output += chunk.toString("utf8");
+    }
+  };
+  child.stdout?.on("data", append);
+  child.stderr?.on("data", append);
 
   let exitCode: number | null = null;
   try {

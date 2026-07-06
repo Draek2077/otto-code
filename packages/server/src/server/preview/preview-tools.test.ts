@@ -68,16 +68,20 @@ interface Harness {
   callTool: (name: string, input: unknown) => Promise<OttoToolResult>;
   brokerCalls: BrowserToolsExecuteInput[];
   bindings: Array<{ serverId: string; browserId: string }>;
+  stopCalls: Array<{ serverId: string; requireCwd?: string }>;
 }
 
 function createHarness(options: {
   boundBrowserId?: string | null;
+  serverCwd?: string;
   respond: (input: BrowserToolsExecuteInput) => BrowserToolsResponsePayload;
 }): Harness {
   const handlers = new Map<string, (input: unknown) => Promise<OttoToolResult>>();
   const brokerCalls: BrowserToolsExecuteInput[] = [];
   const bindings: Array<{ serverId: string; browserId: string }> = [];
+  const stopCalls: Array<{ serverId: string; requireCwd?: string }> = [];
   let bound = options.boundBrowserId ?? null;
+  const serverCwd = options.serverCwd ?? "C:\\work\\project";
 
   const manager: PreviewDevServerHost = {
     start: async () => ({
@@ -85,7 +89,10 @@ function createHarness(options: {
       reused: bound !== null,
       logTail: ["listening on 8202"],
     }),
-    stop: async () => summary({ status: "exited" }),
+    stop: async (serverId, stopOptions) => {
+      stopCalls.push({ serverId, ...stopOptions });
+      return summary({ status: "exited" });
+    },
     list: () => [summary({ boundBrowserId: bound })],
     logs: () => ["listening on 8202"],
     bindTab: (serverId, browserId) => {
@@ -93,6 +100,7 @@ function createHarness(options: {
       bound = browserId;
     },
     boundTab: () => bound,
+    getServer: () => summary({ cwd: serverCwd, boundBrowserId: bound }),
   };
 
   registerPreviewTools({
@@ -119,6 +127,7 @@ function createHarness(options: {
     },
     brokerCalls,
     bindings,
+    stopCalls,
   };
 }
 
@@ -200,5 +209,29 @@ describe("preview_start tab binding", () => {
     expect(browser.browserId).toBeNull();
     expect(browser.note).toContain("no preview tab could be opened");
     expect(browser.note).toContain("browser_no_host");
+  });
+});
+
+describe("workspace scoping", () => {
+  test("preview_stop passes the caller's cwd so stops stay inside the workspace", async () => {
+    const harness = createHarness({ respond: () => noHostPayload() });
+
+    const result = await harness.callTool("preview_stop", { serverId: "srv_test" });
+
+    expect((result.structuredContent as { ok: boolean }).ok).toBe(true);
+    expect(harness.stopCalls).toEqual([{ serverId: "srv_test", requireCwd: "C:\\work\\project" }]);
+  });
+
+  test("preview_logs refuses a server belonging to a different workspace", async () => {
+    const harness = createHarness({
+      serverCwd: "C:\\work\\other-project",
+      respond: () => noHostPayload(),
+    });
+
+    const result = await harness.callTool("preview_logs", { serverId: "srv_test" });
+
+    const structured = result.structuredContent as { ok: boolean; error?: string };
+    expect(structured.ok).toBe(false);
+    expect(structured.error).toContain("different workspace");
   });
 });

@@ -29,7 +29,7 @@ interface CallerAgentContext {
 /** Narrow surface of DevServerManager the tools need — keeps tests honest. */
 export type PreviewDevServerHost = Pick<
   DevServerManager,
-  "start" | "stop" | "list" | "logs" | "bindTab" | "boundTab"
+  "start" | "stop" | "list" | "logs" | "bindTab" | "boundTab" | "getServer"
 >;
 
 export interface RegisterPreviewToolsOptions {
@@ -268,8 +268,14 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
       outputSchema: PreviewToolOutputSchema,
     },
     async (input: { serverId: string }) => {
+      const caller = options.resolveCallerAgent();
+      if (!caller?.cwd) {
+        return failure(CWD_REQUIRED_MESSAGE);
+      }
       try {
-        const stopped = await options.manager.stop(input.serverId);
+        // Scoped to the caller's workspace — an agent can only stop servers
+        // belonging to the workspace it runs in.
+        const stopped = await options.manager.stop(input.serverId, { requireCwd: caller.cwd });
         return success(stopped);
       } catch (error) {
         return failure(toMessage(error));
@@ -323,6 +329,14 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
       level?: "all" | "error";
       search?: string;
     }) => {
+      const caller = options.resolveCallerAgent();
+      if (!caller?.cwd) {
+        return failure(CWD_REQUIRED_MESSAGE);
+      }
+      const server = options.manager.getServer(input.serverId);
+      if (server && server.cwd !== caller.cwd) {
+        return failure(`Server "${input.serverId}" belongs to a different workspace.`);
+      }
       try {
         const lines = options.manager.logs(input.serverId, {
           ...(input.lines !== undefined ? { lines: input.lines } : {}),
