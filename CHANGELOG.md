@@ -20,6 +20,11 @@
 - Toast notifications triggered from bottom sheets, like New Workspace, no longer crash the app
 - The working indicator animation no longer freezes when the OS has reduced motion enabled
 
+### Security
+
+- OpenAI Compatible agents now ask for permission before running Otto's built-in tools (terminal, browser, file access), matching how other providers are gated
+- Stopping an external preview server now only works for servers Otto already recognizes as part of your workspace's configured dev servers
+
 ## 0.4.0 - 2026-07-06
 
 ### Added
