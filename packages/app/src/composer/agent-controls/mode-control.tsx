@@ -45,11 +45,8 @@ import {
   type AgentProviderDefinition,
 } from "@otto-code/protocol/provider-manifest";
 
-export type AgentModeControlPlacement = "toolbar" | "footer";
-
-function shouldRenderForPlacement(placement: AgentModeControlPlacement, isCompact: boolean) {
-  return placement === "footer" ? isCompact : !isCompact;
-}
+// The Mode chip always lives inline in the toolbar — it shrinks to an icon-only
+// badge when compact rather than dropping below the input box.
 
 interface ModeIconProps {
   size: number;
@@ -108,6 +105,8 @@ interface AgentModeControlViewProps {
   selectedModeId: string | null | undefined;
   onSelectMode: (modeId: string) => void;
   disabled?: boolean;
+  /** Render as an icon-only badge (compact toolbar) instead of an icon + label chip. */
+  iconOnly?: boolean;
 }
 
 function normalizeSearchQuery(value: string): string {
@@ -121,6 +120,7 @@ function AgentModeControlView({
   selectedModeId,
   onSelectMode,
   disabled = false,
+  iconOnly = false,
 }: AgentModeControlViewProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -209,12 +209,12 @@ function AgentModeControlView({
 
   const pressableStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType) => [
-      styles.chip,
+      iconOnly ? styles.iconChip : styles.chip,
       hovered && styles.chipHovered,
       (pressed || open) && styles.chipPressed,
       disabled && styles.chipDisabled,
     ],
-    [open, disabled],
+    [open, disabled, iconOnly],
   );
 
   const labelStyle = styles.chipLabel;
@@ -248,11 +248,14 @@ function AgentModeControlView({
               value: selectedModeLabel,
             })}
             testID="mode-control"
+            chevron={iconOnly ? null : undefined}
           >
             {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
-            <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
-              {selectedModeLabel}
-            </Text>
+            {iconOnly ? null : (
+              <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
+                {selectedModeLabel}
+              </Text>
+            )}
           </ComboboxTrigger>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
@@ -286,14 +289,12 @@ function compareAvailableModes(a: AgentMode[], b: AgentMode[]): boolean {
 interface AgentModeControlProps {
   serverId: string;
   agentId: string;
-  placement: AgentModeControlPlacement;
   isCompactLayout?: boolean;
 }
 
 export const AgentModeControl = memo(function AgentModeControl({
   serverId,
   agentId,
-  placement,
   isCompactLayout,
 }: AgentModeControlProps) {
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -351,7 +352,6 @@ export const AgentModeControl = memo(function AgentModeControl({
   );
 
   if (!slice || availableModes.length === 0) return null;
-  if (!shouldRenderForPlacement(placement, isCompact)) return null;
 
   return (
     <AgentModeControlView
@@ -361,6 +361,7 @@ export const AgentModeControl = memo(function AgentModeControl({
       selectedModeId={slice.currentModeId}
       onSelectMode={handleSelectMode}
       disabled={!client}
+      iconOnly={isCompact}
     />
   );
 });
@@ -372,7 +373,6 @@ export interface DraftAgentModeControlProps {
   selectedMode: string;
   onSelectMode: (modeId: string) => void;
   disabled?: boolean;
-  placement: AgentModeControlPlacement;
   isCompactLayout?: boolean;
 }
 
@@ -383,13 +383,11 @@ export function DraftAgentModeControl({
   selectedMode,
   onSelectMode,
   disabled,
-  placement,
   isCompactLayout,
 }: DraftAgentModeControlProps) {
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
   if (!selectedProvider || modeOptions.length === 0) return null;
-  if (!shouldRenderForPlacement(placement, isCompact)) return null;
   return (
     <AgentModeControlView
       provider={selectedProvider}
@@ -398,6 +396,7 @@ export function DraftAgentModeControl({
       selectedModeId={selectedMode}
       onSelectMode={onSelectMode}
       disabled={disabled}
+      iconOnly={isCompact}
     />
   );
 }
@@ -413,6 +412,14 @@ const styles = StyleSheet.create((theme) => ({
     gap: compactUp(theme.spacing[1]),
     paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
+  },
+  iconChip: {
+    width: compactUp(28),
+    height: compactUp(28),
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+    borderRadius: theme.borderRadius.full,
   },
   chipHovered: {
     backgroundColor: theme.colors.surface2,

@@ -438,14 +438,14 @@ describe("appearance settings", () => {
         [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: 999 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(deps)).uiFontSize).toBe(24);
+    expect((await loadAppSettingsFromStorage(deps)).uiFontSize).toBe(22);
 
     const low = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: 8 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(low)).uiFontSize).toBe(11);
+    expect((await loadAppSettingsFromStorage(low)).uiFontSize).toBe(12);
 
     const bogus = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -468,7 +468,7 @@ describe("appearance settings", () => {
         [APP_SETTINGS_KEY]: JSON.stringify({ codeFontSize: 8 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(low)).codeFontSize).toBe(9);
+    expect((await loadAppSettingsFromStorage(low)).codeFontSize).toBe(12);
 
     const bogus = makeDeps({
       storage: createInMemoryKeyValueStorage({

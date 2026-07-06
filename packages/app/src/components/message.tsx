@@ -2495,7 +2495,7 @@ function ExpandableBadgeLabelRow({
           onPress={onOpenFilePress}
           onHoverIn={onOpenFileHoverIn}
           onHoverOut={onOpenFileHoverOut}
-          accessibilityRole="button"
+          accessibilityRole={isWeb ? undefined : "button"}
           accessibilityLabel={t("message.actions.openFile")}
           testID="tool-call-open-file"
           style={expandableBadgeStylesheet.openFileButton}

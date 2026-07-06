@@ -19,7 +19,6 @@ import {
 } from "@/components/icons/material-icons";
 import { Composer } from "@/composer";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
-import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { HostPicker } from "@/components/hosts/host-picker";
@@ -2149,33 +2148,26 @@ export function NewWorkspaceScreen({
   });
 
   const composerFooter = useMemo(
-    () => (
-      <>
-        {agentControlsWithDisabled ? (
-          <DraftAgentModeControl placement="footer" {...agentControlsWithDisabled} />
-        ) : null}
-        {checkoutHintPrAttachment ? (
-          <CheckoutHintBadge
-            label={t("newWorkspace.refPicker.checkoutHint", {
-              number: checkoutHintPrAttachment.item.number,
-            })}
-            acceptLabel={t("newWorkspace.refPicker.checkoutPr", {
-              number: checkoutHintPrAttachment.item.number,
-            })}
-            dismissLabel={t("newWorkspace.refPicker.dismissCheckoutHint", {
-              number: checkoutHintPrAttachment.item.number,
-            })}
-            onAccept={acceptCheckoutHint}
-            onDismiss={dismissCheckoutHint}
-            iconColor={theme.colors.foregroundMuted}
-            iconSize={theme.iconSize.sm}
-          />
-        ) : null}
-      </>
-    ),
+    () =>
+      checkoutHintPrAttachment ? (
+        <CheckoutHintBadge
+          label={t("newWorkspace.refPicker.checkoutHint", {
+            number: checkoutHintPrAttachment.item.number,
+          })}
+          acceptLabel={t("newWorkspace.refPicker.checkoutPr", {
+            number: checkoutHintPrAttachment.item.number,
+          })}
+          dismissLabel={t("newWorkspace.refPicker.dismissCheckoutHint", {
+            number: checkoutHintPrAttachment.item.number,
+          })}
+          onAccept={acceptCheckoutHint}
+          onDismiss={dismissCheckoutHint}
+          iconColor={theme.colors.foregroundMuted}
+          iconSize={theme.iconSize.sm}
+        />
+      ) : undefined,
     [
       acceptCheckoutHint,
-      agentControlsWithDisabled,
       checkoutHintPrAttachment,
       dismissCheckoutHint,
       t,

@@ -48,10 +48,10 @@ export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
 export const DEFAULT_UI_FONT_SIZE = 16; // == FONT_SIZE.base
-export const MIN_UI_FONT_SIZE = 11;
-export const MAX_UI_FONT_SIZE = 24;
+export const MIN_UI_FONT_SIZE = 12;
+export const MAX_UI_FONT_SIZE = 22;
 export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
-export const MIN_CODE_FONT_SIZE = 9;
+export const MIN_CODE_FONT_SIZE = 12;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
 

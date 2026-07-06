@@ -645,6 +645,7 @@ function ControlledAgentControls({
           handleSelectThinkingAndClose={handleSelectThinkingAndClose}
           handleOpenChange={handleOpenChange}
           renderThinkingOption={renderThinkingOption}
+          extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
         />
       )}
@@ -898,6 +899,7 @@ interface SheetAgentControlsContentProps {
     active: boolean;
     onPress: () => void;
   }) => ReactElement;
+  extras?: ReactNode;
   modelSelectorServerId: string | null;
 }
 
@@ -932,6 +934,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     handleSelectThinkingAndClose,
     handleOpenChange,
     renderThinkingOption,
+    extras,
     modelSelectorServerId,
   } = props;
 
@@ -1017,6 +1020,8 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         </Pressable>
       ) : null}
+
+      {extras}
 
       {hasFeatures ? (
         <Pressable
@@ -1528,12 +1533,7 @@ export const AgentControls = memo(function AgentControls({
 
   const modeChip = useMemo(
     () => (
-      <AgentModeControl
-        serverId={serverId}
-        agentId={agentId}
-        placement="toolbar"
-        isCompactLayout={isCompactLayout}
-      />
+      <AgentModeControl serverId={serverId} agentId={agentId} isCompactLayout={isCompactLayout} />
     ),
     [serverId, agentId, isCompactLayout],
   );
@@ -1637,7 +1637,6 @@ export function DraftAgentControls({
   const draftModeChip = useMemo(
     () => (
       <DraftAgentModeControl
-        placement="toolbar"
         selectedProvider={selectedProvider}
         providerDefinitions={providerDefinitions}
         modeOptions={modeOptions}
@@ -1716,6 +1715,7 @@ export function DraftAgentControls({
       onRetryModelProvider={onRetryModelProvider}
       isRetryingModelProvider={isRetryingModelProvider}
       disabled={disabled}
+      desktopExtras={draftModeChip}
       modelSelectorServerId={modelSelectorServerId}
       isCompactLayout={isCompactLayout}
     />
@@ -1769,14 +1769,11 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.4,
   },
   prefsButton: {
+    width: compactUp(28),
     height: compactUp(28),
-    minWidth: 0,
-    flexShrink: 1,
-    flexDirection: "row",
     alignItems: "center",
-    gap: compactUp(theme.spacing[1]),
-    paddingHorizontal: compactUp(theme.spacing[2]),
-    borderRadius: theme.borderRadius["2xl"],
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.full,
   },
   sheetSection: {
     gap: theme.spacing[2],

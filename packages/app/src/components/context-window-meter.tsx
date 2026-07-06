@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, G } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
@@ -8,11 +8,11 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { useAgentContextUsage } from "@/hooks/use-agent-context-usage";
+import { compactUp } from "@/styles/theme";
 import type { AgentContextUsage } from "@otto-code/protocol/messages";
 import { formatTokenCount } from "./context-window-meter.utils";
 
@@ -31,6 +31,17 @@ const CENTER = SVG_SIZE / 2;
 const RADIUS = 6;
 const STROKE_WIDTH = 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+// Rotate the circles (not the outermost <Svg>) so the ring starts at 12
+// o'clock instead of the SVG default of 3 o'clock. A `transform` on the
+// outermost <svg> is unreliable on web (browsers largely ignore it there,
+// and Unistyles-generated `style` transforms don't consistently reach the
+// <svg> element either — see the width/height comment below), and it's
+// applied in rendered CSS-pixel space rather than viewBox units, which would
+// need to track `svgSize` as it doubles on compact form factors. A <G> is an
+// inner SVG element, so its transform always applies in the fixed 14x14
+// viewBox space regardless of the outer rendered size, on both platforms.
+const RING_ROTATE_TRANSFORM = `rotate(-90 ${CENTER} ${CENTER})`;
 
 function isValidMaxTokens(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -196,9 +207,8 @@ export function ContextWindowMeter({
   );
   const triggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
-      headerIconSlotStyle.slot,
-      styles.container,
-      hovered || pressed || open ? headerIconSlotStyle.slotHovered : null,
+      styles.button,
+      hovered || pressed || open ? styles.buttonHovered : null,
     ],
     [],
   );
@@ -209,22 +219,18 @@ export function ContextWindowMeter({
   // show a breakdown of yet.
   if (percentage === null || maxTokens === null || usedTokens === null) {
     return (
-      <View style={emptyContainerStyle}>
-        <Svg
-          width={svgSize}
-          height={svgSize}
-          viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
-          style={styles.svg}
-          aria-hidden
-        >
-          <Circle
-            cx={CENTER}
-            cy={CENTER}
-            r={RADIUS}
-            fill="none"
-            stroke={theme.colors.surface3}
-            strokeWidth={STROKE_WIDTH}
-          />
+      <View style={styles.button}>
+        <Svg width={svgSize} height={svgSize} viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`} aria-hidden>
+          <G transform={RING_ROTATE_TRANSFORM}>
+            <Circle
+              cx={CENTER}
+              cy={CENTER}
+              r={RADIUS}
+              fill="none"
+              stroke={theme.colors.surface3}
+              strokeWidth={STROKE_WIDTH}
+            />
+          </G>
         </Svg>
       </View>
     );
@@ -247,32 +253,28 @@ export function ContextWindowMeter({
           percentage: roundedPercentage,
         })}
       >
-        <Svg
-          width={svgSize}
-          height={svgSize}
-          viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
-          style={styles.svg}
-          aria-hidden
-        >
-          <Circle
-            cx={CENTER}
-            cy={CENTER}
-            r={RADIUS}
-            fill="none"
-            stroke={colors.track}
-            strokeWidth={STROKE_WIDTH}
-          />
-          <Circle
-            cx={CENTER}
-            cy={CENTER}
-            r={RADIUS}
-            fill="none"
-            stroke={colors.progress}
-            strokeWidth={STROKE_WIDTH}
-            strokeLinecap="round"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={dashOffset}
-          />
+        <Svg width={svgSize} height={svgSize} viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`} aria-hidden>
+          <G transform={RING_ROTATE_TRANSFORM}>
+            <Circle
+              cx={CENTER}
+              cy={CENTER}
+              r={RADIUS}
+              fill="none"
+              stroke={colors.track}
+              strokeWidth={STROKE_WIDTH}
+            />
+            <Circle
+              cx={CENTER}
+              cy={CENTER}
+              r={RADIUS}
+              fill="none"
+              stroke={colors.progress}
+              strokeWidth={STROKE_WIDTH}
+              strokeLinecap="round"
+              strokeDasharray={CIRCUMFERENCE}
+              strokeDashoffset={dashOffset}
+            />
+          </G>
         </Svg>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="center" offset={8} minWidth={220}>
@@ -299,12 +301,15 @@ export function ContextWindowMeter({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  container: {
+  button: {
+    width: compactUp(28),
+    height: compactUp(28),
+    borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
   },
-  svg: {
-    transform: [{ rotate: "-90deg" }],
+  buttonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   popupContent: {
     gap: theme.spacing[1.5],
@@ -377,5 +382,3 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
 }));
-
-const emptyContainerStyle = [headerIconSlotStyle.slot, styles.container];
