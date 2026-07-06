@@ -8,6 +8,7 @@ import {
   ICON_SIZE,
   type Theme,
 } from "@/styles/theme";
+import { syncBlackChatScopeVars } from "@/styles/black-chat-scope";
 import { applyRootUiFont } from "./apply-root-font";
 
 // Compact form factors (phones, narrow windows) bump the interface font size by a
@@ -134,4 +135,8 @@ export function applyAppearance(input: AppearanceInput): void {
   // Web: apply the UI font app-wide (RN-web stamps a default font on every text
   // element, so it can't be done through the theme alone). No-op on native.
   applyRootUiFont(ui);
+
+  // Web: re-mirror the `black` theme's variables onto the chat-scope class
+  // after patching fonts/sizes/syntax into it (no-op on native).
+  syncBlackChatScopeVars();
 }

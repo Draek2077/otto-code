@@ -6,12 +6,13 @@ import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ScopedTheme, StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
+import { BlackChatScope } from "@/components/black-chat-scope";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
@@ -395,13 +396,10 @@ export function AgentConversationPanel() {
     "AgentConversationPanel requires an agent or draft target",
   );
   const content = target.kind === "draft" ? <DraftPanel /> : <AgentPanel />;
-  if (!settings.blackTabBackground) {
-    return content;
-  }
-  // Black tab background: render the whole chat pane (stream + composer) under
-  // the scoped `black` theme — the user's dark-variant colors on pure black —
-  // regardless of the app-wide light/dark mode.
-  return <ScopedTheme name="black">{content}</ScopedTheme>;
+  // Black tab background: render the whole chat pane (stream + composer) on
+  // pure black with dark-theme colors regardless of the app-wide light/dark
+  // mode. Chat tabs only — terminal/browser/preview panes are not wrapped.
+  return <BlackChatScope enabled={settings.blackTabBackground}>{content}</BlackChatScope>;
 }
 
 export const agentPanelRegistration: PanelRegistration<"agent"> = {
