@@ -151,6 +151,7 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   "list-todo": ListTodo,
   "shield-check": ShieldCheck,
   zap: Zap,
+  brain: Brain,
 };
 
 function getFeatureIcon(icon?: string) {
@@ -850,8 +851,6 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
         </>
       ) : null}
 
-      {extras}
-
       {features?.map((feature) => (
         <DesktopFeatureItem
           key={`feature-${feature.id}`}
@@ -862,6 +861,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
           onSetFeature={onSetFeature}
         />
       ))}
+
+      {extras}
     </>
   );
 }
@@ -1021,8 +1022,6 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
         </Pressable>
       ) : null}
 
-      {extras}
-
       {hasFeatures ? (
         <Pressable
           onPress={handleOpenFeatures}
@@ -1035,6 +1034,8 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           <Settings2 size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         </Pressable>
       ) : null}
+
+      {extras}
 
       {hasThinking ? (
         <Combobox
