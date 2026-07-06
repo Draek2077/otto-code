@@ -25,7 +25,7 @@ Either way, **you install the underlying CLI**. Otto runs it as a subprocess. Th
 
 Not every model worth running has a CLI in front of it. Local inference servers, LM Studio, Ollama, vLLM, llama.cpp, expose an HTTP API instead, and plenty of hosted gateways speak the same shape. For these, Otto skips the subprocess entirely and talks to the endpoint itself, the daemon becomes the agent loop, not just a supervisor around one.
 
-This isn't a replacement for CLI-based providers, it's for the case CLI adapters don't cover: a model with no CLI at all, usually because it's running locally on your own hardware. See [Local models](/docs/local-models) for how the mechanism works and [Custom providers](/docs/custom-providers#lm-studio-local-models) for the config reference.
+This isn't a replacement for CLI-based providers, it's for the case CLI adapters don't cover: a model with no CLI at all, usually because it's running locally on your own hardware. See [Local models](/docs/local-models) for how the mechanism works and [Custom providers](/docs/custom-providers#openai-compatible-local-models) for the config reference.
 
 ## Where to go next
 

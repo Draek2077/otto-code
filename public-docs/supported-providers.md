@@ -65,6 +65,6 @@ The in-app catalog is the canonical, version-pinned source. Anything not listed 
 
 No CLI required, Otto talks to these directly as an HTTP endpoint. See [Local models](/docs/local-models) for how this mechanism works.
 
-- [LM Studio](https://lmstudio.ai), run open models locally with a one-click GUI. Featured preset in the in-app catalog.
+- [LM Studio](https://lmstudio.ai), run open models locally with a one-click GUI. Its default port is what the in-app "OpenAI Compatible" featured preset points at.
 - [Ollama](https://ollama.com), run open models locally from the command line.
 - Any other OpenAI-compatible server, vLLM, llama.cpp's server mode, LocalAI, or a hosted gateway that speaks the same API shape.

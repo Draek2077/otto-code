@@ -38,7 +38,7 @@ describe("ACP provider catalog", () => {
     expect(ACP_PROVIDER_CATALOG.some((entry) => entry.featured)).toBe(true);
     expect(lastFeaturedIndex).toBeLessThan(firstNonFeaturedIndex);
     expect(ACP_PROVIDER_CATALOG.filter((entry) => entry.featured)).toContainEqual(
-      expect.objectContaining({ id: "lmstudio" }),
+      expect.objectContaining({ id: "openai-compatible" }),
     );
   });
 
@@ -85,14 +85,14 @@ describe("ACP provider catalog", () => {
     });
   });
 
-  it("maps the LM Studio preset to a native openai-compatible provider config patch", () => {
-    const patch = buildAcpProviderConfigPatch(findProvider("lmstudio"));
-    const lmstudio = patch.providers?.lmstudio;
+  it("maps the OpenAI Compatible preset to a native openai-compatible provider config patch", () => {
+    const patch = buildAcpProviderConfigPatch(findProvider("openai-compatible"));
+    const openaiCompatible = patch.providers?.["openai-compatible"];
 
-    expect(lmstudio?.extends).toBe("openai-compatible");
-    expect(lmstudio?.command).toBeUndefined();
-    expect(lmstudio?.models).toBeUndefined();
-    expect(lmstudio?.env).toEqual({
+    expect(openaiCompatible?.extends).toBe("openai-compatible");
+    expect(openaiCompatible?.command).toBeUndefined();
+    expect(openaiCompatible?.models).toBeUndefined();
+    expect(openaiCompatible?.env).toEqual({
       OPENAI_BASE_URL: "http://localhost:1234/v1",
     });
   });

@@ -24,7 +24,7 @@ Provider IDs must be lowercase alphanumeric with hyphens (`/^[a-z][a-z0-9-]*$/`)
 - [Extending a built-in provider](#extending-a-built-in-provider)
 - [Z.AI (Zhipu) coding plan](#zai-zhipu-coding-plan)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
-- [LM Studio (local models)](#lm-studio-local-models)
+- [OpenAI Compatible (local models)](#openai-compatible-local-models)
 - [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai-compatible-endpoint)
 - [Multiple profiles for the same provider](#multiple-profiles-for-the-same-provider)
 - [Custom binary for a provider](#custom-binary-for-a-provider)
@@ -186,25 +186,25 @@ For pay-as-you-go, use `ANTHROPIC_API_KEY` with a standard Model Studio key (`sk
 
 ---
 
-## LM Studio (local models)
+## OpenAI Compatible (local models)
 
-[LM Studio](https://lmstudio.ai) runs open models locally and exposes an OpenAI-compatible server (default `http://localhost:1234`). Otto talks to it **natively** — the daemon connects to the endpoint directly with `extends: "openai-compatible"`. No agent CLI is involved.
+Local inference servers like [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com), vLLM, and llama.cpp expose an OpenAI-compatible HTTP server instead of a CLI. Otto talks to them **natively** — the daemon connects to the endpoint directly with `extends: "openai-compatible"`. No agent CLI is involved.
 
-LM Studio ships as a featured preset in the in-app **Add provider** catalog. Installing it creates the config below; the Server URL and API key are editable afterwards in the provider's settings sheet (Connection section).
+**OpenAI Compatible** ships as a featured preset in the in-app **Add provider** catalog, defaulting to LM Studio's local port (`http://localhost:1234`). Installing it creates the config below; the Server URL and API key are editable afterwards in the provider's settings sheet (Connection section) — point it at Ollama, vLLM, or any other OpenAI-compatible server instead.
 
 ### Setup
 
-1. Install [LM Studio](https://lmstudio.ai) and download the models you want
-2. Start the local server (Developer tab → Start Server, or `lms server start`)
+1. Install a local server, e.g. [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.com), and download the models you want
+2. Start the local server (for LM Studio: Developer tab → Start Server, or `lms server start`)
 3. Install the preset from Settings → Add provider, or add the entry manually:
 
 ```json
 {
   "agents": {
     "providers": {
-      "lmstudio": {
+      "openai-compatible": {
         "extends": "openai-compatible",
-        "label": "LM Studio",
+        "label": "OpenAI Compatible",
         "env": {
           "OPENAI_BASE_URL": "http://localhost:1234/v1"
         }
@@ -227,9 +227,9 @@ LM Studio ships as a featured preset in the in-app **Add provider** catalog. Ins
   {
     "agents": {
       "providers": {
-        "lmstudio": {
+        "openai-compatible": {
           "extends": "openai-compatible",
-          "label": "LM Studio",
+          "label": "OpenAI Compatible",
           "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
           "ottoToolGroups": ["preview", "browser"]
         }
@@ -253,9 +253,9 @@ The daemon itself acts as the MCP client for this provider: it connects to the c
 {
   "agents": {
     "providers": {
-      "lmstudio": {
+      "openai-compatible": {
         "extends": "openai-compatible",
-        "label": "LM Studio",
+        "label": "OpenAI Compatible",
         "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
         "mcpServers": {
           "docs": { "type": "stdio", "command": "npx", "args": ["-y", "some-mcp-server"] },
@@ -516,7 +516,7 @@ The [Agent Client Protocol (ACP)](https://agentclientprotocol.com) is an open st
 
 ACP agents communicate over JSON-RPC 2.0 on stdio. Otto spawns the agent process and talks to it through stdin/stdout.
 
-Otto also ships an in-app provider catalog (Settings → Add provider) for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. ACP catalog entries create the same `extends: "acp"` provider config shown below. The catalog also carries featured endpoint presets (e.g. [LM Studio](#lm-studio-local-models)) that use the native `extends: "openai-compatible"` provider type instead.
+Otto also ships an in-app provider catalog (Settings → Add provider) for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. ACP catalog entries create the same `extends: "acp"` provider config shown below. The catalog also carries featured endpoint presets (e.g. [OpenAI Compatible](#openai-compatible-local-models)) that use the native `extends: "openai-compatible"` provider type instead.
 
 ### Adding a generic ACP provider
 
@@ -771,7 +771,7 @@ Built-in providers: `claude`, `codex`, `copilot`, `opencode`, `pi`, `omp`
 Special values:
 
 - `acp` — creates a generic ACP provider (requires `command`)
-- `openai-compatible` — served natively by the daemon against an OpenAI-compatible HTTP endpoint (requires `env.OPENAI_BASE_URL`; see [LM Studio](#lm-studio-local-models))
+- `openai-compatible` — served natively by the daemon against an OpenAI-compatible HTTP endpoint (requires `env.OPENAI_BASE_URL`; see [OpenAI Compatible](#openai-compatible-local-models))
 
 ### Full example
 

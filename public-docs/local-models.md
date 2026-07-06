@@ -15,7 +15,7 @@ Local inference servers don't have a CLI in front of them, though. LM Studio, Ol
 ## Setup
 
 1. Start a local server. For LM Studio: install it, download a model, then Developer tab → Start Server (or `lms server start` from the CLI). Default address is `http://localhost:1234`.
-2. In Otto, go to Settings → Add provider. LM Studio is a featured preset, one click fills in the connection. For anything else (Ollama, vLLM, a custom gateway), add a provider that extends `openai-compatible` and point it at your server, see [Custom providers](/docs/custom-providers#lm-studio-local-models) for the exact config.
+2. In Otto, go to Settings → Add provider. OpenAI Compatible is a featured preset, one click fills in the connection (it defaults to LM Studio's local port). For anything else (Ollama, vLLM, a custom gateway), edit the Server URL, or add a provider that extends `openai-compatible` and point it at your server, see [Custom providers](/docs/custom-providers#openai-compatible-local-models) for the exact config.
 3. Server URL and API key are editable afterwards from the provider's settings sheet, under **Connection**. Most local servers don't require an API key at all.
 
 ## How the connection works
@@ -42,6 +42,6 @@ What the direct-endpoint path adds is optionality: models that run entirely on y
 ## See also
 
 - [Providers](/docs/providers), how Otto's provider model works in general.
-- [Custom providers](/docs/custom-providers#lm-studio-local-models), the full config reference, including scoping Otto's tools with `ottoToolGroups`.
+- [Custom providers](/docs/custom-providers#openai-compatible-local-models), the full config reference, including scoping Otto's tools with `ottoToolGroups`.
 - [Preview](/docs/preview), the dev-server and browser-verification toolset local models can drive through Otto's injected tools.
 - [Supported providers](/docs/supported-providers), the full provider list.
