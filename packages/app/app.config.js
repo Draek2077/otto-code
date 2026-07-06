@@ -20,7 +20,7 @@ function resolveSecretFile(params) {
 const variants = {
   production: {
     name: "Otto",
-    packageId: "ai.ottocode",
+    packageId: "me.ottocode.mobile",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_PROD",
       fallbackRelativePath: "./.secrets/google-services.prod.json",
@@ -32,7 +32,7 @@ const variants = {
   },
   development: {
     name: "Otto Debug",
-    packageId: "ai.ottocode.debug",
+    packageId: "me.ottocode.mobile.debug",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_DEBUG",
       fallbackRelativePath: "./.secrets/google-services.debug.json",

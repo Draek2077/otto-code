@@ -50,7 +50,7 @@ Connection, which needs no relay at all and already works.
 | Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                           | ✅ Yes                         | Already done (see below) — unaffected by domain/hosting choice                                                                      |
 | npm packages (`@otto-code/*`)          | Unregistered scope (nobody owns it)                                                             | ⚠️ N/A                         | Not needed unless you want `npm install @otto-code/cli` to work from your fork; skip `release:publish` until/unless you set this up |
 | Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                        | ✅ Yes                         | Nothing — the workflow reads the owner from GitHub automatically                                                                    |
-| Android build (EAS)                    | Expo org `otto-code-ai`, hardcoded `projectId`                                                  | ❌ No                          | Your own Expo account + your own EAS project (see "Android release" below)                                                          |
+| Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set        | ✅ Yes                         | Already done (see "Android release" below)                                                                                          |
 | Android package identity               | `ai.ottocode` / `ai.ottocode.debug`                                                             | ❌ No                          | A new `applicationId` — you can't reuse upstream's if it's already live on the Play Store                                           |
 | Play Store listing                     | N/A (not created)                                                                               | ❌ No                          | Your own Google Play Console developer account ($25 one-time)                                                                       |
 | Push notifications (FCM)               | Firebase project tied to `ai.ottocode`                                                          | ❌ No                          | Your own Firebase project + `google-services.json`, once you have your own package ID                                               |
@@ -115,35 +115,32 @@ The release loop, once you're ready to ship:
 
 ## Android release
 
-**This needs new infrastructure before it works at all**, because Android builds go through EAS
-(Expo Application Services), which is a hosted build service tied to an Expo account — not your
-GitHub repo. Two things in `packages/app` currently point at upstream's Expo org:
+Android builds go through EAS (Expo Application Services), a hosted build service tied to an Expo
+account — not your GitHub repo. **This is now fork-ready**: `packages/app/app.config.js` points at
+the `otto-code` Expo org's own project, not upstream's.
 
 ```js
 // packages/app/app.config.js
-extra: { eas: { projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a" } },
-owner: "otto-code-ai",
+extra: { eas: { projectId: "69eddb63-f77d-413a-b2b7-ed83e8e16759" } },
+owner: "otto-code",
 ```
-
-You don't have permission to build against that project, so `eas build` will fail for you as-is.
 
 ### Setup (one-time)
 
-1. Create your own Expo account at expo.dev if you don't have one.
-2. From `packages/app`, run `npx eas init` (or `npx eas project:init`). This creates a fresh EAS
-   project under **your** account and gives you a new `projectId`.
-3. Update `packages/app/app.config.js`:
-   - `owner:` → your Expo username or org.
-   - `extra.eas.projectId` → the new project ID from step 2.
-4. **Pick a new Android `applicationId`.** `docs/android.md` documents the current IDs as
-   `ai.ottocode` (production) and `ai.ottocode.debug` (development) — controlled by
+1. ✅ Done — Expo account/org created (`otto-code`).
+2. ✅ Done — `npx eas init` created a fresh EAS project under that org
+   (`69eddb63-f77d-413a-b2b7-ed83e8e16759`).
+3. ✅ Done — `owner` and `extra.eas.projectId` in `app.config.js` updated to match.
+4. **Still open: pick a new Android `applicationId`.** `docs/android.md` documents the current IDs
+   as `ai.ottocode` (production) and `ai.ottocode.debug` (development) — controlled by
    `APP_VARIANT` in `app.config.js`. Play Store package names are globally unique and permanent
    once published; if upstream ever ships `ai.ottocode` to the Play Store (or already has), you
-   cannot reuse it. Pick something under your own namespake, e.g. `com.draekz.ottocode`.
-5. If you want an Expo-token-authenticated CI build (via
-   `.github/workflows/android-apk-release.yml`), add an `EXPO_TOKEN` secret to your GitHub repo
-   (Settings → Secrets → Actions) generated from your Expo account.
-6. If you want push notifications to work, create your own Firebase project scoped to your new
+   cannot reuse it. Pick something under your own namespace, e.g. `com.draekz.ottocode`. Not
+   required for local `eas build` testing, only for eventual Play Store submission.
+5. ✅ Done — `EXPO_TOKEN` secret added to the GitHub repo (Settings → Secrets → Actions), generated
+   from the `otto-code` Expo account, so `.github/workflows/android-apk-release.yml` can
+   authenticate.
+6. **Still open: push notifications (FCM).** Create your own Firebase project scoped to your new
    `applicationId` and supply `google-services.json` per `packages/app/app.config.js`'s
    `googleServicesFile` resolution (env var or `.secrets/google-services.prod.json`).
 
