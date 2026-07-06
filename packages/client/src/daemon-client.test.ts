@@ -5127,6 +5127,66 @@ test("sends provider.usage.list.request and resolves provider.usage.list.respons
   });
 });
 
+test("sends agent.context.get_usage.request and resolves agent.context.get_usage.response", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const usagePromise = client.getAgentContextUsage("agent-1", { requestId: "ctx-1" });
+
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "agent.context.get_usage.request",
+      agentId: "agent-1",
+      requestId: "ctx-1",
+    },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.context.get_usage.response",
+      payload: {
+        requestId: "ctx-1",
+        agentId: "agent-1",
+        usage: {
+          categories: [
+            { name: "Messages", tokens: 105200 },
+            { name: "MCP tools (deferred)", tokens: 108100, isDeferred: true },
+          ],
+          totalTokens: 137500,
+          maxTokens: 1000000,
+        },
+      },
+    }),
+  );
+
+  await expect(usagePromise).resolves.toEqual({
+    requestId: "ctx-1",
+    agentId: "agent-1",
+    usage: {
+      categories: [
+        { name: "Messages", tokens: 105200 },
+        { name: "MCP tools (deferred)", tokens: 108100, isDeferred: true },
+      ],
+      totalTokens: 137500,
+      maxTokens: 1000000,
+    },
+  });
+});
+
 test("sends close_items_request and resolves close_items_response", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

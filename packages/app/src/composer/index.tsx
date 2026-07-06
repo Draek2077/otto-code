@@ -42,7 +42,7 @@ import {
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
-import { useSessionStore } from "@/stores/session-store";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -195,57 +195,52 @@ function buildRealtimeVoiceButtonStyle(
   );
 }
 
+function pickAgentUsageFields(lastUsage: Agent["lastUsage"] | undefined) {
+  return {
+    contextWindowMaxTokens: lastUsage?.contextWindowMaxTokens ?? null,
+    contextWindowUsedTokens: lastUsage?.contextWindowUsedTokens ?? null,
+    totalCostUsd: lastUsage?.totalCostUsd ?? null,
+  };
+}
+
 function buildAgentStateSelector(serverId: string, agentId: string) {
   return (state: ReturnType<typeof useSessionStore.getState>) => {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
       status: agent?.status ?? null,
-      contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
-      contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
-      totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
+      ...pickAgentUsageFields(agent?.lastUsage),
       model: agent?.model ?? null,
       provider: agent?.provider ?? null,
     };
   };
 }
 
-function renderContextWindowMeter(
-  contextWindowMaxTokens: number | null,
-  contextWindowUsedTokens: number | null,
-  totalCostUsd: number | null,
-  showPercentage: boolean,
-  serverId: string,
-  provider: string | null,
-  pending: boolean,
-): ReactElement | null {
-  const hasData = contextWindowMaxTokens !== null && contextWindowUsedTokens !== null;
-  if (!hasData && !pending) {
+interface RenderContextWindowMeterArgs {
+  contextWindowMaxTokens: number | null;
+  contextWindowUsedTokens: number | null;
+  totalCostUsd: number | null;
+  serverId: string;
+  agentId: string;
+  provider: string | null;
+  pending: boolean;
+}
+
+function renderContextWindowMeter(args: RenderContextWindowMeterArgs): ReactElement | null {
+  const hasData = args.contextWindowMaxTokens !== null && args.contextWindowUsedTokens !== null;
+  if (!hasData && !args.pending) {
     return null;
   }
   return (
     <ContextWindowMeter
-      maxTokens={contextWindowMaxTokens}
-      usedTokens={contextWindowUsedTokens}
-      totalCostUsd={totalCostUsd}
-      showPercentage={showPercentage}
-      serverId={serverId}
-      provider={provider}
-      pending={pending}
+      maxTokens={args.contextWindowMaxTokens}
+      usedTokens={args.contextWindowUsedTokens}
+      totalCostUsd={args.totalCostUsd}
+      serverId={args.serverId}
+      agentId={args.agentId}
+      provider={args.provider}
+      pending={args.pending}
     />
   );
-}
-
-function resolveContextWindowPlacement(
-  meter: ReactElement | null,
-  isMobile: boolean,
-): { beforeVoiceContent: ReactNode; footerInlineContent: ReactNode } {
-  if (isMobile) {
-    return { beforeVoiceContent: null, footerInlineContent: meter };
-  }
-  return {
-    beforeVoiceContent: <View style={styles.contextWindowMeterSlot}>{meter}</View>,
-    footerInlineContent: null,
-  };
 }
 
 interface RenderLeftContentArgs {
@@ -285,18 +280,13 @@ interface RenderAttachmentTrayArgs {
   };
 }
 
-function renderComposerFooter(
-  footer: ReactNode,
-  footerInlineContent: ReactNode,
-): ReactElement | null {
-  if (!footer && !footerInlineContent) return null;
+function renderComposerFooter(footer: ReactNode, footerRight: ReactNode): ReactElement | null {
+  if (!footer && !footerRight) return null;
   return (
     <View style={styles.footer}>
       <ChatWidthBounds style={styles.footerContent}>
-        <View style={styles.footerLeft}>
-          {footer}
-          {footerInlineContent}
-        </View>
+        <View style={styles.footerLeft}>{footer}</View>
+        <View style={styles.footerRight}>{footerRight}</View>
       </ChatWidthBounds>
     </View>
   );
@@ -1697,28 +1687,24 @@ export function Composer({
 
   const contextWindowMeter = useMemo(
     () =>
-      renderContextWindowMeter(
+      renderContextWindowMeter({
         contextWindowMaxTokens,
         contextWindowUsedTokens,
-        agentState.totalCostUsd,
-        isCompactLayout,
+        totalCostUsd: agentState.totalCostUsd,
         serverId,
-        agentState.provider,
-        contextWindowPending,
-      ),
+        agentId,
+        provider: agentState.provider,
+        pending: contextWindowPending,
+      }),
     [
       contextWindowMaxTokens,
       contextWindowUsedTokens,
       agentState.totalCostUsd,
-      isCompactLayout,
       serverId,
+      agentId,
       agentState.provider,
       contextWindowPending,
     ],
-  );
-  const { beforeVoiceContent, footerInlineContent } = useMemo(
-    () => resolveContextWindowPlacement(contextWindowMeter, isCompactLayout),
-    [contextWindowMeter, isCompactLayout],
   );
 
   const githubSearchQueryTrimmed = githubSearchQuery.trim();
@@ -1972,7 +1958,6 @@ export function Composer({
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
                 leftContent={leftContent}
-                beforeVoiceContent={beforeVoiceContent}
                 rightContent={rightContent}
                 voiceServerId={serverId}
                 voiceAgentId={agentId}
@@ -2006,7 +1991,7 @@ export function Composer({
             </View>
           </ChatWidthBounds>
         </View>
-        {renderComposerFooter(footer, footerInlineContent)}
+        {renderComposerFooter(footer, contextWindowMeter)}
       </Animated.View>
     </ComposerKeyboardScopeProvider>
   );
@@ -2097,11 +2082,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
   },
-  contextWindowMeterSlot: {
-    width: 28,
-    height: 28,
+  footerRight: {
+    flexShrink: 0,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    marginLeft: "auto",
   },
   realtimeVoiceButton: {
     width: compactUp(28),

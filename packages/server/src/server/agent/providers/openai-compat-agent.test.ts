@@ -31,11 +31,42 @@ function sseChunk(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
 
-async function startEndpoint(options?: { slowStream?: boolean }): Promise<TestEndpoint> {
+async function startEndpoint(options?: {
+  slowStream?: boolean;
+  /** Include a vLLM-style max_model_len on the standard /v1/models listing. */
+  v1ContextLength?: number;
+  /** Serve LM Studio's native /api/v0/models listing with loaded_context_length. */
+  nativeContextLength?: number;
+}): Promise<TestEndpoint> {
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/v1/models") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ data: [{ id: "test-model-a" }, { id: "test-model-b" }] }));
+      const extra =
+        typeof options?.v1ContextLength === "number"
+          ? { max_model_len: options.v1ContextLength }
+          : {};
+      res.end(JSON.stringify({ data: [{ id: "test-model-a", ...extra }, { id: "test-model-b" }] }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/api/v0/models") {
+      if (typeof options?.nativeContextLength !== "number") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: [
+            {
+              id: "test-model-a",
+              state: "loaded",
+              loaded_context_length: options.nativeContextLength,
+              max_context_length: options.nativeContextLength * 2,
+            },
+          ],
+        }),
+      );
       return;
     }
     if (req.method === "POST" && req.url === "/v1/chat/completions") {
@@ -143,7 +174,7 @@ describe("OpenAICompatAgentClient", () => {
 
     expect(result.canceled).toBe(false);
     expect(result.finalText).toBe("Hello from test-model-a");
-    expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 3 });
+    expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 3, contextWindowUsedTokens: 10 });
 
     const assistantChunks = events.flatMap((event) =>
       event.type === "timeline" && event.item.type === "assistant_message" ? [event.item.text] : [],
@@ -161,6 +192,85 @@ describe("OpenAICompatAgentClient", () => {
       { role: "user", content: "Say hello" },
       { role: "assistant", content: "Hello from test-model-a" },
     ]);
+  });
+
+  test("resolves the context window from LM Studio's native model listing", async () => {
+    const endpoint = await startEndpoint({ nativeContextLength: 8192 });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const result = await session.run("Say hello");
+    expect(result.usage).toEqual({
+      inputTokens: 7,
+      outputTokens: 3,
+      contextWindowUsedTokens: 10,
+      contextWindowMaxTokens: 8192,
+    });
+  });
+
+  test("reads vLLM-style context length extensions from /v1/models", async () => {
+    const endpoint = await startEndpoint({ v1ContextLength: 32768 });
+    const client = createClient(endpoint.baseUrl);
+
+    const catalog = await client.fetchCatalog({ scope: "global", force: true });
+    expect(catalog.models[0]).toMatchObject({
+      id: "test-model-a",
+      contextWindowMaxTokens: 32768,
+    });
+
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const result = await session.run("Say hello");
+    expect(result.usage?.contextWindowMaxTokens).toBe(32768);
+  });
+
+  test("getContextUsage reports a category makeup scaled to the measured context size", async () => {
+    const endpoint = await startEndpoint({ nativeContextLength: 8192 });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("Say hello");
+    const usage = await session.getContextUsage?.();
+
+    expect(usage).not.toBeNull();
+    expect(usage?.maxTokens).toBe(8192);
+    // Exact total comes from the server's prompt+completion measurement.
+    expect(usage?.totalTokens).toBe(10);
+    // The measured total (10 tokens) is far below the char-based estimates, so
+    // small categories can scale to zero and drop out; the survivors must all
+    // be known categories.
+    const names = usage?.categories.map((category) => category.name) ?? [];
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(["Messages", "Tools", "System prompt"]).toContain(name);
+    }
+    const sum = usage?.categories.reduce((acc, category) => acc + category.tokens, 0) ?? 0;
+    // Rounded per-category scaling stays within one token per category of the total.
+    expect(Math.abs(sum - (usage?.totalTokens ?? 0))).toBeLessThanOrEqual(3);
+  });
+
+  test("getContextUsage is null when no context window can be discovered", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("Say hello");
+    await expect(session.getContextUsage?.()).resolves.toBeNull();
   });
 
   test("resumed sessions keep conversation context", async () => {

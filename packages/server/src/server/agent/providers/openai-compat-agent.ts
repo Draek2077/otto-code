@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type {
   AgentCapabilityFlags,
   AgentClient,
+  AgentContextUsage,
   AgentFeature,
   AgentLaunchContext,
   AgentMode,
@@ -19,6 +20,7 @@ import type {
   AgentSession,
   AgentSessionConfig,
   AgentStreamEvent,
+  AgentUsage,
   FetchCatalogOptions,
   ProviderCatalog,
   ToolCallDetail,
@@ -288,6 +290,61 @@ function parseModelList(json: unknown): string[] {
   });
 }
 
+/**
+ * Optional per-model context-length fields seen across OpenAI-compatible
+ * servers. LM Studio's native listing reports `loaded_context_length` (the
+ * window the loaded instance actually runs with) ahead of the model's
+ * theoretical `max_context_length`; vLLM extends /v1/models with
+ * `max_model_len`; other gateways use `context_length`/`context_window`.
+ */
+const MODEL_CONTEXT_LENGTH_FIELDS = [
+  "loaded_context_length",
+  "max_context_length",
+  "max_model_len",
+  "context_length",
+  "context_window",
+] as const;
+
+function parseModelContextLength(entry: Record<string, unknown>): number | null {
+  for (const field of MODEL_CONTEXT_LENGTH_FIELDS) {
+    const value = entry[field];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function parseModelContextLengths(json: unknown): Map<string, number> {
+  const lengths = new Map<string, number>();
+  if (!json || typeof json !== "object") {
+    return lengths;
+  }
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) {
+    return lengths;
+  }
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== "string") continue;
+    const contextLength = parseModelContextLength(record);
+    if (contextLength !== null) {
+      lengths.set(record.id, contextLength);
+    }
+  }
+  return lengths;
+}
+
+/**
+ * Rough token estimate for the breakdown split (~4 chars/token). The split is
+ * proportional only; the total is corrected to the server-measured
+ * prompt_tokens when one has been observed.
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 function parseToolCallPayloads(raw: unknown): ToolCallPayload[] | null {
   if (!Array.isArray(raw)) {
     return null;
@@ -423,13 +480,22 @@ export class OpenAICompatAgentClient implements AgentClient {
         `${this.label} at ${endpoint.baseUrl} responded ${response.status} to /models. Check the URL and API key.`,
       );
     }
-    const modelIds = parseModelList(await response.json());
-    const models: AgentModelDefinition[] = modelIds.map((id, index) => ({
-      provider: this.provider,
-      id,
-      label: id,
-      isDefault: index === 0,
-    }));
+    const listing: unknown = await response.json();
+    const modelIds = parseModelList(listing);
+    const contextLengths = parseModelContextLengths(listing);
+    const models: AgentModelDefinition[] = modelIds.map((id, index) => {
+      const model: AgentModelDefinition = {
+        provider: this.provider,
+        id,
+        label: id,
+        isDefault: index === 0,
+      };
+      const contextWindowMaxTokens = contextLengths.get(id);
+      if (typeof contextWindowMaxTokens === "number") {
+        model.contextWindowMaxTokens = contextWindowMaxTokens;
+      }
+      return model;
+    });
     return { models, modes: OPENAI_COMPAT_MODES };
   }
 
@@ -596,6 +662,12 @@ export class OpenAICompatAgentSession implements AgentSession {
   private modelId: string | null;
   private modeId: string;
   private activeTurn: ActiveTurn | null = null;
+  /** Resolved context window for the active model; null until (or unless) discovered. */
+  private contextWindowMaxTokens: number | null = null;
+  /** Model the cached context window was resolved for; re-probe after a model switch. */
+  private contextWindowProbedModel: string | null = null;
+  /** Exact context size (prompt + completion tokens) measured by the server on the last round. */
+  private lastContextTokens: number | null = null;
 
   constructor(options: {
     providerId: string;
@@ -820,16 +892,17 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
     this.activeTurn = null;
     const finalText = turn.finalTextParts.join("\n\n");
+    const usage = await this.buildTurnUsage(turn);
     this.emit({
       type: "turn_completed",
       provider: this.provider,
       turnId: turn.turnId,
-      ...(turn.usage ? { usage: turn.usage } : {}),
+      ...(usage ? { usage } : {}),
     });
     turn.resolve({
       sessionId: this.id,
       finalText,
-      ...(turn.usage ? { usage: turn.usage } : {}),
+      ...(usage ? { usage } : {}),
       timeline: [],
       canceled: false,
     });
@@ -1216,6 +1289,119 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
     this.modelId = first;
     return first;
+  }
+
+  /**
+   * Best-effort context window discovery, cached per model. Checks the
+   * standard /v1/models listing for extended context-length fields first,
+   * then LM Studio's native /api/v0/models listing (same host, /v1 stripped),
+   * which reports the loaded instance's actual window. Servers that expose
+   * neither leave the meter without a max — never an error.
+   */
+  private async resolveContextWindowMaxTokens(): Promise<number | null> {
+    const model = this.modelId;
+    if (!model) {
+      return null;
+    }
+    if (this.contextWindowProbedModel === model) {
+      return this.contextWindowMaxTokens;
+    }
+    let endpoint: ResolvedEndpoint;
+    try {
+      endpoint = resolveEndpoint(this.env, this.label);
+    } catch {
+      return null;
+    }
+    const candidateUrls = [
+      `${endpoint.baseUrl}/models`,
+      `${endpoint.baseUrl.replace(/\/v1$/u, "")}/api/v0/models`,
+    ];
+    let resolved: number | null = null;
+    for (const url of candidateUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: buildHeaders(endpoint),
+          signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
+        });
+        if (!response.ok) continue;
+        const match = parseModelContextLengths(await response.json()).get(model);
+        if (typeof match === "number") {
+          resolved = match;
+          break;
+        }
+      } catch {
+        // Discovery is optional; unreachable probe endpoints are expected.
+      }
+    }
+    this.contextWindowMaxTokens = resolved;
+    this.contextWindowProbedModel = model;
+    return resolved;
+  }
+
+  /**
+   * Promote the raw per-request token counts into AgentUsage. The final
+   * round's prompt already contains the full conversation, so prompt +
+   * completion tokens is the context content size as the server measured it.
+   */
+  private async buildTurnUsage(turn: ActiveTurn): Promise<AgentUsage | undefined> {
+    if (!turn.usage) {
+      return undefined;
+    }
+    const usage: AgentUsage = { ...turn.usage };
+    if (typeof turn.usage.inputTokens === "number") {
+      const usedTokens = turn.usage.inputTokens + (turn.usage.outputTokens ?? 0);
+      usage.contextWindowUsedTokens = usedTokens;
+      this.lastContextTokens = usedTokens;
+    }
+    const maxTokens = await this.resolveContextWindowMaxTokens();
+    if (maxTokens !== null) {
+      usage.contextWindowMaxTokens = maxTokens;
+    }
+    return usage;
+  }
+
+  /**
+   * Context makeup for the client's popup. The daemon owns this provider's
+   * entire prompt (system message, tool schemas, conversation), so the split
+   * is computed locally: char-based estimates per category, scaled so the
+   * counted total matches the server-measured context size when one exists.
+   */
+  async getContextUsage(): Promise<AgentContextUsage | null> {
+    const maxTokens = await this.resolveContextWindowMaxTokens();
+    if (maxTokens === null) {
+      return null;
+    }
+    const systemMessage = this.messages.find((message) => message.role === "system");
+    const conversation = this.messages.filter((message) => message.role !== "system");
+    const toolsPayload = [
+      ...buildOpenAIToolsPayload(this.availableToolSpecs()),
+      ...this.buildOttoToolPayload(),
+    ];
+    let categories = [
+      {
+        name: "Messages",
+        tokens: conversation.reduce(
+          (sum, message) => sum + estimateTokens(JSON.stringify(message)),
+          0,
+        ),
+      },
+      { name: "Tools", tokens: estimateTokens(JSON.stringify(toolsPayload)) },
+      { name: "System prompt", tokens: estimateTokens(systemMessage?.content ?? "") },
+    ];
+    let totalTokens = categories.reduce((sum, category) => sum + category.tokens, 0);
+    if (this.lastContextTokens !== null && totalTokens > 0) {
+      const scale = this.lastContextTokens / totalTokens;
+      categories = categories.map((category) => ({
+        ...category,
+        tokens: Math.round(category.tokens * scale),
+      }));
+      totalTokens = this.lastContextTokens;
+    }
+    return {
+      categories: categories.filter((category) => category.tokens > 0),
+      totalTokens,
+      maxTokens,
+    };
   }
 
   subscribe(callback: (event: AgentStreamEvent) => void): () => void {

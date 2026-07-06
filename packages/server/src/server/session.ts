@@ -1751,6 +1751,9 @@ export class Session {
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
         return;
+      case "agent.context.get_usage.request":
+        await this.handleAgentContextGetUsageRequest(msg);
+        return;
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
         return;
@@ -3267,6 +3270,37 @@ export class Session {
   /**
    * Handle push token registration
    */
+  /**
+   * Per-category context window breakdown for the client's context popup.
+   * `usage: null` (not an error) when the agent is gone, its provider doesn't
+   * implement the read, or the provider has no live handle to report from.
+   */
+  private async handleAgentContextGetUsageRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.context.get_usage.request" }>,
+  ): Promise<void> {
+    const { agentId, requestId } = msg;
+    try {
+      const agent = this.agentManager.listAgents().find((a) => a.id === agentId);
+      const usage = agent?.session?.getContextUsage ? await agent.session.getContextUsage() : null;
+      this.emit({
+        type: "agent.context.get_usage.response",
+        payload: { requestId, agentId, usage },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err, agentId }, "Failed to get agent context usage");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId,
+          requestType: msg.type,
+          error: `Failed to get agent context usage: ${err.message}`,
+          code: "agent_context_get_usage_failed",
+        },
+      });
+    }
+  }
+
   private handleRegisterPushToken(token: string): void {
     this.pushTokenStore.addToken(token);
     this.sessionLogger.info("Registered push token");

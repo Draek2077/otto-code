@@ -1537,9 +1537,8 @@ export const fr: TranslationResources = {
     dismiss: "Rejeter",
   },
   contextWindow: {
-    title: "Fenêtre contextuelle",
-    used: "{{percentage}}% utilisé",
-    tokens: "Jetons{{used}}/{{max}}",
+    freeSpace: "Espace libre",
+    title: "Fenêtre contextuelle ({{percentage}}% utilisé)",
     sessionCost: "Coût de la séance{{cost}}",
     accessibility: "Fenêtre contextuelle{{percentage}}% utilisé",
   },
