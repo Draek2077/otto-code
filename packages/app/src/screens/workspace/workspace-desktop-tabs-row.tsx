@@ -79,6 +79,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 import type { Theme } from "@/styles/theme";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useAppSettings } from "@/hooks/use-settings";
 import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
@@ -103,6 +104,10 @@ import {
 } from "@/stores/workspace-layout-store";
 
 const DROPDOWN_WIDTH = 220;
+// Fixed colors for content on the forced-black chat tab (Black tab background
+// setting) — must stay readable on #000 regardless of the active theme.
+const ON_BLACK_FOREGROUND = "#fafafa";
+const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 // Background refresh so the Preview icon reflects real server state without
@@ -1038,6 +1043,12 @@ function TabChip({
   );
   const [hovered, setHovered] = useState(false);
   const isHighlighted = isActive || hovered || isCloseHovered;
+  const { settings } = useAppSettings();
+  // Black tab background: the active chat tab's fill goes pure black so it
+  // fuses with the black chat pane below; label + close button switch to
+  // fixed on-black colors so they stay readable in any theme.
+  const isChatTab = tab.target.kind === "agent" || tab.target.kind === "draft";
+  const onBlack = settings.blackTabBackground && isChatTab && isActive;
   const closeButtonDragBlockers = isWeb
     ? ({
         onPointerDown: (event: { stopPropagation?: () => void }) => {
@@ -1053,6 +1064,7 @@ function TabChip({
     () => [
       styles.tab,
       isActive && styles.tabActive,
+      onBlack && styles.tabActiveBlack,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       {
         minWidth: resolvedTabWidth,
@@ -1060,7 +1072,7 @@ function TabChip({
         maxWidth: resolvedTabWidth,
       },
     ],
-    [isActive, isDragging, resolvedTabWidth],
+    [isActive, isDragging, onBlack, resolvedTabWidth],
   );
 
   const handleTabHoverIn = useCallback(() => {
@@ -1099,9 +1111,10 @@ function TabChip({
     ({ hovered: isButtonHovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.tabCloseButton,
       styles.tabCloseButtonShown,
-      (Boolean(isButtonHovered) || pressed) && styles.tabCloseButtonActive,
+      (Boolean(isButtonHovered) || pressed) &&
+        (onBlack ? styles.tabCloseButtonActiveOnBlack : styles.tabCloseButtonActive),
     ],
-    [],
+    [onBlack],
   );
 
   const tabAccessibilityState = useMemo(() => ({ selected: isActive }), [isActive]);
@@ -1113,9 +1126,10 @@ function TabChip({
     () => [
       styles.tabLabel,
       isHighlighted && styles.tabLabelActive,
+      onBlack && styles.tabLabelOnBlack,
       showCloseButton && styles.tabLabelWithCloseButton,
     ],
-    [isHighlighted, showCloseButton],
+    [isHighlighted, onBlack, showCloseButton],
   );
 
   return (
@@ -1162,23 +1176,28 @@ function TabChip({
                   onPress={handleCloseButtonPress}
                   style={closeButtonStyle}
                 >
-                  {({ hovered: closeHovered, pressed }) =>
-                    isClosingTab ? (
+                  {({ hovered: closeHovered, pressed }) => {
+                    const isCloseEmphasized = Boolean(closeHovered) || pressed;
+                    if (onBlack) {
+                      const onBlackColor = isCloseEmphasized ? ON_BLACK_FOREGROUND : ON_BLACK_MUTED;
+                      return isClosingTab ? (
+                        <ActivityIndicator size={12} color={onBlackColor} />
+                      ) : (
+                        <X size={12} color={onBlackColor} />
+                      );
+                    }
+                    return isClosingTab ? (
                       <ThemedActivityIndicator
                         size={12}
-                        uniProps={
-                          closeHovered || pressed ? foregroundColorMapping : mutedColorMapping
-                        }
+                        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
                       />
                     ) : (
                       <ThemedX
                         size={12}
-                        uniProps={
-                          closeHovered || pressed ? foregroundColorMapping : mutedColorMapping
-                        }
+                        uniProps={isCloseEmphasized ? foregroundColorMapping : mutedColorMapping}
                       />
-                    )
-                  }
+                    );
+                  }}
                 </Pressable>
               ) : null}
             </ContextMenuTrigger>
@@ -1740,6 +1759,12 @@ const styles = StyleSheet.create((theme) => ({
     borderLeftColor: theme.colors.border,
     borderRightColor: theme.colors.border,
   },
+  // Black tab background setting: the active chat tab's fill inside the border
+  // goes pure black so it fuses with the black chat pane below (see the
+  // `black` scoped theme in `panels/agent-panel.tsx`).
+  tabActiveBlack: {
+    backgroundColor: "#000000",
+  },
   tabSlot: {
     position: "relative",
     overflow: "visible",
@@ -1798,6 +1823,9 @@ const styles = StyleSheet.create((theme) => ({
   tabLabelActive: {
     color: theme.colors.foreground,
   },
+  tabLabelOnBlack: {
+    color: ON_BLACK_FOREGROUND,
+  },
   tabCloseButton: {
     width: 18,
     height: 18,
@@ -1811,6 +1839,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabCloseButtonActive: {
     backgroundColor: theme.colors.surface3,
+  },
+  tabCloseButtonActiveOnBlack: {
+    backgroundColor: "#27272a",
   },
   newTabActionButton: {
     width: 22,

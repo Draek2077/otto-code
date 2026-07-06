@@ -895,6 +895,27 @@ export const terracottaTheme = buildLightTheme(terracottaColors);
 export const horizonTheme = buildLightTheme(horizonColors);
 export const powderTheme = buildLightTheme(powderColors);
 
+// Chat surfaces forced to pure black for the "Black tab background" appearance
+// setting. Applied on top of whichever dark variant is the user's current pick
+// when repainting the third registered `black` theme key (see
+// `apply-color-scheme.ts`); that key is only ever consumed through
+// `ScopedTheme name="black"` around chat panes — adaptive mode never selects it.
+export const BLACK_TAB_SURFACE_OVERRIDES = {
+  surface0: "#000000",
+  surfaceWorkspace: "#000000",
+  background: "#000000",
+} as const;
+
+// Seed for the `black` Unistyles key: the neutral dark variant with black chat
+// surfaces. Runtime repaints replace it with the user's dark-variant pick.
+// Annotated as `typeof darkTheme` so the override literals stay widened and
+// `UnistylesRuntime.updateTheme("black", ...)` can assign arbitrary variant
+// colors back into the mirror.
+export const blackTheme: typeof darkTheme = {
+  ...darkTheme,
+  colors: { ...darkTheme.colors, ...BLACK_TAB_SURFACE_OVERRIDES },
+};
+
 // Keep compatibility with existing code
 export const theme = darkTheme;
 

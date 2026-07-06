@@ -1686,6 +1686,11 @@ export const ar: TranslationResources = {
           horizon: "Horizon",
           powder: "Powder",
         },
+        blackTabBackground: {
+          title: "Black tab background",
+          hint: "Chat tabs and chat content use a pure black background with dark-theme colors, even in light mode",
+          accessibilityLabel: "Black tab background",
+        },
       },
       layout: {
         title: "Layout",
