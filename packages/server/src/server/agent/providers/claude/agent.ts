@@ -63,6 +63,7 @@ import {
   type AgentPermissionAction,
   type AgentCapabilityFlags,
   type AgentClient,
+  type AgentContextUsage,
   type AgentCreateSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
@@ -2216,6 +2217,25 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     await this.applyFastModeFeature(enabled);
+  }
+
+  async getContextUsage(): Promise<AgentContextUsage | null> {
+    // Passive read for the client's context popup: only report from an already
+    // live query. Spawning the CLI just to answer a popup would be wasteful.
+    const activeQuery = this.query;
+    if (!activeQuery) {
+      return null;
+    }
+    const breakdown = await activeQuery.getContextUsage();
+    return {
+      categories: breakdown.categories.map((category) => ({
+        name: category.name,
+        tokens: category.tokens,
+        ...(category.isDeferred ? { isDeferred: true } : {}),
+      })),
+      totalTokens: breakdown.totalTokens,
+      maxTokens: breakdown.maxTokens,
+    };
   }
 
   private async applyFastModeFeature(enabled: boolean, query?: Query): Promise<void> {

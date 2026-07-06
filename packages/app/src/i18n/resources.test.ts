@@ -462,8 +462,8 @@ describe("translation resources", () => {
     expect(en.renameModal.rename).toBe("Rename");
     expect(en.renameModal.saving).toBe("Saving...");
     expect(en.sidebarCallout.dismiss).toBe("Dismiss");
-    expect(en.contextWindow.title).toBe("Context window");
-    expect(en.contextWindow.used).toBe("{{percentage}}% used");
+    expect(en.contextWindow.title).toBe("Context window ({{percentage}}% used)");
+    expect(en.contextWindow.sessionCost).toBe("Session cost {{cost}}");
   });
 
   it("includes view-model and policy utility keys for the Batch 4N migration", () => {

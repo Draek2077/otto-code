@@ -1235,6 +1235,12 @@ export const ProviderUsageListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const AgentContextGetUsageRequestMessageSchema = z.object({
+  type: z.literal("agent.context.get_usage.request"),
+  agentId: z.string(),
+  requestId: z.string(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -2115,6 +2121,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  AgentContextGetUsageRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2407,6 +2414,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: z.boolean().optional(),
+        // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
+        agentContextUsage: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4089,6 +4098,30 @@ export const ProviderUsageListResponseMessageSchema = z.object({
   }),
 });
 
+export const AgentContextUsageCategorySchema = z.object({
+  /** Provider-supplied display label, e.g. "Messages", "System prompt". Not translated. */
+  name: z.string(),
+  tokens: z.number(),
+  /** Deferred content (e.g. on-demand tool schemas) is not counted in totalTokens. */
+  isDeferred: z.boolean().optional(),
+});
+
+export const AgentContextUsageSchema = z.object({
+  categories: z.array(AgentContextUsageCategorySchema),
+  totalTokens: z.number(),
+  maxTokens: z.number(),
+});
+
+export const AgentContextGetUsageResponseMessageSchema = z.object({
+  type: z.literal("agent.context.get_usage.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    /** Null when the agent's provider cannot report a context breakdown. */
+    usage: AgentContextUsageSchema.nullable(),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -4384,6 +4417,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
+  AgentContextGetUsageResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
   TerminalsChangedSchema,
@@ -4530,6 +4564,11 @@ export type ProviderUsage = z.infer<typeof ProviderUsageSchema>;
 export type ProviderUsageWindow = z.infer<typeof ProviderUsageWindowSchema>;
 export type ProviderUsageBalance = z.infer<typeof ProviderUsageBalanceSchema>;
 export type ProviderUsageDetail = z.infer<typeof ProviderUsageDetailSchema>;
+export type AgentContextUsageCategory = z.infer<typeof AgentContextUsageCategorySchema>;
+export type AgentContextUsage = z.infer<typeof AgentContextUsageSchema>;
+export type AgentContextGetUsageResponseMessage = z.infer<
+  typeof AgentContextGetUsageResponseMessageSchema
+>;
 export type ProviderUsageListResponseMessage = z.infer<
   typeof ProviderUsageListResponseMessageSchema
 >;

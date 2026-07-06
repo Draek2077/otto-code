@@ -1534,9 +1534,8 @@ export const es: TranslationResources = {
     dismiss: "Despedir",
   },
   contextWindow: {
-    title: "ventana contextual",
-    used: "{{percentage}}% utilizado",
-    tokens: "Fichas{{used}}/{{max}}",
+    freeSpace: "Espacio libre",
+    title: "Ventana de contexto ({{percentage}}% utilizado)",
     sessionCost: "Costo de la sesión{{cost}}",
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
   },

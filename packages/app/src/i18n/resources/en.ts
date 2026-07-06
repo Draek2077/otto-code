@@ -1503,9 +1503,8 @@ export const en = {
     dismiss: "Dismiss",
   },
   contextWindow: {
-    title: "Context window",
-    used: "{{percentage}}% used",
-    tokens: "{{used}} / {{max}} tokens",
+    freeSpace: "Free space",
+    title: "Context window ({{percentage}}% used)",
     sessionCost: "Session cost {{cost}}",
     accessibility: "Context window {{percentage}}% used",
   },

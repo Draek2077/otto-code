@@ -133,6 +133,65 @@ describe("workspace descriptor message compatibility", () => {
   });
 });
 
+describe("agent context usage message contract", () => {
+  test("accepts the get_usage request as a namespaced correlated RPC", () => {
+    const parsed = SessionInboundMessageSchema.parse({
+      type: "agent.context.get_usage.request",
+      agentId: "agent-1",
+      requestId: "ctx-1",
+    });
+
+    expect(parsed).toEqual({
+      type: "agent.context.get_usage.request",
+      agentId: "agent-1",
+      requestId: "ctx-1",
+    });
+  });
+
+  test("accepts a category breakdown with deferred entries", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "agent.context.get_usage.response",
+      payload: {
+        requestId: "ctx-2",
+        agentId: "agent-1",
+        usage: {
+          categories: [
+            { name: "Messages", tokens: 105200 },
+            { name: "System prompt", tokens: 4800 },
+            { name: "MCP tools (deferred)", tokens: 108100, isDeferred: true },
+          ],
+          totalTokens: 137500,
+          maxTokens: 1000000,
+        },
+      },
+    });
+
+    expect(parsed.type).toBe("agent.context.get_usage.response");
+    if (parsed.type !== "agent.context.get_usage.response") {
+      throw new Error("Expected agent.context.get_usage.response");
+    }
+    expect(parsed.payload.usage?.categories[0]?.name).toBe("Messages");
+    expect(parsed.payload.usage?.categories[2]?.isDeferred).toBe(true);
+  });
+
+  test("accepts a null usage payload from providers without a breakdown", () => {
+    const parsed = SessionOutboundMessageSchema.parse({
+      type: "agent.context.get_usage.response",
+      payload: {
+        requestId: "ctx-3",
+        agentId: "agent-1",
+        usage: null,
+      },
+    });
+
+    expect(parsed.type).toBe("agent.context.get_usage.response");
+    if (parsed.type !== "agent.context.get_usage.response") {
+      throw new Error("Expected agent.context.get_usage.response");
+    }
+    expect(parsed.payload.usage).toBeNull();
+  });
+});
+
 describe("provider usage list message contract", () => {
   test("accepts the usage list request as a namespaced correlated RPC", () => {
     const parsed = SessionInboundMessageSchema.parse({

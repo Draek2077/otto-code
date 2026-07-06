@@ -1478,9 +1478,8 @@ export const zhCN: TranslationResources = {
     dismiss: "关闭",
   },
   contextWindow: {
-    title: "上下文窗口",
-    used: "已使用 {{percentage}}%",
-    tokens: "{{used}} / {{max}} tokens",
+    freeSpace: "剩余空间",
+    title: "上下文窗口（已使用 {{percentage}}%）",
     sessionCost: "会话费用 {{cost}}",
     accessibility: "上下文窗口已使用 {{percentage}}%",
   },

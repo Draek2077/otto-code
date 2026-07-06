@@ -1494,9 +1494,8 @@ export const ar: TranslationResources = {
     dismiss: "رفض",
   },
   contextWindow: {
-    title: "نافذة السياق",
-    used: "تم استخدام{{percentage}}%",
-    tokens: "رموز{{used}}/{{max}}",
+    freeSpace: "المساحة الحرة",
+    title: "نافذة السياق (تم استخدام {{percentage}}%)",
     sessionCost: "تكلفة الجلسة{{cost}}",
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
   },

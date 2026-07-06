@@ -1,9 +1,10 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
-import type { AgentAttachment } from "@otto-code/protocol/messages";
+import type { AgentAttachment, AgentContextUsage } from "@otto-code/protocol/messages";
 import type { OttoToolCatalog } from "./tools/types.js";
 
 export type { AgentProviderNotice };
+export type { AgentContextUsage };
 
 export type AgentProvider = string;
 
@@ -625,6 +626,11 @@ export interface AgentSession {
   interrupt(): Promise<void>;
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
+  /**
+   * Per-category context window breakdown (system prompt, tools, messages, …).
+   * Resolves null when the provider has no live handle to report from.
+   */
+  getContextUsage?(): Promise<AgentContextUsage | null>;
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;

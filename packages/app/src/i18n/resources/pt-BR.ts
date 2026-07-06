@@ -1520,9 +1520,8 @@ export const ptBR: TranslationResources = {
     dismiss: "Dispensar",
   },
   contextWindow: {
-    title: "Janela de contexto",
-    used: "{{percentage}}% usado",
-    tokens: "{{used}} / {{max}} tokens",
+    freeSpace: "Espaço livre",
+    title: "Janela de contexto ({{percentage}}% usado)",
     sessionCost: "Custo da sessão {{cost}}",
     accessibility: "Janela de contexto {{percentage}}% usada",
   },

@@ -119,8 +119,6 @@ export interface MessageInputProps {
   isPaneFocused?: boolean;
   /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
   leftContent?: React.ReactNode;
-  /** Content to render on the right side before the voice button (e.g., context window meter) */
-  beforeVoiceContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
   rightContent?: React.ReactNode;
   voiceServerId?: string;
@@ -1176,7 +1174,6 @@ interface ResolvedMessageInputProps {
   disabled: boolean;
   isPaneFocused: boolean;
   leftContent: React.ReactNode;
-  beforeVoiceContent: React.ReactNode;
   rightContent: React.ReactNode;
   voiceServerId: string | undefined;
   voiceAgentId: string | undefined;
@@ -1218,7 +1215,6 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     disabled: props.disabled ?? false,
     isPaneFocused: props.isPaneFocused ?? true,
     leftContent: props.leftContent,
-    beforeVoiceContent: props.beforeVoiceContent,
     rightContent: props.rightContent,
     voiceServerId: props.voiceServerId,
     voiceAgentId: props.voiceAgentId,
@@ -1268,7 +1264,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
       isPaneFocused,
       leftContent,
-      beforeVoiceContent,
       rightContent,
       voiceServerId,
       voiceAgentId,
@@ -1888,7 +1883,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             {/* Right: voice button, contextual button (realtime/send/cancel) */}
             <View style={styles.rightButtonGroup}>
-              {beforeVoiceContent}
               <VoiceButtonTooltip
                 onVoicePress={handleVoicePress}
                 isDictationStartEnabled={isDictationStartEnabled}
