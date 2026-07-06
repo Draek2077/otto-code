@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0 - 2026-07-06
+
+### Added
+
+- OpenAI Compatible agents can connect to MCP servers, giving local models access to external tools alongside Otto's built-in ones
+- OpenAI Compatible agents support adjustable reasoning effort and rewinding a conversation to an earlier message
+- MCP prompts from connected servers appear as slash commands in the composer
+- Context window usage shows as a ring next to the composer with a popup breakdown, and persists across restarts
+
+### Changed
+
+- The local-endpoint provider preset is now labeled "OpenAI Compatible" instead of "LM Studio," since it works with any compatible server
+- otto-code.me now has a Preview features page and a Local models guide
+
+### Fixed
+
+- Home screen no longer lets the Star/Sponsor/Community links overlap content on short screens
+- Composer's Stop button icon no longer shows blank
+- Mobile chat streaming no longer jitters
+- Sending a message on mobile dismisses the keyboard
+- Workspace list no longer shows a duplicate diff count when workspace tools are shown inline
+- Icons and text scale consistently across compact mobile layouts
+
 ## 0.3.3 - 2026-07-05
 
 ### Changed
