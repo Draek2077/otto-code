@@ -220,7 +220,7 @@ LM Studio ships as a featured preset in the in-app **Add provider** catalog. Ins
 - **Status reflects reachability, not installation.** When the server is running the provider shows Available with the discovered model count; when it isn't, the row shows an error explaining that the endpoint can't be reached.
 - Chat turns stream over `POST {OPENAI_BASE_URL}/chat/completions` (SSE). Reasoning deltas (`reasoning_content`) are rendered as thinking output.
 - **Function-calling models get a built-in coding toolset** executed by the daemon in the agent's cwd: `read_file`, `list_dir`, `grep_search`, `write_file`, `edit_file`, `run_command`. Tool calls stream as timeline items like any other agent's.
-- **Otto's tool catalog is injected too.** Because this provider can't host an MCP client, the daemon injects Otto's agent tools (`browser_*`, `preview_*`, agent management, terminals, schedules, workspace) directly into the model's tool list, so a local model can drive previews and browser verification like Claude Code does. Excluded in `plan` mode (those tools can take actions); the built-in coding tools win on any name collision.
+- **Otto's tool catalog is injected too.** Because there is no agent binary to host an MCP client, the daemon injects Otto's agent tools (`browser_*`, `preview_*`, agent management, terminals, schedules, workspace) directly into the model's tool list, so a local model can drive previews and browser verification like Claude Code does. Excluded in `plan` mode (those tools can take actions); the built-in coding tools win on any name collision.
 - **Scope the Otto tools with `ottoToolGroups`.** Omit it for all groups (the default); set it to a subset to keep the prompt small and the model focused. Groups: `preview`, `browser`, `agents`, `terminals`, `schedules`, `workspace`.
 
   ```json
@@ -238,15 +238,56 @@ LM Studio ships as a featured preset in the in-app **Add provider** catalog. Ins
   }
   ```
 
-- **Permission modes** mirror the other providers: `default` (Always Ask — prompts before edits and commands), `acceptEdits` (auto-approves file edits, still asks for commands), `plan` (Read Only — only read tools are offered to the model, and Otto tools are withheld), and `bypassPermissions` (unattended).
+- **Permission modes** mirror the other providers: `default` (Always Ask — prompts before edits and commands), `acceptEdits` (auto-approves file edits, still asks for commands), `plan` (Read Only — only read tools are offered to the model, and Otto and MCP tools are withheld), and `bypassPermissions` (unattended).
+- **Reasoning effort** is a per-agent feature select (Off / Low / Medium / High). Off (the default) omits the `reasoning_effort` parameter entirely, so strict servers are unaffected until you opt in.
+- **Rewind conversation** is supported: the daemon owns this provider's transcript, so rewinding truncates the conversation at the chosen user message. Persistence keeps the last 40 messages, so on a resumed agent only that window is rewindable.
 - `OPENAI_API_KEY` is optional — set it if your server requires an API key (LM Studio local servers accept requests without one).
 - `/v1` is appended to the URL automatically if missing. Remote servers (e.g. LM Studio on another machine over Tailscale) work by pointing `OPENAI_BASE_URL` at that host.
 - The same `extends: "openai-compatible"` entry works for any OpenAI-compatible server: Ollama (`http://localhost:11434/v1`), vLLM, llama.cpp server, gateways.
 
+### MCP servers
+
+The daemon itself acts as the MCP client for this provider: it connects to the configured servers per agent session, lists their tools, and exposes them to the model as `mcp_{server}_{tool}` functions alongside the built-in coding tools and Otto's catalog. Configure servers in the provider entry:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "lmstudio": {
+        "extends": "openai-compatible",
+        "label": "LM Studio",
+        "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
+        "mcpServers": {
+          "docs": { "type": "stdio", "command": "npx", "args": ["-y", "some-mcp-server"] },
+          "tracker": {
+            "type": "http",
+            "url": "https://example.com/mcp",
+            "headers": { "Authorization": "Bearer <token>" }
+          }
+        },
+        "mcpToolPermissions": "always-ask"
+      }
+    }
+  }
+}
+```
+
+- **Transports:** `stdio` (daemon spawns the process — scrubbed environment, agent cwd, tree-killed on session close), `http`, and `sse`.
+- **Merging:** provider-level `mcpServers` merge with any per-agent `mcpServers` sent at agent create; the per-agent entry wins on a server-name collision.
+- **Namespacing:** tool names are always exposed as `mcp_{server}_{tool}` (sanitized to the OpenAI charset), so an MCP server can never shadow `run_command`, `preview_start`, or any other builtin/Otto tool.
+- **Permissions (`mcpToolPermissions`):** MCP tools are opaque — the daemon can't know whether one is destructive.
+  - `"always-ask"` (the default): every MCP tool call prompts in `default` **and** `acceptEdits` modes.
+  - `"trust-read-only"`: in `acceptEdits` mode, tools whose MCP `readOnlyHint` annotation is true auto-approve; everything else still prompts. The hint is the server's self-declaration, so it is never honored in `default` mode.
+  - `plan` mode never exposes MCP tools regardless of this setting; `bypassPermissions` auto-approves everything, as with all other tools.
+- **Prompts as slash commands:** prompts exposed by connected servers appear in the composer as `/mcp_{server}_{prompt}` commands. The rest of the line maps to the prompt's first declared argument; a failed resolution falls back to sending the typed text as a plain prompt.
+- **Failure isolation:** a server that can't be reached is skipped with a one-time warning in the agent timeline — the session keeps working with the remaining tools.
+- **Security:** `stdio` entries execute arbitrary commands as the daemon's user — only add servers you trust, exactly as you would for any agent that can run shell commands. Configured header and env values are treated as secrets and redacted from logs, timeline errors, and tool output fed to the model. MCP tool results are capped at 30k characters.
+
 ### Current limitations
 
 - Tool use requires a model that supports OpenAI function calling; models without it fall back to plain chat (the `tools` payload is ignored by the server or the model simply never calls them).
-- No MCP server passthrough yet — the toolset is the built-in daemon one.
+- MCP tool/prompt sets are snapshotted when the session connects; `list_changed` notifications are not yet handled.
+- Multi-argument MCP prompts receive only their first declared argument from the slash-command line.
 - Custom providers can be removed from the UI (provider settings → Remove provider) on daemons with the `providerRemove` feature.
 
 ---

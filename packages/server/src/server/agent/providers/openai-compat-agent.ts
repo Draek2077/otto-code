@@ -19,6 +19,7 @@ import type {
   AgentRuntimeInfo,
   AgentSession,
   AgentSessionConfig,
+  AgentSlashCommand,
   AgentStreamEvent,
   AgentUsage,
   FetchCatalogOptions,
@@ -37,6 +38,16 @@ import {
 } from "./openai-compat-tools.js";
 import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../tools/types.js";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import {
+  buildOpenAICompatFeatures,
+  normalizeOpenAICompatReasoningEffort,
+  type OpenAICompatReasoningEffort,
+} from "./openai-compat-feature-definitions.js";
+import { OpenAICompatMcpManager, type McpToolBinding } from "./openai-compat-mcp.js";
+import type { McpServerConfig } from "../agent-sdk-types.js";
+import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
+import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
+import type { McpToolPermissionMode } from "@otto-code/protocol/provider-config";
 
 /**
  * Native provider for OpenAI-compatible HTTP endpoints (LM Studio, Ollama,
@@ -62,14 +73,17 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
   supportsDynamicModes: false,
-  supportsMcpServers: false,
+  // The daemon itself is the MCP client for this provider: configured servers
+  // (provider config merged with per-agent config) are connected per session
+  // and their tools exposed to the model. See OpenAICompatMcpManager.
+  supportsMcpServers: true,
   // The daemon owns this provider's tool loop, so we inject Otto's tool catalog
   // (browser_*, preview_*, agent management, …) directly rather than via an MCP
   // client the local model's runtime doesn't have. See ottoTools handling below.
   supportsNativeOttoTools: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
-  supportsRewindConversation: false,
+  supportsRewindConversation: true,
   supportsRewindFiles: false,
   supportsRewindBoth: false,
 };
@@ -107,9 +121,40 @@ interface ToolCallPayload {
 }
 
 type ChatMessage =
-  | { role: "system" | "user"; content: string }
+  /**
+   * messageId is provider-internal bookkeeping for user messages: it ties the
+   * persisted conversation to the durable timeline's user_message items so
+   * revertConversation can find its truncation point. Stripped from the wire
+   * payload before requests — strict servers reject unknown message fields.
+   */
+  | { role: "system" | "user"; content: string; messageId?: string }
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[] }
   | { role: "tool"; content: string; tool_call_id: string };
+
+/** Mirror of the opencode provider's parser: `/name rest` → command + args. */
+function parseSlashCommandInput(text: string): { commandName: string; args: string | null } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/") || trimmed.length <= 1) {
+    return null;
+  }
+  const withoutPrefix = trimmed.slice(1);
+  const firstWhitespaceIdx = withoutPrefix.search(/\s/u);
+  const commandName =
+    firstWhitespaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, firstWhitespaceIdx);
+  if (!commandName || commandName.includes("/")) {
+    return null;
+  }
+  const rawArgs =
+    firstWhitespaceIdx === -1 ? "" : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
+  return { commandName, args: rawArgs.length > 0 ? rawArgs : null };
+}
+
+function toWireMessage(message: ChatMessage): Record<string, unknown> {
+  if (message.role === "system" || message.role === "user") {
+    return { role: message.role, content: message.content };
+  }
+  return message;
+}
 
 export interface OpenAICompatAgentClientOptions {
   logger?: Logger;
@@ -118,6 +163,11 @@ export interface OpenAICompatAgentClientOptions {
   env?: Record<string, string>;
   /** Otto tool groups to inject; undefined = all groups, [] = none. */
   ottoToolGroups?: readonly OttoToolGroup[] | null;
+  /** Provider-level MCP servers; merged with per-agent config (per-agent wins). */
+  mcpServers?: Record<string, McpServerConfig> | null;
+  /** MCP permission strictness in acceptEdits mode; defaults to "always-ask". */
+  mcpToolPermissions?: McpToolPermissionMode | null;
+  managedProcesses?: ManagedProcessRegistry | null;
 }
 
 interface ResolvedEndpoint {
@@ -388,7 +438,8 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
       return [];
     }
     if (role === "system" || role === "user") {
-      return [{ role, content }];
+      const messageId = typeof record.messageId === "string" ? record.messageId : undefined;
+      return [{ role, content, ...(messageId ? { messageId } : {}) }];
     }
     if (role === "assistant") {
       const toolCalls = parseToolCallPayloads(record.tool_calls);
@@ -447,6 +498,9 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly label: string;
   private readonly env?: Record<string, string>;
   private readonly ottoToolGroups?: readonly OttoToolGroup[] | null;
+  private readonly mcpServers: Record<string, McpServerConfig> | null;
+  private readonly mcpToolPermissions: McpToolPermissionMode;
+  private readonly managedProcesses: ManagedProcessRegistry | null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
     this.provider = options.providerId;
@@ -454,6 +508,9 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.label = options.label;
     this.env = options.env;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
+    this.mcpServers = options.mcpServers ?? null;
+    this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
+    this.managedProcesses = options.managedProcesses ?? null;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -529,6 +586,14 @@ export class OpenAICompatAgentClient implements AgentClient {
     }
   }
 
+  async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
+    return buildOpenAICompatFeatures({
+      reasoningEffort: normalizeOpenAICompatReasoningEffort(
+        config.featureValues?.["reasoning_effort"],
+      ),
+    });
+  }
+
   async createSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
@@ -543,6 +608,9 @@ export class OpenAICompatAgentClient implements AgentClient {
       logger: this.logger,
       ottoTools: launchContext?.ottoTools ?? null,
       ottoToolGroups: this.ottoToolGroups,
+      mcpServers: this.mcpServers,
+      mcpToolPermissions: this.mcpToolPermissions,
+      managedProcesses: this.managedProcesses,
     });
   }
 
@@ -570,6 +638,9 @@ export class OpenAICompatAgentClient implements AgentClient {
       logger: this.logger,
       ottoTools: launchContext?.ottoTools ?? null,
       ottoToolGroups: this.ottoToolGroups,
+      mcpServers: this.mcpServers,
+      mcpToolPermissions: this.mcpToolPermissions,
+      managedProcesses: this.managedProcesses,
     });
   }
 }
@@ -644,7 +715,6 @@ function ottoResultToText(result: OttoToolResult): string {
 export class OpenAICompatAgentSession implements AgentSession {
   readonly provider: AgentProvider;
   readonly capabilities = CAPABILITIES;
-  readonly features: AgentFeature[] = [];
   readonly id: string;
 
   private readonly label: string;
@@ -659,8 +729,14 @@ export class OpenAICompatAgentSession implements AgentSession {
   private readonly ottoTools: OttoToolCatalog | null;
   /** Which Otto tool groups to expose; null/undefined = all groups. */
   private readonly ottoToolGroups?: readonly OttoToolGroup[] | null;
+  /** Daemon-hosted MCP client for the configured servers; null when none are configured. */
+  private readonly mcpManager: OpenAICompatMcpManager | null;
+  private readonly mcpToolPermissions: McpToolPermissionMode;
+  /** Connection failures already surfaced as timeline warnings. */
+  private mcpFailuresAnnounced = false;
   private modelId: string | null;
   private modeId: string;
+  private reasoningEffort: OpenAICompatReasoningEffort;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -679,6 +755,9 @@ export class OpenAICompatAgentSession implements AgentSession {
     logger?: Logger;
     ottoTools?: OttoToolCatalog | null;
     ottoToolGroups?: readonly OttoToolGroup[] | null;
+    mcpServers?: Record<string, McpServerConfig> | null;
+    mcpToolPermissions?: McpToolPermissionMode;
+    managedProcesses?: ManagedProcessRegistry | null;
   }) {
     this.provider = options.providerId;
     this.label = options.label;
@@ -688,33 +767,83 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.cwd = options.config.cwd;
     this.ottoTools = options.ottoTools ?? null;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
+    this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
+
+    // Provider-level servers merged with per-agent config; the per-agent entry
+    // wins per server name. The daemon-injected internal "otto" MCP server is
+    // stripped — this provider receives Otto tools natively, and connecting to
+    // it over MCP as well would double them.
+    const perAgentServers = stripInternalOttoMcpServer(options.config).mcpServers;
+    const mergedServers: Record<string, McpServerConfig> = {
+      ...options.mcpServers,
+      ...perAgentServers,
+    };
+    this.mcpManager =
+      Object.keys(mergedServers).length > 0
+        ? new OpenAICompatMcpManager({
+            servers: mergedServers,
+            providerId: options.providerId,
+            cwd: options.config.cwd,
+            logger: options.logger,
+            managedProcesses: options.managedProcesses ?? null,
+          })
+        : null;
     this.modelId = options.config.model ?? null;
     this.modeId =
       options.config.modeId && VALID_MODE_IDS.has(options.config.modeId)
         ? options.config.modeId
         : "default";
+    this.reasoningEffort = normalizeOpenAICompatReasoningEffort(
+      options.config.featureValues?.["reasoning_effort"],
+    );
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
     this.messages = options.messages.filter((message) => message.role !== "system");
     this.messages.unshift({ role: "system", content: this.buildSystemPrompt(options.config) });
 
-    // Rebuild replayable history from the restored conversation so a resumed
-    // session still backfills its transcript. Tool traffic is skipped — the
-    // durable timeline store owns the full historical record.
+    this.rebuildEventHistory();
+  }
+
+  /**
+   * Rebuild replayable history from the current conversation so a resumed or
+   * rewound session still backfills its transcript. Tool traffic is skipped —
+   * the durable timeline store owns the full historical record. User messages
+   * keep their persisted messageId so the durable timeline and the provider
+   * conversation agree on rewind targets.
+   */
+  private rebuildEventHistory(): void {
+    this.eventHistory.length = 0;
     for (const message of this.messages) {
       if (message.role !== "user" && message.role !== "assistant") continue;
       if (!message.content) continue;
       this.eventHistory.push({
         type: "timeline",
         provider: this.provider,
-        item: {
-          type: message.role === "user" ? "user_message" : "assistant_message",
-          text: message.content,
-          messageId: randomUUID(),
-        },
+        item:
+          message.role === "user"
+            ? {
+                type: "user_message",
+                text: message.content,
+                messageId: message.messageId ?? randomUUID(),
+              }
+            : { type: "assistant_message", text: message.content, messageId: randomUUID() },
       });
     }
+  }
+
+  get features(): AgentFeature[] {
+    return buildOpenAICompatFeatures({ reasoningEffort: this.reasoningEffort });
+  }
+
+  async setFeature(featureId: string, value: unknown): Promise<void> {
+    if (featureId !== "reasoning_effort") {
+      throw new Error(`Unknown feature: ${featureId}`);
+    }
+    if (normalizeOpenAICompatReasoningEffort(value) !== value) {
+      throw new Error(`Invalid reasoning effort value: ${String(value)}`);
+    }
+    this.reasoningEffort = value as OpenAICompatReasoningEffort;
   }
 
   private buildSystemPrompt(config: AgentSessionConfig): string {
@@ -795,6 +924,97 @@ export class OpenAICompatAgentSession implements AgentSession {
     return !groups || groups.includes(ottoToolGroupForName(name));
   }
 
+  /**
+   * Connect the configured MCP servers before the first model round. A server
+   * that fails to connect is skipped — surfaced once as a timeline warning,
+   * never fatal to the session.
+   */
+  private async ensureMcpReady(turn: ActiveTurn): Promise<void> {
+    if (!this.mcpManager) {
+      return;
+    }
+    await this.mcpManager.ensureConnected();
+    if (this.mcpFailuresAnnounced) {
+      return;
+    }
+    this.mcpFailuresAnnounced = true;
+    for (const failure of this.mcpManager.failures) {
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: {
+          type: "error",
+          message: `MCP server '${failure.name}' unavailable: ${failure.error}`,
+        },
+      });
+    }
+  }
+
+  /** MCP prompts from connected servers surfaced as slash commands. */
+  async listCommands(): Promise<AgentSlashCommand[]> {
+    if (!this.mcpManager) {
+      return [];
+    }
+    const prompts = await this.mcpManager.listPrompts();
+    return prompts.map((prompt) => ({
+      name: prompt.commandName,
+      description: prompt.description ?? `MCP prompt from server '${prompt.serverName}'`,
+      argumentHint: prompt.argumentNames.join(" "),
+    }));
+  }
+
+  /**
+   * When the typed prompt is `/mcp_{server}_{prompt} args`, resolve it via
+   * prompts/get and feed the resolved text to the model. The remainder of the
+   * line maps to the prompt's first declared argument (multi-argument prompts
+   * receive only that one). Any resolution failure falls back to sending the
+   * raw text as a plain prompt, matching the opencode provider.
+   */
+  private async resolveMcpPromptText(promptText: string): Promise<string> {
+    const manager = this.mcpManager;
+    if (!manager) {
+      return promptText;
+    }
+    const parsed = parseSlashCommandInput(promptText);
+    if (!parsed || !parsed.commandName.startsWith("mcp_")) {
+      return promptText;
+    }
+    try {
+      const prompts = await manager.listPrompts();
+      const binding = prompts.find((prompt) => prompt.commandName === parsed.commandName);
+      if (!binding) {
+        return promptText;
+      }
+      return await manager.getPrompt(binding, parsed.args);
+    } catch (error) {
+      this.logger?.warn(
+        { err: error, commandName: parsed.commandName },
+        "Failed to resolve MCP prompt command; falling back to plain prompt input",
+      );
+      return promptText;
+    }
+  }
+
+  /**
+   * MCP tools rendered as OpenAI function specs under namespaced
+   * mcp_{server}_{tool} names. Hard-excluded in read-only "plan" mode — MCP
+   * tools are opaque and may take actions regardless of what they claim.
+   */
+  private buildMcpToolPayload(): unknown[] {
+    if (!this.mcpManager || this.modeId === "plan") {
+      return [];
+    }
+    return this.mcpManager.getToolBindings().map((binding) => ({
+      type: "function",
+      function: {
+        name: binding.modelName,
+        description: binding.description,
+        parameters: binding.parameters,
+      },
+    }));
+  }
+
   private buildOttoToolPayload(): unknown[] {
     if (!this.ottoTools || this.modeId === "plan") {
       return [];
@@ -861,6 +1081,9 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.activeTurn = turn;
 
     const promptText = promptToText(prompt);
+    // One id shared by the timeline item and the conversation entry so
+    // revertConversation can map a timeline user_message back to its message.
+    const userMessageId = options?.messageId ?? randomUUID();
     this.emit({
       type: "timeline",
       provider: this.provider,
@@ -868,19 +1091,27 @@ export class OpenAICompatAgentSession implements AgentSession {
       item: {
         type: "user_message",
         text: promptText,
-        messageId: options?.messageId ?? randomUUID(),
+        messageId: userMessageId,
       },
     });
 
-    void this.executeTurn(turn, promptText);
+    void this.executeTurn(turn, promptText, userMessageId);
     return { turnId };
   }
 
-  private async executeTurn(turn: ActiveTurn, promptText: string): Promise<void> {
+  private async executeTurn(
+    turn: ActiveTurn,
+    promptText: string,
+    userMessageId: string,
+  ): Promise<void> {
     this.emit({ type: "turn_started", provider: this.provider, turnId: turn.turnId });
-    this.messages.push({ role: "user", content: promptText });
 
     try {
+      await this.ensureMcpReady(turn);
+      // The timeline keeps the typed `/command args` text; the model receives
+      // the resolved MCP prompt (or the raw text when nothing matches).
+      const modelText = await this.resolveMcpPromptText(promptText);
+      this.messages.push({ role: "user", content: modelText, messageId: userMessageId });
       await this.runToolLoop(turn);
     } catch (error) {
       this.settleTurnFailure(turn, error);
@@ -965,12 +1196,15 @@ export class OpenAICompatAgentSession implements AgentSession {
     });
   }
 
-  private async executeToolCall(turn: ActiveTurn, call: AccumulatedToolCall): Promise<string> {
-    const spec = findCompatToolSpec(call.name);
-    let args: Record<string, unknown>;
+  private parseToolCallArgs(
+    turn: ActiveTurn,
+    call: AccumulatedToolCall,
+  ): { args: Record<string, unknown> } | { error: string } {
     try {
       const parsed: unknown = call.argumentsJson ? JSON.parse(call.argumentsJson) : {};
-      args = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+      return {
+        args: parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {},
+      };
     } catch {
       this.emitToolItem(
         turn,
@@ -979,16 +1213,33 @@ export class OpenAICompatAgentSession implements AgentSession {
         buildCompatToolPreviewDetail(call.name, {}, this.cwd),
         "Invalid tool arguments (malformed JSON)",
       );
-      return `Error: arguments for ${call.name} were not valid JSON`;
+      return { error: `Error: arguments for ${call.name} were not valid JSON` };
     }
+  }
+
+  private async executeToolCall(turn: ActiveTurn, call: AccumulatedToolCall): Promise<string> {
+    const spec = findCompatToolSpec(call.name);
+    const parsed = this.parseToolCallArgs(turn, call);
+    if ("error" in parsed) {
+      return parsed.error;
+    }
+    const args = parsed.args;
 
     // Otto catalog tools are dispatched to the catalog, not the builtin coding
     // tools. Builtins take precedence on name; plan mode offers neither actions
     // nor Otto tools, so a plan-mode call for one falls through to "not available".
-    if (!spec && this.modeId !== "plan" && this.isOttoToolGroupEnabled(call.name)) {
-      const ottoTool = this.ottoTools?.getTool(call.name);
+    if (!spec && this.modeId !== "plan") {
+      const ottoTool = this.isOttoToolGroupEnabled(call.name)
+        ? this.ottoTools?.getTool(call.name)
+        : undefined;
       if (ottoTool) {
         return this.executeOttoToolCall(turn, call, args, ottoTool);
+      }
+      // MCP tools live under namespaced mcp_{server}_{tool} names, so they can
+      // never collide with (or shadow) builtins or Otto tools.
+      const mcpBinding = this.mcpManager?.resolveTool(call.name);
+      if (mcpBinding) {
+        return this.executeMcpToolCall(turn, call, args, mcpBinding);
       }
     }
 
@@ -999,7 +1250,14 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
 
     if (this.toolNeedsApproval(spec)) {
-      const response = await this.requestPermission(turn, spec, args, previewDetail);
+      const response = await this.requestPermission(turn, {
+        name: spec.name,
+        title: spec.name,
+        description:
+          spec.kind === "execute" ? "Wants to run a shell command" : "Wants to modify a file",
+        args,
+        detail: previewDetail,
+      });
       if (response.behavior === "deny") {
         this.emitToolItem(turn, call, "failed", previewDetail, "Denied by user");
         if (response.interrupt) {
@@ -1028,6 +1286,69 @@ export class OpenAICompatAgentSession implements AgentSession {
       call,
       outcome.isError ? "failed" : "completed",
       outcome.detail,
+      outcome.isError ? outcome.output : null,
+    );
+    return outcome.output;
+  }
+
+  /**
+   * MCP tools are opaque — the daemon cannot know whether one is destructive.
+   * default mode always asks; acceptEdits asks unless the provider opted into
+   * "trust-read-only" AND the server self-declares readOnlyHint (that
+   * annotation is untrusted, so it never skips prompts in default mode);
+   * bypassPermissions auto-approves like everything else. Plan mode never
+   * reaches here — MCP tools are excluded from the payload entirely.
+   */
+  private mcpToolNeedsApproval(binding: McpToolBinding): boolean {
+    if (this.modeId === "bypassPermissions") return false;
+    if (this.modeId === "acceptEdits") {
+      return !(this.mcpToolPermissions === "trust-read-only" && binding.readOnlyHint);
+    }
+    return true;
+  }
+
+  private async executeMcpToolCall(
+    turn: ActiveTurn,
+    call: AccumulatedToolCall,
+    args: Record<string, unknown>,
+    binding: McpToolBinding,
+  ): Promise<string> {
+    const manager = this.mcpManager;
+    if (!manager) {
+      return `Error: tool ${call.name} is not available`;
+    }
+    const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
+    if (this.mcpToolNeedsApproval(binding)) {
+      const response = await this.requestPermission(turn, {
+        name: binding.modelName,
+        title: `${binding.serverName}: ${binding.toolName}`,
+        description: `Wants to run an MCP tool from server '${binding.serverName}'`,
+        args,
+        detail,
+      });
+      if (response.behavior === "deny") {
+        this.emitToolItem(turn, call, "failed", detail, "Denied by user");
+        if (response.interrupt) {
+          turn.abort.abort();
+        }
+        const message = response.message?.trim();
+        return message
+          ? `The user declined this tool call: ${message}`
+          : "The user declined this tool call.";
+      }
+    }
+
+    this.emitToolItem(turn, call, "running", detail, null);
+    const outcome = await manager.callTool(binding, args, { signal: turn.abort.signal });
+    if (turn.abort.signal.aborted) {
+      this.emitToolItem(turn, call, "canceled", { ...detail, output: outcome.output }, null);
+      return outcome.output;
+    }
+    this.emitToolItem(
+      turn,
+      call,
+      outcome.isError ? "failed" : "completed",
+      { ...detail, output: outcome.output },
       outcome.isError ? outcome.output : null,
     );
     return outcome.output;
@@ -1099,20 +1420,23 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   private async requestPermission(
     turn: ActiveTurn,
-    spec: CompatToolSpec,
-    args: Record<string, unknown>,
-    detail: ToolCallDetail,
+    input: {
+      name: string;
+      title: string;
+      description: string;
+      args: Record<string, unknown>;
+      detail: ToolCallDetail;
+    },
   ): Promise<AgentPermissionResponse> {
     const request: AgentPermissionRequest = {
       id: randomUUID(),
       provider: this.provider,
-      name: spec.name,
+      name: input.name,
       kind: "tool",
-      title: spec.name,
-      description:
-        spec.kind === "execute" ? "Wants to run a shell command" : "Wants to modify a file",
-      input: args as Record<string, unknown>,
-      detail,
+      title: input.title,
+      description: input.description,
+      input: input.args,
+      detail: input.detail,
     };
     const response = await new Promise<AgentPermissionResponse>((resolve) => {
       this.pendingPermissions.set(request.id, { request, resolve });
@@ -1135,16 +1459,21 @@ export class OpenAICompatAgentSession implements AgentSession {
     turn.finishReason = null;
 
     const toolSpecs = this.availableToolSpecs();
-    const toolsPayload = [...buildOpenAIToolsPayload(toolSpecs), ...this.buildOttoToolPayload()];
+    const toolsPayload = [
+      ...buildOpenAIToolsPayload(toolSpecs),
+      ...this.buildOttoToolPayload(),
+      ...this.buildMcpToolPayload(),
+    ];
     const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
       method: "POST",
       headers: buildHeaders(endpoint),
       signal: turn.abort.signal,
       body: JSON.stringify({
         model,
-        messages: this.messages,
+        messages: this.messages.map(toWireMessage),
         stream: true,
         stream_options: { include_usage: true },
+        ...(this.reasoningEffort !== "off" ? { reasoning_effort: this.reasoningEffort } : {}),
         ...(toolsPayload.length > 0 ? { tools: toolsPayload, tool_choice: "auto" } : {}),
       }),
     });
@@ -1376,6 +1705,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     const toolsPayload = [
       ...buildOpenAIToolsPayload(this.availableToolSpecs()),
       ...this.buildOttoToolPayload(),
+      ...this.buildMcpToolPayload(),
     ];
     let categories = [
       {
@@ -1487,6 +1817,31 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.modelId = modelId;
   }
 
+  /**
+   * Rewind the daemon-owned conversation to just before the given user
+   * message. Persistence trims to the last MAX_PERSISTED_MESSAGES messages,
+   * so on a resumed session only that retained window is rewindable — older
+   * targets fail with the not-found error below.
+   */
+  async revertConversation(input: { messageId: string }): Promise<void> {
+    if (this.activeTurn) {
+      throw new Error(`${this.label} cannot rewind while a turn is running`);
+    }
+    const index = this.messages.findIndex(
+      (message) => message.role === "user" && message.messageId === input.messageId,
+    );
+    if (index === -1) {
+      throw new Error(
+        "Message not found in this session's conversation — it may predate rewind support or was trimmed from persisted history.",
+      );
+    }
+    const retained = sanitizeRestoredMessages(this.messages.slice(0, index));
+    this.messages.length = 0;
+    this.messages.push(...retained);
+    this.rebuildEventHistory();
+    this.lastContextTokens = null;
+  }
+
   async interrupt(): Promise<void> {
     const turn = this.activeTurn;
     if (!turn) {
@@ -1500,6 +1855,7 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   async close(): Promise<void> {
     await this.interrupt();
+    await this.mcpManager?.close();
     this.listeners.clear();
   }
 

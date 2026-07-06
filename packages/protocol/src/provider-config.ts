@@ -70,6 +70,50 @@ export function ottoToolGroupForName(name: string): OttoToolGroup {
   return "agents";
 }
 
+const McpStdioServerConfigSchema = z.object({
+  type: z.literal("stdio"),
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  alwaysLoad: z.boolean().optional(),
+});
+
+const McpHttpServerConfigSchema = z.object({
+  type: z.literal("http"),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()).optional(),
+  alwaysLoad: z.boolean().optional(),
+});
+
+const McpSseServerConfigSchema = z.object({
+  type: z.literal("sse"),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()).optional(),
+  alwaysLoad: z.boolean().optional(),
+});
+
+/**
+ * Canonical MCP server config. Shared by AgentSessionConfig (per-agent servers
+ * sent at create time) and ProviderOverride (provider-level servers in the
+ * daemon config). stdio entries execute arbitrary commands as the daemon user —
+ * both sources sit behind existing trust boundaries (daemon-side config file,
+ * authenticated agent-create RPC).
+ */
+export const McpServerConfigSchema = z.discriminatedUnion("type", [
+  McpStdioServerConfigSchema,
+  McpHttpServerConfigSchema,
+  McpSseServerConfigSchema,
+]);
+
+/**
+ * How natively-hosted providers (openai-compat) gate MCP tool calls in
+ * acceptEdits mode. "always-ask" (the default) prompts for every MCP tool;
+ * "trust-read-only" auto-approves tools whose MCP readOnlyHint annotation is
+ * true. In default mode every MCP tool prompts regardless; plan mode never
+ * exposes MCP tools; bypassPermissions auto-approves everything.
+ */
+export const MCP_TOOL_PERMISSION_MODES = ["always-ask", "trust-read-only"] as const;
+
 export const ProviderOverrideSchema = z.object({
   extends: z.string().optional(),
   label: z.string().optional(),
@@ -85,6 +129,13 @@ export const ProviderOverrideSchema = z.object({
    * providers only). Omitted = all groups. Empty array = no Otto tools.
    */
   ottoToolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
+  /**
+   * MCP servers for providers whose tool loop the daemon hosts (openai-compat).
+   * Merged with any per-agent AgentSessionConfig.mcpServers; the per-agent
+   * entry wins on a server-name collision.
+   */
+  mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+  mcpToolPermissions: z.enum(MCP_TOOL_PERMISSION_MODES).optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });
@@ -164,6 +215,8 @@ export const AgentProviderRuntimeSettingsMapSchema = z
     }
   });
 
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type McpToolPermissionMode = (typeof MCP_TOOL_PERMISSION_MODES)[number];
 export type ProviderCommand = z.infer<typeof ProviderCommandSchema>;
 export type ProviderRuntimeSettings = z.infer<typeof ProviderRuntimeSettingsSchema>;
 export type ProviderProfileModel = z.infer<typeof ProviderProfileModelSchema>;
