@@ -24,8 +24,6 @@ interface ContextWindowMeterProps {
   agentId?: string | null;
   /** The Otto provider key, e.g. "claude", "gemini", "codex" */
   provider?: string | null;
-  /** Reserve the meter footprint and show a loading ring while usage is pending. */
-  pending?: boolean;
 }
 
 const SVG_SIZE = 14;
@@ -166,7 +164,6 @@ export function ContextWindowMeter({
   serverId,
   agentId,
   provider,
-  pending = false,
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -206,15 +203,13 @@ export function ContextWindowMeter({
     [],
   );
 
-  // No usage yet: reserve the footprint with a track-only ring while a session is
-  // active so the real ring fades in without shifting siblings. Render nothing when
-  // no usage is expected.
+  // No usage yet — a brand-new conversation, a draft, or a chat just cleared
+  // with /clear or /new. Always render the ring so the footer's footprint
+  // stays stable, but as an inert, non-interactive track: there's nothing to
+  // show a breakdown of yet.
   if (percentage === null || maxTokens === null || usedTokens === null) {
-    if (!pending) {
-      return null;
-    }
     return (
-      <View style={pendingContainerStyle}>
+      <View style={emptyContainerStyle}>
         <Svg
           width={svgSize}
           height={svgSize}
@@ -383,4 +378,4 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const pendingContainerStyle = [headerIconSlotStyle.slot, styles.container];
+const emptyContainerStyle = [headerIconSlotStyle.slot, styles.container];
