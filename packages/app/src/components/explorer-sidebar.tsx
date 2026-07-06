@@ -41,6 +41,7 @@ import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { isWeb } from "@/constants/platform";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
+import { useIconSize } from "@/styles/theme";
 
 const MIN_CHAT_WIDTH = 400;
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
@@ -457,6 +458,7 @@ function ExplorerSidebarContent({
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
   const canQueryPullRequest = isGit && Boolean(workspaceRoot);
@@ -519,7 +521,7 @@ function ExplorerSidebarContent({
               testID="explorer-tab-pr"
             >
               <PullRequestTabIcon
-                size={13}
+                size={iconSize.sm}
                 color={
                   resolvedTab === "pr" ? theme.colors.foreground : theme.colors.foregroundMuted
                 }
@@ -530,7 +532,7 @@ function ExplorerSidebarContent({
         <View style={styles.headerRightSection}>
           {isMobile && (
             <Pressable onPress={onClose} style={styles.closeButton}>
-              <X size={18} color={theme.colors.foregroundMuted} />
+              <X size={iconSize.md} color={theme.colors.foregroundMuted} />
             </Pressable>
           )}
         </View>
@@ -665,7 +667,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceSidebarHover,
   },
   tabText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },

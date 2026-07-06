@@ -702,7 +702,7 @@ function DragOverlayTabChipInner({
 
         return (
           <View style={chipStyle}>
-            <WorkspaceTabIcon presentation={presentation} active size={14} />
+            <WorkspaceTabIcon presentation={presentation} active />
             <Text numberOfLines={1} style={chipLabelStyle}>
               {label}
             </Text>

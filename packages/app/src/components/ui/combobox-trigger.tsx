@@ -9,12 +9,15 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown } from "@/components/icons/material-icons";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
+// `size` is folded into uniProps (not a static prop) so it repaints from the live,
+// compact-doubled `theme.iconSize` the same way `color` already does.
 const chevronColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
 });
 
 interface TriggerState {
@@ -58,7 +61,7 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
         {chevron !== null &&
           (chevron ?? (
             <View style={styles.chevronContainer}>
-              <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />
+              <ThemedChevronDown uniProps={chevronColorMapping} />
             </View>
           ))}
       </View>

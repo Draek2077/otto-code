@@ -36,10 +36,10 @@ import {
 } from "@/components/icons/material-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
-import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
+import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -270,15 +270,29 @@ const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
+// Size-folding variants: `uniProps` mappings read the live theme, so folding
+// `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
+// (mobile) icon-doubling patch — a plain `size={16}` prop is a frozen literal.
+const mutedSmMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
+const foregroundMdMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.md,
+});
+const mutedMdMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
 const sourceControlPanelStrokeWidth15 = { strokeWidth: 1.5 };
 
-const MENU_NEW_AGENT_ICON = <ThemedSquarePen size={16} uniProps={mutedColorMapping} />;
-const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />;
-const MENU_NEW_BROWSER_ICON = <ThemedGlobe size={16} uniProps={mutedColorMapping} />;
-const MENU_IMPORT_ICON = <ThemedImport size={16} uniProps={mutedColorMapping} />;
-const MENU_COPY_ICON = <ThemedCopy size={16} uniProps={mutedColorMapping} />;
-const MENU_SETTINGS_ICON = <ThemedSettings size={16} uniProps={mutedColorMapping} />;
+const MENU_NEW_AGENT_ICON = <ThemedSquarePen uniProps={mutedMdMapping} />;
+const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal uniProps={mutedMdMapping} />;
+const MENU_NEW_BROWSER_ICON = <ThemedGlobe uniProps={mutedMdMapping} />;
+const MENU_IMPORT_ICON = <ThemedImport uniProps={mutedMdMapping} />;
+const MENU_COPY_ICON = <ThemedCopy uniProps={mutedMdMapping} />;
+const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
 interface WorkspaceScreenProps {
@@ -513,7 +527,7 @@ function MobileTabTrailingAccessory({
         hitSlop={8}
         style={mobileTabMenuTriggerStyle}
       >
-        <ThemedEllipsis size={14} uniProps={mutedColorMapping} />
+        <ThemedEllipsis uniProps={mutedSmMapping} />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="end" width={220} testID={menuTestIDBase}>
         {menuEntries.map((entry) =>
@@ -536,19 +550,19 @@ function MobileTabDropdownMenuItem({
   const leading = useMemo(() => {
     switch (entry.icon) {
       case "copy":
-        return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
+        return <ThemedCopy uniProps={mutedMdMapping} />;
       case "rotate-cw":
-        return <ThemedRotateCw size={16} uniProps={mutedColorMapping} />;
+        return <ThemedRotateCw uniProps={mutedMdMapping} />;
       case "arrow-left-to-line":
-        return <ThemedArrowLeftToLine size={16} uniProps={mutedColorMapping} />;
+        return <ThemedArrowLeftToLine uniProps={mutedMdMapping} />;
       case "arrow-right-to-line":
-        return <ThemedArrowRightToLine size={16} uniProps={mutedColorMapping} />;
+        return <ThemedArrowRightToLine uniProps={mutedMdMapping} />;
       case "copy-x":
-        return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
+        return <ThemedCopyX uniProps={mutedMdMapping} />;
       case "pencil":
-        return <ThemedPencil size={16} uniProps={mutedColorMapping} />;
+        return <ThemedPencil uniProps={mutedMdMapping} />;
       case "x":
-        return <ThemedX size={16} uniProps={mutedColorMapping} />;
+        return <ThemedX uniProps={mutedMdMapping} />;
       default:
         return undefined;
     }
@@ -804,7 +818,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
             normalizedWorkspaceId={normalizedWorkspaceId}
           />
         </View>
-        <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+        <ThemedChevronDown uniProps={mutedSmMapping} />
       </Pressable>
 
       <Combobox
@@ -988,13 +1002,13 @@ function HeaderMenuProfileItem({
     if (!icon) {
       return (
         <View style={styles.headerMenuProfileIconWrapper}>
-          <ThemedSquareTerminal size={16} uniProps={mutedColorMapping} />
+          <ThemedSquareTerminal uniProps={mutedMdMapping} />
         </View>
       );
     }
     return (
       <View style={styles.headerMenuProfileIconWrapper}>
-        <ThemedDynamicProviderIcon iconKey={icon} size={16} uniProps={mutedColorMapping} />
+        <ThemedDynamicProviderIcon iconKey={icon} uniProps={mutedMdMapping} />
       </View>
     );
   }, [icon]);
@@ -1006,6 +1020,9 @@ function HeaderMenuProfileItem({
   );
 }
 
+// The "..." trigger sits beside the diff toggle in the mobile header, both using
+// the menu button's auto-sized chrome — a 2x icon would overflow that chrome, so
+// this scales at 1.5x instead of the usual compact doubling (see `useIconSize`).
 function WorkspaceHeaderMenuTriggerIcon({
   hovered,
   open,
@@ -1016,8 +1033,9 @@ function WorkspaceHeaderMenuTriggerIcon({
   isMobile: boolean;
 }) {
   const Icon = isMobile ? ThemedEllipsisVertical : ThemedEllipsis;
+  const iconSize = useIconSize(1.5);
   const colorMapping = hovered || open ? foregroundColorMapping : mutedColorMapping;
-  return <Icon size={16} uniProps={colorMapping} />;
+  return <Icon size={iconSize.md} uniProps={colorMapping} />;
 }
 
 function headerActionTriggerStyle({
@@ -1035,6 +1053,8 @@ function headerActionTriggerStyle({
   ];
 }
 
+// Mirrors the menu button's own chrome (`headerIconSlotStyle`) instead of a
+// separately-sized fixed box, so the mobile "..." trigger matches it exactly.
 function compactHeaderActionTriggerStyle({
   hovered,
   pressed,
@@ -1045,8 +1065,8 @@ function compactHeaderActionTriggerStyle({
   open?: boolean;
 }) {
   return [
-    styles.compactHeaderActionButton,
-    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && styles.headerActionButtonHovered,
+    headerIconSlotStyle.slot,
+    (Boolean(hovered) || Boolean(pressed) || Boolean(open)) && headerIconSlotStyle.slotHovered,
   ];
 }
 
@@ -1703,6 +1723,9 @@ function WorkspaceScreenContent({
   const _insets = useSafeAreaInsets();
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
+  // The mobile diff/explorer toggle sits in the menu button's auto-sized chrome,
+  // so its icon scales at 1.5x instead of the usual compact doubling.
+  const headerActionIconSize = useIconSize(1.5);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = useMemo(() => trimNonEmpty(decodeSegment(serverId)) ?? "", [serverId]);
@@ -3364,10 +3387,10 @@ function WorkspaceScreenContent({
                 >
                   {({ hovered, pressed }) => {
                     const active = isExplorerOpen || hovered || pressed;
-                    const colorMapping = active ? foregroundColorMapping : mutedColorMapping;
+                    const colorMapping = active ? foregroundMdMapping : mutedMdMapping;
                     return (
                       <>
-                        <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
+                        <ThemedSourceControlPanelIcon uniProps={colorMapping} />
                         {workspaceDescriptor?.diffStat && !isSidebarOpen ? (
                           <DiffStat
                             additions={workspaceDescriptor.diffStat.additions}
@@ -3410,9 +3433,8 @@ function WorkspaceScreenContent({
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
-              const colorMapping =
-                isExplorerOpen || hovered ? foregroundColorMapping : mutedColorMapping;
-              return <ThemedPanelRight size={16} uniProps={colorMapping} />;
+              const colorMapping = isExplorerOpen || hovered ? foregroundMdMapping : mutedMdMapping;
+              return <ThemedPanelRight uniProps={colorMapping} />;
             }}
           </HeaderToggleButton>
         ) : null}
@@ -3423,7 +3445,6 @@ function WorkspaceScreenContent({
             tooltipLabel={t("workspace.tabs.explorer.toggle")}
             tooltipKeys={EXPLORER_TOGGLE_KEYS}
             tooltipSide="left"
-            style={styles.headerActionButton}
             accessible
             accessibilityRole="button"
             accessibilityLabel={explorerToggleLabel}
@@ -3434,12 +3455,12 @@ function WorkspaceScreenContent({
                 isExplorerOpen || hovered ? foregroundColorMapping : mutedColorMapping;
               return isGitCheckout ? (
                 <ThemedSourceControlPanelIcon
-                  size={20}
+                  size={headerActionIconSize.lg}
                   uniProps={colorMapping}
                   {...sourceControlPanelStrokeWidth15}
                 />
               ) : (
-                <ThemedPanelRight size={20} uniProps={colorMapping} />
+                <ThemedPanelRight size={headerActionIconSize.lg} uniProps={colorMapping} />
               );
             }}
           </HeaderToggleButton>
@@ -3466,6 +3487,7 @@ function WorkspaceScreenContent({
       explorerToggleAccessibilityState,
       explorerToggleStyle,
       settings.workspaceToolsPlacement,
+      headerActionIconSize.lg,
       t,
     ],
   );
@@ -3794,7 +3816,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     flexShrink: 1,
     minWidth: 0,
-    maxWidth: "60%",
   },
   headerTitleSkeleton: {
     width: 220,
@@ -3813,16 +3834,19 @@ const styles = StyleSheet.create((theme) => ({
     },
   },
   headerActionButton: {
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
+    paddingVertical: compactUp(theme.spacing[2]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.lg,
   },
   headerActionButtonHovered: {
     backgroundColor: theme.colors.surface2,
   },
+  // Fixed touch-target box for the mobile "..." trigger — doubled alongside the
+  // icon it wraps (`theme.iconSize.md`/`.lg`) so the icon keeps breathing room
+  // instead of filling the box edge-to-edge once it doubles in compact mode.
   compactHeaderActionButton: {
-    width: theme.spacing[8],
-    height: theme.spacing[8],
+    width: compactUp(theme.spacing[8]),
+    height: compactUp(theme.spacing[8]),
     padding: 0,
     borderRadius: theme.borderRadius.lg,
     alignItems: "center",
@@ -3940,8 +3964,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   headerMenuProfileIconWrapper: {
-    width: 16,
-    height: 16,
+    width: compactUp(16),
+    height: compactUp(16),
   },
   tabsContainer: {
     borderBottomWidth: 1,

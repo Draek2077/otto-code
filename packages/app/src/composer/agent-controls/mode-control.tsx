@@ -30,6 +30,7 @@ import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-p
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { compactUp, useIconSize } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { formatAgentModeLabel, getAgentControlHintKey } from "@/composer/agent-controls/utils";
@@ -84,9 +85,10 @@ function ModeComboboxOption({
 }: ModeComboboxOptionProps) {
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
   const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
+  const iconSize = useIconSize();
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={16} color={iconColor} /> : null),
-    [IconComponent, iconColor],
+    () => (IconComponent ? <IconComponent size={iconSize.md} color={iconColor} /> : null),
+    [IconComponent, iconColor, iconSize.md],
   );
   return (
     <ComboboxItem
@@ -248,7 +250,9 @@ function AgentModeControlView({
             testID="mode-control"
           >
             {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
-            <Text style={labelStyle}>{selectedModeLabel}</Text>
+            <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
+              {selectedModeLabel}
+            </Text>
           </ComboboxTrigger>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
@@ -400,12 +404,14 @@ export function DraftAgentModeControl({
 
 const styles = StyleSheet.create((theme) => ({
   chip: {
-    height: 28,
+    height: compactUp(28),
+    minWidth: 0,
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
   },
   chipHovered: {
@@ -418,6 +424,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   chipLabel: {
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,

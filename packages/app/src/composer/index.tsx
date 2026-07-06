@@ -48,7 +48,7 @@ import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
 import { MessageInput, type MessageInputRef, type AttachmentMenuItem } from "./input/input";
 import type { ImageAttachment, MessagePayload } from "./types";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, type Theme, useIconSize } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -128,8 +128,8 @@ const EMPTY_ATTACHMENT_SCOPE_KEYS: readonly string[] = [];
 function noop() {}
 const noopCallback = () => {};
 
-function resolveComposerButtonIconSize(): number {
-  return isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
+function resolveComposerButtonIconSize(iconSize: Theme["iconSize"]): number {
+  return isWeb ? iconSize.md : iconSize.lg;
 }
 
 function resolveIsComposerLocked(
@@ -187,12 +187,10 @@ function buildCancelButtonStyle(isConnected: boolean, isCancellingAgent: boolean
 function buildRealtimeVoiceButtonStyle(
   hovered: boolean | undefined,
   voiceButtonDisabled: boolean,
-  reserveLeadingSpace: boolean,
 ): object[] {
   const hoveredStyle = hovered ? styles.iconButtonHovered : undefined;
   const disabledStyle = voiceButtonDisabled ? styles.buttonDisabled : undefined;
-  const reserveStyle = reserveLeadingSpace ? styles.realtimeVoiceButtonCompactReserve : undefined;
-  return [styles.realtimeVoiceButton, reserveStyle, hoveredStyle, disabledStyle].filter(
+  return [styles.realtimeVoiceButton, hoveredStyle, disabledStyle].filter(
     (value): value is object => Boolean(value),
   );
 }
@@ -544,6 +542,7 @@ function QueuedMessageRow({
   editLabel,
   sendNowLabel,
 }: QueuedMessageRowProps) {
+  const iconSize = useIconSize();
   const handleEdit = useCallback(() => {
     onEdit(item.id);
   }, [onEdit, item.id]);
@@ -562,7 +561,7 @@ function QueuedMessageRow({
           accessibilityLabel={editLabel}
           accessibilityRole="button"
         >
-          <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+          <ThemedPencil size={iconSize.sm} uniProps={iconForegroundMapping} />
         </Pressable>
         <Pressable
           onPress={handleSendNow}
@@ -570,7 +569,7 @@ function QueuedMessageRow({
           accessibilityLabel={sendNowLabel}
           accessibilityRole="button"
         >
-          <ThemedArrowUp size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
+          <ThemedArrowUp size={iconSize.sm} uniProps={iconAccentForegroundMapping} />
         </Pressable>
       </View>
     </View>
@@ -637,6 +636,16 @@ function GithubAttachmentPill({
 }: GithubAttachmentPillProps) {
   const item = attachment.item;
   const kindLabel = item.kind === "pr" ? "PR" : "issue";
+  const iconSize = useIconSize();
+  const icon = useMemo(
+    () =>
+      item.kind === "pr" ? (
+        <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+      ) : (
+        <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
+      ),
+    [item.kind, iconSize.sm],
+  );
   const handleOpen = useCallback(() => {
     onOpen(attachment);
   }, [onOpen, attachment]);
@@ -653,7 +662,7 @@ function GithubAttachmentPill({
       disabled={disabled}
     >
       <AttachmentLabel
-        icon={item.kind === "pr" ? githubPrPillIcon : githubIssuePillIcon}
+        icon={icon}
         title={item.title}
         subtitle={`${item.kind === "pr" ? "PR" : "Issue"} #${item.number}`}
       />
@@ -677,6 +686,11 @@ function FileAttachmentPill({
   removeLabel,
 }: FileAttachmentPillProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
+  const icon = useMemo(
+    () => <ThemedFileText size={iconSize.sm} uniProps={iconForegroundMutedMapping} />,
+    [iconSize.sm],
+  );
   const handleRemove = useCallback(() => {
     onRemove(index);
   }, [onRemove, index]);
@@ -691,7 +705,7 @@ function FileAttachmentPill({
       disabled={disabled}
     >
       <AttachmentLabel
-        icon={filePillIcon}
+        icon={icon}
         title={fileName}
         subtitle={getFileTypeLabel(fileName) ?? t("message.attachments.file")}
       />
@@ -716,17 +730,18 @@ function GithubPickerOption({
   item,
   onToggle,
 }: GithubPickerOptionProps) {
+  const iconSize = useIconSize();
   const handlePress = useCallback(() => {
     onToggle(item);
   }, [onToggle, item]);
   const leadingSlot = useMemo(
     () =>
       item.kind === "pr" ? (
-        <ThemedGitPullRequest size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
       ) : (
-        <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
+        <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
       ),
-    [item.kind],
+    [item.kind, iconSize.sm],
   );
   return (
     <ComboboxItem
@@ -994,7 +1009,8 @@ export function Composer({
   isCompactLayout: isCompactLayoutOverride,
 }: ComposerProps) {
   const { t } = useTranslation();
-  const buttonIconSize = resolveComposerButtonIconSize();
+  const iconSize = useIconSize();
+  const buttonIconSize = resolveComposerButtonIconSize(iconSize);
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -1601,8 +1617,8 @@ export function Composer({
   const voiceButtonDisabled = !isConnected || isVoiceSwitching;
   const realtimeVoiceButtonStyle = useCallback(
     (state: PressableStateCallbackType & { hovered?: boolean }) =>
-      buildRealtimeVoiceButtonStyle(state.hovered, voiceButtonDisabled, isCompactLayout),
-    [isCompactLayout, voiceButtonDisabled],
+      buildRealtimeVoiceButtonStyle(state.hovered, voiceButtonDisabled),
+    [voiceButtonDisabled],
   );
 
   const cancelButton = useMemo(
@@ -1731,7 +1747,7 @@ export function Composer({
       {
         id: "image",
         label: t("composer.attachments.addImage"),
-        icon: <ThemedImageIcon size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedImageIcon size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickImage();
         },
@@ -1739,7 +1755,7 @@ export function Composer({
       {
         id: "github",
         label: t("composer.attachments.addIssueOrPr"),
-        icon: <ThemedGithub size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedGithub size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           setIsGithubPickerOpen(true);
         },
@@ -1747,13 +1763,13 @@ export function Composer({
       {
         id: "file",
         label: t("composer.attachments.addFile"),
-        icon: <ThemedPaperclip size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedPaperclip size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickFile();
         },
       },
     ],
-    [handlePickImage, handlePickFile, t],
+    [handlePickImage, handlePickFile, t, iconSize.md],
   );
 
   const handleToggleGithubItem = useCallback(
@@ -2032,10 +2048,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
       md: -theme.spacing[3],
     },
     alignItems: "center",
-    paddingBottom: {
-      xs: 0,
-      md: theme.spacing[2],
-    },
+    paddingBottom: theme.spacing[2],
   },
   footerContent: {
     width: "100%",
@@ -2091,14 +2104,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
   },
   realtimeVoiceButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-  },
-  realtimeVoiceButtonCompactReserve: {
-    marginLeft: theme.spacing[1],
   },
   realtimeVoiceButtonActive: {
     backgroundColor: theme.colors.palette.green[600],
@@ -2182,11 +2192,3 @@ const ThemedGithub = withUnistyles(Github);
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
-
-const githubPrPillIcon = (
-  <ThemedGitPullRequest size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
-);
-const githubIssuePillIcon = (
-  <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
-);
-const filePillIcon = <ThemedFileText size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;

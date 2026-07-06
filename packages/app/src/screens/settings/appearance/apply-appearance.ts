@@ -5,9 +5,17 @@ import {
   DEFAULT_UI_FONT_STACK,
   DEFAULT_MONO_FONT_STACK,
   FONT_SIZE,
+  ICON_SIZE,
   type Theme,
 } from "@/styles/theme";
 import { applyRootUiFont } from "./apply-root-font";
+
+// Compact form factors (phones, narrow windows) bump the interface font size by a
+// flat 2px before the ramp is scaled, and double every icon size token. Both are
+// re-applied here (not baked into FONT_SIZE/ICON_SIZE) so the authored ramp stays the
+// single source of truth and desktop is unaffected.
+const COMPACT_UI_FONT_SIZE_BUMP = 2;
+const COMPACT_ICON_SIZE_FACTOR = 2;
 
 // All registered Unistyles keys — pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
@@ -27,6 +35,8 @@ export interface AppearanceInput {
   codeFontSize: number; // already clamped
   syntaxTheme: SyntaxThemeId;
   chatWidth: ChatWidth;
+  // True on compact form factors (phones, narrow windows) — see `useIsCompactFormFactor`.
+  isCompact: boolean;
 }
 
 /**
@@ -53,6 +63,17 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
   };
 }
 
+/** Every icon size token, doubled when on a compact form factor. */
+function scaleIconSize(isCompact: boolean): Theme["iconSize"] {
+  const factor = isCompact ? COMPACT_ICON_SIZE_FACTOR : 1;
+  return {
+    xs: ICON_SIZE.xs * factor,
+    sm: ICON_SIZE.sm * factor,
+    md: ICON_SIZE.md * factor,
+    lg: ICON_SIZE.lg * factor,
+  };
+}
+
 /**
  * Patch every registered Unistyles theme with the user's appearance choices.
  * All keys are patched because the active theme can change and adaptive mode
@@ -62,8 +83,15 @@ function scaleFontSize(uiSize: number, codeSize: number): Theme["fontSize"] {
 export function applyAppearance(input: AppearanceInput): void {
   const ui = input.uiFontFamily.trim() || DEFAULT_UI_FONT_STACK;
   const mono = input.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
-  const diffLineHeight = Math.round(input.codeFontSize * 1.5); // couple to code size
   const layout = { chatMaxWidth: resolveChatMaxWidth(input.chatWidth) };
+  const effectiveUiFontSize = input.isCompact
+    ? input.uiFontSize + COMPACT_UI_FONT_SIZE_BUMP
+    : input.uiFontSize;
+  const effectiveCodeFontSize = input.isCompact
+    ? input.codeFontSize + COMPACT_UI_FONT_SIZE_BUMP
+    : input.codeFontSize;
+  const diffLineHeight = Math.round(effectiveCodeFontSize * 1.5); // couple to code size
+  const iconSize = scaleIconSize(input.isCompact);
 
   for (const key of ALL_THEME_KEYS) {
     // Spread `...t` first — `updateTheme` replaces the stored theme, it does not
@@ -77,13 +105,14 @@ export function applyAppearance(input: AppearanceInput): void {
     // a single narrowed theme type.
     UnistylesRuntime.updateTheme(key, (t) => {
       const fontFamily = { ui, mono };
-      const fontSize = scaleFontSize(input.uiFontSize, input.codeFontSize);
+      const fontSize = scaleFontSize(effectiveUiFontSize, effectiveCodeFontSize);
       const lineHeight = { ...t.lineHeight, diff: diffLineHeight };
       if (t.colorScheme === "light") {
         return {
           ...t,
           fontFamily,
           fontSize,
+          iconSize,
           lineHeight,
           layout,
           colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
@@ -93,6 +122,7 @@ export function applyAppearance(input: AppearanceInput): void {
         ...t,
         fontFamily,
         fontSize,
+        iconSize,
         lineHeight,
         layout,
         colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },

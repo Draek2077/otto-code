@@ -21,6 +21,7 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { Brain, ListTodo, Settings2, ShieldCheck, Zap } from "@/components/icons/material-icons";
+import { compactUp } from "@/styles/theme";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -180,14 +181,6 @@ function getFeatureIconColor(
     default:
       return foregroundMuted;
   }
-}
-
-// Mobile agent controls only — strip namespace prefix so providers like OpenCode
-// show "gpt-5.5" instead of "openrouter/gpt-5.5". Full label still appears in
-// the model picker.
-function shortModelLabel(label: string): string {
-  const i = label.lastIndexOf("/");
-  return i === -1 ? label : label.slice(i + 1);
 }
 
 type ActiveSheet = "thinking" | "features" | null;
@@ -772,7 +765,9 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             accessibilityLabel={t("agentControls.provider.select")}
             testID="agent-provider-selector"
           >
-            <Text style={styles.modeBadgeText}>{displayProvider}</Text>
+            <Text style={styles.modeBadgeText} numberOfLines={1} ellipsizeMode="tail">
+              {displayProvider}
+            </Text>
           </ComboboxTrigger>
           <Combobox
             options={comboboxProviderOptions}
@@ -831,7 +826,9 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 testID="agent-thinking-selector"
               >
                 <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                <Text style={styles.modeBadgeText}>{displayThinking}</Text>
+                <Text style={styles.modeBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                  {displayThinking}
+                </Text>
               </ComboboxTrigger>
             </TooltipTrigger>
             <TooltipContent side="top" align="center" offset={8}>
@@ -960,25 +957,17 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     [handleCloseSheet, handleOpenSheet],
   );
 
+  // Icon-only on mobile — the label rarely fits next to the mode chip and the
+  // other toolbar controls, so it's dropped instead of wrapping or truncating.
   const renderModelTrigger = useCallback(
-    ({
-      selectedModelLabel,
-    }: {
-      selectedModelLabel: string;
-      onPress: () => void;
-      disabled: boolean;
-      isOpen: boolean;
-    }) => (
+    () => (
       <View pointerEvents="none" style={styles.prefsButton} testID="agent-controls-model">
         {ProviderIcon ? (
-          <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
+          <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
         ) : null}
-        <Text style={styles.prefsButtonText} numberOfLines={1}>
-          {shortModelLabel(selectedModelLabel)}
-        </Text>
       </View>
     ),
-    [ProviderIcon, theme.iconSize.lg, theme.colors.foregroundMuted],
+    [ProviderIcon, theme.iconSize.md, theme.colors.foregroundMuted],
   );
 
   const thinkingButtonStyle = makeBadgePressableStyle(
@@ -1177,7 +1166,9 @@ function DesktopFeatureItem({
               testID={`agent-feature-${feature.id}`}
             >
               <FeatureIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-              <Text style={styles.modeBadgeText}>{selectedOption?.label ?? feature.label}</Text>
+              <Text style={styles.modeBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                {selectedOption?.label ?? feature.label}
+              </Text>
             </DropdownTrigger>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
@@ -1735,20 +1726,22 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: theme.spacing[1],
+    gap: compactUp(theme.spacing[1]),
   },
   modeBadge: {
-    height: 28,
+    height: compactUp(28),
+    minWidth: 0,
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
   },
   modeIconBadge: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
@@ -1764,6 +1757,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   modeBadgeText: {
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
@@ -1774,20 +1769,14 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.4,
   },
   prefsButton: {
-    height: 28,
+    height: compactUp(28),
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
-  },
-  prefsButtonText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
-    flexShrink: 1,
   },
   sheetSection: {
     gap: theme.spacing[2],

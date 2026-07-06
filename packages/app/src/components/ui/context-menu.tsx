@@ -31,6 +31,7 @@ import {
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { compactUp } from "@/styles/theme";
 import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { BottomSheetBackdrop, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -631,12 +632,13 @@ function resolveLeadingContent(input: {
   leading: ReactElement | null | undefined;
   pendingColor: string;
   successColor: string;
+  iconSize: number;
 }): ReactElement | null {
   if (input.isPending) {
-    return <ActivityIndicator size={16} color={input.pendingColor} />;
+    return <ActivityIndicator size={input.iconSize} color={input.pendingColor} />;
   }
   if (input.isSuccess) {
-    return <CheckCircle size={16} color={input.successColor} />;
+    return <CheckCircle size={input.iconSize} color={input.successColor} />;
   }
   return input.leading ?? null;
 }
@@ -703,6 +705,7 @@ export function ContextMenuItem({
     leading,
     pendingColor: theme.colors.foregroundMuted,
     successColor: theme.colors.palette.green[500],
+    iconSize: theme.iconSize.md,
   });
 
   const label = resolveItemLabel({ children, isPending, isSuccess, pendingLabel, successLabel });
@@ -710,7 +713,7 @@ export function ContextMenuItem({
   const trailingContent =
     trailing ??
     (!showSelectedCheck && selected ? (
-      <Check size={16} color={theme.colors.foregroundMuted} />
+      <Check size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
     ) : null);
 
   const handleItemPress = useCallback(() => {
@@ -768,7 +771,7 @@ export function ContextMenuItem({
     >
       {showSelectedCheck ? (
         <View style={styles.checkSlot}>
-          {selected ? <Check size={16} color={theme.colors.foreground} /> : null}
+          {selected ? <Check size={theme.iconSize.md} color={theme.colors.foreground} /> : null}
         </View>
       ) : null}
       {leadingContent ? <View style={styles.leadingSlot}>{leadingContent}</View> : null}
@@ -889,12 +892,12 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.accent,
   },
   checkSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
   leadingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },

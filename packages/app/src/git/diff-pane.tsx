@@ -27,7 +27,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { BORDER_WIDTH, ICON_SIZE, SPACING, type Theme } from "@/styles/theme";
+import { BORDER_WIDTH, SPACING, type Theme, useIconSize } from "@/styles/theme";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import {
   AlignJustify,
@@ -1276,11 +1276,11 @@ interface DiffWhitespaceToggleProps {
 
 function DiffWhitespaceToggle({
   hideWhitespace,
-  isMobile,
   toggleStyle,
   onToggle,
 }: DiffWhitespaceToggleProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const label = t("workspace.git.diff.hideWhitespace");
   return (
     <Tooltip delayDuration={300}>
@@ -1293,7 +1293,7 @@ function DiffWhitespaceToggle({
           onPress={onToggle}
         >
           <ThemedPilcrow
-            size={isMobile ? 18 : 14}
+            size={iconSize.sm}
             uniProps={hideWhitespace ? foregroundIconColorMapping : foregroundMutedIconColorMapping}
           />
         </Pressable>
@@ -1318,13 +1318,13 @@ interface DiffFilesToolbarProps {
 function DiffFilesToolbar({
   wrapLines,
   allExpanded,
-  isMobile,
   wrapLinesToggleStyle,
   expandAllToggleStyle,
   onToggleWrapLines,
   onToggleExpandAll,
 }: DiffFilesToolbarProps) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const wrapLinesLabel = wrapLines
     ? t("workspace.git.diff.scrollLongLines")
     : t("workspace.git.diff.wrapLongLines");
@@ -1337,7 +1337,7 @@ function DiffFilesToolbar({
         <TooltipTrigger asChild>
           <Pressable style={wrapLinesToggleStyle} onPress={onToggleWrapLines}>
             <ThemedWrapText
-              size={isMobile ? 18 : 14}
+              size={iconSize.sm}
               uniProps={wrapLines ? foregroundIconColorMapping : foregroundMutedIconColorMapping}
             />
           </Pressable>
@@ -1351,12 +1351,12 @@ function DiffFilesToolbar({
           <Pressable style={expandAllToggleStyle} onPress={onToggleExpandAll}>
             {allExpanded ? (
               <ThemedListChevronsDownUp
-                size={isMobile ? 18 : 14}
+                size={iconSize.sm}
                 uniProps={foregroundMutedIconColorMapping}
               />
             ) : (
               <ThemedListChevronsUpDown
-                size={isMobile ? 18 : 14}
+                size={iconSize.sm}
                 uniProps={foregroundMutedIconColorMapping}
               />
             )}
@@ -1382,6 +1382,7 @@ const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 function DiffRefreshButton({ isRefreshing, toggleStyle, onPress }: DiffRefreshButtonProps) {
   const { t } = useTranslation();
   const refreshLabel = t("workspace.git.diff.refresh");
+  const iconSize = useIconSize();
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
@@ -1397,12 +1398,9 @@ function DiffRefreshButton({ isRefreshing, toggleStyle, onPress }: DiffRefreshBu
         >
           <View style={styles.refreshIcon}>
             {isRefreshing ? (
-              <ThemedLoadingSpinner
-                size={ICON_SIZE.sm}
-                uniProps={foregroundMutedIconColorMapping}
-              />
+              <ThemedLoadingSpinner size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
             ) : (
-              <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedIconColorMapping} />
+              <ThemedRotateCw size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
             )}
           </View>
         </Pressable>
@@ -1674,6 +1672,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
+  const iconSize = useIconSize();
   const showDesktopWebScrollbar = isWeb && !isMobile;
   const canUseSplitLayout = isWeb && !isMobile;
   const { preferences: changesPreferences, updatePreferences: updateChangesPreferences } =
@@ -2186,20 +2185,32 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
   );
   const gitActionsIcons = useMemo(
     () => ({
-      commit: <ThemedGitCommitHorizontal size={16} uniProps={foregroundMutedIconColorMapping} />,
-      pull: <ThemedDownload size={16} uniProps={foregroundMutedIconColorMapping} />,
-      push: <ThemedUpload size={16} uniProps={foregroundMutedIconColorMapping} />,
-      pullAndPush: <ThemedArrowDownUp size={16} uniProps={foregroundMutedIconColorMapping} />,
-      viewPr: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      createPr: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrSquash: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrMerge: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrRebase: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      merge: <ThemedGitMerge size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergeFromBase: <ThemedRefreshCcw size={16} uniProps={foregroundMutedIconColorMapping} />,
-      archive: <ThemedArchive size={16} uniProps={foregroundMutedIconColorMapping} />,
+      commit: (
+        <ThemedGitCommitHorizontal size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      pull: <ThemedDownload size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+      push: <ThemedUpload size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+      pullAndPush: (
+        <ThemedArrowDownUp size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      viewPr: <ThemedGitHubIcon size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+      createPr: <ThemedGitHubIcon size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+      mergePrSquash: (
+        <ThemedGitHubIcon size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      mergePrMerge: (
+        <ThemedGitHubIcon size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      mergePrRebase: (
+        <ThemedGitHubIcon size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      merge: <ThemedGitMerge size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+      mergeFromBase: (
+        <ThemedRefreshCcw size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      archive: <ThemedArchive size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
     }),
-    [],
+    [iconSize.sm],
   );
   const { gitActions, branchLabel } = useGitActions({
     serverId,
@@ -2278,7 +2289,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
                 <Text style={styles.diffStatusText} numberOfLines={1}>
                   {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
                 </Text>
-                <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
                 <DropdownMenuItem
@@ -2401,7 +2412,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   diffStatusText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     lineHeight: theme.fontSize.xs * 1.25,
     color: theme.colors.foregroundMuted,
   },
@@ -2449,8 +2463,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   refreshIcon: {
-    width: ICON_SIZE.md,
-    height: ICON_SIZE.md,
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
   },

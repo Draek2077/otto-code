@@ -338,7 +338,7 @@ export function SheetHeaderView({
           >
             {({ pressed }) => (
               <ArrowLeft
-                size={18}
+                size={theme.iconSize.md}
                 color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
               />
             )}
@@ -360,7 +360,7 @@ export function SheetHeaderView({
           >
             {({ pressed }) => (
               <X
-                size={16}
+                size={theme.iconSize.sm}
                 color={pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
               />
             )}

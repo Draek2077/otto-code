@@ -29,6 +29,7 @@ import {
 } from "react-native";
 import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { compactUp } from "@/styles/theme";
 import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -709,14 +710,17 @@ function resolveDropdownItemLeadingContent(input: {
   isPending: boolean | undefined;
   isSuccess: boolean;
   leading: ReactElement | null;
-  theme: { colors: { foregroundMuted: string; palette: { green: Record<number, string> } } };
+  theme: {
+    colors: { foregroundMuted: string; palette: { green: Record<number, string> } };
+    iconSize: { md: number };
+  };
 }): ReactElement | null {
   const { isPending, isSuccess, leading, theme } = input;
   if (isPending) {
-    return <ActivityIndicator size={16} color={theme.colors.foregroundMuted} />;
+    return <ActivityIndicator size={theme.iconSize.md} color={theme.colors.foregroundMuted} />;
   }
   if (isSuccess) {
-    return <CheckCircle size={16} color={theme.colors.palette.green[500]} />;
+    return <CheckCircle size={theme.iconSize.md} color={theme.colors.palette.green[500]} />;
   }
   return leading;
 }
@@ -802,7 +806,7 @@ export function DropdownMenuItem({
   const trailingContent =
     trailing ??
     (!showSelectedCheck && selected ? (
-      <Check size={16} color={theme.colors.foregroundMuted} />
+      <Check size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
     ) : null);
 
   const handleItemPress = useCallback(() => {
@@ -863,7 +867,7 @@ export function DropdownMenuItem({
     >
       {showSelectedCheck ? (
         <View style={styles.checkSlot}>
-          {selected ? <Check size={16} color={theme.colors.foreground} /> : null}
+          {selected ? <Check size={theme.iconSize.md} color={theme.colors.foreground} /> : null}
         </View>
       ) : null}
       {leadingContent ? <View style={styles.leadingSlot}>{leadingContent}</View> : null}
@@ -920,7 +924,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1],
   },
   labelText: {
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     color: theme.colors.foregroundMuted,
   },
   separator: {
@@ -997,12 +1005,12 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.85,
   },
   checkSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
   leadingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },

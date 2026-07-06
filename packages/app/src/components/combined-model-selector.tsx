@@ -25,6 +25,7 @@ import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { Button } from "@/components/ui/button";
+import { compactUp } from "@/styles/theme";
 const IS_WEB = platformIsWeb;
 
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
@@ -191,7 +192,7 @@ function ModelRow({
             else if (hovered) starColor = theme.colors.foregroundMuted;
             else starColor = theme.colors.border;
             const StarIcon = isFavorite ? StarFilled : Star;
-            return <StarIcon size={16} color={starColor} />;
+            return <StarIcon size={theme.iconSize.sm} color={starColor} />;
           }}
         </Pressable>
       ) : null,
@@ -204,6 +205,7 @@ function ModelRow({
       theme.colors.palette.amber,
       theme.colors.foregroundMuted,
       theme.colors.border,
+      theme.iconSize.sm,
       t,
     ],
   );
@@ -885,14 +887,16 @@ export function CombinedModelSelector({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    height: 28,
+    // Matches the mode chip's chrome (`AgentModeControl`'s `chip` style) so the two
+    // toolbar controls line up — both scale with `compactUp` on compact form factors.
+    height: compactUp(28),
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
   },
   triggerHovered: {
@@ -908,7 +912,10 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
   },
   customTriggerWrapper: {
@@ -945,7 +952,10 @@ const styles = StyleSheet.create((theme) => ({
     ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   sectionHeadingText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
@@ -966,7 +976,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   drillDownText: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     color: theme.colors.foreground,
   },
   drillDownTrailing: {
@@ -975,7 +988,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   drillDownCount: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     color: theme.colors.foregroundMuted,
   },
   rowStateInline: {

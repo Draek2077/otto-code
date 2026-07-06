@@ -22,7 +22,10 @@ function ProviderUsageIcon({ iconKey, size, color = "" }: ProviderUsageIconProps
 
 const ThemedProviderUsageIcon = withUnistyles(ProviderUsageIcon);
 
-const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedIconColor = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.sm,
+});
 
 function statusText(usage: ProviderUsage): string | null {
   if (usage.status === "available") return null;
@@ -65,7 +68,7 @@ export function ProviderUsageCard({
   return (
     <View style={containerStyle}>
       <View style={styles.header}>
-        <ThemedProviderUsageIcon iconKey={usage.providerId} size={14} uniProps={mutedIconColor} />
+        <ThemedProviderUsageIcon iconKey={usage.providerId} uniProps={mutedIconColor} />
         <Text style={styles.name} numberOfLines={1}>
           {usage.displayName}
         </Text>
@@ -140,7 +143,11 @@ const styles = StyleSheet.create((theme) => ({
   name: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   headerSpacer: {
     flex: 1,
@@ -164,7 +171,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   bars: {
     gap: theme.spacing[3],
@@ -180,19 +190,31 @@ const styles = StyleSheet.create((theme) => ({
   detailLabel: {
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   detailValue: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   error: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     lineHeight: theme.fontSize.xs * 1.4,
   },
   footer: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
 }));

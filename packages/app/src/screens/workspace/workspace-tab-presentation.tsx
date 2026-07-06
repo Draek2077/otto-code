@@ -12,6 +12,7 @@ import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize } from "@/styles/theme";
 
 export interface WorkspaceTabPresentation {
   key: string;
@@ -108,15 +109,20 @@ interface WorkspaceTabIconProps {
 }
 
 const ThemedCheckIcon = withUnistyles(Check);
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
 
 export function WorkspaceTabIcon({
   presentation,
   active = false,
   accent = false,
-  size = 14,
+  size,
   statusDotBorderColor,
 }: WorkspaceTabIconProps): ReactElement {
+  const iconSize = useIconSize();
+  const resolvedSize = size ?? iconSize.sm;
   let iconColor = styles.iconInactive.color;
   if (accent) {
     iconColor = styles.iconAccent.color;
@@ -141,8 +147,8 @@ export function WorkspaceTabIcon({
   });
   const Icon = presentation.icon;
   const agentIconWrapperStyle = useMemo(
-    () => [styles.agentIconWrapper, { width: size, height: size }],
-    [size],
+    () => [styles.agentIconWrapper, { width: resolvedSize, height: resolvedSize }],
+    [resolvedSize],
   );
   const statusDotStyle = useMemo(
     () => [
@@ -162,14 +168,14 @@ export function WorkspaceTabIcon({
   if (shouldShowLoader) {
     return (
       <View style={agentIconWrapperStyle}>
-        <SyncedLoader size={size - 1} color={styles.syncedLoader.color} />
+        <SyncedLoader size={resolvedSize - 1} color={styles.syncedLoader.color} />
       </View>
     );
   }
 
   return (
     <View style={agentIconWrapperStyle}>
-      <Icon size={size} color={iconColor} />
+      <Icon size={resolvedSize} color={iconColor} />
       {statusDotColor ? <View style={statusDotStyle} /> : null}
     </View>
   );
@@ -218,7 +224,7 @@ export function WorkspaceTabOptionRow({
       </Pressable>
       {selected ? (
         <View style={styles.optionTrailingSlot}>
-          <ThemedCheckIcon size={16} uniProps={mutedColorMapping} />
+          <ThemedCheckIcon uniProps={mutedColorMapping} />
         </View>
       ) : null}
       {trailingAccessory ? (
@@ -289,7 +295,11 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    // +4px on compact so the doubled leading icon doesn't crowd the label.
+    gap: {
+      xs: theme.spacing[2] + 4,
+      md: theme.spacing[2],
+    },
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
   },
@@ -297,7 +307,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   optionLeadingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -306,11 +316,17 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   optionLabel: {
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump (not left to the ambient theme-patch scale) — this
+    // row renders inside a bottom sheet, which can hold onto stale sizing (see
+    // docs/unistyles.md's "Hidden Sheet Content" gotcha).
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     color: theme.colors.foreground,
   },
   optionTrailingSlot: {
-    width: 16,
+    width: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },

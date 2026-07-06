@@ -8,7 +8,7 @@
 // from Paseo.
 import { Platform } from "react-native";
 import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
-import { resolveChatMaxWidth } from "@/constants/layout";
+import { resolveChatMaxWidth, useIsCompactFormFactor } from "@/constants/layout";
 
 export const baseColors = {
   // Base colors
@@ -696,6 +696,43 @@ export const ICON_SIZE = {
   lg: 20,
 } as const;
 
+// Breakpoint-shaped value for a geometry style property (padding, minHeight, gap, ...)
+// that should double on compact form factors (`xs`/`sm` breakpoints — see
+// `useIsCompactFormFactor`). For use inside `StyleSheet.create` factories, where
+// Unistyles resolves per-breakpoint object literals regardless of where the value
+// came from. Not for `theme.iconSize`/`theme.fontSize` reads — those are patched
+// globally at runtime by `applyAppearance` instead.
+export function compactUp(value: number): Record<"xs" | "sm" | "md" | "lg" | "xl", number> {
+  const doubled = value * 2;
+  return { xs: doubled, sm: doubled, md: value, lg: value, xl: value };
+}
+
+function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
+  return {
+    xs: ICON_SIZE.xs * scale,
+    sm: ICON_SIZE.sm * scale,
+    md: ICON_SIZE.md * scale,
+    lg: ICON_SIZE.lg * scale,
+  };
+}
+
+const ICON_SIZE_COMPACT = scaleIconSizes(2);
+
+/**
+ * Icon size tokens, scaled on compact form factors (doubled by default — pass
+ * `compactScale` for a different multiplier, e.g. `1.5` for controls that sit next
+ * to a fixed-chrome sibling and shouldn't double as aggressively). For callers that
+ * read `ICON_SIZE` as a static import (a plain `size` prop, not a `StyleSheet.create`
+ * value) rather than through the live theme — those never see the runtime
+ * `theme.iconSize` patch `applyAppearance` applies, so they need this hook instead.
+ * Mirrors `useIsCompactFormFactor`'s pattern rather than calling `useUnistyles()` directly.
+ */
+export function useIconSize(compactScale: number = 2): Record<keyof typeof ICON_SIZE, number> {
+  const isCompact = useIsCompactFormFactor();
+  if (!isCompact) return ICON_SIZE;
+  return compactScale === 2 ? ICON_SIZE_COMPACT : scaleIconSizes(compactScale);
+}
+
 export const FONT_WEIGHT = {
   normal: "normal" as const,
   medium: "500" as const,
@@ -745,16 +782,16 @@ export const DEFAULT_MONO_FONT_STACK: string = Platform.select({
   web: "JetBrainsMono_400Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
 });
 
-// `fontSize`, `fontFamily`, `lineHeight`, and `layout` are deliberately widened to
-// plain `number`/`string` (not narrowed by `as const`) so the appearance updater can
-// patch them at runtime via `UnistylesRuntime.updateTheme`. The remaining tokens keep
-// their literal types.
+// `fontSize`, `fontFamily`, `lineHeight`, `iconSize`, and `layout` are deliberately
+// widened to plain `number`/`string` (not narrowed by `as const`) so the appearance
+// updater can patch them at runtime via `UnistylesRuntime.updateTheme`. The remaining
+// tokens keep their literal types.
 interface CommonTheme {
   spacing: typeof SPACING;
   fontSize: Record<keyof typeof FONT_SIZE, number>;
   fontFamily: { ui: string; mono: string };
   lineHeight: Record<keyof typeof LINE_HEIGHT, number>;
-  iconSize: typeof ICON_SIZE;
+  iconSize: Record<keyof typeof ICON_SIZE, number>;
   fontWeight: typeof FONT_WEIGHT;
   borderRadius: typeof BORDER_RADIUS;
   borderWidth: typeof BORDER_WIDTH;

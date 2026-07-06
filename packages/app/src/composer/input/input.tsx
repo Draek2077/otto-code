@@ -23,7 +23,7 @@ import {
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, type Theme, useIconSize } from "@/styles/theme";
 import {
   ArrowUp,
   Mic,
@@ -444,12 +444,12 @@ function SendButtonContent({
   buttonIconSize: number;
 }) {
   if (isSubmitLoading) {
-    return <ThemedActivityIndicator size="small" uniProps={iconAccentForegroundMapping} />;
+    return <ThemedActivityIndicator size="small" uniProps={iconAccentMapping} />;
   }
   if (submitIcon === "return") {
-    return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
+    return <ThemedCornerDownLeft size={buttonIconSize} uniProps={iconAccentMapping} />;
   }
-  return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentForegroundMapping} />;
+  return <ThemedArrowUp size={buttonIconSize} uniProps={iconAccentMapping} />;
 }
 
 interface DesktopKeyPressContext {
@@ -1082,6 +1082,15 @@ function computeIsDictationStartEnabled(
   return (isReadyForDictation ?? isConnected) && !disabled;
 }
 
+function computeFocusHintVisible(input: {
+  isPaneFocused: boolean;
+  isInputFocused: boolean;
+  isCompact: boolean;
+  value: string;
+}): boolean {
+  return isWeb && !input.isCompact && input.isPaneFocused && !input.isInputFocused && !input.value;
+}
+
 function resolveMaxInputHeight(windowHeight: number): number {
   if (!Number.isFinite(windowHeight) || windowHeight <= 0) return DEFAULT_MAX_INPUT_HEIGHT;
   return Math.max(DEFAULT_MAX_INPUT_HEIGHT, Math.floor(windowHeight * MAX_INPUT_VIEWPORT_RATIO));
@@ -1278,7 +1287,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
     const maxInputHeight = resolveMaxInputHeight(windowHeight);
-    const buttonIconSize = isWeb ? ICON_SIZE.md : ICON_SIZE.lg;
+    const iconSize = useIconSize();
+    const buttonIconSize = isWeb ? iconSize.md : iconSize.lg;
     const toast = useToast();
     const voice = useVoiceOptional();
     const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
@@ -1790,8 +1800,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       () => [styles.textInput, computeTextInputHeightStyle(inputHeight, maxInputHeight)],
       [inputHeight, maxInputHeight],
     );
-    const sendButtonCombinedStyle = useMemo(
-      () => [styles.sendButton, isSendButtonDisabled && styles.buttonDisabled],
+    const sendButtonCombinedStyle = useCallback(
+      ({ hovered }: { hovered?: boolean }) => [
+        styles.sendButton,
+        Boolean(hovered) && !isSendButtonDisabled && styles.iconButtonHovered,
+        isSendButtonDisabled && styles.buttonDisabled,
+      ],
       [isSendButtonDisabled],
     );
     const overlayContainerStyle = useMemo(
@@ -1849,7 +1863,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             />
             {inputScrollbar}
             <FocusHint
-              visible={isWeb && isPaneFocused && !isInputFocused && !value}
+              visible={computeFocusHintVisible({ isPaneFocused, isInputFocused, isCompact, value })}
               focusInputKeys={focusInputKeys}
               label={t("composer.input.focusHint", {
                 shortcut: focusInputKeys ? formatShortcut(focusInputKeys[0], getShortcutOs()) : "",
@@ -1995,30 +2009,36 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexGrow: 1,
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: theme.spacing[0],
+    // Base is 0 (buttons touch) — `compactUp` can't grow a zero, so the compact
+    // gap is spelled out directly here to give the doubled icons room to breathe.
+    gap: {
+      xs: theme.spacing[2],
+      sm: theme.spacing[2],
+      md: theme.spacing[0],
+    },
   },
   rightButtonGroup: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
+    gap: compactUp(theme.spacing[1]),
   },
   attachButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
   },
   attachButtonAnchor: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
   },
   voiceButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -2027,13 +2047,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.destructive,
   },
   sendButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: theme.spacing[1],
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
@@ -2099,7 +2117,9 @@ const ThemedTextInput = withUnistyles(TextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
+// The send button has no background fill (a "normal" icon button), so its icon
+// is colored with the accent itself rather than the accent's contrast color.
+const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
 const textInputPlaceholderColorMapping = (theme: Theme) => ({
   placeholderTextColor: theme.colors.surface4,
 });
