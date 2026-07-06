@@ -1,17 +1,24 @@
 import { StyleSheet } from "react-native-unistyles";
-import { daylightTheme, darkTheme } from "./theme";
+import { daylightTheme, darkTheme, blackTheme } from "./theme";
 
-// Only two Unistyles theme keys are ever registered — `light`/`dark`. Every
-// other named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as
-// plain data, copied into these two keys at runtime by
+// Only the `light`/`dark` keys participate in mode switching. Every other
+// named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as plain
+// data, copied into these two keys at runtime by
 // `screens/settings/appearance/apply-color-scheme.ts`. See that file for why:
 // Unistyles' adaptive-theme mechanism hardcodes switching between the
 // literal keys `light`/`dark` and cannot target an arbitrary named theme.
 // Seed content here is today's default pair (Daylight/Twilight).
+//
+// The third `black` key is never selected by mode switching or adaptive
+// themes — it exists solely for `ScopedTheme name="black"` around chat panes
+// when the "Black tab background" appearance setting is on. It mirrors the
+// user's dark-variant pick with pure-black chat surfaces and is repainted by
+// the same runtime patchers as the other two keys.
 StyleSheet.configure({
   themes: {
     light: daylightTheme,
     dark: darkTheme,
+    black: blackTheme,
   },
   breakpoints: {
     xs: 0,
@@ -29,6 +36,7 @@ StyleSheet.configure({
 interface AppThemes {
   light: typeof daylightTheme;
   dark: typeof darkTheme;
+  black: typeof blackTheme;
 }
 
 interface AppBreakpoints {

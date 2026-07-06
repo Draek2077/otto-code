@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { ScopedTheme, StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -29,6 +29,7 @@ import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/l
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
   type AgentScreenAgent,
@@ -388,13 +389,19 @@ function DraftPanel() {
 
 export function AgentConversationPanel() {
   const { target } = usePaneContext();
-  if (target.kind === "draft") {
-    return <DraftPanel />;
+  const { settings } = useAppSettings();
+  invariant(
+    target.kind === "draft" || target.kind === "agent",
+    "AgentConversationPanel requires an agent or draft target",
+  );
+  const content = target.kind === "draft" ? <DraftPanel /> : <AgentPanel />;
+  if (!settings.blackTabBackground) {
+    return content;
   }
-  if (target.kind === "agent") {
-    return <AgentPanel />;
-  }
-  invariant(false, "AgentConversationPanel requires an agent or draft target");
+  // Black tab background: render the whole chat pane (stream + composer) under
+  // the scoped `black` theme — the user's dark-variant colors on pure black —
+  // regardless of the app-wide light/dark mode.
+  return <ScopedTheme name="black">{content}</ScopedTheme>;
 }
 
 export const agentPanelRegistration: PanelRegistration<"agent"> = {

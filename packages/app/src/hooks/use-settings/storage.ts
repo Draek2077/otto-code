@@ -74,6 +74,9 @@ export interface AppSettings {
   compactSidebarTopSpacing: boolean;
   workspaceToolsPlacement: WorkspaceToolsPlacement;
   chatWidth: ChatWidth;
+  // Chat tabs + chat pane use a pure black background with dark-theme colors
+  // in both light and dark modes (see the `black` scoped theme key).
+  blackTabBackground: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -100,6 +103,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
   chatWidth: "default",
+  blackTabBackground: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -309,6 +313,9 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     VALID_CHAT_WIDTHS.has(stored.chatWidth as ChatWidth)
   ) {
     result.chatWidth = stored.chatWidth as ChatWidth;
+  }
+  if (typeof stored.blackTabBackground === "boolean") {
+    result.blackTabBackground = stored.blackTabBackground;
   }
   return result;
 }

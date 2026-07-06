@@ -1,5 +1,6 @@
 import { UnistylesRuntime } from "react-native-unistyles";
 import {
+  BLACK_TAB_SURFACE_OVERRIDES,
   daylightTheme,
   meadowTheme,
   terracottaTheme,
@@ -79,6 +80,18 @@ export function applyColorScheme(input: ColorSchemeInput): void {
     return {
       ...t,
       colors: { ...darkSource.colors, syntax: t.colors.syntax },
+      shadow: darkSource.shadow,
+    };
+  });
+  // The `black` key mirrors the dark pick with pure-black chat surfaces. It is
+  // consumed only through `ScopedTheme name="black"` (Black tab background
+  // setting) and is repainted unconditionally so the scoped pane is always
+  // current the moment the setting turns on.
+  UnistylesRuntime.updateTheme("black", (t) => {
+    if (t.colorScheme !== "dark") return t;
+    return {
+      ...t,
+      colors: { ...darkSource.colors, ...BLACK_TAB_SURFACE_OVERRIDES, syntax: t.colors.syntax },
       shadow: darkSource.shadow,
     };
   });

@@ -20,10 +20,11 @@ const COMPACT_ICON_SIZE_FACTOR = 2;
 // All registered Unistyles keys — pinned literal (greppable, type-checked).
 // The `as const` element types are exactly `keyof UnistylesThemes`, so each key
 // is assignable to `UnistylesRuntime.updateTheme`'s first argument with no cast.
-// Only two keys are ever registered (see `styles/unistyles.ts`); every named
-// theme variant is repainted into one of these two by
-// `apply-color-scheme.ts`, not registered under its own key.
-const ALL_THEME_KEYS = ["light", "dark"] as const;
+// Only these keys are ever registered (see `styles/unistyles.ts`); every named
+// theme variant is repainted into `light`/`dark` by `apply-color-scheme.ts`,
+// not registered under its own key. `black` is the scoped-only chat mirror
+// used by the Black tab background setting.
+const ALL_THEME_KEYS = ["light", "dark", "black"] as const;
 
 // The UI font size at which the FONT_SIZE ramp is authored (1.0 scale factor).
 const BASE_UI_REFERENCE = FONT_SIZE.base; // 16

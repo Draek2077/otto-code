@@ -541,6 +541,13 @@ export function AppearanceSection() {
     [effectiveSpectrum, updateSettings],
   );
 
+  const handleBlackTabBackgroundChange = useCallback(
+    (blackTabBackground: boolean) => {
+      void updateSettings({ blackTabBackground });
+    },
+    [updateSettings],
+  );
+
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
@@ -653,6 +660,17 @@ export function AppearanceSection() {
             list={scopedThemeList}
             value={scopedThemeValue}
             onChange={handleThemeVariantChange}
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.theme.blackTabBackground.title")}
+            hint={t("settings.appearance.theme.blackTabBackground.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.theme.blackTabBackground.accessibilityLabel",
+            )}
+            value={settings.blackTabBackground}
+            withBorder
+            onValueChange={handleBlackTabBackgroundChange}
+            testID="settings-black-tab-background-switch"
           />
         </View>
       </SettingsSection>
