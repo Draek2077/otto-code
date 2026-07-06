@@ -2,6 +2,7 @@ import { View } from "react-native";
 import Animated, {
   Easing,
   makeMutable,
+  ReduceMotion,
   type SharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -33,6 +34,11 @@ function ensureSharedStepLoopStarted(): void {
     {
       duration: Math.max(1, Math.round(SYNCED_LOADER_DURATION_MS - elapsedMs)),
       easing: Easing.linear,
+      // Never gate the working indicator on the OS reduce-motion setting.
+      // Reanimated defaults to ReduceMotion.System; on a desktop/browser that
+      // reports `prefers-reduced-motion: reduce` that snaps the shared value
+      // straight to DOT_COUNT and the whole loop freezes on a single frame.
+      reduceMotion: ReduceMotion.Never,
     },
     (finished) => {
       if (!finished) {
@@ -44,9 +50,12 @@ function ensureSharedStepLoopStarted(): void {
         withTiming(DOT_COUNT, {
           duration: SYNCED_LOADER_DURATION_MS,
           easing: Easing.linear,
+          reduceMotion: ReduceMotion.Never,
         }),
         -1,
         false,
+        undefined,
+        ReduceMotion.Never,
       );
     },
   );
