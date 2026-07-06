@@ -49,7 +49,7 @@ const variant = variants[appVariant] ?? variants.production;
 export default {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "otto-code-mobile",
     version: pkg.version,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -60,7 +60,7 @@ export default {
       policy: "appVersion",
     },
     updates: {
-      url: "https://u.expo.dev/0e7f65ce-0367-46c8-a238-2b65963d235a",
+      url: "https://u.expo.dev/69eddb63-f77d-413a-b2b7-ed83e8e16759",
     },
     ios: {
       supportsTablet: true,
@@ -148,9 +148,9 @@ export default {
     extra: {
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: "69eddb63-f77d-413a-b2b7-ed83e8e16759",
       },
     },
-    owner: "otto-code-ai",
+    owner: "otto-code",
   },
 };
