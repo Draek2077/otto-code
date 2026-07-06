@@ -1970,6 +1970,7 @@ export function Composer({
                 autoFocusKey={`${serverId}:${agentId}`}
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
+                leadingContent={contextWindowMeter}
                 leftContent={leftContent}
                 rightContent={rightContent}
                 voiceServerId={serverId}
@@ -2004,7 +2005,7 @@ export function Composer({
             </View>
           </ChatWidthBounds>
         </View>
-        {renderComposerFooter(footer, contextWindowMeter)}
+        {renderComposerFooter(footer, null)}
       </Animated.View>
     </ComposerKeyboardScopeProvider>
   );

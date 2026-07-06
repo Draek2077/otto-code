@@ -5,6 +5,7 @@ import { Text, TextInput, View, type PressableStateCallbackType } from "react-na
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown, Monitor, Moon, Sun } from "@/components/icons/material-icons";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   SYNTAX_THEME_OPTIONS,
@@ -102,14 +103,6 @@ const BARE_DEFAULT_STACKS: ReadonlySet<string> = new Set(["normal", "monospace"]
 
 function resolveDefaultStackPlaceholder(t: TFunction, stack: string): string {
   return BARE_DEFAULT_STACKS.has(stack) ? t("settings.appearance.fonts.systemDefault") : stack;
-}
-
-// Local size string (digits only) -> preview override number. Empty/invalid
-// yields undefined so the preview falls back to the committed theme value.
-function sizeDraftToOverride(value: string): number | undefined {
-  if (value.length === 0) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
@@ -300,15 +293,19 @@ function FontFamilyRow({
 interface FontSizeRowProps {
   title: string;
   accessibilityLabel: string;
-  draft: string;
+  min: number;
+  max: number;
+  draft: number;
   withBorder?: boolean;
-  onChangeDraft: (value: string) => void;
-  onCommit: () => void;
+  onChangeDraft: (value: number) => void;
+  onCommit: (value: number) => void;
 }
 
 function FontSizeRow({
   title,
   accessibilityLabel,
+  min,
+  max,
   draft,
   withBorder = true,
   onChangeDraft,
@@ -320,18 +317,15 @@ function FontSizeRow({
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
       <View style={styles.sizeField}>
-        <TextInput
+        <Slider
+          min={min}
+          max={max}
           value={draft}
-          onChangeText={onChangeDraft}
-          onBlur={onCommit}
-          onSubmitEditing={onCommit}
-          keyboardType="number-pad"
-          inputMode="numeric"
-          selectTextOnFocus
-          style={styles.sizeInput}
+          onValueChange={onChangeDraft}
+          onSlidingComplete={onCommit}
           accessibilityLabel={accessibilityLabel}
         />
-        <Text style={styles.unit}>px</Text>
+        <Text style={styles.sizeValue}>{draft}px</Text>
       </View>
     </View>
   );
@@ -497,15 +491,15 @@ export function AppearanceSection() {
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
-  const [uiSizeDraft, setUiSizeDraft] = useState(String(settings.uiFontSize));
-  const [codeSizeDraft, setCodeSizeDraft] = useState(String(settings.codeFontSize));
+  const [uiSizeDraft, setUiSizeDraft] = useState(settings.uiFontSize);
+  const [codeSizeDraft, setCodeSizeDraft] = useState(settings.codeFontSize);
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
-    setUiSizeDraft(String(settings.uiFontSize));
+    setUiSizeDraft(settings.uiFontSize);
   }, [settings.uiFontSize]);
   useEffect(() => {
-    setCodeSizeDraft(String(settings.codeFontSize));
+    setCodeSizeDraft(settings.codeFontSize);
   }, [settings.codeFontSize]);
 
   // When mode is System, the variant list is scoped to whichever spectrum the
@@ -608,45 +602,38 @@ export function AppearanceSection() {
     [settings.monoFontFamily, updateSettings],
   );
 
-  const handleUiSizeChange = useCallback((value: string) => {
-    setUiSizeDraft(value.replace(/[^\d]/g, ""));
-  }, []);
+  const commitUiSize = useCallback(
+    (value: number) => {
+      const next = parseClampedFontSize(value, {
+        min: MIN_UI_FONT_SIZE,
+        max: MAX_UI_FONT_SIZE,
+      });
+      if (next !== null && next !== settings.uiFontSize) {
+        void updateSettings({ uiFontSize: next });
+      }
+    },
+    [settings.uiFontSize, updateSettings],
+  );
 
-  const handleCodeSizeChange = useCallback((value: string) => {
-    setCodeSizeDraft(value.replace(/[^\d]/g, ""));
-  }, []);
+  const commitCodeSize = useCallback(
+    (value: number) => {
+      const next = parseClampedFontSize(value, {
+        min: MIN_CODE_FONT_SIZE,
+        max: MAX_CODE_FONT_SIZE,
+      });
+      if (next !== null && next !== settings.codeFontSize) {
+        void updateSettings({ codeFontSize: next });
+      }
+    },
+    [settings.codeFontSize, updateSettings],
+  );
 
-  const commitUiSize = useCallback(() => {
-    const parsed = parseClampedFontSize(uiSizeDraft, {
-      min: MIN_UI_FONT_SIZE,
-      max: MAX_UI_FONT_SIZE,
-    });
-    const next = parsed ?? settings.uiFontSize;
-    setUiSizeDraft(String(next));
-    if (next !== settings.uiFontSize) {
-      void updateSettings({ uiFontSize: next });
-    }
-  }, [settings.uiFontSize, uiSizeDraft, updateSettings]);
-
-  const commitCodeSize = useCallback(() => {
-    const parsed = parseClampedFontSize(codeSizeDraft, {
-      min: MIN_CODE_FONT_SIZE,
-      max: MAX_CODE_FONT_SIZE,
-    });
-    const next = parsed ?? settings.codeFontSize;
-    setCodeSizeDraft(String(next));
-    if (next !== settings.codeFontSize) {
-      void updateSettings({ codeFontSize: next });
-    }
-  }, [codeSizeDraft, settings.codeFontSize, updateSettings]);
-
-  // Live-while-typing: the in-progress drafts drive the preview without
-  // committing to the global theme. Empty/invalid fields fall back to the
-  // theme value inside the preview.
+  // Live-while-dragging: the in-progress draft drives the preview without
+  // committing to the global theme until the slider is released.
   const previewOverrides = useMemo(
     () => ({
       monoFontFamily: monoFontDraft,
-      codeFontSize: sizeDraftToOverride(codeSizeDraft),
+      codeFontSize: codeSizeDraft,
     }),
     [codeSizeDraft, monoFontDraft],
   );
@@ -721,9 +708,11 @@ export function AppearanceSection() {
           <FontSizeRow
             title={t("settings.appearance.fonts.interfaceSize")}
             accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
+            min={MIN_UI_FONT_SIZE}
+            max={MAX_UI_FONT_SIZE}
             draft={uiSizeDraft}
             withBorder={showFontFamilyRows}
-            onChangeDraft={handleUiSizeChange}
+            onChangeDraft={setUiSizeDraft}
             onCommit={commitUiSize}
           />
           {showFontFamilyRows ? (
@@ -742,8 +731,10 @@ export function AppearanceSection() {
           <FontSizeRow
             title={t("settings.appearance.fonts.codeSize")}
             accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
+            min={MIN_CODE_FONT_SIZE}
+            max={MAX_CODE_FONT_SIZE}
             draft={codeSizeDraft}
-            onChangeDraft={handleCodeSizeChange}
+            onChangeDraft={setCodeSizeDraft}
             onCommit={commitCodeSize}
           />
         </View>
@@ -815,24 +806,16 @@ const styles = StyleSheet.create((theme) => ({
   sizeField: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[3],
+    flex: 1,
+    maxWidth: 220,
+    marginLeft: theme.spacing[4],
   },
-  sizeInput: {
-    width: 64,
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    textAlign: "right",
-  },
-  unit: {
+  sizeValue: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+    minWidth: 36,
+    textAlign: "right",
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,

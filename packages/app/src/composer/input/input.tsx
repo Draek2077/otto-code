@@ -6,6 +6,7 @@ import {
   Platform,
   ActivityIndicator,
   useWindowDimensions,
+  type LayoutChangeEvent,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData,
   TextInputKeyPressEventData,
@@ -117,6 +118,8 @@ export interface MessageInputProps {
   disabled?: boolean;
   /** True when this composer's pane is focused. Used to gate global hotkeys and stop dictation when hidden. */
   isPaneFocused?: boolean;
+  /** Content rendered immediately after the attach button, before leftContent (e.g., usage ring). */
+  leadingContent?: React.ReactNode;
   /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
   leftContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
@@ -157,6 +160,15 @@ export interface MessageInputRef {
 
 const MIN_INPUT_HEIGHT = 32;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
+// Floor for the uniform toolbar shrink. Below this, buttons/icons get too small
+// to hit; the row is allowed to overflow-clip instead of scaling further.
+const MIN_TOOLBAR_SCALE = 0.7;
+// One toolbar button's footprint (matches attachButton/voiceButton/sendButton/
+// etc. — see `compactUp(28)` below) — the minimum shrink is pushed this much
+// further so there's always at least one whole icon's worth of extra room at
+// the narrowest size, rather than clipping right at the `MIN_TOOLBAR_SCALE` edge.
+const TOOLBAR_BUTTON_WIDTH = 28;
+const TOOLBAR_BUTTON_WIDTH_COMPACT = TOOLBAR_BUTTON_WIDTH * 2;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
 const ATTACHMENT_SHEET_SNAP_POINTS = ["34%", "45%"];
 
@@ -1089,6 +1101,27 @@ function computeFocusHintVisible(input: {
   return isWeb && !input.isCompact && input.isPaneFocused && !input.isInputFocused && !input.value;
 }
 
+// Uniform-shrink fallback: once labels are already dropped (compact/icon-only
+// stage) and the icon row still can't fit, scale the whole button row down so
+// every button and icon shrinks together instead of clipping or wrapping.
+// Runs on native too: native panes don't resize post-mount, but the available
+// width still depends on device size and how much dynamic left-side content
+// (agent controls, features) renders, so overflow can already be present on
+// the first layout pass rather than only appearing from a window resize.
+function computeToolbarScale(input: {
+  toolbarRowWidth: number;
+  toolbarNeededWidth: number;
+  isCompact: boolean;
+}): number {
+  const { toolbarRowWidth, toolbarNeededWidth, isCompact } = input;
+  if (toolbarRowWidth <= 0 || toolbarNeededWidth <= toolbarRowWidth) {
+    return 1;
+  }
+  const toolbarButtonWidth = isCompact ? TOOLBAR_BUTTON_WIDTH_COMPACT : TOOLBAR_BUTTON_WIDTH;
+  const toolbarMinScale = Math.max(0, MIN_TOOLBAR_SCALE - toolbarButtonWidth / toolbarNeededWidth);
+  return Math.max(toolbarMinScale, toolbarRowWidth / toolbarNeededWidth);
+}
+
 function resolveMaxInputHeight(windowHeight: number): number {
   if (!Number.isFinite(windowHeight) || windowHeight <= 0) return DEFAULT_MAX_INPUT_HEIGHT;
   return Math.max(DEFAULT_MAX_INPUT_HEIGHT, Math.floor(windowHeight * MAX_INPUT_VIEWPORT_RATIO));
@@ -1173,6 +1206,7 @@ interface ResolvedMessageInputProps {
   autoFocusKey: string | undefined;
   disabled: boolean;
   isPaneFocused: boolean;
+  leadingContent: React.ReactNode;
   leftContent: React.ReactNode;
   rightContent: React.ReactNode;
   voiceServerId: string | undefined;
@@ -1214,6 +1248,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     autoFocusKey: props.autoFocusKey,
     disabled: props.disabled ?? false,
     isPaneFocused: props.isPaneFocused ?? true,
+    leadingContent: props.leadingContent,
     leftContent: props.leftContent,
     rightContent: props.rightContent,
     voiceServerId: props.voiceServerId,
@@ -1263,6 +1298,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       autoFocusKey,
       disabled,
       isPaneFocused,
+      leadingContent,
       leftContent,
       rightContent,
       voiceServerId,
@@ -1831,6 +1867,34 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
     );
 
+    const [toolbarRowWidth, setToolbarRowWidth] = useState(0);
+    const [toolbarLeftWidth, setToolbarLeftWidth] = useState(0);
+    const [toolbarRightWidth, setToolbarRightWidth] = useState(0);
+    const handleToolbarRowLayout = useCallback((event: LayoutChangeEvent) => {
+      setToolbarRowWidth(event.nativeEvent.layout.width);
+    }, []);
+    const handleToolbarLeftLayout = useCallback((event: LayoutChangeEvent) => {
+      setToolbarLeftWidth(event.nativeEvent.layout.width);
+    }, []);
+    const handleToolbarRightLayout = useCallback((event: LayoutChangeEvent) => {
+      setToolbarRightWidth(event.nativeEvent.layout.width);
+    }, []);
+    const toolbarNeededWidth = toolbarLeftWidth + toolbarRightWidth;
+    const toolbarScale = computeToolbarScale({
+      toolbarRowWidth,
+      toolbarNeededWidth,
+      isCompact,
+    });
+    const isToolbarScaled = toolbarScale < 1;
+    const toolbarContentStyle = useMemo(
+      () => [
+        styles.buttonRowContent,
+        isToolbarScaled ? styles.buttonRowContentScaled : styles.buttonRowContentFull,
+        isToolbarScaled ? { transform: [{ scale: toolbarScale }] } : null,
+      ],
+      [isToolbarScaled, toolbarScale],
+    );
+
     return (
       <View ref={rootRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
@@ -1867,49 +1931,52 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           </View>
 
           {/* Button row */}
-          <View style={styles.buttonRow}>
-            {/* Toolbar left: attachment button + agent controls */}
-            <View style={styles.leftButtonGroup}>
-              <AttachmentDropdown
-                isConnected={isConnected}
-                disabled={disabled}
-                attachButtonStyle={attachButtonStyle}
-                renderAttachButtonIcon={renderAttachButtonIcon}
-                attachmentMenuItems={attachmentMenuItems}
-                addAttachmentLabel={t("composer.input.addAttachment")}
-              />
-              {leftContent}
-            </View>
+          <View style={styles.buttonRow} onLayout={handleToolbarRowLayout}>
+            <View style={toolbarContentStyle}>
+              {/* Toolbar left: attachment button + usage ring + agent controls */}
+              <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
+                <AttachmentDropdown
+                  isConnected={isConnected}
+                  disabled={disabled}
+                  attachButtonStyle={attachButtonStyle}
+                  renderAttachButtonIcon={renderAttachButtonIcon}
+                  attachmentMenuItems={attachmentMenuItems}
+                  addAttachmentLabel={t("composer.input.addAttachment")}
+                />
+                {leadingContent}
+                {leftContent}
+              </View>
 
-            {/* Right: voice button, contextual button (realtime/send/cancel) */}
-            <View style={styles.rightButtonGroup}>
-              <VoiceButtonTooltip
-                onVoicePress={handleVoicePress}
-                isDictationStartEnabled={isDictationStartEnabled}
-                voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
-                voiceButtonStyle={voiceButtonStyle}
-                renderVoiceButtonIcon={renderVoiceButtonIcon}
-                voiceTooltipText={voiceTooltipText}
-                isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
-                voiceMuteToggleKeys={voiceMuteToggleKeys}
-                dictationToggleKeys={dictationToggleKeys}
-              />
-              {rightContent}
-              <SendButtonTooltip
-                shouldShow={shouldShowSendButton}
-                canPressLoadingButton={canPressLoadingButton}
-                onSubmitLoadingPress={onSubmitLoadingPress}
-                onDefaultSendAction={handleDefaultSendAction}
-                isSendButtonDisabled={isSendButtonDisabled}
-                submitAccessibilityLabel={submitAccessibilityLabel}
-                sendButtonCombinedStyle={sendButtonCombinedStyle}
-                isSubmitLoading={isSubmitLoading}
-                submitIcon={submitIcon}
-                submitButtonTestID={submitButtonTestID}
-                buttonIconSize={buttonIconSize}
-                sendKeys={DEFAULT_SEND_KEYS}
-                sendTooltipLabel={sendTooltipLabel}
-              />
+              {/* Right: voice button, contextual button (realtime/send/cancel) */}
+              <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
+                <VoiceButtonTooltip
+                  onVoicePress={handleVoicePress}
+                  isDictationStartEnabled={isDictationStartEnabled}
+                  voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
+                  voiceButtonStyle={voiceButtonStyle}
+                  renderVoiceButtonIcon={renderVoiceButtonIcon}
+                  voiceTooltipText={voiceTooltipText}
+                  isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
+                  voiceMuteToggleKeys={voiceMuteToggleKeys}
+                  dictationToggleKeys={dictationToggleKeys}
+                />
+                {rightContent}
+                <SendButtonTooltip
+                  shouldShow={shouldShowSendButton}
+                  canPressLoadingButton={canPressLoadingButton}
+                  onSubmitLoadingPress={onSubmitLoadingPress}
+                  onDefaultSendAction={handleDefaultSendAction}
+                  isSendButtonDisabled={isSendButtonDisabled}
+                  submitAccessibilityLabel={submitAccessibilityLabel}
+                  sendButtonCombinedStyle={sendButtonCombinedStyle}
+                  isSubmitLoading={isSubmitLoading}
+                  submitIcon={submitIcon}
+                  submitButtonTestID={submitButtonTestID}
+                  buttonIconSize={buttonIconSize}
+                  sendKeys={DEFAULT_SEND_KEYS}
+                  sendTooltipLabel={sendTooltipLabel}
+                />
+              </View>
             </View>
           </View>
         </Animated.View>
@@ -1973,6 +2040,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     top: 0,
     right: 0,
     fontSize: theme.fontSize.xs,
+    // Match the textInput's line-height so this sits on the same baseline as
+    // the placeholder text instead of centering in its own (smaller) line box.
+    lineHeight: theme.fontSize.base * 1.4,
     color: theme.colors.foregroundMuted,
     opacity: 0.5,
   },
@@ -1991,31 +2061,44 @@ const styles = StyleSheet.create((theme: Theme) => ({
       : {}),
   },
   buttonRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
     marginHorizontal: -6,
     marginBottom: -6,
+    // Clips the pre-scale overflow while the uniform-shrink transform brings
+    // the row back within bounds.
+    overflow: "hidden",
   },
-  leftButtonGroup: {
-    minWidth: 0,
-    flexShrink: 1,
-    flexGrow: 1,
+  buttonRowContent: {
     flexDirection: "row",
     alignItems: "flex-end",
-    // Base is 0 (buttons touch) — `compactUp` can't grow a zero, so the compact
-    // gap is spelled out directly here to give the doubled icons room to breathe.
-    gap: {
-      xs: theme.spacing[2],
-      sm: theme.spacing[2],
-      md: theme.spacing[0],
-    },
+  },
+  buttonRowContentFull: {
+    width: "100%",
+    justifyContent: "space-between",
+  },
+  buttonRowContentScaled: {
+    // Natural width (content-sized) so the scale transform, anchored left, pulls
+    // the whole row back inside the available width.
+    alignSelf: "flex-start",
+    justifyContent: "flex-start",
+    transformOrigin: "left center",
+  },
+  leftButtonGroup: {
+    // No flexShrink: this group must report its true intrinsic width via
+    // onLayout so the toolbarScale overlap check below can see it coming.
+    // Letting flexbox itself shrink the group hides the overflow from that
+    // check (the box quietly compresses below its children's natural size)
+    // while the fixed-size buttons inside it still overflow and overlap —
+    // exactly the bug the check exists to prevent.
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 2,
   },
   rightButtonGroup: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: compactUp(theme.spacing[1]),
+    gap: 2,
   },
   attachButton: {
     width: compactUp(28),

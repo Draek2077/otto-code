@@ -286,20 +286,6 @@ const CATALOG_DATA = [
     command: ["kimi", "acp"],
   },
   {
-    id: "openai-compatible",
-    title: "OpenAI Compatible",
-    description:
-      "Connect any OpenAI-compatible server (LM Studio, Ollama, vLLM, llama.cpp, a hosted gateway, ...) as a coding agent with file and shell tools. Defaults to LM Studio's local port; edit the URL for anything else. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
-    version: "manual",
-    iconId: null,
-    installLink: "https://lmstudio.ai/docs/app/api",
-    extends: "openai-compatible",
-    featured: true,
-    env: {
-      OPENAI_BASE_URL: "http://localhost:1234/v1",
-    },
-  },
-  {
     id: "minion-code",
     title: "Minion Code",
     description:
@@ -326,6 +312,20 @@ const CATALOG_DATA = [
     iconId: "nova",
     installLink: "https://www.compassap.ai/portfolio/nova.html",
     command: ["npx", "-y", "@compass-ai/nova@1.1.24", "acp"],
+  },
+  {
+    id: "openai-compatible",
+    title: "OpenAI Compatible",
+    description:
+      "Connect any OpenAI-compatible server (LM Studio, Ollama, vLLM, llama.cpp, a hosted gateway, ...) as a coding agent with file and shell tools. Defaults to LM Studio's local port; edit the URL for anything else. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
+    version: "manual",
+    iconId: null,
+    installLink: "https://lmstudio.ai/docs/app/api",
+    extends: "openai-compatible",
+    featured: true,
+    env: {
+      OPENAI_BASE_URL: "http://localhost:1234/v1",
+    },
   },
   {
     id: "poolside",

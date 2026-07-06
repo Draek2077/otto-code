@@ -1031,9 +1031,7 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
     <HostRuntimeBootstrapProvider>
       <PushNotificationRouter />
       <SidebarCalloutProvider>
-        <ToastProvider>
-          <ProvidersWrapper>{children}</ProvidersWrapper>
-        </ToastProvider>
+        <ProvidersWrapper>{children}</ProvidersWrapper>
       </SidebarCalloutProvider>
     </HostRuntimeBootstrapProvider>
   );
@@ -1045,6 +1043,21 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 // auth, settings, …) must wrap PortalProvider — not be wrapped by it.
 // BottomSheetModalProvider is the exception: Gorhom modals consume portal
 // context and need one shared provider for sibling sheets to stack.
+// ToastProvider lives here (not in RuntimeProviders) for the same reason:
+// sheet content rendered through @gorhom/portal is a descendant of
+// PortalProvider's host, not of RuntimeProviders, so useToast() would throw
+// "must be used within ToastProvider" for any toast call inside a bottom
+// sheet if Toast context were nested below PortalProvider instead of above it.
+function SheetPortalProviders({ children }: { children: ReactNode }) {
+  return (
+    <ToastProvider>
+      <PortalProvider>
+        <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+      </PortalProvider>
+    </ToastProvider>
+  );
+}
+
 function RootProviders({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
@@ -1052,9 +1065,7 @@ function RootProviders({ children }: { children: ReactNode }) {
         <SafeAreaProvider>
           <KeyboardProvider>
             <KeyboardShiftProvider>
-              <PortalProvider>
-                <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-              </PortalProvider>
+              <SheetPortalProviders>{children}</SheetPortalProviders>
             </KeyboardShiftProvider>
           </KeyboardProvider>
         </SafeAreaProvider>
