@@ -369,7 +369,7 @@ describe("translation resources", () => {
     expect(en.sidebar.host.noHost).toBe("No host");
     expect(en.sidebar.host.switchTitle).toBe("Switch host");
     expect(en.sidebar.host.searchPlaceholder).toBe("Search hosts...");
-    expect(en.sidebar.actions.addProject).toBe("Add project");
+    expect(en.sidebar.actions.addProject).toBe("New project");
     expect(en.sidebar.actions.home).toBe("Home");
     expect(en.sidebar.actions.settings).toBe("Settings");
     expect(en.sidebar.actions.closeSidebar).toBe("Close sidebar");

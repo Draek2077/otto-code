@@ -7,8 +7,15 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "../..");
 
 const mapPath = path.join(appRoot, "scripts/material-symbols-map.json");
-const svgRoot = path.join(repoRoot, "node_modules/@material-symbols/svg-400/outlined");
 const output = path.join(appRoot, "src/assets/material-symbol-icons.ts");
+
+// Default weight is 400 (outlined). A key prefixed with "700:" pulls the bold
+// weight instead, from the separate @material-symbols/svg-700 package (weight
+// is baked into the path geometry, not a runtime stroke-width toggle).
+const svgRootByWeight = {
+  400: path.join(repoRoot, "node_modules/@material-symbols/svg-400/outlined"),
+  700: path.join(repoRoot, "node_modules/@material-symbols/svg-700/outlined"),
+};
 
 const map = JSON.parse(await fs.readFile(mapPath, "utf8"));
 
@@ -18,14 +25,23 @@ function injectCurrentColor(svg) {
 }
 
 const entries = [];
-for (const [name, key] of Object.entries(map)) {
+for (const [name, rawKey] of Object.entries(map)) {
+  const weightMatch = /^(\d+):(.+)$/.exec(rawKey);
+  const weight = weightMatch ? Number(weightMatch[1]) : 400;
+  const key = weightMatch ? weightMatch[2] : rawKey;
+  const svgRoot = svgRootByWeight[weight];
+  if (!svgRoot) {
+    throw new Error(
+      `material-symbols-map.json maps "${name}" -> "${rawKey}", but weight ${weight} is not vendored`,
+    );
+  }
   const filePath = path.join(svgRoot, `${key}.svg`);
   let raw;
   try {
     raw = await fs.readFile(filePath, "utf8");
   } catch {
     throw new Error(
-      `material-symbols-map.json maps "${name}" -> "${key}", but ${path.relative(repoRoot, filePath)} does not exist`,
+      `material-symbols-map.json maps "${name}" -> "${rawKey}", but ${path.relative(repoRoot, filePath)} does not exist`,
     );
   }
   entries.push([name, injectCurrentColor(raw.trim())]);

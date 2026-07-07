@@ -19,9 +19,12 @@ packages/app/src/components/icons/material-icons.ts   — the actual icon compon
 
 - `material-symbols-map.json` maps a name (e.g. `"ChevronRight"`) to a Material Symbols
   outlined-family key (e.g. `"chevron_right"`). A key can end in `-fill` to pull the
-  filled variant instead (e.g. `"square-fill"`).
+  filled variant instead (e.g. `"square-fill"`), or start with a `"700:"` prefix to pull
+  the bold weight instead of the default 400 (e.g. `"700:home"` for `HomeBold`), from the
+  separate `@material-symbols/svg-700` package (weight is baked into the path geometry,
+  not a runtime stroke-width toggle).
 - `generate-material-symbols.mjs` reads each SVG from
-  `node_modules/@material-symbols/svg-400/outlined/<key>.svg`, injects
+  `node_modules/@material-symbols/svg-<weight>/outlined/<key>.svg`, injects
   `fill="currentColor"` on the root `<svg>` (the source files ship with no fill, which
   defaults to black), and writes `MATERIAL_SYMBOL_SVGS: Record<string, string>` to
   `material-symbol-icons.ts`.
