@@ -1254,6 +1254,15 @@ interface WorkspaceHeaderTitleBarProps {
   onOpenUrlInBrowserTab: (url: string) => void;
 }
 
+// On Electron desktop the header sits beneath the titlebar drag overlay
+// (TitlebarDragRegion). The project/workspace labels and the empty strip between
+// them and the ... menu are static, non-interactive space, but aren't part of
+// any drag rect, so a click-drag over them doesn't move the window. Opt the
+// whole title container back into the drag region; the interactive menu trigger
+// inside keeps its own no-drag (index.html backstop), so it stays clickable.
+// Web-only; inert on native.
+const HEADER_LABEL_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "drag" } as object) : null;
+
 function WorkspaceHeaderTitleBar({
   isLoading,
   title,
@@ -1288,8 +1297,9 @@ function WorkspaceHeaderTitleBar({
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
+  const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
   return (
-    <View style={styles.headerTitleContainer}>
+    <View style={containerStyle}>
       {isLoading ? (
         <View style={styles.headerTitleTextGroup}>
           <View style={styles.headerTitleSkeleton} />
