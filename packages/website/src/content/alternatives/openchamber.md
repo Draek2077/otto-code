@@ -18,13 +18,13 @@ Otto is an app for orchestrating coding agents, with native clients on desktop, 
 OpenChamber runs on macOS, around OpenCode, with a phone PWA. Otto runs OpenCode too, on macOS, and adds:
 
 - Linux and Windows desktop
-- A native iOS and Android app
+- A native Android app
 - Many more agents than OpenCode (Claude Code, Codex, Pi, plus 30+ more via the in-app ACP catalog)
 - A scriptable CLI to drive agents and connect to remote daemons
 
 ## Mobile
 
-Otto ships a native iOS and Android app with the same feature set as the desktop. Install from the App Store or Google Play.
+Otto ships a native Android app with the same feature set as the desktop. Install from Google Play.
 
 OpenChamber does not have a native mobile app.
 
@@ -78,7 +78,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. OpenChamber
 | ---------------------------- | --------------------------------------------------------------- | ----------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source (MIT) |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS             |
-| Mobile                       | Native iOS, Android                                             | PWA               |
+| Mobile                       | Native Android                                                  | PWA               |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | OpenCode          |
 | Split panes and tabs         | Yes                                                             | —                 |
 | In-app terminal              | Yes                                                             | —                 |

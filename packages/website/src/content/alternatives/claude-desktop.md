@@ -20,7 +20,7 @@ Pick Claude Desktop if you want Anthropic's first-party app for Claude, Claude C
 Pick Otto if you want:
 
 - Linux alongside macOS and Windows
-- A native iOS and Android app for the same agent workflow
+- A native Android app for the same agent workflow
 - Claude Code, Codex, OpenCode, Copilot, Pi, and 30+ more agents in one interface
 - A self-hosted daemon you can run on a laptop, VM, or dev server
 - A CLI and MCP server for scripting and multi-agent workflows
@@ -46,7 +46,7 @@ Otto ships on macOS, Linux, and Windows.
 
 ## Mobile
 
-Otto ships native iOS and Android apps with the same agent workflow as the desktop app.
+Otto ships a native Android app with the same agent workflow as the desktop app.
 
 Claude has iOS and Android apps. Claude Code can be controlled from mobile through Remote Control, and Claude Desktop can pair with mobile for some workflows.
 
@@ -99,7 +99,7 @@ Claude supports voice in Claude's own mobile and app surfaces. Claude Code itsel
 | ---------------------------- | --------------------------------------------------------------- | --------------------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Not published as open source      |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows                    |
-| Native mobile                | iOS, Android                                                    | iOS, Android Claude apps          |
+| Native mobile                | Android                                                         | Android Claude app                |
 | Coding agents                | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code                       |
 | General chat                 | No                                                              | Claude Chat                       |
 | Cloud agent                  | Cloud waitlist                                                  | Claude Cowork and remote sessions |

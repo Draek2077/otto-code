@@ -44,7 +44,7 @@ Otto's app handles commit, push, opening PRs, watching checks and reviews, and m
 
 ## Mobile
 
-Both tools ship native iOS and Android apps.
+Both tools ship a native Android app.
 
 ## Providers
 
@@ -84,7 +84,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 | ---------------------------- | --------------------------------------------------------------- | ---------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source (MIT)      |
 | Desktop app                  | macOS, Linux, Windows                                           | —                      |
-| Native mobile                | iOS, Android                                                    | iOS, Android           |
+| Native mobile                | Android                                                         | Android                |
 | Architecture                 | Daemon owns agent lifecycle                                     | Wraps the agent CLI    |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex     |
 | Split panes and tabs         | Yes                                                             | —                      |
