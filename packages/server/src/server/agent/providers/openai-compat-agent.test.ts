@@ -133,6 +133,94 @@ function createClient(baseUrl: string): OpenAICompatAgentClient {
   });
 }
 
+/**
+ * Endpoint that serves a two-round tool turn — a write_file call, then a
+ * final text round — reporting usage on each round's last chunk so per-round
+ * usage_updated emission can be asserted.
+ */
+async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> {
+  const writeSseRound = (res: ServerResponse, body: string): void => {
+    const parsed = JSON.parse(body) as { messages: Array<{ role: string }> };
+    const isFirstRound = !parsed.messages.some((message) => message.role === "tool");
+    if (isFirstRound) {
+      res.write(
+        sseChunk({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, id: "call_1", function: { name: "write_file", arguments: "" } },
+                ],
+              },
+            },
+          ],
+        }),
+      );
+      res.write(
+        sseChunk({
+          choices: [
+            { delta: { tool_calls: [{ index: 0, function: { arguments: args.slice(0, 18) } }] } },
+          ],
+        }),
+      );
+      res.write(
+        sseChunk({
+          choices: [
+            {
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: args.slice(18) } }],
+                finish_reason: "tool_calls",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 50, completion_tokens: 10 },
+        }),
+      );
+    } else {
+      res.write(sseChunk({ choices: [{ delta: { content: "Done." } }] }));
+      res.write(
+        sseChunk({
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 80, completion_tokens: 4 },
+        }),
+      );
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a", max_model_len: 16384 }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        });
+        writeSseRound(res, body);
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}` };
+}
+
 describe("normalizeOpenAICompatBaseUrl", () => {
   test("appends /v1 when missing and strips trailing slashes", () => {
     expect(normalizeOpenAICompatBaseUrl("http://localhost:1234")).toBe("http://localhost:1234/v1");
@@ -264,6 +352,90 @@ describe("OpenAICompatAgentClient", () => {
     const sum = usage?.categories.reduce((acc, category) => acc + category.tokens, 0) ?? 0;
     // Rounded per-category scaling stays within one token per category of the total.
     expect(Math.abs(sum - (usage?.totalTokens ?? 0))).toBeLessThanOrEqual(3);
+  });
+
+  test("streaming usage emits usage_updated events with contextWindowUsedTokens", async () => {
+    const endpoint = await startEndpoint({ v1ContextLength: 16384 });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Say hello");
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents.length).toBeGreaterThan(0);
+
+    // The usage_updated event carries contextWindowUsedTokens computed from
+    // inputTokens + outputTokens reported by the server in the final chunk.
+    const firstUsage = usageEvents[0]?.usage;
+    expect(firstUsage?.contextWindowUsedTokens).toBe(10); // 7 prompt + 3 completion
+    expect(firstUsage?.inputTokens).toBe(7);
+    expect(firstUsage?.outputTokens).toBe(3);
+  });
+
+  test("multiple model rounds emit incremental usage_updated events", async () => {
+    const args = JSON.stringify({ path: "note.txt", content: "hello tools" });
+    const endpoint = await startToolRoundUsageEndpoint(args);
+
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Create note.txt");
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    // Two model rounds → two usage_updated events
+    expect(usageEvents.length).toBe(2);
+
+    // Round 1: 50 prompt + 10 completion = 60 used tokens
+    expect(usageEvents[0]?.usage.contextWindowUsedTokens).toBe(60);
+    // Round 2: 80 prompt + 4 completion = 84 used tokens (incremental for that round)
+    expect(usageEvents[1]?.usage.contextWindowUsedTokens).toBe(84);
+
+    await session.close();
+  });
+
+  test("usage_updated includes contextWindowMaxTokens when resolved", async () => {
+    const endpoint = await startEndpoint({ v1ContextLength: 32768 });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    // First turn: context window is resolved during buildTurnUsage (after
+    // streaming completes), so the streaming usage_updated event fires
+    // before resolution and may not include contextWindowMaxTokens.
+    await session.run("Say hello");
+
+    // Second turn: context window is now cached, so the streaming
+    // usage_updated event includes it.
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Say hello again");
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents.length).toBeGreaterThan(0);
+    for (const usageEvent of usageEvents) {
+      expect(usageEvent.type).toBe("usage_updated");
+      expect(usageEvent.usage.contextWindowMaxTokens).toBe(32768);
+    }
   });
 
   test("getContextUsage is null when no context window can be discovered", async () => {
@@ -1053,6 +1225,12 @@ describe("OpenAICompatAgentSession MCP prompts as slash commands", () => {
 
     await expect(session.listCommands?.()).resolves.toEqual([
       {
+        name: "compact",
+        description: "Compress the conversation history to free up context space",
+        argumentHint: "[instruction]",
+        kind: "command",
+      },
+      {
         name: "mcp_alpha_review",
         description: "Review something",
         argumentHint: "target",
@@ -1354,5 +1532,283 @@ describe("executeCompatTool", () => {
     });
     expect(found.output).toContain("app.ts:1:const needle = 42;");
     expect(found.detail).toMatchObject({ type: "search", numMatches: 1 });
+  });
+});
+
+/**
+ * OpenAI endpoint that supports non-streaming responses — needed for
+ * compaction tests since handleCompact sends a non-streaming request.
+ */
+async function startCompactEndpoint(options?: {
+  summary?: string;
+  fail?: boolean;
+}): Promise<TestEndpoint & { compactRequests: Array<Record<string, unknown>> }> {
+  const compactRequests: Array<Record<string, unknown>> = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const request = JSON.parse(body) as Record<string, unknown>;
+        compactRequests.push(request);
+
+        // Detect whether this is a streaming or non-streaming request
+        const isStreaming = request.stream === true;
+
+        if (isStreaming) {
+          // Normal streaming response for regular turns
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+          });
+          res.write(sseChunk({ choices: [{ delta: { content: "OK" } }] }));
+          res.write(
+            sseChunk({
+              choices: [{ delta: {}, finish_reason: "stop" }],
+              usage: { prompt_tokens: 5, completion_tokens: 2 },
+            }),
+          );
+          res.write("data: [DONE]\n\n");
+          res.end();
+        } else {
+          // Non-streaming response for compaction
+          if (options?.fail) {
+            res.writeHead(500);
+            res.end("Internal server error");
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          const summary = options?.summary ?? "This is a summary of the conversation.";
+          res.end(
+            JSON.stringify({
+              choices: [{ message: { role: "assistant", content: summary } }],
+              usage: { prompt_tokens: 100, completion_tokens: 50 },
+            }),
+          );
+        }
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, compactRequests };
+}
+
+describe("OpenAICompatAgentSession /compact", () => {
+  test("lists /compact in listCommands even without MCP servers", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const commands = await session.listCommands?.();
+    expect(commands).toBeDefined();
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        name: "compact",
+        description: "Compress the conversation history to free up context space",
+        kind: "command",
+      }),
+    );
+
+    await session.close();
+  });
+
+  test("compacts the conversation and emits compaction timeline events", async () => {
+    const endpoint = await startCompactEndpoint({ summary: "Summary of conversation so far." });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    // Build up some conversation history
+    await session.run("First message");
+    await session.run("Second message");
+
+    // Now compact
+    const result = await session.run("/compact");
+
+    expect(result.canceled).toBe(false);
+
+    // turn_completed is the manager's terminal signal — without it the
+    // foreground turn stream never settles and the agent stays "running".
+    const turnCompletedEvents = events.filter((event) => event.type === "turn_completed");
+    expect(turnCompletedEvents.length).toBe(3); // two normal turns + the compact turn
+
+    // Check compaction timeline events
+    const compactionEvents = events.filter(
+      (event) => event.type === "timeline" && event.item.type === "compaction",
+    );
+    expect(compactionEvents.length).toBeGreaterThanOrEqual(2);
+
+    const loadingEvent = compactionEvents.find(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "compaction" &&
+        event.item.status === "loading",
+    );
+    expect(loadingEvent).toBeDefined();
+    expect(loadingEvent?.item.trigger).toBe("manual");
+
+    const completedEvent = compactionEvents.find(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "compaction" &&
+        event.item.status === "completed",
+    );
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent?.item.preTokens).toBeDefined();
+    expect(completedEvent?.item.postTokens).toBeDefined();
+    expect(typeof completedEvent?.item.preTokens).toBe("number");
+    expect(typeof completedEvent?.item.postTokens).toBe("number");
+
+    // Verify message history was replaced
+    const persistence = session.describePersistence();
+    const messages = persistence?.metadata?.messages as Array<{ role: string; content: string }>;
+    expect(messages[0]?.role).toBe("system");
+    // After compaction: system + summary user message + acknowledgment assistant message
+    expect(messages.length).toBeLessThanOrEqual(3);
+    const lastMessage = messages[messages.length - 1];
+    expect(lastMessage?.content).toBe("Conversation history has been compacted.");
+
+    // Verify the compaction request was sent
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+    const compactRequest = endpoint.compactRequests[endpoint.compactRequests.length - 1];
+    expect(compactRequest.stream).toBeUndefined(); // non-streaming
+    const reqMessages = compactRequest.messages as Array<{ role: string; content: string }>;
+    expect(reqMessages[0]?.role).toBe("system");
+    expect(reqMessages[0]?.content).toContain("summarize");
+
+    await session.close();
+  });
+
+  test("/compact with instruction includes it in the compaction prompt", async () => {
+    const endpoint = await startCompactEndpoint({
+      summary: "Focused summary.",
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("Do something");
+    await session.run("/compact focus on the bugs");
+
+    // Check the compaction system prompt includes the instruction
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+    const compactRequest = endpoint.compactRequests[endpoint.compactRequests.length - 1];
+    const reqMessages = compactRequest.messages as Array<{ role: string; content: string }>;
+    const systemContent = reqMessages[0]?.content as string;
+    expect(systemContent).toContain("focus on the bugs");
+
+    await session.close();
+  });
+
+  test("/compact fails gracefully when the endpoint errors", async () => {
+    const endpoint = await startCompactEndpoint({ fail: true });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    // Build some history first
+    await session.run("First message");
+    const messageCountBefore = session.describePersistence()?.metadata?.messages?.length;
+
+    // Compact should fail
+    await expect(session.run("/compact")).rejects.toThrow(/responded 500/);
+
+    // Verify turn_failed was emitted
+    expect(events.some((event) => event.type === "turn_failed")).toBe(true);
+
+    // Verify message history was NOT modified (still has the original messages)
+    const messageCountAfter = session.describePersistence()?.metadata?.messages?.length;
+    expect(messageCountAfter).toBe(messageCountBefore);
+
+    await session.close();
+  });
+
+  test("/compact works on a short conversation", async () => {
+    const endpoint = await startCompactEndpoint({
+      summary: "Very short conversation summarized.",
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    // Compact immediately with minimal history
+    const result = await session.run("/compact");
+
+    expect(result.canceled).toBe(false);
+
+    const persistence = session.describePersistence();
+    const messages = persistence?.metadata?.messages as Array<{ role: string; content: string }>;
+    expect(messages[0]?.role).toBe("system");
+    expect(messages.length).toBeLessThanOrEqual(3);
+
+    await session.close();
+  });
+
+  test("/compact emits usage_updated event", async () => {
+    const endpoint = await startCompactEndpoint({
+      summary: "Summary.",
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("/compact");
+
+    const usageEvents = events.filter((event) => event.type === "usage_updated");
+    expect(usageEvents.length).toBeGreaterThan(0);
+    const usage = usageEvents[0]?.usage;
+    expect(usage).toBeDefined();
+    expect(usage?.inputTokens).toBe(100);
+    expect(usage?.outputTokens).toBe(50);
+    // The compaction usage must report the post-compaction context size, not
+    // the compaction request's own prompt size — the client's context ring
+    // renders whatever usage_updated last delivered.
+    expect(typeof usage?.contextWindowUsedTokens).toBe("number");
+    expect(usage?.contextWindowUsedTokens).toBeGreaterThan(0);
+
+    await session.close();
   });
 });

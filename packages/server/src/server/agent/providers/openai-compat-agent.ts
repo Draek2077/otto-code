@@ -70,6 +70,14 @@ const MAX_PERSISTED_MESSAGES = 40;
 /** Upper bound on model→tool→model rounds within a single turn. */
 const MAX_TOOL_ROUNDS = 50;
 
+/** Built-in slash command available for every OpenAI-compatible session. */
+const COMPACT_COMMAND: AgentSlashCommand = {
+  name: "compact",
+  description: "Compress the conversation history to free up context space",
+  argumentHint: "[instruction]",
+  kind: "command",
+};
+
 const CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
@@ -745,6 +753,8 @@ export class OpenAICompatAgentSession implements AgentSession {
   private contextWindowProbedModel: string | null = null;
   /** Exact context size (prompt + completion tokens) measured by the server on the last round. */
   private lastContextTokens: number | null = null;
+  /** Session config stored so the system prompt can be rebuilt after compaction. */
+  private readonly config: AgentSessionConfig;
 
   constructor(options: {
     providerId: string;
@@ -766,6 +776,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.logger = options.logger;
     this.id = options.sessionId;
     this.cwd = options.config.cwd;
+    this.config = options.config;
     this.ottoTools = options.ottoTools ?? null;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
@@ -952,17 +963,205 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
   }
 
-  /** MCP prompts from connected servers surfaced as slash commands. */
+  /** Built-in slash commands plus MCP prompts from connected servers. */
   async listCommands(): Promise<AgentSlashCommand[]> {
+    const commands: AgentSlashCommand[] = [COMPACT_COMMAND];
     if (!this.mcpManager) {
-      return [];
+      return commands;
     }
     const prompts = await this.mcpManager.listPrompts();
-    return prompts.map((prompt) => ({
-      name: prompt.commandName,
-      description: prompt.description ?? `MCP prompt from server '${prompt.serverName}'`,
-      argumentHint: prompt.argumentNames.join(" "),
-    }));
+    return commands.concat(
+      prompts.map((prompt) => ({
+        name: prompt.commandName,
+        description: prompt.description ?? `MCP prompt from server '${prompt.serverName}'`,
+        argumentHint: prompt.argumentNames.join(" "),
+      })),
+    );
+  }
+
+  /**
+   * Handle `/compact [instruction]` by asking the model to summarize the
+   * conversation history, then replacing the message array with the condensed
+   * version. Runs entirely in-process — no external compaction service.
+   * Returns the turn's usage so the caller can attach it to turn_completed.
+   */
+  private async handleCompact(turn: ActiveTurn, instruction: string | null): Promise<AgentUsage> {
+    // Emit loading event
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: { type: "compaction", status: "loading", trigger: "manual" },
+    });
+
+    // Estimate pre-compaction token count from all non-system messages
+    const conversationMessages = this.messages.filter((message) => message.role !== "system");
+    const preTokens = conversationMessages.reduce(
+      (sum, message) => sum + estimateTokens(JSON.stringify(message)),
+      0,
+    );
+
+    // Serialize conversation into a text blob for the compaction prompt
+    const conversationText = this.serializeConversationForCompaction();
+
+    // Build compaction system prompt
+    const compactionSystemPrompt = this.buildCompactionSystemPrompt(instruction);
+
+    // Send compaction request to the model (non-streaming for simplicity)
+    const endpoint = resolveEndpoint(this.env, this.label);
+    const model = await this.resolveModel(endpoint);
+
+    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: buildHeaders(endpoint),
+      signal: turn.abort.signal,
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: compactionSystemPrompt },
+          { role: "user", content: conversationText },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => "");
+      throw new Error(
+        `${this.label} responded ${response.status} to /chat/completions${
+          bodyText ? `: ${bodyText.slice(0, 400)}` : ""
+        }`,
+      );
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
+    const choices = Array.isArray(data.choices) ? data.choices : [];
+    const firstChoice = choices[0];
+    if (!firstChoice || typeof firstChoice !== "object") {
+      throw new Error(`${this.label} returned an empty compaction response`);
+    }
+    const responseMessage = (firstChoice as Record<string, unknown>).message;
+    if (!responseMessage || typeof responseMessage !== "object") {
+      throw new Error(`${this.label} returned an empty compaction response`);
+    }
+    const rawContent = (responseMessage as Record<string, unknown>).content;
+    const summary = typeof rawContent === "string" ? rawContent : "";
+    if (!summary) {
+      throw new Error(`${this.label} returned an empty compaction summary`);
+    }
+
+    // Replace message history: keep system message, add summary + acknowledgment
+    this.messages.length = 0;
+    this.messages.push({ role: "system", content: this.buildSystemPrompt(this.config) });
+    this.messages.push({ role: "user", content: summary, messageId: randomUUID() });
+    this.messages.push({
+      role: "assistant",
+      content: "Conversation history has been compacted.",
+    });
+
+    // Estimate post-compaction token count
+    const postMessages = this.messages.filter((message) => message.role !== "system");
+    const postTokens = postMessages.reduce(
+      (sum, message) => sum + estimateTokens(JSON.stringify(message)),
+      0,
+    );
+
+    // Update context tracking
+    this.lastContextTokens = postTokens;
+
+    // Emit completed event with token counts
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: { type: "compaction", status: "completed", trigger: "manual", preTokens, postTokens },
+    });
+
+    // usage_updated replaces agent.lastUsage wholesale and the client hides
+    // the context ring unless both bounds are present, so the compaction
+    // usage must carry the post-compaction context size alongside the
+    // request's own token cost.
+    const maxTokens = await this.resolveContextWindowMaxTokens();
+    const usageData =
+      data.usage && typeof data.usage === "object"
+        ? (data.usage as Record<string, unknown>)
+        : undefined;
+    const usage: AgentUsage = {
+      ...(typeof usageData?.prompt_tokens === "number"
+        ? { inputTokens: usageData.prompt_tokens }
+        : {}),
+      ...(typeof usageData?.completion_tokens === "number"
+        ? { outputTokens: usageData.completion_tokens }
+        : {}),
+      contextWindowUsedTokens: postTokens,
+      ...(maxTokens !== null ? { contextWindowMaxTokens: maxTokens } : {}),
+    };
+    this.emit({
+      type: "usage_updated",
+      provider: this.provider,
+      usage,
+      turnId: turn.turnId,
+    });
+    return usage;
+  }
+
+  /**
+   * Serialize the conversation (user/assistant/tool messages) into a text blob
+   * suitable for inclusion in a compaction prompt. Tool calls are summarized
+   * rather than included verbatim to keep the payload manageable.
+   */
+  private serializeConversationForCompaction(): string {
+    const lines: string[] = [];
+    const conversationMessages = this.messages.filter((message) => message.role !== "system");
+
+    for (const message of conversationMessages) {
+      if (message.role === "user") {
+        lines.push(`[user]: ${message.content}`);
+      } else if (message.role === "assistant") {
+        if (message.tool_calls && message.tool_calls.length > 0) {
+          const toolSummaries = message.tool_calls
+            .map((call) => {
+              let argsPreview = "";
+              try {
+                const parsed = JSON.parse(call.function.arguments);
+                argsPreview = ` (${JSON.stringify(parsed).slice(0, 200)})`;
+              } catch {
+                argsPreview = ` (${call.function.arguments.slice(0, 200)})`;
+              }
+              return `  - called ${call.function.name}${argsPreview}`;
+            })
+            .join("\n");
+          lines.push(`[assistant]: (tool calls)`);
+          lines.push(toolSummaries);
+          if (message.content) {
+            lines.push(`  text: ${message.content}`);
+          }
+        } else {
+          lines.push(`[assistant]: ${message.content}`);
+        }
+      } else if (message.role === "tool") {
+        const contentPreview =
+          message.content.length > 500 ? message.content.slice(0, 500) + "..." : message.content;
+        lines.push(`[tool result ${message.tool_call_id}]: ${contentPreview}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Build a system prompt for the compaction request, optionally including
+   * the user's instruction to guide the summarization.
+   */
+  private buildCompactionSystemPrompt(instruction: string | null): string {
+    const base = `You are asked to summarize the following conversation history concisely.
+Preserve all important context: decisions made, code changes, errors encountered,
+current task state, and any unresolved issues.`;
+
+    const instructionPart = instruction ? `\n\n<User instruction>: ${instruction}` : "";
+
+    const tail = `\n\nProvide a concise summary that captures the essential context needed to\ncontinue the conversation productively.`;
+
+    return base + instructionPart + tail;
   }
 
   /**
@@ -1107,6 +1306,38 @@ export class OpenAICompatAgentSession implements AgentSession {
   ): Promise<void> {
     this.emit({ type: "turn_started", provider: this.provider, turnId: turn.turnId });
 
+    // Intercept built-in slash commands before delegating to the model.
+    const slashCommand = parseSlashCommandInput(promptText);
+    if (slashCommand && slashCommand.commandName === "compact") {
+      let usage: AgentUsage;
+      try {
+        usage = await this.handleCompact(turn, slashCommand.args);
+      } catch (error) {
+        this.settleTurnFailure(turn, error);
+        return;
+      }
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      this.activeTurn = null;
+      // turn_completed is the manager's terminal signal — without it the
+      // foreground turn stream never ends and the agent stays "running".
+      this.emit({
+        type: "turn_completed",
+        provider: this.provider,
+        turnId: turn.turnId,
+        usage,
+      });
+      turn.resolve({
+        sessionId: this.id,
+        finalText: "",
+        usage,
+        timeline: [],
+        canceled: false,
+      });
+      return;
+    }
+
     try {
       await this.ensureMcpReady(turn);
       // The timeline keeps the typed `/command args` text; the model receives
@@ -1141,6 +1372,12 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   private async runToolLoop(turn: ActiveTurn): Promise<void> {
+    // Warm the context-window cache before streaming: emitStreamUsageUpdated
+    // runs on the hot chunk path and can only read the cached value, and a
+    // usage_updated without contextWindowMaxTokens blanks the client's
+    // context ring (agent.lastUsage is replaced wholesale, and the ring
+    // needs both bounds). Cached per model, so this is one probe per session.
+    await this.resolveContextWindowMaxTokens();
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       await this.streamCompletion(turn);
 
@@ -1583,7 +1820,37 @@ export class OpenAICompatAgentSession implements AgentSession {
     }
     if (delta.usage) {
       turn.usage = delta.usage;
+      this.emitStreamUsageUpdated(turn);
     }
+  }
+
+  /**
+   * Emit a usage_updated event so the agent manager updates agent.lastUsage
+   * and pushes the context usage to the client immediately, rather than
+   * waiting for turn_completed at the end of the entire tool loop.
+   *
+   * resolveContextWindowMaxTokens() is async (it may probe the endpoint) and
+   * this runs on the hot streaming path, so only the already-cached value is
+   * included. The event is always emitted regardless — the client and agent
+   * manager handle partial usage snapshots correctly.
+   */
+  private emitStreamUsageUpdated(turn: ActiveTurn): void {
+    if (!turn.usage || typeof turn.usage.inputTokens !== "number") {
+      return;
+    }
+    const usage: AgentUsage = {
+      ...turn.usage,
+      contextWindowUsedTokens: turn.usage.inputTokens + (turn.usage.outputTokens ?? 0),
+    };
+    if (this.contextWindowMaxTokens !== null) {
+      usage.contextWindowMaxTokens = this.contextWindowMaxTokens;
+    }
+    this.emit({
+      type: "usage_updated",
+      provider: this.provider,
+      usage,
+      turnId: turn.turnId,
+    });
   }
 
   private settleTurnFailure(turn: ActiveTurn, error: unknown): void {
