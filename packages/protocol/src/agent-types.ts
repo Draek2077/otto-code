@@ -334,6 +334,8 @@ export interface CompactionTimelineItem {
   status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
+  postTokens?: number;
+  shortSummary?: string;
 }
 
 export type AgentTimelineItem =
