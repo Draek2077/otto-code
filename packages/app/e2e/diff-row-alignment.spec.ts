@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute, buildSettingsSectionRoute } from "../src/utils/host-routes";
+import { MAX_CODE_FONT_SIZE, MIN_CODE_FONT_SIZE } from "../src/hooks/use-settings/storage";
 import { test, expect } from "./fixtures";
 import { getServerId } from "./helpers/server-id";
 import { connectSeedClient } from "./helpers/seed-client";
@@ -198,11 +199,11 @@ test.afterEach(async () => {
 
 test("changes diff keeps code rows aligned with the gutter", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
-  await useCodeFont(page, 9);
+  await useCodeFont(page, MIN_CODE_FONT_SIZE);
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
 
-  await expectDiffCodeFontSize(page, 9);
+  await expectDiffCodeFontSize(page, MIN_CODE_FONT_SIZE);
   await expectVisibleDiffRowsAligned(page);
   await expectDiffCodeTextAlignedWithGutterText(page, [
     {
@@ -404,10 +405,23 @@ async function changeCodeFontSizeFromSettings(page: Page, codeFontSize: number):
   await page.getByTestId("sidebar-settings").click();
   await expect(page).toHaveURL(new RegExp(`${buildSettingsSectionRoute("general")}|/settings$`));
   await page.getByRole("button", { name: "Appearance" }).click();
-  await page.getByLabel("Code font size").fill(String(codeFontSize));
-  await page.getByLabel("Code font size").press("Enter");
-  await expect(page.getByLabel("Code font size")).toHaveValue(String(codeFontSize));
+  await dragCodeFontSizeSlider(page, codeFontSize);
   await expectStoredCodeFontSize(page, codeFontSize);
+}
+
+// The code font size control is a custom drag slider (no native <input>, no
+// keyboard support — see components/ui/slider.tsx), so setting a value means
+// moving the pointer to the track position for that value and releasing it.
+async function dragCodeFontSizeSlider(page: Page, codeFontSize: number): Promise<void> {
+  const slider = page.getByLabel("Code font size");
+  const box = await slider.boundingBox();
+  if (!box) {
+    throw new Error("Code font size slider is not visible");
+  }
+  const ratio = (codeFontSize - MIN_CODE_FONT_SIZE) / (MAX_CODE_FONT_SIZE - MIN_CODE_FONT_SIZE);
+  await page.mouse.move(box.x + box.width * ratio, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
 }
 
 async function expectStoredCodeFontSize(page: Page, codeFontSize: number): Promise<void> {
