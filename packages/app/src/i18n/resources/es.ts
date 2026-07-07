@@ -2062,6 +2062,7 @@ export const es: TranslationResources = {
         groups: {
           preview: "Servidores de vista previa",
           browser: "Control del navegador",
+          web: "Web search",
           agents: "Gestión de agentes",
           terminals: "Terminales",
           schedules: "Programaciones",

@@ -2034,6 +2034,7 @@ export const en = {
         groups: {
           preview: "Preview servers",
           browser: "Browser control",
+          web: "Web search",
           agents: "Agent management",
           terminals: "Terminals",
           schedules: "Schedules",

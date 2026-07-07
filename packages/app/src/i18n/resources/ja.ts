@@ -2039,6 +2039,7 @@ export const ja: TranslationResources = {
         groups: {
           preview: "プレビューサーバー",
           browser: "ブラウザ制御",
+          web: "Web search",
           agents: "エージェント管理",
           terminals: "ターミナル",
           schedules: "スケジュール",

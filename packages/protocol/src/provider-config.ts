@@ -52,6 +52,7 @@ export const ProviderProfileModelSchema = z.object({
 export const OTTO_TOOL_GROUPS = [
   "preview",
   "browser",
+  "web",
   "agents",
   "terminals",
   "schedules",
@@ -60,10 +61,15 @@ export const OTTO_TOOL_GROUPS = [
 
 export type OttoToolGroup = (typeof OTTO_TOOL_GROUPS)[number];
 
-/** Map an Otto tool name to its group. Unknown/lifecycle tools fall under "agents". */
+/**
+ * Map a tool name to its group. Covers both Otto's catalog tools and the
+ * openai-compat builtin web tools (web_search/web_fetch → "web"). Unknown/
+ * lifecycle tools fall under "agents".
+ */
 export function ottoToolGroupForName(name: string): OttoToolGroup {
   if (name.startsWith("preview_")) return "preview";
   if (name.startsWith("browser_")) return "browser";
+  if (name === "web_search" || name === "web_fetch") return "web";
   if (name.includes("terminal")) return "terminals";
   if (name.includes("schedule") || name === "create_heartbeat") return "schedules";
   if (name.includes("worktree") || name.includes("workspace")) return "workspace";

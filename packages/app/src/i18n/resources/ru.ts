@@ -2053,6 +2053,7 @@ export const ru: TranslationResources = {
         groups: {
           preview: "Серверы предпросмотра",
           browser: "Управление браузером",
+          web: "Web search",
           agents: "Управление агентами",
           terminals: "Терминалы",
           schedules: "Расписания",

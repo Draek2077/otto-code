@@ -346,6 +346,8 @@ function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
       return t("settings.providers.tools.groups.preview");
     case "browser":
       return t("settings.providers.tools.groups.browser");
+    case "web":
+      return t("settings.providers.tools.groups.web");
     case "agents":
       return t("settings.providers.tools.groups.agents");
     case "terminals":

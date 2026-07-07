@@ -2016,6 +2016,7 @@ export const ar: TranslationResources = {
         groups: {
           preview: "خوادم المعاينة",
           browser: "التحكم في المتصفح",
+          web: "Web search",
           agents: "إدارة الوكلاء",
           terminals: "الطرفيات",
           schedules: "الجداول",

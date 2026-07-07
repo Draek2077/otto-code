@@ -2067,6 +2067,7 @@ export const fr: TranslationResources = {
         groups: {
           preview: "Serveurs de prévisualisation",
           browser: "Contrôle du navigateur",
+          web: "Web search",
           agents: "Gestion des agents",
           terminals: "Terminaux",
           schedules: "Planifications",

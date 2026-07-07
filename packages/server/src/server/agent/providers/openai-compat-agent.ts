@@ -911,10 +911,16 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   private availableToolSpecs(): CompatToolSpec[] {
-    if (this.modeId === "plan") {
-      return COMPAT_TOOL_SPECS.filter((spec) => spec.kind === "read");
-    }
-    return COMPAT_TOOL_SPECS;
+    return COMPAT_TOOL_SPECS.filter((spec) => {
+      // Read-only "plan" mode offers no actions.
+      if (this.modeId === "plan" && spec.kind !== "read") return false;
+      // The builtin web tools (web_search/web_fetch) are gated by the "web"
+      // tool group, just like the injected Otto tool groups.
+      if (ottoToolGroupForName(spec.name) === "web" && !this.isOttoToolGroupEnabled(spec.name)) {
+        return false;
+      }
+      return true;
+    });
   }
 
   private toolNeedsApproval(spec: CompatToolSpec): boolean {

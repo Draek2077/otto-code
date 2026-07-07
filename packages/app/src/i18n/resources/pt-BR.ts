@@ -2048,6 +2048,7 @@ export const ptBR: TranslationResources = {
         groups: {
           preview: "Servidores de pré-visualização",
           browser: "Controle do navegador",
+          web: "Web search",
           agents: "Gerenciamento de agentes",
           terminals: "Terminais",
           schedules: "Agendamentos",
