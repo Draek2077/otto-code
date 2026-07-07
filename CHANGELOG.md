@@ -4,7 +4,8 @@
 
 ### Added
 
-- New "Black tab background" option in Appearance settings paints the active chat tab and pane pure black, even in light mode
+- New "Black tab background" option in Appearance settings paints the active chat tab and pane pure black, even in light mode, with colors tuned to match each color theme
+- OpenAI Compatible providers support `/compact` to summarize the conversation and free up context space
 
 ### Improved
 
@@ -12,13 +13,14 @@
 - Composer toolbar buttons shrink together to stay usable on narrow screens instead of wrapping or clipping
 - Font size settings use a slider instead of typing a number
 - Reasoning effort shows a Brain icon in the composer toolbar
+- The working indicator has a new look — two glowing lights orbiting each other, colored per theme instead of a fixed amber, and never freezing under reduced-motion settings
+- OpenAI Compatible providers show context usage updating in real time during a turn instead of only at the end
 - fast-agent provider updated to 0.9.2
 
 ### Fixed
 
 - Clearing or resetting an agent no longer stops unrelated dev servers sharing the same port, which could crash the app
 - Toast notifications triggered from bottom sheets, like New Workspace, no longer crash the app
-- The working indicator animation no longer freezes when the OS has reduced motion enabled
 
 ### Security
 
