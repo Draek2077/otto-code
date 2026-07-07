@@ -540,6 +540,9 @@ export const ar: TranslationResources = {
         archiveRunningAgentTitle: "وكيل تشغيل الأرشيف؟",
         archiveRunningAgentMessage:
           "هذا الوكيل لا يزال قيد التشغيل. ستؤدي أرشفته إلى إيقاف الوكيل وإغلاق علامة التبويب.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "هل تريد إغلاق علامات التبويب على اليسار؟",
         closeTabsRightTitle: "هل تريد إغلاق علامات التبويب على اليمين؟",
         closeOtherTabsTitle: "هل تريد إغلاق علامات التبويب الأخرى؟",
@@ -561,6 +564,7 @@ export const ar: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "إجراءات Workspace",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "وكيل جديد",
         newTerminal: "محطة جديدة",
         newBrowser: "علامة تبويب متصفح جديدة",
@@ -802,6 +806,7 @@ export const ar: TranslationResources = {
     sections: {
       sessions: "السجل",
       schedules: "الجداول",
+      artifacts: "المخرجات",
     },
     worktreeSetup: {
       title: "إعداد البرامج النصية لشجرة العمل",

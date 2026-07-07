@@ -545,6 +545,9 @@ export const ja: TranslationResources = {
         archiveRunningAgentTitle: "実行中のエージェントをアーカイブしますか？",
         archiveRunningAgentMessage:
           "このエージェントはまだ実行中です。アーカイブするとエージェントが停止してタブが閉じられます。",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "左のタブを閉じますか？",
         closeTabsRightTitle: "右のタブを閉じますか？",
         closeOtherTabsTitle: "他のタブを閉じますか？",
@@ -565,6 +568,7 @@ export const ja: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "ワークスペースアクション",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "新しいエージェント",
         newTerminal: "新しいターミナル",
         newBrowser: "新しいブラウザタブ",
@@ -815,6 +819,7 @@ export const ja: TranslationResources = {
     sections: {
       sessions: "履歴",
       schedules: "スケジュール",
+      artifacts: "アーティファクト",
     },
     worktreeSetup: {
       title: "ワークツリースクリプトを設定",

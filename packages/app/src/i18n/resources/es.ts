@@ -546,6 +546,9 @@ export const es: TranslationResources = {
         archiveRunningAgentTitle: "¿Agente de ejecución de archivos?",
         archiveRunningAgentMessage:
           "Este agente todavía está ejecutándose. Archivarlo detendrá al agente y cerrará la pestaña.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "¿Cerrar pestañas a la izquierda?",
         closeTabsRightTitle: "¿Cerrar pestañas a la derecha?",
         closeOtherTabsTitle: "¿Cerrar otras pestañas?",
@@ -566,6 +569,7 @@ export const es: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "AccionesWorkspace",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "Nuevo agente",
         newTerminal: "Nueva terminal",
         newBrowser: "Nueva pestaña del navegador",
@@ -830,6 +834,7 @@ export const es: TranslationResources = {
     sections: {
       sessions: "Historial",
       schedules: "Horarios",
+      artifacts: "Artefactos",
     },
     worktreeSetup: {
       title: "Configurar secuencias de comandos del árbol de trabajo",

@@ -540,6 +540,9 @@ export const en = {
         archiveRunningAgentTitle: "Archive running agent?",
         archiveRunningAgentMessage:
           "This agent is still running. Archiving it will stop the agent and close the tab.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "Close tabs to the left?",
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",
@@ -560,6 +563,7 @@ export const en = {
     header: {
       actions: {
         workspaceActions: "Workspace actions",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "New agent",
         newTerminal: "New terminal",
         newBrowser: "New browser tab",
@@ -810,6 +814,7 @@ export const en = {
     sections: {
       sessions: "History",
       schedules: "Schedules",
+      artifacts: "Artifacts",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",

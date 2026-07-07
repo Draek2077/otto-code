@@ -37,6 +37,7 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { ArchiveChatWarningModal } from "@/components/archive-chat-warning";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
@@ -542,6 +543,7 @@ function AppContainer({
       <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
+      <ArchiveChatWarningModal />
       <QuittingOverlay />
     </View>
   );
@@ -1006,6 +1008,7 @@ function RootStack() {
         <Stack.Screen name="open-project" />
         <Stack.Screen name="sessions" />
         <Stack.Screen name="schedules" />
+        <Stack.Screen name="artifacts" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen name="h/[serverId]" />
