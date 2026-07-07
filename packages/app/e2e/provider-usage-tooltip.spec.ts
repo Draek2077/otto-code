@@ -49,7 +49,9 @@ test.describe("provider usage tooltip", () => {
     try {
       expect(usageFixture.requestCount()).toBe(0);
 
-      await page.getByTestId("context-window-meter").hover();
+      // The usage popup opens on click (DropdownMenuTrigger toggles on press —
+      // see components/ui/dropdown-menu.tsx), not on hover.
+      await page.getByTestId("context-window-meter").click();
       await usageFixture.waitForRequestCount(1);
 
       await expect(page.getByText("Mock provider", { exact: true })).toBeVisible({
@@ -95,14 +97,14 @@ test.describe("provider usage tooltip", () => {
     try {
       const meter = page.getByTestId("context-window-meter");
 
-      await meter.hover();
+      await meter.click();
       await usageFixture.waitForRequestCount(1);
       await expect(page.getByText("41%")).toBeVisible({ timeout: 10_000 });
 
-      await page.mouse.move(0, 0);
+      await page.keyboard.press("Escape");
       await expect(page.getByText("Mock provider", { exact: true })).toHaveCount(0);
 
-      await meter.hover();
+      await meter.click();
       await usageFixture.waitForRequestCount(2);
       expect(usageFixture.requestCount()).toBe(2);
       await expect(page.getByText("64%")).toBeVisible();
