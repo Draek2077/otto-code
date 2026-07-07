@@ -1,5 +1,21 @@
 import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
+import { ArtifactMetadataSchema } from "./artifacts/types.js";
+import {
+  ArtifactListRequestSchema,
+  ArtifactCreateRequestSchema,
+  ArtifactDeleteRequestSchema,
+  ArtifactStarRequestSchema,
+  ArtifactGetContentRequestSchema,
+  ArtifactListResponseSchema,
+  ArtifactCreateResponseSchema,
+  ArtifactDeleteResponseSchema,
+  ArtifactStarResponseSchema,
+  ArtifactGetContentResponseSchema,
+  ArtifactCreatedNotificationSchema,
+  ArtifactUpdatedNotificationSchema,
+  ArtifactDeletedNotificationSchema,
+} from "./artifacts/rpc-schemas.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@otto-code/protocol/agent-title-limits";
@@ -2190,6 +2206,12 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+  ArtifactListRequestSchema,
+  ArtifactCreateRequestSchema,
+  ArtifactDeleteRequestSchema,
+  ArtifactStarRequestSchema,
+  ArtifactGetContentRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -2388,6 +2410,8 @@ export const ServerInfoStatusPayloadSchema = z
         providerRemove: z.boolean().optional(),
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
         agentContextUsage: z.boolean().optional(),
+        // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+        artifacts: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2693,6 +2717,13 @@ export const WorkspaceDescriptorPayloadSchema = z
     ...workspace,
     workspaceDirectory: workspace.workspaceDirectory ?? workspace.projectRootPath,
   }));
+
+export const ArtifactUpdateMessageSchema = z.object({
+  type: z.literal("artifact_update"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+  }),
+});
 
 export const AgentUpdateMessageSchema = z.object({
   type: z.literal("agent_update"),
@@ -4305,6 +4336,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   PongMessageSchema,
   RpcErrorMessageSchema,
   ArtifactMessageSchema,
+  ArtifactUpdateMessageSchema,
   AgentUpdateMessageSchema,
   WorkspaceUpdateMessageSchema,
   ScriptStatusUpdateMessageSchema,
@@ -4433,6 +4465,15 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopStopResponseSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
+  // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+  ArtifactListResponseSchema,
+  ArtifactCreateResponseSchema,
+  ArtifactDeleteResponseSchema,
+  ArtifactStarResponseSchema,
+  ArtifactGetContentResponseSchema,
+  ArtifactCreatedNotificationSchema,
+  ArtifactUpdatedNotificationSchema,
+  ArtifactDeletedNotificationSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
