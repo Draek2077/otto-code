@@ -1600,7 +1600,10 @@ describe("create_agent MCP tool", () => {
         thinkingOptionId: "think-hard",
       }),
       undefined,
-      { labels: { source: "mcp" }, workspaceId: "workspace-created" },
+      {
+        labels: { source: "mcp" },
+        workspaceId: "workspace-created",
+      },
     );
   });
 
@@ -3091,7 +3094,9 @@ describe("create_agent MCP tool", () => {
     });
     expect(configArg.mcpServers).toBeUndefined();
     expect(agentIdArg).toBeUndefined();
-    expect(optionsArg).toEqual({ workspaceId: "workspace-created" });
+    expect(optionsArg).toEqual({
+      workspaceId: "workspace-created",
+    });
   });
 
   it("rejects an explicit mode that is not valid for the target provider", async () => {

@@ -1,9 +1,19 @@
-import { type ReactNode, useCallback, useMemo, useReducer, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { Pressable, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { getDeviceTimeZone } from "@/utils/device-timezone";
+import { nextCronCadence } from "@/utils/schedule-cadence-policy";
 import {
   describeCron,
   everyMsToParts,
@@ -20,8 +30,8 @@ interface CronPreset {
   expression: string;
 }
 
-// 5-field expressions evaluated in UTC by the daemon. Each one round-trips
-// through describeCron() so the chip and the live preview agree.
+// 5-field expressions use the cadence timezone. Each one round-trips through
+// describeCron() so the chip and the live preview agree.
 const CRON_PRESETS: CronPreset[] = [
   { label: "Every hour", expression: "0 * * * *" },
   { label: "Daily 9:00", expression: "0 9 * * *" },
@@ -57,6 +67,25 @@ function describeInterval(value: number, unit: IntervalUnit): string {
   return `Runs every ${value} ${noun}s`;
 }
 
+function getCronPreview(expression: string, timezone: string, error: string | null): string | null {
+  if (error) {
+    return null;
+  }
+  if (!expression) {
+    return null;
+  }
+
+  const described = describeCron({ type: "cron", expression, timezone });
+  if (described) {
+    return described;
+  }
+  return expression;
+}
+
+function intervalCadenceKey(cadence: Extract<ScheduleCadence, { type: "every" }>): string {
+  return `${cadence.type}:${cadence.everyMs}`;
+}
+
 export interface CadenceEditorProps {
   value: ScheduleCadence;
   onChange: (next: ScheduleCadence) => void;
@@ -65,6 +94,13 @@ export interface CadenceEditorProps {
 
 export function CadenceEditor({ value, onChange, error }: CadenceEditorProps) {
   const mode = value.type;
+  const deviceTimeZone = useMemo(getDeviceTimeZone, []);
+  const rememberedCronTimeZone = useRef(
+    value.type === "cron" ? (value.timezone ?? "UTC") : deviceTimeZone,
+  );
+  const emittedIntervalCadenceKey = useRef<string | null>(null);
+  const cronTimeZone =
+    value.type === "cron" ? (value.timezone ?? "UTC") : rememberedCronTimeZone.current;
 
   // The numeric/text fields are native-owned (AdaptiveTextInput). We seed them
   // once from the incoming cadence via lazy state initializers and bump
@@ -88,6 +124,24 @@ export function CadenceEditor({ value, onChange, error }: CadenceEditorProps) {
     value.type === "cron" ? value.expression : DEFAULT_CRON_EXPRESSION,
   );
 
+  useEffect(() => {
+    if (value.type === "cron") {
+      emittedIntervalCadenceKey.current = null;
+      rememberedCronTimeZone.current = value.timezone ?? "UTC";
+      lastCronExpression.current = value.expression;
+      return;
+    }
+    const cadenceKey = intervalCadenceKey(value);
+    if (emittedIntervalCadenceKey.current === cadenceKey) {
+      emittedIntervalCadenceKey.current = null;
+      return;
+    }
+    rememberedCronTimeZone.current = deviceTimeZone;
+    lastCronExpression.current = DEFAULT_CRON_EXPRESSION;
+    setCronText(DEFAULT_CRON_EXPRESSION);
+    bumpFieldResetKey();
+  }, [deviceTimeZone, value]);
+
   const parsedIntervalValue = useMemo(() => {
     const parsed = Number.parseInt(intervalValueText, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -95,17 +149,24 @@ export function CadenceEditor({ value, onChange, error }: CadenceEditorProps) {
 
   const emitInterval = useCallback(
     (rawValue: number, unit: IntervalUnit) => {
-      onChange({ type: "every", everyMs: partsToEveryMs(rawValue, unit) });
+      if (value.type === "cron") {
+        rememberedCronTimeZone.current = value.timezone ?? "UTC";
+      }
+      const next = { type: "every" as const, everyMs: partsToEveryMs(rawValue, unit) };
+      emittedIntervalCadenceKey.current = intervalCadenceKey(next);
+      onChange(next);
     },
-    [onChange],
+    [onChange, value],
   );
 
   const emitCron = useCallback(
     (expression: string) => {
       lastCronExpression.current = expression;
-      onChange({ type: "cron", expression });
+      const next = nextCronCadence(value, expression, rememberedCronTimeZone.current);
+      rememberedCronTimeZone.current = next.timezone ?? "UTC";
+      onChange(next);
     },
-    [onChange],
+    [onChange, value],
   );
 
   const handleModeChange = useCallback(
@@ -161,7 +222,7 @@ export function CadenceEditor({ value, onChange, error }: CadenceEditorProps) {
   const intervalPreview = describeInterval(parsedIntervalValue, intervalUnit);
   const trimmedCron = cronText.trim();
   const cronError = trimmedCron ? validateCron(trimmedCron) : null;
-  const cronPreview = cronError ? null : (describeCron(trimmedCron) ?? trimmedCron);
+  const cronPreview = getCronPreview(trimmedCron, cronTimeZone, cronError);
 
   let cronFeedback: ReactNode = null;
   if (cronError) {
@@ -231,7 +292,7 @@ export function CadenceEditor({ value, onChange, error }: CadenceEditorProps) {
             style={styles.cronInput}
           />
           {cronFeedback}
-          <Text style={styles.hint}>Times are in UTC</Text>
+          <Text style={styles.hint}>Times are in {cronTimeZone}</Text>
         </View>
       )}
 
