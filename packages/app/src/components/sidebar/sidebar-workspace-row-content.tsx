@@ -20,7 +20,7 @@ import {
 } from "@/components/icons/material-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
-import { SyncedLoader } from "@/components/synced-loader";
+import { ThemedBlobLoader } from "@/components/blob-loader";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
@@ -46,12 +46,6 @@ const foregroundMutedSmMapping = (theme: Theme) => ({
   size: theme.iconSize.sm,
 });
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
-const syncedLoaderColorMapping = (theme: Theme) => ({
-  color:
-    theme.colorScheme === "light"
-      ? theme.colors.palette.amber[700]
-      : theme.colors.palette.amber[500],
-});
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -62,7 +56,6 @@ const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedMonitor = withUnistyles(Monitor);
 const ThemedFolder = withUnistyles(Folder);
 const ThemedFolderGit2 = withUnistyles(FolderGit2);
@@ -211,7 +204,7 @@ function WorkspaceStatusIndicator({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-running">
-        <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
+        <ThemedBlobLoader size={11} />
       </View>
     );
   }

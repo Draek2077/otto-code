@@ -1,8 +1,7 @@
 import React, { memo, useCallback, type ReactNode } from "react";
 import { View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import type { Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
@@ -17,15 +16,7 @@ import {
   type AssistantForkTarget,
 } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
-import { SyncedLoader } from "@/components/synced-loader";
-
-const ThemedSyncedLoader = withUnistyles(SyncedLoader);
-const workingIndicatorColorMapping = (theme: Theme) => ({
-  color:
-    theme.colorScheme === "light"
-      ? theme.colors.palette.amber[700]
-      : theme.colors.palette.amber[500],
-});
+import { ThemedBlobLoader } from "@/components/blob-loader";
 
 export type TurnContentStrategy = StreamStrategy;
 export type AssistantTurnForkHandler = (input: {
@@ -101,7 +92,7 @@ const WorkingIndicator = memo(function WorkingIndicator({
   return (
     <View style={stylesheet.turnFooterContent}>
       <View style={stylesheet.workingLoader}>
-        <ThemedSyncedLoader size={14} uniProps={workingIndicatorColorMapping} />
+        <ThemedBlobLoader size={18} />
       </View>
       {inFlightTurnStartedAt ? (
         <LiveElapsed

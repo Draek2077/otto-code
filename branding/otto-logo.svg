@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <g id="wordmark" stroke="currentColor">
-    <circle cx="171.86987" cy="272" r="48" stroke-width="20"/>
-    <circle cx="340.12988" cy="272" r="48" stroke-width="20"/>
-    <line x1="164" y1="194" x2="248" y2="194" stroke-width="20"/>
+    <circle cx="149.04579" cy="272" r="48" stroke-width="20"/>
+    <circle cx="363.21429" cy="272" r="48" stroke-width="20"/>
+    <line x1="167.08434" y1="194" x2="251.08434" y2="194" stroke-width="20"/>
     <line x1="220" y1="194" x2="220" y2="330" stroke-width="20"/>
-    <line x1="264" y1="194" x2="348" y2="194" stroke-width="20"/>
+    <line x1="260.91559" y1="194" x2="344.91559" y2="194" stroke-width="20"/>
     <line x1="292" y1="194" x2="292" y2="330" stroke-width="20"/>
   </g>
   <g id="robot" stroke="currentColor">
@@ -19,7 +19,7 @@
     <line x1="280" y1="362" x2="280" y2="392" stroke-width="12"/>
     <line x1="304" y1="362" x2="304" y2="392" stroke-width="12"/>
     <polyline points="176,424 256,464 336,424" stroke-width="18"/>
-    <circle cx="171.86987" cy="272" r="14" fill="currentColor" stroke="none"/>
-    <circle cx="340.12988" cy="272" r="14" fill="currentColor" stroke="none"/>
+    <circle cx="149.04579" cy="272" r="14" fill="currentColor" stroke="none"/>
+    <circle cx="363.21429" cy="272" r="14" fill="currentColor" stroke="none"/>
   </g>
 </svg>

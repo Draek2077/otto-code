@@ -98,6 +98,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
 import { usePanelStore } from "@/stores/panel-store";
@@ -693,17 +694,29 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { upsertConnectionFromOfferUrl } = useHostMutations();
   const isCompactLayout = useIsCompactFormFactor();
 
-  // Apply theme setting on mount and when it changes. Keyed on all three
+  // Apply theme setting on mount and when it changes. Keyed on all the
   // fields together (not split into separate effects) so the mirror repaint
   // in applyColorScheme always runs before the mode switch, never after.
+  // The OS scheme is a dependency because in System mode the `black` chat
+  // mirror follows whichever spectrum is actually showing — Unistyles flips
+  // the light/dark keys adaptively on its own, but the black repaint must
+  // re-run here when the OS scheme changes.
+  const osColorScheme = useColorScheme();
   useEffect(() => {
     if (settingsLoading) return;
     applyColorScheme({
       colorSchemeMode: settings.colorSchemeMode,
       lightTheme: settings.lightTheme,
       darkTheme: settings.darkTheme,
+      systemColorScheme: osColorScheme,
     });
-  }, [settingsLoading, settings.colorSchemeMode, settings.lightTheme, settings.darkTheme]);
+  }, [
+    settingsLoading,
+    settings.colorSchemeMode,
+    settings.lightTheme,
+    settings.darkTheme,
+    osColorScheme,
+  ]);
 
   // Apply font / size / syntax appearance settings on mount and when they change.
   // Sibling to the theme effect above; order is irrelevant because both patch
