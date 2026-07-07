@@ -83,6 +83,7 @@ vi.mock("react-native", () => ({
       typeof children === "function" ? children({ pressed: false, hovered: false }) : children,
     ),
   ActivityIndicator: () => React.createElement("span", { "data-testid": "activity-indicator" }),
+  Platform: { OS: "web" },
 }));
 
 vi.mock("react-native-unistyles", () => ({
@@ -90,7 +91,7 @@ vi.mock("react-native-unistyles", () => ({
     create: (factory: unknown) =>
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
-  useUnistyles: () => ({ theme }),
+  useUnistyles: () => ({ theme, rt: { breakpoint: "lg" } }),
 }));
 
 vi.mock("@/components/icons/material-icons", () => {
