@@ -18,7 +18,7 @@ Otto is an app for orchestrating coding agents, with native clients on desktop, 
 Conductor runs on macOS, with Claude Code and Codex, in parallel git worktrees. Otto does all of that. Pick Otto if you want:
 
 - Linux or Windows alongside macOS
-- A native iOS and Android app
+- A native Android app
 - Many more agents than Claude Code and Codex
 - A CLI to script agent work and drive remote daemons
 - A self-hosted daemon you can run on a server, VM, or homelab
@@ -70,7 +70,7 @@ Otto also gives each worktree its own dev server URL. Two agents running their d
 
 ## Mobile
 
-Otto ships native iOS and Android apps with the same feature set as the desktop app. Conductor has no mobile app.
+Otto ships a native Android app with the same feature set as the desktop app. Conductor has no mobile app.
 
 ## Voice
 
@@ -82,7 +82,7 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 | ---------------------------- | --------------------------------------------------------------- | ------------------ |
 | License                      | Open source (AGPL-3.0)                                          | Closed source      |
 | Platforms                    | macOS, Linux, Windows                                           | macOS only         |
-| Native mobile                | iOS, Android                                                    | —                  |
+| Native mobile                | Android                                                         | —                  |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex |
 | Git worktrees                | Yes                                                             | Yes                |
 | Per-worktree dev server URLs | Yes                                                             | —                  |

@@ -20,7 +20,7 @@ Pick Codex App if you want OpenAI's first-party app for Codex, with Codex-specif
 Pick Otto if you want:
 
 - Linux alongside macOS and Windows
-- A native iOS and Android app
+- A native Android app
 - Codex, Claude Code, OpenCode, Copilot, Pi, and 30+ more agents in one interface
 - A self-hosted daemon you can run on a laptop, VM, or dev server
 - A CLI and MCP server for scripting and multi-agent workflows
@@ -46,7 +46,7 @@ Otto ships on macOS, Linux, and Windows.
 
 ## Mobile
 
-Otto ships native iOS and Android apps with the same agent workflow as the desktop app.
+Otto ships a native Android app with the same agent workflow as the desktop app.
 
 Codex can be controlled remotely through OpenAI's mobile surfaces, including ChatGPT mobile remote connections. Codex App itself is a desktop app.
 
@@ -93,7 +93,7 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 | ---------------------------- | --------------------------------------------------------------- | ---------------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Not published as open source |
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows               |
-| Native mobile                | iOS, Android                                                    | No                           |
+| Native mobile                | Android                                                         | No                           |
 | Providers                    | Codex, Claude Code, OpenCode, Pi + 30+ via ACP catalog + custom | Codex                        |
 | Local execution              | Yes                                                             | Yes                          |
 | Cloud execution              | Cloud waitlist                                                  | Yes                          |
