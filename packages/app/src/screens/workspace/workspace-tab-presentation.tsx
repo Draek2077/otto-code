@@ -4,7 +4,7 @@ import { Check } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
-import { SyncedLoader } from "@/components/synced-loader";
+import { ThemedBlobLoader } from "@/components/blob-loader";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -168,7 +168,7 @@ export function WorkspaceTabIcon({
   if (shouldShowLoader) {
     return (
       <View style={agentIconWrapperStyle}>
-        <SyncedLoader size={resolvedSize - 1} color={styles.syncedLoader.color} />
+        <ThemedBlobLoader size={resolvedSize - 1} />
       </View>
     );
   }
@@ -272,12 +272,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   iconInactive: {
     color: theme.colors.foregroundMuted,
-  },
-  syncedLoader: {
-    color:
-      theme.colorScheme === "light"
-        ? theme.colors.palette.amber[700]
-        : theme.colors.palette.amber[500],
   },
   optionRow: {
     flexDirection: "row",

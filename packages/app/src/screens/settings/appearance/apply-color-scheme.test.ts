@@ -37,11 +37,12 @@ function makeInput(overrides: Partial<ColorSchemeInput> = {}): ColorSchemeInput 
     colorSchemeMode: "system",
     lightTheme: "daylight",
     darkTheme: "dark",
+    systemColorScheme: "dark",
     ...overrides,
   };
 }
 
-function findUpdater(key: "light" | "dark"): ThemeUpdater {
+function findUpdater(key: "light" | "dark" | "black"): ThemeUpdater {
   const call = updateTheme.mock.calls.find((c) => c[0] === key);
   return call?.[1] as unknown as ThemeUpdater;
 }
@@ -114,6 +115,42 @@ describe("applyColorScheme", () => {
     applyColorScheme(makeInput({ darkTheme: "claude" }));
 
     const updater = findUpdater("dark");
+    const result = updater(makeFakeTheme("dark"));
+    expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
+  });
+
+  it("paints the black mirror from the dark pick when the dark spectrum is active", () => {
+    applyColorScheme(makeInput({ colorSchemeMode: "dark", darkTheme: "claude" }));
+
+    const updater = findUpdater("black");
+    const result = updater(makeFakeTheme("dark"));
+    expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
+  });
+
+  it("paints the black mirror as a dark counterpart of the light pick when light is active", () => {
+    applyColorScheme(makeInput({ colorSchemeMode: "light", lightTheme: "pastel" }));
+
+    const updater = findUpdater("black");
+    const result = updater(makeFakeTheme("dark"));
+    expect(result.colors.accent).toBe("#c73d8f"); // black-Sherbet accent, not the dark pick's
+  });
+
+  it("resolves the black mirror's spectrum from the OS scheme in system mode", () => {
+    applyColorScheme(
+      makeInput({ colorSchemeMode: "system", systemColorScheme: "light", lightTheme: "pastel" }),
+    );
+
+    const updater = findUpdater("black");
+    const result = updater(makeFakeTheme("dark"));
+    expect(result.colors.accent).toBe("#c73d8f"); // black-Sherbet accent
+  });
+
+  it("falls back to the dark spectrum for the black mirror when the OS scheme is unknown", () => {
+    applyColorScheme(
+      makeInput({ colorSchemeMode: "system", systemColorScheme: null, darkTheme: "claude" }),
+    );
+
+    const updater = findUpdater("black");
     const result = updater(makeFakeTheme("dark"));
     expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
   });

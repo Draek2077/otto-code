@@ -187,6 +187,8 @@ interface LightThemeConfig {
   accent: string;
   accentBright: string;
   destructive: string;
+  spinnerPrimary: string;
+  spinnerSecondary: string;
 }
 
 const lightTerminalAnsi = {
@@ -238,6 +240,11 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     destructiveForeground: "#ffffff",
     success: tint.accent,
     successForeground: "#ffffff",
+
+    // Working-indicator (BlobLoader) glow pair — two distinct hues per theme,
+    // always including the theme's namesake color.
+    spinnerPrimary: tint.spinnerPrimary,
+    spinnerSecondary: tint.spinnerSecondary,
 
     // Legacy aliases (for gradual migration)
     background: tint.surface0,
@@ -295,6 +302,8 @@ const daylightColors = buildLightSemanticColors({
   accent: "#20744A",
   accentBright: "#1d8a4e", // darker than the old #239956 so accent text reads on white
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
+  spinnerPrimary: "#0891b2", // neutral light keeps the cyan/magenta pair, darkened to hold on white
+  spinnerSecondary: "#c026d3",
 });
 
 // Sherbet — soft pastel peach surfaces with a saturated raspberry accent and
@@ -317,6 +326,8 @@ const sherbetColors = buildLightSemanticColors({
   accent: "#b83280",
   accentBright: "#99286b",
   destructive: "#b04138",
+  spinnerPrimary: "#d02580", // namesake raspberry sherbet, deep and saturated
+  spinnerSecondary: "#e87410", // tangerine scoop
 });
 
 // Meadow — sage-tinted light variant of the brand green, mirroring dark
@@ -339,6 +350,8 @@ const meadowColors = buildLightSemanticColors({
   accent: "#20744A",
   accentBright: "#1f8a52",
   destructive: "#b04138",
+  spinnerPrimary: "#1a9155", // namesake meadow green, deep and saturated
+  spinnerSecondary: "#ca8a04", // buttercup gold
 });
 
 // Terracotta — warm clay-tinted light variant, mirroring dark Ember. Cream
@@ -360,6 +373,8 @@ const terracottaColors = buildLightSemanticColors({
   accent: "#b8552f",
   accentBright: "#9c4526",
   destructive: "#b04138",
+  spinnerPrimary: "#c9511c", // namesake terracotta clay, deep and saturated
+  spinnerSecondary: "#d97706", // warm amber gold
 });
 
 // Horizon — crisp blue-tinted light variant, mirroring dark Nightfall. Pale
@@ -381,6 +396,8 @@ const horizonColors = buildLightSemanticColors({
   accent: "#2159c9",
   accentBright: "#1a49a8",
   destructive: "#b04138",
+  spinnerPrimary: "#2563eb", // namesake horizon blue, deep and saturated
+  spinnerSecondary: "#ea580c", // sunrise orange on the horizon line
 });
 
 // Powder — muted blue-grey light variant, mirroring dark Slate. Foggier and
@@ -403,6 +420,8 @@ const powderColors = buildLightSemanticColors({
   accent: "#4a6fa5",
   accentBright: "#3a5a8a",
   destructive: "#b04138",
+  spinnerPrimary: "#3e6db8", // namesake powder blue, deepened to hold on white
+  spinnerSecondary: "#7b5fd0", // periwinkle violet
 });
 
 // ---------------------------------------------------------------------------
@@ -426,6 +445,8 @@ interface DarkThemeConfig {
   accentBright: string;
   accentForeground?: string;
   destructive: string;
+  spinnerPrimary: string;
+  spinnerSecondary: string;
 }
 
 const darkTerminalAnsi = {
@@ -473,6 +494,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     destructiveForeground: "#ffffff",
     success: tint.accent,
     successForeground: "#ffffff",
+
+    // Working-indicator (BlobLoader) glow pair — two distinct hues per theme,
+    // always including the theme's namesake color.
+    spinnerPrimary: tint.spinnerPrimary,
+    spinnerSecondary: tint.spinnerSecondary,
 
     // Legacy aliases (for gradual migration)
     background: tint.surface0,
@@ -530,6 +556,8 @@ const neutralDarkColors = buildDarkSemanticColors({
   accent: "#20744A",
   accentBright: "#8ce0af",
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
+  spinnerPrimary: "#63ccff", // neutral dark keeps the cyan/magenta pair, lifted to glow on dark
+  spinnerSecondary: "#eb66f0",
 });
 
 // Evergreen — Otto's teal-green identity. Muted text, borders, and the bright
@@ -551,6 +579,8 @@ const evergreenDarkColors = buildDarkSemanticColors({
   accent: "#20744A",
   accentBright: "#8ce0af", // was #7ccba0 — brighter accent text on dark surfaces
   destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
+  spinnerPrimary: "#5ee8a4", // namesake evergreen, lifted to glow on dark
+  spinnerSecondary: "#f5d06b", // warm gold — sunlight through the canopy
 });
 
 // Graphite — monochrome. Surfaces deepened toward true black and borders
@@ -572,6 +602,8 @@ const graphiteDarkColors = buildDarkSemanticColors({
   accentBright: "#ffffff",
   accentForeground: "#141417", // monochrome accent is near-white — needs dark text
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
+  spinnerPrimary: "#f5f6fa", // namesake graphite silver — stays monochrome
+  spinnerSecondary: "#b3bcd1", // icy steel — light enough to glow on near-black
 });
 
 // Nightfall — deep blue night. Base surfaces deepened and the accent blue
@@ -592,6 +624,8 @@ const nightfallDarkColors = buildDarkSemanticColors({
   accent: "#3b6fcf",
   accentBright: "#92bcff", // was #7eaaeb
   destructive: "#c44a52", // red with a hint of cool lean against the blue tint
+  spinnerPrimary: "#7fb3ff", // namesake nightfall blue, lifted to glow on dark
+  spinnerSecondary: "#b79cff", // dusk violet
 });
 
 // Ember — warm charcoal with a saturated orange-red accent. Saturation and
@@ -612,6 +646,8 @@ const emberDarkColors = buildDarkSemanticColors({
   accent: "#d96b45", // was #d97757 — more saturated ember
   accentBright: "#ffab88", // was #e89a7f
   destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the ember accent
+  spinnerPrimary: "#ff9866", // namesake ember orange, lifted to glow on dark
+  spinnerSecondary: "#ffd07e", // glowing coal gold
 });
 
 // Slate — blue-grey terminal look (Ghostty-default lineage). Sidebar
@@ -634,6 +670,8 @@ const slateDarkColors = buildDarkSemanticColors({
   accentBright: "#c4dafd",
   accentForeground: "#14181f", // light blue accent — needs dark text (white was ~2:1)
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
+  spinnerPrimary: "#89b4fa", // namesake slate-blue accent
+  spinnerSecondary: "#cba6f7", // soft mauve
 });
 
 // Neotokyo — near-black surfaces with neon magenta accents. Built for maximum
@@ -655,6 +693,8 @@ const neotokyoDarkColors = buildDarkSemanticColors({
   accent: "#c2188f",
   accentBright: "#ff5ad1",
   destructive: "#d94848", // clearly red so errors never blur into the magenta accent
+  spinnerPrimary: "#ff5ad1", // namesake neon magenta
+  spinnerSecondary: "#3ae8f5", // neon cyan counterlight
 });
 
 export const SPACING = {
@@ -895,25 +935,305 @@ export const terracottaTheme = buildLightTheme(terracottaColors);
 export const horizonTheme = buildLightTheme(horizonColors);
 export const powderTheme = buildLightTheme(powderColors);
 
-// Chat surfaces forced to pure black for the "Black tab background" appearance
-// setting. Applied on top of whichever dark variant is the user's current pick
-// when repainting the third registered `black` theme key (see
-// `apply-color-scheme.ts`); that key is only ever consumed through
-// `ScopedTheme name="black"` around chat panes — adaptive mode never selects it.
-export const BLACK_TAB_SURFACE_OVERRIDES = {
-  surface0: "#000000",
-  surfaceWorkspace: "#000000",
-  background: "#000000",
-} as const;
+// ---------------------------------------------------------------------------
+// Black tab background — per-variant palettes on pure black
+// ---------------------------------------------------------------------------
 
-// Seed for the `black` Unistyles key: the neutral dark variant with black chat
+// Each dark variant gets its own hand-tuned palette for the "Black tab
+// background" appearance setting. A variant's normal colors are tuned against
+// its own base surface (~#18-ish), not against #000000 — reused verbatim on
+// black, the elevated surfaces barely separate and muted text/borders sink
+// into the void, so every theme collapses into the same generic look. These
+// tints keep each theme's hue but re-step the neutrals for a pure-black
+// canvas: surfaces lifted enough to read as cards, borders visible, muted
+// text brightened a step so nothing blends into the dark.
+interface BlackVariantTint {
+  surface1: string;
+  surface2: string;
+  surface3: string;
+  surface4: string;
+  surfaceDiffEmpty: string;
+  border: string;
+  borderAccent: string;
+  foregroundMuted: string;
+  scrollbarHandle: string;
+}
+
+// Expand a black-variant tint into the override object spread on top of the
+// dark variant's colors when repainting the `black` theme key (see
+// `apply-color-scheme.ts`). Covers the legacy aliases derived from the
+// overridden tokens (popover/secondary/muted/input mirror surface2,
+// mutedForeground mirrors foregroundMuted, accentBorder mirrors borderAccent)
+// so no alias keeps pointing at the variant's un-lifted value.
+function buildBlackVariantColors(tint: BlackVariantTint) {
+  return {
+    surface0: "#000000",
+    surfaceWorkspace: "#000000",
+    background: "#000000",
+    surface1: tint.surface1,
+    surface2: tint.surface2,
+    surface3: tint.surface3,
+    surface4: tint.surface4,
+    surfaceDiffEmpty: tint.surfaceDiffEmpty,
+    border: tint.border,
+    borderAccent: tint.borderAccent,
+    accentBorder: tint.borderAccent,
+    foregroundMuted: tint.foregroundMuted,
+    mutedForeground: tint.foregroundMuted,
+    scrollbarHandle: tint.scrollbarHandle,
+    popover: tint.surface2,
+    secondary: tint.surface2,
+    muted: tint.surface2,
+    input: tint.surface2,
+    primaryForeground: "#000000",
+  } as const;
+}
+
+// The `black` theme key is only ever consumed through `ScopedTheme
+// name="black"` around chat panes — adaptive mode never selects it. Each
+// entry keys off the dark variant it accompanies; comments name the display
+// label where it differs from the key.
+export const BLACK_VARIANT_OVERRIDES: Record<
+  DarkThemeName,
+  ReturnType<typeof buildBlackVariantColors>
+> = {
+  // Twilight — neutral zinc, kept cool and untinted.
+  dark: buildBlackVariantColors({
+    surface1: "#161619",
+    surface2: "#202024",
+    surface3: "#38383f",
+    surface4: "#4e4e57",
+    surfaceDiffEmpty: "#121215",
+    border: "#26262c",
+    borderAccent: "#323239",
+    foregroundMuted: "#b8b8c1",
+    scrollbarHandle: "#8a8a93",
+  }),
+  // Evergreen — teal-green cast on the elevated steps.
+  evergreen: buildBlackVariantColors({
+    surface1: "#121715",
+    surface2: "#1c211f",
+    surface3: "#3a423f",
+    surface4: "#525a56",
+    surfaceDiffEmpty: "#0f1412",
+    border: "#253029",
+    borderAccent: "#33403a",
+    foregroundMuted: "#b9c2bd",
+    scrollbarHandle: "#8b938f",
+  }),
+  // Graphite — strictly monochrome; separation comes from the border lift.
+  zinc: buildBlackVariantColors({
+    surface1: "#151516",
+    surface2: "#1f1f21",
+    surface3: "#39393d",
+    surface4: "#515156",
+    surfaceDiffEmpty: "#111112",
+    border: "#2a2a2e",
+    borderAccent: "#37373c",
+    foregroundMuted: "#c2c2c9",
+    scrollbarHandle: "#929299",
+  }),
+  // Nightfall — deep blue night; the blue reads in the cards and borders.
+  midnight: buildBlackVariantColors({
+    surface1: "#10131e",
+    surface2: "#1a1d2b",
+    surface3: "#333850",
+    surface4: "#4b526e",
+    surfaceDiffEmpty: "#0c0f18",
+    border: "#232840",
+    borderAccent: "#303756",
+    foregroundMuted: "#b5bad3",
+    scrollbarHandle: "#878ca6",
+  }),
+  // Ember — warm charcoal; browns stay warm instead of going grey on black.
+  claude: buildBlackVariantColors({
+    surface1: "#171412",
+    surface2: "#211e1b",
+    surface3: "#3e3a36",
+    surface4: "#57524d",
+    surfaceDiffEmpty: "#131110",
+    border: "#2f2a25",
+    borderAccent: "#3d372f",
+    foregroundMuted: "#c6c0b9",
+    scrollbarHandle: "#958f88",
+  }),
+  // Slate — blue-grey; steps re-anchored from its lighter #282c34 base.
+  ghostty: buildBlackVariantColors({
+    surface1: "#14171e",
+    surface2: "#20242d",
+    surface3: "#3a404e",
+    surface4: "#515868",
+    surfaceDiffEmpty: "#10131a",
+    border: "#2b3140",
+    borderAccent: "#394050",
+    foregroundMuted: "#d0d4e0",
+    scrollbarHandle: "#a6aab8",
+  }),
+  // Neotokyo — violet near-black; borders stay visibly violet on true black.
+  cyberpunk: buildBlackVariantColors({
+    surface1: "#0f0f18",
+    surface2: "#171722",
+    surface3: "#2f2f45",
+    surface4: "#44445f",
+    surfaceDiffEmpty: "#0c0c13",
+    border: "#26263f",
+    borderAccent: "#333354",
+    foregroundMuted: "#b2b6d6",
+    scrollbarHandle: "#8185b0",
+  }),
+};
+
+// When the app is in a LIGHT theme with Black tab background on, the chat
+// pane can't reuse the light variant's colors (dark plum text on pure black
+// is unreadable) and shouldn't fall back to the user's dark-variant pick
+// either — Sherbet in light mode should get a "dark Sherbet" chat pane, not
+// Twilight. Each light variant therefore gets a full dark counterpart built
+// on pure black through `buildDarkSemanticColors`, so foreground, diff,
+// status, and terminal tokens are all dark-scheme correct while the hues and
+// accents stay the light theme's own.
+function buildBlackFromLightColors(tint: DarkThemeConfig) {
+  // The dark builder anchors surfaceWorkspace to surface1; black mode wants
+  // the pane itself on true black.
+  return { ...buildDarkSemanticColors(tint), surfaceWorkspace: "#000000" };
+}
+
+export const BLACK_LIGHT_VARIANT_COLORS: Record<
+  LightThemeName,
+  ReturnType<typeof buildBlackFromLightColors>
+> = {
+  // Daylight — neutral zinc counterpart; same steps as Twilight-on-black with
+  // Daylight's brand green and cyan/magenta spinner pair lifted for dark.
+  daylight: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#161619",
+    surface2: "#202024",
+    surface3: "#38383f",
+    surface4: "#4e4e57",
+    surfaceDiffEmpty: "#121215",
+    surfaceSidebar: "#0a0a0b",
+    surfaceSidebarHover: "#131315",
+    foregroundMuted: "#b8b8c1",
+    scrollbarHandle: "#8a8a93",
+    border: "#26262c",
+    borderAccent: "#323239",
+    accent: "#20744A",
+    accentBright: "#8ce0af",
+    destructive: "#c44a4a",
+    spinnerPrimary: "#63ccff",
+    spinnerSecondary: "#eb66f0",
+  }),
+  // Sherbet — warm plum-peach cast with the raspberry accent lifted to glow.
+  pastel: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#191316",
+    surface2: "#241c20",
+    surface3: "#40343a",
+    surface4: "#584a51",
+    surfaceDiffEmpty: "#140f12",
+    surfaceSidebar: "#0c090a",
+    surfaceSidebarHover: "#151013",
+    foregroundMuted: "#c9b9c4",
+    scrollbarHandle: "#998894",
+    border: "#322630",
+    borderAccent: "#41323e",
+    accent: "#c73d8f",
+    accentBright: "#ff85cd",
+    destructive: "#cf4f46",
+    spinnerPrimary: "#ff5aa8", // namesake raspberry, lifted for black
+    spinnerSecondary: "#ffab5e", // tangerine scoop, lifted
+  }),
+  // Meadow — sage green cast; brand green accent, meadow/buttercup spinners.
+  meadow: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#121714",
+    surface2: "#1c221e",
+    surface3: "#35403a",
+    surface4: "#4c5a52",
+    surfaceDiffEmpty: "#0f1411",
+    surfaceSidebar: "#090c0a",
+    surfaceSidebarHover: "#121713",
+    foregroundMuted: "#b5c4ba",
+    scrollbarHandle: "#87948c",
+    border: "#25322a",
+    borderAccent: "#32423a",
+    accent: "#20744A",
+    accentBright: "#8ce0af",
+    destructive: "#c64f43",
+    spinnerPrimary: "#4fd68a", // namesake meadow green, lifted
+    spinnerSecondary: "#e8be55", // buttercup gold, lifted
+  }),
+  // Terracotta — warm clay cast; burnt orange brightened for black.
+  terracotta: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#181310",
+    surface2: "#231c17",
+    surface3: "#403630",
+    surface4: "#584c43",
+    surfaceDiffEmpty: "#130f0c",
+    surfaceSidebar: "#0c0908",
+    surfaceSidebarHover: "#14100d",
+    foregroundMuted: "#c9bcb0",
+    scrollbarHandle: "#988b7f",
+    border: "#33291f",
+    borderAccent: "#423528",
+    accent: "#cf6236",
+    accentBright: "#ff9d70",
+    destructive: "#cf513e",
+    spinnerPrimary: "#ff8a50", // namesake clay, lifted
+    spinnerSecondary: "#ffc46e", // amber gold, lifted
+  }),
+  // Horizon — sky blue cast; the saturated blue accent lifted for black.
+  horizon: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#101420",
+    surface2: "#191f2e",
+    surface3: "#313a52",
+    surface4: "#475270",
+    surfaceDiffEmpty: "#0c101a",
+    surfaceSidebar: "#080a12",
+    surfaceSidebarHover: "#0f1320",
+    foregroundMuted: "#b4bdd4",
+    scrollbarHandle: "#8590aa",
+    border: "#222c44",
+    borderAccent: "#2f3b5a",
+    accent: "#3b6fcf",
+    accentBright: "#92bcff",
+    destructive: "#c44a52",
+    spinnerPrimary: "#6ea3ff", // namesake horizon blue, lifted
+    spinnerSecondary: "#ff8a4d", // sunrise orange, lifted
+  }),
+  // Powder — foggy slate-blue cast; desaturated accent goes light enough on
+  // black that it needs dark text, like Slate's.
+  powder: buildBlackFromLightColors({
+    surface0: "#000000",
+    surface1: "#13161e",
+    surface2: "#1e222c",
+    surface3: "#383e4e",
+    surface4: "#4f5668",
+    surfaceDiffEmpty: "#0f1218",
+    surfaceSidebar: "#090b10",
+    surfaceSidebarHover: "#11141b",
+    foregroundMuted: "#bfc6d4",
+    scrollbarHandle: "#8f96a8",
+    border: "#293040",
+    borderAccent: "#363e50",
+    accent: "#7d9ecf",
+    accentBright: "#b3ccf2",
+    accentForeground: "#10141c",
+    destructive: "#c44a55",
+    spinnerPrimary: "#7da3e8", // namesake powder blue, lifted
+    spinnerSecondary: "#a98ee8", // periwinkle violet, lifted
+  }),
+};
+
+// Seed for the `black` Unistyles key: the neutral dark variant on black chat
 // surfaces. Runtime repaints replace it with the user's dark-variant pick.
 // Annotated as `typeof darkTheme` so the override literals stay widened and
 // `UnistylesRuntime.updateTheme("black", ...)` can assign arbitrary variant
 // colors back into the mirror.
 export const blackTheme: typeof darkTheme = {
   ...darkTheme,
-  colors: { ...darkTheme.colors, ...BLACK_TAB_SURFACE_OVERRIDES },
+  colors: { ...darkTheme.colors, ...BLACK_VARIANT_OVERRIDES.dark },
 };
 
 // Keep compatibility with existing code

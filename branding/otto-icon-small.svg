@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <g stroke="currentColor" stroke-width="28">
-    <circle cx="145.57108" cy="280" r="70"/>
-    <circle cx="366.42859" cy="280" r="70"/>
-    <line x1="152" y1="162" x2="248" y2="162"/>
+    <circle cx="114.72778" cy="280" r="70"/>
+    <circle cx="396.91559" cy="280" r="70"/>
+    <line x1="155.7012" y1="162" x2="251.7012" y2="162"/>
     <line x1="216" y1="162" x2="216" y2="364"/>
-    <line x1="264" y1="162" x2="360" y2="162"/>
+    <line x1="260.91559" y1="162" x2="356.91559" y2="162"/>
     <line x1="296" y1="162" x2="296" y2="364"/>
-    <circle cx="145.57108" cy="280" r="22" fill="currentColor" stroke="none"/>
-    <circle cx="366.42859" cy="280" r="22" fill="currentColor" stroke="none"/>
+    <circle cx="114.72778" cy="280" r="22" fill="currentColor" stroke="none"/>
+    <circle cx="396.91559" cy="280" r="22" fill="currentColor" stroke="none"/>
   </g>
 </svg>

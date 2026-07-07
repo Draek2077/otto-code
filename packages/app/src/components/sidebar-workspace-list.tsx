@@ -85,7 +85,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { WorkspaceKebabMenu, WorkspaceMenuItems } from "@/components/sidebar/sidebar-workspace-row";
-import { SyncedLoader } from "@/components/synced-loader";
+import { ThemedBlobLoader } from "@/components/blob-loader";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
@@ -146,7 +146,6 @@ const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
@@ -179,12 +178,6 @@ const greenColorMapping = (theme: Theme) => ({
 });
 const purpleColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.purple[500],
-});
-const syncedLoaderColorMapping = (theme: Theme) => ({
-  color:
-    theme.colorScheme === "light"
-      ? theme.colors.palette.amber[700]
-      : theme.colors.palette.amber[500],
 });
 
 function getPrIconUniMapping(state: PrHint["state"]) {
@@ -757,7 +750,7 @@ function ProjectLeadingVisualStatus({
   if (shouldShowSyncedLoader) {
     return (
       <View style={styles.projectLeadingVisualSlot}>
-        <ThemedSyncedLoader size={11} uniProps={syncedLoaderColorMapping} />
+        <ThemedBlobLoader size={11} />
       </View>
     );
   }
