@@ -588,6 +588,9 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     status: z.enum(["loading", "completed"]),
     trigger: z.enum(["auto", "manual"]).optional(),
     preTokens: z.number().optional(),
+    postTokens: z.number().optional(),
+    // Short PR-style summary of the compacted stretch, shown on the marker.
+    shortSummary: z.string().optional(),
   }),
 ]);
 

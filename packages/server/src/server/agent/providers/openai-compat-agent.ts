@@ -78,6 +78,52 @@ const MAX_TOOL_ROUNDS = 50;
 const TOOL_RESULT_HEAD_CHARS = 3000;
 const TOOL_RESULT_TAIL_CHARS = 1000;
 
+/**
+ * Compaction keeps the most recent slice of the conversation verbatim and only
+ * summarizes the older history before it. Summarization is lossy, so we confine
+ * it to the distant past where the loss is cheap; recent turns (the files just
+ * read, the diff just applied, the error being debugged) stay intact.
+ */
+const COMPACTION_KEEP_RECENT_TOKENS = 20_000;
+
+/**
+ * Pre-summarization pruning (zero-LLM) reclaims context before we spend a model
+ * call: uneventful tool results are elided and oversized older tool outputs are
+ * truncated, while the newest tool outputs are protected so live work is never
+ * trimmed out from under the model.
+ */
+const PRUNE_PROTECT_RECENT_TOOL_TOKENS = 12_000;
+const PRUNE_TOOL_RESULT_MIN_CHARS = 2_000;
+const PRUNE_TOOL_RESULT_HEAD_CHARS = 800;
+const PRUNE_TOOL_RESULT_TAIL_CHARS = 400;
+const UNEVENTFUL_RESULT_PLACEHOLDER = "[Uneventful result elided]";
+
+/**
+ * True when a tool result carries no signal worth keeping in context — empty
+ * output, zero-match searches, or a bare timeout/no-op acknowledgement. These
+ * are elided wholesale during pruning. Kept conservative on purpose: anything
+ * ambiguous is left intact for the summarizer to judge.
+ */
+export function isUneventfulToolResult(content: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.length === 0) {
+    return true;
+  }
+  if (trimmed === UNEVENTFUL_RESULT_PLACEHOLDER) {
+    return false;
+  }
+  return [
+    /^no matches found\.?$/iu,
+    /^no results? found\.?$/iu,
+    /^found 0 (?:matches|results|files)\b/iu,
+    /^0 results?\b/iu,
+    /^no files? found\.?$/iu,
+    /^\(?no output\)?\.?$/iu,
+    /^command (?:completed|finished|exited) with no output\.?$/iu,
+    /^no changes\b/iu,
+  ].some((pattern) => pattern.test(trimmed));
+}
+
 /** Built-in slash command available for every OpenAI-compatible session. */
 const COMPACT_COMMAND: AgentSlashCommand = {
   name: "compact",
@@ -144,7 +190,7 @@ type ChatMessage =
    * revertConversation can find its truncation point. Stripped from the wire
    * payload before requests — strict servers reject unknown message fields.
    */
-  | { role: "system" | "user"; content: string; messageId?: string }
+  | { role: "system" | "user"; content: string; messageId?: string; isCompactionSummary?: boolean }
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[] }
   | { role: "tool"; content: string; tool_call_id: string };
 
@@ -456,7 +502,15 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
     }
     if (role === "system" || role === "user") {
       const messageId = typeof record.messageId === "string" ? record.messageId : undefined;
-      return [{ role, content, ...(messageId ? { messageId } : {}) }];
+      const isCompactionSummary = record.isCompactionSummary === true;
+      return [
+        {
+          role,
+          content,
+          ...(messageId ? { messageId } : {}),
+          ...(isCompactionSummary ? { isCompactionSummary: true } : {}),
+        },
+      ];
     }
     if (role === "assistant") {
       const toolCalls = parseToolCallPayloads(record.tool_calls);
@@ -994,13 +1048,22 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   /**
-   * Handle `/compact [instruction]` by asking the model to summarize the
-   * conversation history, then replacing the message array with the condensed
-   * version. Runs entirely in-process — no external compaction service.
-   * Returns the turn's usage so the caller can attach it to turn_completed.
+   * Handle `/compact [instruction]` by summarizing the older conversation
+   * history while keeping the most recent slice verbatim, then splicing the
+   * summary in ahead of the retained tail. Runs entirely in-process — no
+   * external compaction service. Returns the turn's usage so the caller can
+   * attach it to turn_completed.
+   *
+   * Pipeline (adapted from oh-my-pi's compaction design):
+   *   1. Prune tool outputs (zero-LLM): elide uneventful results, truncate
+   *      oversized older ones, protect the newest.
+   *   2. Split at the keep-recent boundary: [system] + [older → summarize] +
+   *      [recent → keep verbatim].
+   *   3. Summarize the older region. If a prior compaction summary is present,
+   *      merge into it (incremental update) instead of re-summarizing a summary.
+   *   4. Rebuild: [system, summary, ...recent].
    */
   private async handleCompact(turn: ActiveTurn, instruction: string | null): Promise<AgentUsage> {
-    // Emit loading event
     this.emit({
       type: "timeline",
       provider: this.provider,
@@ -1013,25 +1076,226 @@ export class OpenAICompatAgentSession implements AgentSession {
     // estimate of the full request payload.
     const preTokens = this.lastContextTokens ?? this.estimateFullContextTokens();
 
-    // Serialize conversation into a text blob for the compaction prompt
-    const conversationText = this.serializeConversationForCompaction();
+    // 1. Zero-LLM pruning first, so both the summary input and the retained
+    //    tail are already free of noise and oversized old tool dumps.
+    this.pruneToolOutputs();
 
-    // Build compaction system prompt
-    const compactionSystemPrompt = this.buildCompactionSystemPrompt(instruction);
+    // 2. Split at the keep-recent boundary. keepFromIndex is the first message
+    //    (after the system prompt at index 0) that stays verbatim.
+    const keepFromIndex = this.computeCompactionKeepFromIndex();
+    const summarizeRegion = this.messages.slice(1, keepFromIndex);
+    const keptRegion = this.messages.slice(keepFromIndex);
 
-    // Send compaction request to the model (non-streaming for simplicity)
+    if (summarizeRegion.length === 0) {
+      // Nothing old enough to summarize (conversation already within the
+      // keep-recent budget). Report a no-op rather than summarizing nothing.
+      const postTokens = this.estimateFullContextTokens();
+      this.lastContextTokens = postTokens;
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: { type: "compaction", status: "completed", trigger: "manual", preTokens, postTokens },
+      });
+      const maxTokens = await this.resolveContextWindowMaxTokens();
+      const usage: AgentUsage = {
+        contextWindowUsedTokens: postTokens,
+        ...(maxTokens !== null ? { contextWindowMaxTokens: maxTokens } : {}),
+      };
+      this.emit({ type: "usage_updated", provider: this.provider, usage, turnId: turn.turnId });
+      return usage;
+    }
+
+    // 3. Incremental update when a prior summary sits in the region: feed it as
+    //    <previous-summary> and merge the newer messages into it, rather than
+    //    summarizing a summary (which degrades badly across repeated compacts).
+    const priorSummaryIndex = summarizeRegion.findIndex(
+      (message) => message.role === "user" && message.isCompactionSummary === true,
+    );
+    const priorSummary =
+      priorSummaryIndex >= 0 ? summarizeRegion[priorSummaryIndex]!.content : null;
+    const messagesToSummarize =
+      priorSummaryIndex >= 0
+        ? summarizeRegion.filter((_, index) => index !== priorSummaryIndex)
+        : summarizeRegion;
+    const conversationText = this.serializeConversationForCompaction(messagesToSummarize);
+
     const endpoint = resolveEndpoint(this.env, this.label);
     const model = await this.resolveModel(endpoint);
 
-    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: buildHeaders(endpoint),
-      signal: turn.abort.signal,
-      body: JSON.stringify({
+    const systemPrompt =
+      priorSummary !== null
+        ? this.buildCompactionUpdateSystemPrompt(instruction)
+        : this.buildCompactionSystemPrompt(instruction);
+    const userContent =
+      priorSummary !== null
+        ? `<previous-summary>\n${priorSummary}\n</previous-summary>\n\n<new-messages>\n${conversationText}\n</new-messages>`
+        : conversationText;
+
+    // The full summary is required; the short PR-style summary for the timeline
+    // marker is best-effort and must never fail or block the compaction. Run
+    // both concurrently so a second-request server can overlap them.
+    const [summaryResult, shortSummary] = await Promise.all([
+      this.runCompactionCompletion({
+        endpoint,
         model,
+        systemPrompt,
+        userContent,
+        signal: turn.abort.signal,
+      }),
+      this.requestShortCompactionSummary({
+        endpoint,
+        model,
+        conversationText,
+        signal: turn.abort.signal,
+      }),
+    ]);
+    const summary = summaryResult.content;
+
+    // 4. Rebuild: system + summary (marked for future incremental updates) +
+    //    the retained recent tail, untouched.
+    this.messages.length = 0;
+    this.messages.push({ role: "system", content: this.buildSystemPrompt(this.config) });
+    this.messages.push({
+      role: "user",
+      content: summary,
+      messageId: randomUUID(),
+      isCompactionSummary: true,
+    });
+    // Assistant ack keeps the roles alternating so the next user turn doesn't
+    // sit directly after the synthetic summary user message.
+    this.messages.push({ role: "assistant", content: "Conversation history has been compacted." });
+    this.messages.push(...keptRegion);
+
+    // Post-compaction context size. Must count the rebuilt system prompt and
+    // the tool schemas — both are re-sent with every request — or the ring
+    // reads near-zero here and jumps back up on the next real turn.
+    const postTokens = this.estimateFullContextTokens();
+    this.lastContextTokens = postTokens;
+
+    this.emit({
+      type: "timeline",
+      provider: this.provider,
+      turnId: turn.turnId,
+      item: {
+        type: "compaction",
+        status: "completed",
+        trigger: "manual",
+        preTokens,
+        postTokens,
+        ...(shortSummary ? { shortSummary } : {}),
+      },
+    });
+
+    // usage_updated replaces agent.lastUsage wholesale and the client hides
+    // the context ring unless both bounds are present, so the compaction
+    // usage must carry the post-compaction context size alongside the
+    // request's own token cost.
+    const maxTokens = await this.resolveContextWindowMaxTokens();
+    const usageData = summaryResult.usage;
+    const usage: AgentUsage = {
+      ...(typeof usageData?.prompt_tokens === "number"
+        ? { inputTokens: usageData.prompt_tokens }
+        : {}),
+      ...(typeof usageData?.completion_tokens === "number"
+        ? { outputTokens: usageData.completion_tokens }
+        : {}),
+      contextWindowUsedTokens: postTokens,
+      ...(maxTokens !== null ? { contextWindowMaxTokens: maxTokens } : {}),
+    };
+    this.emit({
+      type: "usage_updated",
+      provider: this.provider,
+      usage,
+      turnId: turn.turnId,
+    });
+    return usage;
+  }
+
+  /**
+   * Pre-summarization pruning (zero-LLM). Mutates the message array in place:
+   * elides uneventful tool results everywhere, then truncates oversized tool
+   * results older than the protected-recent window to head + tail. Structure is
+   * never changed (only tool `content`), so tool_call ordering stays valid.
+   */
+  private pruneToolOutputs(): void {
+    for (const message of this.messages) {
+      if (message.role === "tool" && isUneventfulToolResult(message.content)) {
+        message.content = UNEVENTFUL_RESULT_PLACEHOLDER;
+      }
+    }
+    // Walk tool results newest → oldest; protect the freshest by token budget,
+    // truncate the rest.
+    let protectedTokens = 0;
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      const message = this.messages[index]!;
+      if (message.role !== "tool") {
+        continue;
+      }
+      const tokens = estimateTokens(message.content);
+      if (protectedTokens < PRUNE_PROTECT_RECENT_TOOL_TOKENS) {
+        protectedTokens += tokens;
+        continue;
+      }
+      if (message.content.length > PRUNE_TOOL_RESULT_MIN_CHARS) {
+        const { content } = message;
+        message.content = `${content.slice(0, PRUNE_TOOL_RESULT_HEAD_CHARS)}\n[... ${
+          content.length - PRUNE_TOOL_RESULT_HEAD_CHARS - PRUNE_TOOL_RESULT_TAIL_CHARS
+        } chars pruned ...]\n${content.slice(-PRUNE_TOOL_RESULT_TAIL_CHARS)}`;
+      }
+    }
+  }
+
+  /**
+   * Index of the first message (after the system prompt at 0) to keep verbatim
+   * through compaction: walk newest → oldest accumulating token estimates until
+   * the keep-recent budget is exceeded, then advance past any leading tool
+   * results so the retained tail never starts with a tool message orphaned from
+   * its assistant tool_calls. Returns messages.length when the whole
+   * conversation is older than the budget (summarize everything, keep none).
+   */
+  private computeCompactionKeepFromIndex(): number {
+    let keepFrom = this.messages.length;
+    let recentTokens = 0;
+    for (let index = this.messages.length - 1; index >= 1; index -= 1) {
+      recentTokens += estimateTokens(JSON.stringify(this.messages[index]));
+      if (recentTokens > COMPACTION_KEEP_RECENT_TOKENS) {
+        break;
+      }
+      keepFrom = index;
+    }
+    // Never keep the entire conversation: a manual /compact should always
+    // compress something, so a conversation within the budget summarizes fully.
+    if (keepFrom <= 1) {
+      return this.messages.length;
+    }
+    // Don't strand tool results at the head of the retained tail.
+    while (keepFrom < this.messages.length && this.messages[keepFrom]!.role === "tool") {
+      keepFrom += 1;
+    }
+    return keepFrom;
+  }
+
+  /**
+   * POST a non-streaming chat completion for compaction and return the assistant
+   * text plus raw usage. Throws on transport failure or an empty response.
+   */
+  private async runCompactionCompletion(options: {
+    endpoint: ResolvedEndpoint;
+    model: string;
+    systemPrompt: string;
+    userContent: string;
+    signal: AbortSignal;
+  }): Promise<{ content: string; usage?: Record<string, unknown> }> {
+    const response = await fetch(`${options.endpoint.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: buildHeaders(options.endpoint),
+      signal: options.signal,
+      body: JSON.stringify({
+        model: options.model,
         messages: [
-          { role: "system", content: compactionSystemPrompt },
-          { role: "user", content: conversationText },
+          { role: "system", content: options.systemPrompt },
+          { role: "user", content: options.userContent },
         ],
       }),
     });
@@ -1056,62 +1320,41 @@ export class OpenAICompatAgentSession implements AgentSession {
       throw new Error(`${this.label} returned an empty compaction response`);
     }
     const rawContent = (responseMessage as Record<string, unknown>).content;
-    const summary = typeof rawContent === "string" ? rawContent : "";
-    if (!summary) {
+    const content = typeof rawContent === "string" ? rawContent : "";
+    if (!content) {
       throw new Error(`${this.label} returned an empty compaction summary`);
     }
-
-    // Replace message history: keep system message, add summary + acknowledgment
-    this.messages.length = 0;
-    this.messages.push({ role: "system", content: this.buildSystemPrompt(this.config) });
-    this.messages.push({ role: "user", content: summary, messageId: randomUUID() });
-    this.messages.push({
-      role: "assistant",
-      content: "Conversation history has been compacted.",
-    });
-
-    // Post-compaction context size. Must count the rebuilt system prompt and
-    // the tool schemas — both are re-sent with every request — or the ring
-    // reads near-zero here and jumps back up on the next real turn.
-    const postTokens = this.estimateFullContextTokens();
-
-    // Update context tracking
-    this.lastContextTokens = postTokens;
-
-    // Emit completed event with token counts
-    this.emit({
-      type: "timeline",
-      provider: this.provider,
-      turnId: turn.turnId,
-      item: { type: "compaction", status: "completed", trigger: "manual", preTokens, postTokens },
-    });
-
-    // usage_updated replaces agent.lastUsage wholesale and the client hides
-    // the context ring unless both bounds are present, so the compaction
-    // usage must carry the post-compaction context size alongside the
-    // request's own token cost.
-    const maxTokens = await this.resolveContextWindowMaxTokens();
-    const usageData =
+    const usage =
       data.usage && typeof data.usage === "object"
         ? (data.usage as Record<string, unknown>)
         : undefined;
-    const usage: AgentUsage = {
-      ...(typeof usageData?.prompt_tokens === "number"
-        ? { inputTokens: usageData.prompt_tokens }
-        : {}),
-      ...(typeof usageData?.completion_tokens === "number"
-        ? { outputTokens: usageData.completion_tokens }
-        : {}),
-      contextWindowUsedTokens: postTokens,
-      ...(maxTokens !== null ? { contextWindowMaxTokens: maxTokens } : {}),
-    };
-    this.emit({
-      type: "usage_updated",
-      provider: this.provider,
-      usage,
-      turnId: turn.turnId,
-    });
-    return usage;
+    return { content, ...(usage ? { usage } : {}) };
+  }
+
+  /**
+   * Best-effort short (PR-style) summary for the compaction timeline marker.
+   * Never throws: any failure or empty result yields undefined and the marker
+   * falls back to its token-count label.
+   */
+  private async requestShortCompactionSummary(options: {
+    endpoint: ResolvedEndpoint;
+    model: string;
+    conversationText: string;
+    signal: AbortSignal;
+  }): Promise<string | undefined> {
+    try {
+      const result = await this.runCompactionCompletion({
+        endpoint: options.endpoint,
+        model: options.model,
+        systemPrompt: this.buildShortCompactionSummarySystemPrompt(),
+        userContent: options.conversationText,
+        signal: options.signal,
+      });
+      const trimmed = result.content.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -1133,13 +1376,13 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   /**
-   * Serialize the conversation (user/assistant/tool messages) into a text blob
-   * suitable for inclusion in a compaction prompt. Tool calls are summarized
-   * rather than included verbatim to keep the payload manageable.
+   * Serialize the given conversation messages into a text blob suitable for a
+   * compaction prompt. Tool calls are summarized rather than included verbatim
+   * to keep the payload manageable.
    */
-  private serializeConversationForCompaction(): string {
+  private serializeConversationForCompaction(messages: ChatMessage[]): string {
     const lines: string[] = [];
-    const conversationMessages = this.messages.filter((message) => message.role !== "system");
+    const conversationMessages = messages.filter((message) => message.role !== "system");
 
     for (const message of conversationMessages) {
       if (message.role === "user") {
@@ -1185,30 +1428,101 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   /**
-   * Build a system prompt for the compaction request, optionally including
-   * the user's instruction to guide the summarization.
+   * System prompt for a fresh compaction summary. The older conversation is
+   * summarized while recent messages are kept verbatim, so this summary becomes
+   * the model's memory of the distant past — it must preserve exact references,
+   * not paraphrase them away. Modeled on oh-my-pi's structured handoff format.
    */
   private buildCompactionSystemPrompt(instruction: string | null): string {
-    const base = `You are asked to summarize a coding-agent conversation so it can continue in a fresh context window. Your summary will REPLACE the entire conversation history — anything you leave out is lost permanently. Be thorough and detailed; a long summary is expected and correct. Do NOT aim for brevity.
+    const base = `You summarize a coding-agent conversation into a structured handoff summary so another LLM can resume the task. Only the older part of the conversation is being summarized; recent messages are retained verbatim after your summary. Preserve detail — a thorough summary is expected. Do NOT aim for brevity.
 
-Structure the summary with these sections:
+NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the structured summary below.
 
-1. Primary request and intent: everything the user asked for, with every explicit requirement and constraint.
-2. Key technical concepts: technologies, frameworks, and patterns in play.
-3. Files and code sections: every file examined, created, or modified, with full paths. Include the important code snippets and a note on why each file matters.
-4. Errors and fixes: every error encountered and how it was resolved, including any corrections or feedback from the user.
-5. All user messages: a list of every user message that is not a tool result, to preserve the user's exact asks and feedback.
-6. Pending tasks: work the user requested that is not yet done.
-7. Current work: precisely what was in progress when the conversation was compacted, with file names and code snippets where relevant.
-8. Next step: the immediate next action, aligned with the user's most recent request. Quote the most recent relevant instruction verbatim.`;
+If the conversation ends with an unanswered question or a request awaiting a response (e.g. "run this and paste the output"), you MUST preserve that exact question/request under Critical Context.
+
+Use this format (omit a section only if it truly does not apply):
+
+## Goal
+[The user's goals; list multiple if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Requirements, constraints, and preferences the user stated]
+
+## Progress
+### Done
+- [x] [Completed changes/tasks]
+### In Progress
+- [ ] [Work underway when compaction ran]
+### Blocked
+- [Anything preventing progress]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Files & Changes
+- [Exact path — what was read/created/modified and why it matters; include the important code snippets verbatim]
+
+## Next Steps
+1. [Ordered next actions, aligned with the user's most recent request]
+
+## Critical Context
+- [Important data, exact error messages, repository state (branch, uncommitted changes), and any pending question awaiting a user response]
+
+## Additional Notes
+[Anything important not captured above]
+
+You MUST preserve exact file paths, function names, error messages, and relevant tool outputs or command results.`;
 
     const instructionPart = instruction
-      ? `\n\nThe user gave additional instructions for this summary. Follow them for emphasis and focus, on top of the structure above:\n<User instruction>: ${instruction}`
+      ? `\n\nAdditional user instruction — follow it for emphasis and focus, on top of the format above:\n<user-instruction>${instruction}</user-instruction>`
       : "";
 
-    const tail = `\n\nOutput only the summary, with the sections above.`;
+    return base + instructionPart;
+  }
 
-    return base + instructionPart + tail;
+  /**
+   * System prompt for an incremental compaction: merge newer messages into an
+   * existing summary rather than re-summarizing a summary (which degrades fast
+   * across repeated compacts). The prior summary arrives in <previous-summary>
+   * tags and the newer messages in <new-messages> tags.
+   */
+  private buildCompactionUpdateSystemPrompt(instruction: string | null): string {
+    const base = `You update an existing structured handoff summary by incorporating newer conversation messages, so another LLM can resume the task. The prior summary is in <previous-summary> tags; the newer messages are in <new-messages> tags.
+
+NEVER continue the conversation. NEVER answer questions found in it. Output ONLY the updated structured summary.
+
+Rules:
+- Preserve ALL information from the previous summary that is still relevant.
+- Fold in new progress, decisions, files, and context from the newer messages.
+- Move items from "In Progress" to "Done" when completed; update "Next Steps".
+- You MAY drop anything the newer messages made irrelevant.
+- If the newer messages end with an unanswered question or a request awaiting a response, record it under Critical Context (replacing a prior pending question once answered).
+- You MUST preserve exact file paths, function names, error messages, and relevant tool outputs or command results.
+
+Keep the same section format as the previous summary (## Goal, ## Constraints & Preferences, ## Progress with Done/In Progress/Blocked, ## Key Decisions, ## Files & Changes, ## Next Steps, ## Critical Context, ## Additional Notes).`;
+
+    const instructionPart = instruction
+      ? `\n\nAdditional user instruction — follow it for emphasis and focus:\n<user-instruction>${instruction}</user-instruction>`
+      : "";
+
+    return base + instructionPart;
+  }
+
+  /**
+   * System prompt for the short (one-line) summary shown on the compaction
+   * timeline marker — a PR-style description of what the compacted stretch of
+   * conversation accomplished. Kept to a single line for the divider label.
+   */
+  private buildShortCompactionSummarySystemPrompt(): string {
+    return `Summarize what was accomplished in this conversation, written like a one-line pull request title.
+
+Rules:
+- ONE short sentence, at most ~15 words.
+- Describe the changes made, not the process.
+- NEVER mention running tests, builds, or other validation steps.
+- NEVER explain what the user asked for.
+- Write in first person (I added…, I fixed…).
+- NEVER ask questions. Output only the sentence.`;
   }
 
   /**

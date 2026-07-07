@@ -10,7 +10,11 @@ import { z } from "zod";
 
 import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 import type { AgentStreamEvent, McpServerConfig } from "../agent-sdk-types.js";
-import { OpenAICompatAgentClient, normalizeOpenAICompatBaseUrl } from "./openai-compat-agent.js";
+import {
+  OpenAICompatAgentClient,
+  isUneventfulToolResult,
+  normalizeOpenAICompatBaseUrl,
+} from "./openai-compat-agent.js";
 import { executeCompatTool } from "./openai-compat-tools.js";
 
 interface TestEndpoint {
@@ -1681,6 +1685,21 @@ async function startCompactEndpoint(options?: {
   return { server, baseUrl: `http://127.0.0.1:${port}`, compactRequests };
 }
 
+/**
+ * Compaction fires two concurrent non-streaming requests: the full structured
+ * summary and a short PR-style summary. Their arrival order is nondeterministic,
+ * so find the full one by a marker unique to its system prompt.
+ */
+function findFullSummaryRequest(
+  requests: Array<Record<string, unknown>>,
+): Record<string, unknown> | undefined {
+  return requests.find((request) => {
+    const messages = request.messages as Array<{ role: string; content: string }> | undefined;
+    const system = messages?.[0]?.content ?? "";
+    return system.includes("structured handoff summary");
+  });
+}
+
 describe("OpenAICompatAgentSession /compact", () => {
   test("lists /compact in listCommands even without MCP servers", async () => {
     const endpoint = await startEndpoint();
@@ -1766,13 +1785,16 @@ describe("OpenAICompatAgentSession /compact", () => {
     const lastMessage = messages[messages.length - 1];
     expect(lastMessage?.content).toBe("Conversation history has been compacted.");
 
-    // Verify the compaction request was sent
+    // Verify the compaction request was sent. Compaction fires two concurrent
+    // non-streaming requests (full structured summary + short PR-style summary);
+    // find the full one by its system prompt.
     expect(endpoint.compactRequests.length).toBeGreaterThan(0);
-    const compactRequest = endpoint.compactRequests[endpoint.compactRequests.length - 1];
-    expect(compactRequest.stream).toBeUndefined(); // non-streaming
-    const reqMessages = compactRequest.messages as Array<{ role: string; content: string }>;
+    const compactRequest = findFullSummaryRequest(endpoint.compactRequests);
+    expect(compactRequest).toBeDefined();
+    expect(compactRequest?.stream).toBeUndefined(); // non-streaming
+    const reqMessages = compactRequest?.messages as Array<{ role: string; content: string }>;
     expect(reqMessages[0]?.role).toBe("system");
-    expect(reqMessages[0]?.content).toContain("summarize");
+    expect(reqMessages[0]?.content).toContain("structured handoff summary");
 
     await session.close();
   });
@@ -1793,8 +1815,9 @@ describe("OpenAICompatAgentSession /compact", () => {
 
     // Check the compaction system prompt includes the instruction
     expect(endpoint.compactRequests.length).toBeGreaterThan(0);
-    const compactRequest = endpoint.compactRequests[endpoint.compactRequests.length - 1];
-    const reqMessages = compactRequest.messages as Array<{ role: string; content: string }>;
+    const compactRequest = findFullSummaryRequest(endpoint.compactRequests);
+    expect(compactRequest).toBeDefined();
+    const reqMessages = compactRequest?.messages as Array<{ role: string; content: string }>;
     const systemContent = reqMessages[0]?.content as string;
     expect(systemContent).toContain("focus on the bugs");
 
@@ -1865,6 +1888,9 @@ describe("OpenAICompatAgentSession /compact", () => {
       model: "test-model-a",
     });
 
+    // Needs history to summarize; an empty conversation compacts to a no-op.
+    await session.run("First message");
+
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
 
@@ -1872,7 +1898,7 @@ describe("OpenAICompatAgentSession /compact", () => {
 
     const usageEvents = events.filter((event) => event.type === "usage_updated");
     expect(usageEvents.length).toBeGreaterThan(0);
-    const usage = usageEvents[0]?.usage;
+    const usage = usageEvents[usageEvents.length - 1]?.usage;
     expect(usage).toBeDefined();
     expect(usage?.inputTokens).toBe(100);
     expect(usage?.outputTokens).toBe(50);
@@ -1883,5 +1909,112 @@ describe("OpenAICompatAgentSession /compact", () => {
     expect(usage?.contextWindowUsedTokens).toBeGreaterThan(0);
 
     await session.close();
+  });
+
+  test("keeps recent history verbatim and summarizes only the older region", async () => {
+    const endpoint = await startCompactEndpoint({ summary: "SUMMARY_OF_OLD_HISTORY" });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    // Build a conversation large enough to exceed the keep-recent budget so
+    // there is genuinely an "old" region to summarize and a "recent" region to
+    // preserve. Each message carries a unique marker + heavy filler.
+    const filler = "x".repeat(25_000);
+    for (let index = 1; index <= 5; index += 1) {
+      await session.run(`MARKER_${index} ${filler}`);
+    }
+
+    await session.run("/compact");
+
+    const persistence = session.describePersistence();
+    const messages = persistence?.metadata?.messages as Array<{ role: string; content: string }>;
+    const joined = messages.map((message) => message.content).join("\n");
+
+    // The newest message stays verbatim; the oldest is folded into the summary.
+    expect(joined).toContain("MARKER_5");
+    expect(joined).not.toContain("MARKER_1");
+    // The summary of the old region is present as a compaction summary message.
+    expect(joined).toContain("SUMMARY_OF_OLD_HISTORY");
+
+    await session.close();
+  });
+
+  test("re-compaction merges into the prior summary instead of re-summarizing it", async () => {
+    const endpoint = await startCompactEndpoint({ summary: "MERGED_SUMMARY" });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("First message");
+    await session.run("/compact");
+    await session.run("Second message");
+    await session.run("/compact");
+
+    // The second compaction must use the incremental-update prompt and feed the
+    // prior summary back in <previous-summary> tags.
+    const updateRequest = endpoint.compactRequests.find((request) => {
+      const messages = request.messages as Array<{ role: string; content: string }> | undefined;
+      const system = messages?.[0]?.content ?? "";
+      return system.includes("update an existing structured handoff summary");
+    });
+    expect(updateRequest).toBeDefined();
+    const updateMessages = updateRequest?.messages as Array<{ role: string; content: string }>;
+    expect(updateMessages[1]?.content).toContain("<previous-summary>");
+    expect(updateMessages[1]?.content).toContain("MERGED_SUMMARY");
+
+    await session.close();
+  });
+
+  test("emits a short summary on the completed compaction event", async () => {
+    const endpoint = await startCompactEndpoint({ summary: "I refactored the auth module." });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First message");
+    await session.run("/compact");
+
+    const completedEvent = events.find(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "compaction" &&
+        event.item.status === "completed",
+    );
+    expect(completedEvent).toBeDefined();
+    if (completedEvent?.type === "timeline" && completedEvent.item.type === "compaction") {
+      expect(completedEvent.item.shortSummary).toBe("I refactored the auth module.");
+    }
+
+    await session.close();
+  });
+});
+
+describe("isUneventfulToolResult", () => {
+  test("flags empty and zero-signal results", () => {
+    expect(isUneventfulToolResult("")).toBe(true);
+    expect(isUneventfulToolResult("   \n  ")).toBe(true);
+    expect(isUneventfulToolResult("No matches found")).toBe(true);
+    expect(isUneventfulToolResult("no results found")).toBe(true);
+    expect(isUneventfulToolResult("Found 0 matches")).toBe(true);
+    expect(isUneventfulToolResult("(no output)")).toBe(true);
+  });
+
+  test("keeps results that carry signal", () => {
+    expect(isUneventfulToolResult("export const x = 1;")).toBe(false);
+    expect(isUneventfulToolResult("Found 3 matches")).toBe(false);
+    expect(isUneventfulToolResult("[Uneventful result elided]")).toBe(false);
   });
 });
