@@ -1993,6 +1993,7 @@ export const zhCN: TranslationResources = {
         groups: {
           preview: "预览服务器",
           browser: "浏览器控制",
+          web: "Web search",
           agents: "代理管理",
           terminals: "终端",
           schedules: "计划任务",

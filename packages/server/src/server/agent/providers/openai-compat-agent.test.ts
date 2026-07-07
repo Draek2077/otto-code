@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
+import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 import type { AgentStreamEvent, McpServerConfig } from "../agent-sdk-types.js";
 import { OpenAICompatAgentClient, normalizeOpenAICompatBaseUrl } from "./openai-compat-agent.js";
 import { executeCompatTool } from "./openai-compat-tools.js";
@@ -913,7 +914,36 @@ describe("OpenAICompatAgentSession tool loop", () => {
     const toolNames = (endpoint.requests[0]?.tools ?? []).map(
       (tool) => (tool as { function: { name: string } }).function.name,
     );
+    expect(toolNames).toEqual(["read_file", "list_dir", "grep_search", "web_search", "web_fetch"]);
+  });
+
+  test("disabling the web tool group hides web_search and web_fetch", async () => {
+    const endpoint = await startToolEndpoint();
+    // Enable every group except "web".
+    const groups = OTTO_TOOL_GROUPS.filter((group) => group !== "web");
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      ottoToolGroups: groups,
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "plan",
+    });
+
+    await session.run("Look around");
+
+    const toolNames = (endpoint.requests[0]?.tools ?? []).map(
+      (tool) => (tool as { function: { name: string } }).function.name,
+    );
+    // Plan mode already limits to read tools; disabling the web group drops
+    // web_search/web_fetch, leaving the three core read builtins.
     expect(toolNames).toEqual(["read_file", "list_dir", "grep_search"]);
+
+    await session.close();
   });
 });
 
@@ -1106,7 +1136,7 @@ describe("OpenAICompatAgentSession MCP tools", () => {
 
     await session.run("Look around");
     const names = toolPayloadNames(endpoint.completionBodies[0] as unknown as RecordedRequest);
-    expect(names).toEqual(["read_file", "list_dir", "grep_search"]);
+    expect(names).toEqual(["read_file", "list_dir", "grep_search", "web_search", "web_fetch"]);
 
     await session.close();
   });
@@ -1532,6 +1562,49 @@ describe("executeCompatTool", () => {
     });
     expect(found.output).toContain("app.ts:1:const needle = 42;");
     expect(found.detail).toMatchObject({ type: "search", numMatches: 1 });
+  });
+
+  test("web_fetch rejects a non-http protocol without touching the network", async () => {
+    const cwd = await makeTempCwd();
+    const outcome = await executeCompatTool({
+      name: "web_fetch",
+      arguments: { url: "file:///etc/passwd" },
+      cwd,
+    });
+    expect(outcome.isError).toBe(true);
+    expect(outcome.output).toContain("http://");
+  });
+
+  test("web_fetch blocks SSRF targets (localhost, metadata, private ranges)", async () => {
+    const cwd = await makeTempCwd();
+    const blocked = [
+      "http://localhost:6868/",
+      "http://127.0.0.1/",
+      "http://169.254.169.254/latest/meta-data/",
+      "http://10.0.0.5/",
+      "http://192.168.1.1/",
+      "http://metadata.google.internal/",
+    ];
+    for (const url of blocked) {
+      const outcome = await executeCompatTool({
+        name: "web_fetch",
+        arguments: { url },
+        cwd,
+      });
+      expect(outcome.isError, `expected ${url} to be blocked`).toBe(true);
+      expect(outcome.output).toContain("web_fetch failed");
+    }
+  });
+
+  test("web_fetch reports a friendly error for a malformed URL", async () => {
+    const cwd = await makeTempCwd();
+    const outcome = await executeCompatTool({
+      name: "web_fetch",
+      arguments: { url: "not a url" },
+      cwd,
+    });
+    expect(outcome.isError).toBe(true);
+    expect(outcome.output).toContain("Invalid URL");
   });
 });
 

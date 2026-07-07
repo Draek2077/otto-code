@@ -2,8 +2,160 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as dns from "node:dns";
 
 import type { ToolCallDetail } from "../agent-sdk-types.js";
+
+// ---------------------------------------------------------------------------
+// SSRF Protection — prevent web_fetch from reaching internal networks
+// ---------------------------------------------------------------------------
+
+/**
+ * IP ranges that must never be reachable from web_fetch.
+ * Covers: loopback, link-local, private (RFC 1918), carrier-grade,
+ * unique-local, multicast, and cloud metadata endpoints.
+ */
+const BLOCKED_IP_RANGES: Array<[string, string]> = [
+  // Loopback: 127.0.0.0/8
+  ["127.0.0.0", "127.255.255.255"],
+  // Link-local: 169.254.0.0/16
+  ["169.254.0.0", "169.254.255.255"],
+  // Private: 10.0.0.0/8
+  ["10.0.0.0", "10.255.255.255"],
+  // Private: 172.16.0.0/12
+  ["172.16.0.0", "172.31.255.255"],
+  // Private: 192.168.0.0/16
+  ["192.168.0.0", "192.168.255.255"],
+  // Carrier-grade NAT: 100.64.0.0/10
+  ["100.64.0.0", "100.127.255.255"],
+  // Unique-local: fc00::/7 (IPv6)
+  // Handled separately via IPv6 prefix check
+  // Multicast: ff00::/8 (IPv6)
+  // Handled separately via IPv6 prefix check
+  // Documentation: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+  // (not strictly needed but defensive)
+  ["192.0.2.0", "192.0.2.255"],
+  ["198.51.100.0", "198.51.100.255"],
+  ["203.0.113.0", "203.0.113.255"],
+  // Any local: 0.0.0.0
+  ["0.0.0.0", "0.255.255.255"],
+];
+
+/** Hostnames that are always allowed (DuckDuckGo API endpoints). */
+const ALLOWED_HOSTS = new Set(["api.duckduckgo.com", "html.duckduckgo.com"]);
+
+/**
+ * Convert an IPv4 address string to a 32-bit integer for range comparison.
+ */
+function ipv4ToNumber(ip: string): number {
+  const parts = ip.split(".");
+  return (
+    (Number.parseInt(parts[0], 10) << 24) |
+    (Number.parseInt(parts[1], 10) << 16) |
+    (Number.parseInt(parts[2], 10) << 8) |
+    Number.parseInt(parts[3], 10)
+  );
+}
+
+/**
+ * Check whether an IP address falls within any blocked range.
+ * Returns true if the IP is dangerous and should be blocked.
+ */
+function isBlockedIp(ip: string): boolean {
+  // IPv6: block loopback (::1), unique-local (fc00::/7), multicast (ff00::/8)
+  if (ip.includes(":")) {
+    const lower = ip.toLowerCase();
+    if (
+      lower === "::1" ||
+      lower === "::" ||
+      lower.startsWith("fc") ||
+      lower.startsWith("fd") ||
+      lower.startsWith("fe") ||
+      lower.startsWith("ff")
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  // IPv4: check against blocked ranges
+  try {
+    const num = ipv4ToNumber(ip);
+    for (const [start, end] of BLOCKED_IP_RANGES) {
+      if (num >= ipv4ToNumber(start) && num <= ipv4ToNumber(end)) {
+        return true;
+      }
+    }
+  } catch {
+    // Unparseable IP — block it defensively
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resolve a hostname to its IP address(es) and validate none are blocked.
+ * Throws if any resolved IP is in a blocked range or if resolution fails.
+ */
+async function validateHostname(host: string): Promise<void> {
+  // Allowlist check — skip DNS validation for trusted hosts
+  if (ALLOWED_HOSTS.has(host)) {
+    return;
+  }
+
+  // Reject obviously internal hostnames without DNS lookup
+  if (
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    host.includes("internal") ||
+    host.includes("metadata")
+  ) {
+    throw new Error(`Blocked: hostname '${host}' targets an internal network`);
+  }
+
+  // Resolve DNS and validate the resulting IP(s)
+  const addresses = await new Promise<string[]>((resolve, reject) => {
+    dns.resolve4(host, (err, addrs) => {
+      if (err) {
+        // Try IPv6 as fallback
+        dns.resolve6(host, (err6, addrs6) => {
+          if (err6) {
+            reject(new Error(`DNS resolution failed for '${host}'`));
+            return;
+          }
+          resolve(addrs6);
+        });
+        return;
+      }
+      resolve(addrs);
+    });
+  });
+
+  for (const addr of addresses) {
+    if (isBlockedIp(addr)) {
+      throw new Error(
+        `Blocked: '${host}' resolved to ${addr} which is in a restricted network range`,
+      );
+    }
+  }
+}
+
+/**
+ * Validate that a URL is safe to fetch, checking protocol, hostname, and resolved IP.
+ * Throws a descriptive error if the URL is blocked.
+ */
+async function validateUrlForFetch(urlString: string): Promise<void> {
+  const parsedUrl = new URL(urlString);
+
+  // Only allow http/https
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error(`Blocked: only http:// and https:// URLs are allowed`);
+  }
+
+  // Validate hostname and resolved IP
+  await validateHostname(parsedUrl.hostname);
+}
 
 /**
  * Built-in coding tools for the OpenAI-compatible native provider. These run
@@ -50,6 +202,16 @@ const SKIPPED_DIRECTORIES = new Set([
   ".dev",
 ]);
 
+// --- Web tool constants ---
+const DDG_API_URL = "https://api.duckduckgo.com";
+const DDG_HTML_URL = "https://html.duckduckgo.com/html/";
+const MAX_WEB_FETCH_BYTES = 1_000_000;
+const MAX_WEB_FETCH_OUTPUT = 15_000;
+const WEB_SEARCH_TIMEOUT_MS = 15_000;
+const WEB_FETCH_TIMEOUT_MS = 30_000;
+const MAX_WEB_SEARCH_RESULTS = 15;
+const MAX_WEB_FETCH_REDIRECTS = 5;
+
 export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
   {
     name: "read_file",
@@ -91,6 +253,38 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
         max_results: { type: "number", description: "Maximum matches to return (default 100)" },
       },
       required: ["pattern"],
+    },
+  },
+  {
+    name: "web_search",
+    kind: "read",
+    description:
+      "Search the web using DuckDuckGo. Returns a list of results with titles, URLs and snippets. " +
+      "Use this to find current information, documentation, or anything not available locally.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The search query" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "web_fetch",
+    kind: "read",
+    description:
+      "Fetch the content of a web page and return it as readable text. " +
+      "Use this to read the full content of a specific URL found via web_search or provided directly.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The URL to fetch" },
+        max_length: {
+          type: "number",
+          description: "Maximum characters to return (default 15000)",
+        },
+      },
+      required: ["url"],
     },
   },
   {
@@ -173,6 +367,10 @@ export async function executeCompatTool(input: CompatToolCallInput): Promise<Com
       return listDirTool(input);
     case "grep_search":
       return grepSearchTool(input);
+    case "web_search":
+      return webSearchTool(input);
+    case "web_fetch":
+      return webFetchTool(input);
     case "write_file":
       return writeFileTool(input);
     case "edit_file":
@@ -208,6 +406,10 @@ export function buildCompatToolPreviewDetail(
       };
     case "grep_search":
       return { type: "search", query: readString(args, "pattern") ?? "", toolName: "grep" };
+    case "web_search":
+      return { type: "search", query: readString(args, "query") ?? "", toolName: "web_search" };
+    case "web_fetch":
+      return { type: "fetch", url: readString(args, "url") ?? "" };
     case "write_file":
       return {
         type: "write",
@@ -618,6 +820,477 @@ async function runShellCommand(
     exitCode: timedOut || signal?.aborted ? null : exitCode,
     timedOut,
   };
+}
+
+// ---------------------------------------------------------------------------
+// DuckDuckGo web search & fetch helpers
+// ---------------------------------------------------------------------------
+
+/** Make an HTTP request with an optional timeout and abort signal. */
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+  timeoutMs: number = 15_000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Simple HTML entity decoder for common entities. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number.parseInt(d, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)));
+}
+
+/** Strip HTML tags and collapse whitespace. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// web_search — DuckDuckGo Instant Answer API + HTML scraping fallback
+// ---------------------------------------------------------------------------
+
+interface DdgInstantAnswerResult {
+  title?: string;
+  url?: string;
+  body?: string;
+  abstract?: string;
+  abstractURL?: string;
+  heading?: string;
+}
+
+interface DdgRelatedTopicResult {
+  FirstURL?: string;
+  Text?: string;
+  Icon?: { URL?: string };
+}
+
+interface DdgResult {
+  Heading?: string;
+  Text?: string;
+  URL?: string;
+  AbstractURL?: string;
+  Abstract?: string;
+  RelatedTopics?: unknown[];
+}
+
+interface DdgInstantAnswerResponse {
+  Result?: DdgInstantAnswerResult;
+  RelatedTopics?: DdgRelatedTopicResult[];
+  Results?: DdgResult[];
+  NoResults?: string;
+}
+
+interface DdgHtmlResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+async function ddgInstantAnswerSearch(query: string): Promise<DdgInstantAnswerResponse> {
+  const url = new URL(`${DDG_API_URL}/`);
+  url.searchParams.set("q", query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("no_redirect", "1");
+
+  const response = await fetchWithTimeout(
+    url.toString(),
+    {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; Otto/1.0; +https://github.com/otto-ai/otto-code)",
+      },
+    },
+    WEB_SEARCH_TIMEOUT_MS,
+  );
+
+  if (!response.ok) {
+    throw new Error(`DuckDuckGo API returned ${response.status} ${response.statusText}`);
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as DdgInstantAnswerResponse;
+  } catch {
+    return {};
+  }
+}
+
+async function ddgHtmlSearch(query: string): Promise<DdgHtmlResult[]> {
+  const url = new URL(DDG_HTML_URL);
+  url.searchParams.set("q", query);
+
+  const response = await fetchWithTimeout(
+    url.toString(),
+    {
+      headers: {
+        Accept: "text/html",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    },
+    WEB_SEARCH_TIMEOUT_MS,
+  );
+
+  if (!response.ok) {
+    throw new Error(`DuckDuckGo HTML search returned ${response.status} ${response.statusText}`);
+  }
+
+  const html = await response.text();
+  return parseDdgHtmlResults(html);
+}
+
+function parseDdgHtmlResults(html: string): DdgHtmlResult[] {
+  const results: DdgHtmlResult[] = [];
+
+  // DuckDuckGo HTML results are in <a class="result__a"> inside <li class="result">
+  // Each result has a <h2> for title, <a> for link, and <a class="result__snippet"> for snippet
+  const resultRegex = /<li[^>]*class="result"[^>]*>([\s\S]*?)<\/li>/gi;
+  let match;
+
+  while ((match = resultRegex.exec(html)) !== null) {
+    const block = match[1];
+
+    // Extract title from <h2 class="result__title"><a ...>Title</a></h2>
+    const titleMatch = block.match(/<h2[^>]*>.*?<a[^>]*>([\s\S]*?)<\/a>/i);
+    const title = titleMatch ? stripHtml(decodeHtmlEntities(titleMatch[1])).trim() : "";
+
+    // Extract URL — DuckDuckGo uses redirect URLs, extract the original
+    const hrefMatch = block.match(/<a[^>]*href="([^"]+)"[^>]*class="result__a"/i);
+    let rawUrl = hrefMatch ? decodeURIComponent(decodeHtmlEntities(hrefMatch[1])) : "";
+
+    // DDG wraps URLs in r=... redirects; try to extract the actual URL
+    const actualUrlMatch = rawUrl.match(/r=([^&]+)/);
+    if (actualUrlMatch) {
+      rawUrl = decodeURIComponent(actualUrlMatch[1]);
+    }
+
+    // Clean up the URL — remove query params that DDG appends
+    let url = rawUrl.split(/[?&]/)[0] || "";
+
+    // Extract snippet
+    const snippetMatch = block.match(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
+    const snippet = snippetMatch ? stripHtml(decodeHtmlEntities(snippetMatch[1])).trim() : "";
+
+    if (title || url) {
+      results.push({ title, url, snippet });
+    }
+  }
+
+  return results.slice(0, MAX_WEB_SEARCH_RESULTS);
+}
+
+async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutcome> {
+  const query = readString(input.arguments, "query");
+  if (!query) {
+    return errorOutcome("web_search requires a 'query' argument", {
+      type: "search",
+      query: "",
+      toolName: "web_search",
+    });
+  }
+
+  const detailBase: ToolCallDetail = {
+    type: "search",
+    query,
+    toolName: "web_search",
+  };
+
+  try {
+    // Try the Instant Answer API first (fast, structured JSON)
+    const instantResults = await ddgInstantAnswerSearch(query);
+    const webResults: Array<{ title: string; url: string }> = [];
+    const annotations: string[] = [];
+
+    // Extract results from Instant Answer API
+    if (instantResults.Results && instantResults.Results.length > 0) {
+      for (const r of instantResults.Results) {
+        const title = r.Heading || "";
+        const url = r.AbstractURL || r.URL || "";
+        if (url) {
+          webResults.push({ title, url });
+        }
+        if (r.Text) {
+          annotations.push(r.Text);
+        }
+      }
+    }
+
+    // If we got good results from the API, return them
+    if (webResults.length > 0) {
+      const lines = webResults.map((r, i) => {
+        const snippet = annotations[i] || "";
+        return `${i + 1}. ${r.title}\n   URL: ${r.url}${snippet ? "\n   " + snippet : ""}`;
+      });
+
+      const output = `Web search results for "${query}":\n\n${lines.join("\n\n")}`;
+      return {
+        output,
+        detail: {
+          ...detailBase,
+          webResults,
+          ...(annotations.length > 0 ? { annotations } : {}),
+        },
+      };
+    }
+
+    // Fallback: scrape DuckDuckGo HTML results
+    const htmlResults = await ddgHtmlSearch(query);
+    if (htmlResults.length > 0) {
+      const webResultsFromHtml = htmlResults.map((r) => ({
+        title: r.title,
+        url: r.url,
+      }));
+      const lines = htmlResults.map(
+        (r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}${r.snippet ? "\n   " + r.snippet : ""}`,
+      );
+
+      const output = `Web search results for "${query}":\n\n${lines.join("\n\n")}`;
+      return {
+        output,
+        detail: {
+          ...detailBase,
+          webResults: webResultsFromHtml,
+        },
+      };
+    }
+
+    return {
+      output: `No results found for "${query}"`,
+      detail: detailBase,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorOutcome(`web_search failed: ${message}`, detailBase);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// web_fetch — Fetch a URL and extract readable text
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a URL, following redirects manually so every hop is re-validated
+ * against the SSRF blocklist — a public URL must not be able to redirect into
+ * an internal/metadata address. Throws on blocked hosts or excessive redirects.
+ */
+async function fetchWithSsrfGuard(urlString: string): Promise<Response> {
+  let currentUrl = urlString;
+  for (let hop = 0; hop <= MAX_WEB_FETCH_REDIRECTS; hop++) {
+    await validateUrlForFetch(currentUrl);
+    const response = await fetchWithTimeout(
+      currentUrl,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        redirect: "manual",
+      },
+      WEB_FETCH_TIMEOUT_MS,
+    );
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return response;
+      }
+      if (hop === MAX_WEB_FETCH_REDIRECTS) {
+        throw new Error(`Too many redirects (>${MAX_WEB_FETCH_REDIRECTS})`);
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new Error("No response received");
+}
+
+async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutcome> {
+  const urlString = readString(input.arguments, "url");
+  if (!urlString) {
+    return errorOutcome("web_fetch requires a 'url' argument", {
+      type: "fetch",
+      url: "",
+    });
+  }
+
+  // Validate URL shape up front for a friendly error message; protocol and
+  // SSRF checks happen per-hop inside fetchWithSsrfGuard.
+  if (!URL.canParse(urlString)) {
+    return errorOutcome(`web_fetch failed: Invalid URL "${urlString}"`, {
+      type: "fetch",
+      url: urlString,
+    });
+  }
+
+  const maxLength = readNumber(input.arguments, "max_length") ?? MAX_WEB_FETCH_OUTPUT;
+
+  const detailBase: ToolCallDetail = {
+    type: "fetch",
+    url: urlString,
+  };
+
+  try {
+    const response = await fetchWithSsrfGuard(urlString);
+
+    const statusText = response.status >= 400 ? response.statusText : "OK";
+
+    // Read response body
+    const buffer = await response.arrayBuffer();
+    const bytes = buffer.byteLength;
+
+    if (bytes > MAX_WEB_FETCH_BYTES) {
+      return errorOutcome(
+        `web_fetch failed: Response too large (${bytes} bytes, max ${MAX_WEB_FETCH_BYTES})`,
+        detailBase,
+      );
+    }
+
+    const encoding = normalizeBufferEncoding(
+      extractCharset(response.headers.get("content-type") ?? ""),
+    );
+
+    const text = Buffer.from(buffer).toString(encoding);
+    const isHtml = response.headers.get("content-type")?.includes("text/html") ?? false;
+
+    let content: string;
+    if (isHtml) {
+      content = extractReadableTextFromHtml(text);
+    } else {
+      // Try to parse as JSON for pretty-printing
+      try {
+        const json = JSON.parse(text);
+        content = JSON.stringify(json, null, 2);
+      } catch {
+        content = text;
+      }
+    }
+
+    const truncated = content.length > maxLength;
+    const result = truncated ? content.slice(0, maxLength) : content;
+
+    const output = `Fetched ${urlString} (${response.status} ${statusText}, ${bytes} bytes)\n\n${result}${truncated ? "\n\n[truncated]" : ""}`;
+
+    return {
+      output,
+      detail: {
+        ...detailBase,
+        result: result.slice(0, 500) + (truncated ? "..." : ""),
+        code: response.status,
+        codeText: statusText,
+        bytes,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorOutcome(`web_fetch failed: ${message}`, detailBase);
+  }
+}
+
+/** Extract a charset from a Content-Type header value. */
+function extractCharset(contentType: string): string | null {
+  const match = contentType.match(/charset=([^\s;]+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Map a charset label to a Node Buffer encoding, falling back to utf-8 for
+ * anything Node's Buffer can't decode (e.g. windows-1252). Buffer.toString
+ * throws on unknown encodings, so this keeps web_fetch from failing on pages
+ * that declare an exotic charset.
+ */
+function normalizeBufferEncoding(charset: string | null): BufferEncoding {
+  switch (charset?.toLowerCase().trim()) {
+    case "utf-8":
+    case "utf8":
+      return "utf-8";
+    case "iso-8859-1":
+    case "latin1":
+    case "us-ascii":
+    case "ascii":
+      return "latin1";
+    case "utf-16le":
+    case "utf-16":
+    case "ucs-2":
+      return "utf16le";
+    default:
+      return "utf-8";
+  }
+}
+
+/**
+ * Extract readable text from an HTML document.
+ * Strips scripts, styles, nav, footer, etc. and returns the main content.
+ */
+function extractReadableTextFromHtml(html: string): string {
+  let text = html;
+
+  // Remove script and style contents
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, "");
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, "");
+  text = text.replace(/<noscript[\s\S]*?<\/noscript>/gi, "");
+
+  // Remove comments
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+
+  // Try to extract <body> content
+  const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    text = bodyMatch[1];
+  }
+
+  // Try to extract <article> or <main> content (preferred for readability)
+  const articleMatch = text.match(/<(?:article|main)[^>]*>([\s\S]*?)<\/(?:article|main)>/i);
+  if (articleMatch) {
+    text = articleMatch[1];
+  }
+
+  // Add newlines for block elements
+  text = text.replace(/<\/(?:p|div|h[1-6]|li|br|tr|blockquote|pre)>/gi, "\n");
+  text = text.replace(/<li/gi, "\n- ");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+
+  // Remove remaining tags
+  text = text.replace(/<[^>]+>/g, "");
+
+  // Decode entities
+  text = decodeHtmlEntities(text);
+
+  // Collapse whitespace
+  text = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
 }
 
 function describeFsError(error: unknown): string {
