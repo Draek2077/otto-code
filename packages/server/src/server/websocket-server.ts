@@ -1243,6 +1243,8 @@ export class VoiceAssistantWebSocketServer {
         providerRemove: true,
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
         agentContextUsage: true,
+        // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
+        artifacts: true,
       },
     };
   }

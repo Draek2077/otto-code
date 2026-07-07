@@ -148,6 +148,9 @@ import { ChatScheduleLoopSession } from "./session/chat/chat-schedule-loop-sessi
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
+import { ArtifactSession } from "./session/artifact/artifact-session.js";
+import { ArtifactService } from "./artifact/artifact-service.js";
+import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
@@ -593,6 +596,7 @@ export class Session {
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
+  private readonly artifactSession: ArtifactSession;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -800,6 +804,24 @@ export class Session {
       listAgents: () => this.agentManager.listAgents(),
       listProjects: () => this.projectRegistry.list(),
       listWorkspaces: () => this.workspaceRegistry.list(),
+      logger: this.sessionLogger,
+    });
+    const artifactService = new ArtifactService({
+      projectCwd: this.ottoHome,
+      logger: this.sessionLogger,
+      agentManager: this.agentManager,
+      broadcastArtifactUpdate: (metadata: ArtifactMetadata) => {
+        this.emit({
+          type: "artifact.updated.notification",
+          payload: { artifact: metadata },
+        });
+      },
+    });
+    this.artifactSession = new ArtifactSession({
+      host: {
+        emit: (msg) => this.emit(msg),
+      },
+      artifactService,
       logger: this.sessionLogger,
     });
     this.daemonConfigStore = daemonConfigStore;
@@ -1379,6 +1401,7 @@ export class Session {
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
+      this.dispatchArtifactMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
   }
@@ -1741,6 +1764,23 @@ export class Session {
         return this.chatScheduleLoopSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
         return this.chatScheduleLoopSession.handleScheduleUpdateRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchArtifactMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "artifact.list.request":
+        return this.artifactSession.handleArtifactListRequest(msg);
+      case "artifact.create.request":
+        return this.artifactSession.handleArtifactCreateRequest(msg);
+      case "artifact.delete.request":
+        return this.artifactSession.handleArtifactDeleteRequest(msg);
+      case "artifact.star.request":
+        return this.artifactSession.handleArtifactStarRequest(msg);
+      case "artifact.get-content.request":
+        return this.artifactSession.handleArtifactGetContentRequest(msg);
       default:
         return undefined;
     }
@@ -5922,5 +5962,7 @@ export class Session {
     this.checkoutSession.cleanup();
 
     this.workspaceGitObserver.dispose();
+
+    this.artifactSession.stop();
   }
 }
