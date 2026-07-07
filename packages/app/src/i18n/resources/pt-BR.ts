@@ -545,6 +545,9 @@ export const ptBR: TranslationResources = {
         archiveRunningAgentTitle: "Arquivar agente em execução?",
         archiveRunningAgentMessage:
           "Este agente ainda está em execução. Arquivá-lo interromperá o agente e fechará a aba.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "Fechar abas à esquerda?",
         closeTabsRightTitle: "Fechar abas à direita?",
         closeOtherTabsTitle: "Fechar outras abas?",
@@ -565,6 +568,7 @@ export const ptBR: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "Ações do workspace",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "Novo agente",
         newTerminal: "Novo terminal",
         newBrowser: "Nova aba de navegador",
@@ -821,6 +825,7 @@ export const ptBR: TranslationResources = {
     sections: {
       sessions: "Histórico",
       schedules: "Agendamentos",
+      artifacts: "Artefatos",
     },
     worktreeSetup: {
       title: "Configurar scripts de worktree",

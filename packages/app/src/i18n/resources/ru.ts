@@ -545,6 +545,9 @@ export const ru: TranslationResources = {
         archiveRunningAgentTitle: "Агент запуска архива?",
         archiveRunningAgentMessage:
           "Этот агент все еще работает. Архивирование остановит агент и закроет вкладку.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "Закрыть вкладки слева?",
         closeTabsRightTitle: "Закрыть вкладки справа?",
         closeOtherTabsTitle: "Закрыть другие вкладки?",
@@ -566,6 +569,7 @@ export const ru: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "Действия Workspace",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "Новый агент",
         newTerminal: "Новый терминал",
         newBrowser: "Новая вкладка браузера",
@@ -822,6 +826,7 @@ export const ru: TranslationResources = {
     sections: {
       sessions: "История",
       schedules: "Расписания",
+      artifacts: "Артефакты",
     },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",

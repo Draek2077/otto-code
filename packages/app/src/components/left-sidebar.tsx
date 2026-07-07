@@ -1,6 +1,7 @@
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
+  FileText,
   FolderPlusBold,
   History,
   HomeBold,
@@ -74,6 +75,7 @@ import {
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
+  buildArtifactsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { compactUp, ICON_SIZE } from "@/styles/theme";
@@ -122,6 +124,7 @@ interface SidebarLabels {
   searchHosts: string;
   sessions: string;
   schedules: string;
+  artifacts: string;
   closeSidebar: string;
 }
 
@@ -132,6 +135,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
+  handleViewArtifactsNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -139,6 +143,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   isOpen: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
+  handleViewArtifacts: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({
@@ -244,6 +249,10 @@ export const LeftSidebar = memo(function LeftSidebar({
     router.push(buildSchedulesRoute());
   }, []);
 
+  const handleViewArtifactsNavigate = useCallback(() => {
+    router.push(buildArtifactsRoute());
+  }, []);
+
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
@@ -255,6 +264,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
+      artifacts: t("sidebar.sections.artifacts"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -292,6 +302,7 @@ export const LeftSidebar = memo(function LeftSidebar({
         handleOpenHostSettings={handleOpenHostSettingsMobile}
         handleViewMoreNavigate={handleViewMoreNavigate}
         handleViewSchedulesNavigate={handleViewSchedulesNavigate}
+        handleViewArtifactsNavigate={handleViewArtifactsNavigate}
       />
     );
   }
@@ -308,6 +319,7 @@ export const LeftSidebar = memo(function LeftSidebar({
       handleOpenHostSettings={handleOpenHostSettingsDesktop}
       handleViewMore={handleViewMoreNavigate}
       handleViewSchedules={handleViewSchedulesNavigate}
+      handleViewArtifacts={handleViewArtifactsNavigate}
     />
   );
 });
@@ -622,10 +634,12 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
+  handleViewArtifactsNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isArtifactsActive = pathname.includes("/artifacts");
   const {
     translateX,
     backdropOpacity,
@@ -659,6 +673,13 @@ function MobileSidebar({
     closeSidebar();
     handleViewSchedulesNavigate();
   }, [backdropOpacity, closeSidebar, handleViewSchedulesNavigate, translateX, windowWidth]);
+
+  const handleViewArtifacts = useCallback(() => {
+    translateX.value = -windowWidth;
+    backdropOpacity.value = 0;
+    closeSidebar();
+    handleViewArtifactsNavigate();
+  }, [backdropOpacity, closeSidebar, handleViewArtifactsNavigate, translateX, windowWidth]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -828,6 +849,14 @@ function MobileSidebar({
                 testID="sidebar-schedules"
                 variant="compact"
               />
+              <SidebarHeaderRow
+                icon={FileText}
+                label={labels.artifacts}
+                onPress={handleViewArtifacts}
+                isActive={isArtifactsActive}
+                testID="sidebar-artifacts"
+                variant="compact"
+              />
             </View>
             <WorkspacesSectionHeader />
             <Pressable
@@ -909,10 +938,12 @@ function DesktopSidebar({
   isOpen,
   handleViewMore,
   handleViewSchedules,
+  handleViewArtifacts,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isArtifactsActive = pathname.includes("/artifacts");
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
@@ -1000,6 +1031,14 @@ function DesktopSidebar({
               onPress={handleViewSchedules}
               isActive={isSchedulesActive}
               testID="sidebar-schedules"
+              variant="compact"
+            />
+            <SidebarHeaderRow
+              icon={FileText}
+              label={labels.artifacts}
+              onPress={handleViewArtifacts}
+              isActive={isArtifactsActive}
+              testID="sidebar-artifacts"
               variant="compact"
             />
           </View>

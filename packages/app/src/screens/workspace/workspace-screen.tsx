@@ -108,6 +108,7 @@ import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { confirmArchiveChat } from "@/components/archive-chat-warning";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/components/browser-webview-resident";
@@ -1119,14 +1120,28 @@ function WorkspaceHeaderMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        testID="workspace-header-menu-trigger"
-        style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
-        accessibilityRole="button"
-        accessibilityLabel={t("workspace.header.actions.workspaceActions")}
-      >
-        {renderTriggerIcon}
-      </DropdownMenuTrigger>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild triggerRefProp="triggerRef">
+          <DropdownMenuTrigger
+            testID="workspace-header-menu-trigger"
+            style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
+            accessibilityRole="button"
+            accessibilityLabel={t("workspace.header.actions.workspaceActions")}
+          >
+            {renderTriggerIcon}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent
+          testID="workspace-header-menu-tooltip"
+          side="left"
+          align="center"
+          offset={8}
+        >
+          <Text style={styles.headerMenuTooltipText}>
+            {t("workspace.header.actions.workspaceActionsTooltip")}
+          </Text>
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="start" width={220} testID="workspace-header-menu">
         <DropdownMenuItem
           testID="workspace-header-new-agent"
@@ -2629,16 +2644,25 @@ function WorkspaceScreenContent({
         const closePolicy = resolveCloseAgentTabPolicy(agent);
         const isRunning = agent?.status === "running";
 
-        if (isRunning && closePolicy.kind === "archive-on-close") {
-          const confirmed = await confirmDialog({
-            title: t("workspace.tabs.confirmations.archiveRunningAgentTitle"),
-            message: t("workspace.tabs.confirmations.archiveRunningAgentMessage"),
-            confirmLabel: t("workspace.tabs.confirmations.archive"),
-            cancelLabel: t("workspace.tabs.confirmations.cancel"),
-            destructive: true,
-          });
-          if (!confirmed) {
-            return;
+        if (closePolicy.kind === "archive-on-close") {
+          if (isRunning) {
+            const confirmed = await confirmDialog({
+              title: t("workspace.tabs.confirmations.archiveRunningAgentTitle"),
+              message: t("workspace.tabs.confirmations.archiveRunningAgentMessage"),
+              confirmLabel: t("workspace.tabs.confirmations.archive"),
+              cancelLabel: t("workspace.tabs.confirmations.cancel"),
+              destructive: true,
+            });
+            if (!confirmed) {
+              return;
+            }
+          } else {
+            // Archiving a stopped chat moves it to History; warn unless the
+            // user has suppressed this (checkbox in the confirmation).
+            const confirmed = await confirmArchiveChat();
+            if (!confirmed) {
+              return;
+            }
           }
         }
 
@@ -3928,6 +3952,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.popoverForeground,
   },
   explorerTooltipShortcut: {},
+  headerMenuTooltipText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.popoverForeground,
+  },
   mobileTabsRow: {
     backgroundColor: theme.colors.surface0,
     borderBottomWidth: theme.borderWidth[1],

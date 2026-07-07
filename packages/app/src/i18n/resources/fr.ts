@@ -546,6 +546,9 @@ export const fr: TranslationResources = {
         archiveRunningAgentTitle: "Archiver l'agent en cours d'exécution?",
         archiveRunningAgentMessage:
           "Cet agent est toujours en cours d'exécution. L'archiver arrêtera l'agent et fermera l'onglet.",
+        archiveHistoryTitle: "Archive chat?",
+        archiveHistoryMessage: "Archiving a chat puts it in History.",
+        archiveHistorySuppress: "Suppress this warning next time",
         closeTabsLeftTitle: "Fermer les onglets à gauche?",
         closeTabsRightTitle: "Fermer les onglets à droite?",
         closeOtherTabsTitle: "Fermer les autres onglets?",
@@ -566,6 +569,7 @@ export const fr: TranslationResources = {
     header: {
       actions: {
         workspaceActions: "ActionsWorkspace",
+        workspaceActionsTooltip: "Current workspace",
         newAgent: "Nouvel agent",
         newTerminal: "Nouvelle borne",
         newBrowser: "Nouvel onglet du navigateur",
@@ -829,6 +833,7 @@ export const fr: TranslationResources = {
     sections: {
       sessions: "Historique",
       schedules: "Planifications",
+      artifacts: "Artéfacts",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",
