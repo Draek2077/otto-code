@@ -801,7 +801,7 @@ export const en = {
       searchPlaceholder: "Search hosts...",
     },
     actions: {
-      addProject: "Add project",
+      addProject: "New project",
       newWorkspace: "New workspace",
       home: "Home",
       settings: "Settings",

@@ -1,14 +1,15 @@
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
-  FolderPlus,
+  FolderPlusBold,
   History,
-  Home,
+  HomeBold,
   Plus,
   Search,
-  Server,
-  Settings,
+  ServerBold,
+  SettingsBold,
   X,
+  type IconComponent,
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -18,6 +19,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type PressableProps,
   type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -74,7 +76,7 @@ import {
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import { compactUp } from "@/styles/theme";
+import { compactUp, ICON_SIZE } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
@@ -322,25 +324,27 @@ function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; presse
 }
 
 function FooterIconButton({
-  buttonRef,
+  ref,
   onPress,
   testID,
   accessibilityLabel,
   icon: Icon,
   iconSize,
   theme,
+  ...pressableProps
 }: {
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: typeof FolderPlus;
+  icon: IconComponent;
   iconSize?: number;
   theme: SidebarTheme;
-  buttonRef?: RefObject<View | null>;
-}) {
+  ref?: RefObject<View | null>;
+} & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
   return (
     <Pressable
-      ref={buttonRef}
+      {...pressableProps}
+      ref={ref}
       style={footerIconButtonStyle}
       testID={testID}
       nativeID={testID}
@@ -351,8 +355,11 @@ function FooterIconButton({
       onPress={onPress}
     >
       {({ hovered }) => (
+        // Footer icons are always scaled up on every form factor. Static
+        // ICON_SIZE (not theme.iconSize) — the theme tokens are already doubled
+        // on compact by applyAppearance, which would compound here.
         <Icon
-          size={iconSize ?? theme.iconSize.md}
+          size={iconSize ?? ICON_SIZE.md * 1.5}
           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
         />
       )}
@@ -362,10 +369,12 @@ function FooterIconButton({
 
 function SidebarHostPicker({
   theme,
+  switchHostLabel,
   onAddHost,
   onOpenHostSettings,
 }: {
   theme: SidebarTheme;
+  switchHostLabel: string;
   onAddHost: () => void;
   onOpenHostSettings: (serverId: string) => void;
 }) {
@@ -399,15 +408,22 @@ function SidebarHostPicker({
       addHostTestID="sidebar-host-add"
       hostOptionTestID={sidebarHostOptionTestID}
     >
-      <FooterIconButton
-        buttonRef={triggerRef}
-        onPress={handleOpen}
-        testID="sidebar-hosts-trigger"
-        accessibilityLabel="Hosts"
-        icon={Server}
-        iconSize={theme.iconSize.sm}
-        theme={theme}
-      />
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <FooterIconButton
+            ref={triggerRef}
+            onPress={handleOpen}
+            testID="sidebar-hosts-trigger"
+            accessibilityLabel="Hosts"
+            icon={ServerBold}
+            iconSize={ICON_SIZE.sm * 1.5}
+            theme={theme}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <HeaderIconTooltipContent label={switchHostLabel} />
+        </TooltipContent>
+      </Tooltip>
     </HostPicker>
   );
 }
@@ -525,20 +541,34 @@ function SidebarFooter({
   return (
     <View style={styles.sidebarFooter}>
       <View style={styles.footerIconRow}>
-        <FooterIconButton
-          onPress={handleHome}
-          testID="sidebar-home"
-          accessibilityLabel={labels.home}
-          icon={Home}
-          theme={theme}
-        />
-        <FooterIconButton
-          onPress={handleSettings}
-          testID="sidebar-settings"
-          accessibilityLabel={labels.settings}
-          icon={Settings}
-          theme={theme}
-        />
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <FooterIconButton
+              onPress={handleHome}
+              testID="sidebar-home"
+              accessibilityLabel={labels.home}
+              icon={HomeBold}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <HeaderIconTooltipContent label={labels.home} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <FooterIconButton
+              onPress={handleSettings}
+              testID="sidebar-settings"
+              accessibilityLabel={labels.settings}
+              icon={SettingsBold}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <HeaderIconTooltipContent label={labels.settings} />
+          </TooltipContent>
+        </Tooltip>
       </View>
       <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
@@ -547,7 +577,7 @@ function SidebarFooter({
               onPress={handleOpenProject}
               testID="sidebar-add-project"
               accessibilityLabel={labels.addProject}
-              icon={FolderPlus}
+              icon={FolderPlusBold}
               theme={theme}
             />
           </TooltipTrigger>
@@ -557,6 +587,7 @@ function SidebarFooter({
         </Tooltip>
         <SidebarHostPicker
           theme={theme}
+          switchHostLabel={labels.switchHost}
           onAddHost={handleAddHost}
           onOpenHostSettings={handleOpenHostSettings}
         />
