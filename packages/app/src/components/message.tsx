@@ -2208,11 +2208,7 @@ export const CompactionMarker = memo(function CompactionMarker({
     <View style={compactionStylesheet.container}>
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
-        {status === "loading" ? (
-          <ActivityIndicator size="small" color="#a1a1aa" />
-        ) : (
-          <Scissors size={12} color="#a1a1aa" />
-        )}
+        {status === "completed" && <Scissors size={12} color="#a1a1aa" />}
         <Text style={compactionStylesheet.text}>{label}</Text>
       </View>
       <View style={compactionStylesheet.line} />

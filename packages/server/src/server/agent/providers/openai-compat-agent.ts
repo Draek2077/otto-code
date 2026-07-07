@@ -70,6 +70,14 @@ const MAX_PERSISTED_MESSAGES = 40;
 /** Upper bound on model→tool→model rounds within a single turn. */
 const MAX_TOOL_ROUNDS = 50;
 
+/**
+ * Per-tool-result budget for the compaction payload. Large results keep their
+ * head and tail — truncating harder starves the summarizer of the material
+ * (file contents, diffs, command output) the summary is supposed to preserve.
+ */
+const TOOL_RESULT_HEAD_CHARS = 3000;
+const TOOL_RESULT_TAIL_CHARS = 1000;
+
 /** Built-in slash command available for every OpenAI-compatible session. */
 const COMPACT_COMMAND: AgentSlashCommand = {
   name: "compact",
@@ -1000,12 +1008,10 @@ export class OpenAICompatAgentSession implements AgentSession {
       item: { type: "compaction", status: "loading", trigger: "manual" },
     });
 
-    // Estimate pre-compaction token count from all non-system messages
-    const conversationMessages = this.messages.filter((message) => message.role !== "system");
-    const preTokens = conversationMessages.reduce(
-      (sum, message) => sum + estimateTokens(JSON.stringify(message)),
-      0,
-    );
+    // Pre-compaction context size: prefer the server-measured figure from the
+    // last round (what the context ring currently shows); fall back to a local
+    // estimate of the full request payload.
+    const preTokens = this.lastContextTokens ?? this.estimateFullContextTokens();
 
     // Serialize conversation into a text blob for the compaction prompt
     const conversationText = this.serializeConversationForCompaction();
@@ -1064,12 +1070,10 @@ export class OpenAICompatAgentSession implements AgentSession {
       content: "Conversation history has been compacted.",
     });
 
-    // Estimate post-compaction token count
-    const postMessages = this.messages.filter((message) => message.role !== "system");
-    const postTokens = postMessages.reduce(
-      (sum, message) => sum + estimateTokens(JSON.stringify(message)),
-      0,
-    );
+    // Post-compaction context size. Must count the rebuilt system prompt and
+    // the tool schemas — both are re-sent with every request — or the ring
+    // reads near-zero here and jumps back up on the next real turn.
+    const postTokens = this.estimateFullContextTokens();
 
     // Update context tracking
     this.lastContextTokens = postTokens;
@@ -1111,6 +1115,24 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   /**
+   * Local estimate of the full next-request context: conversation messages
+   * (including the system prompt) plus the tool schemas that are re-sent with
+   * every request. Char-based, so it's approximate — the next real turn's
+   * server-measured usage replaces it.
+   */
+  private estimateFullContextTokens(): number {
+    const toolsPayload = [
+      ...buildOpenAIToolsPayload(this.availableToolSpecs()),
+      ...this.buildOttoToolPayload(),
+      ...this.buildMcpToolPayload(),
+    ];
+    return (
+      estimateTokens(JSON.stringify(toolsPayload)) +
+      this.messages.reduce((sum, message) => sum + estimateTokens(JSON.stringify(message)), 0)
+    );
+  }
+
+  /**
    * Serialize the conversation (user/assistant/tool messages) into a text blob
    * suitable for inclusion in a compaction prompt. Tool calls are summarized
    * rather than included verbatim to keep the payload manageable.
@@ -1129,9 +1151,9 @@ export class OpenAICompatAgentSession implements AgentSession {
               let argsPreview = "";
               try {
                 const parsed = JSON.parse(call.function.arguments);
-                argsPreview = ` (${JSON.stringify(parsed).slice(0, 200)})`;
+                argsPreview = ` (${JSON.stringify(parsed).slice(0, 500)})`;
               } catch {
-                argsPreview = ` (${call.function.arguments.slice(0, 200)})`;
+                argsPreview = ` (${call.function.arguments.slice(0, 500)})`;
               }
               return `  - called ${call.function.name}${argsPreview}`;
             })
@@ -1145,8 +1167,16 @@ export class OpenAICompatAgentSession implements AgentSession {
           lines.push(`[assistant]: ${message.content}`);
         }
       } else if (message.role === "tool") {
+        // Keep head + tail of large results: file reads and command output
+        // carry their signal at both ends, and the summarizer can't preserve
+        // what it never sees.
+        const content = message.content;
         const contentPreview =
-          message.content.length > 500 ? message.content.slice(0, 500) + "..." : message.content;
+          content.length > TOOL_RESULT_HEAD_CHARS + TOOL_RESULT_TAIL_CHARS
+            ? `${content.slice(0, TOOL_RESULT_HEAD_CHARS)}\n[... ${
+                content.length - TOOL_RESULT_HEAD_CHARS - TOOL_RESULT_TAIL_CHARS
+              } chars truncated ...]\n${content.slice(-TOOL_RESULT_TAIL_CHARS)}`
+            : content;
         lines.push(`[tool result ${message.tool_call_id}]: ${contentPreview}`);
       }
     }
@@ -1159,13 +1189,24 @@ export class OpenAICompatAgentSession implements AgentSession {
    * the user's instruction to guide the summarization.
    */
   private buildCompactionSystemPrompt(instruction: string | null): string {
-    const base = `You are asked to summarize the following conversation history concisely.
-Preserve all important context: decisions made, code changes, errors encountered,
-current task state, and any unresolved issues.`;
+    const base = `You are asked to summarize a coding-agent conversation so it can continue in a fresh context window. Your summary will REPLACE the entire conversation history — anything you leave out is lost permanently. Be thorough and detailed; a long summary is expected and correct. Do NOT aim for brevity.
 
-    const instructionPart = instruction ? `\n\n<User instruction>: ${instruction}` : "";
+Structure the summary with these sections:
 
-    const tail = `\n\nProvide a concise summary that captures the essential context needed to\ncontinue the conversation productively.`;
+1. Primary request and intent: everything the user asked for, with every explicit requirement and constraint.
+2. Key technical concepts: technologies, frameworks, and patterns in play.
+3. Files and code sections: every file examined, created, or modified, with full paths. Include the important code snippets and a note on why each file matters.
+4. Errors and fixes: every error encountered and how it was resolved, including any corrections or feedback from the user.
+5. All user messages: a list of every user message that is not a tool result, to preserve the user's exact asks and feedback.
+6. Pending tasks: work the user requested that is not yet done.
+7. Current work: precisely what was in progress when the conversation was compacted, with file names and code snippets where relevant.
+8. Next step: the immediate next action, aligned with the user's most recent request. Quote the most recent relevant instruction verbatim.`;
+
+    const instructionPart = instruction
+      ? `\n\nThe user gave additional instructions for this summary. Follow them for emphasis and focus, on top of the structure above:\n<User instruction>: ${instruction}`
+      : "";
+
+    const tail = `\n\nOutput only the summary, with the sections above.`;
 
     return base + instructionPart + tail;
   }
