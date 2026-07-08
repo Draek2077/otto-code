@@ -27,7 +27,7 @@ jobs:
       # This fork uses the default GITHUB_TOKEN instead of upstream's bot GitHub
       # App (OTTO_BOT_APP_ID / OTTO_BOT_APP_PRIVATE_KEY secrets don't exist here).
       # The [skip ci] in the commit message keeps the push from re-triggering CI.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref }}
 
