@@ -44,11 +44,27 @@ Before running any stable patch release command:
 - **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying — and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
 - Do not use `npm run release:patch` as a substitute for checking whether the current commit is actually ready.
 
+> **Fork gotcha — skip npm publish.** The `@otto-code/*` npm scope is unregistered, so
+> `npm run release:patch` fails at `release:publish` **after** creating the version commit
+> and tag but **before** `release:push` — leaving a half-finished release with an unpushed
+> tag. Until the scope exists (see [fork-release-guide.md](fork-release-guide.md)), release
+> with the publish step omitted:
+>
+> ```bash
+> npm run release:check
+> npm run version:all:patch
+> npm run release:push
+> ```
+>
+> The same applies to the beta flow (`release:beta:*`, `release:promote`): run
+> `release:check`, then the matching `version:all:*` mode, then `release:push`, skipping
+> `release:publish` / `release:publish:beta`.
+
 ```bash
-npm run release:patch
+npm run release:patch        # only once the @otto-code npm scope exists — see fork gotcha above
 ```
 
-This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, and `Release Notes Sync` on GitHub Actions. EAS picks up the same tag via the EAS GitHub app and starts the iOS + Android store builds in parallel (see "Mobile builds (EAS)" below) — there is no `release-mobile.yml` in this repo.
+This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does — and on this fork does **not** — happen on the store side.
 
 The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/draek2077/otto:X.Y.Z` and `ghcr.io/draek2077/otto:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/draek2077/otto:X.Y.Z-beta.N` and never move `latest`.
 
@@ -180,11 +196,22 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 
 ## Mobile builds (EAS)
 
-iOS and Android store builds are not in `.github/workflows`. They are triggered by the EAS GitHub app the moment the `v*` tag is pushed:
+> **Fork reality (Draek2077/otto-code):** the only mobile release path that exists on this
+> fork is the **Android APK attached to the GitHub Release** via
+> `.github/workflows/android-apk-release.yml` (fork EAS project + `EXPO_TOKEN`, both set up).
+> There are **no store submissions**: the fork has no Apple Developer account, no App Store
+> Connect app, no Play Console listing, and no EAS `Release Mobile` workflow. Everything
+> below describing store builds/submission (`submit_ios`, `submit_ios_for_review`,
+> `submit_android`, the babysit checklist items for them) is **upstream's flow**, kept as
+> reference for if/when store accounts are set up — see
+> [fork-release-guide.md](fork-release-guide.md). Do not attempt `eas submit` for iOS: it
+> would target upstream's App Store app.
+
+Upstream's iOS and Android store builds are not in `.github/workflows`. They are triggered by the EAS GitHub app the moment the `v*` tag is pushed:
 
 - **Android (Play Store)** — EAS builds with profile `production` and auto-submits to the Play Store via `eas submit` (EAS-managed credentials, no Fastlane).
 - **iOS (TestFlight + App Store)** — EAS builds with profile `production`, uploads to TestFlight, and a Fastlane lane submits the build for App Store review.
-- **Android APK (GitHub Release asset)** — separate, via `.github/workflows/android-apk-release.yml`. This is the only Android-related workflow that lives in this repo.
+- **Android APK (GitHub Release asset)** — separate, via `.github/workflows/android-apk-release.yml`. This is the only Android-related workflow that lives in this repo, and the only one active on this fork.
 
 There is no `release-mobile.yml` in this repo. Earlier versions of these docs referenced one — that workflow was removed and the EAS GitHub app handles tag triggering directly.
 
@@ -236,6 +263,12 @@ Do not treat `build_ios: SUCCESS` or `submit_ios: SUCCESS` as a completed iOS re
 To confirm the submission landed, inspect the EAS workflow with `npx eas workflow:view <workflow-run-id> --json`. App Store Connect (review state for the matching version/build) and the Play Console track are the final ground truth.
 
 ### Babysitting mobile after a release
+
+> **Fork scope:** babysit GitHub Actions (`Desktop Release`, `Android APK Release`, `Docker`,
+> `Deploy App`, `Release Notes Sync`) and the EAS **APK build** only. The `Release Mobile`
+> workflow and the store submit/review jobs below don't exist on this fork — don't wait for
+> them. `Desktop Release` shows red on `publish-macos` until Apple signing is configured;
+> Windows/Linux artifacts and the `finalize-rollout` manifests are the signal that matters.
 
 The user rarely opens the Expo dashboard. A failed EAS build or submit/review job can sit silently until users complain about a stale version. After every stable release, set up a long-delay babysit that re-checks GitHub Actions, EAS builds, and the EAS `Release Mobile` workflow for the release tag. If any build is `ERRORED`/`CANCELED`, any workflow is `FAILURE`, or any required submit/review job fails, surface it immediately. If all builds are `FINISHED` and all required submit/review jobs are `SUCCESS`, confirm and stop.
 
@@ -459,9 +492,9 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 
 - [ ] Working tree is clean and the intended commit is on `main`
 - [ ] Update the in-place beta entry in `CHANGELOG.md` (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
-- [ ] `npm run release:beta:patch` (or `:next`) completes successfully
-- [ ] npm shows the version under the `beta` dist-tag, not `latest`
-- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green
+- [ ] `release:check` + `version:all:beta:*` + `release:push` complete successfully (skip `release:publish:beta` — see the fork gotcha under "Standard release")
+- [ ] ~~npm shows the version under the `beta` dist-tag, not `latest`~~ — N/A until the `@otto-code` npm scope is registered
+- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
 - [ ] GitHub `Android APK Release` workflow for the same tag is green
 - [ ] GitHub `Release Notes Sync` mirrored the beta entry into the prerelease body
 
@@ -472,12 +505,10 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 - [ ] Ensure local `npm run typecheck` passes on that exact commit before running any `release:*` patch/promote command
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors). When promoting from beta, overwrite the existing `## X.Y.Z-beta.N` heading in place (heading → `X.Y.Z`, date → promotion day) — do not add a new entry on top of the beta one
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
-- [ ] `npm run release:patch` or `npm run release:promote` completes successfully
-- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
-- [ ] GitHub `Android APK Release` workflow for the same tag is green
-- [ ] EAS `Release Mobile` workflow for the same tag is green
-- [ ] EAS iOS `build_ios` completes for the same tag
-- [ ] EAS iOS `submit_ios` succeeds, uploading the build to App Store Connect/TestFlight
-- [ ] EAS iOS `submit_ios_for_review` succeeds, putting the build into App Store review
-- [ ] EAS Android `build_android` completes for the same tag
-- [ ] EAS Android `submit_android` succeeds, putting the build on its Play Store track
+- [ ] `release:check` + `version:all:patch`/`version:all:promote` + `release:push` complete successfully (skip `release:publish` — see the fork gotcha under "Standard release")
+- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
+- [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached to the release
+- [ ] GitHub `Deploy App` workflow for the same tag is green (web app on Cloudflare Pages)
+- [ ] GitHub `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` + `:latest`
+- [ ] `Deploy Website` ran on the published release
+- [ ] ~~EAS `Release Mobile` workflow / `build_ios` / `submit_ios` / `submit_ios_for_review` / `build_android` / `submit_android`~~ — N/A on this fork; no store accounts exist yet (see "Mobile builds (EAS)" fork-reality note)

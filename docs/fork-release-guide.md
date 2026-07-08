@@ -33,34 +33,38 @@ gap this doc tracks.
 
 ## Infrastructure inventory
 
-**Update (2026-07-05):** the domain is decided — `otto-code.me` (`otto-code.ai` was too expensive) —
-and so is the hosting direction: **self-host on your own local network/hardware, not Cloudflare.**
+**Update (2026-07-08): Cloudflare is live — this superseded the self-host direction.** A
+`CLOUDFLARE_API_TOKEN` repo secret was added on 2026-07-05, both `wrangler.toml`s carry the
+fork's own `account_id` with `otto-code.me` routes, and as of the v0.4.2 release the
+`Deploy Website` (marketing site, Workers), `Deploy Relay` (`relay.otto-code.me`, Workers), and
+`Deploy App` (`otto-app` Cloudflare Pages project, on stable `v*` tags) workflows all run green.
+That means the relay-based QR pairing infrastructure (relay + app base URL) is deployed —
+earlier statements in this doc that "nothing is deployed there" and that hosting would be
+local-only are **stale**; the "Local network hosting" section below remains valid as an
+alternative, not the current state.
+
+**Update (2026-07-05):** the domain is decided — `otto-code.me` (`otto-code.ai` was too expensive).
 Every code-level reference to `otto-code.ai` across the repo (source, docs, nix packaging, the
-rebrand-upstream tooling) has been swapped to `otto-code.me`. What follows reflects that decision.
+rebrand-upstream tooling) has been swapped to `otto-code.me`.
 
-**Correction from the first draft of this doc:** it previously said pairing "already works for your
-fork as-is" by riding on upstream's relay. That's no longer true — the defaults now point at _your_
-domain (`relay.otto-code.me`, `app.otto-code.me`), and nothing is deployed there, so QR pairing
-fails out of the box until you deploy a relay (see "Pairing" below) or your users switch to Direct
-Connection, which needs no relay at all and already works.
-
-| Surface                                | Currently points at                                                                             | Fork-ready?                    | What you need                                                                                                                       |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub repo                            | `Draek2077/otto-code` (`origin`)                                                                | ✅ Yes                         | Already done                                                                                                                        |
-| Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                           | ✅ Yes                         | Already done (see below) — unaffected by domain/hosting choice                                                                      |
-| npm packages (`@otto-code/*`)          | Unregistered scope (nobody owns it)                                                             | ⚠️ N/A                         | Not needed unless you want `npm install @otto-code/cli` to work from your fork; skip `release:publish` until/unless you set this up |
-| Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                        | ✅ Yes                         | Nothing — the workflow reads the owner from GitHub automatically                                                                    |
-| Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set        | ✅ Yes                         | Already done (see "Android release" below)                                                                                          |
-| Android package identity               | `ai.ottocode` / `ai.ottocode.debug`                                                             | ❌ No                          | A new `applicationId` — you can't reuse upstream's if it's already live on the Play Store                                           |
-| Play Store listing                     | N/A (not created)                                                                               | ❌ No                          | Your own Google Play Console developer account ($25 one-time)                                                                       |
-| Push notifications (FCM)               | Firebase project tied to `ai.ottocode`                                                          | ❌ No                          | Your own Firebase project + `google-services.json`, once you have your own package ID                                               |
-| **Daemon + web UI (the app itself)**   | Your own home server, once you enable `--web-ui`                                                | ✅ Ready, just needs enabling  | Nothing new — built into the daemon. See "Local network hosting" below.                                                             |
-| Domain (`otto-code.me`)                | Decided; DNS not yet pointed anywhere                                                           | ⚠️ In progress                 | Point it at your home network — see "Local network hosting" below                                                                   |
-| Marketing website (`packages/website`) | Cloudflare Workers, upstream's account                                                          | ❌ Not started, optional       | Separate from "hosting Otto" — see "Marketing website" below for why it's lower priority and still Cloudflare-coupled               |
-| QR-code pairing (relay-based)          | Defaults to `relay.otto-code.me` / `app.otto-code.me` — unreachable, nothing deployed there yet | ❌ Currently broken by default | Relay only ships a Cloudflare Workers (Durable Objects) adapter — no plain self-hosted relay exists. See "Pairing" below.           |
-| Direct connection (no relay, no QR)    | Works today, zero cloud dependency                                                              | ✅ Yes                         | Nothing — host/port/password against your own daemon, works over LAN or your domain once exposed                                    |
-| macOS code signing                     | N/A (not configured)                                                                            | N/A                            | Apple Developer Program ($99/yr) + certs as GH secrets, only if you want signed/notarized Mac builds                                |
-| Windows code signing                   | N/A (ships unsigned)                                                                            | N/A                            | Optional; unsigned Windows builds just show a SmartScreen warning on first run                                                      |
+| Surface                                | Currently points at                                                                           | Fork-ready?                   | What you need                                                                                                                       |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub repo                            | `Draek2077/otto-code` (`origin`)                                                              | ✅ Yes                        | Already done                                                                                                                        |
+| Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                         | ✅ Yes                        | Already done (see below) — unaffected by domain/hosting choice                                                                      |
+| npm packages (`@otto-code/*`)          | Unregistered scope (nobody owns it)                                                           | ⚠️ N/A                        | Not needed unless you want `npm install @otto-code/cli` to work from your fork; skip `release:publish` until/unless you set this up |
+| Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                      | ✅ Yes                        | Nothing — the workflow reads the owner from GitHub automatically                                                                    |
+| Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set      | ✅ Yes                        | Already done (see "Android release" below)                                                                                          |
+| Android package identity               | `me.ottocode.mobile` / `me.ottocode.mobile.debug` (`packages/app/app.config.js`)              | ✅ Yes                        | Already done — fork-owned namespace, safe for eventual Play Store use                                                               |
+| Play Store listing                     | N/A (not created)                                                                             | ❌ No                         | Your own Google Play Console developer account ($25 one-time)                                                                       |
+| Push notifications (FCM)               | No Firebase project yet; `app.config.js` resolves `google-services` files from env/`.secrets` | ❌ No                         | Your own Firebase project + `google-services.json` for `me.ottocode.mobile`                                                         |
+| **Daemon + web UI (the app itself)**   | Your own home server, once you enable `--web-ui`                                              | ✅ Ready, just needs enabling | Nothing new — built into the daemon. See "Local network hosting" below.                                                             |
+| Web app (`app.otto-code.me`)           | Cloudflare Pages project `otto-app`, deployed by `Deploy App` on stable `v*` tags             | ✅ Yes                        | Already done                                                                                                                        |
+| Domain (`otto-code.me`)                | On the fork's Cloudflare account; Workers/Pages custom-domain routes bound                    | ✅ Yes                        | Already done                                                                                                                        |
+| Marketing website (`packages/website`) | Cloudflare Workers on the fork's account, deployed by `Deploy Website`                        | ✅ Yes                        | Already done                                                                                                                        |
+| QR-code pairing (relay-based)          | `relay.otto-code.me` deployed by `Deploy Relay` (Cloudflare Durable Objects)                  | ✅ Deployed                   | Verify a QR pair end-to-end from a phone once; infra is in place                                                                    |
+| Direct connection (no relay, no QR)    | Works today, zero cloud dependency                                                            | ✅ Yes                        | Nothing — host/port/password against your own daemon, works over LAN or your domain once exposed                                    |
+| macOS code signing                     | N/A (not configured)                                                                          | N/A                           | Apple Developer Program ($99/yr) + certs as GH secrets, only if you want signed/notarized Mac builds                                |
+| Windows code signing                   | N/A (ships unsigned)                                                                          | N/A                           | Optional; unsigned Windows builds just show a SmartScreen warning on first run                                                      |
 
 ## Versioning
 
@@ -100,12 +104,14 @@ The release loop, once you're ready to ship:
 
 **Two gaps to know about:**
 
-- **macOS builds will fail as-is.** `electron-builder.yml`'s `mac:` section has `notarize: true`
+- **macOS builds are skipped as-is.** `electron-builder.yml`'s `mac:` section has `notarize: true`
   unconditionally, and the workflow expects `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
-  `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` as GitHub secrets. Without an Apple
-  Developer Program membership and those secrets configured on `Draek2077/otto-code`, the
-  `publish-macos` job will fail. Windows and Linux builds have no such requirement and ship
-  unsigned (Windows shows a SmartScreen warning on first run; that's normal for unsigned installers).
+  `APPLE_ID`, `APPLE_PASSWORD` (the app-specific password), and `APPLE_TEAM_ID` as GitHub
+  secrets — note the workflow reads `secrets.APPLE_PASSWORD`, not `APPLE_APP_SPECIFIC_PASSWORD`.
+  `desktop-release.yml` gates `publish-macos` on `APPLE_CERTIFICATE` being present, so without an
+  Apple Developer Program membership the macOS jobs skip cleanly and the release run stays green
+  on Windows/Linux. Windows and Linux ship unsigned (Windows shows a SmartScreen warning on first
+  run; that's normal for unsigned installers).
 - **npm publish will fail, and that's fine to skip.** `npm run release:patch` also runs
   `npm run release:publish`, which tries to publish `@otto-code/server`, `@otto-code/cli`, etc. to
   the public npm registry. That scope isn't registered to anyone, so this step 404s. Either run
@@ -131,18 +137,18 @@ owner: "otto-code",
 2. ✅ Done — `npx eas init` created a fresh EAS project under that org
    (`69eddb63-f77d-413a-b2b7-ed83e8e16759`).
 3. ✅ Done — `owner` and `extra.eas.projectId` in `app.config.js` updated to match.
-4. **Still open: pick a new Android `applicationId`.** `docs/android.md` documents the current IDs
-   as `ai.ottocode` (production) and `ai.ottocode.debug` (development) — controlled by
+4. ✅ Done — Android `applicationId` repointed to the fork's own namespace:
+   `me.ottocode.mobile` (production) and `me.ottocode.mobile.debug` (development), controlled by
    `APP_VARIANT` in `app.config.js`. Play Store package names are globally unique and permanent
-   once published; if upstream ever ships `ai.ottocode` to the Play Store (or already has), you
-   cannot reuse it. Pick something under your own namespace, e.g. `com.draekz.ottocode`. Not
-   required for local `eas build` testing, only for eventual Play Store submission.
+   once published, so this had to diverge from upstream's `ai.ottocode` before any store
+   submission.
 5. ✅ Done — `EXPO_TOKEN` secret added to the GitHub repo (Settings → Secrets → Actions), generated
    from the `otto-code` Expo account, so `.github/workflows/android-apk-release.yml` can
    authenticate.
-6. **Still open: push notifications (FCM).** Create your own Firebase project scoped to your new
-   `applicationId` and supply `google-services.json` per `packages/app/app.config.js`'s
-   `googleServicesFile` resolution (env var or `.secrets/google-services.prod.json`).
+6. **Still open: push notifications (FCM).** Create your own Firebase project scoped to
+   `me.ottocode.mobile` and supply `google-services.json` per `packages/app/app.config.js`'s
+   `googleServicesFile` resolution (env var or `.secrets/google-services.prod.json`; iOS
+   equivalents exist for the `GoogleService-Info` plist).
 
 ### Two distribution paths
 
@@ -269,29 +275,23 @@ the only adapter that exists), and a `"local"` mode (a plain relay process on yo
 explicitly **not yet implemented** in this codebase. So a fully-local-only relay isn't something
 you can configure your way into — it doesn't exist yet.
 
-Given "self-host on my local network," you have three real choices, cheapest first:
+**Status (2026-07-08): option 2 below is what happened.** The relay is deployed to the fork's
+Cloudflare account at `relay.otto-code.me` by the `Deploy Relay` workflow (runs on pushes to
+`main` touching `packages/relay/**`), and the web app that pairing offers land on is deployed to
+`app.otto-code.me` by `Deploy App` (stable `v*` tags). The QR/pairing path's infrastructure is in
+place — worth one end-to-end verification from a phone. The options below are kept for context:
 
-1. **Skip QR pairing, use Direct Connection.** Zero infrastructure, works today (see above). This
-   is what's recommended for now, since it fully satisfies your stated goals without any cloud
-   dependency.
-2. **Deploy just the relay to Cloudflare's free tier**, keeping everything else (daemon, web UI)
-   on your own hardware. Durable Objects with the SQLite storage backend are available on
-   Cloudflare's free plan, so this is a $0 coordination layer, not a hosting commitment:
-   - Get a free Cloudflare account, add `otto-code.me` to it (or just a `relay.otto-code.me`
-     subdomain, doesn't require moving your whole DNS there).
-   - Deploy `packages/relay`: update `packages/relay/wrangler.toml`'s `account_id` to yours and
-     `routes` to `relay.otto-code.me`, then `npm run build --workspace=@otto-code/relay && wrangler
-deploy` from `packages/relay`.
-   - Point the daemon at it — no code changes needed, `packages/server/src/server/config.ts`
-     already reads these env vars:
-     - `OTTO_RELAY_ENDPOINT` / `OTTO_RELAY_PUBLIC_ENDPOINT` → `relay.otto-code.me:443`
-     - `OTTO_RELAY_USE_TLS` / `OTTO_RELAY_PUBLIC_USE_TLS` → `true`
-     - `OTTO_APP_BASE_URL` → `https://otto-code.me` (or wherever you serve the pairing landing
-       page — see below)
-   - QR pairing needs somewhere to land when scanned/opened: either a tiny static redirect page you
-     host, or (simplest) point `appBaseUrl` at your own daemon's web UI directly, since it already
-     handles the `#offer=...` fragment the same way `app.otto-code.me` would.
-   - See [SECURITY.md](../SECURITY.md) for the relay's E2E encryption/threat model before doing this.
+1. **Skip QR pairing, use Direct Connection.** Zero infrastructure, works today (see above), no
+   cloud dependency.
+2. **Deploy just the relay to Cloudflare's free tier** — ✅ done, see status note above. Durable
+   Objects with the SQLite storage backend are available on Cloudflare's free plan, so this is a
+   $0 coordination layer, not a hosting commitment. The daemon-side env vars
+   (`packages/server/src/server/config.ts`) if you ever need to repoint it:
+   - `OTTO_RELAY_ENDPOINT` / `OTTO_RELAY_PUBLIC_ENDPOINT` → `relay.otto-code.me:443`
+   - `OTTO_RELAY_USE_TLS` / `OTTO_RELAY_PUBLIC_USE_TLS` → `true`
+   - `OTTO_APP_BASE_URL` → wherever the pairing landing page is served (defaults line up with
+     `app.otto-code.me`)
+   - See [SECURITY.md](../SECURITY.md) for the relay's E2E encryption/threat model.
 3. **Build a "Show as QR" feature for Direct Connection** (not yet implemented, but small). The
    `qrcode` npm package is already a dependency and already used for the relay-based pairing flow
    (`pair-device-section.tsx`). Encoding the same host/port/password URI
@@ -299,40 +299,29 @@ deploy` from `packages/relay`.
    code for the Direct Connection form would give you scan-to-connect on your LAN with zero relay
    dependency. This is a real, scoped feature addition — say the word if you want it built.
 
-## Marketing website (optional, separate from hosting Otto)
+## Marketing website
 
-`packages/website` — the `otto-code.me` landing page, docs, download links, changelog — is **not**
-required for the daemon, pairing, or updates to work. It's informational content, and it's tightly
-coupled to Cloudflare Workers today (`@cloudflare/vite-plugin`, a KV namespace for caching, a
-Workers `fetch` handler as its entry point in `packages/website/src/server-entry.ts`), which cuts
-against "everything on my local network."
+**✅ Deployed (2026-07-08 status).** `packages/website` — the `otto-code.me` landing page, docs,
+download links, changelog — runs on Cloudflare Workers on the fork's account
+(`packages/website/wrangler.toml` carries the fork's `account_id` and the
+`otto-code.me`/`www.otto-code.me` custom-domain routes). The `Deploy Website` workflow redeploys
+it on pushes to `main` touching `CHANGELOG.md`/`public-docs/**`/`packages/website/**` and on
+published (non-prerelease) GitHub releases, using the `CLOUDFLARE_API_TOKEN` repo secret.
 
-Given that coupling, porting it to run as a plain Node process on your own hardware is a real
-side-project (swapping the Cloudflare adapter for TanStack Start's Node preset, replacing the KV
-cache), not a config change. Given you said "for now," the pragmatic options are:
-
-1. **Skip it for now.** Your daemon's own web UI (see above) already covers "show something at
-   otto-code.me." The marketing site is polish, not function.
-2. **Deploy it to Cloudflare's free tier anyway**, separately from your local-hosting goal for the
-   daemon itself — it's just static-ish content, doesn't need to be "local," and costs nothing:
-   same pattern as the relay, update `packages/website/wrangler.toml`'s `account_id`/`routes`,
-   add `CLOUDFLARE_API_TOKEN` as a repo secret, push.
-3. **Port it to Node hosting** if you want it truly on your own hardware — flag this if you want
-   it scoped as its own task; it's not a quick add.
+It remains tightly coupled to Cloudflare Workers (`@cloudflare/vite-plugin`, a KV namespace for
+caching, a Workers `fetch` handler in `packages/website/src/server-entry.ts`); porting it to a
+plain Node process on your own hardware would be a real side-project (swap the Cloudflare adapter
+for TanStack Start's Node preset, replace the KV cache), not a config change — only relevant if
+full infrastructure independence ever becomes a goal.
 
 ## Domain
 
-`otto-code.me` is decided. Everything that referenced `otto-code.ai` across source, docs, nix
-packaging, and the upstream-merge rebrand tooling (`scripts/rebrand-upstream.pl`,
-`docs/upstream-merges.md`) has already been swapped in this pass — future `git merge
-upstream/main` runs will rebrand new Paseo code straight to `otto-code.me` / `Draek2077/otto-code`
-without drifting back. What's left is entirely DNS/hosting, covered above:
-
-- Point `otto-code.me` at your Cloudflare Tunnel, or your home IP/DDNS hostname (reverse-proxy
-  path), depending which option you pick in "Local network hosting."
-- If you later deploy the relay or the marketing site to Cloudflare, that's a `relay.otto-code.me`
-  / `otto-code.me` (or a subdomain) custom-domain binding inside Cloudflare, independent of how the
-  root domain's DNS is otherwise managed.
+`otto-code.me` is live on the fork's Cloudflare account; the Workers/Pages custom-domain routes
+(`otto-code.me`, `www.otto-code.me`, `relay.otto-code.me`, `app.otto-code.me`) are bound there.
+Everything that referenced `otto-code.ai` across source, docs, nix packaging, and the
+upstream-merge rebrand tooling (`scripts/rebrand-upstream.pl`, `docs/upstream-merges.md`) has been
+swapped — future `git merge upstream/main` runs will rebrand new Paseo code straight to
+`otto-code.me` / `Draek2077/otto-code` without drifting back.
 
 ## Full release checklist
 
@@ -340,15 +329,19 @@ Pulling the above into one end-to-end runbook for "ship a new version":
 
 - [ ] Working tree clean, on `main`, format/lint/typecheck all green
 - [ ] Decide patch vs. beta (see "Versioning" above)
-- [ ] `npm run version:all:patch` (or `release:beta:patch` for a beta) — bumps, commits, tags
-- [ ] `git push && git push --tags`
-- [ ] **Desktop**: confirm `Desktop Release` workflow is green for Windows/Linux (and macOS, if
-      Apple signing is set up) on the new tag
-- [ ] **Android**: confirm `Android APK Release` workflow is green (once EAS project + `EXPO_TOKEN`
-      are set up per "Android release" above); confirm Play Store submission separately if you're
-      using that path
-- [ ] **Website**: confirm `Deploy Website` ran on the published release (once Cloudflare account + `CLOUDFLARE_API_TOKEN` are set up)
-- [ ] **Docker**: confirm the `Docker` workflow published `ghcr.io/Draek2077/otto:X.Y.Z` (works
+- [ ] `npm run release:check`, then `npm run version:all:patch` (or the beta mode) — bumps,
+      commits, tags. **Skip `release:publish`** — the `@otto-code` npm scope is unregistered and
+      the full `release:patch` chain dies there with the tag still unpushed (see
+      [release.md](release.md)'s fork gotcha)
+- [ ] `npm run release:push` (pushes HEAD + tag, triggers CI workflows)
+- [ ] **Desktop**: confirm `Desktop Release` workflow is green for Windows/Linux on the new tag
+      (macOS jobs skip until Apple signing is set up), and `finalize-rollout` uploaded the
+      updater manifests
+- [ ] **Android**: confirm `Android APK Release` workflow is green and the APK is attached to the
+      GitHub Release
+- [ ] **Web app**: confirm `Deploy App` ran on the tag (stable only)
+- [ ] **Website**: confirm `Deploy Website` ran on the published release
+- [ ] **Docker**: confirm the `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` (works
       automatically, no setup needed)
 - [ ] Spot-check the changelog entry rendered correctly on the GitHub Release body
 
@@ -356,13 +349,15 @@ Pulling the above into one end-to-end runbook for "ship a new version":
 
 Being explicit about the open questions rather than picking answers for you:
 
-- **Domain name** — in progress on your end.
-- **Whether to self-host the relay** or keep riding on `relay.otto-code.ai` — works either way
-  right now; only matters if full infrastructure independence is a goal.
 - **Whether to pursue Play Store distribution** or stick with GitHub-Release APKs — Play Store
   needs the $25 developer account and a store listing (screenshots, privacy policy, content
-  rating) that don't exist yet; APK-only is live-able much faster.
+  rating) that don't exist yet; APK-only is live-able much faster. The fork-owned
+  `me.ottocode.mobile` package ID is ready either way.
 - **Whether to publish `@otto-code/*` packages to npm** under your own scope — not needed unless
-  you want `npm install` to work from source packages directly.
+  you want `npm install` to work from source packages directly. Until decided, every release
+  must skip `release:publish` (see the checklist above).
 - **macOS code signing** — needs an Apple Developer Program membership; without it, scope releases
   to Windows/Linux (and Android) until/unless you decide it's worth $99/year.
+- **iOS distribution** — untouched: no Apple account, and `eas.json` no longer carries upstream's
+  App Store Connect app ID. TestFlight/App Store would need the Apple Developer account plus a
+  fresh ASC app for `me.ottocode.mobile`.
