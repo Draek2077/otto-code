@@ -73,6 +73,8 @@ export const StoredScheduleSchema = z.object({
   updatedAt: z.string(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
+  lastRunStatus: z.enum(["succeeded", "failed"]).nullable().optional(),
+  lastRunError: z.string().nullable().optional(),
   pausedAt: z.string().nullable(),
   expiresAt: z.string().nullable(),
   maxRuns: z.number().int().positive().nullable(),

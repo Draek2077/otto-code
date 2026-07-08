@@ -17,6 +17,8 @@ function makeSchedule(overrides: Partial<ScheduleSummary>): ScheduleSummary {
     updatedAt: "2026-07-01T00:00:00.000Z",
     nextRunAt: "2026-07-02T01:00:00.000Z",
     lastRunAt: null,
+    lastRunStatus: null,
+    lastRunError: null,
     pausedAt: null,
     expiresAt: null,
     maxRuns: null,
@@ -91,13 +93,74 @@ describe("resolveSchedule state", () => {
   it("never claims a new-agent cwd is gone", () => {
     expect(resolve(makeSchedule({ status: "active" })).state).toBe("active");
   });
+
+  it("surfaces a failed last run as its own state/bucket regardless of active/paused status", () => {
+    const active = resolve(makeSchedule({ status: "active", lastRunStatus: "failed" }));
+    expect(active.state).toBe("failed");
+    expect(active.bucket).toBe("failed");
+
+    const paused = resolve(makeSchedule({ status: "paused", lastRunStatus: "failed" }));
+    expect(paused.state).toBe("failed");
+    expect(paused.bucket).toBe("failed");
+  });
+
+  it("does not report failed once a schedule is expired, finished, or its target is gone", () => {
+    expect(
+      resolve(
+        makeSchedule({
+          status: "active",
+          lastRunStatus: "failed",
+          expiresAt: "2026-07-01T00:00:00.000Z",
+        }),
+      ).state,
+    ).toBe("expired");
+
+    expect(resolve(makeSchedule({ status: "completed", lastRunStatus: "failed" })).state).toBe(
+      "finished",
+    );
+
+    const targetGone = makeSchedule({
+      status: "active",
+      lastRunStatus: "failed",
+      target: { type: "agent", agentId: AGENT_ID },
+    });
+    expect(resolve(targetGone).state).toBe("targetGone");
+  });
+
+  it("a succeeded last run does not mark the schedule failed", () => {
+    expect(resolve(makeSchedule({ status: "active", lastRunStatus: "succeeded" })).state).toBe(
+      "active",
+    );
+  });
+});
+
+describe("resolveSchedule cwd", () => {
+  it("resolves cwd from the stored config for new-agent targets", () => {
+    const schedule = makeSchedule({
+      target: { type: "new-agent", config: { provider: "codex", cwd: "/tmp/project" } },
+    });
+    expect(resolve(schedule).cwd).toBe("/tmp/project");
+  });
+
+  it("resolves cwd from the matched agent for agent targets", () => {
+    const schedule = makeSchedule({ target: { type: "agent", agentId: AGENT_ID } });
+    const result = resolve(schedule, {
+      agents: [[`host-1:${AGENT_ID}`, { title: "Fix build", provider: "claude", cwd: "/tmp/x" }]],
+    });
+    expect(result.cwd).toBe("/tmp/x");
+  });
+
+  it("is null when the agent target cannot be resolved", () => {
+    const schedule = makeSchedule({ target: { type: "agent", agentId: AGENT_ID } });
+    expect(resolve(schedule).cwd).toBeNull();
+  });
 });
 
 describe("resolveSchedule target line", () => {
   it("names an agent target by its client title and provider", () => {
     const schedule = makeSchedule({ target: { type: "agent", agentId: AGENT_ID } });
     const result = resolve(schedule, {
-      agents: [[`host-1:${AGENT_ID}`, { title: "Fix build", provider: "claude" }]],
+      agents: [[`host-1:${AGENT_ID}`, { title: "Fix build", provider: "claude", cwd: "/tmp/x" }]],
     });
     expect(result.target).toEqual({ label: "Fix build", provider: "claude" });
     expect(result.state).toBe("active");
@@ -106,7 +169,7 @@ describe("resolveSchedule target line", () => {
   it("falls back to Untitled agent when the agent has no title", () => {
     const schedule = makeSchedule({ target: { type: "agent", agentId: AGENT_ID } });
     const result = resolve(schedule, {
-      agents: [[`host-1:${AGENT_ID}`, { title: "  ", provider: "codex" }]],
+      agents: [[`host-1:${AGENT_ID}`, { title: "  ", provider: "codex", cwd: "/tmp/x" }]],
     });
     expect(result.target.label).toBe("Untitled agent");
   });

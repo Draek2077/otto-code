@@ -253,6 +253,8 @@ export class ScheduleService {
       updatedAt: now.toISOString(),
       nextRunAt: nextRunAt.toISOString(),
       lastRunAt: null,
+      lastRunStatus: null,
+      lastRunError: null,
       pausedAt: null,
       expiresAt: input.expiresAt ?? null,
       maxRuns: normalizeMaxRuns(input.maxRuns),
@@ -604,6 +606,8 @@ export class ScheduleService {
       ...schedule,
       runs: completedRuns,
       lastRunAt: now.toISOString(),
+      lastRunStatus: params.status,
+      lastRunError: params.error,
       updatedAt: now.toISOString(),
     };
 

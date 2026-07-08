@@ -1,20 +1,12 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactElement,
-} from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { Plus } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
-import { HostFilter } from "@/components/hosts/host-filter";
-import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
+import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
-import { SchedulesTable, type ScheduleRowView } from "@/components/schedules/schedules-table";
+import { ScheduleGrid, type ScheduleRowView } from "@/components/schedules/schedule-grid";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -26,6 +18,7 @@ import {
   type ScheduleHostError,
 } from "@/hooks/use-schedules";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import {
   resolveSchedule,
   type ScheduleBucket,
@@ -44,6 +37,7 @@ type FormState =
 
 const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
   { value: "runnable", label: "Active", testID: "schedules-filter-active" },
+  { value: "failed", label: "Failed", testID: "schedules-filter-failed" },
   { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
 ];
 
@@ -86,17 +80,8 @@ function SchedulesScreenContent(): ReactElement {
   }, [hosts, runtime, runtimeVersion]);
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
-  const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
+  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
-
-  useEffect(() => {
-    if (
-      selectedHost !== ALL_HOSTS_OPTION_ID &&
-      !hosts.some((host) => host.serverId === selectedHost)
-    ) {
-      setSelectedHost(ALL_HOSTS_OPTION_ID);
-    }
-  }, [hosts, selectedHost]);
 
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
   const openEdit = useCallback((schedule: AggregatedSchedule) => {
@@ -107,15 +92,32 @@ function SchedulesScreenContent(): ReactElement {
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
     for (const agent of agents) {
-      map.set(`${agent.serverId}:${agent.id}`, { title: agent.title, provider: agent.provider });
+      map.set(`${agent.serverId}:${agent.id}`, {
+        title: agent.title,
+        provider: agent.provider,
+        cwd: agent.cwd,
+      });
     }
     return map;
   }, [agents]);
 
+  const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
   const projectNameByCwd = useMemo(
-    () => buildProjectNameByCwd(buildScheduleProjectTargets(projects)),
-    [projects],
+    () => buildProjectNameByCwd(scheduleProjectTargets),
+    [scheduleProjectTargets],
   );
+
+  // Every known project, whether or not it currently has schedules — mirrors
+  // the Artifacts project filter so the two screens stay consistent.
+  const projectOptions = useMemo<ProjectFilterOption[]>(() => {
+    const byId = new Map<string, ProjectFilterOption>();
+    for (const target of scheduleProjectTargets) {
+      if (!byId.has(target.cwd)) {
+        byId.set(target.cwd, { id: target.cwd, label: target.projectName });
+      }
+    }
+    return Array.from(byId.values());
+  }, [scheduleProjectTargets]);
 
   // Resolve every schedule's derived state and target line once, then partition
   // by the host and status filters. Sorted newest-first for a stable order
@@ -139,8 +141,9 @@ function SchedulesScreenContent(): ReactElement {
     const singleHost = hosts.length <= 1;
     return resolvedRows
       .filter(
-        ({ schedule, resolved }) =>
-          (selectedHost === ALL_HOSTS_OPTION_ID || schedule.serverId === selectedHost) &&
+        ({ resolved }) =>
+          (projectFilter === undefined ||
+            (resolved.cwd !== null && artifactBelongsToWorkspace(resolved.cwd, projectFilter))) &&
           resolved.bucket === statusFilter,
       )
       .sort((a, b) => Date.parse(b.schedule.createdAt) - Date.parse(a.schedule.createdAt))
@@ -152,10 +155,9 @@ function SchedulesScreenContent(): ReactElement {
         serverName: schedule.serverName,
         singleHost,
       }));
-  }, [resolvedRows, selectedHost, statusFilter, hosts.length]);
+  }, [resolvedRows, projectFilter, statusFilter, hosts.length]);
 
   const showLoadError = isError && schedules.length === 0;
-  const showHostFilter = hosts.length > 1;
 
   return (
     <View style={styles.container}>
@@ -168,10 +170,9 @@ function SchedulesScreenContent(): ReactElement {
         showLoadError={showLoadError}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
-        showHostFilter={showHostFilter}
-        hosts={hosts}
-        selectedHost={selectedHost}
-        onSelectHost={setSelectedHost}
+        projectOptions={projectOptions}
+        projectFilter={projectFilter}
+        onProjectFilterChange={setProjectFilter}
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
@@ -195,10 +196,9 @@ function SchedulesScreenBody({
   showLoadError,
   statusFilter,
   onStatusFilterChange,
-  showHostFilter,
-  hosts,
-  selectedHost,
-  onSelectHost,
+  projectOptions,
+  projectFilter,
+  onProjectFilterChange,
   onRetry,
   onCreate,
   onEdit,
@@ -210,10 +210,9 @@ function SchedulesScreenBody({
   showLoadError: boolean;
   statusFilter: ScheduleBucket;
   onStatusFilterChange: (value: ScheduleBucket) => void;
-  showHostFilter: boolean;
-  hosts: ReturnType<typeof useHosts>;
-  selectedHost: string;
-  onSelectHost: (serverId: string) => void;
+  projectOptions: ProjectFilterOption[];
+  projectFilter: string | undefined;
+  onProjectFilterChange: (projectId: string | undefined) => void;
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (schedule: AggregatedSchedule) => void;
@@ -249,20 +248,22 @@ function SchedulesScreenBody({
     );
   }
 
-  const emptyFilterText = statusFilter === "ended" ? "No ended schedules" : "No active schedules";
+  let emptyFilterText = "No active schedules";
+  if (statusFilter === "ended") {
+    emptyFilterText = "No ended schedules";
+  } else if (statusFilter === "failed") {
+    emptyFilterText = "No failed schedules";
+  }
 
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
         <View style={styles.filterRowControls}>
-          {showHostFilter ? (
-            <HostFilter
-              hosts={hosts}
-              selectedHost={selectedHost}
-              onSelectHost={onSelectHost}
-              triggerTestID="schedules-host-filter-trigger"
-            />
-          ) : null}
+          <ProjectFilter
+            options={projectOptions}
+            value={projectFilter}
+            onChange={onProjectFilterChange}
+          />
           <SegmentedControl
             size="sm"
             value={statusFilter}
@@ -284,7 +285,7 @@ function SchedulesScreenBody({
       >
         {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
         {rows.length > 0 ? (
-          <SchedulesTable rows={rows} onEditSchedule={onEdit} />
+          <ScheduleGrid rows={rows} onEditSchedule={onEdit} />
         ) : (
           <View style={styles.filterEmpty}>
             <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
