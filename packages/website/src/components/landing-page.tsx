@@ -32,13 +32,9 @@ import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import {
-  appStoreUrl,
-  playStoreUrl,
   webAppUrl,
   getDownloadOptions,
   useDetectedPlatform,
-  AppleIcon,
-  PlayStoreIcon,
   TerminalIcon,
   GlobeIcon,
 } from "~/downloads";
@@ -1208,24 +1204,6 @@ function GetStarted() {
           <GlobeIcon className="h-4 w-4" />
           Web App
         </a>
-        <a
-          href={appStoreUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
-          aria-label="App Store"
-        >
-          <AppleIcon className="h-5 w-5" />
-        </a>
-        <a
-          href={playStoreUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
-          aria-label="Google Play"
-        >
-          <PlayStoreIcon className="h-5 w-5" />
-        </a>
         <ServerInstallButton />
       </div>
       <div className="pt-3">
@@ -1259,7 +1237,21 @@ function GetStarted() {
 function DownloadButton() {
   const release = useRelease();
   const detectedPlatform = useDetectedPlatform();
-  const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform)!;
+  // Mac visitors have no native build to offer (no Mac dev environment yet),
+  // so send them to the download page where the note explains the situation.
+  const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform);
+
+  if (!primary) {
+    return (
+      <a
+        href="/download"
+        className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
+      >
+        Download
+      </a>
+    );
+  }
+
   const PrimaryIcon = primary.icon;
 
   return (

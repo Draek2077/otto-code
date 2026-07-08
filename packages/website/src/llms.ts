@@ -10,11 +10,11 @@ const PRODUCT_PREAMBLE = `# Otto
 
 Otto is an open source application that lets you run AI coding agents on your own machine and drive them from your phone, desktop, browser, or terminal. Your code stays local — Otto connects directly to your real development environment instead of running agents in someone else's cloud.
 
-A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships with an MCP server so other agents can talk to it. Native apps for iOS, Android, macOS, Windows, Linux, and the web let you launch sessions, watch them work, review diffs, and ship from anywhere. A Docker-style CLI ("otto run", "otto ls", "otto logs", "otto wait") gives you scripting access. An end-to-end encrypted relay lets the mobile app reach your daemon over the public internet without exposing it.
+A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships with an MCP server so other agents can talk to it. Native apps for Android, Windows, and Linux — plus a web app that covers iPhone and Mac — let you launch sessions, watch them work, review diffs, and ship from anywhere. A Docker-style CLI ("otto run", "otto ls", "otto logs", "otto wait") gives you scripting access. An end-to-end encrypted relay lets the mobile app reach your daemon over the public internet without exposing it.
 
 Otto supports every major coding agent: Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, Gemini, Cline, Goose, Amp, Aider, and 30+ others. Each agent runs as its own process; Otto handles I/O, persistence, git worktree isolation, schedules, and skills.
 
-Distribution: native apps for Mac, Windows, Linux, iOS, and Android; web app; Homebrew; npm. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
+Distribution: native apps for Windows, Linux, and Android (APK); web app for everything else, including iPhone and Mac. macOS and iOS native builds aren't offered yet — pending access to a Mac development environment. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
 `;
 
 function docLine(doc: Doc): string {

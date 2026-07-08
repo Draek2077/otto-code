@@ -15,8 +15,6 @@ export function downloadUrls(release: ReleaseAssetInfo) {
   const { version, linuxAppImageAsset, windowsX64Asset, windowsArm64Asset } = release;
   const base = releaseBase(version);
   return {
-    macAppleSilicon: `${base}/Otto-${version}-arm64.dmg`,
-    macIntel: `${base}/Otto-${version}-x64.dmg`,
     linuxAppImage: `${base}/${linuxAppImageAsset}`,
     linuxDeb: `${base}/Otto-${version}-amd64.deb`,
     linuxRpm: `${base}/Otto-${version}-x86_64.rpm`,
@@ -26,9 +24,12 @@ export function downloadUrls(release: ReleaseAssetInfo) {
   };
 }
 
-export const appStoreUrl = "https://apps.apple.com/app/otto-pocket-engineer/id6758887924";
-export const playStoreUrl = "https://play.google.com/store/apps/details?id=ai.ottocode";
 export const webAppUrl = "https://app.otto-code.me";
+
+// Shown wherever macOS downloads used to be offered. This fork has no Apple
+// signing/build environment yet, so no Mac (or iOS) builds are published.
+export const MAC_UNAVAILABLE_NOTE =
+  "macOS builds aren't currently offered — we don't have access to a Mac development environment yet. If you can volunteer one, reach out on GitHub.";
 
 type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
 
@@ -39,21 +40,12 @@ export interface DownloadOption {
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 }
 
+// No macOS entries: this fork doesn't publish Mac builds (see
+// MAC_UNAVAILABLE_NOTE), so callers must handle a detected platform that has
+// no matching option.
 export function getDownloadOptions(release: ReleaseAssetInfo): DownloadOption[] {
   const urls = downloadUrls(release);
   return [
-    {
-      platform: "mac-silicon",
-      label: "Mac",
-      href: urls.macAppleSilicon,
-      icon: AppleIcon,
-    },
-    {
-      platform: "mac-intel",
-      label: "Mac Intel",
-      href: urls.macIntel,
-      icon: AppleIcon,
-    },
     {
       platform: "windows",
       label: "Windows",

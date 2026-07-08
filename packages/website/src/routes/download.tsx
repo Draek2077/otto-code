@@ -4,9 +4,8 @@ import { SiteShell } from "~/components/site-shell";
 import { pageMeta } from "~/meta";
 import {
   downloadUrls,
-  appStoreUrl,
-  playStoreUrl,
   webAppUrl,
+  MAC_UNAVAILABLE_NOTE,
   AppleIcon,
   AndroidIcon,
   WindowsIcon,
@@ -20,8 +19,8 @@ import "~/styles.css";
 export const Route = createFileRoute("/download")({
   head: () =>
     pageMeta(
-      "Download Otto for macOS, Windows, Linux, iOS, and Android",
-      "Install Otto on every platform. Native desktop apps for macOS, Windows, and Linux. Mobile apps for iOS and Android. Self-hosted, open source, free to download.",
+      "Download Otto for Windows, Linux, and Android",
+      "Install Otto on your machines. Native desktop apps for Windows and Linux, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
       "/download",
     ),
   component: Download,
@@ -50,25 +49,15 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          {/* macOS */}
-          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+          {/* macOS — no builds published; see MAC_UNAVAILABLE_NOTE */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-3">
               <AppleIcon className="h-5 w-5 text-foreground" />
               <span className="font-medium">macOS</span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <DownloadPill href={urls.macAppleSilicon} label="Apple Silicon" />
-              <DownloadPill href={urls.macIntel} label="Intel" />
-            </div>
-          </div>
-
-          {/* Homebrew */}
-          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <TerminalIcon className="h-5 w-5 text-foreground" />
-              <span className="font-medium">Homebrew</span>
-            </div>
-            <CodeBlock size="sm">brew install --cask otto</CodeBlock>
+            <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
+              {MAC_UNAVAILABLE_NOTE}
+            </p>
           </div>
 
           {/* Windows */}
@@ -116,20 +105,20 @@ function Download() {
               <span className="font-medium">Android</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              <DownloadPill href={playStoreUrl} label="Play Store" external />
               <DownloadPill href={urls.androidApk} label="APK" />
             </div>
           </div>
 
-          {/* iOS */}
-          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+          {/* iOS — no builds; needs the same Apple developer access as macOS */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-3">
               <AppleIcon className="h-5 w-5 text-foreground" />
               <span className="font-medium">iOS</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <DownloadPill href={appStoreUrl} label="App Store" external />
-            </div>
+            <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
+              Not currently available — iOS builds need the same Apple development access as macOS.
+              The Web App works great on iPhone in the meantime.
+            </p>
           </div>
         </div>
       </section>
