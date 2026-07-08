@@ -1299,10 +1299,12 @@ interface WorkspaceHeaderTitleBarProps {
 // (TitlebarDragRegion). The project/workspace labels and the empty strip between
 // them and the ... menu are static, non-interactive space, but aren't part of
 // any drag rect, so a click-drag over them doesn't move the window. Opt the
-// whole title container back into the drag region; the interactive menu trigger
-// inside keeps its own no-drag (index.html backstop), so it stays clickable.
+// whole title container back into the drag region; the container also carries
+// data-app-region-drag so the scoped no-drag backstop in index.html keeps the
+// interactive menu trigger inside it clickable.
 // Web-only; inert on native.
 const HEADER_LABEL_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "drag" } as object) : null;
+const HEADER_LABEL_DRAG_DATASET = isWeb ? { "app-region-drag": "" } : undefined;
 
 function WorkspaceHeaderTitleBar({
   isLoading,
@@ -1340,7 +1342,7 @@ function WorkspaceHeaderTitleBar({
 }: WorkspaceHeaderTitleBarProps) {
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
   return (
-    <View style={containerStyle}>
+    <View style={containerStyle} dataSet={HEADER_LABEL_DRAG_DATASET}>
       {isLoading ? (
         <View style={styles.headerTitleTextGroup}>
           <View style={styles.headerTitleSkeleton} />
