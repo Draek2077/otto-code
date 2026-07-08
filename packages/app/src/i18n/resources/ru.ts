@@ -7,6 +7,7 @@ export const ru: TranslationResources = {
     actions: {
       back: "Назад",
       cancel: "Отмена",
+      confirm: "Confirm",
       close: "Закрывать",
       copy: "Копировать",
       dismiss: "Увольнять",
@@ -79,6 +80,7 @@ export const ru: TranslationResources = {
       sendMessage: "Отправить сообщение",
       queue: "Очередь",
       send: "Отправлять",
+      add: "Добавить контекст",
     },
     cancel: {
       cancelingAgent: "Отменяющий агент",
@@ -163,7 +165,7 @@ export const ru: TranslationResources = {
       selectWithValue: "Выберите режим агента ({{value}})",
     },
     hints: {
-      thinking: "Режим мышления",
+      thinking: "Изменить усилие",
       model: "Изменить модель",
       mode: "Изменить режим",
     },
@@ -998,6 +1000,22 @@ export const ru: TranslationResources = {
         title: "Запускать свёрнутым в трей",
         hint: "Otto запускается скрытым в системном трее вместо отображения окна",
       },
+      warnBeforeQuit: {
+        title: "Предупреждать перед выходом",
+        hint: "Подтверждает, что вы хотите выйти из приложения/демона/активных сеансов",
+      },
+      onlyWarnForActiveAgents: {
+        title: "Предупреждать только при активных агентах",
+        hint: "Подтверждать выход из приложения, только если есть активные агенты",
+      },
+      quitConfirm: {
+        title: "Выйти из Otto?",
+        appMessage: "Вы уверены, что хотите выйти из приложения?",
+        appAndDaemonMessage: "Вы уверены, что хотите выйти из приложения и демона?",
+        activeAgentsMessage: "Вы уверены, что хотите выйти из приложения, пока активны агенты?",
+        confirm: "Выйти",
+        cancel: "Отмена",
+      },
     },
     updates: {
       status: {
@@ -1535,6 +1553,7 @@ export const ru: TranslationResources = {
     title: "Контекстное окно ({{percentage}}% использовано)",
     sessionCost: "Стоимость сеанса{{cost}}",
     accessibility: "Контекстное окно{{percentage}}% использовано",
+    tooltip: "Посмотреть использование",
   },
   review: {
     comment: {

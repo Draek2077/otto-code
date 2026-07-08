@@ -9,7 +9,7 @@ export const OPENAI_COMPAT_REASONING_FEATURE: Omit<AgentFeatureSelect, "value"> 
   id: "reasoning_effort",
   label: "Reasoning",
   description: "Reasoning effort requested from the model",
-  tooltip: "Set reasoning effort",
+  tooltip: "Change effort",
   icon: "brain",
   options: [
     { id: "off", label: "Off", description: "Don't request reasoning", isDefault: true },

@@ -69,10 +69,16 @@ import {
 } from "./daemon/daemon-manager.js";
 import {
   createBeforeQuitHandler,
+  shouldStopDesktopManagedDaemonOnQuit,
   stopDesktopManagedDaemonOnQuitIfNeeded,
   markAppQuitting,
   isAppQuitting,
 } from "./daemon/quit-lifecycle.js";
+import {
+  requestQuitConfirmation,
+  markQuitPreConfirmed,
+  consumeQuitPreConfirmation,
+} from "./daemon/quit-confirm.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
@@ -685,9 +691,10 @@ async function createWindow(
   // native close behavior is untouched — the dock already keeps Otto running with
   // zero windows open, which is this feature's mac equivalent.
   mainWindow.on("close", (event) => {
-    const otherVisibleWindowCount = BrowserWindow.getAllWindows().filter(
-      (win) => win !== mainWindow && !win.isDestroyed() && win.isVisible(),
-    ).length;
+    const otherWindows = BrowserWindow.getAllWindows().filter(
+      (win) => win !== mainWindow && !win.isDestroyed(),
+    );
+    const otherVisibleWindowCount = otherWindows.filter((win) => win.isVisible()).length;
     const shouldHide = shouldHideWindowOnClose({
       platform: process.platform,
       minimizeOnCloseEnabled: getCachedMinimizeOnCloseSetting(),
@@ -697,7 +704,29 @@ async function createWindow(
     if (shouldHide) {
       event.preventDefault();
       mainWindow.hide();
+      return;
     }
+
+    // Closing the last window on Windows/Linux triggers window-all-closed →
+    // app.quit(), but by then this window is already destroyed — before-quit's
+    // confirmQuitIfNeeded() would have no window left to render a dialog in.
+    // Confirm here instead, while the window still exists, then destroy it for
+    // real (bypassing this handler) so the quit proceeds without asking twice.
+    const willQuitApp =
+      process.platform !== "darwin" && otherWindows.length === 0 && !isAppQuitting();
+    if (!willQuitApp) {
+      return;
+    }
+
+    event.preventDefault();
+    void (async () => {
+      const confirmed = await confirmQuitIfNeeded();
+      if (!confirmed) {
+        return;
+      }
+      markQuitPreConfirmed();
+      mainWindow.destroy();
+    })();
   });
   mainWindow.on("hide", () => refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS));
   mainWindow.on("show", () => refreshTrayVisibility(TRAY_LIFECYCLE_OPTIONS));
@@ -1037,6 +1066,61 @@ function showDaemonShutdownDialog(): void {
   }
 }
 
+// Prefers the focused window (the one the user is actually looking at), then
+// falls back to any visible window, then whatever window exists at all — so a
+// "warn before quitting" confirmation always has somewhere to render.
+function pickWindowForQuitConfirm(): BrowserWindow | null {
+  const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
+  if (windows.length === 0) {
+    return null;
+  }
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed()) {
+    return focused;
+  }
+  return windows.find((win) => win.isVisible()) ?? windows[0];
+}
+
+async function confirmQuitIfNeeded(): Promise<boolean> {
+  if (consumeQuitPreConfirmation()) {
+    log.info("[quit-confirm] skipped: already confirmed via the last window's close handler");
+    return true;
+  }
+
+  const settings = await getDesktopSettingsStore().get();
+  if (!settings.quit.warnBeforeQuit) {
+    log.info("[quit-confirm] skipped: warnBeforeQuit is off", { quit: settings.quit });
+    return true;
+  }
+
+  const targetWindow = pickWindowForQuitConfirm();
+  if (!targetWindow) {
+    log.info("[quit-confirm] skipped: no window to render the confirmation in");
+  }
+  if (targetWindow && (targetWindow.isMinimized() || !targetWindow.isVisible())) {
+    // The user can't answer a dialog rendered in a hidden (tray-minimized) or
+    // OS-minimized window, so surface it first — before the request is sent,
+    // so the window is already on screen when the dialog appears in it.
+    log.info("[quit-confirm] restoring hidden/minimized window before asking");
+    if (targetWindow.isMinimized()) {
+      targetWindow.restore();
+    }
+    targetWindow.show();
+    targetWindow.focus();
+  }
+
+  const willStopDaemon =
+    shouldStopDesktopManagedDaemonOnQuit(settings) && isDesktopManagedDaemonRunningSync();
+
+  log.info("[quit-confirm] requesting renderer confirmation", {
+    hasTargetWindow: Boolean(targetWindow),
+    willStopDaemon,
+  });
+  const confirmed = await requestQuitConfirmation({ window: targetWindow, willStopDaemon });
+  log.info("[quit-confirm] resolved", { confirmed });
+  return confirmed;
+}
+
 // Runs before any window-close attempt in a real quit (app.quit()/Cmd+Q both fire
 // 'before-quit' first), so the tray's close-to-tray interception can tell a real
 // quit apart from the user clicking the window's close button.
@@ -1049,6 +1133,7 @@ app.on(
   createBeforeQuitHandler({
     app,
     closeTransportSessions: closeAllTransportSessions,
+    confirmQuitIfNeeded,
     stopDesktopManagedDaemonIfNeeded: () =>
       stopDesktopManagedDaemonOnQuitIfNeeded({
         settingsStore: getDesktopSettingsStore(),

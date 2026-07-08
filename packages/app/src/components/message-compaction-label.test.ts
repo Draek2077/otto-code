@@ -18,24 +18,6 @@ describe("getCompactionMarkerLabel", () => {
     expect(getCompactionMarkerLabel({ status: "completed" })).toBe("Context compacted");
   });
 
-  it("prefers a provider short summary over the generic completed labels", () => {
-    expect(
-      getCompactionMarkerLabel({
-        status: "completed",
-        trigger: "manual",
-        preTokens: 12_345,
-        shortSummary: "I refactored the auth module.",
-      }),
-    ).toBe("I refactored the auth module.");
-    // But a short summary never overrides the loading state.
-    expect(
-      getCompactionMarkerLabel({
-        status: "loading",
-        shortSummary: "I refactored the auth module.",
-      }),
-    ).toBe("Compacting...");
-  });
-
   it("renders labels in the active app language", async () => {
     await i18n.changeLanguage("zh-CN");
     try {

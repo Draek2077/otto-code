@@ -1132,24 +1132,13 @@ export class OpenAICompatAgentSession implements AgentSession {
         ? `<previous-summary>\n${priorSummary}\n</previous-summary>\n\n<new-messages>\n${conversationText}\n</new-messages>`
         : conversationText;
 
-    // The full summary is required; the short PR-style summary for the timeline
-    // marker is best-effort and must never fail or block the compaction. Run
-    // both concurrently so a second-request server can overlap them.
-    const [summaryResult, shortSummary] = await Promise.all([
-      this.runCompactionCompletion({
-        endpoint,
-        model,
-        systemPrompt,
-        userContent,
-        signal: turn.abort.signal,
-      }),
-      this.requestShortCompactionSummary({
-        endpoint,
-        model,
-        conversationText,
-        signal: turn.abort.signal,
-      }),
-    ]);
+    const summaryResult = await this.runCompactionCompletion({
+      endpoint,
+      model,
+      systemPrompt,
+      userContent,
+      signal: turn.abort.signal,
+    });
     const summary = summaryResult.content;
 
     // 4. Rebuild: system + summary (marked for future incremental updates) +
@@ -1183,7 +1172,6 @@ export class OpenAICompatAgentSession implements AgentSession {
         trigger: "manual",
         preTokens,
         postTokens,
-        ...(shortSummary ? { shortSummary } : {}),
       },
     });
 
@@ -1329,32 +1317,6 @@ export class OpenAICompatAgentSession implements AgentSession {
         ? (data.usage as Record<string, unknown>)
         : undefined;
     return { content, ...(usage ? { usage } : {}) };
-  }
-
-  /**
-   * Best-effort short (PR-style) summary for the compaction timeline marker.
-   * Never throws: any failure or empty result yields undefined and the marker
-   * falls back to its token-count label.
-   */
-  private async requestShortCompactionSummary(options: {
-    endpoint: ResolvedEndpoint;
-    model: string;
-    conversationText: string;
-    signal: AbortSignal;
-  }): Promise<string | undefined> {
-    try {
-      const result = await this.runCompactionCompletion({
-        endpoint: options.endpoint,
-        model: options.model,
-        systemPrompt: this.buildShortCompactionSummarySystemPrompt(),
-        userContent: options.conversationText,
-        signal: options.signal,
-      });
-      const trimmed = result.content.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    } catch {
-      return undefined;
-    }
   }
 
   /**
@@ -1506,23 +1468,6 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       : "";
 
     return base + instructionPart;
-  }
-
-  /**
-   * System prompt for the short (one-line) summary shown on the compaction
-   * timeline marker — a PR-style description of what the compacted stretch of
-   * conversation accomplished. Kept to a single line for the divider label.
-   */
-  private buildShortCompactionSummarySystemPrompt(): string {
-    return `Summarize what was accomplished in this conversation, written like a one-line pull request title.
-
-Rules:
-- ONE short sentence, at most ~15 words.
-- Describe the changes made, not the process.
-- NEVER mention running tests, builds, or other validation steps.
-- NEVER explain what the user asked for.
-- Write in first person (I added…, I fixed…).
-- NEVER ask questions. Output only the sentence.`;
   }
 
   /**

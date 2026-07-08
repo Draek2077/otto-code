@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
@@ -245,38 +246,50 @@ export function ContextWindowMeter({
 
   return (
     <DropdownMenu open={isPopupOpen} onOpenChange={handlePopupOpenChange}>
-      <DropdownMenuTrigger
-        style={triggerStyle}
-        accessibilityRole="button"
-        testID="context-window-meter"
-        accessibilityLabel={t("contextWindow.accessibility", {
-          percentage: roundedPercentage,
-        })}
-      >
-        <Svg width={svgSize} height={svgSize} viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`} aria-hidden>
-          <G transform={RING_ROTATE_TRANSFORM}>
-            <Circle
-              cx={CENTER}
-              cy={CENTER}
-              r={RADIUS}
-              fill="none"
-              stroke={colors.track}
-              strokeWidth={STROKE_WIDTH}
-            />
-            <Circle
-              cx={CENTER}
-              cy={CENTER}
-              r={RADIUS}
-              fill="none"
-              stroke={colors.progress}
-              strokeWidth={STROKE_WIDTH}
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={dashOffset}
-            />
-          </G>
-        </Svg>
-      </DropdownMenuTrigger>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger
+            style={triggerStyle}
+            accessibilityRole="button"
+            testID="context-window-meter"
+            accessibilityLabel={t("contextWindow.accessibility", {
+              percentage: roundedPercentage,
+            })}
+          >
+            <Svg
+              width={svgSize}
+              height={svgSize}
+              viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
+              aria-hidden
+            >
+              <G transform={RING_ROTATE_TRANSFORM}>
+                <Circle
+                  cx={CENTER}
+                  cy={CENTER}
+                  r={RADIUS}
+                  fill="none"
+                  stroke={colors.track}
+                  strokeWidth={STROKE_WIDTH}
+                />
+                <Circle
+                  cx={CENTER}
+                  cy={CENTER}
+                  r={RADIUS}
+                  fill="none"
+                  stroke={colors.progress}
+                  strokeWidth={STROKE_WIDTH}
+                  strokeLinecap="round"
+                  strokeDasharray={CIRCUMFERENCE}
+                  strokeDashoffset={dashOffset}
+                />
+              </G>
+            </Svg>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <Text style={styles.tooltipText}>{t("contextWindow.tooltip")}</Text>
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent side="top" align="center" offset={8} minWidth={220}>
         <View style={styles.popupContent}>
           <Text style={styles.popupTitle}>
@@ -310,6 +323,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   buttonHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.4,
   },
   popupContent: {
     gap: theme.spacing[1.5],

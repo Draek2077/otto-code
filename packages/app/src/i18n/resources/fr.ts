@@ -7,6 +7,7 @@ export const fr: TranslationResources = {
     actions: {
       back: "Dos",
       cancel: "Annuler",
+      confirm: "Confirm",
       close: "Fermer",
       copy: "Copie",
       dismiss: "Rejeter",
@@ -80,6 +81,7 @@ export const fr: TranslationResources = {
       sendMessage: "Envoyer un message",
       queue: "File d'attente",
       send: "Envoyer",
+      add: "Ajouter du contexte",
     },
     cancel: {
       cancelingAgent: "Agent d'annulation",
@@ -164,7 +166,7 @@ export const fr: TranslationResources = {
       selectWithValue: "Sélectionnez le mode agent ({{value}})",
     },
     hints: {
-      thinking: "Mode réflexion",
+      thinking: "Changer l'effort",
       model: "Changer de modèle",
       mode: "Changer de mode",
     },
@@ -1005,6 +1007,23 @@ export const fr: TranslationResources = {
         title: "Démarrer réduit dans la barre d'état",
         hint: "Lance Otto masqué dans la barre d'état système au lieu d'afficher la fenêtre",
       },
+      warnBeforeQuit: {
+        title: "Avertir avant de quitter",
+        hint: "Confirme que vous voulez quitter l'application/le démon/les sessions actives",
+      },
+      onlyWarnForActiveAgents: {
+        title: "Avertir uniquement si des agents sont actifs",
+        hint: "Ne confirme la fermeture de l'application que s'il y a des agents actifs",
+      },
+      quitConfirm: {
+        title: "Quitter Otto ?",
+        appMessage: "Voulez-vous vraiment quitter l'application ?",
+        appAndDaemonMessage: "Voulez-vous vraiment quitter l'application et le démon ?",
+        activeAgentsMessage:
+          "Voulez-vous vraiment quitter l'application alors que des agents sont actifs ?",
+        confirm: "Quitter",
+        cancel: "Annuler",
+      },
     },
     updates: {
       status: {
@@ -1546,6 +1565,7 @@ export const fr: TranslationResources = {
     title: "Fenêtre contextuelle ({{percentage}}% utilisé)",
     sessionCost: "Coût de la séance{{cost}}",
     accessibility: "Fenêtre contextuelle{{percentage}}% utilisé",
+    tooltip: "Voir l'utilisation",
   },
   review: {
     comment: {

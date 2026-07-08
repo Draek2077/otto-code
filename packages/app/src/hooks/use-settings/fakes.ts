@@ -37,6 +37,10 @@ const DEFAULT_DESKTOP: DesktopSettings = {
     minimizeOnClose: true,
     startMinimized: false,
   },
+  quit: {
+    warnBeforeQuit: false,
+    onlyWarnForActiveAgents: false,
+  },
 };
 
 export function createFakeDesktopBridge(

@@ -337,6 +337,7 @@ describe("loadSettingsFromStorage", () => {
         releaseChannel: "beta",
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
         tray: { minimizeOnClose: true, startMinimized: false },
+        quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },
       },
     });
     const deps = makeDeps({

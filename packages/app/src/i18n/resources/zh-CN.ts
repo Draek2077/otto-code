@@ -7,6 +7,7 @@ export const zhCN: TranslationResources = {
     actions: {
       back: "返回",
       cancel: "取消",
+      confirm: "Confirm",
       close: "关闭",
       copy: "复制",
       dismiss: "关闭",
@@ -79,6 +80,7 @@ export const zhCN: TranslationResources = {
       sendMessage: "发送消息",
       queue: "排队",
       send: "发送",
+      add: "添加上下文",
     },
     cancel: {
       cancelingAgent: "正在取消 Agent",
@@ -163,7 +165,7 @@ export const zhCN: TranslationResources = {
       selectWithValue: "选择 Agent mode（{{value}}）",
     },
     hints: {
-      thinking: "Thinking mode",
+      thinking: "更改推理强度",
       model: "切换 Model",
       mode: "更改模式",
     },
@@ -968,6 +970,22 @@ export const zhCN: TranslationResources = {
         title: "启动时最小化到托盘",
         hint: "启动 Otto 时隐藏在系统托盘中，而不显示窗口",
       },
+      warnBeforeQuit: {
+        title: "退出前警告",
+        hint: "确认您要退出应用程序/守护进程/活动会话",
+      },
+      onlyWarnForActiveAgents: {
+        title: "仅在有活动代理时警告",
+        hint: "仅当存在活动代理时才确认退出应用程序",
+      },
+      quitConfirm: {
+        title: "退出 Otto？",
+        appMessage: "确定要退出应用程序吗？",
+        appAndDaemonMessage: "确定要退出应用程序和守护进程吗？",
+        activeAgentsMessage: "有代理正在运行，确定要退出应用程序吗？",
+        confirm: "退出",
+        cancel: "取消",
+      },
     },
     updates: {
       status: {
@@ -1487,6 +1505,7 @@ export const zhCN: TranslationResources = {
     title: "上下文窗口（已使用 {{percentage}}%）",
     sessionCost: "会话费用 {{cost}}",
     accessibility: "上下文窗口已使用 {{percentage}}%",
+    tooltip: "查看用量",
   },
   review: {
     comment: {

@@ -7,6 +7,7 @@ export const ja: TranslationResources = {
     actions: {
       back: "戻る",
       cancel: "キャンセル",
+      confirm: "Confirm",
       close: "閉じる",
       copy: "コピー",
       dismiss: "閉じる",
@@ -79,6 +80,7 @@ export const ja: TranslationResources = {
       sendMessage: "メッセージを送信",
       queue: "キュー",
       send: "送信",
+      add: "コンテキストを追加",
     },
     cancel: {
       cancelingAgent: "エージェントをキャンセル中",
@@ -163,7 +165,7 @@ export const ja: TranslationResources = {
       selectWithValue: "エージェントモードを選択（{{value}}）",
     },
     hints: {
-      thinking: "思考モード",
+      thinking: "推論の強さを変更",
       model: "モデルを変更",
       mode: "権限モードを変更",
     },
@@ -991,6 +993,22 @@ export const ja: TranslationResources = {
         title: "トレイに最小化して起動",
         hint: "ウィンドウを表示せずOttoをシステムトレイに隠した状態で起動します",
       },
+      warnBeforeQuit: {
+        title: "終了前に警告",
+        hint: "アプリケーション/デーモン/アクティブなセッションを終了することを確認します",
+      },
+      onlyWarnForActiveAgents: {
+        title: "アクティブなエージェントがある場合のみ警告",
+        hint: "アクティブなエージェントがある場合のみアプリケーションの終了を確認します",
+      },
+      quitConfirm: {
+        title: "Ottoを終了しますか？",
+        appMessage: "本当にアプリケーションを終了しますか？",
+        appAndDaemonMessage: "本当にアプリケーションとデーモンを終了しますか？",
+        activeAgentsMessage: "エージェントが稼働中ですが、本当にアプリケーションを終了しますか？",
+        confirm: "終了",
+        cancel: "キャンセル",
+      },
     },
     updates: {
       status: {
@@ -1521,6 +1539,7 @@ export const ja: TranslationResources = {
     title: "コンテキストウィンドウ（{{percentage}}%使用）",
     sessionCost: "セッションコスト: {{cost}}",
     accessibility: "コンテキストウィンドウ{{percentage}}%使用",
+    tooltip: "使用状況を表示",
   },
   review: {
     comment: {

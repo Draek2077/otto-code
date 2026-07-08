@@ -1686,9 +1686,8 @@ async function startCompactEndpoint(options?: {
 }
 
 /**
- * Compaction fires two concurrent non-streaming requests: the full structured
- * summary and a short PR-style summary. Their arrival order is nondeterministic,
- * so find the full one by a marker unique to its system prompt.
+ * Find the compaction's structured-summary request by a marker unique to its
+ * system prompt (there may be other non-streaming requests in the log).
  */
 function findFullSummaryRequest(
   requests: Array<Record<string, unknown>>,
@@ -1968,35 +1967,6 @@ describe("OpenAICompatAgentSession /compact", () => {
     const updateMessages = updateRequest?.messages as Array<{ role: string; content: string }>;
     expect(updateMessages[1]?.content).toContain("<previous-summary>");
     expect(updateMessages[1]?.content).toContain("MERGED_SUMMARY");
-
-    await session.close();
-  });
-
-  test("emits a short summary on the completed compaction event", async () => {
-    const endpoint = await startCompactEndpoint({ summary: "I refactored the auth module." });
-    const client = createClient(endpoint.baseUrl);
-    const session = await client.createSession({
-      provider: "lmstudio",
-      cwd: process.cwd(),
-      model: "test-model-a",
-    });
-
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    await session.run("First message");
-    await session.run("/compact");
-
-    const completedEvent = events.find(
-      (event) =>
-        event.type === "timeline" &&
-        event.item.type === "compaction" &&
-        event.item.status === "completed",
-    );
-    expect(completedEvent).toBeDefined();
-    if (completedEvent?.type === "timeline" && completedEvent.item.type === "compaction") {
-      expect(completedEvent.item.shortSummary).toBe("I refactored the auth module.");
-    }
 
     await session.close();
   });

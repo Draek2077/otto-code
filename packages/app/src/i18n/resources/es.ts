@@ -7,6 +7,7 @@ export const es: TranslationResources = {
     actions: {
       back: "Atrás",
       cancel: "Cancelar",
+      confirm: "Confirm",
       close: "Cerca",
       copy: "Copiar",
       dismiss: "Despedir",
@@ -79,6 +80,7 @@ export const es: TranslationResources = {
       sendMessage: "enviar mensaje",
       queue: "Cola",
       send: "Enviar",
+      add: "Agregar contexto",
     },
     cancel: {
       cancelingAgent: "Agente de cancelación",
@@ -163,7 +165,7 @@ export const es: TranslationResources = {
       selectWithValue: "Seleccione el modo de agente ({{value}})",
     },
     hints: {
-      thinking: "Modo de pensamiento",
+      thinking: "Cambiar esfuerzo",
       model: "Cambiar modelo",
       mode: "Cambiar modo",
     },
@@ -1006,6 +1008,23 @@ export const es: TranslationResources = {
         title: "Iniciar minimizado en la bandeja",
         hint: "Inicia Otto oculto en la bandeja del sistema en lugar de mostrar la ventana",
       },
+      warnBeforeQuit: {
+        title: "Avisar antes de salir",
+        hint: "Confirma que quieres salir de la aplicación/demonio/sesiones activas",
+      },
+      onlyWarnForActiveAgents: {
+        title: "Avisar solo si hay agentes activos",
+        hint: "Solo confirma la salida de la aplicación si hay agentes activos",
+      },
+      quitConfirm: {
+        title: "¿Salir de Otto?",
+        appMessage: "¿Seguro que quieres salir de la aplicación?",
+        appAndDaemonMessage: "¿Seguro que quieres salir de la aplicación y el demonio?",
+        activeAgentsMessage:
+          "¿Seguro que quieres salir de la aplicación mientras hay agentes activos?",
+        confirm: "Salir",
+        cancel: "Cancelar",
+      },
     },
     updates: {
       status: {
@@ -1543,6 +1562,7 @@ export const es: TranslationResources = {
     title: "Ventana de contexto ({{percentage}}% utilizado)",
     sessionCost: "Costo de la sesión{{cost}}",
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
+    tooltip: "Ver uso",
   },
   review: {
     comment: {

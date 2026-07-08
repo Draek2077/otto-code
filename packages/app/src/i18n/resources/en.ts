@@ -5,6 +5,7 @@ export const en = {
     actions: {
       back: "Back",
       cancel: "Cancel",
+      confirm: "Confirm",
       close: "Close",
       copy: "Copy",
       dismiss: "Dismiss",
@@ -77,6 +78,7 @@ export const en = {
       sendMessage: "Send message",
       queue: "Queue",
       send: "Send",
+      add: "Add context",
     },
     cancel: {
       cancelingAgent: "Canceling agent",
@@ -161,7 +163,7 @@ export const en = {
       selectWithValue: "Select agent mode ({{value}})",
     },
     hints: {
-      thinking: "Thinking mode",
+      thinking: "Change effort",
       model: "Change model",
       mode: "Change mode",
     },
@@ -986,6 +988,23 @@ export const en = {
         title: "Start minimized to tray",
         hint: "Launch Otto hidden in the system tray instead of showing the window",
       },
+      warnBeforeQuit: {
+        title: "Warn before quitting",
+        hint: "Confirms that you want to quit application/daemon/active sessions",
+      },
+      onlyWarnForActiveAgents: {
+        title: "Only warn for active agents",
+        hint: "Only confirm quitting application if there are active agents",
+      },
+      quitConfirm: {
+        title: "Quit Otto?",
+        appMessage: "Are you sure you want to quit the application?",
+        appAndDaemonMessage: "Are you sure you want to quit the application and daemon?",
+        activeAgentsMessage:
+          "Are you sure you want to quit the application while agents are active?",
+        confirm: "Quit",
+        cancel: "Cancel",
+      },
     },
     updates: {
       status: {
@@ -1512,6 +1531,7 @@ export const en = {
     title: "Context window ({{percentage}}% used)",
     sessionCost: "Session cost {{cost}}",
     accessibility: "Context window {{percentage}}% used",
+    tooltip: "View usage",
   },
   review: {
     comment: {

@@ -726,7 +726,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 status={item.status}
                 trigger={item.trigger}
                 preTokens={item.preTokens}
-                shortSummary={item.shortSummary}
               />
             );
 

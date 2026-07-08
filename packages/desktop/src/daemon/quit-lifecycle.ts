@@ -9,6 +9,14 @@ export function markAppQuitting(): void {
   appIsQuitting = true;
 }
 
+// Called when a "warn before quitting" confirmation is cancelled, so a declined
+// quit doesn't permanently wedge isAppQuitting() true for the rest of the
+// process's life — which would otherwise disable close-to-tray and the
+// close-handler's own quit confirmation for every later window close.
+export function unmarkAppQuitting(): void {
+  appIsQuitting = false;
+}
+
 export function isAppQuitting(): boolean {
   return appIsQuitting;
 }
@@ -58,11 +66,16 @@ export async function stopDesktopManagedDaemonOnQuitIfNeeded(
 export function createBeforeQuitHandler({
   app,
   closeTransportSessions,
+  confirmQuitIfNeeded,
   stopDesktopManagedDaemonIfNeeded,
   onStopError,
 }: {
   app: BeforeQuitApp;
   closeTransportSessions: () => void;
+  // Resolves false to abort the quit (user cancelled a "warn before quitting"
+  // confirmation). Resolves true when no confirmation was needed or the user
+  // confirmed.
+  confirmQuitIfNeeded: () => Promise<boolean>;
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
   onStopError: (error: unknown) => void;
 }): (event: BeforeQuitEvent) => void {
@@ -79,12 +92,22 @@ export function createBeforeQuitHandler({
     quitting = true;
     event.preventDefault();
 
-    void stopDesktopManagedDaemonIfNeeded()
-      .catch((error) => {
-        onStopError(error);
-      })
-      .finally(() => {
-        app.exit(0);
+    void confirmQuitIfNeeded()
+      .catch(() => true) // never block quitting on a confirmation-plumbing failure
+      .then((confirmed) => {
+        if (!confirmed) {
+          quitting = false;
+          unmarkAppQuitting();
+          return;
+        }
+
+        return stopDesktopManagedDaemonIfNeeded()
+          .catch((error) => {
+            onStopError(error);
+          })
+          .finally(() => {
+            app.exit(0);
+          });
       });
   };
 }

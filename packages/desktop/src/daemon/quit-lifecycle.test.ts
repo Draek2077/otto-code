@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import {
   createBeforeQuitHandler,
+  isAppQuitting,
+  markAppQuitting,
   shouldStopDesktopManagedDaemonOnQuit,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./quit-lifecycle";
@@ -86,6 +88,7 @@ describe("quit-lifecycle", () => {
     const handleBeforeQuit = createBeforeQuitHandler({
       app,
       closeTransportSessions,
+      confirmQuitIfNeeded: vi.fn(async () => true),
       stopDesktopManagedDaemonIfNeeded: vi.fn(
         () =>
           new Promise<boolean>((resolve) => {
@@ -100,6 +103,11 @@ describe("quit-lifecycle", () => {
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(closeTransportSessions).toHaveBeenCalledTimes(1);
     expect(app.exit).not.toHaveBeenCalled();
+
+    // confirmQuitIfNeeded resolves asynchronously, so stopDesktopManagedDaemonIfNeeded
+    // (and thus resolveStopDecision) isn't invoked until its .then() microtask runs.
+    await Promise.resolve();
+    await Promise.resolve();
     expect(resolveStopDecision).not.toBeNull();
 
     resolveStopDecision?.();
@@ -114,5 +122,60 @@ describe("quit-lifecycle", () => {
     expect(secondPreventDefault).not.toHaveBeenCalled();
     expect(closeTransportSessions).toHaveBeenCalledTimes(2);
     expect(app.exit).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts the quit when the renderer confirmation is declined", async () => {
+    const app = { exit: vi.fn() };
+    const closeTransportSessions = vi.fn();
+    const onStopError = vi.fn();
+    const preventDefault = vi.fn();
+    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
+
+    const handleBeforeQuit = createBeforeQuitHandler({
+      app,
+      closeTransportSessions,
+      confirmQuitIfNeeded: vi.fn(async () => false),
+      stopDesktopManagedDaemonIfNeeded,
+      onStopError,
+    });
+
+    handleBeforeQuit({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
+
+    // Cancelling resets the in-flight guard, so a later real quit attempt
+    // still goes through the full preventDefault → confirm → exit sequence.
+    const secondPreventDefault = vi.fn();
+    handleBeforeQuit({ preventDefault: secondPreventDefault });
+    expect(secondPreventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets isAppQuitting when the renderer confirmation is declined", async () => {
+    // main.ts's separate 'before-quit' listener always calls this first, before
+    // createBeforeQuitHandler's own listener runs in the same event cycle.
+    markAppQuitting();
+    expect(isAppQuitting()).toBe(true);
+
+    const handleBeforeQuit = createBeforeQuitHandler({
+      app: { exit: vi.fn() },
+      closeTransportSessions: vi.fn(),
+      confirmQuitIfNeeded: vi.fn(async () => false),
+      stopDesktopManagedDaemonIfNeeded: vi.fn(async () => false),
+      onStopError: vi.fn(),
+    });
+
+    handleBeforeQuit({ preventDefault: vi.fn() });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A declined quit must not permanently wedge isAppQuitting() true — that
+    // would disable close-to-tray (and the window-close quit confirmation) for
+    // every later close in the same session, quitting outright without asking.
+    expect(isAppQuitting()).toBe(false);
   });
 });

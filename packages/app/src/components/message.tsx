@@ -42,7 +42,7 @@ import {
   CheckSquare,
   Copy,
   TriangleAlertIcon,
-  Scissors,
+  Summarize,
   MicVocal,
   FileSymlink,
 } from "@/components/icons/material-icons";
@@ -2170,7 +2170,6 @@ interface CompactionMarkerProps {
   status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
-  shortSummary?: string;
 }
 
 const compactionStylesheet = StyleSheet.create((theme) => ({
@@ -2202,15 +2201,14 @@ export const CompactionMarker = memo(function CompactionMarker({
   status,
   trigger,
   preTokens,
-  shortSummary,
 }: CompactionMarkerProps) {
-  const label = getCompactionMarkerLabel({ status, trigger, preTokens, shortSummary });
+  const label = getCompactionMarkerLabel({ status, trigger, preTokens });
 
   return (
     <View style={compactionStylesheet.container}>
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
-        {status === "completed" && <Scissors size={12} color="#a1a1aa" />}
+        {status === "completed" && <Summarize size={12} color="#a1a1aa" />}
         <Text style={compactionStylesheet.text}>{label}</Text>
       </View>
       <View style={compactionStylesheet.line} />

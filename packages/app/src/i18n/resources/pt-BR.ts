@@ -7,6 +7,7 @@ export const ptBR: TranslationResources = {
     actions: {
       back: "Voltar",
       cancel: "Cancelar",
+      confirm: "Confirm",
       close: "Fechar",
       copy: "Copiar",
       dismiss: "Dispensar",
@@ -79,6 +80,7 @@ export const ptBR: TranslationResources = {
       sendMessage: "Enviar mensagem",
       queue: "Fila",
       send: "Enviar",
+      add: "Adicionar contexto",
     },
     cancel: {
       cancelingAgent: "Cancelando agente",
@@ -163,7 +165,7 @@ export const ptBR: TranslationResources = {
       selectWithValue: "Selecionar modo do agente ({{value}})",
     },
     hints: {
-      thinking: "Modo de raciocínio",
+      thinking: "Alterar esforço",
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
     },
@@ -997,6 +999,23 @@ export const ptBR: TranslationResources = {
         title: "Iniciar minimizado na bandeja",
         hint: "Inicia o Otto oculto na bandeja do sistema em vez de mostrar a janela",
       },
+      warnBeforeQuit: {
+        title: "Avisar antes de sair",
+        hint: "Confirma que você deseja sair do aplicativo/daemon/sessões ativas",
+      },
+      onlyWarnForActiveAgents: {
+        title: "Avisar somente com agentes ativos",
+        hint: "Só confirma a saída do aplicativo se houver agentes ativos",
+      },
+      quitConfirm: {
+        title: "Sair do Otto?",
+        appMessage: "Tem certeza de que deseja sair do aplicativo?",
+        appAndDaemonMessage: "Tem certeza de que deseja sair do aplicativo e do daemon?",
+        activeAgentsMessage:
+          "Tem certeza de que deseja sair do aplicativo enquanto há agentes ativos?",
+        confirm: "Sair",
+        cancel: "Cancelar",
+      },
     },
     updates: {
       status: {
@@ -1529,6 +1548,7 @@ export const ptBR: TranslationResources = {
     title: "Janela de contexto ({{percentage}}% usado)",
     sessionCost: "Custo da sessão {{cost}}",
     accessibility: "Janela de contexto {{percentage}}% usada",
+    tooltip: "Ver uso",
   },
   review: {
     comment: {

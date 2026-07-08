@@ -153,7 +153,6 @@ export interface CompactionItem {
   status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
-  shortSummary?: string;
 }
 
 export interface TodoEntry {
@@ -729,7 +728,6 @@ function reduceTimelineCompaction(
         status: "completed",
         trigger: item.trigger ?? existing.trigger,
         preTokens: item.preTokens ?? existing.preTokens,
-        shortSummary: item.shortSummary ?? existing.shortSummary,
       };
       return [...state.slice(0, loadingIdx), updated, ...state.slice(loadingIdx + 1)];
     }
@@ -744,7 +742,6 @@ function reduceTimelineCompaction(
     status: item.status,
     trigger: item.trigger,
     preTokens: item.preTokens,
-    shortSummary: item.shortSummary,
   };
   return [...state, compaction];
 }
