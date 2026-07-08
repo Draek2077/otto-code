@@ -2200,6 +2200,11 @@ export const en = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Host is not connected",
+    },
+  },
 } as const;
 
 type WidenStringLeaves<T> = {

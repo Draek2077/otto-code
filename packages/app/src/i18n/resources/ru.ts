@@ -2230,4 +2230,9 @@ export const ru: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Host не подключен",
+    },
+  },
 };

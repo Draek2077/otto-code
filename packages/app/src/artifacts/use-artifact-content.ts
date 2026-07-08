@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 
 export const artifactContentQueryBaseKey = ["artifact-content"] as const;
@@ -23,13 +24,14 @@ export interface UseArtifactContentResult {
 export function useArtifactContent(serverId: string, artifactId: string): UseArtifactContentResult {
   const runtime = getHostRuntimeStore();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const query = useQuery({
     queryKey: artifactContentQueryKey(serverId, artifactId),
     queryFn: async (): Promise<string> => {
       const client = runtime.getClient(serverId);
       if (!client) {
-        throw new Error("Host is not connected");
+        throw new Error(t("artifacts.errors.hostDisconnected"));
       }
       const payload = await client.artifactGetContent({ artifactId });
       if (!payload.success) {

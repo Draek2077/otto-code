@@ -2238,4 +2238,9 @@ export const es: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Hostno está conectado",
+    },
+  },
 };

@@ -2166,4 +2166,9 @@ export const zhCN: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Host 未连接",
+    },
+  },
 };

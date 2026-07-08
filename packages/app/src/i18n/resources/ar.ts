@@ -2189,4 +2189,9 @@ export const ar: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Host غير متصل",
+    },
+  },
 };
