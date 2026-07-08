@@ -36,6 +36,10 @@ export function normalizeWorkspaceTabTarget(
     const workspaceId = trimNonEmpty(value.workspaceId);
     return workspaceId ? { kind: "setup", workspaceId } : null;
   }
+  if (value.kind === "artifact") {
+    const artifactId = trimNonEmpty(value.artifactId);
+    return artifactId ? { kind: "artifact", artifactId } : null;
+  }
   return null;
 }
 
@@ -88,6 +92,9 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "setup" && right.kind === "setup") {
     return left.workspaceId === right.workspaceId;
   }
+  if (left.kind === "artifact" && right.kind === "artifact") {
+    return left.artifactId === right.artifactId;
+  }
   return false;
 }
 
@@ -139,6 +146,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "setup") {
     return `setup_${target.workspaceId}`;
+  }
+  if (target.kind === "artifact") {
+    return `artifact_${target.artifactId}`;
   }
   return `file_${target.path}`;
 }

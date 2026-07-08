@@ -473,6 +473,38 @@ type ScheduleUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "schedule/update/response" }
 >["payload"];
+type ArtifactListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.list.response" }
+>["payload"];
+type ArtifactCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.create.response" }
+>["payload"];
+type ArtifactUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.update.response" }
+>["payload"];
+type ArtifactRegeneratePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.regenerate.response" }
+>["payload"];
+type ArtifactCancelPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.cancel.response" }
+>["payload"];
+type ArtifactDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.delete.response" }
+>["payload"];
+type ArtifactStarPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.star.response" }
+>["payload"];
+type ArtifactGetContentPayload = Extract<
+  SessionOutboundMessage,
+  { type: "artifact.get-content.response" }
+>["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
@@ -4588,6 +4620,144 @@ export class DaemonClient {
         ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
       },
       responseType: "schedule/update/response",
+    });
+  }
+
+  async artifactList(options?: {
+    projectId?: string;
+    requestId?: string;
+  }): Promise<ArtifactListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "artifact.list.request",
+        ...(options?.projectId ? { projectId: options.projectId } : {}),
+      },
+      responseType: "artifact.list.response",
+    });
+  }
+
+  async artifactCreate(options: {
+    name: string;
+    description: string;
+    projectId: string;
+    provider: string;
+    model?: string;
+    modeId?: string;
+    thinkingOptionId?: string;
+    systemPrompt?: string;
+    requestId?: string;
+  }): Promise<ArtifactCreatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.create.request",
+        name: options.name,
+        description: options.description,
+        projectId: options.projectId,
+        provider: options.provider,
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.modeId ? { modeId: options.modeId } : {}),
+        ...(options.thinkingOptionId ? { thinkingOptionId: options.thinkingOptionId } : {}),
+        ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+      },
+      responseType: "artifact.create.response",
+    });
+  }
+
+  async artifactUpdate(options: {
+    artifactId: string;
+    name?: string;
+    description?: string;
+    projectId?: string;
+    provider?: string;
+    model?: string;
+    requestId?: string;
+  }): Promise<ArtifactUpdatePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.update.request",
+        artifactId: options.artifactId,
+        ...(options.name !== undefined ? { name: options.name } : {}),
+        ...(options.description !== undefined ? { description: options.description } : {}),
+        ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
+        ...(options.provider !== undefined ? { provider: options.provider } : {}),
+        ...(options.model !== undefined ? { model: options.model } : {}),
+      },
+      responseType: "artifact.update.response",
+    });
+  }
+
+  async artifactRegenerate(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactRegeneratePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.regenerate.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.regenerate.response",
+    });
+  }
+
+  async artifactCancel(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactCancelPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.cancel.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.cancel.response",
+    });
+  }
+
+  async artifactDelete(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactDeletePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.delete.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.delete.response",
+    });
+  }
+
+  async artifactStar(options: {
+    artifactId: string;
+    starred: boolean;
+    requestId?: string;
+  }): Promise<ArtifactStarPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.star.request",
+        artifactId: options.artifactId,
+        starred: options.starred,
+      },
+      responseType: "artifact.star.response",
+    });
+  }
+
+  async artifactGetContent(options: {
+    artifactId: string;
+    requestId?: string;
+  }): Promise<ArtifactGetContentPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "artifact.get-content.request",
+        artifactId: options.artifactId,
+      },
+      responseType: "artifact.get-content.response",
     });
   }
 

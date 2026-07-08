@@ -13,7 +13,7 @@ The artifact panel was registered as a placeholder in task 13. Now replace it wi
 - `packages/app/src/panels/browser-panel.tsx` — comparable panel that renders content in a webview
 - `packages/app/src/panels/artifact-panel.tsx` — the placeholder from task 13
 - `packages/app/src/components/browser-pane.tsx` — webview/browser rendering component
-- `tasks/09-client-hooks.md` — WebSocket hooks for fetching artifact content
+- `tasks/09b-query-hook.md` — WebSocket query hook for fetching artifacts
 - `tasks/02-rpc-schemas.md` — `artifact.client.get-content.request/response` RPC
 
 ## What to Create

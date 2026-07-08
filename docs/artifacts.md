@@ -375,6 +375,34 @@ The user will describe what they want. Produce the complete HTML file.
 
 ---
 
+## Viewing the generation log
+
+The artifact generation agent is a **real provider agent** (`agentManager.createAgent` → `runAgent` in `artifact-service.ts`), so it streams normal chat/tool-call events during generation just like any other agent. Users can watch this live: while an artifact is `status: "generating"`, the artifact panel (`packages/app/src/panels/artifact-panel.tsx`) shows a **"View generation log"** button that opens the generation agent as an ordinary `{ kind: "agent", agentId }` workspace tab (the `generationAgentId` is stored on the artifact metadata). This reuses the existing agent panel + timeline fetch/stream infrastructure — no dedicated log UI.
+
+Getting this to work end-to-end required threading past **three** separate places that deliberately hide internal agents. Each is a real gotcha for anyone touching this again:
+
+### 1. `internal` vs `observable` — the stream filter (the non-obvious one)
+
+`internal: true` means the agent is hidden from listings and not persisted. Crucially, it **also** makes `AgentManager.dispatch()` drop the agent's `agent_stream` events for **global subscribers** — and the daemon session holds exactly one global subscription (no `agentId`), through which it forwards all live events to clients. So an `internal` agent's messages never reach the client's live stream. The client's timeline _fetch_ (`fetch_agent_timeline_request`) bypasses this filter, which is why navigating away and back showed messages but they never arrived live.
+
+The fix is a separate opt-in flag: **`observable: true`** (see `AgentSessionConfig` / `ManagedAgent`). An observable-internal agent still has its `agent_stream` forwarded to global subscribers, while its `agent_state` stays filtered (so it never appears in the sidebar/agent list). Artifact agents set both `internal: true` and `observable: true`. Other internal agents (branch-name / git-metadata generators) stay non-observable and fully silent. The client side needs no change — its `agent_stream` handler enqueues by `agentId` and only renders events for an open panel.
+
+Regression test: `agent-manager.test.ts` → "global subscriber receives stream for observable internal agents but not plain internal ones".
+
+### 2. Identifier resolution excludes internal agents
+
+`Session.resolveAgentIdentifier` (used by `fetch_agent_request`, which the agent panel calls on mount) builds its "known agent ids" set from `agentStorage.list().filter(!internal)` **and** `agentManager.listAgents().filter(!internal)` — both exclude internal agents — so it returned "Agent not found" even for a live artifact agent. There's now an exact-id fast path at the top of `resolveAgentIdentifier` that checks `agentManager.getAgent(id)` directly, bypassing the internal-exclusion for callers that already hold the literal `agentId` (the fuzzy prefix/title matching below still excludes internal agents).
+
+### 3. Client-side tab reconciliation prunes "unknown" agent tabs
+
+`workspace-screen.tsx` runs `reconcileWorkspaceTabs`, which closes any open `agent` tab whose id isn't in the workspace's known/active agent set once agents are hydrated. Because the artifact agent is internal (never broadcast via `agent_state`), it's never in that set, so a freshly opened log tab was pruned within the same tick. The fix folds generating artifacts' `generationAgentId`s into the reconciliation snapshot's known/active sets (scoped to the current server + workspace), exempting an explicitly opened log tab from pruning without adding it to the sidebar or any auto-open logic.
+
+### Scope boundary: live-only
+
+This is **live viewing only**. When generation finishes, `spawnArtifactAgent`'s `finally` block calls `agentManager.closeAgent(agent.id)`, which drops the in-memory timeline immediately; since the agent is internal it was never persisted either. So reopening the log after completion correctly shows the agent-panel "not found" state. Making a completed generation's transcript durable (delay `closeAgent`, or persist a lightweight snapshot) is deferred future work.
+
+---
+
 ## Open Questions
 
 1. **Should artifacts be editable by the user directly?** (Not just regenerated) — Out of scope for now, but worth considering.
@@ -387,7 +415,7 @@ The user will describe what they want. Produce the complete HTML file.
 
 5. **How do we handle artifact versioning?** — If a user regenerates an artifact, do we keep history? — Out of scope for now.
 
-6. **Should the artifact agent be visible in the agent list?** — It should be marked as `internal: true` so it doesn't clutter the sidebar.
+6. **Should the artifact agent be visible in the agent list?** — It is marked `internal: true` so it doesn't clutter the sidebar, **but also `observable: true`** so its live chat can still be watched via the generation log. See "Viewing the generation log" below.
 
 7. **What happens to artifacts when a project is removed from Otto?** — They should be hidden (not deleted) and shown with a "project not found" state.
 

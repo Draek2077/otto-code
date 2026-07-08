@@ -13,7 +13,7 @@ The workspace toolbar has buttons for opening new terminals, browsers, etc. We n
 - `packages/app/src/stores/workspace-tabs-store/index.ts` — `ensureTab` / `openOrFocusTab` to open tabs
 - `packages/app/src/stores/workspace-tabs-store/state.ts` — `WorkspaceTabTarget` now includes `{ kind: "artifact"; artifactId: string }` (task 13)
 - `packages/app/src/artifacts/use-artifacts.ts` — query hook from task 09
-- `tasks/09-client-hooks.md` — `useArtifacts(projectId)` to filter by current project
+- `tasks/09b-query-hook.md` — `useArtifacts(projectId)` to filter by current project
 - `packages/app/src/screens/artifacts-screen.tsx` — the artifacts screen for reference on how artifacts are used
 
 ## What to Create

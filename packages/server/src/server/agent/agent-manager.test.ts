@@ -4398,6 +4398,104 @@ test("subscribe emits state events for internal agents when subscribed by agentI
   expect(receivedEvents.filter((id) => id === internalAgentId).length).toBeGreaterThan(0);
 });
 
+test("global subscriber receives stream for observable internal agents but not plain internal ones", async () => {
+  const observableAgentId = "00000000-0000-4000-8000-000000000140";
+  const plainAgentId = "00000000-0000-4000-8000-000000000141";
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-observable-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  const sessionsByCwdTitle: TestAgentSession[] = [];
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      const session = new TestAgentSession(config);
+      sessionsByCwdTitle.push(session);
+      return session;
+    }
+  }
+
+  let agentCounter = 0;
+  const generatedAgentIds = [observableAgentId, plainAgentId];
+  const manager = new AgentManager({
+    clients: {
+      codex: new CapturingClient(),
+    },
+    registry: storage,
+    logger,
+    idFactory: () => generatedAgentIds[agentCounter++] ?? randomUUID(),
+  });
+
+  // Global subscriber (no agentId) — the shape the daemon session uses.
+  const streamAgentIds: string[] = [];
+  const stateAgentIds: string[] = [];
+  const observableCompleted = new Promise<void>((resolve) => {
+    manager.subscribe((event) => {
+      if (event.type === "agent_stream") {
+        streamAgentIds.push(event.agentId);
+        if (event.agentId === observableAgentId && event.event.type === "turn_completed") {
+          resolve();
+        }
+      }
+      if (event.type === "agent_state") {
+        stateAgentIds.push(event.agent.id);
+      }
+    });
+  });
+
+  // Scoped subscriber on the plain agent: agentId-scoped subscriptions bypass
+  // the internal filter, so this always sees the plain agent's turn and lets us
+  // deterministically wait until it's fully processed before asserting the
+  // global subscriber never saw it.
+  const plainCompleted = new Promise<void>((resolve) => {
+    manager.subscribe(
+      (event) => {
+        if (event.type === "agent_stream" && event.event.type === "turn_completed") {
+          resolve();
+        }
+      },
+      { agentId: plainAgentId, replayState: false },
+    );
+  });
+
+  await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Observable Internal Agent",
+    internal: true,
+    observable: true,
+  });
+  await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+    title: "Plain Internal Agent",
+    internal: true,
+  });
+
+  const [observableSession, plainSession] = sessionsByCwdTitle;
+  for (const [session, turnId] of [
+    [observableSession, "observable-turn-1"],
+    [plainSession, "plain-turn-1"],
+  ] as const) {
+    session.pushEvent({ type: "turn_started", provider: "codex", turnId });
+    session.pushEvent({
+      type: "timeline",
+      provider: "codex",
+      item: { type: "assistant_message", text: "streamed" },
+      turnId,
+    });
+    session.pushEvent({ type: "turn_completed", provider: "codex", turnId });
+  }
+
+  await Promise.all([observableCompleted, plainCompleted]);
+
+  // Observable internal agent streams to the global subscriber; the plain
+  // internal agent stays silent. Neither emits agent_state (no sidebar clutter).
+  expect(streamAgentIds).toContain(observableAgentId);
+  expect(streamAgentIds).not.toContain(plainAgentId);
+  expect(stateAgentIds).not.toContain(observableAgentId);
+  expect(stateAgentIds).not.toContain(plainAgentId);
+});
+
 test("subscribe fails when filter agentId is not a UUID", () => {
   const manager = new AgentManager({
     clients: {

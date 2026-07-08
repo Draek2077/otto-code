@@ -94,6 +94,7 @@ import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
+import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import {
   usePreviewRunningServersStore,
   useHasRunningPreviewServer,
@@ -797,6 +798,7 @@ function WorkspaceTabRowExtras({
           focusedAgentId={focusedAgentId}
         />
       ) : null}
+      <ArtifactOpenMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
       <PinnedTargetsRow launchers={launchers} testIdPrefix="workspace-pinned-target" />
     </>
   );
