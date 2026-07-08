@@ -2223,4 +2223,9 @@ export const ptBR: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "Host não está conectado",
+    },
+  },
 };

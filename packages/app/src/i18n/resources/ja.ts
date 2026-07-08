@@ -2214,4 +2214,9 @@ export const ja: TranslationResources = {
       },
     },
   },
+  artifacts: {
+    errors: {
+      hostDisconnected: "ホストが接続されていません",
+    },
+  },
 } as const;

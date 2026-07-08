@@ -1,4 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { ArtifactMetadata, CreateArtifactInput } from "@otto-code/protocol/artifacts/types";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { artifactsQueryBaseKey } from "@/artifacts/use-artifacts";
@@ -41,10 +43,10 @@ export interface StarArtifactVariables {
   starred: boolean;
 }
 
-function requireClient(serverId: string) {
+function requireClient(serverId: string, t: TFunction) {
   const client = getHostRuntimeStore().getClient(serverId);
   if (!client) {
-    throw new Error("Host is not connected");
+    throw new Error(t("artifacts.errors.hostDisconnected"));
   }
   return client;
 }
@@ -64,13 +66,14 @@ export interface UseArtifactMutationsResult {
 
 export function useArtifactMutations(): UseArtifactMutationsResult {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: artifactsQueryBaseKey });
   };
 
   const createMutation = useMutation({
     mutationFn: async ({ serverId, input }: CreateArtifactVariables): Promise<ArtifactMetadata> => {
-      const payload = await requireClient(serverId).artifactCreate({
+      const payload = await requireClient(serverId, t).artifactCreate({
         name: input.name,
         description: input.description,
         projectId: input.projectId,
@@ -94,7 +97,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
       artifactId,
       updates,
     }: UpdateArtifactVariables): Promise<ArtifactMetadata> => {
-      const payload = await requireClient(serverId).artifactUpdate({
+      const payload = await requireClient(serverId, t).artifactUpdate({
         artifactId,
         ...(updates.name !== undefined ? { name: updates.name } : {}),
         ...(updates.description !== undefined ? { description: updates.description } : {}),
@@ -115,7 +118,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
       serverId,
       artifactId,
     }: RegenerateArtifactVariables): Promise<ArtifactMetadata> => {
-      const payload = await requireClient(serverId).artifactRegenerate({ artifactId });
+      const payload = await requireClient(serverId, t).artifactRegenerate({ artifactId });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to regenerate artifact");
       }
@@ -129,7 +132,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
       serverId,
       artifactId,
     }: CancelArtifactVariables): Promise<ArtifactMetadata> => {
-      const payload = await requireClient(serverId).artifactCancel({ artifactId });
+      const payload = await requireClient(serverId, t).artifactCancel({ artifactId });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to cancel artifact generation");
       }
@@ -140,7 +143,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
 
   const deleteMutation = useMutation({
     mutationFn: async ({ serverId, artifactId }: DeleteArtifactVariables): Promise<void> => {
-      const payload = await requireClient(serverId).artifactDelete({ artifactId });
+      const payload = await requireClient(serverId, t).artifactDelete({ artifactId });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to delete artifact");
       }
@@ -154,7 +157,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
       artifactId,
       starred,
     }: StarArtifactVariables): Promise<ArtifactMetadata> => {
-      const payload = await requireClient(serverId).artifactStar({ artifactId, starred });
+      const payload = await requireClient(serverId, t).artifactStar({ artifactId, starred });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to update artifact");
       }
