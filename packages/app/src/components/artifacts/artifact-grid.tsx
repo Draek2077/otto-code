@@ -1,7 +1,6 @@
 import { type ReactElement } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { ArtifactCard } from "@/components/artifacts/artifact-card";
 import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 
@@ -24,14 +23,10 @@ export function ArtifactGrid({
   onStar,
   onDelete,
 }: ArtifactGridProps): ReactElement {
-  const isCompact = useIsCompactFormFactor();
   return (
     <View style={styles.grid}>
       {artifacts.map((artifact) => (
-        <View
-          key={`${artifact.serverId}:${artifact.id}`}
-          style={isCompact ? styles.cellFull : styles.cellHalf}
-        >
+        <View key={`${artifact.serverId}:${artifact.id}`} style={styles.cell}>
           <ArtifactCard
             artifact={artifact}
             onEdit={onEdit}
@@ -54,12 +49,13 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
   },
-  cellFull: {
-    width: "100%",
-  },
-  cellHalf: {
+  // 1 col until there's real room -> 2 cols (lg, 992px+) -> 3 cols (xl,
+  // 1200px+), narrower/portrait-like cards versus Schedules' wider 1-2 col
+  // cell (schedule-grid.tsx). Pushed a tier higher than the raw breakpoint
+  // names suggest so cards don't cram in before there's actually space.
+  cell: {
     flexGrow: 1,
-    flexBasis: "48%",
-    maxWidth: "50%",
+    flexBasis: { xs: "100%", lg: "48%", xl: "31%" },
+    maxWidth: { xs: "100%", lg: "50%", xl: "33%" },
   },
 }));

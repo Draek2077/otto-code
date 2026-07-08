@@ -7,10 +7,8 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ArtifactGrid } from "@/components/artifacts/artifact-grid";
-import {
-  ArtifactProjectFilter,
-  type ArtifactProjectFilterOption,
-} from "@/components/artifacts/artifact-project-filter";
+import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import {
   ArtifactCreateSheet,
   type ArtifactEditTarget,
@@ -21,6 +19,16 @@ import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
+import type { ArtifactStatus } from "@otto-code/protocol/artifacts/types";
+
+type ArtifactStatusFilter = "all" | ArtifactStatus;
+
+const STATUS_FILTER_OPTIONS: SegmentedControlOption<ArtifactStatusFilter>[] = [
+  { value: "all", label: "All", testID: "artifacts-filter-all" },
+  { value: "ready", label: "Generated", testID: "artifacts-filter-ready" },
+  { value: "generating", label: "In progress", testID: "artifacts-filter-generating" },
+  { value: "error", label: "Failed", testID: "artifacts-filter-error" },
+];
 
 export function ArtifactsScreen(): ReactElement {
   const isFocused = useIsFocused();
@@ -55,6 +63,7 @@ function ArtifactsScreenContent(): ReactElement {
   const showHost = hosts.length > 1;
 
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<ArtifactStatusFilter>("all");
   const [form, setForm] = useState<ArtifactFormState>({ mode: "closed" });
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
   const handleEdit = useCallback(
@@ -66,8 +75,8 @@ function ArtifactsScreenContent(): ReactElement {
   // The picker lists every known project (one entry per repo root), not just the
   // roots that happen to have artifacts — a project with none should still be
   // selectable and show an empty-state watermark.
-  const projectOptions = useMemo<ArtifactProjectFilterOption[]>(() => {
-    const byId = new Map<string, ArtifactProjectFilterOption>();
+  const projectOptions = useMemo<ProjectFilterOption[]>(() => {
+    const byId = new Map<string, ProjectFilterOption>();
     for (const target of buildScheduleProjectTargets(projects)) {
       if (!byId.has(target.cwd)) {
         byId.set(target.cwd, { id: target.cwd, label: target.projectName });
@@ -78,12 +87,13 @@ function ArtifactsScreenContent(): ReactElement {
 
   const visibleArtifacts = useMemo(
     () =>
-      projectFilter === undefined
-        ? artifacts
-        : artifacts.filter((artifact) =>
-            artifactBelongsToWorkspace(artifact.projectId, projectFilter),
-          ),
-    [artifacts, projectFilter],
+      artifacts.filter(
+        (artifact) =>
+          (projectFilter === undefined ||
+            artifactBelongsToWorkspace(artifact.projectId, projectFilter)) &&
+          (statusFilter === "all" || artifact.status === statusFilter),
+      ),
+    [artifacts, projectFilter, statusFilter],
   );
 
   const handleStar = useCallback(
@@ -130,6 +140,8 @@ function ArtifactsScreenContent(): ReactElement {
         projectOptions={projectOptions}
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={handleEdit}
@@ -154,9 +166,11 @@ interface ArtifactsBodyProps {
   isInitialLoad: boolean;
   showLoadError: boolean;
   showHost: boolean;
-  projectOptions: ArtifactProjectFilterOption[];
+  projectOptions: ProjectFilterOption[];
   projectFilter: string | undefined;
   onProjectFilterChange: (projectId: string | undefined) => void;
+  statusFilter: ArtifactStatusFilter;
+  onStatusFilterChange: (status: ArtifactStatusFilter) => void;
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (artifact: AggregatedArtifact) => void;
@@ -175,6 +189,8 @@ function ArtifactsBody({
   projectOptions,
   projectFilter,
   onProjectFilterChange,
+  statusFilter,
+  onStatusFilterChange,
   onRetry,
   onCreate,
   onEdit,
@@ -202,16 +218,33 @@ function ArtifactsBody({
     );
   }
 
+  let emptyFilterText = "No artifacts yet";
+  if (statusFilter !== "all") {
+    const label = STATUS_FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label;
+    emptyFilterText = `No ${label?.toLowerCase()} artifacts`;
+  } else if (projectFilter !== undefined) {
+    emptyFilterText = "No artifacts for this project";
+  }
+
   // The filter is always shown so every project stays selectable — including
   // ones with no artifacts, which fall through to the watermark below.
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <ArtifactProjectFilter
-          options={projectOptions}
-          value={projectFilter}
-          onChange={onProjectFilterChange}
-        />
+        <View style={styles.filterRowControls}>
+          <ProjectFilter
+            options={projectOptions}
+            value={projectFilter}
+            onChange={onProjectFilterChange}
+          />
+          <SegmentedControl
+            size="sm"
+            value={statusFilter}
+            onValueChange={onStatusFilterChange}
+            options={STATUS_FILTER_OPTIONS}
+            testID="artifacts-status-filter"
+          />
+        </View>
         <Button leftIcon={Plus} onPress={onCreate} size="sm" testID="artifacts-new">
           New artifact
         </Button>
@@ -234,9 +267,7 @@ function ArtifactsBody({
           />
         ) : (
           <View style={styles.filterEmpty} testID="artifacts-empty">
-            <Text style={styles.filterEmptyText}>
-              {projectFilter === undefined ? "No artifacts yet" : "No artifacts for this project"}
-            </Text>
+            <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
             {hasAny ? null : (
               <Button
                 variant="ghost"
@@ -277,6 +308,13 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
+  },
+  filterRowControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    flexShrink: 1,
+    flexWrap: "wrap",
   },
   scroll: {
     flex: 1,
