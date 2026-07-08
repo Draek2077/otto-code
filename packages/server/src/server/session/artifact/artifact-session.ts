@@ -93,6 +93,115 @@ export class ArtifactSession {
     }
   }
 
+  async handleArtifactUpdateRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.update.request" }>,
+  ): Promise<void> {
+    try {
+      const artifact = await this.artifactService.update({
+        artifactId: msg.artifactId,
+        name: msg.name,
+        description: msg.description,
+        projectId: msg.projectId,
+        provider: msg.provider,
+        model: msg.model,
+      });
+      this.host.emit({
+        type: "artifact.update.response",
+        payload: {
+          artifact,
+          success: true,
+          requestId: msg.requestId,
+        },
+      });
+      this.host.emit({
+        type: "artifact.updated.notification",
+        payload: {
+          artifact,
+        },
+      });
+    } catch (error) {
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to update artifact");
+      this.host.emit({
+        type: "artifact.update.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  async handleArtifactRegenerateRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.regenerate.request" }>,
+  ): Promise<void> {
+    try {
+      const artifact = await this.artifactService.regenerate(msg.artifactId);
+      this.host.emit({
+        type: "artifact.regenerate.response",
+        payload: {
+          artifact,
+          success: true,
+          requestId: msg.requestId,
+        },
+      });
+      this.host.emit({
+        type: "artifact.updated.notification",
+        payload: {
+          artifact,
+        },
+      });
+    } catch (error) {
+      this.logger.error({ error, requestId: msg.requestId }, "Failed to regenerate artifact");
+      this.host.emit({
+        type: "artifact.regenerate.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  async handleArtifactCancelRequest(
+    msg: Extract<SessionInboundMessage, { type: "artifact.cancel.request" }>,
+  ): Promise<void> {
+    try {
+      const artifact = await this.artifactService.cancel(msg.artifactId);
+      this.host.emit({
+        type: "artifact.cancel.response",
+        payload: {
+          artifact,
+          success: true,
+          requestId: msg.requestId,
+        },
+      });
+      this.host.emit({
+        type: "artifact.updated.notification",
+        payload: {
+          artifact,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        { error, requestId: msg.requestId },
+        "Failed to cancel artifact generation",
+      );
+      this.host.emit({
+        type: "artifact.cancel.response",
+        payload: {
+          artifact: this.createEmptyArtifact(),
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
   async handleArtifactDeleteRequest(
     msg: Extract<SessionInboundMessage, { type: "artifact.delete.request" }>,
   ): Promise<void> {

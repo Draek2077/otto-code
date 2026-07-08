@@ -951,6 +951,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/new" ||
       pathname === "/sessions" ||
       pathname === "/schedules" ||
+      pathname === "/artifacts" ||
       routeHasKnownHost);
 
   // Parse selectedAgentKey directly from pathname

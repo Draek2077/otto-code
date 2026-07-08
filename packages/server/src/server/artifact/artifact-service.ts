@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
+import type { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { ArtifactStore } from "./artifact-store.js";
 import { ArtifactWatcher } from "./artifact-watcher.js";
@@ -12,10 +13,35 @@ import type { CreateArtifactInput } from "@otto-code/protocol/artifacts/types";
 
 export type { CreateArtifactInput };
 
+export interface UpdateArtifactInput {
+  artifactId: string;
+  name?: string;
+  description?: string;
+  projectId?: string;
+  provider?: string;
+  model?: string;
+}
+
+const GENERATION_CANCELLED_MESSAGE = "Generation cancelled";
+
+// How long a generation may run before we give up, cancel the agent, and mark
+// the artifact as timed out. Local models are slow, so the default is generous;
+// override with OTTO_ARTIFACT_TIMEOUT_MS (milliseconds) to tune without a
+// rebuild. Keep this as the single source of truth — the watcher's timer and
+// the user-facing message both derive from it.
+const DEFAULT_GENERATION_TIMEOUT_MS = 960_000;
+const GENERATION_TIMEOUT_MS =
+  parseInt(process.env.OTTO_ARTIFACT_TIMEOUT_MS ?? "", 10) || DEFAULT_GENERATION_TIMEOUT_MS;
+
+function generationTimedOutMessage(): string {
+  return `Generation timed out after ${Math.round(GENERATION_TIMEOUT_MS / 1000)} seconds`;
+}
+
 interface ArtifactServiceOptions {
   projectCwd: string;
   logger: Logger;
   agentManager: AgentManager;
+  providerSnapshotManager: ProviderSnapshotManager;
   broadcastArtifactUpdate: (metadata: ArtifactMetadata) => void;
 }
 
@@ -32,19 +58,33 @@ export class ArtifactService {
   private readonly projectCwd: string;
   private readonly logger: Logger;
   private readonly agentManager: AgentManager;
+  private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly broadcastArtifactUpdate: (metadata: ArtifactMetadata) => void;
+  // artifactId -> generation agentId, for the lifetime of an active run. Lets
+  // cancel() interrupt the agent even before generationAgentId is persisted.
+  private readonly runningGenerations = new Map<string, string>();
 
   constructor(options: ArtifactServiceOptions) {
     this.projectCwd = options.projectCwd;
     this.store = new ArtifactStore(options.projectCwd);
     this.logger = options.logger.child({ module: "artifact-service" });
     this.agentManager = options.agentManager;
+    this.providerSnapshotManager = options.providerSnapshotManager;
     this.broadcastArtifactUpdate = options.broadcastArtifactUpdate;
     this.watcher = new ArtifactWatcher({
       store: this.store,
       logger: this.logger,
       sendNotification: (metadata: ArtifactMetadata) => {
         this.broadcastArtifactUpdate(metadata);
+      },
+      timeoutMs: GENERATION_TIMEOUT_MS,
+      // The watcher's timer fires here; the service owns the agent, so it does
+      // the real teardown (cancel the run, mark timed out) rather than leaving
+      // a hung/looping generation agent running in the background.
+      onTimeout: (artifactId: string) => {
+        void this.abortGeneration(artifactId, generationTimedOutMessage()).catch((error) => {
+          this.logger.error({ err: error, artifactId }, "Failed to abort timed-out generation");
+        });
       },
     });
   }
@@ -121,6 +161,131 @@ export class ArtifactService {
     return metadata;
   }
 
+  /**
+   * Edit an artifact's metadata WITHOUT regenerating. Only provided fields are
+   * overwritten. Editing never re-runs the agent — the user regenerates
+   * separately once they're happy with the changes.
+   */
+  async update(input: UpdateArtifactInput): Promise<ArtifactMetadata> {
+    const existing = await this.store.get(input.artifactId);
+    if (!existing) {
+      throw new ArtifactNotFoundError(input.artifactId);
+    }
+    await this.store.update(input.artifactId, {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+      ...(input.provider !== undefined ? { generationProvider: input.provider } : {}),
+      ...(input.model !== undefined ? { generationModel: input.model || null } : {}),
+    });
+    const updated = await this.store.get(input.artifactId);
+    if (!updated) {
+      throw new ArtifactNotFoundError(input.artifactId);
+    }
+    return updated;
+  }
+
+  /**
+   * Re-run generation for an existing artifact using its stored config. Resets
+   * the artifact to "generating", clears the prior error, and spawns a fresh
+   * agent.
+   */
+  async regenerate(artifactId: string): Promise<ArtifactMetadata> {
+    const existing = await this.store.get(artifactId);
+    if (!existing) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+
+    const provider = existing.generationProvider ?? "";
+    if (!provider) {
+      throw new Error(`Artifact "${artifactId}" has no provider to regenerate with`);
+    }
+    const model = existing.generationModel ?? undefined;
+
+    await this.store.update(artifactId, {
+      status: "generating",
+      errorMessage: null,
+      generationAgentId: null,
+    });
+    const updated = await this.store.get(artifactId);
+    if (!updated) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+
+    // Remove the prior HTML before watching: the watcher marks an artifact
+    // "ready" the instant it sees a valid file on disk, so leaving the old
+    // output in place would flip status straight back to "ready" with stale
+    // content and stop watching before the new agent writes anything.
+    await rm(updated.filePath, { force: true });
+    this.watcher.watch(artifactId, updated.filePath);
+    void this.spawnArtifactAgent(artifactId, updated, {
+      name: updated.name,
+      description: updated.description,
+      projectId: updated.projectId,
+      provider,
+      model,
+    }).catch((error) => {
+      this.logger.error({ err: error, artifactId }, "Failed to regenerate artifact");
+      void this.store.update(artifactId, { status: "error", errorMessage: String(error) });
+    });
+
+    return updated;
+  }
+
+  /**
+   * Cancel an in-progress generation and recover the artifact. Stops the agent
+   * run, stops the watcher (so a partial/late file can't flip status back to
+   * "ready"), and lands the artifact in an error state so it can be regenerated
+   * or deleted.
+   */
+  async cancel(artifactId: string): Promise<ArtifactMetadata> {
+    const existing = await this.store.get(artifactId);
+    if (!existing) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+
+    const updated = await this.abortGeneration(artifactId, GENERATION_CANCELLED_MESSAGE);
+    if (!updated) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+    return updated;
+  }
+
+  /**
+   * Shared teardown for a generation that must stop early — user cancel or
+   * timeout. Stops the watcher (so a partial/late file can't flip status back
+   * to "ready"), cancels the generation agent so nothing lingers, and lands the
+   * artifact in an error state so it can be regenerated or deleted. Safe to call
+   * when the agent has already finished: cancelAgentRun on a closed agent is
+   * caught and logged. Returns the updated metadata, or null if the artifact
+   * disappeared underneath us.
+   */
+  private async abortGeneration(
+    artifactId: string,
+    errorMessage: string,
+  ): Promise<ArtifactMetadata | null> {
+    // Stop watching first so an in-flight checkFileReady can't race us to
+    // "ready" after we mark the artifact as errored.
+    this.watcher.unwatch(artifactId);
+
+    const existing = await this.store.get(artifactId);
+    const agentId = this.runningGenerations.get(artifactId) ?? existing?.generationAgentId;
+    if (agentId) {
+      try {
+        await this.agentManager.cancelAgentRun(agentId);
+      } catch (error) {
+        this.logger.warn({ err: error, artifactId, agentId }, "Failed to cancel generation agent");
+      }
+    }
+
+    await this.store.update(artifactId, {
+      status: "error",
+      errorMessage,
+      generationAgentId: null,
+    });
+    return this.store.get(artifactId);
+  }
+
   private async spawnArtifactAgent(
     artifactId: string,
     metadata: ArtifactMetadata,
@@ -130,21 +295,61 @@ export class ArtifactService {
 
     const agentPrompt = `${metadata.description}\n\nWrite the HTML file to: ${htmlPath}`;
 
+    // Artifacts run unattended: no client is watching to approve tool calls, so
+    // resolve the provider's unattended mode (unless the user picked an explicit
+    // mode) exactly like the schedule runner does, or the agent stalls on the
+    // first approval prompt and the artifact never leaves "generating".
+    const resolved = input.modeId
+      ? { modeId: input.modeId, featureValues: undefined }
+      : await this.providerSnapshotManager.resolveCreateConfig({
+          provider: input.provider,
+          cwd: this.projectCwd,
+          requestedMode: undefined,
+          featureValues: undefined,
+          parent: null,
+          unattended: true,
+        });
+
     const config: AgentSessionConfig = {
       provider: input.provider,
       model: input.model,
-      modeId: input.modeId,
+      modeId: resolved.modeId,
       thinkingOptionId: input.thinkingOptionId,
+      featureValues: resolved.featureValues,
       systemPrompt: ARTIFACT_SYSTEM_PROMPT,
       cwd: this.projectCwd,
       internal: true,
+      // Keep the agent out of listings/sidebar (internal) but let a client that
+      // opens the generation log watch its stream live (observable). Without
+      // this, the daemon's global subscription drops the agent's stream events
+      // and the log only updates on manual re-fetch (navigate away and back).
+      observable: true,
       title: metadata.name,
     };
 
-    await this.agentManager.createAgent(config, undefined, {
+    const agent = await this.agentManager.createAgent(config, undefined, {
       initialPrompt: agentPrompt,
       initialTitle: metadata.name,
     });
+    // Register before running so cancel() can interrupt this run immediately.
+    this.runningGenerations.set(artifactId, agent.id);
+    await this.store.update(artifactId, { generationAgentId: agent.id });
+
+    // Creating the agent only spins up the session; the prompt must be run to
+    // actually generate the file. The watcher flips the artifact to "ready"
+    // when the HTML lands. Close (not archive) the ephemeral internal agent
+    // afterward — internal agents are never persisted, matching how other
+    // one-shot internal agents (branch-name/git-metadata generators) tear down.
+    try {
+      await this.agentManager.runAgent(agent.id, agentPrompt);
+    } finally {
+      this.runningGenerations.delete(artifactId);
+      try {
+        await this.agentManager.closeAgent(agent.id);
+      } catch {
+        // Ignore cleanup errors; the run result is what matters.
+      }
+    }
   }
 
   private resolveHtmlPath(artifactId: string): string {

@@ -25,6 +25,38 @@ export const ArtifactCreateRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Update edits an artifact's metadata (name/description/project/provider/model)
+// WITHOUT re-running generation — editing never regenerates; the user triggers
+// that separately. Every field except artifactId is optional; only provided
+// fields overwrite.
+export const ArtifactUpdateRequestSchema = z.object({
+  type: z.literal("artifact.update.request"),
+  artifactId: z.string(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  projectId: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  requestId: z.string(),
+});
+
+// Regenerate re-runs generation for an existing artifact using its stored
+// config. It carries no field updates — edit those first via update.request.
+export const ArtifactRegenerateRequestSchema = z.object({
+  type: z.literal("artifact.regenerate.request"),
+  artifactId: z.string(),
+  requestId: z.string(),
+});
+
+// Cancel stops an in-progress generation and recovers the artifact so it is no
+// longer stuck "generating" (the local agent may never emit a recognizable
+// document). The artifact lands in an error state and can be regenerated.
+export const ArtifactCancelRequestSchema = z.object({
+  type: z.literal("artifact.cancel.request"),
+  artifactId: z.string(),
+  requestId: z.string(),
+});
+
 export const ArtifactDeleteRequestSchema = z.object({
   type: z.literal("artifact.delete.request"),
   artifactId: z.string(),
@@ -87,6 +119,36 @@ export const ArtifactStarResponseSchema = z.object({
   }),
 });
 
+export const ArtifactUpdateResponseSchema = z.object({
+  type: z.literal("artifact.update.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ArtifactRegenerateResponseSchema = z.object({
+  type: z.literal("artifact.regenerate.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const ArtifactCancelResponseSchema = z.object({
+  type: z.literal("artifact.cancel.response"),
+  payload: z.object({
+    artifact: ArtifactMetadataSchema,
+    success: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
 export const ArtifactGetContentResponseSchema = z.object({
   type: z.literal("artifact.get-content.response"),
   payload: z.object({
@@ -128,12 +190,18 @@ export const ArtifactDeletedNotificationSchema = z.object({
 
 export type ArtifactListRequest = z.infer<typeof ArtifactListRequestSchema>;
 export type ArtifactCreateRequest = z.infer<typeof ArtifactCreateRequestSchema>;
+export type ArtifactUpdateRequest = z.infer<typeof ArtifactUpdateRequestSchema>;
+export type ArtifactRegenerateRequest = z.infer<typeof ArtifactRegenerateRequestSchema>;
+export type ArtifactCancelRequest = z.infer<typeof ArtifactCancelRequestSchema>;
 export type ArtifactDeleteRequest = z.infer<typeof ArtifactDeleteRequestSchema>;
 export type ArtifactStarRequest = z.infer<typeof ArtifactStarRequestSchema>;
 export type ArtifactGetContentRequest = z.infer<typeof ArtifactGetContentRequestSchema>;
 
 export type ArtifactListResponse = z.infer<typeof ArtifactListResponseSchema>;
 export type ArtifactCreateResponse = z.infer<typeof ArtifactCreateResponseSchema>;
+export type ArtifactUpdateResponse = z.infer<typeof ArtifactUpdateResponseSchema>;
+export type ArtifactRegenerateResponse = z.infer<typeof ArtifactRegenerateResponseSchema>;
+export type ArtifactCancelResponse = z.infer<typeof ArtifactCancelResponseSchema>;
 export type ArtifactDeleteResponse = z.infer<typeof ArtifactDeleteResponseSchema>;
 export type ArtifactStarResponse = z.infer<typeof ArtifactStarResponseSchema>;
 export type ArtifactGetContentResponse = z.infer<typeof ArtifactGetContentResponseSchema>;
@@ -145,6 +213,9 @@ export type ArtifactDeletedNotification = z.infer<typeof ArtifactDeletedNotifica
 export type ArtifactRequest =
   | ArtifactListRequest
   | ArtifactCreateRequest
+  | ArtifactUpdateRequest
+  | ArtifactRegenerateRequest
+  | ArtifactCancelRequest
   | ArtifactDeleteRequest
   | ArtifactStarRequest
   | ArtifactGetContentRequest;
@@ -152,6 +223,9 @@ export type ArtifactRequest =
 export type ArtifactResponse =
   | ArtifactListResponse
   | ArtifactCreateResponse
+  | ArtifactUpdateResponse
+  | ArtifactRegenerateResponse
+  | ArtifactCancelResponse
   | ArtifactDeleteResponse
   | ArtifactStarResponse
   | ArtifactGetContentResponse;

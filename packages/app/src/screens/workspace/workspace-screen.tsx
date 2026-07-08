@@ -137,6 +137,8 @@ import {
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
+import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
+import { useArtifacts } from "@/artifacts/use-artifacts";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   resolveWorkspaceHeaderRenderState,
@@ -368,6 +370,9 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
   }
+  if (tab.target.kind === "artifact") {
+    return tab.target.artifactId;
+  }
   return labels.agent;
 }
 
@@ -395,6 +400,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "browser") {
     return labels.browser;
+  }
+  if (tab.target.kind === "artifact") {
+    return tab.target.artifactId;
   }
   return tab.target.path;
 }
@@ -1819,6 +1827,45 @@ function WorkspaceScreenContent({
     workspaceAgentVisibilityEqual,
   );
 
+  // Artifact generation agents are internal (never broadcast via agent_state,
+  // so they never land in workspaceAgentVisibility's known/active sets) and
+  // would otherwise get closed the instant they're opened, since tab
+  // reconciliation prunes any agent tab not in that known set once agents are
+  // hydrated. Fold in generating artifacts' agent ids so an explicitly opened
+  // "view generation log" tab survives for the duration of the run.
+  const { artifacts } = useArtifacts();
+  const generatingArtifactAgentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const artifact of artifacts) {
+      if (
+        artifact.serverId === normalizedServerId &&
+        artifact.status === "generating" &&
+        artifact.generationAgentId &&
+        artifactBelongsToWorkspace(artifact.projectId, workspaceDirectory)
+      ) {
+        ids.add(artifact.generationAgentId);
+      }
+    }
+    return ids;
+  }, [artifacts, normalizedServerId, workspaceDirectory]);
+  const reconcileAgentVisibility = useMemo(
+    () =>
+      generatingArtifactAgentIds.size === 0
+        ? workspaceAgentVisibility
+        : {
+            ...workspaceAgentVisibility,
+            activeAgentIds: new Set([
+              ...workspaceAgentVisibility.activeAgentIds,
+              ...generatingArtifactAgentIds,
+            ]),
+            knownAgentIds: new Set([
+              ...workspaceAgentVisibility.knownAgentIds,
+              ...generatingArtifactAgentIds,
+            ]),
+          },
+    [generatingArtifactAgentIds, workspaceAgentVisibility],
+  );
+
   const {
     handleTerminalCreated,
     handleScriptTerminalSelected,
@@ -2138,7 +2185,7 @@ function WorkspaceScreenContent({
     reconcileWorkspaceTabs(
       persistenceKey,
       buildWorkspaceTabSnapshot({
-        agentVisibility: workspaceAgentVisibility,
+        agentVisibility: reconcileAgentVisibility,
         agentsHydrated: hasHydratedAgents,
         terminalsHydrated: terminalsQuery.isSuccess,
         knownTerminalIds,
@@ -2159,7 +2206,7 @@ function WorkspaceScreenContent({
     standaloneTerminalIds,
     terminalsQuery.isSuccess,
     uiTabs,
-    workspaceAgentVisibility,
+    reconcileAgentVisibility,
   ]);
 
   const activeTabId = focusedPaneTabState.activeTabId;

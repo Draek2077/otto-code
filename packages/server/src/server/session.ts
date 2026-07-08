@@ -810,6 +810,7 @@ export class Session {
       projectCwd: this.ottoHome,
       logger: this.sessionLogger,
       agentManager: this.agentManager,
+      providerSnapshotManager,
       broadcastArtifactUpdate: (metadata: ArtifactMetadata) => {
         this.emit({
           type: "artifact.updated.notification",
@@ -1775,6 +1776,12 @@ export class Session {
         return this.artifactSession.handleArtifactListRequest(msg);
       case "artifact.create.request":
         return this.artifactSession.handleArtifactCreateRequest(msg);
+      case "artifact.update.request":
+        return this.artifactSession.handleArtifactUpdateRequest(msg);
+      case "artifact.regenerate.request":
+        return this.artifactSession.handleArtifactRegenerateRequest(msg);
+      case "artifact.cancel.request":
+        return this.artifactSession.handleArtifactCancelRequest(msg);
       case "artifact.delete.request":
         return this.artifactSession.handleArtifactDeleteRequest(msg);
       case "artifact.star.request":
@@ -3625,6 +3632,15 @@ export class Session {
     const trimmed = identifier.trim();
     if (!trimmed) {
       return { ok: false, error: "Agent identifier cannot be empty" };
+    }
+
+    // Exact live-agent lookup bypasses the internal-agent exclusion below.
+    // Internal agents (e.g. artifact generation) are deliberately hidden from
+    // the fuzzy prefix/title resolution and general listings further down,
+    // but a caller that already has the literal agentId (not a prefix or
+    // title guess) should still be able to resolve it while it's alive.
+    if (this.agentManager.getAgent(trimmed)) {
+      return { ok: true, agentId: trimmed };
     }
 
     const stored = await this.agentStorage.list();

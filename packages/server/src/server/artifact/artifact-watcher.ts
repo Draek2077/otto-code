@@ -7,12 +7,19 @@ import { validateHtmlFile } from "./html-validator.js";
 import type { ArtifactStore } from "./artifact-store.js";
 
 const BATCH_POLL_INTERVAL_MS = 1000;
-const TIMEOUT_MS = 120_000;
 
 interface ArtifactWatcherOptions {
   store: ArtifactStore;
   logger: Logger;
   sendNotification: (metadata: ArtifactMetadata) => void;
+  // How long to wait for a valid artifact file before giving up. The service
+  // owns this value (env-tunable) so the timeout and its user-facing message
+  // stay in one place.
+  timeoutMs: number;
+  // Invoked when a generation exceeds timeoutMs. The watcher can only touch the
+  // store; the service owns the generation agent, so it performs the real
+  // teardown (cancel the run so no agent lingers, then mark the artifact).
+  onTimeout: (artifactId: string) => void;
 }
 
 interface WatchHandle {
@@ -24,6 +31,8 @@ export class ArtifactWatcher {
   private readonly store: ArtifactStore;
   private readonly logger: Logger;
   private readonly sendNotification: (metadata: ArtifactMetadata) => void;
+  private readonly timeoutMs: number;
+  private readonly onTimeout: (artifactId: string) => void;
   private readonly activeWatchers: Map<string, string> = new Map();
   private readonly handles: Map<string, WatchHandle> = new Map();
   private batchPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -32,6 +41,8 @@ export class ArtifactWatcher {
     this.store = options.store;
     this.logger = options.logger.child({ module: "artifact-watcher" });
     this.sendNotification = options.sendNotification;
+    this.timeoutMs = options.timeoutMs;
+    this.onTimeout = options.onTimeout;
   }
 
   watch(artifactId: string, filePath: string): void {
@@ -72,7 +83,7 @@ export class ArtifactWatcher {
 
     handle.timeoutTimer = setTimeout(() => {
       this.handleTimeout(artifactId);
-    }, TIMEOUT_MS);
+    }, this.timeoutMs);
     handle.timeoutTimer?.unref?.();
 
     this.logger.debug({ artifactId, filePath }, "Watching for artifact file creation");
@@ -167,19 +178,14 @@ export class ArtifactWatcher {
     }
   }
 
-  private async handleTimeout(artifactId: string): Promise<void> {
+  private handleTimeout(artifactId: string): void {
+    // Stop the file watch immediately so a late/partial write can't flip the
+    // artifact to "ready" after we've decided it timed out. The service owns
+    // the rest of the teardown: it cancels the generation agent (so nothing
+    // lingers) and marks the artifact as timed out.
     this.unwatch(artifactId);
-
-    try {
-      await this.store.update(artifactId, {
-        status: "error",
-        errorMessage: "Generation timed out after 120 seconds",
-      });
-      this.logger.warn({ artifactId }, "Artifact generation timed out");
-      this.emitUpdatedNotification(artifactId);
-    } catch (error) {
-      this.logger.error({ error, artifactId }, "Failed to update artifact status to error");
-    }
+    this.logger.warn({ artifactId }, "Artifact generation timed out");
+    this.onTimeout(artifactId);
   }
 
   private async emitUpdatedNotification(artifactId: string): Promise<void> {

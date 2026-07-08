@@ -59,6 +59,12 @@ import {
   registerOttoBrowserWebContents,
   setWorkspaceActiveOttoBrowserId,
 } from "./features/browser-webviews/index.js";
+import {
+  hardenArtifactWebviewPreferences,
+  isArtifactWebviewAttach,
+  lockDownArtifactWebviewContents,
+  registerArtifactWebviewSessionGuards,
+} from "./features/artifact-webview.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
@@ -216,7 +222,8 @@ function readActiveBrowserInput(
   return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
 }
 
-const pendingBrowserWebviewIds: string[] = [];
+type PendingWebviewAttach = { kind: "browser"; browserId: string } | { kind: "artifact" };
+const pendingWebviewAttaches: PendingWebviewAttach[] = [];
 
 function isBrowserRefreshInput(input: Electron.Input): boolean {
   if (input.type !== "keyDown" || input.alt || input.shift) {
@@ -747,12 +754,20 @@ async function createWindow(
   setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    if (isArtifactWebviewAttach(params)) {
+      pendingWebviewAttaches.push({ kind: "artifact" });
+      hardenArtifactWebviewPreferences(webPreferences);
+      delete params.preload;
+      delete (params as { preloadURL?: string }).preloadURL;
+      registerArtifactWebviewSessionGuards();
+      return;
+    }
     const browserId = readBrowserIdFromWebviewAttach(params);
     if (!browserId) {
       event.preventDefault();
       return;
     }
-    pendingBrowserWebviewIds.push(browserId);
+    pendingWebviewAttaches.push({ kind: "browser", browserId });
     webPreferences.nodeIntegration = false;
     webPreferences.nodeIntegrationInSubFrames = false;
     webPreferences.nodeIntegrationInWorker = false;
@@ -767,7 +782,12 @@ async function createWindow(
     delete (params as { preloadURL?: string }).preloadURL;
   });
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
-    const browserId = pendingBrowserWebviewIds.shift() ?? null;
+    const pending = pendingWebviewAttaches.shift() ?? null;
+    if (pending?.kind === "artifact") {
+      lockDownArtifactWebviewContents(contents);
+      return;
+    }
+    const browserId = pending?.kind === "browser" ? pending.browserId : null;
     if (browserId) {
       registerOttoBrowserWebContents(contents, browserId);
       log.info("[browser-webview] registered", {

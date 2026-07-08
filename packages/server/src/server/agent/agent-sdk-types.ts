@@ -576,6 +576,16 @@ export interface AgentSessionConfig {
    * They are used for ephemeral system tasks like commit/PR generation.
    */
   internal?: boolean;
+  /**
+   * Observable agents still forward their live `agent_stream` events to
+   * clients even when `internal` — used for internal work a user may want to
+   * watch live (e.g. artifact generation). Unlike a non-internal agent, an
+   * observable-internal agent stays out of listings/sidebar (its `agent_state`
+   * is still filtered); only its message/tool stream is forwarded, and only to
+   * a client that has explicitly opened its timeline. Non-observable internal
+   * agents (branch-name/git-metadata generators) stay fully silent.
+   */
+  observable?: boolean;
 }
 
 export interface AgentLaunchContext {

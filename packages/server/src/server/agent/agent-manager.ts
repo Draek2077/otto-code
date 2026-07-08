@@ -297,6 +297,13 @@ interface ManagedAgentBase {
    */
   internal?: boolean;
   /**
+   * Observable internal agents still forward their live `agent_stream` events
+   * to global subscribers (clients) so a user can watch them — e.g. artifact
+   * generation. `agent_state` stays filtered, so they don't appear in the
+   * sidebar. See AgentSessionConfig.observable.
+   */
+  observable?: boolean;
+  /**
    * User-defined labels for categorizing agents (e.g., { surface: "workspace" }).
    */
   labels: Record<string, string>;
@@ -2605,6 +2612,7 @@ export class AgentManager {
       lastError: options?.lastError,
       attention: resolveInitialAttention(options?.attention),
       internal: config.internal ?? false,
+      observable: config.observable ?? false,
       labels: options?.labels ?? {},
     } as ActiveManagedAgent;
   }
@@ -3633,7 +3641,11 @@ export class AgentManager {
         }
         if (event.type === "agent_stream") {
           const agent = this.agents.get(event.agentId);
-          if (agent?.internal) {
+          // Observable internal agents (e.g. artifact generation) still stream
+          // so a client that opened their timeline sees messages live; other
+          // internal agents (branch-name/git-metadata generators) stay silent.
+          // agent_state above is always filtered, so neither clutters the sidebar.
+          if (agent?.internal && !agent.observable) {
             continue;
           }
         }
