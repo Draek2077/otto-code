@@ -61,7 +61,7 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: scripts
           ref: ${{ env.CHECKOUT_REF }}
@@ -91,9 +91,23 @@ jobs:
               }
           fi
 
+  # Job-level `if` cannot read the secrets context, so this tiny job exposes
+  # whether Apple signing is configured as an output for publish-macos to gate on.
+  apple-signing-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        run: echo "enabled=${{ secrets.APPLE_CERTIFICATE != '' }}" >> "$GITHUB_OUTPUT"
+
   publish-macos:
-    needs: [create-release]
-    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
+    needs: [create-release, apple-signing-gate]
+    # COMPAT(macOS-signing): skipped (not failed) while the fork has no Apple
+    # Developer Program certs, so tag-push release runs stay green on
+    # Windows/Linux. Drop the apple-signing-gate condition once Apple signing
+    # secrets are configured on this repo.
+    if: ${{ always() && needs.apple-signing-gate.outputs.enabled == 'true' && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
     strategy:
       fail-fast: false
       matrix:
@@ -108,7 +122,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -123,13 +137,9 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
         shell: bash
@@ -208,7 +218,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -223,13 +233,9 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
         shell: bash
@@ -306,7 +312,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -321,13 +327,9 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set desktop package version from tag
         shell: bash
@@ -394,12 +396,12 @@ jobs:
 
   finalize-rollout:
     needs: [publish-macos, publish-linux, publish-windows]
-    # COMPAT(macOS-signing): macOS builds fail on this fork (no Apple Developer
-    # Program certs), so unlike upstream this gate tolerates a publish-macos
-    # failure — otherwise Windows/Linux auto-update manifests would never
-    # publish. The assemble step below already skips the mac manifest unless
-    # publish-macos succeeded. Restore the macOS success requirement once Apple
-    # signing is configured.
+    # COMPAT(macOS-signing): macOS builds are skipped on this fork (no Apple
+    # Developer Program certs — see apple-signing-gate), so unlike upstream this
+    # gate tolerates publish-macos being skipped or failed — otherwise
+    # Windows/Linux auto-update manifests would never publish. The assemble step
+    # below already skips the mac manifest unless publish-macos succeeded.
+    # Restore the macOS success requirement once Apple signing is configured.
     if: ${{ always() && (needs.publish-linux.result == 'success' || needs.publish-linux.result == 'skipped') && (needs.publish-windows.result == 'success' || needs.publish-windows.result == 'skipped') && (needs.publish-linux.result == 'success' || needs.publish-windows.result == 'success' || needs.publish-macos.result == 'success') && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
@@ -409,7 +411,7 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: |
             package.json
@@ -427,13 +429,9 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
 
       - name: Install JS dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download mac manifest artifacts
         if: env.IS_SMOKE_TAG != 'true' && needs.publish-macos.result == 'success'
