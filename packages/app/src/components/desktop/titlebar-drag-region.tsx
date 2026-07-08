@@ -10,8 +10,16 @@ import { isNative } from "@/constants/platform";
  *   - titlebarpart.css:249-260 → top-edge resizer, no-drag, 4px
  *
  * VS Code's drag region is a static DOM element — no z-index, no pointer-events,
- * no state, no event listeners. Interactive elements get no-drag from their own
- * CSS (global backstop in index.html). The drag region never re-renders.
+ * no state, no event listeners. The drag region never re-renders.
+ *
+ * The overlay carries `data-app-region-drag` so the scoped no-drag backstop in
+ * index.html can find it: only interactive elements inside a container that
+ * holds a drag region get `-webkit-app-region: no-drag`. Interactive elements
+ * elsewhere stay unannotated — Chromium computes drag regions from UNCLIPPED
+ * bounding boxes (electron/electron#7605), so a global no-drag rule lets chat
+ * content scrolled behind the titlebar punch invisible holes in the drag strip.
+ * Unannotated elements never subtract from a drag region, so scoping the rule
+ * fixes that without touching how content renders.
  *
  * The resizer is Windows/Linux only (titlebarpart.css:249 scopes to .windows/.linux).
  * On macOS, Electron handles edge resize natively.
@@ -49,7 +57,7 @@ export function TitlebarDragRegion() {
   return (
     <>
       {/* Drag overlay — VS Code .titlebar-drag-region (titlebarpart.css:57-64) */}
-      <div style={DRAG_OVERLAY_STYLE} />
+      <div style={DRAG_OVERLAY_STYLE} data-app-region-drag="" />
       {/* Top-edge resizer — VS Code .resizer (titlebarpart.css:249-256) */}
       <div style={TOP_RESIZER_STYLE} />
     </>

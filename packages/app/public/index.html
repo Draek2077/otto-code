@@ -51,22 +51,37 @@
       }
     </style>
     <style>
-      button,
-      a,
-      input,
-      textarea,
-      select,
-      [role="button"],
-      [role="link"],
-      [role="textbox"],
-      [role="combobox"],
-      [role="tab"],
-      [role="switch"],
-      [role="checkbox"],
-      [role="slider"],
-      [role="menuitem"],
-      [tabindex],
-      [contenteditable="true"] {
+      /* Scoped no-drag backstop for Electron titlebar strips.
+         Chromium computes -webkit-app-region rects from UNCLIPPED bounding
+         boxes of every annotated element in the document — overflow clipping
+         and z-order are ignored (electron/electron#7605). A global no-drag
+         rule therefore lets interactive chat content scrolled BEHIND the
+         titlebar punch invisible holes in the drag strip. Unannotated
+         elements never subtract from a drag region, so we only stamp no-drag
+         on interactive elements that live inside a titlebar strip: either a
+         container that itself is a drag region ([data-app-region-drag] on the
+         workspace header label) or a container that holds a drag overlay
+         (:has(> [data-app-region-drag]) — TitlebarDragRegion's parent).
+         Everything else in the app stays unannotated. */
+      :is([data-app-region-drag], :has(> [data-app-region-drag]))
+        :is(
+          button,
+          a,
+          input,
+          textarea,
+          select,
+          [role="button"],
+          [role="link"],
+          [role="textbox"],
+          [role="combobox"],
+          [role="tab"],
+          [role="switch"],
+          [role="checkbox"],
+          [role="slider"],
+          [role="menuitem"],
+          [tabindex],
+          [contenteditable="true"]
+        ) {
         -webkit-app-region: no-drag !important;
       }
 
