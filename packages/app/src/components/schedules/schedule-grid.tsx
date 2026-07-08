@@ -13,6 +13,7 @@ export interface ScheduleRowView {
   schedule: AggregatedSchedule;
   targetLabel: string;
   provider: string | null;
+  projectName: string | null;
   state: ScheduleDerivedState;
   serverName: string;
   /** True when only one host exists, so the host name is redundant in cards. */
@@ -124,6 +125,7 @@ function ScheduleGridCard({
       schedule={schedule}
       targetLabel={row.targetLabel}
       provider={row.provider}
+      projectName={row.projectName}
       state={row.state}
       serverName={row.serverName}
       singleHost={row.singleHost}

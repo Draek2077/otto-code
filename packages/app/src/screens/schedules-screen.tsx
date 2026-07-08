@@ -27,6 +27,7 @@ import {
 import {
   buildProjectNameByCwd,
   buildScheduleProjectTargets,
+  describeScheduleCwd,
 } from "@/schedules/schedule-project-targets";
 import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 
@@ -151,11 +152,18 @@ function SchedulesScreenContent(): ReactElement {
         schedule,
         targetLabel: resolved.target.label,
         provider: resolved.target.provider,
+        projectName: resolved.cwd
+          ? describeScheduleCwd({
+              serverId: schedule.serverId,
+              cwd: resolved.cwd,
+              projectNameByCwd,
+            })
+          : null,
         state: resolved.state,
         serverName: schedule.serverName,
         singleHost,
       }));
-  }, [resolvedRows, projectFilter, statusFilter, hosts.length]);
+  }, [resolvedRows, projectFilter, statusFilter, hosts.length, projectNameByCwd]);
 
   const showLoadError = isError && schedules.length === 0;
 

@@ -3475,6 +3475,14 @@ export class AgentManager {
   async stopObservedSubagent(observedId: string): Promise<void> {
     const entry = this.observedSubagents.get(observedId);
     if (!entry) {
+      // Not a synthetic task-fan-out subagent — check for a real internal
+      // agent (e.g. artifact generation) rendered read-only via `attend:
+      // "observed"`, and stop it the normal way instead.
+      const agent = this.agents.get(observedId);
+      if (agent?.internal) {
+        await this.cancelAgentRun(observedId);
+        return;
+      }
       throw new Error(`Observed subagent not found: ${observedId}`);
     }
     if (!entry.taskId) {

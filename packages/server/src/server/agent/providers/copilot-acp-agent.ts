@@ -70,6 +70,7 @@ export const COPILOT_MODES: AgentMode[] = [
     id: COPILOT_ALLOW_ALL_MODE_ID,
     label: "Allow All",
     description: "Automatically approves all Copilot tool, path, and URL requests.",
+    isUnattended: true,
   },
 ];
 

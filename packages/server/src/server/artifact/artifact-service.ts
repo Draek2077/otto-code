@@ -297,9 +297,21 @@ export class ArtifactService {
 
     // Artifacts run unattended: no client is watching to approve tool calls, so
     // resolve the provider's unattended mode (unless the user picked an explicit
-    // mode) exactly like the schedule runner does, or the agent stalls on the
-    // first approval prompt and the artifact never leaves "generating".
-    const resolved = input.modeId
+    // mode that is itself unattended) exactly like the schedule runner does, or
+    // the agent stalls on the first approval prompt and the artifact never
+    // leaves "generating". A non-unattended modeId can leak in from the create
+    // sheet inheriting the user's last-used chat mode preference, so it's only
+    // honored when it actually won't prompt.
+    const requestedModeIsUnattended =
+      input.modeId !== undefined &&
+      (
+        await this.providerSnapshotManager.listModes({
+          provider: input.provider,
+          cwd: this.projectCwd,
+          wait: true,
+        })
+      ).some((mode) => mode.id === input.modeId && mode.isUnattended === true);
+    const resolved = requestedModeIsUnattended
       ? { modeId: input.modeId, featureValues: undefined }
       : await this.providerSnapshotManager.resolveCreateConfig({
           provider: input.provider,
