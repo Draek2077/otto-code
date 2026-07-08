@@ -56,20 +56,23 @@ All paths are under `packages/server/src/`.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                               |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing       |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations        |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management      |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$OTTO_HOME/agents/`                         |
-| `server/agent/tools/`           | Transport-neutral Otto tool catalog for subagents, permissions, worktrees    |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Otto tool catalog with the MCP SDK       |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                              |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                |
-| `server/schedule/`              | Cron-based scheduled agents                                                  |
-| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                        |
-| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                   |
+| Module                          | Responsibility                                                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay                                                             |
+| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing                                                                   |
+| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations                                                                    |
+| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management                                                                  |
+| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$OTTO_HOME/agents/`                                                                                     |
+| `server/agent/tools/`           | Transport-neutral Otto tool catalog for subagents, permissions, worktrees                                                                |
+| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Otto tool catalog with the MCP SDK                                                                   |
+| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                                                                          |
+| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                                                                            |
+| `server/schedule/`              | Cron-based scheduled agents                                                                                                              |
+| `server/loop-service.ts`        | Looping agent runs that retry until an exit condition                                                                                    |
+| `server/chat/`                  | Chat rooms for agent-to-agent and human-to-agent messaging                                                                               |
+| `server/preview/`               | Preview dev-server supervision: launch.json config, spawn/readiness/tree-kill, `preview_*` agent tools — see [preview.md](preview.md)    |
+| `server/browser-tools/`         | Agent-facing `browser_*` tools against real Otto browser tabs: snapshot, inspect, click/fill, eval, console/network capture, tab control |
+| `server/artifact/`              | Agent-generated HTML artifacts: per-project store, service, file watcher, HTML validation — see [data-model.md](data-model.md)           |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -187,7 +190,7 @@ New session RPCs use dotted names with `.request` and `.response` suffixes, such
 
 **Binary frames (terminal stream protocol):**
 
-Terminal I/O is sent as binary WebSocket frames decoded by `decodeTerminalStreamFrame` in `shared/binary-frames/terminal.ts`. The layout is:
+Terminal I/O is sent as binary WebSocket frames decoded by `decodeTerminalStreamFrame` in `packages/protocol/src/binary-frames/terminal.ts`. The layout is:
 
 - 1-byte opcode: `Output (0x01)`, `Input (0x02)`, `Resize (0x03)`, `Snapshot (0x04)`
 - 1-byte slot: terminal slot id
@@ -214,7 +217,7 @@ Example: adding a new enum value
 
 ## Agent lifecycle
 
-The lifecycle states are defined in `shared/agent-lifecycle.ts`:
+The lifecycle states are defined in `packages/protocol/src/agent-lifecycle.ts`:
 
 ```
 initializing → idle ⇄ running
@@ -275,16 +278,18 @@ Each provider implements the `AgentClient` interface in `agent/agent-sdk-types.t
 
 The built-in, user-facing providers are Claude Code, Codex, Copilot, OpenCode, Pi, and OMP. Additional adapters exist in the same directory for ACP-compatible agents and internal use:
 
-| Provider           | Wraps                                | Session format                                     |
-| ------------------ | ------------------------------------ | -------------------------------------------------- |
-| Claude (`claude/`) | Anthropic Agent SDK                  | `~/.claude/projects/{cwd}/{session-id}.jsonl`      |
-| Codex              | Codex AppServer (`codex-app-server`) | `~/.codex/sessions/{date}/rollout-{ts}-{id}.jsonl` |
-| Copilot            | GitHub Copilot via ACP               | Provider-managed                                   |
-| OpenCode           | OpenCode server / CLI                | Provider-managed                                   |
-| Cursor             | ACP wrapper (`acp-agent`)            | Provider-managed                                   |
-| Generic ACP        | ACP wrapper                          | Provider-managed                                   |
-| Pi                 | Local Pi RPC process                 | Provider-managed                                   |
-| Mock load test     | In-process fake                      | In-memory                                          |
+| Provider           | Wraps                                                                                                                                           | Session format                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Claude (`claude/`) | Anthropic Agent SDK                                                                                                                             | `~/.claude/projects/{cwd}/{session-id}.jsonl`      |
+| Codex              | Codex AppServer (`codex-app-server`)                                                                                                            | `~/.codex/sessions/{date}/rollout-{ts}-{id}.jsonl` |
+| Copilot            | GitHub Copilot via ACP                                                                                                                          | Provider-managed                                   |
+| OpenCode           | OpenCode server / CLI                                                                                                                           | Provider-managed                                   |
+| Pi                 | Local Pi RPC process                                                                                                                            | Provider-managed                                   |
+| OMP                | Oh My Pi via the Pi RPC client (`omp` binary)                                                                                                   | `~/.omp/agent/sessions`                            |
+| OpenAI-compatible  | Any OpenAI-compatible endpoint (`openai-compat-agent`); base for custom providers with `extends: "openai-compatible"` — LM Studio, Ollama, etc. | Daemon-managed                                     |
+| Cursor / Kiro      | ACP wrappers (`cursor-acp-agent`, `kiro-acp-agent`)                                                                                             | Provider-managed                                   |
+| Generic ACP        | ACP wrapper for the one-click catalog and custom ACP providers                                                                                  | Provider-managed                                   |
+| Mock load test     | In-process fake                                                                                                                                 | In-memory                                          |
 
 All providers:
 
@@ -320,7 +325,7 @@ $OTTO_HOME/
 ├── config.json                                 # Daemon config (mutable)
 ├── daemon-keypair.json                         # Daemon identity for relay/E2EE
 ├── push-tokens.json                            # Mobile push tokens
-├── otto.sock / otto.pid                      # Local IPC socket and pidfile
+├── otto.pid                                    # Daemon PID lock file
 └── daemon.log                                  # Daemon trace logs (rotated)
 ```
 

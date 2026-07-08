@@ -321,7 +321,7 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.js`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally

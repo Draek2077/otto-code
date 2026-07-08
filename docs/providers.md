@@ -171,7 +171,7 @@ export class CopilotACPAgentClient extends ACPAgentClient {
 
 ### 2. Add to the provider manifest
 
-In `packages/server/src/server/agent/provider-manifest.ts`, add mode definitions with UI metadata (icons, color tiers) and a provider definition entry.
+In `packages/protocol/src/provider-manifest.ts` (the manifest lives in the protocol package so clients can render provider metadata without the server), add mode definitions with UI metadata (icons, color tiers) and a provider definition entry.
 
 First, define the modes with visual metadata:
 
@@ -194,8 +194,8 @@ const MY_PROVIDER_MODES: AgentProviderModeDefinition[] = [
 ];
 ```
 
-Available `colorTier` values: `"safe"`, `"moderate"`, `"dangerous"`, `"planning"`.
-Available `icon` values: `"ShieldCheck"`, `"ShieldAlert"`, `"ShieldOff"`.
+Available `colorTier` values: `"safe"`, `"moderate"`, `"dangerous"`, `"planning"`, or a custom `#rrggbb` hex color.
+`icon` is any icon name the app's icon set knows (existing modes use `"ShieldCheck"`, `"ShieldQuestionMark"`, `"ShieldAlert"`).
 
 Then add to the `AGENT_PROVIDER_DEFINITIONS` array:
 
