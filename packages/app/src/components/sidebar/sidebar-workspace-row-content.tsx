@@ -22,6 +22,7 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { ThemedBlobLoader } from "@/components/blob-loader";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { usePrefetchWorkspaceCheckoutStatus } from "@/hooks/use-prefetch-workspace-checkout-status";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
@@ -77,7 +78,14 @@ export function SidebarWorkspaceRowFrame({
   }) => ReactNode;
 }) {
   const [isHovered, setIsHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const prefetchCheckoutStatus = usePrefetchWorkspaceCheckoutStatus();
+  const { serverId, workspaceDirectory } = workspace;
+  const handlePointerEnter = useCallback(() => {
+    setIsHovered(true);
+    // Hover signals intent to switch: warm the checkout-status query so the
+    // workspace header renders without its skeleton on first visit.
+    prefetchCheckoutStatus({ serverId, workspaceDirectory });
+  }, [prefetchCheckoutStatus, serverId, workspaceDirectory]);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
   const hoverHandlers = useMemo(
     () => ({ onPointerEnter: handlePointerEnter, onPointerLeave: handlePointerLeave }),

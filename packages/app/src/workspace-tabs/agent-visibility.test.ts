@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Agent } from "@/stores/session-store";
 import {
   buildWorkspaceTabSnapshot,
+  createWorkspaceAgentVisibilitySelector,
   deriveWorkspaceAgentVisibility,
   shouldPruneWorkspaceAgentTab,
   workspaceAgentVisibilityEqual,
@@ -389,6 +390,62 @@ describe("workspace agent visibility", () => {
         knownAgentIds: new Set<string>(),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
+    });
+  });
+
+  describe("createWorkspaceAgentVisibilitySelector", () => {
+    it("returns the cached result while the agents maps keep their identity", () => {
+      const agent = makeAgent({ id: "a", cwd: "/repo", workspaceId: WORKSPACE_ID });
+      const agents = new Map<string, Agent>([[agent.id, agent]]);
+      const agentDetails = new Map<string, Agent>();
+      const selector = createWorkspaceAgentVisibilitySelector({
+        serverId: "srv",
+        workspaceId: WORKSPACE_ID,
+      });
+
+      const first = selector({ sessions: { srv: { agents, agentDetails } } });
+      // A different store state object with the same maps — as produced by
+      // unrelated session-store writes (e.g. stream flushes) — must return the
+      // exact same result object, not a re-derivation.
+      const second = selector({ sessions: { srv: { agents, agentDetails } } });
+      expect(second).toBe(first);
+      expect(first.activeAgentIds.has("a")).toBe(true);
+    });
+
+    it("re-derives when the agents map is replaced", () => {
+      const agent = makeAgent({ id: "a", cwd: "/repo", workspaceId: WORKSPACE_ID });
+      const agentDetails = new Map<string, Agent>();
+      const selector = createWorkspaceAgentVisibilitySelector({
+        serverId: "srv",
+        workspaceId: WORKSPACE_ID,
+      });
+
+      const first = selector({
+        sessions: { srv: { agents: new Map([[agent.id, agent]]), agentDetails } },
+      });
+      const archived = makeAgent({
+        id: "a",
+        cwd: "/repo",
+        workspaceId: WORKSPACE_ID,
+        archivedAt: new Date("2026-03-05T00:00:00.000Z"),
+      });
+      const second = selector({
+        sessions: { srv: { agents: new Map([[archived.id, archived]]), agentDetails } },
+      });
+      expect(second).not.toBe(first);
+      expect(first.activeAgentIds.has("a")).toBe(true);
+      expect(second.activeAgentIds.has("a")).toBe(false);
+      expect(second.knownAgentIds.has("a")).toBe(true);
+    });
+
+    it("handles a missing session", () => {
+      const selector = createWorkspaceAgentVisibilitySelector({
+        serverId: "srv",
+        workspaceId: WORKSPACE_ID,
+      });
+      const result = selector({ sessions: {} });
+      expect(result.activeAgentIds.size).toBe(0);
+      expect(result.knownAgentIds.size).toBe(0);
     });
   });
 });

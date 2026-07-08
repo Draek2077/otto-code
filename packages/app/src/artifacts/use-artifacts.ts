@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
-import { sortArtifacts } from "@/artifacts/artifact-derivation";
+import { artifactBelongsToWorkspace, sortArtifacts } from "@/artifacts/artifact-derivation";
+import { useInvalidateOnHostConnectivityChange } from "@/hooks/use-invalidate-on-host-connectivity";
 import {
   fetchAggregatedArtifacts,
   type AggregatedArtifact,
   type ArtifactHostError,
   type ArtifactHostInput,
+  type FetchAggregatedArtifactsResult,
 } from "@/artifacts/aggregated-artifacts";
 
 export type { AggregatedArtifact, ArtifactHostError } from "@/artifacts/aggregated-artifacts";
 
 export const artifactsQueryBaseKey = ["artifacts"] as const;
 
-// Cache identity for the host set + project filter. The query also carries the
-// runtime version so it retries as connectivity changes and reliably fetches
-// once a host comes online — matching the schedules pattern.
+// Cache identity for the host set + project filter. Freshness is event-driven:
+// artifact CRUD notifications and host connectivity transitions invalidate the
+// key (see useArtifactNotifications / useInvalidateOnHostConnectivityChange)
+// rather than the key itself churning.
 export function artifactsQueryKey(serverIds: readonly string[], projectId?: string) {
   return [...artifactsQueryBaseKey, [...serverIds].sort().join("|"), projectId ?? null] as const;
 }
@@ -30,29 +33,26 @@ export interface UseArtifactsResult {
   isRefetching: boolean;
 }
 
-export function useArtifacts(projectId?: string): UseArtifactsResult {
+function useArtifactHostInputs(): ArtifactHostInput[] {
   const hosts = useHosts();
-  const runtime = getHostRuntimeStore();
-  const runtimeVersion = useSyncExternalStore(
-    (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => runtime.getVersion(),
-    () => runtime.getVersion(),
-  );
-  const hostInputs = useMemo<ArtifactHostInput[]>(
+  return useMemo<ArtifactHostInput[]>(
     () => hosts.map((host) => ({ serverId: host.serverId, serverName: host.label })),
     [hosts],
   );
+}
+
+export function useArtifacts(projectId?: string): UseArtifactsResult {
+  const runtime = getHostRuntimeStore();
+  const hostInputs = useArtifactHostInputs();
 
   useArtifactNotifications();
+  useInvalidateOnHostConnectivityChange(artifactsQueryBaseKey);
 
   const query = useQuery({
-    queryKey: [
-      ...artifactsQueryKey(
-        hostInputs.map((host) => host.serverId),
-        projectId,
-      ),
-      runtimeVersion,
-    ],
+    queryKey: artifactsQueryKey(
+      hostInputs.map((host) => host.serverId),
+      projectId,
+    ),
     queryFn: () => fetchAggregatedArtifacts({ hosts: hostInputs, projectId, runtime }),
     staleTime: 5_000,
     placeholderData: keepPreviousData,
@@ -74,6 +74,62 @@ export function useArtifacts(projectId?: string): UseArtifactsResult {
     },
     isRefetching: query.isRefetching,
   };
+}
+
+const EMPTY_AGENT_IDS: string[] = [];
+
+/**
+ * Agent ids of artifacts currently generating in the given workspace on the
+ * given host. Shares the app-wide artifacts query cache with useArtifacts but
+ * selects down to a sorted id array, so subscribers (every mounted
+ * WorkspaceScreen deck entry) only re-render when the id set actually changes
+ * — which is almost never, since it is empty unless a generation is running.
+ *
+ * Freshness is event-driven (notifications + connectivity invalidation), so
+ * the staleTime is long: switching workspaces should not fan out an all-hosts
+ * artifacts fetch just to recompute an empty set.
+ */
+export function useGeneratingArtifactAgentIds(input: {
+  serverId: string;
+  workspaceDirectory: string | null;
+}): Set<string> {
+  const runtime = getHostRuntimeStore();
+  const hostInputs = useArtifactHostInputs();
+
+  useArtifactNotifications();
+  useInvalidateOnHostConnectivityChange(artifactsQueryBaseKey);
+
+  const { serverId, workspaceDirectory } = input;
+  const select = useCallback(
+    (data: FetchAggregatedArtifactsResult) => {
+      if (!workspaceDirectory) {
+        return EMPTY_AGENT_IDS;
+      }
+      const ids: string[] = [];
+      for (const artifact of data.artifacts) {
+        if (
+          artifact.serverId === serverId &&
+          artifact.status === "generating" &&
+          artifact.generationAgentId &&
+          artifactBelongsToWorkspace(artifact.projectId, workspaceDirectory)
+        ) {
+          ids.push(artifact.generationAgentId);
+        }
+      }
+      return ids.length > 0 ? ids.sort() : EMPTY_AGENT_IDS;
+    },
+    [serverId, workspaceDirectory],
+  );
+
+  const query = useQuery({
+    queryKey: artifactsQueryKey(hostInputs.map((host) => host.serverId)),
+    queryFn: () => fetchAggregatedArtifacts({ hosts: hostInputs, runtime }),
+    staleTime: 60_000,
+    select,
+  });
+
+  const ids = query.data ?? EMPTY_AGENT_IDS;
+  return useMemo(() => new Set(ids), [ids]);
 }
 
 /**

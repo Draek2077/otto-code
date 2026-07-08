@@ -73,6 +73,47 @@ export function buildWorkspaceTabSnapshot(input: {
   };
 }
 
+interface WorkspaceAgentVisibilitySessionSlice {
+  agents: Map<string, Agent>;
+  agentDetails: Map<string, Agent>;
+}
+
+/**
+ * Selector factory that memoizes by input identity. Zustand runs selectors on
+ * every store write — during agent activity the session store flushes stream
+ * items every ~48ms — but the agents/agentDetails maps are only replaced on
+ * agent lifecycle changes. Caching by map identity turns the per-write cost
+ * from an O(agents) re-derivation into two identity checks per mounted
+ * workspace screen.
+ */
+export function createWorkspaceAgentVisibilitySelector(input: {
+  serverId: string;
+  workspaceId: string;
+}): (state: {
+  sessions: Partial<Record<string, WorkspaceAgentVisibilitySessionSlice>>;
+}) => WorkspaceAgentVisibility {
+  let cache: {
+    agents: Map<string, Agent> | undefined;
+    agentDetails: Map<string, Agent> | undefined;
+    result: WorkspaceAgentVisibility;
+  } | null = null;
+  return (state) => {
+    const session = state.sessions[input.serverId];
+    const agents = session?.agents;
+    const agentDetails = session?.agentDetails;
+    if (cache && cache.agents === agents && cache.agentDetails === agentDetails) {
+      return cache.result;
+    }
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: agents,
+      agentDetails,
+      workspaceId: input.workspaceId,
+    });
+    cache = { agents, agentDetails, result };
+    return result;
+  };
+}
+
 export function workspaceAgentVisibilityEqual(
   a: WorkspaceAgentVisibility,
   b: WorkspaceAgentVisibility,

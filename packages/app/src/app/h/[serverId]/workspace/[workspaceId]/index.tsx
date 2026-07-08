@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { useGlobalSearchParams, useLocalSearchParams, useRootNavigationState } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import {
@@ -173,7 +174,23 @@ function HostWorkspaceRouteContent() {
 }
 
 function WorkspaceDeck() {
-  const activeSelection = useActiveWorkspaceSelection();
+  const liveSelection = useActiveWorkspaceSelection();
+  // Stable identity per (serverId, workspaceId): the hook returns a fresh
+  // object every render, and useDeferredValue compares with Object.is, so
+  // without this it would keep scheduling background re-renders.
+  const liveServerId = liveSelection?.serverId ?? null;
+  const liveWorkspaceId = liveSelection?.workspaceId ?? null;
+  const stableSelection = useMemo<ActiveWorkspaceSelection | null>(
+    () =>
+      liveServerId && liveWorkspaceId
+        ? { serverId: liveServerId, workspaceId: liveWorkspaceId }
+        : null,
+    [liveServerId, liveWorkspaceId],
+  );
+  // Defer the deck's view of the switch: mounting a not-yet-mounted workspace
+  // renders a full WorkspaceScreen, so let the outgoing workspace stay painted
+  // and interactive while the incoming one renders in the background.
+  const activeSelection = useDeferredValue(stableSelection);
   const [mountedSelections, setMountedSelections] = useState<ActiveWorkspaceSelection[]>(() =>
     activeSelection ? [activeSelection] : [],
   );
@@ -264,9 +281,13 @@ function WorkspaceDeckEntry({
   );
 }
 
-const styles = StyleSheet.create({
+// The deck paints the theme background itself: while a cold workspace mounts,
+// its route gate can render null for a frame, and without a background here
+// that frame flashes the bare window color (white) instead of the app surface.
+const styles = StyleSheet.create((theme) => ({
   deck: {
     flex: 1,
+    backgroundColor: theme.colors.surface0,
   },
   activeDeckEntry: {
     flex: 1,
@@ -275,4 +296,4 @@ const styles = StyleSheet.create({
     display: "none",
     flex: 1,
   },
-});
+}));
