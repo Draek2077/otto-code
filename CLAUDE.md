@@ -8,7 +8,7 @@ Otto is a mobile app for monitoring and controlling your local AI coding agents 
 
 This repo (otto-code) is a fork whose primary mission is to build a **Preview Server + MCP + browser verification subsystem** into Otto, equivalent to the built-in `Claude_Preview` MCP server in the Claude Code app: agents start dev servers from a launch config, then verify browser-rendered changes via accessibility snapshots, DOM inspection, console/network capture, click/fill interaction, viewport resize, and screenshots — showing proof instead of asking the user to check manually.
 
-The blueprint is [docs/preview-mcp-implementation.md](docs/preview-mcp-implementation.md) — verbatim tool schemas for all 13 `preview_*` tools, the MCP wire format, inferred implementation mechanics (Playwright/CDP), a rebuild checklist, and the hard parts (process tree-kill on Windows, readiness races, session isolation, token economy, guardrail-bearing tool descriptions). Read it before working on anything preview-related.
+The blueprint is [projects/preview-mcp/preview-mcp-implementation.md](projects/preview-mcp/preview-mcp-implementation.md) — verbatim tool schemas for all 13 `preview_*` tools, the MCP wire format, inferred implementation mechanics (Playwright/CDP), a rebuild checklist, and the hard parts (process tree-kill on Windows, readiness races, session isolation, token economy, guardrail-bearing tool descriptions). Read it before working on anything preview-related.
 
 Groundwork already in the tree: the daemon has a browser-tools subsystem (`packages/server/src/server/browser-tools/` — broker, agent-facing `browser_*` tools, accessibility snapshot, trusted input, dialogs, evaluate, tab controls) built on the protocol's `browser-automation` RPC schemas, with hosting generalized beyond the desktop app. The preview work extends this; don't build a parallel browser stack.
 
@@ -29,11 +29,12 @@ This is an npm workspace monorepo:
 
 At the start of non-trivial work, list `docs/` and skim anything relevant to the task. When you learn something meta worth preserving — a gotcha, a convention, a workflow, a piece of system context that will outlive the current task — update an existing doc or propose a new one. Code-level facts belong in inline comments next to the code; system, process, and gotcha-level facts belong in `docs/`.
 
+`docs/` is architectural documentation only — durable, evergreen facts about how Otto works. Point-in-time plans for a specific piece of work (a feature build-out, a charter for something not yet built, a refactor plan) belong in **`projects/<name>/`** instead, not `docs/`. A project folder can hold as many fine-grained `.md` files as the work needs (task breakdowns, sub-plans) — see `projects/artifacts/` for the shape. Once a project ships, fold any facts worth keeping into the relevant `docs/` file and the project folder can be deleted or left as historical record.
+
 | Doc                                                                              | What's in it                                                                                                                           |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/product.md](docs/product.md)                                               | What Otto is, who it's for, where it's going                                                                                           |
 | [docs/architecture.md](docs/architecture.md)                                     | System design, package layering, WebSocket protocol, agent lifecycle, data flow                                                        |
-| [docs/preview-mcp-implementation.md](docs/preview-mcp-implementation.md)         | The fork's charter: rebuild notes for the Claude Preview MCP server — tool schemas, wire format, implementation blueprint              |
 | [docs/preview.md](docs/preview.md)                                               | The finished Preview feature — settings (daemon/provider/client-local), managing servers, preview vs. normal browser tabs, launch.json |
 | [docs/upstream-merges.md](docs/upstream-merges.md)                               | Ingesting upstream Paseo changes — remote setup, rebrand tooling, merge playbook                                                       |
 | [docs/agent-lifecycle.md](docs/agent-lifecycle.md)                               | Agent states, parent/child relationships, archive semantics, tabs vs archive, subagents track                                          |
@@ -66,6 +67,17 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/i18n.md](docs/i18n.md)                                                     | Client UI translations in `packages/app/src/i18n`                                                                                      |
 | [docs/opencode-global-event-baseline.md](docs/opencode-global-event-baseline.md) | OpenCode global event verification baseline (dated snapshot)                                                                           |
 | [SECURITY.md](SECURITY.md)                                                       | Relay threat model, E2E encryption, DNS rebinding, agent auth                                                                          |
+
+## Projects
+
+Active or reference project plans, one folder per initiative:
+
+| Project                                                                                                                      | What's in it                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [projects/artifacts/artifacts.md](projects/artifacts/artifacts.md)                                                           | Artifact generation feature design, with a `tasks/` breakdown of fine-grained implementation steps                                            |
+| [projects/preview-mcp/preview-mcp-implementation.md](projects/preview-mcp/preview-mcp-implementation.md)                     | The fork's charter: rebuild notes for the Claude Preview MCP server — tool schemas, wire format, implementation blueprint                     |
+| [projects/observed-subagents/observed-subagents.md](projects/observed-subagents/observed-subagents.md)                       | Charter: promote provider-managed subagents (Claude Task/ultracode fan-out) to read-only, separately-watchable track rows — provider-agnostic |
+| [projects/session-decomposition/session-decomposition-plan.md](projects/session-decomposition/session-decomposition-plan.md) | Plan to decompose `session.ts`'s god-class into per-domain controllers, mirroring `TerminalSessionController`                                 |
 
 ## Quick start
 

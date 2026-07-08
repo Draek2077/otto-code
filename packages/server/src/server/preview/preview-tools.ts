@@ -17,7 +17,7 @@ import type { DevServerManager, PreviewServerSummary } from "./dev-server-manage
  * watches — never a headless or system browser. Each server gets exactly one
  * designated tab ("it"): preview_start opens or re-finds that tab and returns
  * its browserId for the browser_* tools. Tool descriptions deliberately steer
- * agent behavior — see docs/preview-mcp-implementation.md §4.
+ * agent behavior — see projects/preview-mcp/preview-mcp-implementation.md §4.
  */
 
 interface CallerAgentContext {
