@@ -4,6 +4,7 @@ import {
   Pencil,
   Play,
   RotateCw,
+  TriangleAlert,
   Trash2,
 } from "@/components/icons/material-icons";
 import { useCallback, useState, type ReactElement } from "react";
@@ -20,7 +21,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { getProviderIcon } from "@/components/provider-icons";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
 import { formatCadence, formatNextRun, resolveScheduleTitle } from "@/utils/schedule-format";
@@ -43,16 +43,16 @@ const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destruc
 const MENU_ICON_SIZE = 14;
 const PROVIDER_ICON_SIZE = 16;
 
-// Pending flags for each action so the parent table can wire a mutation hook
-// and the row reflects in-flight state without owning the mutation itself.
-export interface ScheduleRowPending {
+// Pending flags for each action so the parent grid can wire a mutation hook
+// and the card reflects in-flight state without owning the mutation itself.
+export interface ScheduleCardPending {
   pause?: boolean;
   resume?: boolean;
   runNow?: boolean;
   delete?: boolean;
 }
 
-export interface ScheduleRowActions {
+export interface ScheduleCardActions {
   onEdit: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -60,7 +60,7 @@ export interface ScheduleRowActions {
   onDelete: () => void;
 }
 
-interface ScheduleRowProps extends ScheduleRowActions {
+interface ScheduleCardProps extends ScheduleCardActions {
   schedule: ScheduleSummary;
   /** Client-derived target line (agent title / project / shortened path). */
   targetLabel: string;
@@ -72,8 +72,7 @@ interface ScheduleRowProps extends ScheduleRowActions {
   serverName?: string;
   /** True when only one host exists and the host name would be redundant. */
   singleHost?: boolean;
-  pending?: ScheduleRowPending;
-  isFirst: boolean;
+  pending?: ScheduleCardPending;
 }
 
 function stateBadge(state: ScheduleDerivedState): {
@@ -89,6 +88,8 @@ function stateBadge(state: ScheduleDerivedState): {
       return { label: "Expired", variant: "muted" };
     case "finished":
       return { label: "Finished", variant: "muted" };
+    case "failed":
+      return { label: "Failed", variant: "error" };
     case "targetGone":
       return { label: "Target gone", variant: "error" };
   }
@@ -108,7 +109,7 @@ function buildMeta(
     `Created ${formatTimeAgo(new Date(schedule.createdAt))}`,
     schedule.lastRunAt ? `Last run ${formatTimeAgo(new Date(schedule.lastRunAt))}` : "Never run",
   ];
-  if (state === "active") {
+  if (state === "active" || state === "failed") {
     const next = formatNextRun(schedule.nextRunAt);
     if (next) {
       parts.push(`Next run ${next}`);
@@ -130,16 +131,40 @@ function ProviderGlyph({ provider }: { provider: string | null }): ReactElement 
   return <Icon size={PROVIDER_ICON_SIZE} color={styles.providerIcon.color} />;
 }
 
+/** Left slot of the footer row: the state badge, or — for a failed last run —
+ * an error row matching Artifacts' error card, so the two grids read the same
+ * way at a glance. */
+function ScheduleStatusIndicator({
+  state,
+  errorMessage,
+}: {
+  state: ScheduleDerivedState;
+  errorMessage: string | null | undefined;
+}): ReactElement {
+  if (state === "failed") {
+    return (
+      <View style={styles.statusRow}>
+        <TriangleAlert size={14} color={styles.errorText.color} />
+        <Text style={styles.errorText} numberOfLines={2}>
+          {errorMessage ?? "Last run failed"}
+        </Text>
+      </View>
+    );
+  }
+  const badge = stateBadge(state);
+  return <StatusBadge label={badge.label} variant={badge.variant} />;
+}
+
 /**
- * One schedule, rendered as a settings-style card row: provider glyph + title,
- * a muted secondary line (model · cadence · next run), a StatusBadge, and the
- * kebab menu that owns every row action. Tapping the row opens the editor.
+ * One schedule, rendered as a card matching ArtifactCard's shape: provider
+ * glyph + title + kebab in the header, the target line as the details row, a
+ * spacer, and a footer of status indicator + meta text.
  *
  * Hover lives on the outer plain View (docs/hover.md): the inner Pressable owns
- * press, the nested kebab Pressable never fights it, and the row background
+ * press, the nested kebab Pressable never fights it, and the card background
  * highlights without reflow.
  */
-export function ScheduleRow({
+export function ScheduleCard({
   schedule,
   targetLabel,
   provider,
@@ -147,66 +172,50 @@ export function ScheduleRow({
   serverName,
   singleHost,
   pending,
-  isFirst,
   onEdit,
   onPause,
   onResume,
   onRunNow,
   onDelete,
-}: ScheduleRowProps): ReactElement {
+}: ScheduleCardProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
 
   const title = resolveScheduleTitle(schedule);
-  const badge = stateBadge(state);
   const meta = buildMeta(schedule, state, serverName, singleHost ?? false);
-  const canRun = state === "active" || state === "paused";
+  const canRun = state === "active" || state === "paused" || state === "failed";
+  const isErrorCard = state === "failed" || state === "targetGone";
 
-  const rowStyle = useCallback(
+  const cardStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
-      settingsStyles.row,
-      styles.row,
-      !isFirst && settingsStyles.rowBorder,
-      isHovered && !isCompact && styles.rowHovered,
-      pressed && styles.rowPressed,
+      styles.card,
+      isErrorCard && styles.cardError,
+      isHovered && !isCompact && styles.cardHovered,
+      pressed && styles.cardPressed,
     ],
-    [isFirst, isHovered, isCompact],
+    [isErrorCard, isHovered, isCompact],
   );
 
   return (
     <View
-      style={styles.rowContainer}
+      style={styles.container}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
       <Pressable
-        style={rowStyle}
+        style={cardStyle}
         onPress={onEdit}
         accessibilityRole="button"
         accessibilityLabel={`Edit schedule ${title}`}
-        testID={`schedule-row-${schedule.id}`}
+        testID={`schedule-card-${schedule.id}`}
       >
-        <View style={styles.main}>
-          <View style={styles.leading}>
-            <ProviderGlyph provider={provider} />
-          </View>
-          <View style={styles.textGroup}>
-            <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={styles.target} numberOfLines={1}>
-              {targetLabel}
-            </Text>
-            <Text style={settingsStyles.rowHint} numberOfLines={1}>
-              {meta}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.trailing}>
-          <StatusBadge label={badge.label} variant={badge.variant} />
+        <View style={styles.headerRow}>
+          <ProviderGlyph provider={provider} />
+          <Text style={styles.name} numberOfLines={1}>
+            {title}
+          </Text>
           <ScheduleKebabMenu
             schedule={schedule}
             canRun={canRun}
@@ -217,6 +226,23 @@ export function ScheduleRow({
             onRunNow={onRunNow}
             onDelete={onDelete}
           />
+        </View>
+
+        <Text style={styles.target} numberOfLines={2}>
+          {targetLabel}
+        </Text>
+
+        {/* Spacer pins the footer to the bottom of the card regardless of how
+            much detail sits above it, so cards in a row align. */}
+        <View style={styles.spacer} />
+
+        <View style={styles.footerRow}>
+          <ScheduleStatusIndicator state={state} errorMessage={schedule.lastRunError} />
+          <View style={styles.footerMeta}>
+            <Text style={styles.metaText} numberOfLines={1}>
+              {meta}
+            </Text>
+          </View>
         </View>
       </Pressable>
     </View>
@@ -238,6 +264,12 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }): ReactElemen
   );
 }
 
+// Inner controls (kebab) sit inside the card's Pressable. Stopping the press-in
+// here keeps a tap on them from also firing the card's edit action.
+function stopPressInPropagation(event: { stopPropagation?: () => void }) {
+  event.stopPropagation?.();
+}
+
 function ScheduleKebabMenu({
   schedule,
   canRun,
@@ -248,7 +280,7 @@ function ScheduleKebabMenu({
   onRunNow,
   onDelete,
 }: Pick<
-  ScheduleRowProps,
+  ScheduleCardProps,
   "schedule" | "pending" | "onEdit" | "onPause" | "onResume" | "onRunNow" | "onDelete"
 > & {
   canRun: boolean;
@@ -257,6 +289,7 @@ function ScheduleKebabMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         hitSlop={8}
+        onPressIn={stopPressInPropagation}
         style={kebabTriggerStyle}
         accessibilityRole={isNative ? "button" : undefined}
         accessibilityLabel="Schedule actions"
@@ -328,48 +361,81 @@ function kebabTriggerStyle({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Static color holder for the dynamic provider icon (compliant idiom).
   providerIcon: {
     color: theme.colors.foregroundMuted,
   },
-  rowContainer: {
+  container: {
     position: "relative",
+    flex: 1,
   },
-  row: {
-    gap: theme.spacing[3],
+  card: {
+    flex: 1,
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing[4],
+    gap: theme.spacing[2],
+    minHeight: 132,
   },
-  rowHovered: {
+  cardError: {
+    borderColor: theme.colors.palette.red[500],
+  },
+  cardHovered: {
     backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.borderAccent,
   },
-  rowPressed: {
+  cardPressed: {
     backgroundColor: theme.colors.surface3,
   },
-  main: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-  },
-  leading: {
-    width: PROVIDER_ICON_SIZE,
-    height: PROVIDER_ICON_SIZE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  textGroup: {
-    flex: 1,
-    minWidth: 0,
-  },
-  target: {
-    marginTop: theme.spacing[1],
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  trailing: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+  },
+  name: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  target: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  spacer: {
+    flex: 1,
+    minHeight: theme.spacing[2],
+  },
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[1],
+  },
+  footerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexShrink: 1,
+  },
+  metaText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  errorText: {
+    color: theme.colors.palette.red[500],
+    fontSize: theme.fontSize.xs,
+    flexShrink: 1,
   },
   kebabTrigger: {
     padding: theme.spacing[1],

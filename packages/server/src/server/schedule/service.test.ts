@@ -1143,6 +1143,35 @@ describe("ScheduleService", () => {
     expect(updated.lastRunAt).toBe(after.lastRunAt);
   });
 
+  test("finishRun persists lastRunStatus and lastRunError when a run fails", async () => {
+    const service = new ScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => {
+        throw new Error("boom");
+      },
+    });
+
+    const created = await service.create({
+      prompt: "p",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+    expect(created.lastRunStatus).toBeNull();
+    expect(created.lastRunError).toBeNull();
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+
+    const after = await service.inspect(created.id);
+    expect(after.lastRunStatus).toBe("failed");
+    expect(after.lastRunError).toBe("boom");
+  });
+
   test("update clears the schedule name when given an empty string", async () => {
     const service = new ScheduleService({
       ottoHome: tempDir,

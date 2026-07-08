@@ -1,89 +1,82 @@
 import { useCallback, useState, type ReactElement } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { ScheduleRow, type ScheduleRowPending } from "@/components/schedules/schedule-row";
+import { ScheduleCard, type ScheduleCardPending } from "@/components/schedules/schedule-card";
 import { useScheduleMutations } from "@/hooks/use-schedule-mutations";
 import type { AggregatedSchedule } from "@/hooks/use-schedules";
 import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
-import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { resolveScheduleTitle } from "@/utils/schedule-format";
 
-/** A schedule plus the client-derived fields the row renders. */
+/** A schedule plus the client-derived fields the card renders. */
 export interface ScheduleRowView {
   schedule: AggregatedSchedule;
   targetLabel: string;
   provider: string | null;
   state: ScheduleDerivedState;
   serverName: string;
-  /** True when only one host exists, so the host name is redundant in rows. */
+  /** True when only one host exists, so the host name is redundant in cards. */
   singleHost: boolean;
 }
 
-interface SchedulesTableProps {
+interface ScheduleGridProps {
   rows: ScheduleRowView[];
   /**
    * The form sheet is owned by the screen (it serves both create and edit and
-   * shares the screen's "New schedule" button), so the table delegates edit
+   * shares the screen's "New schedule" button), so the grid delegates edit
    * upward rather than mounting a second sheet here.
    */
   onEditSchedule: (schedule: AggregatedSchedule) => void;
 }
 
 /**
- * The schedules list: a single settings-style card of rows across every
- * connected host, in a full-width list matching the History screen. Rows own
- * their host-scoped mutations (pause/resume/run/delete via the mutations hook +
- * a destructive confirm) and delegate editing upward.
+ * The schedules grid: cards across every connected host, wrapping 1-2 columns
+ * wide (Schedules cards read wider/landscape vs. Artifacts' narrower cards —
+ * see artifact-grid.tsx for the 2-3 column counterpart). Cards own their
+ * host-scoped mutations (pause/resume/run/delete via the mutations hook + a
+ * destructive confirm) and delegate editing upward.
  */
-export function SchedulesTable({ rows, onEditSchedule }: SchedulesTableProps): ReactElement {
+export function ScheduleGrid({ rows, onEditSchedule }: ScheduleGridProps): ReactElement {
   return (
-    <View style={styles.listContent} testID="schedules-table">
-      <View style={settingsStyles.card}>
-        {rows.map((row, index) => (
-          <SchedulesTableRow
-            key={`${row.schedule.serverId}:${row.schedule.id}`}
-            row={row}
-            isFirst={index === 0}
-            onEditSchedule={onEditSchedule}
-          />
-        ))}
-      </View>
+    <View style={styles.grid} testID="schedules-grid">
+      {rows.map((row) => (
+        <View key={`${row.schedule.serverId}:${row.schedule.id}`} style={styles.cell}>
+          <ScheduleGridCard row={row} onEditSchedule={onEditSchedule} />
+        </View>
+      ))}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Per-row wrapper owns local in-flight state and binds mutations to this
-// schedule's host. Local state keeps pending precise to the acting row even
-// when several rows are acted on at once (the mutations hook exposes only a
+// Per-card wrapper owns local in-flight state and binds mutations to this
+// schedule's host. Local state keeps pending precise to the acting card even
+// when several cards are acted on at once (the mutations hook exposes only a
 // single global pending flag per action).
 // ---------------------------------------------------------------------------
 
-const NO_PENDING: ScheduleRowPending = {};
+const NO_PENDING: ScheduleCardPending = {};
 
-function SchedulesTableRow({
+function ScheduleGridCard({
   row,
-  isFirst,
   onEditSchedule,
 }: {
   row: ScheduleRowView;
-  isFirst: boolean;
   onEditSchedule: (schedule: AggregatedSchedule) => void;
 }): ReactElement {
   const { schedule } = row;
   const { id, serverId } = schedule;
   const mutations = useScheduleMutations({ serverId });
-  const [pending, setPending] = useState<ScheduleRowPending>(NO_PENDING);
+  const [pending, setPending] = useState<ScheduleCardPending>(NO_PENDING);
 
   const runAction = useCallback(
-    async (key: keyof ScheduleRowPending, action: () => Promise<void>): Promise<void> => {
+    async (key: keyof ScheduleCardPending, action: () => Promise<void>): Promise<void> => {
       setPending((current) => ({ ...current, [key]: true }));
       try {
         await action();
       } catch {
         // Mutations roll back their own optimistic cache writes on error and
-        // re-fetch on settle; surfacing per-row toasts here is out of scope.
+        // re-fetch on settle; surfacing per-card toasts here is out of scope.
       } finally {
         setPending((current) => {
           const next = { ...current };
@@ -127,14 +120,13 @@ function SchedulesTableRow({
   }, [runAction, mutations, id, schedule]);
 
   return (
-    <ScheduleRow
+    <ScheduleCard
       schedule={schedule}
       targetLabel={row.targetLabel}
       provider={row.provider}
       state={row.state}
       serverName={row.serverName}
       singleHost={row.singleHost}
-      isFirst={isFirst}
       pending={pending}
       onEdit={handleEdit}
       onPause={handlePause}
@@ -146,8 +138,18 @@ function SchedulesTableRow({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Full-width list padding matching the History screen.
-  listContent: {
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+  },
+  // 1 col until there's real room -> 2 cols (lg, 992px+). Pushed a tier higher
+  // than the raw breakpoint name suggests, and stops at 2 columns since these
+  // cards are wider/landscape versus Artifacts' narrower cards (artifact-grid.tsx).
+  cell: {
+    flexGrow: 1,
+    flexBasis: { xs: "100%", lg: "48%" },
+    maxWidth: { xs: "100%", lg: "50%" },
   },
 }));
