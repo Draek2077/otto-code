@@ -4,10 +4,10 @@
 
 Controlled by `APP_VARIANT` in `packages/app/app.config.js` (vanilla Expo, no custom Gradle plugin):
 
-| Variant       | App name   | Package ID          |
-| ------------- | ---------- | ------------------- |
-| `production`  | Otto       | `ai.ottocode`       |
-| `development` | Otto Debug | `ai.ottocode.debug` |
+| Variant       | App name   | Package ID                 |
+| ------------- | ---------- | -------------------------- |
+| `production`  | Otto       | `me.ottocode.mobile`       |
+| `development` | Otto Debug | `me.ottocode.mobile.debug` |
 
 EAS profiles: `development`, `production`, and `production-apk` in `packages/app/eas.json`.
 
@@ -50,12 +50,19 @@ adb exec-out screencap -p > screenshot.png
 
 ## Cloud build + submit (EAS)
 
-Stable tag pushes like `v0.1.0` trigger:
+> **Fork reality:** on this fork the only thing a tag push triggers on the mobile side is
+> `.github/workflows/android-apk-release.yml`, which builds an APK on the fork's own EAS project
+> (`otto-code` Expo org) and attaches it to the GitHub Release. There are **no store
+> submissions** — no Play Console listing, no Apple account, no EAS GitHub-app store pipeline.
+> The upstream description below is kept as reference for if/when store accounts exist; see
+> [fork-release-guide.md](fork-release-guide.md).
 
-- The EAS GitHub app on Expo servers (iOS + Android production builds + store submit). There is no workflow file in this repo for it.
-- `.github/workflows/android-apk-release.yml` on GitHub Actions (APK asset on GitHub Release).
+Upstream's stable tag pushes like `v0.1.0` trigger:
 
-iOS auto-submits to App Store review via a Fastlane lane after EAS uploads to TestFlight. Android auto-submits to the Play Store via EAS-managed credentials.
+- The EAS GitHub app on Expo servers (iOS + Android production builds + store submit). There is no workflow file in this repo for it, and it is not wired up on this fork.
+- `.github/workflows/android-apk-release.yml` on GitHub Actions (APK asset on GitHub Release) — the only part active on this fork.
+
+Upstream: iOS auto-submits to App Store review via a Fastlane lane after EAS uploads to TestFlight, and Android auto-submits to the Play Store via EAS-managed credentials. Neither happens on this fork.
 
 Beta tags like `v0.1.1-beta.1` only trigger the GitHub APK workflow. They publish a GitHub prerelease APK for testing and do not submit to the stores.
 
