@@ -31,6 +31,7 @@ import {
   closeLocalTransportSession,
 } from "./local-transport.js";
 import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import { respondToQuitConfirm } from "./quit-confirm.js";
 import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./cli/external.js";
 import {
   createDesktopSettingsCommandHandlers,
@@ -621,6 +622,7 @@ export function createDaemonCommandHandlers(options?: {
         },
       );
     },
+    respond_quit_confirm: (args) => respondToQuitConfirm(args ?? {}),
     get_local_daemon_version: () => getLocalDaemonVersion(),
     install_cli: () => installCli(),
     get_cli_install_status: () => getCliInstallStatus(),

@@ -789,7 +789,6 @@ function WorkspaceTabRowExtras({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PinnedTargetsRow launchers={launchers} testIdPrefix="workspace-pinned-target" />
       {showPreviewButton ? (
         <WorkspacePreviewButton
           normalizedServerId={normalizedServerId}
@@ -798,6 +797,7 @@ function WorkspaceTabRowExtras({
           focusedAgentId={focusedAgentId}
         />
       ) : null}
+      <PinnedTargetsRow launchers={launchers} testIdPrefix="workspace-pinned-target" />
     </>
   );
 }

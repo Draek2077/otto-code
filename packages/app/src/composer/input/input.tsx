@@ -287,6 +287,7 @@ function AttachmentDropdown({
   renderAttachButtonIcon,
   attachmentMenuItems,
   addAttachmentLabel,
+  addAttachmentTooltipLabel,
 }: {
   isConnected: boolean;
   disabled: boolean;
@@ -294,6 +295,7 @@ function AttachmentDropdown({
   renderAttachButtonIcon: (input: { hovered?: boolean }) => React.ReactElement;
   attachmentMenuItems: AttachmentMenuItem[];
   addAttachmentLabel: string;
+  addAttachmentTooltipLabel: string;
 }) {
   const isCompact = useIsCompactFormFactor();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -375,7 +377,7 @@ function AttachmentDropdown({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{addAttachmentLabel}</Text>
+          <Text style={styles.tooltipText}>{addAttachmentTooltipLabel}</Text>
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
@@ -1942,6 +1944,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   renderAttachButtonIcon={renderAttachButtonIcon}
                   attachmentMenuItems={attachmentMenuItems}
                   addAttachmentLabel={t("composer.input.addAttachment")}
+                  addAttachmentTooltipLabel={t("composer.input.add")}
                 />
                 {leadingContent}
                 {leftContent}

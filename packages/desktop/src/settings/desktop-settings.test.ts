@@ -89,6 +89,10 @@ describe("desktop-settings", () => {
         minimizeOnClose: true,
         startMinimized: false,
       },
+      quit: {
+        warnBeforeQuit: false,
+        onlyWarnForActiveAgents: false,
+      },
     });
   });
 
@@ -113,6 +117,10 @@ describe("desktop-settings", () => {
       tray: {
         minimizeOnClose: true,
         startMinimized: false,
+      },
+      quit: {
+        warnBeforeQuit: false,
+        onlyWarnForActiveAgents: false,
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
@@ -200,6 +208,10 @@ describe("desktop-settings", () => {
       tray: {
         minimizeOnClose: true,
         startMinimized: false,
+      },
+      quit: {
+        warnBeforeQuit: false,
+        onlyWarnForActiveAgents: false,
       },
     });
     expect(ignoredSecondMigration).toEqual(migrated);

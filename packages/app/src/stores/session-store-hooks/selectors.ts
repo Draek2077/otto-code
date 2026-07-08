@@ -98,6 +98,23 @@ export function selectWorkspace(
   return workspaceKey ? (workspaces?.get(workspaceKey) ?? null) : null;
 }
 
+export function selectProjectDiffStat(
+  state: SessionsSnapshot,
+  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
+): { additions: number; deletions: number } | null {
+  let additions = 0;
+  let deletions = 0;
+  let hasDiffStat = false;
+  for (const { serverId, workspaceId } of workspaces) {
+    const diffStat = selectWorkspace(state, serverId, workspaceId)?.diffStat;
+    if (!diffStat) continue;
+    hasDiffStat = true;
+    additions += diffStat.additions;
+    deletions += diffStat.deletions;
+  }
+  return hasDiffStat ? { additions, deletions } : null;
+}
+
 export function selectWorkspaceFields<T>(
   state: SessionsSnapshot,
   serverId: string | null,

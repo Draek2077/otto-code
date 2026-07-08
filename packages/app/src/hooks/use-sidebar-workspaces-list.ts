@@ -4,7 +4,11 @@ import { shallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
-import { selectWorkspace, workspaceEqualityFns } from "@/stores/session-store-hooks/selectors";
+import {
+  selectProjectDiffStat,
+  selectWorkspace,
+  workspaceEqualityFns,
+} from "@/stores/session-store-hooks/selectors";
 import { useHostProjects } from "@/projects/host-projects";
 import { fetchAllWorkspaceDescriptors } from "@/projects/workspace-fetching";
 import { getHostRuntimeStore, useHostRegistryLoaded, useHosts } from "@/runtime/host-runtime";
@@ -69,6 +73,18 @@ export function useSidebarWorkspaceEntry(
         agents,
       });
     },
+    equal,
+  );
+}
+
+// Aggregates diff counts across every workspace in a project, so the project row can
+// show a single total instead of duplicating the count on each workspace row.
+export function useSidebarProjectDiffStat(
+  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
+): { additions: number; deletions: number } | null {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectProjectDiffStat(state, workspaces),
     equal,
   );
 }

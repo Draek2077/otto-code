@@ -7,6 +7,7 @@ export const ar: TranslationResources = {
     actions: {
       back: "خلف",
       cancel: "يلغي",
+      confirm: "Confirm",
       close: "يغلق",
       copy: "ينسخ",
       dismiss: "رفض",
@@ -79,6 +80,7 @@ export const ar: TranslationResources = {
       sendMessage: "أرسل رسالة",
       queue: "طابور",
       send: "يرسل",
+      add: "إضافة سياق",
     },
     cancel: {
       cancelingAgent: "وكيل الإلغاء",
@@ -163,7 +165,7 @@ export const ar: TranslationResources = {
       selectWithValue: "حدد وضع الوكيل ({{value}})",
     },
     hints: {
-      thinking: "وضع التفكير",
+      thinking: "تغيير الجهد",
       model: "تغيير النموذج",
       mode: "تغيير الوضع",
     },
@@ -978,6 +980,22 @@ export const ar: TranslationResources = {
         title: "البدء مصغّرًا في شريط النظام",
         hint: "تشغيل Otto مخفيًا في شريط النظام بدلاً من إظهار النافذة",
       },
+      warnBeforeQuit: {
+        title: "التحذير قبل الإنهاء",
+        hint: "يؤكد أنك تريد إنهاء التطبيق/الخدمة الخلفية/الجلسات النشطة",
+      },
+      onlyWarnForActiveAgents: {
+        title: "التحذير فقط عند وجود وكلاء نشطين",
+        hint: "تأكيد إنهاء التطبيق فقط في حال وجود وكلاء نشطين",
+      },
+      quitConfirm: {
+        title: "إنهاء Otto؟",
+        appMessage: "هل أنت متأكد أنك تريد إنهاء التطبيق؟",
+        appAndDaemonMessage: "هل أنت متأكد أنك تريد إنهاء التطبيق والخدمة الخلفية؟",
+        activeAgentsMessage: "هل أنت متأكد أنك تريد إنهاء التطبيق أثناء وجود وكلاء نشطين؟",
+        confirm: "إنهاء",
+        cancel: "إلغاء",
+      },
     },
     updates: {
       status: {
@@ -1503,6 +1521,7 @@ export const ar: TranslationResources = {
     title: "نافذة السياق (تم استخدام {{percentage}}%)",
     sessionCost: "تكلفة الجلسة{{cost}}",
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
+    tooltip: "عرض الاستخدام",
   },
   review: {
     comment: {

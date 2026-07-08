@@ -14,12 +14,17 @@ export interface DesktopSettings {
     minimizeOnClose: boolean;
     startMinimized: boolean;
   };
+  quit: {
+    warnBeforeQuit: boolean;
+    onlyWarnForActiveAgents: boolean;
+  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   daemon?: Partial<DesktopSettings["daemon"]>;
   tray?: Partial<DesktopSettings["tray"]>;
+  quit?: Partial<DesktopSettings["quit"]>;
 }
 
 interface PersistedDesktopSettingsDocument {
@@ -45,6 +50,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   tray: {
     minimizeOnClose: true,
     startMinimized: false,
+  },
+  quit: {
+    warnBeforeQuit: false,
+    onlyWarnForActiveAgents: false,
   },
 };
 
@@ -79,6 +88,7 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
       releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
       daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
       tray: { ...DEFAULT_DESKTOP_SETTINGS.tray },
+      quit: { ...DEFAULT_DESKTOP_SETTINGS.quit },
     },
     migrations: {
       legacyRendererSettingsImported: false,
@@ -91,6 +101,7 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
     tray: { ...DEFAULT_DESKTOP_SETTINGS.tray },
+    quit: { ...DEFAULT_DESKTOP_SETTINGS.quit },
   };
 
   if (!isRecord(input)) {
@@ -123,6 +134,18 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     const startMinimized = coerceBoolean(input.tray.startMinimized);
     if (startMinimized !== null) {
       result.tray.startMinimized = startMinimized;
+    }
+  }
+
+  if (isRecord(input.quit)) {
+    const warnBeforeQuit = coerceBoolean(input.quit.warnBeforeQuit);
+    if (warnBeforeQuit !== null) {
+      result.quit.warnBeforeQuit = warnBeforeQuit;
+    }
+
+    const onlyWarnForActiveAgents = coerceBoolean(input.quit.onlyWarnForActiveAgents);
+    if (onlyWarnForActiveAgents !== null) {
+      result.quit.onlyWarnForActiveAgents = onlyWarnForActiveAgents;
     }
   }
 
@@ -171,6 +194,21 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  if (isRecord(input.quit)) {
+    const quitPatch: Partial<DesktopSettings["quit"]> = {};
+    const warnBeforeQuit = coerceBoolean(input.quit.warnBeforeQuit);
+    if (warnBeforeQuit !== null) {
+      quitPatch.warnBeforeQuit = warnBeforeQuit;
+    }
+    const onlyWarnForActiveAgents = coerceBoolean(input.quit.onlyWarnForActiveAgents);
+    if (onlyWarnForActiveAgents !== null) {
+      quitPatch.onlyWarnForActiveAgents = onlyWarnForActiveAgents;
+    }
+    if (Object.keys(quitPatch).length > 0) {
+      patch.quit = quitPatch;
+    }
+  }
+
   return patch;
 }
 
@@ -203,6 +241,7 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     daemon: { ...current.daemon, ...patch.daemon },
     tray: { ...current.tray, ...patch.tray },
+    quit: { ...current.quit, ...patch.quit },
   };
 }
 

@@ -17,6 +17,8 @@ export function DesktopWindowBehaviorSection() {
   const { settings, updateSettings } = useDesktopSettings();
   const [isUpdatingMinimizeOnClose, setIsUpdatingMinimizeOnClose] = useState(false);
   const [isUpdatingStartMinimized, setIsUpdatingStartMinimized] = useState(false);
+  const [isUpdatingWarnBeforeQuit, setIsUpdatingWarnBeforeQuit] = useState(false);
+  const [isUpdatingOnlyWarnForActiveAgents, setIsUpdatingOnlyWarnForActiveAgents] = useState(false);
 
   const handleToggleMinimizeOnClose = useCallback(() => {
     setIsUpdatingMinimizeOnClose(true);
@@ -40,37 +42,105 @@ export function DesktopWindowBehaviorSection() {
       });
   }, [settings.tray.startMinimized, updateSettings]);
 
-  if (!getIsElectronRuntime() || getIsElectronRuntimeMac()) {
+  const handleToggleWarnBeforeQuit = useCallback(() => {
+    setIsUpdatingWarnBeforeQuit(true);
+    void updateSettings({ quit: { warnBeforeQuit: !settings.quit.warnBeforeQuit } })
+      .catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      })
+      .finally(() => {
+        setIsUpdatingWarnBeforeQuit(false);
+      });
+  }, [settings.quit.warnBeforeQuit, updateSettings]);
+
+  const handleToggleOnlyWarnForActiveAgents = useCallback(() => {
+    setIsUpdatingOnlyWarnForActiveAgents(true);
+    void updateSettings({
+      quit: { onlyWarnForActiveAgents: !settings.quit.onlyWarnForActiveAgents },
+    })
+      .catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      })
+      .finally(() => {
+        setIsUpdatingOnlyWarnForActiveAgents(false);
+      });
+  }, [settings.quit.onlyWarnForActiveAgents, updateSettings]);
+
+  if (!getIsElectronRuntime()) {
     return null;
   }
+
+  const isMac = getIsElectronRuntimeMac();
 
   return (
     <SettingsSection title={t("desktop.window.title")} testID="host-page-window-behavior-card">
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("desktop.window.minimizeToTray.title")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("desktop.window.minimizeToTray.hint")}</Text>
-          </View>
-          <Switch
-            value={settings.tray.minimizeOnClose}
-            onValueChange={handleToggleMinimizeOnClose}
-            disabled={isUpdatingMinimizeOnClose}
-            accessibilityLabel={t("desktop.window.minimizeToTray.title")}
-          />
-        </View>
+        {isMac ? null : (
+          <>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("desktop.window.minimizeToTray.title")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("desktop.window.minimizeToTray.hint")}
+                </Text>
+              </View>
+              <Switch
+                value={settings.tray.minimizeOnClose}
+                onValueChange={handleToggleMinimizeOnClose}
+                disabled={isUpdatingMinimizeOnClose}
+                accessibilityLabel={t("desktop.window.minimizeToTray.title")}
+              />
+            </View>
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("desktop.window.startMinimized.title")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("desktop.window.startMinimized.hint")}
+                </Text>
+              </View>
+              <Switch
+                value={settings.tray.startMinimized}
+                onValueChange={handleToggleStartMinimized}
+                disabled={isUpdatingStartMinimized}
+                accessibilityLabel={t("desktop.window.startMinimized.title")}
+              />
+            </View>
+          </>
+        )}
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("desktop.window.startMinimized.title")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("desktop.window.startMinimized.hint")}</Text>
+            <Text style={settingsStyles.rowTitle}>{t("desktop.window.warnBeforeQuit.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("desktop.window.warnBeforeQuit.hint")}</Text>
           </View>
           <Switch
-            value={settings.tray.startMinimized}
-            onValueChange={handleToggleStartMinimized}
-            disabled={isUpdatingStartMinimized}
-            accessibilityLabel={t("desktop.window.startMinimized.title")}
+            value={settings.quit.warnBeforeQuit}
+            onValueChange={handleToggleWarnBeforeQuit}
+            disabled={isUpdatingWarnBeforeQuit}
+            accessibilityLabel={t("desktop.window.warnBeforeQuit.title")}
           />
         </View>
+        {settings.quit.warnBeforeQuit ? (
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("desktop.window.onlyWarnForActiveAgents.title")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("desktop.window.onlyWarnForActiveAgents.hint")}
+              </Text>
+            </View>
+            <Switch
+              value={settings.quit.onlyWarnForActiveAgents}
+              onValueChange={handleToggleOnlyWarnForActiveAgents}
+              disabled={isUpdatingOnlyWarnForActiveAgents}
+              accessibilityLabel={t("desktop.window.onlyWarnForActiveAgents.title")}
+            />
+          </View>
+        ) : null}
       </View>
     </SettingsSection>
   );

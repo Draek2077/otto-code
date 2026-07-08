@@ -37,7 +37,8 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
-import { ArchiveChatWarningModal } from "@/components/archive-chat-warning";
+import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
+import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
@@ -543,7 +544,8 @@ function AppContainer({
       <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
-      <ArchiveChatWarningModal />
+      <ConfirmDialogHost />
+      <QuitConfirmListener />
       <QuittingOverlay />
     </View>
   );

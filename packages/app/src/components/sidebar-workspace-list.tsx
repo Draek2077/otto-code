@@ -53,7 +53,6 @@ import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useHostFeatureMap } from "@/runtime/host-features";
-import { useAppSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import {
@@ -63,6 +62,7 @@ import {
 } from "@/utils/host-routes";
 import {
   shouldShowSidebarHostLabels,
+  useSidebarProjectDiffStat,
   useSidebarWorkspaceEntry,
   type SidebarProjectEntry,
   type SidebarStatusWorkspacePlacement,
@@ -492,6 +492,7 @@ function ProjectRowTrailingActions({
   isHovered,
   isMobileBreakpoint,
   isProjectActive,
+  diffStat,
   onBeginWorkspaceSetup,
   onRemoveProject,
   removeProjectStatus,
@@ -502,11 +503,13 @@ function ProjectRowTrailingActions({
   isHovered: boolean;
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
+  diffStat: { additions: number; deletions: number } | null;
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
+  const shouldRenderKebabSlot = Boolean(onRemoveProject || diffStat);
   return (
     <View style={styles.projectTrailingActions}>
       {worktreeTarget ? (
@@ -518,18 +521,24 @@ function ProjectRowTrailingActions({
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
       ) : null}
-      {onRemoveProject ? (
-        <View
-          style={!actionsVisible && styles.projectKebabButtonHidden}
-          pointerEvents={actionsVisible ? "auto" : "none"}
-        >
-          <ProjectKebabMenu
-            projectKey={project.projectKey}
-            projectPath={project.iconWorkingDir}
-            onRemoveProject={onRemoveProject}
-            removeProjectStatus={removeProjectStatus}
-          />
-        </View>
+      {shouldRenderKebabSlot ? (
+        <SidebarWorkspaceTrailingActionSlot>
+          <SidebarWorkspaceTrailingActionBase visible={Boolean(diffStat) && !actionsVisible}>
+            {diffStat && !actionsVisible ? (
+              <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
+            ) : null}
+          </SidebarWorkspaceTrailingActionBase>
+          <SidebarWorkspaceTrailingActionOverlay visible={actionsVisible}>
+            {onRemoveProject ? (
+              <ProjectKebabMenu
+                projectKey={project.projectKey}
+                projectPath={project.iconWorkingDir}
+                onRemoveProject={onRemoveProject}
+                removeProjectStatus={removeProjectStatus}
+              />
+            ) : null}
+          </SidebarWorkspaceTrailingActionOverlay>
+        </SidebarWorkspaceTrailingActionSlot>
       ) : null}
     </View>
   );
@@ -655,12 +664,10 @@ function WorkspaceRowRightGroup({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
-  const { settings } = useAppSettings();
-  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   const showKebabInSlot = showKebab && !showShortcut;
-  const shouldRenderActionSlot = Boolean(onArchive || (showDiffStat && workspace.diffStat));
+  const shouldRenderActionSlot = Boolean(onArchive);
 
   return (
     <>
@@ -669,18 +676,6 @@ function WorkspaceRowRightGroup({
       ) : null}
       {shouldRenderActionSlot ? (
         <SidebarWorkspaceTrailingActionSlot>
-          <SidebarWorkspaceTrailingActionBase
-            visible={Boolean(
-              showDiffStat && workspace.diffStat && !showKebabInSlot && !showShortcut,
-            )}
-          >
-            {showDiffStat && workspace.diffStat ? (
-              <DiffStat
-                additions={workspace.diffStat.additions}
-                deletions={workspace.diffStat.deletions}
-              />
-            ) : null}
-          </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
             {onArchive ? (
               <WorkspaceKebabMenu
@@ -1181,6 +1176,7 @@ function ProjectHeaderRow({
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
+  const diffStat = useSidebarProjectDiffStat(project.workspaces);
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
       return;
@@ -1254,6 +1250,7 @@ function ProjectHeaderRow({
         isHovered={isHovered}
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
+        diffStat={diffStat}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
@@ -2652,7 +2649,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectIconActionButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surface2,
   },
   projectIconActionButtonHidden: {
     opacity: 0,
@@ -2660,7 +2657,7 @@ const styles = StyleSheet.create((theme) => ({
   projectTrailingActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: theme.spacing[1],
     flexShrink: 0,
   },
   projectKebabButton: {
@@ -2670,9 +2667,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-  },
-  projectKebabButtonHidden: {
-    opacity: 0,
   },
   projectKebabButtonHovered: {
     backgroundColor: theme.colors.surface2,

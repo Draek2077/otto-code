@@ -309,6 +309,13 @@ export interface DropdownMenuTriggerProps extends Omit<PressableProps, "style" |
   style?: TriggerStyleProp;
   children: ReactNode | ((state: TriggerState) => ReactNode);
   triggerRef?: Ref<View | null>;
+  /**
+   * Plain function component, not forwardRef — React 19 delivers a JSX `ref=`
+   * attribute here as a normal prop. Must be merged into `handleRef` below or
+   * it's silently dropped (e.g. a wrapping `<TooltipTrigger asChild>` never
+   * gets the node and its content renders off-screen).
+   */
+  ref?: Ref<View | null>;
 }
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
@@ -326,6 +333,7 @@ export function DropdownMenuTrigger({
   disabled,
   style,
   triggerRef,
+  ref,
   ...props
 }: DropdownMenuTriggerProps): ReactElement {
   const ctx = useDropdownMenuContext("DropdownMenuTrigger");
@@ -339,8 +347,9 @@ export function DropdownMenuTrigger({
     (node: View | null) => {
       assignRef(ctx.triggerRef, node);
       assignRef(triggerRef, node);
+      assignRef(ref, node);
     },
-    [ctx.triggerRef, triggerRef],
+    [ctx.triggerRef, triggerRef, ref],
   );
 
   const pressableStyle = useCallback(
