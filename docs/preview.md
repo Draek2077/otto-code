@@ -6,11 +6,10 @@ rendered result in a real browser tab — accessibility snapshots, DOM
 inspection, console/network capture, click/fill interaction, viewport resize,
 and screenshots — instead of asking the user to check manually.
 
-Implementation background and the rebuild blueprint live in
-[preview-mcp-implementation.md](preview-mcp-implementation.md). This doc
-covers the finished feature: settings, day-to-day server management, how a
-preview tab differs from a normal browser tab, and the `.claude/launch.json`
-config lifecycle.
+This doc covers the finished feature: settings, day-to-day server management,
+how a preview tab differs from a normal browser tab, and the
+`.claude/launch.json` config lifecycle. (The original reverse-engineering
+blueprint that drove the build lives with the project plans, not here.)
 
 ## Two subsystems, one feature
 

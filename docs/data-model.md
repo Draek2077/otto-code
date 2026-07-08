@@ -2,7 +2,7 @@
 
 Otto uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
 
-All server-side stores live under `$OTTO_HOME` (defaults to `~/.otto`).
+Server-side stores live under `$OTTO_HOME` (defaults to `~/.otto`), with one exception: artifacts are stored inside the project directory at `{projectCwd}/.otto/artifacts/` (see [Artifacts](#8-artifacts)).
 
 ---
 
@@ -242,22 +242,24 @@ Otto uses these paths under the configured OpenAI base URL:
 
 One file per schedule. ID is 8 hex characters.
 
-| Field       | Type                                  | Description                      |
-| ----------- | ------------------------------------- | -------------------------------- |
-| `id`        | `string`                              | 8-char hex ID                    |
-| `name`      | `string?`                             | Human-readable name              |
-| `prompt`    | `string`                              | The prompt to send               |
-| `cadence`   | `ScheduleCadence`                     | Timing (see below)               |
-| `target`    | `ScheduleTarget`                      | What to run (see below)          |
-| `status`    | `"active" \| "paused" \| "completed"` | Current state                    |
-| `createdAt` | `string` (ISO 8601)                   |                                  |
-| `updatedAt` | `string` (ISO 8601)                   |                                  |
-| `nextRunAt` | `string?` (ISO 8601)                  | Next scheduled execution         |
-| `lastRunAt` | `string?` (ISO 8601)                  | Last execution time              |
-| `pausedAt`  | `string?` (ISO 8601)                  | When paused                      |
-| `expiresAt` | `string?` (ISO 8601)                  | Auto-expire time                 |
-| `maxRuns`   | `number?`                             | Max executions before completing |
-| `runs`      | `ScheduleRun[]`                       | Execution history                |
+| Field           | Type                                  | Description                      |
+| --------------- | ------------------------------------- | -------------------------------- |
+| `id`            | `string`                              | 8-char hex ID                    |
+| `name`          | `string?`                             | Human-readable name              |
+| `prompt`        | `string`                              | The prompt to send               |
+| `cadence`       | `ScheduleCadence`                     | Timing (see below)               |
+| `target`        | `ScheduleTarget`                      | What to run (see below)          |
+| `status`        | `"active" \| "paused" \| "completed"` | Current state                    |
+| `createdAt`     | `string` (ISO 8601)                   |                                  |
+| `updatedAt`     | `string` (ISO 8601)                   |                                  |
+| `nextRunAt`     | `string?` (ISO 8601)                  | Next scheduled execution         |
+| `lastRunAt`     | `string?` (ISO 8601)                  | Last execution time              |
+| `lastRunStatus` | `"succeeded" \| "failed"?`            | Outcome of the last run          |
+| `lastRunError`  | `string?`                             | Error message from the last run  |
+| `pausedAt`      | `string?` (ISO 8601)                  | When paused                      |
+| `expiresAt`     | `string?` (ISO 8601)                  | Auto-expire time                 |
+| `maxRuns`       | `number?`                             | Max executions before completing |
+| `runs`          | `ScheduleRun[]`                       | Execution history                |
 
 ### Nested: ScheduleCadence (discriminated union on `type`)
 
@@ -267,7 +269,7 @@ One file per schedule. ID is 8 hex characters.
 ### Nested: ScheduleTarget (discriminated union on `type`)
 
 - `{ type: "agent", agentId: string }` — send to existing agent
-- `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, approvalPolicy?, sandboxMode?, networkAccess?, webSearch?, extra?, systemPrompt?, mcpServers? } }` — create a new agent
+- `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, approvalPolicy?, sandboxMode?, networkAccess?, webSearch?, featureValues?, extra?, systemPrompt?, mcpServers? } }` — create a new agent
 
 ### Nested: ScheduleRun
 
@@ -461,7 +463,32 @@ than treating it as valid.
 
 ---
 
-## 8. Push Token Store
+## 8. Artifacts
+
+**Path:** `{projectCwd}/.otto/artifacts/{artifactId}.json` + `{artifactId}.html`
+
+The one store that lives **inside the project directory**, not under `$OTTO_HOME` — artifacts belong to the project and travel with the checkout. Each artifact is a metadata JSON file plus a sibling self-contained HTML file, written atomically. `ArtifactStore` (`packages/server/src/server/artifact/artifact-store.ts`) is constructed per project cwd; `ArtifactWatcher` watches the directory so externally-edited artifacts refresh in connected clients. Generated HTML is checked by `html-validator.ts` before an artifact is marked `ready`.
+
+Metadata (`ArtifactMetadataSchema`, `packages/protocol/src/artifacts/types.ts`):
+
+| Field                                                        | Type                                 | Description                            |
+| ------------------------------------------------------------ | ------------------------------------ | -------------------------------------- |
+| `id`                                                         | `string`                             | Primary key; also the file basename    |
+| `name`, `description`                                        | `string`                             | User/agent-supplied                    |
+| `projectId`                                                  | `string`                             | Owning project                         |
+| `filePath`                                                   | `string`                             | Path of the HTML file                  |
+| `kind`                                                       | `"html"`                             | Only kind today                        |
+| `starred`                                                    | `boolean`                            |                                        |
+| `status`                                                     | `"generating" \| "ready" \| "error"` | Generation lifecycle                   |
+| `createdAt`, `updatedAt`                                     | `string` (ISO 8601)                  |                                        |
+| `generationAgentId`, `generationProvider`, `generationModel` | `string \| null`                     | Provenance of the generating agent run |
+| `errorMessage`                                               | `string \| null`                     | Set when `status === "error"`          |
+
+Availability is gated by the `artifacts` capability flag in `server_info.features.*` (COMPAT(artifacts), added v0.4.1).
+
+---
+
+## 9. Push Token Store
 
 **Path:** `$OTTO_HOME/push-tokens.json`
 
@@ -475,7 +502,7 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 9. Daemon meta files
+## 10. Daemon meta files
 
 These small files are not validated as full Zod schemas but are persisted under `$OTTO_HOME` for daemon identity and runtime coordination.
 
