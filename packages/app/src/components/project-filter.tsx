@@ -7,26 +7,26 @@ import { shortenPath } from "@/utils/shorten-path";
 
 export const ALL_PROJECTS_OPTION_ID = "__all_projects__";
 
-export interface ArtifactProjectFilterOption {
+export interface ProjectFilterOption {
   /** Stable id used as the filter value — the project's repo-root path. */
   id: string;
   /** Human-readable project name. */
   label: string;
 }
 
-export interface ArtifactProjectFilterProps {
-  /** Every known project, whether or not it currently has artifacts. */
-  options: ArtifactProjectFilterOption[];
+export interface ProjectFilterProps {
+  /** Every known project, whether or not it currently has items to show. */
+  options: ProjectFilterOption[];
   /** Selected project id, or undefined for "All projects". */
   value: string | undefined;
   onChange: (projectId: string | undefined) => void;
 }
 
-export function ArtifactProjectFilter({
+export function ProjectFilter({
   options: projectOptions,
   value,
   onChange,
-}: ArtifactProjectFilterProps): ReactElement {
+}: ProjectFilterProps): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
 
@@ -68,7 +68,7 @@ export function ArtifactProjectFilter({
           style={triggerStyle}
           accessibilityRole="button"
           accessibilityLabel={`Filter by project (${selectedLabel})`}
-          testID="artifact-project-filter-trigger"
+          testID="project-filter-trigger"
         >
           <Text style={styles.triggerText} numberOfLines={1}>
             {selectedLabel}
