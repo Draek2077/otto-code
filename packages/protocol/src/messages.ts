@@ -707,6 +707,12 @@ export const AgentSnapshotPayloadSchema = z.object({
   attentionTimestamp: z.string().nullable().optional(),
   archivedAt: z.string().nullable().optional(),
   providerUnavailable: z.boolean().optional(),
+  // Attendability. "observed" marks a provider-managed subagent (Claude Task /
+  // ultracode fan-out) that the user can watch but not prompt or reconfigure —
+  // the daemon refuses attended operations and the client renders it read-only.
+  // COMPAT(observedSubagents): added in v0.4.3; absent ⇒ "attended". Drop the
+  // gate when daemon floor >= v0.4.3. See projects/observed-subagents/observed-subagents.md.
+  attend: z.enum(["attended", "observed"]).optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -1371,6 +1377,21 @@ export const AgentDetachRequestMessageSchema = z.object({
 
 export const AgentDetachResponseMessageSchema = z.object({
   type: z.literal("agent.detach.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+// Stop a running observed subagent (Claude Task / ultracode fan-out). The
+// agentId is the observed subagent's id; the daemon resolves it to the owning
+// provider session's task and calls stopTask. Only observed subagents accept
+// this. COMPAT(observedSubagents): added in v0.4.3. See projects/observed-subagents/observed-subagents.md.
+export const AgentSubagentStopRequestMessageSchema = z.object({
+  type: z.literal("agent.subagent.stop.request"),
+  agentId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentSubagentStopResponseMessageSchema = z.object({
+  type: z.literal("agent.subagent.stop.response"),
   payload: AgentActionResponsePayloadSchema,
 });
 
@@ -2131,6 +2152,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingRequestMessageSchema,
   SetAgentFeatureRequestMessageSchema,
   AgentDetachRequestMessageSchema,
+  AgentSubagentStopRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -2422,6 +2444,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentContextUsage: z.boolean().optional(),
         // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
         artifacts: z.boolean().optional(),
+        // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
+        observedSubagents: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4385,6 +4409,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingResponseMessageSchema,
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
+  AgentSubagentStopResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -4555,6 +4580,9 @@ export type SetAgentModelResponseMessage = z.infer<typeof SetAgentModelResponseM
 export type SetAgentThinkingResponseMessage = z.infer<typeof SetAgentThinkingResponseMessageSchema>;
 export type SetAgentFeatureResponseMessage = z.infer<typeof SetAgentFeatureResponseMessageSchema>;
 export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessageSchema>;
+export type AgentSubagentStopResponseMessage = z.infer<
+  typeof AgentSubagentStopResponseMessageSchema
+>;
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
@@ -4705,6 +4733,7 @@ export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMes
 export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequestMessageSchema>;
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
+export type AgentSubagentStopRequestMessage = z.infer<typeof AgentSubagentStopRequestMessageSchema>;
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;

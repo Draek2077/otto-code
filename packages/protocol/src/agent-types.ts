@@ -397,10 +397,46 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       reason: "finished" | "error" | "permission";
       timestamp: string;
+    }
+  // A provider-managed subagent's lifecycle changed. The daemon materializes it
+  // as a read-only "observed subagent" agent record. See projects/observed-subagents/observed-subagents.md.
+  | {
+      type: "observed_subagent_updated";
+      provider: AgentProvider;
+      update: ObservedSubagentUpdate;
+    }
+  // A timeline item belonging to a provider-managed subagent, routed by the
+  // daemon to the observed subagent's own timeline (keyed by `key`).
+  | {
+      type: "observed_subagent_timeline";
+      provider: AgentProvider;
+      key: string;
+      item: AgentTimelineItem;
+      turnId?: string;
+      timestamp?: string;
     };
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
+}
+
+/**
+ * A provider-managed subagent (Claude `Task` / ultracode fan-out) reported by a
+ * provider so the daemon can promote it to a read-only, separately-watchable
+ * "observed subagent". `key` is a provider-local stable identifier (Claude: the
+ * Task tool_use id); the daemon namespaces it under the owning agent. See
+ * projects/observed-subagents/observed-subagents.md.
+ */
+export interface ObservedSubagentUpdate {
+  key: string;
+  /** Provider task id, used to stop the subagent (Claude: `task_id`). */
+  taskId?: string;
+  sessionId?: string | null;
+  subAgentType?: string;
+  description?: string;
+  status: "initializing" | "running" | "idle" | "error" | "closed";
+  requiresAttention?: boolean;
+  usage?: AgentUsage;
 }
 
 export type AgentPermissionRequestKind = "tool" | "plan" | "question" | "mode" | "other";

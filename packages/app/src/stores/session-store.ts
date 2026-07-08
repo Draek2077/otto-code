@@ -118,6 +118,13 @@ export interface Agent {
   parentAgentId: string | null;
   labels: Record<string, string>;
   projectPlacement?: ProjectPlacementPayload | null;
+  /**
+   * "observed" marks a provider-managed subagent the user can watch but not
+   * prompt or reconfigure. The pane renders read-only and interactive controls
+   * are disabled. Absent (from older daemons) is treated as "attended". See
+   * projects/observed-subagents/observed-subagents.md.
+   */
+  attend?: "attended" | "observed";
 }
 
 export interface WorkspaceDescriptor {

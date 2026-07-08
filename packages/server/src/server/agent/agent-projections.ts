@@ -16,9 +16,11 @@ import type {
   AgentRuntimeInfo,
   AgentUsage,
   ImportableProviderSession,
+  ObservedSubagentUpdate,
 } from "./agent-sdk-types.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { JsonValue } from "../json-utils.js";
+import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "../persistence-hooks.js";
 export type { ManagedAgent };
 
@@ -128,6 +130,9 @@ export function toAgentPayload(
     persistence: sanitizePersistenceHandle(agent.persistence),
     title: options?.title ?? null,
     labels: agent.labels,
+    // ManagedAgents are always attended; observed subagents are produced by a
+    // separate projection (see observed-subagent-registry). See projects/observed-subagents/observed-subagents.md.
+    attend: "attended",
   };
 
   const usage = sanitizeUsage(agent.lastUsage);
@@ -235,8 +240,77 @@ export function buildStoredAgentPayload(
     attentionTimestamp: record.attentionTimestamp ?? null,
     archivedAt: record.archivedAt ?? null,
     labels: normalizeLabels(record.labels),
+    attend: "attended",
     ...(providerAvailable ? {} : { providerUnavailable: true }),
   };
+}
+
+// Observed subagents have no Otto runtime — all interactive capabilities are
+// false so the client hides model/mode/thinking/rewind controls, leaving a
+// read-only pane. Tool invocations stay true so the transcript renders tool
+// calls. See projects/observed-subagents/observed-subagents.md.
+const OBSERVED_SUBAGENT_CAPABILITIES: AgentCapabilityFlags = {
+  supportsStreaming: false,
+  supportsSessionPersistence: false,
+  supportsDynamicModes: false,
+  supportsMcpServers: false,
+  supportsReasoningStream: false,
+  supportsToolInvocations: true,
+  supportsRewindConversation: false,
+  supportsRewindFiles: false,
+  supportsRewindBoth: false,
+};
+
+export function toObservedSubagentPayload(input: {
+  id: string;
+  parentAgentId: string;
+  provider: AgentProvider;
+  cwd: string;
+  workspaceId?: string;
+  createdAt: string;
+  update: ObservedSubagentUpdate;
+}): AgentSnapshotPayload {
+  const { update } = input;
+  const title = update.description ?? update.subAgentType ?? "Subagent";
+  const nowIso = new Date().toISOString();
+  const isError = update.status === "error";
+  const requiresAttention = update.requiresAttention ?? isError;
+  let attentionReason: "error" | "finished" | null = null;
+  if (requiresAttention) {
+    attentionReason = isError ? "error" : "finished";
+  }
+
+  const payload: AgentSnapshotPayload = {
+    id: input.id,
+    provider: input.provider,
+    cwd: input.cwd,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    model: null,
+    thinkingOptionId: null,
+    effectiveThinkingOptionId: null,
+    createdAt: input.createdAt,
+    updatedAt: nowIso,
+    lastUserMessageAt: null,
+    status: update.status,
+    capabilities: { ...OBSERVED_SUBAGENT_CAPABILITIES },
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: [],
+    persistence: null,
+    title,
+    labels: { [PARENT_AGENT_ID_LABEL]: input.parentAgentId },
+    attend: "observed",
+    requiresAttention,
+    attentionReason,
+    attentionTimestamp: requiresAttention ? nowIso : null,
+  };
+
+  const usage = sanitizeUsage(update.usage);
+  if (usage !== undefined) {
+    payload.lastUsage = usage;
+  }
+
+  return payload;
 }
 
 export function toAgentListItemPayload(agent: AgentSnapshotPayload): AgentListItemPayload {

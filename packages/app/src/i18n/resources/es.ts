@@ -1523,6 +1523,12 @@ export const es: TranslationResources = {
   menu: {
     backdrop: "Fondo del menú",
   },
+  observedSubagents: {
+    readOnlyTitle: "Observed subagent · read-only",
+    readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
+    stopAction: "Stop subagent",
+    stopError: "Couldn't stop the subagent.",
+  },
   subagents: {
     detachAction: "Separar {{label}}",
     detachTooltip: "Separar subagente",

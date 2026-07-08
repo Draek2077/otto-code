@@ -1720,6 +1720,14 @@ function isClaudeSubagentToolName(name: string | undefined): boolean {
   return name === "Task" || name === "Agent";
 }
 
+function readObservedSubagentText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function readClaudeParentToolUseId(message: SDKMessage): string | null {
   if (!("parent_tool_use_id" in message)) {
     return null;
@@ -1897,6 +1905,12 @@ class ClaudeAgentSession implements AgentSession {
   private readonly sidechainTracker = new ClaudeSidechainTracker({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
   });
+  // Observed-subagent bookkeeping (projects/observed-subagents/observed-subagents.md). Keys are the
+  // parent Task tool_use ids seen live this session — history replay never
+  // announces, so stale tasks from persisted history cannot materialize rows.
+  private readonly announcedObservedSubagents = new Set<string>();
+  private readonly observedKeyByTaskId = new Map<string, string>();
+  private pendingObservedEvents: AgentStreamEvent[] = [];
   private persistedHistory: PersistedTimelineEntry[] = [];
   private historyPending = false;
   private turnState: TurnState = "idle";
@@ -2115,6 +2129,19 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     await this.interruptActiveTurn();
+  }
+
+  /**
+   * Stop a provider-managed subagent task (observed subagent) without touching
+   * the parent turn. A task_notification with status "stopped" follows and
+   * settles the observed row. See projects/observed-subagents/observed-subagents.md.
+   */
+  async stopTask(taskId: string): Promise<void> {
+    const activeQuery = this.query;
+    if (!activeQuery) {
+      throw new Error("No active Claude session to stop the subagent task");
+    }
+    await activeQuery.stopTask(taskId);
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
@@ -2366,6 +2393,9 @@ class ClaudeAgentSession implements AgentSession {
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.sidechainTracker.clear();
+    this.announcedObservedSubagents.clear();
+    this.observedKeyByTaskId.clear();
+    this.pendingObservedEvents = [];
     this.input?.end();
     this.query?.close?.();
     await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
@@ -2945,6 +2975,12 @@ class ClaudeAgentSession implements AgentSession {
     const base: ClaudeOptions = {
       cwd: this.config.cwd,
       includePartialMessages: true,
+      // Forward the full subagent conversation (not just tool_use/tool_result
+      // heartbeats) and periodic progress summaries so observed subagents can be
+      // promoted to first-class, separately-watchable track rows. See
+      // projects/observed-subagents/observed-subagents.md.
+      forwardSubagentText: true,
+      agentProgressSummaries: true,
       permissionMode: this.currentMode,
       // Dynamic mode switching can recreate the underlying Claude query. Keep the
       // bypass launch capability available so later setPermissionMode("bypassPermissions")
@@ -3602,7 +3638,9 @@ class ClaudeAgentSession implements AgentSession {
   ): AgentStreamEvent[] {
     const parentToolUseId = readClaudeParentToolUseId(message);
     if (parentToolUseId) {
-      return this.sidechainTracker.handleMessage(message, parentToolUseId);
+      const sidechainEvents = this.sidechainTracker.handleMessage(message, parentToolUseId);
+      this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
+      return sidechainEvents;
     }
 
     const events: AgentStreamEvent[] = [];
@@ -3651,7 +3689,65 @@ class ClaudeAgentSession implements AgentSession {
         break;
     }
 
+    // Task tool_result mapping (handleToolResult) can enqueue an observed
+    // subagent completion; flush it with the events that carried it.
+    if (this.pendingObservedEvents.length > 0) {
+      events.push(...this.pendingObservedEvents);
+      this.pendingObservedEvents = [];
+    }
+
     return events;
+  }
+
+  /**
+   * Route a sidechain (subagent) message into the observed subagent's own
+   * lifecycle + timeline events, alongside the parent Task row's summary log.
+   * Partial stream events are skipped: with forwardSubagentText enabled the
+   * complete assistant/user messages carry the full conversation, which is
+   * enough for the read-only pane. See projects/observed-subagents/observed-subagents.md.
+   */
+  private appendObservedSubagentSidechainEvents(
+    message: SDKMessage,
+    parentToolUseId: string,
+    events: AgentStreamEvent[],
+  ): void {
+    if (!this.announcedObservedSubagents.has(parentToolUseId)) {
+      this.announcedObservedSubagents.add(parentToolUseId);
+      const taskInput = this.toolUseCache.get(parentToolUseId)?.input;
+      const subAgentType = readObservedSubagentText(taskInput?.subagent_type);
+      const description = readObservedSubagentText(taskInput?.description);
+      events.push({
+        type: "observed_subagent_updated",
+        provider: "claude",
+        update: {
+          key: parentToolUseId,
+          status: "running",
+          ...(subAgentType ? { subAgentType } : {}),
+          ...(description ? { description } : {}),
+        },
+      });
+    }
+
+    let items: AgentTimelineItem[] = [];
+    if (message.type === "assistant") {
+      const content = message.message?.content;
+      if (typeof content === "string" || Array.isArray(content)) {
+        items = this.mapBlocksToTimeline(content);
+      }
+    } else if (message.type === "user") {
+      const content = message.message?.content;
+      if (typeof content === "string" || Array.isArray(content)) {
+        items = this.mapBlocksToTimeline(content, { textMessageType: "user_message" });
+      }
+    }
+    for (const item of items) {
+      events.push({
+        type: "observed_subagent_timeline",
+        provider: "claude",
+        key: parentToolUseId,
+        item,
+      });
+    }
   }
 
   private emitSubmittedUserMessage(
@@ -3727,22 +3823,105 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_progress") {
+      this.appendObservedSubagentTaskEvent(message, events, {
+        taskId: message.task_id,
+        toolUseId: message.tool_use_id,
+        subAgentType: message.subagent_type,
+        description: message.summary ?? message.description,
+        status: "running",
+      });
       return;
     }
+    if (message.subtype === "task_started") {
+      this.appendObservedSubagentTaskEvent(message, events, {
+        taskId: message.task_id,
+        toolUseId: message.tool_use_id,
+        subAgentType: message.subagent_type,
+        description: message.description,
+        status: "running",
+      });
+      return;
+    }
+  }
+
+  /**
+   * Map a task_* system message onto the observed subagent's lifecycle. Only
+   * subagent tasks qualify — shell/monitor/workflow background tasks are
+   * ignored. See projects/observed-subagents/observed-subagents.md.
+   */
+  private appendObservedSubagentTaskEvent(
+    message: Extract<SDKMessage, { type: "system" }>,
+    events: AgentStreamEvent[],
+    input: {
+      taskId: string;
+      toolUseId: string | undefined;
+      subAgentType?: string | undefined;
+      description?: string | undefined;
+      status: "running" | "idle" | "error" | "closed";
+      requiresAttention?: boolean;
+    },
+  ): void {
+    void message;
+    const cachedTool = input.toolUseId ? this.toolUseCache.get(input.toolUseId) : undefined;
+    const isSubagentTask =
+      readObservedSubagentText(input.subAgentType) !== undefined ||
+      isClaudeSubagentToolName(cachedTool?.name) ||
+      this.observedKeyByTaskId.has(input.taskId);
+    if (!isSubagentTask) {
+      return;
+    }
+    const key =
+      input.toolUseId ?? this.observedKeyByTaskId.get(input.taskId) ?? `task:${input.taskId}`;
+    this.observedKeyByTaskId.set(input.taskId, key);
+    this.announcedObservedSubagents.add(key);
+    events.push({
+      type: "observed_subagent_updated",
+      provider: "claude",
+      update: {
+        key,
+        taskId: input.taskId,
+        status: input.status,
+        ...(input.requiresAttention !== undefined
+          ? { requiresAttention: input.requiresAttention }
+          : {}),
+        ...(readObservedSubagentText(input.subAgentType)
+          ? { subAgentType: readObservedSubagentText(input.subAgentType) }
+          : {}),
+        ...(readObservedSubagentText(input.description)
+          ? { description: readObservedSubagentText(input.description) }
+          : {}),
+      },
+    });
   }
 
   private appendTaskNotificationEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
   ): void {
-    // TODO: subagent timelines are best-effort. Subagent task_notifications
-    // arrive without parent_tool_use_id but with tool_use_id pointing at the
-    // the parent's subagent tool call, so they slip past the sidechain router and pollute
-    // the parent timeline. Drop them here; eventually thread them into the
-    // parent tool call's sub_agent log instead.
+    // Subagent task_notifications arrive without parent_tool_use_id but with
+    // tool_use_id pointing at the parent's subagent tool call. Keep them out of
+    // the parent timeline, but map them onto the observed subagent's lifecycle
+    // — this is where a failed/stopped subagent (e.g. usage exhaustion) becomes
+    // visible. See projects/observed-subagents/observed-subagents.md.
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
-    if (isClaudeSubagentToolName(cachedTool?.name)) {
+    if (
+      isClaudeSubagentToolName(cachedTool?.name) ||
+      this.observedKeyByTaskId.has(message.task_id)
+    ) {
+      let status: "idle" | "error" | "closed" = "idle";
+      if (message.status === "failed") {
+        status = "error";
+      } else if (message.status === "stopped") {
+        status = "closed";
+      }
+      this.appendObservedSubagentTaskEvent(message, events, {
+        taskId: message.task_id,
+        toolUseId: taskUseId,
+        description: message.summary,
+        status,
+        requiresAttention: message.status === "failed",
+      });
       return;
     }
     const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
@@ -4116,6 +4295,15 @@ class ClaudeAgentSession implements AgentSession {
             output: null,
           }),
         );
+        // An interrupted turn takes its in-flight subagents down with it —
+        // settle their observed rows instead of leaving them "running".
+        if (isClaudeSubagentToolName(entry.name) && this.announcedObservedSubagents.has(id)) {
+          this.pushEvent({
+            type: "observed_subagent_updated",
+            provider: "claude",
+            update: { key: id, status: "closed" },
+          });
+        }
       }
     }
     this.toolUseCache.clear();
@@ -4484,9 +4672,35 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (typeof block.tool_use_id === "string") {
+      this.enqueueObservedSubagentSettled(toolName, block.tool_use_id, Boolean(block.is_error));
       this.toolUseCache.delete(block.tool_use_id);
       this.sidechainTracker.delete(block.tool_use_id);
     }
+  }
+
+  /**
+   * Foreground Task settled: mark the observed subagent idle/error. Only keys
+   * announced live can enqueue — history replay stays inert. Queued instead of
+   * pushed because tool_result mapping runs inside item mapping, not event
+   * building; translateMessageToEvents drains the queue.
+   */
+  private enqueueObservedSubagentSettled(
+    toolName: string,
+    toolUseId: string,
+    isError: boolean,
+  ): void {
+    if (!isClaudeSubagentToolName(toolName) || !this.announcedObservedSubagents.has(toolUseId)) {
+      return;
+    }
+    this.pendingObservedEvents.push({
+      type: "observed_subagent_updated",
+      provider: "claude",
+      update: {
+        key: toolUseId,
+        status: isError ? "error" : "idle",
+        ...(isError ? { requiresAttention: true } : {}),
+      },
+    });
   }
 
   private buildToolOutput(

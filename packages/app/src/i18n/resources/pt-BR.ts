@@ -1509,6 +1509,12 @@ export const ptBR: TranslationResources = {
   menu: {
     backdrop: "Fundo do menu",
   },
+  observedSubagents: {
+    readOnlyTitle: "Observed subagent · read-only",
+    readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
+    stopAction: "Stop subagent",
+    stopError: "Couldn't stop the subagent.",
+  },
   subagents: {
     detachAction: "Desanexar {{label}}",
     detachTooltip: "Desanexar subagente",

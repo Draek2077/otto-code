@@ -45,6 +45,12 @@ export interface AgentUpdatesService {
   clearSubscription(subscriptionId: string): void;
   hasSubscription(): boolean;
   forwardLiveAgent(agent: ManagedAgent): Promise<void>;
+  /**
+   * Forward a pre-built snapshot (e.g. an observed subagent that has no
+   * ManagedAgent runtime) through the same filter/placement path as a live
+   * agent. See projects/observed-subagents/observed-subagents.md.
+   */
+  forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void>;
   emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload>;
   removeAgent(agentId: string): void;
   dispose(): void;
@@ -264,48 +270,60 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     return payload;
   }
 
-  async function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
-    try {
-      const sub = subscription;
-      const payload = await deps.buildAgentPayload(agent);
-      if (sub) {
-        const project = payload.workspaceId
-          ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
-          : null;
-        if (!project) {
+  async function forwardAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
+    const sub = subscription;
+    if (sub) {
+      const project = payload.workspaceId
+        ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
+        : null;
+      if (!project) {
+        bufferOrEmit(sub, {
+          kind: "remove",
+          agentId: payload.id,
+        });
+      } else {
+        const matches = matchesAgentUpdatesFilter({
+          agent: payload,
+          project,
+          filter: sub.filter,
+        });
+
+        if (matches) {
+          bufferOrEmit(sub, {
+            kind: "upsert",
+            agent: payload,
+            project,
+          });
+        } else {
           bufferOrEmit(sub, {
             kind: "remove",
             agentId: payload.id,
           });
-        } else {
-          const matches = matchesAgentUpdatesFilter({
-            agent: payload,
-            project,
-            filter: sub.filter,
-          });
-
-          if (matches) {
-            bufferOrEmit(sub, {
-              kind: "upsert",
-              agent: payload,
-              project,
-            });
-          } else {
-            bufferOrEmit(sub, {
-              kind: "remove",
-              agentId: payload.id,
-            });
-          }
         }
       }
+    }
 
-      // A lifecycle change updates exactly the agent's owning workspace, never
-      // every workspace sharing its cwd. Ownership is the agent's workspaceId.
-      if (payload.workspaceId) {
-        await deps.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
-      }
+    // A lifecycle change updates exactly the agent's owning workspace, never
+    // every workspace sharing its cwd. Ownership is the agent's workspaceId.
+    if (payload.workspaceId) {
+      await deps.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
+    }
+  }
+
+  async function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
+    try {
+      const payload = await deps.buildAgentPayload(agent);
+      await forwardAgentPayload(payload);
     } catch (error) {
       deps.logger.error({ err: error }, "Failed to emit agent update");
+    }
+  }
+
+  async function forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
+    try {
+      await forwardAgentPayload(payload);
+    } catch (error) {
+      deps.logger.error({ err: error }, "Failed to emit observed subagent update");
     }
   }
 
@@ -319,6 +337,7 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     clearSubscription,
     hasSubscription,
     forwardLiveAgent,
+    forwardLiveAgentPayload,
     emitStoredRecord,
     removeAgent,
     dispose,

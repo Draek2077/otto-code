@@ -427,7 +427,42 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       reason: "finished" | "error" | "permission";
       timestamp: string;
+    }
+  // A provider-managed subagent's lifecycle changed. The daemon materializes it
+  // as a read-only "observed subagent" agent record. See projects/observed-subagents/observed-subagents.md.
+  | {
+      type: "observed_subagent_updated";
+      provider: AgentProvider;
+      update: ObservedSubagentUpdate;
+    }
+  // A timeline item belonging to a provider-managed subagent, routed by the
+  // daemon to the observed subagent's own timeline (keyed by `key`).
+  | {
+      type: "observed_subagent_timeline";
+      provider: AgentProvider;
+      key: string;
+      item: AgentTimelineItem;
+      turnId?: string;
+      timestamp?: string;
     };
+
+/**
+ * A provider-managed subagent (Claude `Task` / ultracode fan-out) reported by a
+ * provider so the daemon can promote it to a read-only "observed subagent".
+ * `key` is a provider-local stable identifier (Claude: the Task tool_use id);
+ * the daemon namespaces it under the owning agent. See projects/observed-subagents/observed-subagents.md.
+ */
+export interface ObservedSubagentUpdate {
+  key: string;
+  /** Provider task id, used to stop the subagent (Claude: `task_id`). */
+  taskId?: string;
+  sessionId?: string | null;
+  subAgentType?: string;
+  description?: string;
+  status: "initializing" | "running" | "idle" | "error" | "closed";
+  requiresAttention?: boolean;
+  usage?: AgentUsage;
+}
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
@@ -634,6 +669,12 @@ export interface AgentSession {
   ): Promise<AgentPermissionResult | void>;
   describePersistence(): AgentPersistenceHandle | null;
   interrupt(): Promise<void>;
+  /**
+   * Stop a provider-managed subagent task by its provider task id (Claude:
+   * `query.stopTask`). Present only on providers that surface observed
+   * subagents. See projects/observed-subagents/observed-subagents.md.
+   */
+  stopTask?(taskId: string): Promise<void>;
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
   /**

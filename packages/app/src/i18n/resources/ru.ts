@@ -1514,6 +1514,12 @@ export const ru: TranslationResources = {
   menu: {
     backdrop: "Фон меню",
   },
+  observedSubagents: {
+    readOnlyTitle: "Observed subagent · read-only",
+    readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
+    stopAction: "Stop subagent",
+    stopError: "Couldn't stop the subagent.",
+  },
   subagents: {
     detachAction: "Отсоединить {{label}}",
     detachTooltip: "Отсоединить субагент",
