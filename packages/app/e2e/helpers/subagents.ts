@@ -72,12 +72,11 @@ export async function detachSubagentFromTrack(page: Page, childId: string): Prom
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.hover();
 
-  page.once("dialog", (dialog) => {
-    expect(dialog.message()).toContain("Detach subagent?");
-    void dialog.accept();
-  });
-
   const detachButton = page.getByTestId(`subagents-track-detach-${childId}`);
   await expect(detachButton).toBeVisible({ timeout: 30_000 });
   await detachButton.click();
+
+  // Detach is gated by the in-app ConfirmDialogHost, not a native window.confirm.
+  await expect(page.getByText("Detach subagent?")).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("confirm-dialog-confirm").click();
 }
