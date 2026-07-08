@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.2 - 2026-07-08
+
+### Added
+
+- New Artifacts screen lets you generate, browse, and organize shareable HTML documents per project
+- Artifacts open as workspace tabs, and you can watch generation live, cancel it, or regenerate on error
+- Desktop app can ask for confirmation before quitting while agents have active sessions, with new window-behavior settings to control it
+- Archiving a stopped chat now asks for confirmation, with an option to skip the warning next time
+- OpenAI Compatible providers have a new "Web search" toggle in provider settings
+
+### Improved
+
+- Sidebar footer icons are bolder and have tooltips; "Add project" is now labeled "New project"
+- fast-agent provider updated to 0.9.3
+
+### Fixed
+
+- OpenAI Compatible providers' `/compact` command no longer collapses long conversations down to a tiny summary, losing files you'd read and errors you were debugging
+- The desktop workspace title bar can now be dragged to move the window
+- Linux deb/rpm installs put the `otto` CLI on your PATH automatically, no longer requiring a manual step in Settings
+
+### Security
+
+- OpenAI Compatible agents' web fetch tool can no longer be used to reach localhost, cloud metadata endpoints, or private network ranges
+
 ## 0.4.1 - 2026-07-06
 
 ### Added
