@@ -16,7 +16,10 @@ import {
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
 import { useArtifactMutations } from "@/artifacts/use-artifact-mutations";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
-import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
+import {
+  buildProjectNameByCwd,
+  buildScheduleProjectTargets,
+} from "@/schedules/schedule-project-targets";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
 import type { ArtifactStatus } from "@otto-code/protocol/artifacts/types";
@@ -72,18 +75,24 @@ function ArtifactsScreenContent(): ReactElement {
   );
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
 
+  const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
+  const projectNameByCwd = useMemo(
+    () => buildProjectNameByCwd(scheduleProjectTargets),
+    [scheduleProjectTargets],
+  );
+
   // The picker lists every known project (one entry per repo root), not just the
   // roots that happen to have artifacts — a project with none should still be
   // selectable and show an empty-state watermark.
   const projectOptions = useMemo<ProjectFilterOption[]>(() => {
     const byId = new Map<string, ProjectFilterOption>();
-    for (const target of buildScheduleProjectTargets(projects)) {
+    for (const target of scheduleProjectTargets) {
       if (!byId.has(target.cwd)) {
         byId.set(target.cwd, { id: target.cwd, label: target.projectName });
       }
     }
     return Array.from(byId.values());
-  }, [projects]);
+  }, [scheduleProjectTargets]);
 
   const visibleArtifacts = useMemo(
     () =>
@@ -137,6 +146,7 @@ function ArtifactsScreenContent(): ReactElement {
         isInitialLoad={isInitialLoad}
         showLoadError={isError && artifacts.length === 0}
         showHost={showHost}
+        projectNameByCwd={projectNameByCwd}
         projectOptions={projectOptions}
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}
@@ -166,6 +176,7 @@ interface ArtifactsBodyProps {
   isInitialLoad: boolean;
   showLoadError: boolean;
   showHost: boolean;
+  projectNameByCwd: ReadonlyMap<string, string>;
   projectOptions: ProjectFilterOption[];
   projectFilter: string | undefined;
   onProjectFilterChange: (projectId: string | undefined) => void;
@@ -186,6 +197,7 @@ function ArtifactsBody({
   isInitialLoad,
   showLoadError,
   showHost,
+  projectNameByCwd,
   projectOptions,
   projectFilter,
   onProjectFilterChange,
@@ -259,6 +271,7 @@ function ArtifactsBody({
           <ArtifactGrid
             artifacts={artifacts}
             showHost={showHost}
+            projectNameByCwd={projectNameByCwd}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}

@@ -15,6 +15,7 @@ import {
   usePathname,
   useRouter,
 } from "expo-router";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import {
   createContext,
   type ReactNode,
@@ -998,26 +999,48 @@ function RootStack() {
     }),
     [theme.colors.surface0],
   );
+  // Every stack scene (root and nested host stack) wraps its content in
+  // @react-navigation/elements' Background, which paints the *navigation*
+  // theme's colors.background. Without this provider that is the default
+  // light theme's near-white — the flash visible while a heavy screen
+  // (workspace deck) cold-mounts on top of it. contentStyle above only covers
+  // the root stack's own scenes; the provider covers every nested navigator.
+  const navigationTheme = useMemo(() => {
+    const base = theme.colorScheme === "dark" ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: theme.colors.accent,
+        background: theme.colors.surface0,
+        card: theme.colors.surface1,
+        text: theme.colors.foreground,
+        border: theme.colors.border,
+      },
+    };
+  }, [theme]);
   return (
-    <Stack screenOptions={stackScreenOptions}>
-      <Stack.Screen name="index" />
-      <Stack.Protected guard={storeReady}>
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="settings/index" />
-        <Stack.Screen name="settings/[section]" />
-        <Stack.Screen name="settings/projects/index" />
-        <Stack.Screen name="settings/projects/[projectKey]" />
-        <Stack.Screen name="new" />
-        <Stack.Screen name="open-project" />
-        <Stack.Screen name="sessions" />
-        <Stack.Screen name="schedules" />
-        <Stack.Screen name="artifacts" />
-        <Stack.Screen name="pair-scan" />
-      </Stack.Protected>
-      <Stack.Screen name="h/[serverId]" />
-      <Stack.Screen name="settings/hosts/[serverId]/index" />
-      <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
-    </Stack>
+    <ThemeProvider value={navigationTheme}>
+      <Stack screenOptions={stackScreenOptions}>
+        <Stack.Screen name="index" />
+        <Stack.Protected guard={storeReady}>
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="settings/index" />
+          <Stack.Screen name="settings/[section]" />
+          <Stack.Screen name="settings/projects/index" />
+          <Stack.Screen name="settings/projects/[projectKey]" />
+          <Stack.Screen name="new" />
+          <Stack.Screen name="open-project" />
+          <Stack.Screen name="sessions" />
+          <Stack.Screen name="schedules" />
+          <Stack.Screen name="artifacts" />
+          <Stack.Screen name="pair-scan" />
+        </Stack.Protected>
+        <Stack.Screen name="h/[serverId]" />
+        <Stack.Screen name="settings/hosts/[serverId]/index" />
+        <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
+      </Stack>
+    </ThemeProvider>
   );
 }
 

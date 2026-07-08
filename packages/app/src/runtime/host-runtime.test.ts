@@ -12,6 +12,7 @@ import type {
 import type { ConnectionOffer } from "@otto-code/protocol/connection-offer";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { queryClient } from "@/query/query-client";
 import {
   HostRuntimeController,
   HostRuntimeStore,
@@ -1389,6 +1390,64 @@ describe("HostRuntimeStore", () => {
     });
 
     store.syncHosts([]);
+  });
+
+  it("invalidates the host-aggregated queries when a host comes online", async () => {
+    const host = makeHost({
+      serverId: "srv_aggregate_invalidation",
+      connections: [
+        {
+          id: "direct:lan:6868",
+          type: "directTcp",
+          endpoint: "lan:6868",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.setConnectionState({ status: "connected" });
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async ({ host: hostProfile }) => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: hostProfile.serverId,
+          hostname: hostProfile.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    // Simulate the cold-start race the invalidation exists for: the aggregated
+    // queries cached an empty result while the host was still connecting.
+    const seededKeys = [
+      ["projects", host.serverId],
+      ["schedules", host.serverId],
+      ["artifacts", host.serverId, null],
+    ] as const;
+    for (const key of seededKeys) {
+      queryClient.setQueryData(key, { seededBeforeOnline: true });
+      queryClient.getQueryCache().find({ queryKey: key })?.setState({ isInvalidated: false });
+    }
+
+    try {
+      store.syncHosts([host]);
+
+      const timeoutAt = Date.now() + 200;
+      const allInvalidated = () =>
+        seededKeys.every(
+          (key) => queryClient.getQueryCache().find({ queryKey: key })?.state.isInvalidated,
+        );
+      while (!allInvalidated() && Date.now() < timeoutAt) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      expect(allInvalidated()).toBe(true);
+    } finally {
+      store.syncHosts([]);
+      for (const key of seededKeys) {
+        queryClient.removeQueries({ queryKey: key });
+      }
+    }
   });
 
   it("bootstraps legacy daemons from unscoped agents and creates path-backed workspaces", async () => {

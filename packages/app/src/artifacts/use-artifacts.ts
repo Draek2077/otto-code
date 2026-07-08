@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { artifactBelongsToWorkspace, sortArtifacts } from "@/artifacts/artifact-derivation";
-import { useInvalidateOnHostConnectivityChange } from "@/hooks/use-invalidate-on-host-connectivity";
+import { artifactsQueryBaseKey } from "@/query/host-aggregate-query-keys";
 import {
   fetchAggregatedArtifacts,
   type AggregatedArtifact,
@@ -13,12 +13,12 @@ import {
 
 export type { AggregatedArtifact, ArtifactHostError } from "@/artifacts/aggregated-artifacts";
 
-export const artifactsQueryBaseKey = ["artifacts"] as const;
+export { artifactsQueryBaseKey } from "@/query/host-aggregate-query-keys";
 
 // Cache identity for the host set + project filter. Freshness is event-driven:
-// artifact CRUD notifications and host connectivity transitions invalidate the
-// key (see useArtifactNotifications / useInvalidateOnHostConnectivityChange)
-// rather than the key itself churning.
+// artifact CRUD notifications (useArtifactNotifications) and host online-status
+// flips (invalidateHostAggregateQueries in the host runtime store) invalidate
+// the key rather than the key itself churning.
 export function artifactsQueryKey(serverIds: readonly string[], projectId?: string) {
   return [...artifactsQueryBaseKey, [...serverIds].sort().join("|"), projectId ?? null] as const;
 }
@@ -46,7 +46,6 @@ export function useArtifacts(projectId?: string): UseArtifactsResult {
   const hostInputs = useArtifactHostInputs();
 
   useArtifactNotifications();
-  useInvalidateOnHostConnectivityChange(artifactsQueryBaseKey);
 
   const query = useQuery({
     queryKey: artifactsQueryKey(
@@ -55,6 +54,7 @@ export function useArtifacts(projectId?: string): UseArtifactsResult {
     ),
     queryFn: () => fetchAggregatedArtifacts({ hosts: hostInputs, projectId, runtime }),
     staleTime: 5_000,
+    refetchOnMount: true,
     placeholderData: keepPreviousData,
   });
 
@@ -97,7 +97,6 @@ export function useGeneratingArtifactAgentIds(input: {
   const hostInputs = useArtifactHostInputs();
 
   useArtifactNotifications();
-  useInvalidateOnHostConnectivityChange(artifactsQueryBaseKey);
 
   const { serverId, workspaceDirectory } = input;
   const select = useCallback(

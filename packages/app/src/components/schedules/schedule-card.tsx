@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   MoreVertical,
   Pause,
   Pencil,
@@ -18,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { getProviderIcon } from "@/components/provider-icons";
+import { ProjectRow } from "@/components/project-row";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
@@ -41,7 +42,10 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 const MENU_ICON_SIZE = 14;
-const PROVIDER_ICON_SIZE = 16;
+const HEADER_ICON_SIZE = 16;
+// Matches ArtifactCard's star/kebab trigger size so the two grids' header
+// rows align pixel-for-pixel.
+const KEBAB_TRIGGER_ICON_SIZE = 18;
 
 // Pending flags for each action so the parent grid can wire a mutation hook
 // and the card reflects in-flight state without owning the mutation itself.
@@ -66,6 +70,8 @@ interface ScheduleCardProps extends ScheduleCardActions {
   targetLabel: string;
   /** Provider glyph, resolved from the schedule config or the target agent. */
   provider: string | null;
+  /** Resolved project name for the schedule's target, when known. */
+  projectName: string | null;
   /** Client-derived state — the single source for the badge and next-run copy. */
   state: ScheduleDerivedState;
   /** Host name, rendered when the list spans more than one host. */
@@ -121,16 +127,6 @@ function buildMeta(
   return parts.join(" · ");
 }
 
-/** Small provider glyph. Reads the icon color off a StyleSheet object so the
- * dynamic component (getProviderIcon) stays compliant without useUnistyles. */
-function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
-  if (!provider) {
-    return null;
-  }
-  const Icon = getProviderIcon(provider);
-  return <Icon size={PROVIDER_ICON_SIZE} color={styles.providerIcon.color} />;
-}
-
 /** Left slot of the footer row: the state badge, or — for a failed last run —
  * an error row matching Artifacts' error card, so the two grids read the same
  * way at a glance. */
@@ -168,6 +164,7 @@ export function ScheduleCard({
   schedule,
   targetLabel,
   provider,
+  projectName,
   state,
   serverName,
   singleHost,
@@ -212,7 +209,7 @@ export function ScheduleCard({
         testID={`schedule-card-${schedule.id}`}
       >
         <View style={styles.headerRow}>
-          <ProviderGlyph provider={provider} />
+          <CalendarClock size={HEADER_ICON_SIZE} color={styles.icon.color} />
           <Text style={styles.name} numberOfLines={1}>
             {title}
           </Text>
@@ -228,9 +225,17 @@ export function ScheduleCard({
           />
         </View>
 
-        <Text style={styles.target} numberOfLines={2}>
-          {targetLabel}
-        </Text>
+        <ProjectRow provider={provider} projectName={projectName} />
+
+        {/* For "new agent" schedules the target line is just the project name
+            again (see resolveTarget in schedule-derivation.ts) — skip it so it
+            doesn't repeat the ProjectRow above. Agent-targeted schedules show
+            the agent's title here, which is distinct info. */}
+        {targetLabel !== projectName ? (
+          <Text style={styles.target} numberOfLines={2}>
+            {targetLabel}
+          </Text>
+        ) : null}
 
         {/* Spacer pins the footer to the bottom of the card regardless of how
             much detail sits above it, so cards in a row align. */}
@@ -258,7 +263,7 @@ const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveC
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }): ReactElement {
   return (
     <ThemedKebab
-      size={MENU_ICON_SIZE}
+      size={KEBAB_TRIGGER_ICON_SIZE}
       uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
     />
   );
@@ -354,14 +359,21 @@ function ScheduleKebabMenu({
   );
 }
 
+// The hovered card is already surface2, so the kebab's own hover/press states
+// step up to surface3/surface4 — anything lower is invisible against the card.
 function kebabTriggerStyle({
   hovered = false,
+  pressed,
 }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.kebabTrigger, hovered && styles.kebabTriggerHovered];
+  return [
+    styles.kebabTrigger,
+    hovered && styles.kebabTriggerHovered,
+    pressed && styles.kebabTriggerPressed,
+  ];
 }
 
 const styles = StyleSheet.create((theme) => ({
-  providerIcon: {
+  icon: {
     color: theme.colors.foregroundMuted,
   },
   container: {
@@ -442,6 +454,9 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.base,
   },
   kebabTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface3,
+  },
+  kebabTriggerPressed: {
+    backgroundColor: theme.colors.surface4,
   },
 }));

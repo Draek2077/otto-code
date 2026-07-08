@@ -130,9 +130,12 @@ export function toAgentPayload(
     persistence: sanitizePersistenceHandle(agent.persistence),
     title: options?.title ?? null,
     labels: agent.labels,
-    // ManagedAgents are always attended; observed subagents are produced by a
-    // separate projection (see observed-subagent-registry). See projects/observed-subagents/observed-subagents.md.
-    attend: "attended",
+    // Internal agents (e.g. artifact generation) have no client watching to
+    // approve/prompt them — render their tab read-only like an observed
+    // subagent. Other ManagedAgents stay attended; true observed subagents
+    // are produced by a separate projection (see observed-subagent-registry).
+    // See projects/observed-subagents/observed-subagents.md.
+    attend: agent.internal ? "observed" : "attended",
   };
 
   const usage = sanitizeUsage(agent.lastUsage);

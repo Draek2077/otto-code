@@ -47,6 +47,7 @@ import {
   shouldUseLegacyDaemonWorkspaceDirectory,
 } from "@/workspace/legacy-daemon-workspaces";
 import { invalidateCheckoutGitQueriesForServer } from "@/git/query-keys";
+import { invalidateHostAggregateQueries } from "@/query/host-aggregate-query-keys";
 import { queryClient } from "@/query/query-client";
 import { mountBrowserAutomationDaemonClientHandler } from "@/browser-automation/handler";
 
@@ -1968,12 +1969,22 @@ export class HostRuntimeStore {
     this.lastConnectionStatusByServer.set(serverId, snapshot.connectionStatus);
     const didTransitionOnline =
       snapshot.connectionStatus === "online" && previousStatus !== "online";
+    const didTransitionOffline =
+      snapshot.connectionStatus !== "online" && previousStatus === "online";
     if (didTransitionOnline) {
       useSessionStore.getState().bumpHistorySyncGeneration(serverId);
       // Checkout git data is push-driven; pushes emitted while disconnected are gone for
       // good (the daemon dedupes by snapshot fingerprint). Mark the caches stale so active
       // queries refetch now and evicted ones on their next mount.
       void invalidateCheckoutGitQueriesForServer(queryClient, serverId);
+    }
+    if (didTransitionOnline || didTransitionOffline) {
+      // The aggregated host queries (projects, schedules, artifacts) skip
+      // non-online hosts at fetch time, so any online flip changes their
+      // results. Invalidation lives here — not in component effects — so it
+      // cannot miss a transition that happens while no screen is mounted or
+      // during a mount/re-render window.
+      invalidateHostAggregateQueries(queryClient);
     }
 
     // Runtime owns directory bootstrap policy, including reconnect and delayed

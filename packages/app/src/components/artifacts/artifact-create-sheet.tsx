@@ -522,10 +522,10 @@ export function ArtifactCreateSheet({
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Description</Text>
+        <Text style={styles.label}>Prompt</Text>
         <AdaptiveTextInput
           testID="artifact-description-input"
-          accessibilityLabel="Description"
+          accessibilityLabel="Prompt"
           initialValue={description}
           resetKey={`artifact-description-${fieldResetKey}`}
           value={description}

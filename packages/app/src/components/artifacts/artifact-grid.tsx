@@ -2,11 +2,14 @@ import { type ReactElement } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ArtifactCard } from "@/components/artifacts/artifact-card";
+import { describeScheduleCwd } from "@/schedules/schedule-project-targets";
 import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 
 export interface ArtifactGridProps {
   artifacts: AggregatedArtifact[];
   showHost: boolean;
+  /** Known project roots keyed by `${serverId}:${cwd}`, for the project row. */
+  projectNameByCwd: ReadonlyMap<string, string>;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
@@ -17,6 +20,7 @@ export interface ArtifactGridProps {
 export function ArtifactGrid({
   artifacts,
   showHost,
+  projectNameByCwd,
   onEdit,
   onRegenerate,
   onCancel,
@@ -29,6 +33,11 @@ export function ArtifactGrid({
         <View key={`${artifact.serverId}:${artifact.id}`} style={styles.cell}>
           <ArtifactCard
             artifact={artifact}
+            projectName={describeScheduleCwd({
+              serverId: artifact.serverId,
+              cwd: artifact.projectId,
+              projectNameByCwd,
+            })}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}

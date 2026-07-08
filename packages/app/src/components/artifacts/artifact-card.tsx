@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemedBlobLoader } from "@/components/blob-loader";
+import { ProjectRow } from "@/components/project-row";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -51,6 +52,8 @@ const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveC
 
 export interface ArtifactCardProps {
   artifact: AggregatedArtifact;
+  /** Resolved project name for the artifact's stored project, when known. */
+  projectName: string | null;
   /** Open the edit dialog (also the card's primary click). */
   onEdit: (artifact: AggregatedArtifact) => void;
   /** Re-run generation with the stored config. */
@@ -76,6 +79,7 @@ function formatDate(iso: string): string {
 
 function ArtifactCardComponent({
   artifact,
+  projectName,
   onEdit,
   onRegenerate,
   onCancel,
@@ -139,6 +143,7 @@ function ArtifactCardComponent({
             onPress={handleStar}
             onPressIn={stopPressInPropagation}
             hitSlop={8}
+            style={headerActionStyle}
             // Web renders accessibilityRole="button" as a real <button>; this
             // Pressable lives inside the card's own button, so gate the role to
             // native to avoid an invalid nested <button> (matches the kebab
@@ -162,14 +167,9 @@ function ArtifactCardComponent({
           />
         </View>
 
-        {artifact.description ? (
-          <Text style={styles.description} numberOfLines={3}>
-            {artifact.description}
-          </Text>
-        ) : null}
+        <ProjectRow provider={artifact.generationProvider} projectName={projectName} />
 
-        {/* Spacer pins the footer to the bottom of the card regardless of how
-            much description sits above it, so cards in a row align. */}
+        {/* Spacer pins the footer to the bottom of the card. */}
         <View style={styles.spacer} />
 
         <View style={styles.footerRow}>
@@ -207,7 +207,7 @@ function ArtifactKebabMenu({
       <DropdownMenuTrigger
         hitSlop={8}
         onPressIn={stopPressInPropagation}
-        style={kebabTriggerStyle}
+        style={headerActionStyle}
         accessibilityRole={isNative ? "button" : undefined}
         accessibilityLabel="Artifact actions"
         testID={`artifact-menu-${artifact.id}`}
@@ -253,10 +253,18 @@ function ArtifactKebabMenu({
   );
 }
 
-function kebabTriggerStyle({
+// Chrome for the header's inline controls (star, kebab). The hovered card is
+// already surface2, so the control's own hover/press states step up to
+// surface3/surface4 — anything lower is invisible against the card.
+function headerActionStyle({
   hovered = false,
+  pressed,
 }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.kebabTrigger, hovered && styles.kebabTriggerHovered];
+  return [
+    styles.headerAction,
+    hovered && styles.headerActionHovered,
+    pressed && styles.headerActionPressed,
+  ];
 }
 
 function ArtifactStatusBadge({ artifact }: { artifact: AggregatedArtifact }) {
@@ -320,10 +328,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
   },
-  description: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
   spacer: {
     flex: 1,
     minHeight: theme.spacing[2],
@@ -367,11 +371,14 @@ const styles = StyleSheet.create((theme) => ({
   starOn: {
     color: theme.colors.palette.yellow[400],
   },
-  kebabTrigger: {
+  headerAction: {
     padding: theme.spacing[1],
     borderRadius: theme.borderRadius.base,
   },
-  kebabTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
+  headerActionHovered: {
+    backgroundColor: theme.colors.surface3,
+  },
+  headerActionPressed: {
+    backgroundColor: theme.colors.surface4,
   },
 }));

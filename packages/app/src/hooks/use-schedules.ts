@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
-import { useInvalidateOnHostConnectivityChange } from "@/hooks/use-invalidate-on-host-connectivity";
+import { schedulesQueryBaseKey } from "@/query/host-aggregate-query-keys";
 import {
   fetchAggregatedSchedules,
   type AggregatedSchedule,
@@ -11,13 +11,14 @@ import {
 
 export type { AggregatedSchedule, ScheduleHostError } from "@/schedules/aggregated-schedules";
 
-export const schedulesQueryBaseKey = ["schedules"] as const;
+export { schedulesQueryBaseKey } from "@/query/host-aggregate-query-keys";
 
 // Cache identity for the host set. Connectivity-driven freshness (retrying as
-// hosts connect, including on a cold deep-link) comes from invalidating this
-// key on connection-status transitions — not from keying on the runtime
-// version, which churned the cache on every runtime tick. The full-screen
-// spinner flash is prevented by keepPreviousData plus the
+// hosts connect, including on a cold deep-link) comes from the host runtime
+// store invalidating this key on online-status flips (see
+// invalidateHostAggregateQueries) — not from keying on the runtime version,
+// which churned the cache on every runtime tick. The full-screen spinner
+// flash is prevented by keepPreviousData plus the
 // isInitialLoad(data === undefined) gate.
 export function schedulesQueryKey(serverIds: readonly string[]) {
   return [...schedulesQueryBaseKey, [...serverIds].sort().join("|")] as const;
@@ -41,12 +42,11 @@ export function useSchedules(): UseSchedulesResult {
     [hosts],
   );
 
-  useInvalidateOnHostConnectivityChange(schedulesQueryBaseKey);
-
   const query = useQuery({
     queryKey: schedulesQueryKey(hostInputs.map((host) => host.serverId)),
     queryFn: () => fetchAggregatedSchedules({ hosts: hostInputs, runtime }),
     staleTime: 5_000,
+    refetchOnMount: true,
     placeholderData: keepPreviousData,
   });
 

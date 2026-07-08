@@ -89,6 +89,23 @@ export` warnings and pollutes the route tree.
 Put shared route policy in `src/navigation`, `src/utils`, stores, or another
 non-route directory.
 
+## Scene Background Is the Navigation Theme, Not contentStyle
+
+Every stack scene wraps its content in `@react-navigation/elements`'
+`Background`, which paints `colors.background` from the **React Navigation
+theme** — a separate theming system from Unistyles. Without a provider that is
+the default light theme's near-white, and it is what flashes while a heavy
+screen (the workspace deck) cold-mounts on top of it.
+
+`RootStack` in `packages/app/src/app/_layout.tsx` therefore wraps the root
+`Stack` in a `ThemeProvider` whose `colors.background` is the Unistyles
+`surface0` (plus `card`/`text`/`border`/`primary`). The provider covers every
+nested navigator, including the host stack.
+
+Do not try to fix a white scene flash with `contentStyle` on a nested stack:
+`contentStyle` styles a `View` _inside_ the scene, and making it transparent
+just exposes the `Background` layer underneath. Fix the navigation theme.
+
 ## Native Stack
 
 Keep workspace identity and retention outside native-stack `getId` and
