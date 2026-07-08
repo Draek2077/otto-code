@@ -10,7 +10,15 @@ import {
 } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useIsFocused } from "@react-navigation/native";
-import { ActivityIndicator, BackHandler, Keyboard, Pressable, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  BackHandler,
+  InteractionManager,
+  Keyboard,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -137,8 +145,7 @@ import {
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
-import { useArtifacts } from "@/artifacts/use-artifacts";
+import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   resolveWorkspaceHeaderRenderState,
@@ -151,7 +158,7 @@ import {
 import { renderWorkspaceRouteGate } from "@/screens/workspace/workspace-route-state-views";
 import {
   buildWorkspaceTabSnapshot,
-  deriveWorkspaceAgentVisibility,
+  createWorkspaceAgentVisibilitySelector,
   workspaceAgentVisibilityEqual,
 } from "@/workspace-tabs/agent-visibility";
 import {
@@ -938,6 +945,17 @@ export const WorkspaceScreen = memo(function WorkspaceScreen({
 interface UseCloseTabsResult {
   closingTabIds: Set<string>;
   closeTab: (tabId: string, action: () => Promise<void>) => Promise<void>;
+}
+
+/** Gate that stays false until initial interactions settle, so deferred
+ * warm-up work does not compete with the mount that scheduled it. */
+function useEnabledAfterInteractions(enabled: boolean): boolean {
+  const [interactionsSettled, setInteractionsSettled] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setInteractionsSettled(true));
+    return () => task.cancel();
+  }, []);
+  return enabled && interactionsSettled;
 }
 
 function useCloseTabs(): UseCloseTabsResult {
@@ -1793,10 +1811,12 @@ function WorkspaceScreenContent({
     setIsImportSheetVisible(false);
   }, []);
 
-  // Warm the workspace-scoped provider snapshot so the model picker is ready when opened.
+  // Warm the workspace-scoped provider snapshot so the model picker is ready
+  // when opened. Deferred past initial interactions so the warm-up fetch does
+  // not compete with the workspace switch itself.
   useProvidersSnapshot(normalizedServerId, {
     cwd: workspaceDirectory,
-    enabled: isRouteFocused,
+    enabled: useEnabledAfterInteractions(isRouteFocused),
   });
 
   const persistenceKey = useMemo(
@@ -1816,14 +1836,17 @@ function WorkspaceScreenContent({
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
 
-  const workspaceAgentVisibility = useStoreWithEqualityFn(
-    useSessionStore,
-    (state) =>
-      deriveWorkspaceAgentVisibility({
-        sessionAgents: state.sessions[normalizedServerId]?.agents,
-        agentDetails: state.sessions[normalizedServerId]?.agentDetails,
+  const selectWorkspaceAgentVisibility = useMemo(
+    () =>
+      createWorkspaceAgentVisibilitySelector({
+        serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
       }),
+    [normalizedServerId, normalizedWorkspaceId],
+  );
+  const workspaceAgentVisibility = useStoreWithEqualityFn(
+    useSessionStore,
+    selectWorkspaceAgentVisibility,
     workspaceAgentVisibilityEqual,
   );
 
@@ -1833,21 +1856,10 @@ function WorkspaceScreenContent({
   // reconciliation prunes any agent tab not in that known set once agents are
   // hydrated. Fold in generating artifacts' agent ids so an explicitly opened
   // "view generation log" tab survives for the duration of the run.
-  const { artifacts } = useArtifacts();
-  const generatingArtifactAgentIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const artifact of artifacts) {
-      if (
-        artifact.serverId === normalizedServerId &&
-        artifact.status === "generating" &&
-        artifact.generationAgentId &&
-        artifactBelongsToWorkspace(artifact.projectId, workspaceDirectory)
-      ) {
-        ids.add(artifact.generationAgentId);
-      }
-    }
-    return ids;
-  }, [artifacts, normalizedServerId, workspaceDirectory]);
+  const generatingArtifactAgentIds = useGeneratingArtifactAgentIds({
+    serverId: normalizedServerId,
+    workspaceDirectory,
+  });
   const reconcileAgentVisibility = useMemo(
     () =>
       generatingArtifactAgentIds.size === 0

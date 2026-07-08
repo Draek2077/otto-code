@@ -1,6 +1,7 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import { useInvalidateOnHostConnectivityChange } from "@/hooks/use-invalidate-on-host-connectivity";
 import type { ProjectSummary } from "@/utils/projects";
 import {
   fetchAggregatedProjects,
@@ -31,11 +32,6 @@ export interface UseProjectsResult {
 export function useProjects(): UseProjectsResult {
   const hosts = useHosts();
   const runtime = getHostRuntimeStore();
-  const runtimeVersion = useSyncExternalStore(
-    (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => runtime.getVersion(),
-    () => runtime.getVersion(),
-  );
   const hostInputs = useMemo<ProjectsHostInput[]>(
     () =>
       hosts.map((host) => ({
@@ -45,8 +41,12 @@ export function useProjects(): UseProjectsResult {
     [hosts],
   );
 
+  // Refetch when a host's connection status changes — a host coming online
+  // must surface its projects, one dropping must surface its host error.
+  useInvalidateOnHostConnectivityChange(projectsQueryKey);
+
   const projectsQuery = useQuery({
-    queryKey: [...projectsQueryKey, projectsQueryRuntimeKey(hostInputs), runtimeVersion] as const,
+    queryKey: [...projectsQueryKey, projectsQueryRuntimeKey(hostInputs)] as const,
     queryFn: () => fetchAggregatedProjects({ hosts: hostInputs, runtime }),
     staleTime: 5_000,
   });
