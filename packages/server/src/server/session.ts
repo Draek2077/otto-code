@@ -1192,6 +1192,14 @@ export class Session {
           return;
         }
 
+        if (event.type === "observed_agent_state") {
+          // Synthetic snapshot for an observed subagent (no ManagedAgent
+          // runtime). Forward through the same filter/placement path as live
+          // agents. See projects/observed-subagents/observed-subagents.md.
+          void this.agentUpdates.forwardLiveAgentPayload(event.payload);
+          return;
+        }
+
         if (
           this.voiceSession.isActiveForAgent(event.agentId) &&
           event.event.type === "permission_requested" &&
@@ -1470,8 +1478,43 @@ export class Session {
     switch (msg.type) {
       case "agent.detach.request":
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
+      case "agent.subagent.stop.request":
+        return this.handleStopObservedSubagentRequest(msg.agentId, msg.requestId);
       default:
         return undefined;
+    }
+  }
+
+  private async handleStopObservedSubagentRequest(
+    agentId: string,
+    requestId: string,
+  ): Promise<void> {
+    try {
+      await this.agentManager.stopObservedSubagent(agentId);
+      this.emit({
+        type: "agent.subagent.stop.response",
+        payload: {
+          requestId,
+          agentId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to stop observed subagent");
+      this.sessionLogger.error(
+        { err: error, agentId, requestId },
+        "Failed to stop observed subagent",
+      );
+      this.emit({
+        type: "agent.subagent.stop.response",
+        payload: {
+          requestId,
+          agentId,
+          accepted: false,
+          error: message,
+        },
+      });
     }
   }
 
@@ -5558,12 +5601,18 @@ export class Session {
       : undefined;
 
     try {
-      const snapshot = await ensureAgentLoaded(msg.agentId, {
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        logger: this.sessionLogger,
-      });
-      const agentPayload = await this.buildAgentPayload(snapshot);
+      // Observed subagents have no ManagedAgent or stored record; serve their
+      // last emitted snapshot instead. See projects/observed-subagents/observed-subagents.md.
+      const observedPayload = this.agentManager.getObservedSubagentPayload(msg.agentId);
+      const agentPayload =
+        observedPayload ??
+        (await this.buildAgentPayload(
+          await ensureAgentLoaded(msg.agentId, {
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            logger: this.sessionLogger,
+          }),
+        ));
 
       const controlTimeline = this.agentManager.fetchTimeline(msg.agentId, {
         direction,
@@ -5605,7 +5654,7 @@ export class Session {
           hasOlder: selectedTimeline.hasOlder,
           hasNewer: selectedTimeline.hasNewer,
           entries: selectedTimeline.entries.map((entry) => ({
-            provider: snapshot.provider,
+            provider: agentPayload.provider,
             item: entry.item,
             timestamp: entry.timestamp,
             seqStart: entry.seqStart,

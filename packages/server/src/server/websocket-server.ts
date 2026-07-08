@@ -1245,6 +1245,8 @@ export class VoiceAssistantWebSocketServer {
         agentContextUsage: true,
         // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
         artifacts: true,
+        // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
+        observedSubagents: true,
       },
     };
   }

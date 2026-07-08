@@ -1,6 +1,19 @@
 # Observed subagents
 
-**Status:** design / charter. Not yet implemented. Claude is the first proof; the model is deliberately provider-agnostic so Codex, Copilot, OpenCode, and Pi can adopt it once Claude ships.
+**Status:** Claude proof implemented (2026-07-08), pending live verification with a real ultracode run. The model is deliberately provider-agnostic so Codex, Copilot, OpenCode, and Pi can adopt it next.
+
+Implementation landmarks (all typecheck/lint/test-green):
+
+- SDK forwarding: `forwardSubagentText` + `agentProgressSummaries` in the Claude query options (`providers/claude/agent.ts buildOptions`).
+- Provider events: `observed_subagent_updated` / `observed_subagent_timeline` added to `AgentStreamEvent` (server `agent-sdk-types.ts`, protocol `agent-types.ts`), emitted by the Claude adapter from sidechain messages, `task_started`/`task_progress`/`task_notification` (failed → `error` + attention — the previously-invisible usage-exhaustion signal), Task `tool_result` settle, and interrupt teardown. `AgentSession.stopTask?` → SDK `query.stopTask`.
+- Daemon projection: `AgentManager.observedSubagents` registry + `toObservedSubagentPayload` (attend `"observed"`, parent label, all-false interactive capabilities); observed timeline rows recorded under the synthetic id `${parentAgentId}::sub::${key}`; timeline fetch and `agent_stream` forwarding work for observed ids; `stopObservedSubagent` resolves to the parent session's `stopTask`.
+- Protocol: `attend` on the agent snapshot, `features.observedSubagents`, `agent.subagent.stop.request/.response` (all `COMPAT(observedSubagents)`-tagged).
+- Client: observed rows land in the normal track via `parentAgentId` (detach hidden); the pane swaps the composer for `ObservedSubagentCallout` (read-only banner + Stop) keyed off `attend === "observed"`.
+- Tests: `agent.sub-agent-sidechain.test.ts` proves announce → observed timeline → settle; `wire-compat.test.ts` covers the fetch path.
+
+Known v1 limits: rows are ephemeral projections — daemon restart/client reconnect drops them until the next live event (history replay stays intentionally inert); the row archive (X) surfaces a daemon error instead of silently dropping the projection; no push notification on observed failure (track/pane attention only).
+
+**Next phase:** [provider-adapters.md](./provider-adapters.md) — the adapter contract, per-provider plan (OpenCode, Codex, ACP family, Pi), and the required pass folding the durable facts into official `docs/` documentation.
 
 Bridge the gap between an agent's **provider-managed subagents** (spawned by the CLI/SDK inside the agent's own process — Claude's `Task` tool, "ultracode" fan-out, etc.) and Otto's ability to **track and watch each of them separately**. Today Otto flattens all of a Claude subagent's activity into a single log string inside the parent's `Task` tool-call row and drops its failure signals entirely. This doc defines how to promote each provider-managed subagent to a first-class, separately-watchable — but **read-only / unattended** — entry in the parent's subagents track.
 

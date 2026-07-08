@@ -349,6 +349,52 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     });
   });
 
+  test("promotes the sidechain to observed subagent lifecycle + timeline events", async () => {
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
+    await session.close();
+
+    const updates = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated",
+    );
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+
+    const first = updates[0];
+    expect(first?.update).toMatchObject({
+      key: "task-call-1",
+      status: "running",
+      subAgentType: "Explore",
+      description: "Inspect repository structure",
+    });
+
+    // The Task tool_result settles the observed row.
+    const last = updates[updates.length - 1];
+    expect(last?.update).toMatchObject({ key: "task-call-1", status: "idle" });
+
+    // Sidechain assistant text lands in the observed subagent's own timeline.
+    const observedTimeline = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_timeline" }> =>
+        event.type === "observed_subagent_timeline",
+    );
+    expect(
+      observedTimeline.some(
+        (event) =>
+          event.key === "task-call-1" &&
+          event.item.type === "assistant_message" &&
+          event.item.text.includes("Sub-agent narration"),
+      ),
+    ).toBe(true);
+  });
+
   test("tails sub-agent actions instead of dropping latest entries at cap", async () => {
     queryFactory.mockImplementation(() => buildQueryMock(buildTailScenarioEvents(205)));
 

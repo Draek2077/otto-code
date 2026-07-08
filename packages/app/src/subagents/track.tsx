@@ -150,6 +150,8 @@ function SubagentsTrackRow({
   const handlePointerLeave = useCallback(() => setHovered(false), []);
   const actionsAlwaysVisible = isNative || isCompact;
   const actionsVisible = actionsAlwaysVisible || hovered;
+  // Observed subagents have no runtime to detach — hide the action for them.
+  const detachHandler = row.attend === "observed" ? undefined : onDetachSubagent;
 
   return (
     // Wrapper View handles hover so moving the pointer between the row and
@@ -172,7 +174,7 @@ function SubagentsTrackRow({
               rowId={row.id}
               displayLabel={displayLabel}
               visible={actionsVisible}
-              onDetachPress={onDetachSubagent ? handleDetachPress : undefined}
+              onDetachPress={detachHandler ? handleDetachPress : undefined}
               onArchivePress={handleArchivePress}
             />
           </View>

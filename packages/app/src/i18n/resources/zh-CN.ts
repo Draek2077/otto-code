@@ -1466,6 +1466,12 @@ export const zhCN: TranslationResources = {
   menu: {
     backdrop: "菜单背景",
   },
+  observedSubagents: {
+    readOnlyTitle: "Observed subagent · read-only",
+    readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
+    stopAction: "Stop subagent",
+    stopError: "Couldn't stop the subagent.",
+  },
   subagents: {
     detachAction: "分离 {{label}}",
     detachTooltip: "分离 subagent",

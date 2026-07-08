@@ -41,7 +41,10 @@ import {
   type ImportedTimelineEntry,
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
+  type ObservedSubagentUpdate,
 } from "./agent-sdk-types.js";
+import type { AgentSnapshotPayload } from "../messages.js";
+import { toObservedSubagentPayload } from "./agent-projections.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import {
@@ -137,6 +140,9 @@ export type {
 
 export type AgentManagerEvent =
   | { type: "agent_state"; agent: ManagedAgent }
+  // A synthetic snapshot for an observed subagent (no ManagedAgent runtime).
+  // Forwarded to clients like a normal agent update. See projects/observed-subagents/observed-subagents.md.
+  | { type: "observed_agent_state"; payload: AgentSnapshotPayload }
   | {
       type: "agent_stream";
       agentId: string;
@@ -531,6 +537,19 @@ export class AgentManager {
   private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
+  // Observed subagents (Claude Task / ultracode fan-out): id -> resolution info
+  // for the stop RPC. These are ephemeral projections, not ManagedAgents. See
+  // projects/observed-subagents/observed-subagents.md.
+  private readonly observedSubagents = new Map<
+    string,
+    {
+      parentAgentId: string;
+      taskId?: string;
+      provider: AgentProvider;
+      createdAt: string;
+      lastPayload?: AgentSnapshotPayload;
+    }
+  >();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
@@ -902,12 +921,16 @@ export class AgentManager {
   }
 
   getTimeline(id: string): AgentTimelineItem[] {
-    this.requireAgent(id);
+    if (!this.observedSubagents.has(id)) {
+      this.requireAgent(id);
+    }
     return this.timelineStore.getItems(id);
   }
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
-    this.requireAgent(id);
+    if (!this.observedSubagents.has(id)) {
+      this.requireAgent(id);
+    }
     if (this.durableTimelineStore) {
       return await this.durableTimelineStore.getCommittedRows(id);
     }
@@ -915,8 +938,19 @@ export class AgentManager {
   }
 
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
-    this.requireAgent(id);
+    if (!this.observedSubagents.has(id)) {
+      this.requireAgent(id);
+    }
     return this.timelineStore.fetch(id, options);
+  }
+
+  /**
+   * Last emitted snapshot for an observed subagent, or null when the id is not
+   * an observed subagent. Lets read paths (timeline fetch) serve observed rows
+   * that have no ManagedAgent or stored record. See projects/observed-subagents/observed-subagents.md.
+   */
+  getObservedSubagentPayload(id: string): AgentSnapshotPayload | null {
+    return this.observedSubagents.get(id)?.lastPayload ?? null;
   }
 
   async createAgent(
@@ -3106,6 +3140,14 @@ export class AgentManager {
         return undefined;
       case "timeline":
         return this.onStreamTimelineEvent({ agent, event, options, isForegroundEvent, flags });
+      case "observed_subagent_updated":
+        this.onObservedSubagentUpdated(agent, event);
+        flags.shouldDispatchEvent = false;
+        return undefined;
+      case "observed_subagent_timeline":
+        this.onObservedSubagentTimeline(agent, event);
+        flags.shouldDispatchEvent = false;
+        return undefined;
       case "turn_completed":
         this.onStreamTurnCompleted({ agent, event, eventTurnId, isForegroundEvent });
         return undefined;
@@ -3349,6 +3391,101 @@ export class AgentManager {
         });
       }
     }
+  }
+
+  private observedSubagentId(parentAgentId: string, key: string): string {
+    return `${parentAgentId}::sub::${key}`;
+  }
+
+  private emitObservedSubagentState(input: {
+    id: string;
+    parentAgentId: string;
+    provider: AgentProvider;
+    cwd: string;
+    workspaceId?: string;
+    createdAt: string;
+    update: ObservedSubagentUpdate;
+  }): void {
+    const payload = toObservedSubagentPayload(input);
+    const entry = this.observedSubagents.get(input.id);
+    if (entry) {
+      entry.lastPayload = payload;
+    }
+    this.dispatch({
+      type: "observed_agent_state",
+      payload,
+    });
+  }
+
+  private onObservedSubagentUpdated(
+    agent: ActiveManagedAgent,
+    event: Extract<AgentStreamEvent, { type: "observed_subagent_updated" }>,
+  ): void {
+    const id = this.observedSubagentId(agent.id, event.update.key);
+    const existing = this.observedSubagents.get(id);
+    const createdAt = existing?.createdAt ?? new Date().toISOString();
+    this.observedSubagents.set(id, {
+      parentAgentId: agent.id,
+      taskId: event.update.taskId ?? existing?.taskId,
+      provider: event.provider,
+      createdAt,
+    });
+    this.emitObservedSubagentState({
+      id,
+      parentAgentId: agent.id,
+      provider: event.provider,
+      cwd: agent.cwd,
+      ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+      createdAt,
+      update: event.update,
+    });
+  }
+
+  private onObservedSubagentTimeline(
+    agent: ActiveManagedAgent,
+    event: Extract<AgentStreamEvent, { type: "observed_subagent_timeline" }>,
+  ): void {
+    const id = this.observedSubagentId(agent.id, event.key);
+    // Timeline may arrive before the first lifecycle update; materialize the
+    // observed subagent so its pane can open.
+    if (!this.observedSubagents.has(id)) {
+      const createdAt = new Date().toISOString();
+      this.observedSubagents.set(id, {
+        parentAgentId: agent.id,
+        provider: event.provider,
+        createdAt,
+      });
+      this.emitObservedSubagentState({
+        id,
+        parentAgentId: agent.id,
+        provider: event.provider,
+        cwd: agent.cwd,
+        ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+        createdAt,
+        update: { key: event.key, status: "running" },
+      });
+    }
+    this.recordAndDispatchTimelineItem(id, event.item, event.provider, event.turnId);
+  }
+
+  /**
+   * Stop a running observed subagent by resolving it to its owning provider
+   * session's task. See projects/observed-subagents/observed-subagents.md.
+   */
+  async stopObservedSubagent(observedId: string): Promise<void> {
+    const entry = this.observedSubagents.get(observedId);
+    if (!entry) {
+      throw new Error(`Observed subagent not found: ${observedId}`);
+    }
+    if (!entry.taskId) {
+      throw new Error(`Observed subagent has no task id to stop: ${observedId}`);
+    }
+    const parent = this.agents.get(entry.parentAgentId);
+    const session = parent && "session" in parent ? parent.session : undefined;
+    if (!session?.stopTask) {
+      throw new Error(`Parent session cannot stop observed subagents: ${observedId}`);
+    }
+    await session.stopTask(entry.taskId);
   }
 
   private recordAndDispatchTimelineItem(

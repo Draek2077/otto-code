@@ -13,6 +13,7 @@ import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
+import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
@@ -1315,6 +1316,14 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
 }) {
+  const isObserved = useSessionStore((state) => {
+    if (!agentId) {
+      return false;
+    }
+    const session = state.sessions[serverId];
+    const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
+    return agent?.attend === "observed";
+  });
   if (!agentId) {
     return null;
   }
@@ -1323,6 +1332,13 @@ const AgentComposerSection = memo(function AgentComposerSection({
   }
   if (isArchivingCurrentAgent) {
     return null;
+  }
+  // Observed subagents (Claude Task / ultracode fan-out) are read-only: replace
+  // the composer with a disabled callout that only offers Stop. Interactive
+  // parameter controls hide themselves off the subagent's all-false
+  // capabilities. See projects/observed-subagents/observed-subagents.md.
+  if (isObserved) {
+    return <ObservedSubagentCallout serverId={serverId} agentId={agentId} />;
   }
 
   return (

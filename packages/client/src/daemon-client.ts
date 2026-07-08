@@ -2236,6 +2236,24 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Stop a running observed subagent (Claude Task / ultracode fan-out). The
+   * daemon resolves the observed subagent to its owning provider task and calls
+   * the provider's stopTask. See projects/observed-subagents/observed-subagents.md.
+   */
+  async stopObservedSubagent(agentId: string): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.subagent.stop.response">({
+        message: {
+          type: "agent.subagent.stop.request",
+          agentId,
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "stopObservedSubagent rejected");
+    }
+  }
+
   async updateAgent(
     agentId: string,
     updates: { name?: string; labels?: Record<string, string> },

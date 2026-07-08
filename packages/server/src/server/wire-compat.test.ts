@@ -142,6 +142,10 @@ class InMemoryAgentManager {
     };
   }
 
+  getObservedSubagentPayload() {
+    return null;
+  }
+
   listAgents() {
     return [];
   }
