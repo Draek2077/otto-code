@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import {
   awaitAssistantMessage,
@@ -21,6 +22,20 @@ import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 
 const SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE = 360;
 
+// Action grouping (default on) keeps reabsorbing the mock stream's completed
+// tool calls into one collapsed row, so the transcript's rendered height
+// plateaus and the scroll-away tests can never accumulate enough scrollable
+// distance. These tests assert scroll anchoring, not grouping — seed the
+// setting off so every action renders as its own row again.
+async function disableActionGrouping(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "@otto:app-settings",
+      JSON.stringify({ groupConsecutiveActions: false }),
+    );
+  });
+}
+
 test.describe("Agent stream UI", () => {
   test("auto-scroll sticks to bottom across token bursts", async ({ page }) => {
     test.setTimeout(120_000);
@@ -39,6 +54,7 @@ test.describe("Agent stream UI", () => {
 
   test("keeps the viewport fixed after the user scrolls away during a stream", async ({ page }) => {
     test.setTimeout(240_000);
+    await disableActionGrouping(page);
     const agent = await seedMockAgentWorkspace({
       repoPrefix: "stream-scroll-away-",
       title: "Scroll-away anchor",
@@ -57,9 +73,9 @@ test.describe("Agent stream UI", () => {
         timeout: 30_000,
       });
       await awaitAssistantMessage(page);
-      // Tighter chat typography and action grouping slowed how fast the
-      // rendered transcript gains height, so give the stream longer to
-      // produce enough scrollable distance.
+      // Tighter chat typography slowed how fast the rendered transcript
+      // gains height, so give the stream longer to produce enough
+      // scrollable distance.
       await waitForScrollableChat(page, {
         minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
         timeout: 120_000,
@@ -82,6 +98,7 @@ test.describe("Agent stream UI", () => {
     withWorkspace,
   }) => {
     test.setTimeout(240_000);
+    await disableActionGrouping(page);
     const timelineGate = await delayCreatedAgentInitialTailResponse(page);
     const workspace = await withWorkspace({
       prefix: "stream-scroll-away-delayed-history-",
