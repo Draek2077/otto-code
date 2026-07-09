@@ -26,6 +26,8 @@ import type { GitAction, GitActions } from "@/git/policy";
 interface GitActionsSplitButtonProps {
   gitActions: GitActions;
   hideLabels?: boolean;
+  // Stretch to fill the available width (content stays centered).
+  fill?: boolean;
 }
 
 interface GitActionMenuItemProps {
@@ -78,7 +80,11 @@ function GitActionMenuItem({
   );
 }
 
-export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSplitButtonProps) {
+export function GitActionsSplitButton({
+  gitActions,
+  hideLabels,
+  fill,
+}: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const toast = useToast();
@@ -111,17 +117,32 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
     handleActionSelect(gitActions.primary);
   }, [gitActions.primary, handleActionSelect]);
 
-  const overflowMenuButtonStyle = useMemo(() => [styles.iconButton, styles.overflowMenuButton], []);
+  const overflowMenuButtonStyle = useMemo(
+    () => [
+      styles.iconButton,
+      // The negative header-edge margin would spill into padded containers
+      // when the button stretches to fill them.
+      !fill && styles.overflowMenuButton,
+    ],
+    [fill],
+  );
+
+  const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
+  const splitButtonStyle = useMemo(
+    () => [styles.splitButton, Boolean(fill) && styles.fillItem],
+    [fill],
+  );
 
   const primaryDisabled = gitActions.primary?.disabled;
   const primaryPressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
+      Boolean(fill) && styles.fillItem,
       (Boolean(hovered) || pressed) &&
         inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
     ],
-    [primaryDisabled, theme.colors.surface2],
+    [fill, primaryDisabled, theme.colors.surface2],
   );
 
   const caretTriggerStyle = useCallback(
@@ -134,9 +155,9 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
   );
 
   return (
-    <View style={styles.row}>
+    <View style={rowStyle}>
       {gitActions.primary ? (
-        <View style={styles.splitButton}>
+        <View style={splitButtonStyle}>
           <Pressable
             testID="changes-primary-cta"
             style={primaryPressableStyle}
@@ -155,7 +176,7 @@ export function GitActionsSplitButton({ gitActions, hideLabels }: GitActionsSpli
               <View style={styles.splitButtonContent}>
                 {gitActions.primary.icon}
                 {!hideLabels && (
-                  <Text style={styles.splitButtonText}>
+                  <Text style={styles.splitButtonText} numberOfLines={1}>
                     {getActionDisplayLabel(gitActions.primary)}
                   </Text>
                 )}
@@ -228,6 +249,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
+  fillItem: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
   splitButton: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -250,6 +276,7 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+    flexShrink: 1,
   },
   splitButtonContent: {
     flexDirection: "row",

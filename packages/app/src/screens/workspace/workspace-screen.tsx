@@ -3453,7 +3453,10 @@ function WorkspaceScreenContent({
   const headerRight = useMemo(
     () => (
       <View style={styles.headerRight}>
-        {!isMobile && workspaceDescriptor && workspaceDescriptor.scripts.length > 0 ? (
+        {!isMobile &&
+        workspaceDescriptor &&
+        workspaceDescriptor.scripts.length > 0 &&
+        settings.workspaceToolsPlacement !== "workspaceList" ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}

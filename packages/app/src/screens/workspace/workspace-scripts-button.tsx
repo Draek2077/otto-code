@@ -38,6 +38,8 @@ interface WorkspaceScriptsButtonProps {
   onViewTerminal?: (terminalId: string) => void;
   onOpenUrlInBrowserTab?: (url: string) => void;
   hideLabels?: boolean;
+  // Stretch to fill the available width (content stays centered).
+  fill?: boolean;
   presentation?: "split" | "ghost";
 }
 
@@ -383,6 +385,7 @@ export function WorkspaceScriptsButton({
   onViewTerminal,
   onOpenUrlInBrowserTab,
   hideLabels,
+  fill,
   presentation = "split",
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const { t } = useTranslation();
@@ -419,13 +422,24 @@ export function WorkspaceScriptsButton({
     },
   });
 
+  const isFillSplit = Boolean(fill) && presentation === "split";
+  const rowStyle = useMemo(() => [styles.row, isFillSplit && styles.fillItem], [isFillSplit]);
+  const frameStyle = useMemo(
+    () => [
+      presentation === "ghost" ? styles.ghostButtonFrame : styles.splitButton,
+      isFillSplit && styles.fillItem,
+    ],
+    [isFillSplit, presentation],
+  );
+
   const triggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
       presentation === "ghost" ? styles.ghostButton : styles.splitButtonPrimary,
+      isFillSplit && styles.fillItem,
       (hovered || pressed || open) &&
         (presentation === "ghost" ? styles.ghostButtonHovered : styles.splitButtonPrimaryHovered),
     ],
-    [presentation],
+    [isFillSplit, presentation],
   );
 
   const handleStartScript = useCallback(
@@ -442,8 +456,8 @@ export function WorkspaceScriptsButton({
   const triggerIconSize = presentation === "ghost" ? GHOST_TRIGGER_ICON_SIZE : 14;
 
   return (
-    <View style={styles.row}>
-      <View style={presentation === "ghost" ? styles.ghostButtonFrame : styles.splitButton}>
+    <View style={rowStyle}>
+      <View style={frameStyle}>
         <DropdownMenu>
           <DropdownMenuTrigger
             testID="workspace-scripts-button"
@@ -454,7 +468,9 @@ export function WorkspaceScriptsButton({
             <View style={styles.splitButtonContent}>
               <ThemedPlay size={triggerIconSize} uniProps={triggerPlayMapping} />
               {!hideLabels && (
-                <Text style={styles.splitButtonText}>{t("workspace.scripts.title")}</Text>
+                <Text style={styles.splitButtonText} numberOfLines={1}>
+                  {t("workspace.scripts.title")}
+                </Text>
               )}
               {presentation === "split" ? (
                 <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
@@ -497,6 +513,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
+  fillItem: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
   splitButton: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -533,6 +554,7 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+    flexShrink: 1,
   },
   splitButtonContent: {
     flexDirection: "row",
