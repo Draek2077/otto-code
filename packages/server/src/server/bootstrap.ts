@@ -106,6 +106,7 @@ import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
+import { ArtifactService } from "./artifact/artifact-service.js";
 import { DevServerManager } from "./preview/dev-server-manager.js";
 import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -891,6 +892,24 @@ export async function createOttoDaemon(
     wsServer?.broadcast(wrapSessionMessage(message));
   };
 
+  // Daemon-global artifact service backing the create_artifact agent tool.
+  // Client-initiated artifact RPCs go through each session's own service
+  // instance; both share the same file-backed store under $OTTO_HOME. Status
+  // notifications broadcast to every client so artifacts created by agents
+  // show up live everywhere.
+  const toolArtifactService = new ArtifactService({
+    projectCwd: config.ottoHome,
+    logger,
+    agentManager,
+    providerSnapshotManager,
+    broadcastArtifactUpdate: (metadata) => {
+      emitExternalSessionMessage({
+        type: "artifact.updated.notification",
+        payload: { artifact: metadata },
+      });
+    },
+  });
+
   setupAutoArchiveOnMerge({
     ottoHome: config.ottoHome,
     ottoWorktreesBaseRoot: config.worktreesRoot,
@@ -979,6 +998,13 @@ export async function createOttoDaemon(
     createOttoWorktree: createOttoWorktreeForTools,
     browserToolsBroker,
     previewDevServers,
+    artifactService: toolArtifactService,
+    emitArtifactCreated: (artifact) => {
+      emitExternalSessionMessage({
+        type: "artifact.created.notification",
+        payload: { artifact },
+      });
+    },
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -1338,6 +1364,7 @@ export async function createOttoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     speechService.stop();
+    toolArtifactService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayTransport?.stop().catch(() => undefined);
     if (wsServer) {
