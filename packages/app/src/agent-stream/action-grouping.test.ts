@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem, ToolCallItem } from "@/types/stream";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
-import { groupConsecutiveActionItems, isGroupableActionItem } from "./action-grouping";
+import {
+  countActionGroupCategories,
+  groupConsecutiveActionItems,
+  isGroupableActionItem,
+} from "./action-grouping";
 
 function createTimestamp(seed: number): Date {
   return new Date(`2026-01-01T00:00:${seed.toString().padStart(2, "0")}.000Z`);
@@ -19,7 +23,7 @@ function assistantMessage(id: string, seed: number): StreamItem {
 function toolCall(
   id: string,
   seed: number,
-  options?: { detail?: ToolCallDetail; status?: "running" | "completed" },
+  options?: { detail?: ToolCallDetail; status?: "running" | "completed"; name?: string },
 ): ToolCallItem {
   return {
     kind: "tool_call",
@@ -30,7 +34,7 @@ function toolCall(
       data: {
         provider: "claude",
         callId: id,
-        name: "Read",
+        name: options?.name ?? "Read",
         status: options?.status ?? "completed",
         error: null,
         detail: options?.detail ?? { type: "read", filePath: `/tmp/${id}` },
@@ -39,7 +43,7 @@ function toolCall(
   };
 }
 
-function thought(id: string, seed: number): StreamItem {
+function thought(id: string, seed: number): Extract<StreamItem, { kind: "thought" }> {
   return {
     kind: "thought",
     id,
@@ -181,5 +185,80 @@ describe("groupConsecutiveActionItems", () => {
     expect(result).toBe(items);
     expect(isGroupableActionItem(items[2])).toBe(false);
     expect(isGroupableActionItem(items[5])).toBe(false);
+  });
+});
+
+describe("countActionGroupCategories", () => {
+  it("categorizes every typed detail distinctly", () => {
+    const counts = countActionGroupCategories([
+      toolCall("read", 1, { detail: { type: "read", filePath: "/tmp/a" } }),
+      toolCall("edit", 2, { detail: { type: "edit", filePath: "/tmp/a" } }),
+      toolCall("write", 3, { detail: { type: "write", filePath: "/tmp/a" } }),
+      toolCall("grep", 4, { detail: { type: "search", query: "q", toolName: "grep" } }),
+      toolCall("web", 5, { detail: { type: "search", query: "q", toolName: "web_search" } }),
+      toolCall("fetch", 6, { detail: { type: "fetch", url: "https://example.com" } }),
+      toolCall("shell", 7, { detail: { type: "shell", command: "ls" } }),
+      toolCall("worktree", 8, {
+        detail: {
+          type: "worktree_setup",
+          worktreePath: "/w",
+          branchName: "b",
+          log: "",
+          commands: [],
+        },
+      }),
+      toolCall("task", 9, { detail: { type: "sub_agent", log: "" } }),
+      thought("th", 10),
+    ]);
+
+    expect(Object.fromEntries(counts)).toEqual({
+      read: 1,
+      edit: 1,
+      write: 1,
+      codeSearch: 1,
+      webSearch: 1,
+      fetch: 1,
+      command: 1,
+      worktree: 1,
+      agent: 1,
+      thought: 1,
+    });
+  });
+
+  it("falls back to the tool name when the detail is untyped", () => {
+    const unknownDetail = (name: string, id: string, seed: number): ToolCallItem =>
+      toolCall(id, seed, { detail: { type: "unknown", input: null, output: null }, name });
+
+    const counts = countActionGroupCategories([
+      unknownDetail("Read", "u1", 1),
+      unknownDetail("Bash", "u2", 2),
+      unknownDetail("WebSearch", "u3", 3),
+      unknownDetail("mcp__linear__create_issue", "u4", 4),
+    ]);
+
+    expect(Object.fromEntries(counts)).toEqual({
+      read: 1,
+      command: 1,
+      webSearch: 1,
+      other: 1,
+    });
+  });
+
+  it("categorizes otto browser and preview tools across namespace forms", () => {
+    const unknownDetail = (name: string, id: string, seed: number): ToolCallItem =>
+      toolCall(id, seed, { detail: { type: "unknown", input: null, output: null }, name });
+
+    const counts = countActionGroupCategories([
+      unknownDetail("browser_click", "b1", 1),
+      unknownDetail("mcp__otto__browser_snapshot", "b2", 2),
+      unknownDetail("otto.browser_screenshot", "b3", 3),
+      unknownDetail("preview_start", "p1", 4),
+      unknownDetail("mcp__otto__preview_logs", "p2", 5),
+    ]);
+
+    expect(Object.fromEntries(counts)).toEqual({
+      browser: 3,
+      preview: 2,
+    });
   });
 });

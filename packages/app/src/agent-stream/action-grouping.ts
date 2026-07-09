@@ -1,3 +1,7 @@
+import {
+  getOttoToolLeafName,
+  normalizeToolName,
+} from "@otto-code/protocol/tool-name-normalization";
 import type { ActionGroupItem, ActionGroupMemberItem, StreamItem } from "@/types/stream";
 
 // A run only folds once it has 3+ actions, and only settled actions ever
@@ -38,48 +42,114 @@ export function isGroupableActionItem(item: StreamItem): item is ActionGroupMemb
 
 export type ActionGroupCategory =
   | "read"
+  | "edit"
   | "write"
-  | "search"
+  | "codeSearch"
+  | "webSearch"
+  | "fetch"
   | "command"
+  | "browser"
+  | "preview"
+  | "artifact"
+  | "worktree"
   | "agent"
   | "thought"
   | "other";
 
-// Fixed display order for the collapsed summary ("2 files read, 1 file
-// written, 1 search completed, ...").
+// Fixed display order for the collapsed summary ("Read 2 files, edited
+// file, searched code, ...").
 export const ACTION_GROUP_CATEGORY_ORDER: readonly ActionGroupCategory[] = [
   "read",
+  "edit",
   "write",
-  "search",
+  "codeSearch",
+  "webSearch",
+  "fetch",
   "command",
+  "browser",
+  "preview",
+  "artifact",
+  "worktree",
   "agent",
   "thought",
   "other",
 ];
+
+// Fallback for tool calls that arrive without a typed detail (MCP tools,
+// orchestrator calls, providers that only send a name). Only unambiguous
+// names are mapped; anything else stays "other".
+const TOOL_NAME_CATEGORIES: Record<string, ActionGroupCategory> = {
+  read: "read",
+  read_file: "read",
+  edit: "edit",
+  multiedit: "edit",
+  notebookedit: "edit",
+  apply_patch: "edit",
+  write: "write",
+  write_file: "write",
+  create_file: "write",
+  grep: "codeSearch",
+  glob: "codeSearch",
+  search: "codeSearch",
+  websearch: "webSearch",
+  web_search: "webSearch",
+  webfetch: "fetch",
+  web_fetch: "fetch",
+  fetch: "fetch",
+  bash: "command",
+  shell: "command",
+  powershell: "command",
+  terminal: "command",
+  exec: "command",
+  task: "agent",
+  agent: "agent",
+  sub_agent: "agent",
+  create_artifact: "artifact",
+};
+
+function categorizeByToolName(toolName: string): ActionGroupCategory {
+  // Otto's daemon-hosted tools can arrive MCP-namespaced (mcp__otto__browser_click)
+  // or dot-namespaced (otto.browser_click) depending on transport — strip the
+  // namespace so they categorize the same everywhere.
+  const leafName = getOttoToolLeafName(toolName) ?? normalizeToolName(toolName);
+  if (leafName.startsWith("browser_")) {
+    return "browser";
+  }
+  if (leafName.startsWith("preview_")) {
+    return "preview";
+  }
+  return TOOL_NAME_CATEGORIES[leafName] ?? "other";
+}
 
 function categorizeActionGroupMember(item: ActionGroupMemberItem): ActionGroupCategory {
   if (item.kind === "thought") {
     return "thought";
   }
   if (item.payload.source !== "agent") {
-    return "other";
+    return categorizeByToolName(item.payload.data.toolName);
   }
-  switch (item.payload.data.detail.type) {
+  const data = item.payload.data;
+  switch (data.detail.type) {
     case "read":
       return "read";
     case "edit":
+      return "edit";
     case "write":
       return "write";
     case "search":
+      return data.detail.toolName === "web_search" ? "webSearch" : "codeSearch";
     case "fetch":
-      return "search";
+      return "fetch";
     case "shell":
-    case "worktree_setup":
       return "command";
+    case "worktree_setup":
+      return "worktree";
     case "sub_agent":
       return "agent";
+    // Plans never reach a group (run breakers); unknown and plain_text carry
+    // no typed shape, so fall back to the tool name.
     default:
-      return "other";
+      return categorizeByToolName(data.name);
   }
 }
 
