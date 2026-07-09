@@ -2109,6 +2109,11 @@ export const en = {
         notInstalled: "Not installed",
         requiresBase: "Requires {{name}}",
       },
+      tabs: {
+        models: "Models",
+        connection: "Connection",
+        tools: "Tools",
+      },
       connection: {
         title: "Connection",
         baseUrl: "Server URL",

@@ -2149,6 +2149,11 @@ export const ptBR: TranslationResources = {
           workspace: "Espaços de trabalho",
         },
       },
+      tabs: {
+        models: "Modelos",
+        connection: "Conexão",
+        tools: "Ferramentas",
+      },
       connection: {
         title: "Conexão",
         baseUrl: "URL do servidor",

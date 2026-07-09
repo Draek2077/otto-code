@@ -185,6 +185,9 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     position: "relative",
   },
+  desktopFill: {
+    flexGrow: 1,
+  },
   desktopScroll: {
     flexShrink: 1,
     minHeight: 0,
@@ -454,10 +457,21 @@ export interface AdaptiveModalSheetProps {
   children: ReactNode;
   /** Sticky footer rendered below the scrollable content. */
   footer?: ReactNode;
+  /**
+   * Fixed slot rendered between the header and the scrollable content — e.g. a
+   * tab strip that must stay visible while the content scrolls.
+   */
+  subHeader?: ReactNode;
   snapPoints?: string[];
   testID?: string;
   /** Override the max width of the desktop card. */
   desktopMaxWidth?: number;
+  /**
+   * Fixed height for the desktop card (still clamped to the viewport). Use for
+   * dialogs whose size must not change as content or tabs change; the content
+   * area scrolls inside and the footer stays pinned to the bottom.
+   */
+  desktopHeight?: number;
   scrollable?: boolean;
   presentation?: "push" | "replace";
   /**
@@ -474,9 +488,11 @@ export function AdaptiveModalSheet({
   onDismiss,
   children,
   footer,
+  subHeader,
   snapPoints,
   testID,
   desktopMaxWidth,
+  desktopHeight,
   scrollable = true,
   presentation,
   webScrollbar = false,
@@ -560,8 +576,26 @@ export function AdaptiveModalSheet({
   );
 
   const desktopCardStyle = useMemo(
-    () => [styles.desktopCard, desktopMaxWidth != null && { maxWidth: desktopMaxWidth }],
-    [desktopMaxWidth],
+    () => [
+      styles.desktopCard,
+      desktopMaxWidth != null && { maxWidth: desktopMaxWidth },
+      desktopHeight != null && { height: desktopHeight },
+    ],
+    [desktopMaxWidth, desktopHeight],
+  );
+  const desktopScrollContainerStyle = useMemo(
+    () =>
+      desktopHeight != null
+        ? [styles.desktopScrollContainer, styles.desktopFill]
+        : styles.desktopScrollContainer,
+    [desktopHeight],
+  );
+  const desktopStaticContentStyle = useMemo(
+    () =>
+      desktopHeight != null
+        ? [styles.desktopStaticContent, styles.desktopFill]
+        : styles.desktopStaticContent,
+    [desktopHeight],
   );
   const desktopOverlayStyle = useMemo(
     () => [
@@ -629,6 +663,7 @@ export function AdaptiveModalSheet({
         presentation={presentation}
       >
         <SheetHeaderView header={header} onClose={onClose} testID={testID} />
+        {subHeader}
         {scrollable ? (
           <BottomSheetScrollView
             contentContainerStyle={bottomSheetContentStyle}
@@ -648,8 +683,9 @@ export function AdaptiveModalSheet({
   const cardInner = (
     <>
       <SheetHeaderView header={header} onClose={onClose} />
+      {subHeader}
       {scrollable ? (
-        <View style={styles.desktopScrollContainer}>
+        <View style={desktopScrollContainerStyle}>
           <ScrollView
             ref={desktopScrollRef}
             style={styles.desktopScroll}
@@ -666,7 +702,7 @@ export function AdaptiveModalSheet({
           {desktopScrollbar.overlay}
         </View>
       ) : (
-        <View style={styles.desktopStaticContent}>{children}</View>
+        <View style={desktopStaticContentStyle}>{children}</View>
       )}
       {footer ? <View style={footerStyle}>{footer}</View> : null}
     </>
