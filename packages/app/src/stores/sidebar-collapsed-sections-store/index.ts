@@ -6,6 +6,7 @@ import {
   mergePersistedCollapsedProjects,
   serializeCollapsedProjects,
   setProjectCollapsed,
+  setSectionsCollapsed,
   toggleProjectCollapsed,
   toggleStatusGroupCollapsed,
 } from "./state";
@@ -13,6 +14,11 @@ import {
 interface SidebarCollapsedSectionsState extends CollapsedProjectsState {
   toggleProjectCollapsed: (projectKey: string) => void;
   setProjectCollapsed: (projectKey: string, collapsed: boolean) => void;
+  setSectionsCollapsed: (input: {
+    projectKeys?: readonly string[];
+    statusGroupKeys?: readonly string[];
+    collapsed: boolean;
+  }) => void;
   toggleStatusGroupCollapsed: (statusGroupKey: string) => void;
 }
 
@@ -25,6 +31,7 @@ export const useSidebarCollapsedSectionsStore = create<SidebarCollapsedSectionsS
         set((state) => toggleProjectCollapsed(state, projectKey)),
       setProjectCollapsed: (projectKey, collapsed) =>
         set((state) => setProjectCollapsed(state, projectKey, collapsed)),
+      setSectionsCollapsed: (input) => set((state) => setSectionsCollapsed(state, input)),
       toggleStatusGroupCollapsed: (statusGroupKey) =>
         set((state) => toggleStatusGroupCollapsed(state, statusGroupKey)),
     }),
