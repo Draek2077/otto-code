@@ -1,6 +1,6 @@
 {
   "name": "otto-code",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "Otto: an autonomous AI coding IDE for driving local AI coding agents from anywhere",
   "keywords": [
