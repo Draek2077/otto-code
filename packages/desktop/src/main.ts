@@ -35,6 +35,7 @@ import {
   setupWindowStatePersistence,
   setupDefaultContextMenu,
   setupDragDropPrevention,
+  setupCursorHoverForwarding,
   buildStandardContextMenuItems,
 } from "./window/window-manager.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
@@ -753,6 +754,7 @@ async function createWindow(
   }
   setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow);
+  setupCursorHoverForwarding(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
     if (isArtifactWebviewAttach(params)) {
       pendingWebviewAttaches.push({ kind: "artifact" });

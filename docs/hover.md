@@ -116,6 +116,18 @@ It is **not** fine for tracking hover to drive state **outside** that `Pressable
 
 Heuristic: if your hover state is going to be `useState`'d and read by anything other than the same `Pressable`'s own style, do not use `onHoverIn` / `onHoverOut`. Use the canonical pattern.
 
+## Electron drag regions are hover dead zones
+
+On desktop, titlebar strips (`TitlebarDragRegion` in `packages/app/src/components/desktop/titlebar-drag-region.tsx` — the sidebar header, screen headers, and every pane's tab row) are covered by a `-webkit-app-region: drag` overlay. Chromium's window hit test treats those pixels as the native window caption, so **no pointer events reach the page there at all** — no `pointerenter`, no `pointermove`, not even CSS `:hover`. The only hover-sensitive pixels inside a drag strip are the no-drag islands: interactive elements stamped `-webkit-app-region: no-drag` by the scoped backstop in `packages/app/public/index.html` (and note that stamping happens on **unclipped bounding boxes**, so even invisible, `pointerEvents: "none"` buttons punch holes).
+
+Consequences for hover features in these strips:
+
+- **A reveal that requires hovering bare drag-strip pixels needs the non-client escape hatch below.** Plain DOM hover will work in a browser tab and silently fail in the desktop app. Without the escape hatch, the reveal must trigger from elements that receive events — widen the region by stamping a container `no-drag` (see the tab row's tools strip in `workspace-desktop-tabs-row.tsx`) or by including more event-receiving elements (the tab chips).
+- Every pixel is zero-sum for DOM events: `no-drag` regains hover but loses window dragging there. Don't blanket-no-drag a titlebar strip.
+- `pointerleave` is also swallowed: a hover state set while crossing an island can go stale when the cursor parks on drag pixels. Keep such staleness benign (an idle reveal, not a stuck interaction).
+
+**The escape hatch — main-process cursor polling.** `hookWindowMessage(WM_NCMOUSEMOVE)` does NOT work: Chromium consumes non-client mouse messages before Electron's hooks see them (verified empirically — the hook never fires while the cursor crosses a drag region). What works is polling: the main process polls `screen.getCursorScreenPoint()` (~20Hz, only while the window is focused, deduped while the cursor rests) and forwards the content-relative position (DIP ≈ CSS px at zoom 1) as `nc-mouse-move`/`nc-mouse-leave` desktop events — `setupCursorHoverForwarding` in `packages/desktop/src/window/window-manager.ts`. On the app side, `useNonClientHover(ref)` (`packages/app/src/hooks/use-non-client-hover.ts`) hit-tests those points against an element's rect and returns a complete "cursor is over the element" flag — the poll sees every pixel, drag regions and client pixels alike. The hook is inert in browser web and on native, and on macOS drag regions deliver DOM hover natively so the DOM path covers everything. Main-process changes require a desktop rebuild + restart to take effect.
+
 ## Real gaps with floating panels
 
 Sometimes the revealed content can't live inside the trigger — a hover card portals into a different layer, a tooltip floats above other content, a popover renders into a `Portal`. There's a real visual gap the user has to cross with the cursor.

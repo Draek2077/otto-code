@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, SquarePen, SquareTerminal } from "@/components/icons/material-icons";
+import { Globe, SquareTerminal } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import {
   getTerminalProfileIcon,
@@ -14,6 +14,7 @@ import { usePinnedTargetsStore } from "@/workspace-pins/store";
 
 export interface ResolvedPin {
   key: string;
+  target: PinnedTabTarget;
   label: string;
   icon: ReactElement;
   onPress: () => void;
@@ -26,7 +27,6 @@ interface UsePinnedLaunchersInput {
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 
@@ -64,18 +64,10 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
   return useMemo(() => {
     const resolved: ResolvedPin[] = [];
     for (const target of pinned) {
-      if (target.kind === "draft") {
-        resolved.push({
-          key: pinnedTargetKey(target),
-          label: t("workspace.tabs.actions.newAgent"),
-          icon: <ThemedSquarePen size={14} uniProps={mutedColorMapping} />,
-          onPress: () => onLaunch(target),
-        });
-        continue;
-      }
       if (target.kind === "terminal") {
         resolved.push({
           key: pinnedTargetKey(target),
+          target,
           label: t("workspace.tabs.actions.newTerminal"),
           icon: <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
@@ -85,10 +77,16 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
       if (target.kind === "browser") {
         resolved.push({
           key: pinnedTargetKey(target),
+          target,
           label: t("workspace.tabs.actions.newBrowser"),
           icon: <ThemedGlobe size={14} uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
         });
+        continue;
+      }
+      if (target.kind !== "profile") {
+        // Legacy draft pins and tool pins (preview/artifact/splits) don't
+        // resolve to launcher buttons — tools render their own buttons.
         continue;
       }
       const profile = profiles.find((entry) => entry.id === target.profileId);
@@ -97,6 +95,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
       }
       resolved.push({
         key: pinnedTargetKey(target),
+        target,
         label: profile.name,
         icon: <ProfileIcon iconKey={getTerminalProfileIcon(profile)} />,
         onPress: () => onLaunch(target),

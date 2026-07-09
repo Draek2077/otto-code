@@ -7,6 +7,7 @@ import {
   clipboard,
   ipcMain,
   nativeTheme,
+  screen,
   shell,
 } from "electron";
 
@@ -266,6 +267,95 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
   win.on("resize", notifyResized);
   win.on("enter-full-screen", notifyResized);
   win.on("leave-full-screen", notifyResized);
+}
+
+// Pixels under -webkit-app-region: drag (the titlebar strips and pane tab-bar
+// gutters) hit-test as the native window caption on Windows, so the renderer
+// never receives pointer events over them — see docs/hover.md "Electron drag
+// regions are hover dead zones". hookWindowMessage(WM_NCMOUSEMOVE) does NOT
+// work as an escape hatch: Chromium consumes non-client mouse messages before
+// Electron's message hooks see them (verified empirically — the hook never
+// fired while the cursor crossed a drag region). Polling the global cursor is
+// the mechanism that works regardless of how a pixel hit-tests.
+const CURSOR_HOVER_POLL_INTERVAL_MS = 50;
+
+/**
+ * Forward the cursor position to the renderer while it is inside the focused
+ * window, so the app can implement hover affordances over drag-region pixels
+ * (e.g. revealing the tab-bar tools when the pointer crosses the gutter).
+ * Windows-only: macOS delivers DOM hover over drag regions natively.
+ *
+ * Coordinates are DIP relative to the window's content area — the same space
+ * as renderer CSS pixels while zoomFactor is 1. Sends `nc-mouse-move` on
+ * movement (deduped while the cursor rests) and `nc-mouse-leave` when the
+ * cursor exits the window or the window loses focus.
+ */
+export function setupCursorHoverForwarding(win: BrowserWindow): void {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  let timer: NodeJS.Timeout | null = null;
+  let lastX = -1;
+  let lastY = -1;
+  let wasInside = false;
+
+  const sendLeaveIfNeeded = () => {
+    if (!wasInside) {
+      return;
+    }
+    wasInside = false;
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send("otto:event:nc-mouse-leave", {});
+    }
+  };
+
+  const tick = () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) {
+      return;
+    }
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = win.getContentBounds();
+    const inside =
+      cursor.x >= bounds.x &&
+      cursor.x < bounds.x + bounds.width &&
+      cursor.y >= bounds.y &&
+      cursor.y < bounds.y + bounds.height;
+    if (!inside) {
+      sendLeaveIfNeeded();
+      return;
+    }
+    if (wasInside && cursor.x === lastX && cursor.y === lastY) {
+      return;
+    }
+    wasInside = true;
+    lastX = cursor.x;
+    lastY = cursor.y;
+    win.webContents.send("otto:event:nc-mouse-move", {
+      x: cursor.x - bounds.x,
+      y: cursor.y - bounds.y,
+    });
+  };
+
+  const start = () => {
+    if (timer === null) {
+      timer = setInterval(tick, CURSOR_HOVER_POLL_INTERVAL_MS);
+    }
+  };
+  const stop = () => {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    sendLeaveIfNeeded();
+  };
+
+  win.on("focus", start);
+  win.on("blur", stop);
+  win.on("closed", stop);
+  if (win.isFocused()) {
+    start();
+  }
 }
 
 /**

@@ -117,6 +117,7 @@ export const Pause = createMaterialSymbolIcon("Pause");
 export const Pencil = createMaterialSymbolIcon("Pencil");
 export const Pilcrow = createMaterialSymbolIcon("Pilcrow");
 export const Pin = createMaterialSymbolIcon("Pin");
+export const PinFilled = createMaterialSymbolIcon("PinFilled");
 export const PinOff = createMaterialSymbolIcon("PinOff");
 export const Play = createMaterialSymbolIcon("Play");
 export const PlayFilled = createMaterialSymbolIcon("PlayFilled");

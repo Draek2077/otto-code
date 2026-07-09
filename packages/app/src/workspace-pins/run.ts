@@ -26,6 +26,10 @@ export function runPinnedTabTarget(
     handlers.createBrowser();
     return;
   }
+  if (target.kind !== "profile") {
+    // Tool pins (preview/artifact/splits) aren't tab launchers.
+    return;
+  }
   const profile = profiles.find((entry) => entry.id === target.profileId);
   if (!profile) {
     return;
