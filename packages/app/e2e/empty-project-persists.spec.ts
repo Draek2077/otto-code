@@ -38,13 +38,15 @@ async function removeProjectFromSidebar(page: Page, projectId: string): Promise<
   await expect(kebab).toBeVisible({ timeout: 10_000 });
   await kebab.click();
 
-  // Removing a project raises a browser confirm; accept it so the
-  // user-confirmed removal proceeds deterministically.
-  page.once("dialog", (dialog) => void dialog.accept());
-
   const removeItem = page.getByTestId(`sidebar-project-menu-remove-${projectId}`);
   await expect(removeItem).toBeVisible({ timeout: 10_000 });
   await removeItem.click();
+
+  // Removing a project opens the in-app confirm dialog (ConfirmDialogHost);
+  // accept it so the user-confirmed removal proceeds deterministically.
+  const confirmButton = page.getByTestId("confirm-dialog-confirm");
+  await expect(confirmButton).toBeVisible({ timeout: 10_000 });
+  await confirmButton.click();
 }
 
 async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {

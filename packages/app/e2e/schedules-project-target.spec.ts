@@ -253,12 +253,14 @@ test.describe("Schedules project target", () => {
       port: fakePort,
     });
 
-    const hostFilterTrigger = page.getByTestId("schedules-host-filter-trigger");
-    await expect(hostFilterTrigger).toBeVisible({ timeout: 30_000 });
-    await hostFilterTrigger.click();
-    const hostFilterPopup = page.getByTestId("combobox-desktop-container").last();
-    await expect(hostFilterPopup).toBeVisible({ timeout: 30_000 });
-    await expectNoTruncation(hostFilterPopup);
+    // The card-grid redesign replaced the host filter with a project filter;
+    // its combobox options must render untruncated.
+    const projectFilterTrigger = page.getByTestId("project-filter-trigger");
+    await expect(projectFilterTrigger).toBeVisible({ timeout: 30_000 });
+    await projectFilterTrigger.click();
+    const projectFilterPopup = page.getByTestId("combobox-desktop-container").last();
+    await expect(projectFilterPopup).toBeVisible({ timeout: 30_000 });
+    await expectNoTruncation(projectFilterPopup);
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("combobox-desktop-container")).toHaveCount(0, {
       timeout: 5_000,
@@ -386,7 +388,7 @@ test.describe("Schedules project target", () => {
     });
 
     const scheduleId = await findScheduleIdByName(workspace, scheduleName);
-    await page.getByTestId(`schedule-row-${scheduleId}`).click();
+    await page.getByTestId(`schedule-card-${scheduleId}`).click();
     const formSheet = page.getByTestId("schedule-form-sheet");
     await expect(formSheet).toBeVisible({ timeout: 10_000 });
     await expectStableHeight(formSheet);

@@ -11,7 +11,8 @@ import {
   expectPendingUpdateCheckResult,
   clickInstallUpdate,
   expectInstallInProgress,
-  interceptDaemonManagementConfirmDialog,
+  openDaemonManagementConfirmDialog,
+  cancelConfirmDialog,
   toggleDaemonManagement,
   expectDaemonManagementConfirmDialog,
   expectDaemonManagementEnabled,
@@ -73,13 +74,13 @@ test.describe("Desktop daemon management", () => {
     await injectDesktopBridge(page, {
       serverId,
       manageBuiltInDaemon: true,
-      confirmShouldAccept: false,
     });
     await gotoAppShell(page);
     await openDesktopSettings(page, serverId);
 
-    const dialogArgs = await interceptDaemonManagementConfirmDialog(page);
-    expectDaemonManagementConfirmDialog(dialogArgs);
+    await openDaemonManagementConfirmDialog(page);
+    await expectDaemonManagementConfirmDialog(page);
+    await cancelConfirmDialog(page);
 
     await expectDaemonManagementEnabled(page);
   });
@@ -89,13 +90,13 @@ test.describe("Desktop daemon management", () => {
     await injectDesktopBridge(page, {
       serverId,
       manageBuiltInDaemon: true,
-      confirmShouldAccept: false,
     });
     await gotoAppShell(page);
     await openDesktopSettings(page, serverId);
 
     await expectDaemonManagementEnabled(page);
-    await toggleDaemonManagement(page, "disable");
+    await openDaemonManagementConfirmDialog(page);
+    await cancelConfirmDialog(page);
     await expectDaemonManagementEnabled(page);
   });
 
