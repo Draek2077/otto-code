@@ -14,7 +14,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
-import { StaticBrowserToolsPolicy } from "./browser-tools/policy.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
@@ -25,6 +24,7 @@ import { createStub } from "./test-utils/class-mocks.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
+import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 
 interface BrowserToolsDaemonHarness {
   broker: BrowserToolsBroker;
@@ -68,6 +68,13 @@ function browserHostCapabilities(
       hostKind: "desktop app",
     },
   };
+}
+
+function createWorkspaceAutoNameStub(): WorkspaceAutoName {
+  return createStub<WorkspaceAutoName>({
+    scheduleForWorktree: () => {},
+    scheduleForDirectory: () => {},
+  });
 }
 
 describe("WebSocketServer browser tools wiring", () => {
@@ -248,7 +255,6 @@ async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarne
 
 function createBroker(): BrowserToolsBroker {
   return new BrowserToolsBroker({
-    policy: new StaticBrowserToolsPolicy(true),
     defaultTimeoutMs: 500,
     createRequestId: createRequestIdSequence(),
   });
@@ -292,6 +298,7 @@ function createVoiceAssistantWebSocketServer(params: {
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set(["*"]) },
+    createWorkspaceAutoNameStub(),
     undefined,
     undefined,
     undefined,

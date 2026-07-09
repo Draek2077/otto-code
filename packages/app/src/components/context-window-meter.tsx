@@ -200,7 +200,7 @@ export function ContextWindowMeter({
     (nextOpen: boolean) => {
       setIsPopupOpen(nextOpen);
       if (nextOpen) {
-        void refreshProviderUsage();
+        void refreshProviderUsage().catch(() => {});
         void refreshContextUsage();
       }
     },

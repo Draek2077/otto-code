@@ -52,8 +52,12 @@ export function SchedulesScreen(): ReactElement {
   return <SchedulesScreenContent />;
 }
 
+const EMPTY_SCHEDULES: AggregatedSchedule[] = [];
+
 function SchedulesScreenContent(): ReactElement {
-  const { schedules, hostErrors, isInitialLoad, isError, refetch } = useSchedules();
+  const { loadState, hostErrors, isError, refetch } = useSchedules();
+  const schedules = loadState.status === "loaded" ? loadState.data : EMPTY_SCHEDULES;
+  const isInitialLoad = loadState.status === "loading";
   const { agents } = useAggregatedAgents({ includeArchived: true });
   const { projects } = useProjects();
   const hosts = useHosts();

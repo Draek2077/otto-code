@@ -6,7 +6,10 @@ import { join, basename, dirname, isAbsolute, resolve, sep } from "path";
 import net from "node:net";
 import { createHash } from "node:crypto";
 import stripAnsi from "strip-ansi";
-import { buildStringCommandShellInvocation } from "./string-command-shell.js";
+import {
+  buildStringCommandShellInvocation,
+  createStringCommandShellEnv,
+} from "./string-command-shell.js";
 import { readOttoConfigJson, resolveOttoConfigPath } from "./otto-config-file.js";
 export {
   OttoConfigRawSchema,
@@ -489,6 +492,7 @@ async function execSetupCommandStreamed(options: {
     const child = spawnProcess(shellInvocation.shell, shellInvocation.args, {
       cwd: options.cwd,
       env: options.env,
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -607,7 +611,7 @@ export async function runWorktreeSetupCommands(options: {
       branchName: options.branchName,
       ...(options.repoRootPath ? { repoRootPath: options.repoRootPath } : {}),
     }));
-  const setupEnv = createExternalProcessEnv(process.env, runtimeEnv);
+  const setupEnv = createStringCommandShellEnv(createExternalProcessEnv(process.env, runtimeEnv));
 
   const results: WorktreeSetupCommandResult[] = [];
   for (const [index, cmd] of setupCommands.entries()) {
@@ -715,17 +719,19 @@ export async function runWorktreeTeardownCommands(options: {
     options.branchName ?? (await resolveBranchNameForWorktreePath(options.worktreePath));
   const worktreePort = readOttoWorktreeRuntimePort(options.worktreePath);
 
-  const teardownEnv: NodeJS.ProcessEnv = createExternalProcessEnv(process.env, {
-    // Source checkout path is the original git repo root (shared across worktrees), not the
-    // worktree itself. This allows lifecycle scripts to copy or clean resources using paths
-    // from the source checkout.
-    OTTO_SOURCE_CHECKOUT_PATH: repoRootPath,
-    // Backward-compatible alias.
-    OTTO_ROOT_PATH: repoRootPath,
-    OTTO_WORKTREE_PATH: options.worktreePath,
-    OTTO_BRANCH_NAME: branchName,
-    ...(worktreePort !== null ? { OTTO_WORKTREE_PORT: String(worktreePort) } : {}),
-  });
+  const teardownEnv: NodeJS.ProcessEnv = createStringCommandShellEnv(
+    createExternalProcessEnv(process.env, {
+      // Source checkout path is the original git repo root (shared across worktrees), not the
+      // worktree itself. This allows lifecycle scripts to copy or clean resources using paths
+      // from the source checkout.
+      OTTO_SOURCE_CHECKOUT_PATH: repoRootPath,
+      // Backward-compatible alias.
+      OTTO_ROOT_PATH: repoRootPath,
+      OTTO_WORKTREE_PATH: options.worktreePath,
+      OTTO_BRANCH_NAME: branchName,
+      ...(worktreePort !== null ? { OTTO_WORKTREE_PORT: String(worktreePort) } : {}),
+    }),
+  );
 
   const results: WorktreeTeardownCommandResult[] = [];
   for (const cmd of teardownCommands) {

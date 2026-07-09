@@ -63,17 +63,38 @@ export function PinnableMenuItem({
     [showToggle],
   );
 
-  const trailing = useMemo(() => {
-    let icon = <ThemedPin size={14} uniProps={mutedColorMapping} />;
-    if (isPinned) {
-      icon = isHovered ? (
-        <ThemedPinOff size={14} uniProps={mutedColorMapping} />
-      ) : (
-        <ThemedPinFilled size={14} uniProps={starColorMapping} />
-      );
-    }
-    return (
-      <View style={slotStyle} pointerEvents={showToggle ? "auto" : "none"}>
+  // A non-interactive spacer reserves the trailing slot's width inside
+  // DropdownMenuItem's own button so the label truncates correctly. The real
+  // pin toggle renders as a sibling overlay below — nesting an interactive
+  // control inside DropdownMenuItem's <button> would produce invalid,
+  // hydration-breaking HTML (a <button> inside a <button>) on web.
+  const trailingSpacer = useMemo(() => <View style={slotStyle} />, [slotStyle]);
+
+  let icon = <ThemedPin size={14} uniProps={mutedColorMapping} />;
+  if (isPinned) {
+    icon = isHovered ? (
+      <ThemedPinOff size={14} uniProps={mutedColorMapping} />
+    ) : (
+      <ThemedPinFilled size={14} uniProps={starColorMapping} />
+    );
+  }
+
+  return (
+    <View
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+      style={styles.container}
+    >
+      <DropdownMenuItem
+        testID={testID}
+        leading={leading}
+        trailing={trailingSpacer}
+        disabled={disabled}
+        onSelect={onSelect}
+      >
+        {label}
+      </DropdownMenuItem>
+      <View style={styles.pinToggleOverlay} pointerEvents={showToggle ? "auto" : "none"}>
         <Pressable
           onPress={handleTogglePin}
           hitSlop={8}
@@ -89,25 +110,14 @@ export function PinnableMenuItem({
           {icon}
         </Pressable>
       </View>
-    );
-  }, [handleTogglePin, isHovered, isPinned, showToggle, slotStyle, t, target]);
-
-  return (
-    <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
-      <DropdownMenuItem
-        testID={testID}
-        leading={leading}
-        trailing={trailing}
-        disabled={disabled}
-        onSelect={onSelect}
-      >
-        {label}
-      </DropdownMenuItem>
     </View>
   );
 }
 
-const styles = StyleSheet.create(() => ({
+const styles = StyleSheet.create((theme) => ({
+  container: {
+    position: "relative",
+  },
   pinToggleSlot: {
     width: 22,
     height: 22,
@@ -119,6 +129,15 @@ const styles = StyleSheet.create(() => ({
   },
   pinToggleShown: {
     opacity: 1,
+  },
+  pinToggleOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: theme.spacing[3],
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
   pinToggleButton: {
     width: 22,

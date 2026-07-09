@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { artifactBelongsToWorkspace, sortArtifacts } from "@/artifacts/artifact-derivation";
-import { artifactsQueryBaseKey } from "@/query/host-aggregate-query-keys";
+import { artifactsQueryBaseKey } from "@/data/host-aggregate-query-keys";
 import {
   fetchAggregatedArtifacts,
   type AggregatedArtifact,
@@ -13,7 +13,7 @@ import {
 
 export type { AggregatedArtifact, ArtifactHostError } from "@/artifacts/aggregated-artifacts";
 
-export { artifactsQueryBaseKey } from "@/query/host-aggregate-query-keys";
+export { artifactsQueryBaseKey } from "@/data/host-aggregate-query-keys";
 
 // Cache identity for the host set + project filter. Freshness is event-driven:
 // artifact CRUD notifications (useArtifactNotifications) and host online-status

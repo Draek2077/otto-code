@@ -103,28 +103,44 @@
 
 ### Changed
 
-- Otto now versions independently of the upstream Paseo 0.1.x line, starting at 0.3.0
+- Otto now versions independently of the upstream Otto 0.1.x line, starting at 0.3.0
 
-## 0.1.104-beta.2 - 2026-07-03
+## 0.1.104 - 2026-07-08
 
 ### Added
 
-- Agents can drive the in-app browser: open tabs, navigate, click, type, and take screenshots
-- Inspect, annotate, and send page elements from a browser tab to the agent ([#1708](https://github.com/otto-code-ai/otto-code/pull/1708) by [@huiliaoning](https://github.com/huiliaoning))
-- Schedules screen to create and manage recurring agents ([#1246](https://github.com/otto-code-ai/otto-code/pull/1246))
-- Open a project from anywhere with Cmd+O ([#1849](https://github.com/otto-code-ai/otto-code/pull/1849))
-- ByteDance TRAE CLI available as an agent provider ([#1831](https://github.com/otto-code-ai/otto-code/pull/1831) by [@park0er](https://github.com/park0er))
+- Agents can drive the in-app browser with page snapshots, trusted input, dialogs, and tab controls ([#1881](https://github.com/Draek2077/otto-code/pull/1881))
+- Inspect, annotate, and send page elements from a browser tab to the agent ([#1708](https://github.com/Draek2077/otto-code/pull/1708) by [@huiliaoning](https://github.com/huiliaoning))
+- Schedules screen to create and manage recurring agents ([#1246](https://github.com/Draek2077/otto-code/pull/1246))
+- Open a project from anywhere with Cmd+O ([#1849](https://github.com/Draek2077/otto-code/pull/1849))
+- Agents can rename workspaces after they understand the task ([#1876](https://github.com/Draek2077/otto-code/pull/1876))
+- Claude Ultra Code is available for supported Claude models ([#1872](https://github.com/Draek2077/otto-code/pull/1872))
+- ByteDance TRAE CLI available as an agent provider ([#1831](https://github.com/Draek2077/otto-code/pull/1831), [#1896](https://github.com/Draek2077/otto-code/pull/1896) by [@park0er](https://github.com/park0er))
 
 ### Improved
 
-- Clearer cards when an agent asks a question ([#1643](https://github.com/otto-code-ai/otto-code/pull/1643) by [@cleiter](https://github.com/cleiter))
+- Manage the built-in daemon from one place in desktop settings ([#1938](https://github.com/Draek2077/otto-code/pull/1938))
+- Scheduled and loop runs each get their own workspace in the sidebar ([#1909](https://github.com/Draek2077/otto-code/pull/1909), [#1934](https://github.com/Draek2077/otto-code/pull/1934))
+- Large provider and model refreshes load faster in the app ([#1895](https://github.com/Draek2077/otto-code/pull/1895))
+- Workspaces created by agents now get readable generated names ([#1887](https://github.com/Draek2077/otto-code/pull/1887))
+- Browser tabs opened by agents stay in the background until you switch to them ([#1875](https://github.com/Draek2077/otto-code/pull/1875))
+- Clearer cards when an agent asks a question ([#1643](https://github.com/Draek2077/otto-code/pull/1643) by [@cleiter](https://github.com/cleiter))
+- Diagnostic reports include desktop app logs ([#1914](https://github.com/Draek2077/otto-code/pull/1914))
+- Otto's built-in tools take less context ([#1939](https://github.com/Draek2077/otto-code/pull/1939))
 
 ### Fixed
 
-- New Workspace drafts survive archiving a workspace ([#1838](https://github.com/otto-code-ai/otto-code/pull/1838))
-- Composer autocomplete stays open after switching screens ([#1851](https://github.com/otto-code-ai/otto-code/pull/1851))
-- Claude usage appears when a quota window has no scheduled reset ([#1855](https://github.com/otto-code-ai/otto-code/pull/1855))
-- New workspace action shows for non-git projects in the sidebar ([#1857](https://github.com/otto-code-ai/otto-code/pull/1857) by [@cleiter](https://github.com/cleiter))
+- Renamed hosts keep their name after reconnecting ([#1940](https://github.com/Draek2077/otto-code/pull/1940))
+- Desktop finds your installed CLIs even when your shell is slow to start ([#1916](https://github.com/Draek2077/otto-code/pull/1916))
+- Restarting the daemon from desktop settings works reliably ([#1915](https://github.com/Draek2077/otto-code/pull/1915))
+- Restarting the daemon from the bundled CLI keeps it managed by the desktop app ([#1919](https://github.com/Draek2077/otto-code/pull/1919))
+- Web UI loads when the daemon is started from the bundled CLI ([#1899](https://github.com/Draek2077/otto-code/pull/1899) by [@yzim](https://github.com/yzim))
+- Worktree setup scripts keep your PATH ([#1908](https://github.com/Draek2077/otto-code/pull/1908))
+- Docker images keep running during provider cleanup and diagnostics ([#1877](https://github.com/Draek2077/otto-code/pull/1877))
+- New Workspace drafts survive archiving a workspace ([#1838](https://github.com/Draek2077/otto-code/pull/1838))
+- Composer autocomplete stays open after switching screens ([#1851](https://github.com/Draek2077/otto-code/pull/1851))
+- Claude usage appears when a quota window has no scheduled reset ([#1855](https://github.com/Draek2077/otto-code/pull/1855))
+- New workspace action shows for non-git projects in the sidebar ([#1857](https://github.com/Draek2077/otto-code/pull/1857) by [@cleiter](https://github.com/cleiter))
 
 ## 0.1.103 - 2026-07-01
 

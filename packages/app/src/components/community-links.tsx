@@ -41,7 +41,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        renderLeftIcon={renderGitHubIcon}
+        leftIcon={renderGitHubIcon}
         onPress={handleOpenGitHub}
         testID="community-links-github-star"
       >
@@ -50,7 +50,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        renderLeftIcon={renderHeartIcon}
+        leftIcon={renderHeartIcon}
         onPress={handleOpenSponsor}
         testID="community-links-sponsor"
       >
@@ -59,7 +59,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        renderLeftIcon={renderDiscordIcon}
+        leftIcon={renderDiscordIcon}
         onPress={handleOpenDiscord}
         testID="community-links-discord"
       >

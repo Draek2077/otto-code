@@ -1,5 +1,5 @@
 import type { ToolCallTimelineItem } from "./agent-types.js";
-import { getOttoToolLeafName, isOttoToolName } from "@otto-code/protocol/tool-name-normalization";
+import { getOttoToolLeafName, isOttoToolName } from "./tool-name-normalization.js";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<

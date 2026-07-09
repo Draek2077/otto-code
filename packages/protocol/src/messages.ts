@@ -24,10 +24,10 @@ import {
 } from "./artifacts/rpc-schemas.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
-import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@otto-code/protocol/agent-title-limits";
-import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
+import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
+import { AgentProviderSchema } from "./provider-manifest.js";
 import { McpServerConfigSchema, OTTO_TOOL_GROUPS } from "./provider-config.js";
-import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
+import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -63,7 +63,7 @@ import {
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
-} from "@otto-code/protocol/schedule/rpc-schemas";
+} from "./schedule/rpc-schemas.js";
 import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
@@ -75,7 +75,7 @@ import {
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
-} from "@otto-code/protocol/loop/rpc-schemas";
+} from "./loop/rpc-schemas.js";
 import {
   BrowserAutomationExecuteRequestSchema,
   BrowserAutomationExecuteResponseSchema,
@@ -96,7 +96,7 @@ import {
   type OttoMetadataGenerationEntry,
   type OttoScriptEntryRaw,
   type ProjectConfigRpcError,
-} from "@otto-code/protocol/otto-config-schema";
+} from "./otto-config-schema.js";
 export {
   OttoConfigRawSchema,
   OttoLifecycleCommandRawSchema,
@@ -274,19 +274,17 @@ export const AgentFeatureSchema = z.discriminatedUnion("type", [
   AgentFeatureSelectSchema,
 ]);
 
-const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z
-  .object({
-    provider: AgentProviderSchema,
-    id: z.string(),
-    label: z.string(),
-    description: z.string().optional(),
-    isDefault: z.boolean().optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-    contextWindowMaxTokens: z.number().optional(),
-    thinkingOptions: z.array(AgentSelectOptionSchema).optional(),
-    defaultThinkingOptionId: z.string().optional(),
-  })
-  .transform(normalizeAgentModelDefinition);
+const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z.object({
+  provider: AgentProviderSchema,
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  isDefault: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  contextWindowMaxTokens: z.number().optional(),
+  thinkingOptions: z.array(AgentSelectOptionSchema).optional(),
+  defaultThinkingOptionId: z.string().optional(),
+});
 
 export const ProviderSnapshotEntrySchema = z.object({
   provider: AgentProviderSchema,
@@ -360,20 +358,21 @@ const AgentPermissionActionSchema = z.object({
   intent: z.enum(["implement", "implement_resume", "dismiss"]).optional(),
 });
 
-export const AgentPermissionResponseSchema: z.ZodType<AgentPermissionResponse> = z.union([
-  z.object({
-    behavior: z.literal("allow"),
-    selectedActionId: z.string().optional(),
-    updatedInput: z.record(z.string(), z.unknown()).optional(),
-    updatedPermissions: z.array(AgentPermissionUpdateSchema).optional(),
-  }),
-  z.object({
-    behavior: z.literal("deny"),
-    selectedActionId: z.string().optional(),
-    message: z.string().optional(),
-    interrupt: z.boolean().optional(),
-  }),
-]);
+export const AgentPermissionResponseSchema: z.ZodType<AgentPermissionResponse> =
+  z.discriminatedUnion("behavior", [
+    z.object({
+      behavior: z.literal("allow"),
+      selectedActionId: z.string().optional(),
+      updatedInput: z.record(z.string(), z.unknown()).optional(),
+      updatedPermissions: z.array(AgentPermissionUpdateSchema).optional(),
+    }),
+    z.object({
+      behavior: z.literal("deny"),
+      selectedActionId: z.string().optional(),
+      message: z.string().optional(),
+      interrupt: z.boolean().optional(),
+    }),
+  ]);
 
 export const AgentPermissionRequestPayloadSchema: z.ZodType<AgentPermissionRequest, unknown> =
   z.object({
@@ -553,13 +552,16 @@ const ToolCallCanceledPayloadSchema = ToolCallBasePayloadSchema.extend({
   error: z.null(),
 });
 
-const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown> = z.union([
-  ToolCallRunningPayloadSchema,
-  ToolCallCompletedPayloadSchema,
-  ToolCallFailedPayloadSchema,
-  ToolCallCanceledPayloadSchema,
-]);
+const ToolCallTimelineItemPayloadSchema: z.ZodType<ToolCallTimelineItem, unknown> =
+  z.discriminatedUnion("status", [
+    ToolCallRunningPayloadSchema,
+    ToolCallCompletedPayloadSchema,
+    ToolCallFailedPayloadSchema,
+    ToolCallCanceledPayloadSchema,
+  ]);
 
+// zod-aot 0.20.4 miscompiles this as a nested discriminated union by omitting
+// the inner tool_call branch from the generated outer dispatch.
 export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknown> = z.union([
   z.object({
     type: z.literal("user_message"),
@@ -3204,7 +3206,9 @@ export const SetDaemonConfigResponseMessageSchema = z.object({
 
 export const ReadProjectConfigResponseMessageSchema = z.object({
   type: z.literal("read_project_config_response"),
-  payload: z.discriminatedUnion("ok", [
+  // zod-aot 0.2.0 miscompiles boolean discriminators as string options
+  // (`"true"`/`"false"`), so keep this sequential until upstream fixes it.
+  payload: z.union([
     z.object({
       requestId: z.string(),
       repoRoot: z.string(),
@@ -3223,7 +3227,9 @@ export const ReadProjectConfigResponseMessageSchema = z.object({
 
 export const WriteProjectConfigResponseMessageSchema = z.object({
   type: z.literal("write_project_config_response"),
-  payload: z.discriminatedUnion("ok", [
+  // zod-aot 0.2.0 miscompiles boolean discriminators as string options
+  // (`"true"`/`"false"`), so keep this sequential until upstream fixes it.
+  payload: z.union([
     z.object({
       requestId: z.string(),
       repoRoot: z.string(),

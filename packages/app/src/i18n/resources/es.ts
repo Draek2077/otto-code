@@ -791,11 +791,19 @@ export const es: TranslationResources = {
         tooLarge: "La diferencia es demasiado grande para mostrarse",
         unified: "Diferencia unificada",
         split: "Diferencia de lado a lado",
+        switchToUnified: "Cambiar a diferencia unificada",
+        switchToSplit: "Cambiar a diferencia lado a lado",
+        showTreeView: "Mostrar árbol de carpetas",
+        showFlatView: "Mostrar lista plana de archivos",
+        options: "Opciones de diferencia",
         hideWhitespace: "Ocultar espacios en blanco",
+        showWhitespace: "Mostrar espacios en blanco",
         scrollLongLines: "Desplazarse por largas filas",
         wrapLongLines: "Envolver largas filas",
         collapseAll: "Contraer todos los archivos",
         expandAll: "Expandir todos los archivos",
+        collapseAllFolders: "Contraer todas las carpetas",
+        expandAllFolders: "Expandir todas las carpetas",
         refreshing: "Refrescante",
         refresh: "Refrescar",
         refreshState: "Actualizar el estado de git yGitHub",
@@ -1169,6 +1177,12 @@ export const es: TranslationResources = {
         uninstallFailed: "No se pueden desinstalar las habilidades de orquestación.",
       },
     },
+  },
+  rootError: {
+    kicker: "Algo salió mal",
+    title: "Otto tuvo un problema.",
+    body: "Vuelve a intentarlo para recargar la app. Si sigue ocurriendo, incluye los detalles de abajo al reportarlo.",
+    details: "Detalles",
   },
   startup: {
     errorTitle: "algo salió mal",
@@ -1629,6 +1643,7 @@ export const es: TranslationResources = {
     },
     backToWorkspace: "Atrás",
     addHost: "Agregar anfitrión",
+    enableBuiltInDaemon: "Activar el demonio integrado",
     projects: "Proyectos",
     projectList: {
       hostLoadFailed: "No se pudieron cargar proyectos desde el host{{hostName}}:{{message}}",
@@ -1637,7 +1652,6 @@ export const es: TranslationResources = {
     groupInfo: "Acerca de{{title}}",
     sections: {
       general: "General",
-      daemon: "Daemon",
       appearance: "Apariencia",
       shortcuts: "Atajos",
       integrations: "Integraciones",
@@ -1652,7 +1666,7 @@ export const es: TranslationResources = {
       providers: "Proveedores",
       usage: "Uso",
       terminals: "Terminals",
-      host: "Host",
+      host: "Resumen",
     },
     general: {
       title: "General",
@@ -1691,6 +1705,11 @@ export const es: TranslationResources = {
           keepRunning: "Mantener en ejecución",
           stopOnClose: "Detener al cerrar",
         },
+      },
+      autoExpandReasoning: {
+        label: "Siempre expandir razonamiento",
+        description:
+          "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
       },
       language: {
         label: "Idioma",
@@ -1827,6 +1846,9 @@ export const es: TranslationResources = {
             full: "Full",
           },
         },
+      },
+      detailLevel: {
+        title: "Nivel de detalle",
       },
       fonts: {
         title: "Fuentes",

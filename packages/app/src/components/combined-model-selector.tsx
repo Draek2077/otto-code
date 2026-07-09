@@ -4,12 +4,11 @@ import {
   View,
   Text,
   Pressable,
-  ActivityIndicator,
   type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
 import {
@@ -21,15 +20,30 @@ import {
   StarFilled,
 } from "@/components/icons/material-icons";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { Button } from "@/components/ui/button";
-import { compactUp } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
+import {
+  Combobox,
+  ComboboxItem,
+  type ComboboxOption,
+  type ComboboxProps,
+} from "@/components/ui/combobox";
+import { getProviderIcon } from "@/components/provider-icons";
+import {
+  buildSelectedTriggerLabel,
+  filterAndRankModelRows,
+  getAllProviderModelRows,
+  getProviderModelRows,
+  resolveSelectedModelLabel,
+  type ProviderSelectionModelRow,
+  type ProviderSelectorProvider,
+} from "@/provider-selection/provider-selection";
+
 const IS_WEB = platformIsWeb;
-
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
-
 const EMPTY_COMBOBOX_OPTIONS: ComboboxOption[] = [];
 
 function noop() {}
@@ -55,21 +69,68 @@ function drillDownRowStyle({
     pressed && styles.drillDownRowPressed,
   ];
 }
-import { getProviderIcon } from "@/components/provider-icons";
-import {
-  buildSelectedTriggerLabel,
-  filterAndRankModelRows,
-  getAllProviderModelRows,
-  getProviderModelRows,
-  resolveSelectedModelLabel,
-  type ProviderSelectionModelRow,
-  type ProviderSelectorProvider,
-} from "@/provider-selection/provider-selection";
 
 const DESKTOP_PROVIDER_VIEW_MIN_HEIGHT = 220;
 const DESKTOP_PROVIDER_VIEW_MAX_HEIGHT = 400;
 const DESKTOP_PROVIDER_VIEW_BASE_HEIGHT = 80;
 const DESKTOP_MODEL_ROW_HEIGHT = 40;
+
+const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedSearch = withUnistyles(Search);
+const ThemedSettings = withUnistyles(Settings);
+const ThemedStar = withUnistyles(Star);
+const ThemedStarFilled = withUnistyles(StarFilled);
+
+const foregroundMutedMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+
+const headerSettingsMapping = (disabled: boolean) => (theme: Theme) => ({
+  color: disabled ? theme.colors.border : theme.colors.foregroundMuted,
+});
+
+// Material Symbols have no `fill` prop — the filled state swaps to the
+// StarFilled glyph instead.
+const favoriteStarMapping =
+  (isFavorite: boolean, hovered: boolean) =>
+  (theme: Theme): { color: string } => {
+    if (isFavorite) {
+      return { color: theme.colors.palette.amber[500] };
+    }
+    return {
+      color: hovered ? theme.colors.foregroundMuted : theme.colors.border,
+    };
+  };
+
+type ProviderGlyphTone = "muted" | "foreground";
+
+function ProviderGlyph({
+  provider,
+  size,
+  tone = "muted",
+}: {
+  provider: string;
+  size: number;
+  tone?: ProviderGlyphTone;
+}) {
+  const Icon = getProviderIcon(provider);
+  const color =
+    tone === "foreground" ? styles.providerIconForeground.color : styles.providerIconMuted.color;
+  return <Icon size={size} color={color} />;
+}
+
+function HeaderSettingsIcon({ disabled }: { disabled: boolean }) {
+  const uniProps = useMemo(() => headerSettingsMapping(disabled), [disabled]);
+  return <ThemedSettings size={ICON_SIZE.sm} uniProps={uniProps} />;
+}
+
+function FavoriteStar({ isFavorite, hovered }: { isFavorite: boolean; hovered: boolean }) {
+  const uniProps = useMemo(() => favoriteStarMapping(isFavorite, hovered), [hovered, isFavorite]);
+  const ThemedIcon = isFavorite ? ThemedStarFilled : ThemedStar;
+  return <ThemedIcon size={ICON_SIZE.md} uniProps={uniProps} />;
+}
 
 type SelectorView =
   | { kind: "all" }
@@ -97,6 +158,8 @@ interface CombinedModelSelectorProps {
   isRetryingProvider?: boolean;
   disabled?: boolean;
   serverId?: string | null;
+  desktopPlacement?: ComboboxProps["desktopPlacement"];
+  desktopMinWidth?: number;
   /**
    * Render the custom trigger as a full-width form field: the outer Pressable
    * becomes a transparent passthrough that stretches its child edge-to-edge and
@@ -157,9 +220,7 @@ function ModelRow({
   onPress: () => void;
   onToggleFavorite?: (provider: string, modelId: string) => void;
 }) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const ProviderIcon = getProviderIcon(row.provider);
 
   const handleToggleFavorite = useCallback(
     (event: GestureResponderEvent) => {
@@ -170,8 +231,8 @@ function ModelRow({
   );
 
   const leadingSlot = useMemo(
-    () => <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
-    [ProviderIcon, theme.iconSize.sm, theme.colors.foregroundMuted],
+    () => <ProviderGlyph provider={row.provider} size={ICON_SIZE.sm} />,
+    [row.provider],
   );
   const trailingSlot = useMemo(
     () =>
@@ -186,28 +247,10 @@ function ModelRow({
           }
           testID={`favorite-model-${row.provider}-${row.modelId}`}
         >
-          {({ hovered }) => {
-            let starColor: string;
-            if (isFavorite) starColor = theme.colors.palette.amber[500];
-            else if (hovered) starColor = theme.colors.foregroundMuted;
-            else starColor = theme.colors.border;
-            const StarIcon = isFavorite ? StarFilled : Star;
-            return <StarIcon size={theme.iconSize.sm} color={starColor} />;
-          }}
+          {({ hovered }) => <FavoriteStar isFavorite={isFavorite} hovered={Boolean(hovered)} />}
         </Pressable>
       ) : null,
-    [
-      onToggleFavorite,
-      handleToggleFavorite,
-      isFavorite,
-      row.provider,
-      row.modelId,
-      theme.colors.palette.amber,
-      theme.colors.foregroundMuted,
-      theme.colors.border,
-      theme.iconSize.sm,
-      t,
-    ],
+    [onToggleFavorite, handleToggleFavorite, isFavorite, row.provider, row.modelId, t],
   );
 
   return (
@@ -309,9 +352,7 @@ function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { ho
 }
 
 function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const ProvIcon = getProviderIcon(provider.id);
   const selection = provider.modelSelection;
 
   const handlePress = useCallback(() => {
@@ -331,18 +372,16 @@ function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps
   } else if (selection.kind === "loading") {
     stateNode = (
       <View style={styles.rowStateInline}>
-        <ActivityIndicator
-          size="small"
-          color={theme.colors.foregroundMuted}
-          style={styles.rowSpinner}
-        />
+        <View style={styles.rowSpinner}>
+          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        </View>
         <Text style={styles.drillDownCount}>{t("modelSelector.loadingShort")}</Text>
       </View>
     );
   } else {
     stateNode = (
       <View style={styles.rowStateInline}>
-        <AlertTriangle size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ThemedAlertTriangle size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
         <Text style={styles.drillDownCount}>{t("modelSelector.error")}</Text>
       </View>
     );
@@ -350,11 +389,11 @@ function GroupProviderButton({ provider, onDrillDown }: GroupProviderButtonProps
 
   return (
     <Pressable onPress={handlePress} style={drillDownRowStyle}>
-      <ProvIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      <ProviderGlyph provider={provider.id} size={ICON_SIZE.sm} />
       <Text style={styles.drillDownText}>{provider.label}</Text>
       <View style={styles.drillDownTrailing}>
         {stateNode}
-        <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
       </View>
     </Pressable>
   );
@@ -450,14 +489,13 @@ function ProviderErrorEmptyState({
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
 }) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const handleRetry = useCallback(() => {
     onRetryProvider?.(providerId);
   }, [onRetryProvider, providerId]);
   return (
     <View style={styles.emptyState}>
-      <AlertTriangle size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+      <ThemedAlertTriangle size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{message}</Text>
       {onRetryProvider ? (
         <Button variant="default" size="sm" onPress={handleRetry} disabled={isRetryingProvider}>
@@ -481,7 +519,6 @@ function SelectorContent({
   onRetryProvider,
   isRetryingProvider,
 }: SelectorContentProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const normalizedQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
   const selectedViewProvider = useMemo(
@@ -505,7 +542,7 @@ function SelectorContent({
   const hasResults = favoriteRows.length > 0 || providers.length > 0;
   const emptyState = (
     <View style={styles.emptyState}>
-      <Search size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+      <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
     </View>
   );
@@ -518,11 +555,9 @@ function SelectorContent({
     if (drillSelection.kind === "loading") {
       return (
         <View style={styles.emptyState}>
-          <ActivityIndicator
-            size="small"
-            color={theme.colors.foregroundMuted}
-            style={styles.rowSpinner}
-          />
+          <View style={styles.rowSpinner}>
+            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+          </View>
           <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
         </View>
       );
@@ -589,9 +624,10 @@ export function CombinedModelSelector({
   isRetryingProvider = false,
   disabled = false,
   serverId = null,
+  desktopPlacement,
+  desktopMinWidth,
   triggerFill = false,
 }: CombinedModelSelectorProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -647,7 +683,6 @@ export function CombinedModelSelector({
   );
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
-  const ProviderIcon = hasSelectedProvider ? getProviderIcon(selectedProvider) : null;
 
   const selectedModelLabel = useMemo(() => {
     return resolveSelectedModelLabel({
@@ -754,7 +789,6 @@ export function CombinedModelSelector({
     if (view.kind === "all") {
       return { title: t("modelSelector.title") };
     }
-    const ProviderIconForView = getProviderIcon(view.providerId);
     const headerActions = (
       <Pressable
         onPress={openProviderSettings}
@@ -767,17 +801,12 @@ export function CombinedModelSelector({
         })}
         testID={`selector-header-settings-${view.providerId}`}
       >
-        <Settings
-          size={theme.iconSize.sm}
-          color={!serverId ? theme.colors.border : theme.colors.foregroundMuted}
-        />
+        <HeaderSettingsIcon disabled={!serverId} />
       </Pressable>
     );
     return {
       title: view.providerLabel,
-      leading: ProviderIconForView ? (
-        <ProviderIconForView size={theme.iconSize.md} color={theme.colors.foreground} />
-      ) : undefined,
+      leading: <ProviderGlyph provider={view.providerId} size={ICON_SIZE.md} tone="foreground" />,
       back: singleProviderView ? undefined : { onPress: handleBackToAll },
       actions: headerActions,
       search: {
@@ -793,15 +822,10 @@ export function CombinedModelSelector({
     singleProviderView,
     serverId,
     openProviderSettings,
-    theme.colors.border,
-    theme.colors.foregroundMuted,
     handleBackToAll,
     handleSearchQueryChange,
     searchResetKey,
     t,
-    theme.iconSize.md,
-    theme.iconSize.sm,
-    theme.colors.foreground,
   ]);
 
   return (
@@ -839,8 +863,8 @@ export function CombinedModelSelector({
           accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
           testID="combined-model-selector"
         >
-          {ProviderIcon ? (
-            <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          {hasSelectedProvider ? (
+            <ProviderGlyph provider={selectedProvider} size={ICON_SIZE.md} />
           ) : null}
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
@@ -854,8 +878,8 @@ export function CombinedModelSelector({
         open={isOpen}
         onOpenChange={handleOpenChange}
         anchorRef={anchorRef}
-        desktopPlacement="top-start"
-        desktopMinWidth={360}
+        desktopPlacement={desktopPlacement}
+        desktopMinWidth={desktopMinWidth}
         desktopFixedHeight={desktopFixedHeight}
         header={sheetHeader}
         mobileChildrenScrollEnabled={view.kind !== "provider" || !isNative}
@@ -876,7 +900,7 @@ export function CombinedModelSelector({
           />
         ) : (
           <View style={styles.sheetLoadingState}>
-            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
             <Text style={styles.sheetLoadingText}>{t("modelSelector.loadingSelector")}</Text>
           </View>
         )}
@@ -887,16 +911,14 @@ export function CombinedModelSelector({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    // Matches the mode chip's chrome (`AgentModeControl`'s `chip` style) so the two
-    // toolbar controls line up — both scale with `compactUp` on compact form factors.
-    height: compactUp(28),
+    height: 28,
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: compactUp(theme.spacing[1]),
-    paddingHorizontal: compactUp(theme.spacing[2]),
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius["2xl"],
   },
   triggerHovered: {
@@ -912,10 +934,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
   customTriggerWrapper: {
@@ -952,10 +971,7 @@ const styles = StyleSheet.create((theme) => ({
     ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   sectionHeadingText: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
@@ -976,10 +992,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   drillDownText: {
     flex: 1,
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
-    },
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   drillDownTrailing: {
@@ -988,10 +1001,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   drillDownCount: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
   },
   rowStateInline: {
@@ -1061,5 +1071,11 @@ const styles = StyleSheet.create((theme) => ({
   sheetLoadingText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  providerIconMuted: {
+    color: theme.colors.foregroundMuted,
+  },
+  providerIconForeground: {
+    color: theme.colors.foreground,
   },
 }));

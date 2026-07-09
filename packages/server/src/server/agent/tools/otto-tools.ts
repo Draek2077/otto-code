@@ -3,7 +3,7 @@ import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
 import type { AgentMode, AgentProvider } from "../agent-sdk-types.js";
-import type { AgentManager, WaitForAgentResult } from "../agent-manager.js";
+import type { AgentManager } from "../agent-manager.js";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -11,7 +11,7 @@ import {
   AgentPermissionResponseSchema,
   AgentSnapshotPayloadSchema,
 } from "../../messages.js";
-import type { AgentListItemPayload } from "../../messages.js";
+import type { AgentListItemPayload, FirstAgentContext } from "../../messages.js";
 import {
   buildStoredAgentPayload,
   toAgentListItemPayload,
@@ -26,7 +26,6 @@ import {
   killTerminalsForWorkspace,
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
-import { WaitForAgentTracker } from "../wait-for-agent-tracker.js";
 import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
@@ -109,7 +108,11 @@ export interface OttoToolHostDependencies {
   clearWorkspaceArchiving?: ArchiveDependencies["clearWorkspaceArchiving"];
   createOttoWorktree?: CreateOttoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
-  ensureWorkspaceForCreate?: (cwd: string) => Promise<string>;
+  ensureWorkspaceForCreate?: (
+    cwd: string,
+    firstAgentContext?: FirstAgentContext,
+  ) => Promise<string>;
+  browserToolsEnabled?: boolean;
   browserToolsBroker?: BrowserToolsBroker | null;
   previewDevServers?: DevServerManager | null;
   /**
@@ -508,7 +511,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     logger,
   } = options;
   const childLogger = logger.child({ module: "agent", component: "otto-tool-catalog" });
-  const waitTracker = new WaitForAgentTracker(logger);
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
 
   const parseToolInput = async (tool: OttoToolDefinition, input: unknown): Promise<unknown> => {
@@ -1100,7 +1102,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     return toCatalog();
   }
 
-  if (options.browserToolsBroker) {
+  if (options.browserToolsEnabled && options.browserToolsBroker) {
     registerBrowserTools({
       registerTool,
       broker: options.browserToolsBroker,
@@ -1227,7 +1229,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       const currentSnapshot = agentManager.getAgent(snapshot.id) ?? snapshot;
       const guidance =
         callerAgentId && notifyOnFinish && initialPromptStarted
-          ? "You will get notified when the created agent finishes, errors, or needs permission. Do not call wait_for_agent or poll for status; continue with other work until the notification arrives."
+          ? "You will get notified when the created agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
           : undefined;
       const response = {
         content: [],
@@ -1268,7 +1270,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   async function resolveCreateAgentToolArgs(args: unknown): Promise<ResolvedCreateAgentToolArgs> {
     if (callerAgentId) {
       const parsed = agentToAgentCreateAgentArgsSchema.parse(args);
-      const { cwd, workspaceId, worktree } = await resolveCreateAgentWorkspace(parsed.workspace);
+      const { cwd, workspaceId, worktree } = await resolveCreateAgentWorkspace(parsed.workspace, {
+        prompt: parsed.initialPrompt,
+      });
       return {
         kind: "agent-scoped",
         parsedArgs: parsed,
@@ -1282,7 +1286,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     if (parsedArgs.relationship.kind === "subagent") {
       throw new Error("relationship subagent requires an agent-scoped tool session");
     }
-    const { cwd, workspaceId, worktree } = await resolveCreateAgentWorkspace(parsedArgs.workspace);
+    const { cwd, workspaceId, worktree } = await resolveCreateAgentWorkspace(parsedArgs.workspace, {
+      prompt: parsedArgs.initialPrompt,
+    });
     return {
       kind: "top-level",
       parsedArgs,
@@ -1396,6 +1402,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
 
   async function resolveCreateAgentWorkspace(
     workspace: AgentToAgentCreateAgentArgs["workspace"] | TopLevelCreateAgentArgs["workspace"],
+    firstAgentContext: FirstAgentContext | undefined,
   ): Promise<{
     cwd: string | undefined;
     workspaceId: string | undefined;
@@ -1447,7 +1454,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       }
       return {
         cwd,
-        workspaceId: await options.ensureWorkspaceForCreate(cwd),
+        workspaceId: await options.ensureWorkspaceForCreate(cwd, firstAgentContext),
         worktree: undefined,
       };
     }
@@ -1487,83 +1494,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   }
 
   registerTool(
-    "wait_for_agent",
-    {
-      title: "Wait for agent",
-      description:
-        "Block until the agent requests permission or the current run completes. Returns the pending permission (if any) and recent activity summary.",
-      inputSchema: {
-        agentId: z.string().describe("Agent identifier returned by the create_agent tool"),
-      },
-      outputSchema: {
-        agentId: z.string(),
-        status: AgentStatusEnum,
-        permission: AgentPermissionRequestPayloadSchema.nullable(),
-        lastMessage: z.string().nullable(),
-      },
-    },
-    async ({ agentId }, { signal }) => {
-      const abortController = new AbortController();
-      const cleanupFns: Array<() => void> = [];
-
-      const cleanup = () => {
-        while (cleanupFns.length) {
-          const fn = cleanupFns.pop();
-          try {
-            fn?.();
-          } catch {
-            // ignore cleanup errors
-          }
-        }
-      };
-
-      const forwardExternalAbort = () => {
-        if (!abortController.signal.aborted) {
-          const reason = signal?.reason ?? new Error("wait_for_agent aborted");
-          abortController.abort(reason);
-        }
-      };
-
-      if (signal) {
-        if (signal.aborted) {
-          forwardExternalAbort();
-        } else {
-          signal.addEventListener("abort", forwardExternalAbort, { once: true });
-          cleanupFns.push(() => signal.removeEventListener("abort", forwardExternalAbort));
-        }
-      }
-
-      const unregister = waitTracker.register(agentId, (reason) => {
-        if (!abortController.signal.aborted) {
-          abortController.abort(new Error(reason ?? "wait_for_agent cancelled"));
-        }
-      });
-      cleanupFns.push(unregister);
-
-      try {
-        const result: WaitForAgentResult = await waitForAgentWithTimeout(agentManager, agentId, {
-          signal: abortController.signal,
-        });
-
-        const validJson = ensureValidJson({
-          agentId,
-          status: result.status,
-          permission: sanitizePermissionRequest(result.permission),
-          lastMessage: result.lastMessage,
-        });
-
-        const response = {
-          content: [],
-          structuredContent: validJson,
-        };
-        return response;
-      } finally {
-        cleanup();
-      }
-    },
-  );
-
-  registerTool(
     "send_agent_prompt",
     {
       title: "Send agent prompt",
@@ -1585,9 +1515,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       background = Boolean(callerAgentId),
       notifyOnFinish = Boolean(callerAgentId),
     }) => {
-      if (agentManager.hasInFlightRun(agentId)) {
-        waitTracker.cancel(agentId, "Agent run interrupted by new prompt");
-      }
       const shouldNotifyOnFinish = Boolean(callerAgentId && notifyOnFinish && background);
 
       await sendPromptToAgent({
@@ -1642,7 +1569,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         ...(shouldNotifyOnFinish
           ? {
               guidance:
-                "You will get notified when the prompted agent finishes, errors, or needs permission. Do not call wait_for_agent or poll for status; continue with other work until the notification arrives.",
+                "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives.",
             }
           : {}),
       };
@@ -1782,9 +1709,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         { agentManager, logger: childLogger },
         agentId,
       );
-      if (cancelled) {
-        waitTracker.cancel(agentId, "Agent run cancelled");
-      }
       return {
         content: [],
         structuredContent: ensureValidJson({ success: cancelled }),
@@ -1814,7 +1738,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         },
         agentId,
       );
-      waitTracker.cancel(agentId, "Agent archived");
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
@@ -1836,7 +1759,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
     async ({ agentId }) => {
       await closeAgentCommand({ agentManager }, agentId);
-      waitTracker.cancel(agentId, "Agent terminated");
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),

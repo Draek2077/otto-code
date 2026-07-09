@@ -37,6 +37,7 @@ import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenAICompatAgentClient, OPENAI_COMPAT_EXTENDS } from "./providers/openai-compat-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
+import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
 import {
@@ -660,6 +661,9 @@ function addDerivedProviders(
           }
           if (providerId === "kiro") {
             return new KiroACPAgentClient(acpOptions);
+          }
+          if (providerId === "traecli") {
+            return new TraeACPAgentClient(acpOptions);
           }
           return new GenericACPAgentClient(acpOptions);
         },

@@ -39,7 +39,7 @@ Root checkout dev is intentionally split across terminals:
 `OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
 
 - The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/otto-home.ts`).
-- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app. The home must persist across daemon restarts: it holds the daemon keypair, and a fresh home mints a new `serverId` that already-paired clients reject (host-runtime closes connections on serverId mismatch and re-probes forever — the UI symptom is a workspaces list that never finishes loading). Never point dev scripts at a throwaway/temp home.
+- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
 - **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/otto-home` and configured dev daemon endpoint.
 - **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/.dev/otto-home` from `$OTTO_SOURCE_CHECKOUT_PATH/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
@@ -58,7 +58,7 @@ OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived work
 - Root checkout dev daemon: `localhost:6868`.
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev:win` (Windows): `localhost:6868` for the daemon; runs daemon + Expo together via `scripts/dev.ps1`.
+- `npm run dev` (Windows): `localhost:6868` for the daemon.
 
 In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
@@ -188,10 +188,32 @@ The supervisor rotates `daemon.log`. Persisted `log.file.rotate` settings in
 `OTTO_LOG_ROTATE_SIZE` and `OTTO_LOG_ROTATE_COUNT` env vars override the
 defaults. The default rotation is `10m` x `3` files everywhere.
 
+### Agent Tool Catalog Measurement
+
+Measure the MCP `tools/list` payload that Otto injects into agents with:
+
+```bash
+npm run measure:agent-tools --workspace=@otto-code/server
+```
+
+The command reports compact JSON bytes, estimated tokens, field totals, largest
+tools, and the browser-tools delta. It defaults to the agent-scoped catalog; use
+`-- --scope=top-level` for the unaffiliated `/mcp/agents` shape and `-- --json`
+for machine-readable output.
+
 ## otto.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
 of commands. Both run sequentially.
+
+Lifecycle commands run in the worktree through a stable script shell: `bash`
+resolved from `PATH` on macOS/Linux, and PowerShell with `-NoProfile` on
+Windows. They inherit the daemon environment plus Otto's lifecycle variables;
+login and interactive shell startup files are not loaded, and Bash's `BASH_ENV`
+hook is unset. Daemon-run loop verify checks and ACP single-string terminal
+commands use the same non-login Bash behavior on macOS/Linux, but preserve their
+existing `cmd.exe /c` string semantics on Windows. Service scripts are separate:
+they launch in a terminal and receive the service environment described below.
 
 ```json
 {
@@ -296,6 +318,8 @@ npm run build:app-deps     # highlight -> protocol -> client -> expo-two-way-aud
 
 Use `npm run build:server` whenever you have changed any daemon/server-facing package and need clean cross-package types or runtime behavior.
 
+The app Metro config disables Watchman and uses Metro's node crawler for exports. Keep that invariant unless you have verified production app exports on machines with and without Watchman installed; distro Watchman builds can differ in capabilities and change Metro's crawl behavior.
+
 For tighter loops, you can rebuild a single workspace:
 
 - Changed `packages/protocol/src/*` or `packages/client/src/*`: `npm run build:client`.
@@ -321,7 +345,7 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.js`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally

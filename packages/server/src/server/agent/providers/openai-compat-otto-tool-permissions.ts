@@ -41,7 +41,6 @@ const READ_ONLY_TOOLS = new Set([
   "preview_logs",
   // Agent/terminal/schedule/provider observation.
   "speak",
-  "wait_for_agent",
   "get_agent_status",
   "get_agent_activity",
   "list_agents",
