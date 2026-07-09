@@ -1254,6 +1254,20 @@ function SheetFeatureItem({
     [disabled],
   );
 
+  const selectValueTriggerStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.sheetSelectValue,
+      pressed && styles.sheetSelectValuePressed,
+      disabled && styles.disabledSheetSelect,
+    ],
+    [disabled],
+  );
+
+  const selectRowStyle = useMemo(
+    () => [styles.sheetSelect, disabled && styles.disabledSheetSelect],
+    [disabled],
+  );
+
   if (feature.type === "toggle") {
     const FeatureIcon = getFeatureIcon(feature.icon);
     return (
@@ -1285,33 +1299,40 @@ function SheetFeatureItem({
   }
 
   if (feature.type === "select") {
+    const FeatureIcon = getFeatureIcon(feature.icon);
     const selectedOption = feature.options.find((o) => o.id === feature.value);
     return (
       <View style={styles.sheetSection}>
-        <DropdownMenu
-          open={openSelector === featureSelector}
-          onOpenChange={handleFeatureOpenChange}
-        >
-          <DropdownTrigger
-            disabled={disabled}
-            style={togglePressableStyle}
-            accessibilityRole="button"
-            accessibilityLabel={getFeatureTooltip(feature)}
-            testID={`agent-feature-${feature.id}`}
+        <View style={selectRowStyle}>
+          <FeatureIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+          <Text style={styles.sheetSelectText}>{feature.label}</Text>
+          <DropdownMenu
+            open={openSelector === featureSelector}
+            onOpenChange={handleFeatureOpenChange}
           >
-            <Text style={styles.sheetSelectText}>{selectedOption?.label ?? feature.label}</Text>
-          </DropdownTrigger>
-          <DropdownMenuContent side="top" align="start">
-            {feature.options.map((option) => (
-              <FeatureOptionMenuItem
-                key={option.id}
-                option={option}
-                selected={option.id === feature.value}
-                onSelect={handleSelectOption}
-              />
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownTrigger
+              disabled={disabled}
+              style={selectValueTriggerStyle}
+              accessibilityRole="button"
+              accessibilityLabel={getFeatureTooltip(feature)}
+              testID={`agent-feature-${feature.id}`}
+            >
+              <Text style={styles.sheetSelectValueText}>
+                {selectedOption?.label ?? feature.label}
+              </Text>
+            </DropdownTrigger>
+            <DropdownMenuContent side="top" align="end">
+              {feature.options.map((option) => (
+                <FeatureOptionMenuItem
+                  key={option.id}
+                  option={option}
+                  selected={option.id === feature.value}
+                  onSelect={handleSelectOption}
+                />
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </View>
       </View>
     );
   }
@@ -1816,5 +1837,22 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
+  },
+  sheetSelectValue: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  sheetSelectValuePressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  sheetSelectValueText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
 }));
