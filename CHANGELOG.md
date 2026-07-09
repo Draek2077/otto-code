@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.4.3 - 2026-07-09
+
+### Added
+
+- Agents can create artifacts on their own mid-conversation instead of only through the Artifacts screen
+- Claude subagent tasks now show up as their own watchable rows in the agent track, so you can follow (and stop) each one instead of reading a flattened log
+- Sidebar has new buttons to expand or collapse every project or status group at once
+- Chat groups a run of 3+ completed actions into one collapsible row with a plain-language summary ("Read 4 files, edited 2 files, ran a command"), toggleable in Settings > Appearance > Agents
+- Pane tab tools (preview, artifacts, splits) reveal on hover and can be pinned so your favorites always stay visible
+- OpenAI Compatible providers can auto-compact the conversation as context fills up, with an adjustable threshold in agent settings
+- Schedules screen has a new card layout with a project filter and a Failed tab showing why a run didn't succeed
+
+### Improved
+
+- OpenAI Compatible providers now resume with your full conversation history, including past tool calls and reasoning, instead of stopping after 40 messages
+- OpenAI Compatible providers connect to MCP servers in parallel, so one slow or unreachable server no longer delays the start of your turn
+- Switching between workspaces feels faster and no longer flashes a blank background
+- Scripts button now follows the workspace tools sidebar setting instead of always staying in the header
+- Sidebar rows are more compact and project/status headers look more distinct from workspace rows; hover cards no longer flash when passing the pointer over the list
+- Chat text spacing is more consistent, with no more doubled gaps between paragraphs
+- fast-agent provider updated to 0.9.4
+
+### Fixed
+
+- Scroll-to-bottom button area no longer blocks clicks beside it
+- Creating a new terminal focuses the pane you clicked, not whichever pane happened to be active
+- Black chat background setting no longer bleeds into the top bar and tabs on web until you restart the app
+- Scrolled chat content no longer makes parts of the desktop title bar undraggable
+- Download page no longer links to macOS or app-store builds this fork doesn't provide
+
+### Security
+
+- OpenAI Compatible agents' web fetch tool now asks for permission in every mode except full auto-approval, closing a way for agents to send data out without a prompt
+- Strengthened protection against DNS-rebinding and requests to cloud metadata or internal network addresses
+- Auto-approving edits now only applies inside your workspace folder; edits elsewhere still ask first
+- Fixed an edit bug where special characters like `$1` in the replacement text could be misapplied instead of inserted as-is
+
 ## 0.4.2 - 2026-07-08
 
 ### Added
