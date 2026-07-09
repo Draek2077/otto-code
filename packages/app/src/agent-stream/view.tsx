@@ -41,6 +41,7 @@ import {
   MessageOuterSpacingProvider,
   type InlinePathTarget,
 } from "@/components/message";
+import { ActionGroup } from "@/components/action-group";
 import { PlanCard } from "@/components/plan-card";
 import type { StreamItem } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
@@ -85,6 +86,7 @@ import {
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
@@ -518,6 +520,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
 
+    const groupConsecutiveActions = useAppSettings().settings.groupConsecutiveActions;
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         agentStatus: agent.status,
@@ -525,8 +528,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
+        groupConsecutiveActions,
       });
-    }, [agent.status, isMobile, effectiveStreamHead, effectiveStreamItems]);
+    }, [
+      agent.status,
+      isMobile,
+      effectiveStreamHead,
+      effectiveStreamItems,
+      groupConsecutiveActions,
+    ]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
@@ -691,6 +701,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
     );
 
+    const renderActionGroupItem = useCallback(
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "action_group" }>) => {
+        return (
+          <ActionGroupSlot
+            itemId={item.id}
+            onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
+            items={item.items}
+            cwd={agent.cwd}
+            isLastInSequence={layoutItem.isLastInToolSequence}
+            onOpenFilePath={handleToolCallOpenFile}
+          />
+        );
+      },
+      [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+    );
+
     const renderStreamItemContent = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const item = layoutItem.item;
@@ -706,6 +732,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
           case "tool_call":
             return renderToolCallItem(layoutItem, item);
+
+          case "action_group":
+            return renderActionGroupItem(layoutItem, item);
 
           case "activity_log":
             return (
@@ -733,7 +762,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return null;
         }
       },
-      [renderUserMessageItem, renderAssistantMessageItem, renderThoughtItem, renderToolCallItem],
+      [
+        renderUserMessageItem,
+        renderAssistantMessageItem,
+        renderThoughtItem,
+        renderToolCallItem,
+        renderActionGroupItem,
+      ],
     );
 
     const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
@@ -1051,6 +1086,26 @@ function ToolCallSlot({
     [onInlineDetailsExpandedChangeByItemId, itemId],
   );
   return <ToolCall {...rest} onInlineDetailsExpandedChange={handleExpandedChange} />;
+}
+
+interface ActionGroupSlotProps extends Omit<
+  ComponentProps<typeof ActionGroup>,
+  "onInlineDetailsExpandedChange"
+> {
+  itemId: string;
+  onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
+}
+
+function ActionGroupSlot({
+  itemId,
+  onInlineDetailsExpandedChangeByItemId,
+  ...rest
+}: ActionGroupSlotProps) {
+  const handleExpandedChange = useCallback(
+    (expanded: boolean) => onInlineDetailsExpandedChangeByItemId(itemId, expanded),
+    [onInlineDetailsExpandedChangeByItemId, itemId],
+  );
+  return <ActionGroup {...rest} onInlineDetailsExpandedChange={handleExpandedChange} />;
 }
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);

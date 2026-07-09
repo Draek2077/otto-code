@@ -179,8 +179,13 @@ function resolveCompletedFooter(input: {
 
 function isToolSequenceItem(
   item: StreamItem | null,
-): item is Extract<StreamItem, { kind: "tool_call" | "thought" | "todo_list" }> {
-  return item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
+): item is Extract<StreamItem, { kind: "tool_call" | "thought" | "todo_list" | "action_group" }> {
+  return (
+    item?.kind === "tool_call" ||
+    item?.kind === "thought" ||
+    item?.kind === "todo_list" ||
+    item?.kind === "action_group"
+  );
 }
 
 function getToolSequence(input: {
