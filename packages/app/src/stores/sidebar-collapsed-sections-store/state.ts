@@ -48,6 +48,48 @@ export function setProjectCollapsed(
   return { ...state, collapsedProjectKeys: next };
 }
 
+export function setSectionsCollapsed(
+  state: CollapsedProjectsState,
+  input: {
+    projectKeys?: readonly string[];
+    statusGroupKeys?: readonly string[];
+    collapsed: boolean;
+  },
+): CollapsedProjectsState {
+  return {
+    ...state,
+    collapsedProjectKeys: applySectionsCollapsed(
+      state.collapsedProjectKeys,
+      input.projectKeys,
+      input.collapsed,
+    ),
+    collapsedStatusGroupKeys: applySectionsCollapsed(
+      state.collapsedStatusGroupKeys,
+      input.statusGroupKeys,
+      input.collapsed,
+    ),
+  };
+}
+
+function applySectionsCollapsed(
+  current: Set<string>,
+  keys: readonly string[] | undefined,
+  collapsed: boolean,
+): Set<string> {
+  if (!keys || keys.length === 0) {
+    return current;
+  }
+  const next = new Set(current);
+  for (const key of keys) {
+    if (collapsed) {
+      next.add(key);
+    } else {
+      next.delete(key);
+    }
+  }
+  return next;
+}
+
 export function serializeCollapsedProjects(state: CollapsedProjectsState): {
   collapsedProjectKeys: string[];
   collapsedStatusGroupKeys: string[];

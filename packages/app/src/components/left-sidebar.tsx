@@ -5,6 +5,8 @@ import {
   FolderPlusBold,
   History,
   HomeBold,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
   Plus,
   Search,
   ServerBold,
@@ -54,6 +56,7 @@ import {
   useSidebarWorkspacesList,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useStatusModeWorkspacePlacements } from "@/hooks/use-status-mode-workspaces";
+import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
@@ -858,7 +861,11 @@ function MobileSidebar({
                 variant="compact"
               />
             </View>
-            <WorkspacesSectionHeader />
+            <WorkspacesSectionHeader
+              projects={projects}
+              statusWorkspacePlacements={statusWorkspacePlacements}
+              groupMode={groupMode}
+            />
             <Pressable
               style={styles.mobileCloseButton}
               onPress={closeSidebar}
@@ -1043,7 +1050,11 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader />
+        <WorkspacesSectionHeader
+          projects={projects}
+          statusWorkspacePlacements={statusWorkspacePlacements}
+          groupMode={groupMode}
+        />
 
         {isInitialLoad ? (
           <SidebarAgentListSkeleton />
@@ -1085,17 +1096,51 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+function WorkspacesSectionHeader({
+  projects,
+  statusWorkspacePlacements,
+  groupMode,
+}: {
+  projects: SidebarProjectEntry[];
+  statusWorkspacePlacements: SidebarStatusWorkspacePlacement[];
+  groupMode: SidebarGroupMode;
+}) {
   const { theme } = useUnistyles();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
+  const setSectionsCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.setSectionsCollapsed,
+  );
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const searchButtonStyle = useCallback(
+  const handleSetAllCollapsed = useCallback(
+    (collapsed: boolean) => {
+      if (groupMode === "status") {
+        const statusGroupKeys = Array.from(
+          new Set(statusWorkspacePlacements.map((placement) => placement.statusBucket)),
+        );
+        setSectionsCollapsed({ statusGroupKeys, collapsed });
+        return;
+      }
+      setSectionsCollapsed({
+        projectKeys: projects.map((project) => project.projectKey),
+        collapsed,
+      });
+    },
+    [groupMode, projects, setSectionsCollapsed, statusWorkspacePlacements],
+  );
+  const handleExpandAll = useCallback(() => handleSetAllCollapsed(false), [handleSetAllCollapsed]);
+  const handleCollapseAll = useCallback(() => handleSetAllCollapsed(true), [handleSetAllCollapsed]);
+  const headerIconButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
       (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
     ],
     [],
+  );
+  const headerIconColor = useCallback(
+    ({ hovered = false, pressed }: { hovered?: boolean; pressed: boolean }) =>
+      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted,
+    [theme.colors.foreground, theme.colors.foregroundMuted],
   );
 
   return (
@@ -1108,21 +1153,58 @@ function WorkspacesSectionHeader() {
               accessibilityRole="button"
               accessibilityLabel="Open command center"
               testID="sidebar-command-center-search"
-              style={searchButtonStyle}
+              style={headerIconButtonStyle}
               onPress={handleSearchPress}
             >
               {({ hovered, pressed }) => (
-                <Search
-                  size={theme.iconSize.sm}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
+                <Search size={theme.iconSize.sm} color={headerIconColor({ hovered, pressed })} />
               )}
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Expand all"
+              testID="sidebar-expand-all"
+              style={headerIconButtonStyle}
+              onPress={handleExpandAll}
+            >
+              {({ hovered, pressed }) => (
+                <ListChevronsUpDown
+                  size={theme.iconSize.sm}
+                  color={headerIconColor({ hovered, pressed })}
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <HeaderIconTooltipContent label="Expand all" />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Collapse all"
+              testID="sidebar-collapse-all"
+              style={headerIconButtonStyle}
+              onPress={handleCollapseAll}
+            >
+              {({ hovered, pressed }) => (
+                <ListChevronsDownUp
+                  size={theme.iconSize.sm}
+                  color={headerIconColor({ hovered, pressed })}
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <HeaderIconTooltipContent label="Collapse all" />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
