@@ -15,35 +15,66 @@ import type { ActionGroupMemberItem } from "@/types/stream";
 
 const SUMMARY_KEYS: Record<ActionGroupCategory, { one: string; many: string }> = {
   read: {
-    one: "agentStream.actionGroup.summary.fileRead",
-    many: "agentStream.actionGroup.summary.filesRead",
+    one: "agentStream.actionGroup.summary.readFile",
+    many: "agentStream.actionGroup.summary.readFiles",
+  },
+  edit: {
+    one: "agentStream.actionGroup.summary.editedFile",
+    many: "agentStream.actionGroup.summary.editedFiles",
   },
   write: {
-    one: "agentStream.actionGroup.summary.fileWritten",
-    many: "agentStream.actionGroup.summary.filesWritten",
+    one: "agentStream.actionGroup.summary.wroteFile",
+    many: "agentStream.actionGroup.summary.wroteFiles",
   },
-  search: {
-    one: "agentStream.actionGroup.summary.searchCompleted",
-    many: "agentStream.actionGroup.summary.searchesCompleted",
+  codeSearch: {
+    one: "agentStream.actionGroup.summary.searchedCode",
+    many: "agentStream.actionGroup.summary.searchedCodeMany",
+  },
+  webSearch: {
+    one: "agentStream.actionGroup.summary.searchedWeb",
+    many: "agentStream.actionGroup.summary.searchedWebMany",
+  },
+  fetch: {
+    one: "agentStream.actionGroup.summary.fetchedPage",
+    many: "agentStream.actionGroup.summary.fetchedPages",
   },
   command: {
-    one: "agentStream.actionGroup.summary.commandRun",
-    many: "agentStream.actionGroup.summary.commandsRun",
+    one: "agentStream.actionGroup.summary.ranCommand",
+    many: "agentStream.actionGroup.summary.ranCommands",
+  },
+  browser: {
+    one: "agentStream.actionGroup.summary.tookBrowserAction",
+    many: "agentStream.actionGroup.summary.tookBrowserActions",
+  },
+  preview: {
+    one: "agentStream.actionGroup.summary.tookPreviewAction",
+    many: "agentStream.actionGroup.summary.tookPreviewActions",
+  },
+  artifact: {
+    one: "agentStream.actionGroup.summary.createdArtifact",
+    many: "agentStream.actionGroup.summary.createdArtifacts",
+  },
+  worktree: {
+    one: "agentStream.actionGroup.summary.setUpWorktree",
+    many: "agentStream.actionGroup.summary.setUpWorktrees",
   },
   agent: {
-    one: "agentStream.actionGroup.summary.agentTask",
-    many: "agentStream.actionGroup.summary.agentTasks",
+    one: "agentStream.actionGroup.summary.ranAgentTask",
+    many: "agentStream.actionGroup.summary.ranAgentTasks",
   },
   thought: {
     one: "agentStream.actionGroup.summary.thought",
-    many: "agentStream.actionGroup.summary.thoughts",
+    many: "agentStream.actionGroup.summary.thoughtMany",
   },
   other: {
-    one: "agentStream.actionGroup.summary.toolCall",
-    many: "agentStream.actionGroup.summary.toolCalls",
+    one: "agentStream.actionGroup.summary.usedTool",
+    many: "agentStream.actionGroup.summary.usedTools",
   },
 };
 
+// "Read 2 files, searched web, wrote file" — the phrases are stored lowercase
+// and the joined summary is sentence-cased, so only the first one leads with a
+// capital letter.
 function buildActionGroupSummary(t: TFunction, items: ActionGroupMemberItem[]): string {
   const counts = countActionGroupCategories(items);
   const parts: string[] = [];
@@ -54,7 +85,8 @@ function buildActionGroupSummary(t: TFunction, items: ActionGroupMemberItem[]): 
     }
     parts.push(t(SUMMARY_KEYS[category][count === 1 ? "one" : "many"], { count }));
   }
-  return parts.join(", ");
+  const summary = parts.join(", ");
+  return summary.charAt(0).toUpperCase() + summary.slice(1);
 }
 
 function isFailedMember(member: ActionGroupMemberItem): boolean {
@@ -146,10 +178,6 @@ export const ActionGroup = memo(function ActionGroup({
     };
   }, [onInlineDetailsExpandedChange]);
 
-  const label =
-    items.length === 1
-      ? t("agentStream.actionGroup.count", { count: items.length })
-      : t("agentStream.actionGroup.countPlural", { count: items.length });
   const summary = useMemo(() => buildActionGroupSummary(t, items), [t, items]);
   const isLoading = items.some(isActiveActionMember);
   const isError = items.some(isFailedMember);
@@ -173,8 +201,7 @@ export const ActionGroup = memo(function ActionGroup({
   return (
     <ExpandableBadge
       testID="action-group-badge"
-      label={label}
-      secondaryLabel={summary}
+      label={summary}
       icon={Layers}
       isExpanded={isExpanded}
       onToggle={handleToggle}
