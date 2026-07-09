@@ -48,17 +48,17 @@ describe("getMarkdownListSpacing", () => {
 
     expect(getMarkdownListSpacing(list, [body])).toEqual({
       marginTop: 4,
-      marginBottom: 16,
+      marginBottom: 12,
     });
   });
 
-  it("does not add bottom spacing after a list at the end of a markdown block", () => {
+  it("keeps standard block spacing after a list at the end of a markdown block", () => {
     const list = { type: "bullet_list" };
     const body = { type: "body", children: [list] };
 
     expect(getMarkdownListSpacing(list, [body])).toEqual({
       marginTop: 4,
-      marginBottom: 0,
+      marginBottom: 12,
     });
   });
 

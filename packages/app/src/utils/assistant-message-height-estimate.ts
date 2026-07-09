@@ -5,7 +5,6 @@ import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 const ASSISTANT_MARKDOWN_BLOCK_HEIGHT_CACHE_LIMIT = 1000;
 const ASSISTANT_MARKDOWN_BLOCK_ESTIMATE_WIDTH = MAX_CONTENT_WIDTH - 16;
 const ASSISTANT_MESSAGE_VERTICAL_PADDING = 24;
-const ASSISTANT_MARKDOWN_BLOCK_GAP = 12;
 
 interface MarkdownBlockHeightInput {
   block: string;
@@ -97,11 +96,10 @@ function estimateAssistantMarkdownBlockHeightFromCache(markdown: string): number
     blockHeight += cachedHeight;
   }
 
-  return (
-    ASSISTANT_MESSAGE_VERTICAL_PADDING +
-    blockHeight +
-    ASSISTANT_MARKDOWN_BLOCK_GAP * Math.max(0, blocks.length - 1)
-  );
+  // Measured block heights include each block's own trailing markdown margin
+  // (child margins contribute to the measuring View's layout height), so no
+  // per-block gap is added here — the block containers render margin-less.
+  return ASSISTANT_MESSAGE_VERTICAL_PADDING + blockHeight;
 }
 
 export function estimateAssistantMessageHeightFromCache(markdown: string): number | null {

@@ -13,6 +13,13 @@ const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
  * chat scope — light-theme text on the pure-black chat pane. See
  * `styles/theme-color-ref.ts`.
  *
+ * Vertical rhythm: React Native (Yoga) does NOT collapse adjacent margins the
+ * way browsers do — a block's marginBottom and the next block's marginTop
+ * always stack. Blocks therefore own their spacing via marginBottom, and top
+ * margins stay small: they are the *extra* gap added on top of whatever the
+ * previous block already left. Sizing a marginTop as if it were the whole gap
+ * (browser instinct) doubles the whitespace at every `---` + heading boundary.
+ *
  * Usage:
  *   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
  *   <Markdown style={markdownStyles}>{content}</Markdown>
@@ -61,17 +68,17 @@ export function createMarkdownStyles(theme: Theme) {
     // HEADINGS
     // =========================================================================
 
+    // No underline borders on headings: models separate sections with `---`
+    // anyway, and an hr plus an underlined heading renders as two stacked
+    // lines that read as a glitch.
     heading1: {
       ...webSelectableTextStyle,
       fontSize: theme.fontSize["3xl"],
       fontWeight: theme.fontWeight.bold,
       color: themeColorRef(theme, "foreground"),
-      marginTop: theme.spacing[6],
+      marginTop: theme.spacing[3],
       marginBottom: theme.spacing[3],
       lineHeight: 32,
-      borderBottomWidth: 1,
-      borderBottomColor: themeColorRef(theme, "border"),
-      paddingBottom: theme.spacing[2],
     },
 
     heading2: {
@@ -79,12 +86,9 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize["2xl"],
       fontWeight: theme.fontWeight.bold,
       color: themeColorRef(theme, "foreground"),
-      marginTop: theme.spacing[6],
+      marginTop: theme.spacing[3],
       marginBottom: theme.spacing[3],
       lineHeight: 28,
-      borderBottomWidth: 1,
-      borderBottomColor: themeColorRef(theme, "border"),
-      paddingBottom: theme.spacing[2],
     },
 
     heading3: {
@@ -92,7 +96,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.xl,
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
-      marginTop: theme.spacing[4],
+      marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
       lineHeight: 26,
     },
@@ -102,7 +106,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.lg,
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
-      marginTop: theme.spacing[4],
+      marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
       lineHeight: 24,
     },
@@ -112,7 +116,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
-      marginTop: theme.spacing[3],
+      marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
       lineHeight: 22,
     },
@@ -122,7 +126,7 @@ export function createMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foregroundMuted"),
-      marginTop: theme.spacing[3],
+      marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
       lineHeight: 20,
       textTransform: "uppercase" as const,
@@ -325,10 +329,13 @@ export function createMarkdownStyles(theme: Theme) {
     // HORIZONTAL RULE
     // =========================================================================
 
+    // Models often emit `---` directly before a heading; both hr margins plus
+    // the heading's marginTop land in that one gap (no collapsing), so hr
+    // spacing must stay modest for the combined section break to look sane.
     hr: {
       backgroundColor: themeColorRef(theme, "border"),
       height: 1,
-      marginVertical: theme.spacing[6],
+      marginVertical: theme.spacing[2],
     },
 
     // =========================================================================
@@ -371,7 +378,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
     heading1: {
       ...baseStyles.heading1,
       fontSize: theme.fontSize.xl,
-      marginTop: theme.spacing[4],
+      marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
       lineHeight: 26,
     },
@@ -387,7 +394,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
     heading3: {
       ...baseStyles.heading3,
       fontSize: theme.fontSize.base,
-      marginTop: theme.spacing[3],
+      marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
       lineHeight: 22,
     },

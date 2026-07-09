@@ -27,7 +27,9 @@ describe("assistant message height estimate", () => {
       height: 41.1,
     });
 
-    expect(estimateAssistantMessageHeightFromCache("First paragraph\n\nSecond paragraph")).toBe(97);
+    // 24 vertical padding + ceil(18.2) + ceil(41.1); measured heights already
+    // include each block's own trailing markdown margin, so no per-block gap.
+    expect(estimateAssistantMessageHeightFromCache("First paragraph\n\nSecond paragraph")).toBe(85);
   });
 
   it("falls back to image metadata when markdown blocks are not measured", () => {
