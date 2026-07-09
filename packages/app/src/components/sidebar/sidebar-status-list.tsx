@@ -723,16 +723,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[4],
   },
-  statusGroupBlock: {
-    marginBottom: theme.spacing[1],
-  },
+  // Rows own the 2px inter-item gap via marginBottom; the block adds nothing extra.
+  statusGroupBlock: {},
   statusWorkspaceListContainer: {},
   statusGroupRow: {
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
+    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
+    minHeight: 32,
+    paddingVertical: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing[2],
+    marginBottom: 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -769,7 +769,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusGroupTitle: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // One step above the workspace rows (sm) so the group header reads as the
+    // parent by size, not just weight. Explicit compact bump like the rows.
+    fontSize: {
+      xs: theme.fontSize.base + 2,
+      md: theme.fontSize.base,
+    },
     fontWeight: "400",
     minWidth: 0,
     flexShrink: 1,
@@ -778,9 +783,10 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceRow: {
-    minHeight: 36,
-    marginBottom: theme.spacing[1],
-    paddingVertical: theme.spacing[2],
+    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
+    minHeight: 32,
+    marginBottom: 2,
+    paddingVertical: theme.spacing[1.5],
     paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,

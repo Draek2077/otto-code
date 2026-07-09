@@ -2491,14 +2491,14 @@ const styles = StyleSheet.create((theme) => ({
   projectListContainer: {
     width: "100%",
   },
-  projectBlock: {
-    marginBottom: theme.spacing[1],
-  },
+  // Rows own the 2px inter-item gap via marginBottom; the block adds nothing extra.
+  projectBlock: {},
   workspaceListContainer: {},
   newWorkspaceGhostRow: {
     minHeight: 32,
     marginLeft: theme.spacing[6],
     marginRight: theme.spacing[1],
+    marginBottom: 2,
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
@@ -2553,11 +2553,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectRow: {
     position: "relative",
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
+    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
+    minHeight: 32,
+    paddingVertical: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing[1],
+    marginBottom: 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -2599,8 +2600,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectLeadingVisualSlot: {
     position: "relative",
-    width: theme.iconSize.md,
-    height: theme.iconSize.md,
+    width: theme.iconSize.lg,
+    height: theme.iconSize.lg,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
@@ -2614,12 +2615,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectIconFallbackText: {
     // Raw literal (no matching `theme.fontSize` token this small) — scaled explicitly
-    // alongside `projectLeadingVisualSlot`'s `theme.iconSize.md` box doubling.
-    fontSize: compactUp(9),
+    // alongside `projectLeadingVisualSlot`'s `theme.iconSize.lg` box doubling.
+    fontSize: compactUp(11),
   },
   projectTitle: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // One step above the workspace rows (sm) so the project header reads as the
+    // group parent by size, not just weight. Explicit compact bump like the rows.
+    fontSize: {
+      xs: theme.fontSize.base + 2,
+      md: theme.fontSize.base,
+    },
     fontWeight: "400",
     minWidth: 0,
     flexShrink: 1,
@@ -2694,9 +2700,10 @@ const styles = StyleSheet.create((theme) => ({
     right: theme.spacing[2],
   },
   workspaceRow: {
-    minHeight: 36,
-    marginBottom: theme.spacing[1],
-    paddingVertical: theme.spacing[2],
+    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
+    minHeight: 32,
+    marginBottom: 2,
+    paddingVertical: theme.spacing[1.5],
     paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,

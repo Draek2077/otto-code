@@ -88,6 +88,7 @@ function computeHoverCardPosition({
 }
 
 const HOVER_GRACE_MS = 100;
+const HOVER_OPEN_DELAY_MS = 500;
 const HOVER_CARD_WIDTH = 260;
 
 interface WorkspaceHoverCardProps {
@@ -125,12 +126,20 @@ function WorkspaceHoverCardDesktop({
   const contentRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerHoveredRef = useRef(false);
 
   const clearGraceTimer = useCallback(() => {
     if (graceTimerRef.current) {
       clearTimeout(graceTimerRef.current);
       graceTimerRef.current = null;
+    }
+  }, []);
+
+  const clearOpenTimer = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
     }
   }, []);
 
@@ -145,15 +154,20 @@ function WorkspaceHoverCardDesktop({
   const handleTriggerEnter = useCallback(() => {
     triggerHoveredRef.current = true;
     clearGraceTimer();
-    if (!isDragging) {
-      setOpen(true);
-    }
+    if (isDragging || openTimerRef.current) return;
+    openTimerRef.current = setTimeout(() => {
+      openTimerRef.current = null;
+      if (triggerHoveredRef.current) {
+        setOpen(true);
+      }
+    }, HOVER_OPEN_DELAY_MS);
   }, [clearGraceTimer, isDragging]);
 
   const handleTriggerLeave = useCallback(() => {
     triggerHoveredRef.current = false;
+    clearOpenTimer();
     scheduleClose();
-  }, [scheduleClose]);
+  }, [clearOpenTimer, scheduleClose]);
 
   // While open, the safe zone covers trigger + content + the bridge between
   // them. Close only fires when the pointer leaves the safe zone; re-entering
@@ -170,16 +184,18 @@ function WorkspaceHoverCardDesktop({
   useEffect(() => {
     if (isDragging) {
       clearGraceTimer();
+      clearOpenTimer();
       setOpen(false);
     }
-  }, [isDragging, clearGraceTimer]);
+  }, [isDragging, clearGraceTimer, clearOpenTimer]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearGraceTimer();
+      clearOpenTimer();
     };
-  }, [clearGraceTimer]);
+  }, [clearGraceTimer, clearOpenTimer]);
 
   return (
     <View
