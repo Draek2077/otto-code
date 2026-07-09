@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { TerminalE2EHarness, withTerminalInApp } from "./helpers/terminal-dsl";
 import { getTerminalBufferText, waitForTerminalContent } from "./helpers/terminal-perf";
+import { splitPaneFromCatalogMenu } from "./helpers/workspace-tabs";
 
 interface TerminalSize {
   rows: number | null;
@@ -74,7 +75,7 @@ async function verifySplitDownResizesPty(page: Page, harness: TerminalE2EHarness
 
     // Split the pane downward. This focuses the new empty pane, so the terminal
     // pane is unfocused at the exact moment its container shrinks.
-    await page.getByRole("button", { name: "Split pane down" }).first().click();
+    await splitPaneFromCatalogMenu(page, "down");
 
     // The local xterm renderer shrinks immediately on split - the part of the
     // behaviour that already works and that makes the bug look like nothing changed.

@@ -314,29 +314,45 @@ export async function expectInstallInProgress(page: Page): Promise<void> {
 }
 
 /**
- * Clicks the daemon management switch and waits for dialog.ask to fire in the
- * mock, then returns the captured call args (message + title). The mock auto-
- * dismisses via confirmShouldAccept=false so callers can assert copy without
- * worrying about state changes.
+ * Clicks the daemon management switch and waits for the in-app confirm dialog
+ * (ConfirmDialogHost) to open. Callers assert copy with
+ * expectDaemonManagementConfirmDialog and settle it with confirmConfirmDialog
+ * or cancelConfirmDialog.
  */
-export async function interceptDaemonManagementConfirmDialog(
-  page: Page,
-): Promise<ConfirmDialogCall> {
+export async function openDaemonManagementConfirmDialog(page: Page): Promise<void> {
   await page.getByRole("switch", { name: "Manage built-in daemon" }).click();
-  await page.waitForFunction(() => !!window.__capturedDialogCall, { timeout: 5_000 });
-  return page.evaluate(() => window.__capturedDialogCall!);
+  await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 5_000 });
 }
 
+export async function confirmConfirmDialog(page: Page): Promise<void> {
+  await page.getByTestId("confirm-dialog-confirm").click();
+  await expect(page.getByTestId("confirm-dialog")).toBeHidden({ timeout: 5_000 });
+}
+
+export async function cancelConfirmDialog(page: Page): Promise<void> {
+  await page.getByTestId("confirm-dialog-cancel").click();
+  await expect(page.getByTestId("confirm-dialog")).toBeHidden({ timeout: 5_000 });
+}
+
+/**
+ * Flips the daemon management switch. Disabling goes through the in-app
+ * confirm dialog, which this helper accepts; enabling has no dialog.
+ */
 export async function toggleDaemonManagement(
   page: Page,
-  _action: "enable" | "disable",
+  action: "enable" | "disable",
 ): Promise<void> {
   await page.getByRole("switch", { name: "Manage built-in daemon" }).click();
+  if (action === "disable") {
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 5_000 });
+    await confirmConfirmDialog(page);
+  }
 }
 
-export function expectDaemonManagementConfirmDialog(args: ConfirmDialogCall): void {
-  expect(args.title).toBe("Pause built-in daemon");
-  expect(args.message).toContain("stop the built-in daemon immediately");
+export async function expectDaemonManagementConfirmDialog(page: Page): Promise<void> {
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toContainText("Pause built-in daemon");
+  await expect(dialog).toContainText("stop the built-in daemon immediately");
 }
 
 export async function expectDaemonManagementEnabled(page: Page): Promise<void> {

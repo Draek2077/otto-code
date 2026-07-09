@@ -4,7 +4,7 @@ import { createIdleAgent } from "./helpers/archive-tab";
 import { expectComposerVisible } from "./helpers/composer";
 import { seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
-import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
+import { splitPaneFromCatalogMenu, waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
 
 test.describe("Workspace pane mounting", () => {
   test("opening the first split pane keeps the existing agent composer mounted", async ({
@@ -37,7 +37,7 @@ test.describe("Workspace pane mounting", () => {
         .elementHandle();
       expect(originalComposer).not.toBeNull();
 
-      await page.getByRole("button", { name: "Split pane right" }).first().click();
+      await splitPaneFromCatalogMenu(page, "right");
       await expect(page.getByTestId("message-input-root").filter({ visible: true })).toHaveCount(
         2,
         { timeout: 30_000 },

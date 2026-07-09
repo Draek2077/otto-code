@@ -12,9 +12,6 @@ function pinToggle(page: Page, target: PinnedTabTarget) {
 }
 
 function menuItemFor(page: Page, target: PinnedTabTarget) {
-  if (target.kind === "draft") {
-    return page.getByTestId("workspace-new-tab-menu-agent");
-  }
   return page.getByTestId(`workspace-new-tab-menu-${target.kind}`);
 }
 

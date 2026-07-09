@@ -120,7 +120,7 @@ test.describe("Schedules", () => {
     cleanupTasks.push(() => deleteSeededSchedule(workspace, scheduleId));
 
     await page.goto(buildSchedulesRoute());
-    const row = page.getByTestId(`schedule-row-${scheduleId}`);
+    const row = page.getByTestId(`schedule-card-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await expect(row).toContainText(workspace.projectDisplayName, { timeout: 30_000 });
 
@@ -183,7 +183,7 @@ test.describe("Schedules", () => {
     });
     await page.reload();
 
-    const row = page.getByTestId(`schedule-row-${scheduleId}`);
+    const row = page.getByTestId(`schedule-card-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
 
@@ -216,7 +216,7 @@ test.describe("Schedules", () => {
     cleanupTasks.push(() => deleteSeededSchedule(workspace, scheduleId));
 
     await page.goto(buildSchedulesRoute());
-    const row = page.getByTestId(`schedule-row-${scheduleId}`);
+    const row = page.getByTestId(`schedule-card-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
     const formSheet = page.getByTestId("schedule-form-sheet");

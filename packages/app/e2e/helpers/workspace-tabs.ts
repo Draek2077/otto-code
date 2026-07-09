@@ -26,6 +26,26 @@ export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Splits the focused pane through the tab bar's more-actions catalog menu.
+ * The inline split buttons only exist when their tool is pinned (and are
+ * hover-revealed), so the always-present catalog row is the stable path.
+ */
+export async function splitPaneFromCatalogMenu(
+  page: Page,
+  direction: "right" | "down",
+): Promise<void> {
+  const trigger = page
+    .getByTestId("workspace-new-tab-menu-trigger")
+    .filter({ visible: true })
+    .first();
+  await expect(trigger).toBeVisible({ timeout: 10_000 });
+  await trigger.click();
+  const item = page.getByTestId(`workspace-new-tab-menu-split-${direction}`);
+  await expect(item).toBeVisible({ timeout: 10_000 });
+  await item.click();
+}
+
 export async function getVisibleWorkspaceAgentTabIds(page: Page): Promise<string[]> {
   const tabs = page.locator('[data-testid^="workspace-tab-agent_"]').filter({ visible: true });
   const count = await tabs.count();
