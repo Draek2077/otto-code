@@ -613,21 +613,28 @@ function startMetro(input: {
   buffer: ReturnType<typeof createLineBuffer>;
 }): ChildProcess {
   const appDir = path.resolve(__dirname, "..");
-  const child = spawn("npx", ["expo", "start", "--web", "--port", String(input.metroPort)], {
-    cwd: appDir,
-    env: {
-      ...process.env,
-      BROWSER: "none",
-      ...(process.env.E2E_DESKTOP_RUNTIME === "1"
-        ? {
-            OTTO_WEB_PLATFORM: "electron",
-            EXPO_PUBLIC_LOCAL_DAEMON: `127.0.0.1:${input.daemonPort}`,
-          }
-        : {}),
+  // Run the Expo CLI's JS entry with the current Node binary instead of
+  // spawning `npx` — `npx` is not directly spawnable on Windows (ENOENT).
+  const expoCli = require.resolve("expo/bin/cli", { paths: [appDir] });
+  const child = spawn(
+    process.execPath,
+    [expoCli, "start", "--web", "--port", String(input.metroPort)],
+    {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        BROWSER: "none",
+        ...(process.env.E2E_DESKTOP_RUNTIME === "1"
+          ? {
+              OTTO_WEB_PLATFORM: "electron",
+              EXPO_PUBLIC_LOCAL_DAEMON: `127.0.0.1:${input.daemonPort}`,
+            }
+          : {}),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
     },
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-  });
+  );
 
   child.stdout?.on("data", (data: Buffer) => {
     const lines = data
@@ -666,10 +673,16 @@ interface DaemonSpawnArgs {
 
 function startDaemon(args: DaemonSpawnArgs): ChildProcess {
   const serverDir = path.resolve(__dirname, "../../..", "packages/server");
-  const tsxBin = execSync("which tsx").toString().trim();
+  // Resolve the tsx CLI entry through the module graph instead of `which tsx`
+  // so the daemon starts on Windows too (`which` is POSIX-only).
+  const tsxCli = require.resolve("tsx/cli", { paths: [serverDir] });
+  // On Windows the inherited env key is `Path`; adding a second `PATH` key
+  // makes the child's resolved PATH unpredictable (git stops resolving), so
+  // extend whichever key the parent process actually has.
+  const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
   const env = withDisabledE2ESpeechEnv({
     ...process.env,
-    PATH: `${args.fakeEditorBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    [pathKey]: `${args.fakeEditorBinDir}${path.delimiter}${process.env[pathKey] ?? ""}`,
     OTTO_HOME: args.ottoHome,
     OTTO_E2E_EDITOR_RECORD_PATH: args.editorRecordPath,
     OTTO_SERVER_ID: "srv_e2e_test_daemon",
@@ -680,7 +693,7 @@ function startDaemon(args: DaemonSpawnArgs): ChildProcess {
     NODE_ENV: "development",
   });
 
-  const child = spawn(tsxBin, ["scripts/supervisor-entrypoint.ts", "--dev"], {
+  const child = spawn(process.execPath, [tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"], {
     cwd: serverDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
