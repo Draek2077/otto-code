@@ -2589,7 +2589,19 @@ function WorkspaceScreenContent({
     [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey],
   );
 
-  const handleCreateTerminal = useStableEvent(createTerminal);
+  const handleCreateTerminal = useCallback(
+    (input?: { paneId?: string; profile?: TerminalProfileInput }) => {
+      // Focus the pane synchronously, at click time, rather than waiting for
+      // the daemon round-trip in createTerminal's onSuccess. Otherwise the
+      // tab lands wherever the layout's focused pane happens to be once the
+      // async create resolves, not the pane the button was clicked in.
+      if (input?.paneId && persistenceKey) {
+        focusWorkspacePane(persistenceKey, input.paneId);
+      }
+      createTerminal(input);
+    },
+    [createTerminal, focusWorkspacePane, persistenceKey],
+  );
 
   const handleCreateTerminalWithProfile = useCallback(
     (profile: TerminalProfileInput) => {
