@@ -1,0 +1,8 @@
+# Normalize all text files to LF so Windows checkouts (core.autocrlf=true)
+# match what CI checks: oxfmt flags CRLF working-tree files, making local
+# `npm run format:check` fail on files that are clean in the index.
+* text=auto eol=lf
+
+# Windows scripts that must keep CRLF endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
