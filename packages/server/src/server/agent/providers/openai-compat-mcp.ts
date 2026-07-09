@@ -166,21 +166,37 @@ export class OpenAICompatMcpManager {
   }
 
   private async connectAll(): Promise<void> {
+    // Connect in parallel — sequential connects stack the 10s timeout per
+    // unreachable server ahead of the session's first turn. Tool snapshots
+    // still run in config order so namespaced-name dedup suffixes stay
+    // deterministic.
+    const entries = Object.entries(this.servers);
+    const results = await Promise.allSettled(
+      entries.map(([name, config]) => this.connectServer(name, config)),
+    );
     const usedNames = new Set<string>();
-    for (const [name, config] of Object.entries(this.servers)) {
+    for (const [index, [name]] of entries.entries()) {
+      const result = results[index]!;
+      if (result.status === "rejected") {
+        this.recordConnectionFailure(name, result.reason);
+        continue;
+      }
+      this.connected.push(result.value);
       try {
-        const server = await this.connectServer(name, config);
-        this.connected.push(server);
-        await this.snapshotTools(server, usedNames);
+        await this.snapshotTools(result.value, usedNames);
       } catch (error) {
-        const message = this.redact(error instanceof Error ? error.message : String(error));
-        this.connectionFailures.push({ name, error: message });
-        this.logger?.warn(
-          { provider: this.providerId, mcpServer: name, error: message },
-          "MCP server connection failed",
-        );
+        this.recordConnectionFailure(name, error);
       }
     }
+  }
+
+  private recordConnectionFailure(name: string, error: unknown): void {
+    const message = this.redact(error instanceof Error ? error.message : String(error));
+    this.connectionFailures.push({ name, error: message });
+    this.logger?.warn(
+      { provider: this.providerId, mcpServer: name, error: message },
+      "MCP server connection failed",
+    );
   }
 
   private async connectServer(name: string, config: McpServerConfig): Promise<ConnectedServer> {
