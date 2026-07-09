@@ -190,6 +190,16 @@ Any match beyond benign `r-pointerEvents-* > *` rules from react-native-web is a
 
 Avoid the bug by preferring the wrapper-`View` pattern from the previous section whenever possible: put `{ flex: 1, backgroundColor: surface0 }` on a plain `View` and give the `ScrollView` a theme-free `style`/`contentContainerStyle`. That keeps `withUnistyles` off the hot path and avoids the hash collision. Only reach for `withUnistyles(ScrollView)` when a wrapper view is genuinely awkward, and when you do, give the wrapped style a distinctive shape (extra key, different layout) so it does not hash-collide with a common panel background used elsewhere.
 
+## `pointerEvents` In Stylesheets Is Silently Broken On Web
+
+Do not put `pointerEvents` inside a `StyleSheet.create` style (or any style object) — pass it as a **prop** on the `View`/`Animated.View`.
+
+On web, Unistyles emits style properties as literal CSS, so `pointerEvents: "box-none"` becomes `pointer-events: box-none` — not a valid CSS value. The browser drops the declaration and the element silently keeps `pointer-events: auto`. Nothing errors, nothing warns; the overlay just eats clicks. The `pointerEvents` **prop** goes through react-native-web instead, which maps `box-none`/`box-only` to real CSS classes (the benign `r-pointerEvents-* > *` rules mentioned above).
+
+Concrete regression we hit: the agent stream's scroll-to-bottom overlay — a full-width absolute strip with `pointerEvents: "box-none"` in its Unistyles stylesheet. On web the strip blocked clicks on action groups to the left and right of the button. Moving `box-none` to the prop fixed it.
+
+Second sharp edge once you use the prop: RNW's `box-none` implementation resets **direct children** to `pointer-events: auto`. If a full-width layout wrapper sits between the `box-none` container and the interactive element, that wrapper becomes clickable again and blocks the same area. The interactive element must be the direct child of the `box-none` view — don't sandwich a centering wrapper in between.
+
 ## Hidden Sheet Content
 
 `@gorhom/bottom-sheet` can keep `BottomSheetModal` content mounted while the sheet is hidden. That matters during Otto's startup theme transition: a header node can be created under the initial adaptive theme, stay hidden, then appear later with stale native style values even though surrounding content has re-rendered correctly.

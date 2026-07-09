@@ -907,18 +907,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               style={stylesheet.scrollToBottomContainer}
               entering={scrollIndicatorFadeIn}
               exiting={scrollIndicatorFadeOut}
+              // Prop, not style: unistyles emits style pointerEvents as literal
+              // (invalid) CSS on web, so only the prop actually stops this strip
+              // from eating clicks. RNW's box-none sets direct children back to
+              // auto, so the button must be the direct child — no full-width
+              // wrapper in between.
+              pointerEvents="box-none"
             >
-              <ChatWidthBounds style={stylesheet.scrollToBottomInner}>
-                <Pressable
-                  style={stylesheet.scrollToBottomButton}
-                  onPress={scrollToBottom}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("agentStream.scrollToBottom")}
-                  testID="scroll-to-bottom-button"
-                >
-                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
-                </Pressable>
-              </ChatWidthBounds>
+              <Pressable
+                style={stylesheet.scrollToBottomButton}
+                onPress={scrollToBottom}
+                accessibilityRole="button"
+                accessibilityLabel={t("agentStream.scrollToBottom")}
+                testID="scroll-to-bottom-button"
+              >
+                <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+              </Pressable>
             </Animated.View>
           )}
         </View>
@@ -1388,12 +1392,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     bottom: 16,
     left: 0,
     right: 0,
-    alignItems: "center",
-    pointerEvents: "box-none",
-  },
-  scrollToBottomInner: {
-    width: "100%",
-    alignSelf: "center",
     alignItems: "center",
   },
   scrollToBottomButton: {
