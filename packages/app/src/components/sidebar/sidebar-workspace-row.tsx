@@ -728,9 +728,10 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceRow: {
-    minHeight: 36,
-    marginBottom: theme.spacing[1],
-    paddingVertical: theme.spacing[2],
+    // Match the compact sidebar header rows (New workspace / Artifacts / Schedules).
+    minHeight: 32,
+    marginBottom: 2,
+    paddingVertical: theme.spacing[1.5],
     paddingLeft: theme.spacing[2],
     paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
