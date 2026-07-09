@@ -36,6 +36,8 @@ interface WorkspaceOpenInEditorButtonProps {
   cwd: string;
   activeFile?: WorkspaceFileLocation | null;
   hideLabels?: boolean;
+  // Stretch to fill the available width (content stays centered).
+  fill?: boolean;
 }
 
 interface OpenTarget {
@@ -83,6 +85,7 @@ export function WorkspaceOpenInEditorButton({
   cwd,
   activeFile,
   hideLabels,
+  fill,
 }: WorkspaceOpenInEditorButtonProps) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -173,13 +176,20 @@ export function WorkspaceOpenInEditorButton({
     [openMutation, updatePreferredEditor],
   );
 
+  const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
+  const splitButtonStyle = useMemo(
+    () => [styles.splitButton, Boolean(fill) && styles.fillItem],
+    [fill],
+  );
+
   const primaryPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
+      Boolean(fill) && styles.fillItem,
       (Boolean(hovered) || pressed) && styles.splitButtonPrimaryHovered,
       openMutation.isPending && styles.splitButtonPrimaryDisabled,
     ],
-    [openMutation.isPending],
+    [fill, openMutation.isPending],
   );
 
   const caretTriggerStyle = useCallback(
@@ -201,8 +211,8 @@ export function WorkspaceOpenInEditorButton({
   }
 
   return (
-    <View style={styles.row}>
-      <View style={styles.splitButton}>
+    <View style={rowStyle}>
+      <View style={splitButtonStyle}>
         <Pressable
           testID="workspace-open-in-editor-primary"
           style={primaryPressableStyle}
@@ -230,7 +240,9 @@ export function WorkspaceOpenInEditorButton({
             <View style={styles.splitButtonContent}>
               {primaryOption.icon}
               {!hideLabels && (
-                <Text style={styles.splitButtonText}>{t("workspace.git.openInEditor.open")}</Text>
+                <Text style={styles.splitButtonText} numberOfLines={1}>
+                  {t("workspace.git.openInEditor.open")}
+                </Text>
               )}
             </View>
           )}
@@ -274,6 +286,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
+  fillItem: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
   splitButton: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -307,6 +324,7 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
+    flexShrink: 1,
   },
   splitButtonContent: {
     flexDirection: "row",

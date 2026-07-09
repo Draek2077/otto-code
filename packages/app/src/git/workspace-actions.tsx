@@ -17,6 +17,8 @@ interface WorkspaceGitActionsProps {
   serverId: string;
   cwd: string;
   hideLabels?: boolean;
+  // Stretch to fill the available width (content stays centered).
+  fill?: boolean;
 }
 
 const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
@@ -47,7 +49,7 @@ const ICONS = {
   archive: <ThemedArchive size={16} uniProps={mutedColorMapping} />,
 };
 
-export function WorkspaceGitActions({ serverId, cwd, hideLabels }: WorkspaceGitActionsProps) {
+export function WorkspaceGitActions({ serverId, cwd, hideLabels, fill }: WorkspaceGitActionsProps) {
   const { gitActions, isGit } = useGitActions({
     serverId,
     cwd,
@@ -58,5 +60,5 @@ export function WorkspaceGitActions({ serverId, cwd, hideLabels }: WorkspaceGitA
     return null;
   }
 
-  return <GitActionsSplitButton gitActions={gitActions} hideLabels={hideLabels} />;
+  return <GitActionsSplitButton gitActions={gitActions} hideLabels={hideLabels} fill={fill} />;
 }
