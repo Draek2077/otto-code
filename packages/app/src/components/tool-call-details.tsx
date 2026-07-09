@@ -844,9 +844,11 @@ const styles = StyleSheet.create((theme) => {
     },
     plainText: {
       fontFamily: theme.fontFamily.ui,
-      fontSize: theme.fontSize.base,
+      // Matches assistant prose (theme.fontSize.sm) — see createMarkdownStyles'
+      // `body`/`text` for the same convention.
+      fontSize: theme.fontSize.sm,
       color: theme.colors.foreground,
-      lineHeight: 22,
+      lineHeight: Math.round(theme.fontSize.sm * 1.4),
       overflowWrap: "anywhere",
     },
     sectionTitle: {
@@ -957,6 +959,7 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
       fontSize: theme.fontSize.sm,
       fontStyle: "italic",
+      padding: theme.spacing[3],
     },
     loadingContainer: {
       gap: theme.spacing[2],

@@ -194,9 +194,6 @@ const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
 let webToolCallShimmerRegistered = false;
 const SCROLL_EDGE_EPSILON = 0.5;
 
-// Font size for stream metadata (timestamps, durations, live elapsed timer).
-// Lives between theme.fontSize.xs (12) and theme.fontSize.sm (14); no token.
-export const STREAM_METADATA_FONT_SIZE = 13;
 type ScrollAxis = "x" | "y";
 
 function ensureWebToolCallShimmerKeyframes() {
@@ -393,7 +390,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   timestampText: {
     color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontSize: theme.fontSize.sm,
   },
 }));
 
@@ -586,7 +583,7 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
   },
   labelSizer: {
     color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontSize: theme.fontSize.sm,
     opacity: 0,
   },
   labelOverlay: {
@@ -594,7 +591,7 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     top: 0,
     left: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontSize: theme.fontSize.sm,
   },
 }));
 
@@ -1197,17 +1194,25 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     marginHorizontal: -13,
   },
   containerSpacing: {
-    marginBottom: theme.spacing[1],
+    marginBottom: theme.spacing[0],
   },
   containerLastInSequence: {
-    marginBottom: theme.spacing[2],
+    marginBottom: theme.spacing[1],
+  },
+  // An expanded row renders a visible bordered box (pressableExpanded +
+  // detailWrapper below). Collapsed rows are borderless, so they can sit
+  // nearly flush — but an expanded row needs real breathing room, or its
+  // border touches the next row's border and the two tool calls read as one
+  // merged box.
+  containerExpandedSpacing: {
+    marginBottom: theme.spacing[3],
   },
   pressable: {
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: "transparent",
     paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
+    paddingVertical: 2,
     overflow: "hidden",
   },
   pressablePressed: {
@@ -1234,7 +1239,9 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    // Matches assistant prose (theme.fontSize.sm) — chat is a working
+    // surface, not a document. See createMarkdownStyles' `body`/`text`.
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 0,
   },
@@ -1249,7 +1256,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     marginLeft: theme.spacing[2],
   },
@@ -1258,7 +1265,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   shimmerText: {
     color: "transparent",
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
   spacer: {
@@ -1451,16 +1458,15 @@ function NativeShimmerPeakSvg({ gradientId }: { gradientId: string }) {
 
 interface AssistantMessageBlockContainerProps {
   block: string;
-  marginBottom: number;
   children: ReactNode;
 }
 
-function AssistantMessageBlockContainer({
-  block,
-  marginBottom,
-  children,
-}: AssistantMessageBlockContainerProps) {
-  const style = useMemo(() => (marginBottom > 0 ? { marginBottom } : undefined), [marginBottom]);
+// No spacing of its own: the markdown styles inside each block already carry
+// the vertical rhythm (every block element leaves its own marginBottom), so a
+// container margin here would double every gap that splitMarkdownBlocks
+// creates. This keeps split rendering identical to rendering the same
+// markdown unsplit.
+function AssistantMessageBlockContainer({ block, children }: AssistantMessageBlockContainerProps) {
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
@@ -1468,11 +1474,7 @@ function AssistantMessageBlockContainer({
     },
     [block],
   );
-  return (
-    <View style={style} onLayout={isWeb ? handleLayout : undefined}>
-      {children}
-    </View>
-  );
+  return <View onLayout={isWeb ? handleLayout : undefined}>{children}</View>;
 }
 
 interface MemoizedMarkdownBlockProps {
@@ -1901,12 +1903,8 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   return (
     <View testID="assistant-message" style={assistantContainerStyle}>
-      {keyedBlocks.map(({ key, block }, index) => (
-        <AssistantMessageBlockContainer
-          key={key}
-          block={block}
-          marginBottom={index < keyedBlocks.length - 1 ? 12 : 0}
-        >
+      {keyedBlocks.map(({ key, block }) => (
+        <AssistantMessageBlockContainer key={key} block={block}>
           <MemoizedMarkdownBlock
             text={block}
             rules={markdownRules}
@@ -1940,14 +1938,14 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
   },
   headerLabel: {
     fontFamily: theme.fontFamily.ui,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   text: {
     fontFamily: theme.fontFamily.ui,
-    fontSize: theme.fontSize.base,
-    lineHeight: 22,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
     color: theme.colors.foreground,
   },
 }));
@@ -2192,7 +2190,7 @@ const compactionStylesheet = StyleSheet.create((theme) => ({
   },
   text: {
     fontFamily: theme.fontFamily.ui,
-    fontSize: 13,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
 }));
@@ -2281,7 +2279,7 @@ const todoListCardStylesheet = StyleSheet.create((theme) => ({
   itemText: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
   },
   itemTextCompleted: {
     color: theme.colors.foregroundMuted,
@@ -2289,7 +2287,7 @@ const todoListCardStylesheet = StyleSheet.create((theme) => ({
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
   },
 }));
 
@@ -2698,7 +2696,7 @@ function buildShimmerTextStyle(input: {
   };
 }
 
-const ExpandableBadge = memo(function ExpandableBadge({
+export const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
   secondaryLabel,
@@ -2865,16 +2863,26 @@ const ExpandableBadge = memo(function ExpandableBadge({
     ],
   );
 
+  const containerSpacingStyle = useMemo(() => {
+    // Expanded rows always need breathing room from their neighbors, even in
+    // contexts (the main chat stream) that disable outer spacing to keep
+    // collapsed tool-call pills tight — disableOuterSpacing predates the
+    // bordered expanded state and was never meant to gate it.
+    if (isExpanded) {
+      return expandableBadgeStylesheet.containerExpandedSpacing;
+    }
+    if (resolvedDisableOuterSpacing) {
+      return null;
+    }
+    if (isLastInSequence) {
+      return expandableBadgeStylesheet.containerLastInSequence;
+    }
+    return expandableBadgeStylesheet.containerSpacing;
+  }, [isExpanded, isLastInSequence, resolvedDisableOuterSpacing]);
+
   const containerStyle = useMemo(
-    () => [
-      expandableBadgeStylesheet.container,
-      !resolvedDisableOuterSpacing &&
-        (isLastInSequence
-          ? expandableBadgeStylesheet.containerLastInSequence
-          : expandableBadgeStylesheet.containerSpacing),
-      style,
-    ],
-    [isLastInSequence, resolvedDisableOuterSpacing, style],
+    () => [expandableBadgeStylesheet.container, containerSpacingStyle, style],
+    [containerSpacingStyle, style],
   );
 
   const pressableStyle = useMemo(

@@ -9,12 +9,7 @@ import {
   type StreamStrategy,
 } from "./strategy";
 import { resolveAssistantTurnBoundaryMessageId } from "./turn-boundary";
-import {
-  AssistantTurnFooter,
-  LiveElapsed,
-  STREAM_METADATA_FONT_SIZE,
-  type AssistantForkTarget,
-} from "@/components/message";
+import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { ThemedBlobLoader } from "@/components/blob-loader";
 
@@ -181,7 +176,7 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   workingElapsed: {
     color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontSize: theme.fontSize.sm,
     fontVariant: ["tabular-nums"],
   },
   workingLoader: {
