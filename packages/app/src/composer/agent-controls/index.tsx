@@ -20,7 +20,14 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
-import { Brain, ListTodo, Settings2, ShieldCheck, Zap } from "@/components/icons/material-icons";
+import {
+  Brain,
+  ListTodo,
+  Settings2,
+  ShieldCheck,
+  Summarize,
+  Zap,
+} from "@/components/icons/material-icons";
 import { compactUp } from "@/styles/theme";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -152,6 +159,7 @@ const FEATURE_ICONS: Record<string, typeof Zap> = {
   "shield-check": ShieldCheck,
   zap: Zap,
   brain: Brain,
+  summarize: Summarize,
 };
 
 function getFeatureIcon(icon?: string) {

@@ -21,6 +21,7 @@ import type {
   AgentSessionConfig,
   AgentSlashCommand,
   AgentStreamEvent,
+  AgentTimelineItem,
   AgentUsage,
   FetchCatalogOptions,
   ProviderCatalog,
@@ -34,13 +35,18 @@ import {
   COMPAT_TOOL_SPECS,
   executeCompatTool,
   findCompatToolSpec,
+  isPathInsideWorkspace,
   type CompatToolSpec,
 } from "./openai-compat-tools.js";
 import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../tools/types.js";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   buildOpenAICompatFeatures,
+  normalizeOpenAICompatAutoCompact,
   normalizeOpenAICompatReasoningEffort,
+  OPENAI_COMPAT_AUTO_COMPACT_FALLBACK,
+  OPENAI_COMPAT_AUTO_COMPACT_VALUES,
+  type OpenAICompatAutoCompact,
   type OpenAICompatReasoningEffort,
 } from "./openai-compat-feature-definitions.js";
 import { OpenAICompatMcpManager, type McpToolBinding } from "./openai-compat-mcp.js";
@@ -48,7 +54,10 @@ import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
-import type { McpToolPermissionMode } from "@otto-code/protocol/provider-config";
+import type {
+  McpToolPermissionMode,
+  ProviderCompactionConfig,
+} from "@otto-code/protocol/provider-config";
 
 /**
  * Native provider for OpenAI-compatible HTTP endpoints (LM Studio, Ollama,
@@ -65,8 +74,6 @@ import type { McpToolPermissionMode } from "@otto-code/protocol/provider-config"
 export const OPENAI_COMPAT_EXTENDS = "openai-compatible";
 
 const DEFAULT_CATALOG_TIMEOUT_MS = 10_000;
-/** Cap persisted context so agent JSON files stay small. */
-const MAX_PERSISTED_MESSAGES = 40;
 /** Upper bound on model→tool→model rounds within a single turn. */
 const MAX_TOOL_ROUNDS = 50;
 
@@ -83,8 +90,29 @@ const TOOL_RESULT_TAIL_CHARS = 1000;
  * summarizes the older history before it. Summarization is lossy, so we confine
  * it to the distant past where the loss is cheap; recent turns (the files just
  * read, the diff just applied, the error being debugged) stay intact.
+ * Default only — tunable per provider via `compaction.keepRecentTokens`.
  */
 const COMPACTION_KEEP_RECENT_TOKENS = 20_000;
+
+/**
+ * Resolve the provider-level auto-compact default that applies when an agent
+ * has no explicit `auto_compact` feature value. `autoCompact: false` wins over
+ * any configured threshold.
+ */
+function resolveAutoCompactDefault(
+  compaction: ProviderCompactionConfig | null | undefined,
+): OpenAICompatAutoCompact {
+  if (compaction?.autoCompact === false) {
+    return "off";
+  }
+  if (typeof compaction?.thresholdPercent === "number") {
+    const candidate = String(compaction.thresholdPercent) as OpenAICompatAutoCompact;
+    if (OPENAI_COMPAT_AUTO_COMPACT_VALUES.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return OPENAI_COMPAT_AUTO_COMPACT_FALLBACK;
+}
 
 /**
  * Pre-summarization pruning (zero-LLM) reclaims context before we spend a model
@@ -160,12 +188,13 @@ export const OPENAI_COMPAT_MODES: AgentMode[] = [
   {
     id: "acceptEdits",
     label: "Accept File Edits",
-    description: "Automatically approves file edits; still asks before running commands",
+    description:
+      "Automatically approves file edits inside the workspace; still asks before running commands",
   },
   {
     id: "plan",
     label: "Read Only",
-    description: "Only read tools are available — no edits or commands",
+    description: "Only read tools are available — no edits or commands; web fetches still ask",
   },
   {
     id: "bypassPermissions",
@@ -176,6 +205,14 @@ export const OPENAI_COMPAT_MODES: AgentMode[] = [
 ];
 
 const VALID_MODE_IDS = new Set(OPENAI_COMPAT_MODES.map((mode) => mode.id));
+
+/** Permission-prompt description per builtin tool kind ("read" never prompts). */
+const COMPAT_TOOL_PROMPT_DESCRIPTIONS: Record<CompatToolSpec["kind"], string> = {
+  read: "Wants to read from the workspace",
+  edit: "Wants to modify a file",
+  execute: "Wants to run a shell command",
+  network: "Wants to fetch content from the web",
+};
 
 interface ToolCallPayload {
   id: string;
@@ -191,7 +228,11 @@ type ChatMessage =
    * payload before requests — strict servers reject unknown message fields.
    */
   | { role: "system" | "user"; content: string; messageId?: string; isCompactionSummary?: boolean }
-  | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[] }
+  // reasoning is the round's accumulated thinking text, kept only so a
+  // resumed session can redisplay it — never sent back to the model (most
+  // reasoning APIs don't want their own thinking echoed back as input, and
+  // strict servers reject unknown message fields). Stripped in toWireMessage.
+  | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[]; reasoning?: string }
   | { role: "tool"; content: string; tool_call_id: string };
 
 /** Mirror of the opencode provider's parser: `/name rest` → command + args. */
@@ -216,7 +257,74 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
   if (message.role === "system" || message.role === "user") {
     return { role: message.role, content: message.content };
   }
+  if (message.role === "assistant") {
+    return {
+      role: message.role,
+      content: message.content,
+      ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+    };
+  }
   return message;
+}
+
+/**
+ * Fold a reconstructed tool result's raw text into whichever field the
+ * preview detail's type uses for it. Only the flat result text survives
+ * persistence — structured metadata that a live run attaches (numMatches,
+ * webResults, exitCode, ...) isn't recoverable from a bare
+ * { name, arguments, result-text } tuple, so callers only get the text back.
+ */
+function attachReconstructedOutput(detail: ToolCallDetail, outputText: string): ToolCallDetail {
+  switch (detail.type) {
+    case "shell":
+      return { ...detail, output: outputText };
+    case "read":
+      return { ...detail, content: outputText };
+    case "search":
+      return { ...detail, content: outputText };
+    case "fetch":
+      return { ...detail, result: outputText };
+    case "plain_text":
+      return { ...detail, text: outputText };
+    case "unknown":
+      return { ...detail, output: outputText };
+    default:
+      return detail;
+  }
+}
+
+/**
+ * Reconstruct a tool_call timeline item from a persisted assistant tool call
+ * plus its matching "tool" result message. Used to replay history on resume,
+ * where the only surviving record is the raw chat-format conversation.
+ */
+function buildReconstructedToolCallItem(
+  call: ToolCallPayload,
+  resultMessage: Extract<ChatMessage, { role: "tool" }> | undefined,
+  cwd: string,
+): AgentTimelineItem {
+  let args: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+    if (parsed && typeof parsed === "object") {
+      args = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Malformed persisted arguments shouldn't block reload — fall back to {}.
+  }
+  const baseDetail = buildCompatToolPreviewDetail(call.function.name, args, cwd);
+  return {
+    type: "tool_call",
+    callId: call.id,
+    name: call.function.name,
+    detail: resultMessage
+      ? attachReconstructedOutput(baseDetail, resultMessage.content)
+      : baseDetail,
+    // No matching "tool" result means the turn was interrupted before the
+    // result came back (e.g. the app closed mid-call).
+    status: resultMessage ? "completed" : "canceled",
+    error: null,
+  };
 }
 
 export interface OpenAICompatAgentClientOptions {
@@ -230,6 +338,8 @@ export interface OpenAICompatAgentClientOptions {
   mcpServers?: Record<string, McpServerConfig> | null;
   /** MCP permission strictness in acceptEdits mode; defaults to "always-ask". */
   mcpToolPermissions?: McpToolPermissionMode | null;
+  /** Provider-level compaction defaults; per-agent feature values win. */
+  compaction?: ProviderCompactionConfig | null;
   managedProcesses?: ManagedProcessRegistry | null;
 }
 
@@ -514,7 +624,15 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
     }
     if (role === "assistant") {
       const toolCalls = parseToolCallPayloads(record.tool_calls);
-      return [{ role, content, ...(toolCalls ? { tool_calls: toolCalls } : {}) }];
+      const reasoning = typeof record.reasoning === "string" ? record.reasoning : undefined;
+      return [
+        {
+          role,
+          content,
+          ...(reasoning ? { reasoning } : {}),
+          ...(toolCalls ? { tool_calls: toolCalls } : {}),
+        },
+      ];
     }
     if (role === "tool" && typeof record.tool_call_id === "string") {
       return [{ role, content, tool_call_id: record.tool_call_id }];
@@ -555,8 +673,12 @@ function sanitizeRestoredMessages(messages: ChatMessage[]): ChatMessage[] {
     if (results.length === message.tool_calls.length) {
       result.push(message, ...results);
       index = cursor - 1;
-    } else if (message.content) {
-      result.push({ role: "assistant", content: message.content });
+    } else if (message.content || message.reasoning) {
+      result.push({
+        role: "assistant",
+        content: message.content,
+        ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+      });
     }
   }
   return result;
@@ -571,6 +693,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly ottoToolGroups?: readonly OttoToolGroup[] | null;
   private readonly mcpServers: Record<string, McpServerConfig> | null;
   private readonly mcpToolPermissions: McpToolPermissionMode;
+  private readonly compaction: ProviderCompactionConfig | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
@@ -581,6 +704,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.ottoToolGroups = options.ottoToolGroups ?? null;
     this.mcpServers = options.mcpServers ?? null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
+    this.compaction = options.compaction ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
   }
 
@@ -658,10 +782,16 @@ export class OpenAICompatAgentClient implements AgentClient {
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
+    const autoCompactDefault = resolveAutoCompactDefault(this.compaction);
     return buildOpenAICompatFeatures({
       reasoningEffort: normalizeOpenAICompatReasoningEffort(
         config.featureValues?.["reasoning_effort"],
       ),
+      autoCompact: normalizeOpenAICompatAutoCompact(
+        config.featureValues?.["auto_compact"],
+        autoCompactDefault,
+      ),
+      autoCompactDefault,
     });
   }
 
@@ -681,6 +811,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       ottoToolGroups: this.ottoToolGroups,
       mcpServers: this.mcpServers,
       mcpToolPermissions: this.mcpToolPermissions,
+      compaction: this.compaction,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -711,6 +842,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       ottoToolGroups: this.ottoToolGroups,
       mcpServers: this.mcpServers,
       mcpToolPermissions: this.mcpToolPermissions,
+      compaction: this.compaction,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -728,6 +860,8 @@ interface ActiveTurn {
   abort: AbortController;
   /** Assistant text streamed in the current model round. */
   roundText: string;
+  /** Reasoning/thinking text streamed in the current model round. */
+  roundReasoning: string;
   /** Assistant text across all rounds of the turn. */
   finalTextParts: string[];
   pendingToolCalls: Map<number, AccumulatedToolCall>;
@@ -808,6 +942,19 @@ export class OpenAICompatAgentSession implements AgentSession {
   private modelId: string | null;
   private modeId: string;
   private reasoningEffort: OpenAICompatReasoningEffort;
+  /** Provider-level default for the auto_compact feature select. */
+  private readonly autoCompactDefault: OpenAICompatAutoCompact;
+  /** Effective auto-compact setting: "off" or the trigger percentage. */
+  private autoCompact: OpenAICompatAutoCompact;
+  /**
+   * Loop protection: set when an auto-compaction failed or couldn't bring
+   * usage back under the threshold, so the next round doesn't immediately
+   * retry. Cleared once measured usage drops below the threshold again
+   * (rewind, manual /compact, model switch to a larger window).
+   */
+  private autoCompactDisarmed = false;
+  /** Recent-conversation budget kept verbatim through compaction. */
+  private readonly keepRecentTokens: number;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -830,6 +977,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     ottoToolGroups?: readonly OttoToolGroup[] | null;
     mcpServers?: Record<string, McpServerConfig> | null;
     mcpToolPermissions?: McpToolPermissionMode;
+    compaction?: ProviderCompactionConfig | null;
     managedProcesses?: ManagedProcessRegistry | null;
   }) {
     this.provider = options.providerId;
@@ -870,6 +1018,16 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.reasoningEffort = normalizeOpenAICompatReasoningEffort(
       options.config.featureValues?.["reasoning_effort"],
     );
+    this.autoCompactDefault = resolveAutoCompactDefault(options.compaction);
+    this.autoCompact = normalizeOpenAICompatAutoCompact(
+      options.config.featureValues?.["auto_compact"],
+      this.autoCompactDefault,
+    );
+    this.keepRecentTokens =
+      typeof options.compaction?.keepRecentTokens === "number" &&
+      options.compaction.keepRecentTokens > 0
+        ? options.compaction.keepRecentTokens
+        : COMPACTION_KEEP_RECENT_TOKENS;
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
@@ -881,43 +1039,90 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Rebuild replayable history from the current conversation so a resumed or
-   * rewound session still backfills its transcript. Tool traffic is skipped —
-   * the durable timeline store owns the full historical record. User messages
-   * keep their persisted messageId so the durable timeline and the provider
-   * conversation agree on rewind targets.
+   * rewound session still backfills its transcript, tool calls included.
+   * There is no separate durable store for tool traffic — `this.messages` is
+   * the only record that survives a resume, so tool_call items are
+   * reconstructed from each assistant message's `tool_calls` plus the
+   * matching "tool" result message. User messages keep their persisted
+   * messageId so the durable timeline and the provider conversation agree on
+   * rewind targets.
    */
   private rebuildEventHistory(): void {
     this.eventHistory.length = 0;
-    for (const message of this.messages) {
-      if (message.role !== "user" && message.role !== "assistant") continue;
-      if (!message.content) continue;
-      this.eventHistory.push({
-        type: "timeline",
-        provider: this.provider,
-        item:
-          message.role === "user"
-            ? {
-                type: "user_message",
-                text: message.content,
-                messageId: message.messageId ?? randomUUID(),
-              }
-            : { type: "assistant_message", text: message.content, messageId: randomUUID() },
-      });
+    for (const [index, message] of this.messages.entries()) {
+      if (message.role === "user") {
+        if (!message.content) continue;
+        this.eventHistory.push({
+          type: "timeline",
+          provider: this.provider,
+          item: {
+            type: "user_message",
+            text: message.content,
+            messageId: message.messageId ?? randomUUID(),
+          },
+        });
+        continue;
+      }
+      if (message.role !== "assistant") continue;
+      // Live order within a round is reasoning → assistant text → tool calls;
+      // replay mirrors it.
+      if (message.reasoning) {
+        this.eventHistory.push({
+          type: "timeline",
+          provider: this.provider,
+          item: { type: "reasoning", text: message.reasoning },
+        });
+      }
+      if (message.content) {
+        this.eventHistory.push({
+          type: "timeline",
+          provider: this.provider,
+          item: { type: "assistant_message", text: message.content, messageId: randomUUID() },
+        });
+      }
+      for (const call of message.tool_calls ?? []) {
+        const resultMessage = this.messages
+          .slice(index + 1)
+          .find(
+            (candidate): candidate is Extract<ChatMessage, { role: "tool" }> =>
+              candidate.role === "tool" && candidate.tool_call_id === call.id,
+          );
+        this.eventHistory.push({
+          type: "timeline",
+          provider: this.provider,
+          item: buildReconstructedToolCallItem(call, resultMessage, this.cwd),
+        });
+      }
     }
   }
 
   get features(): AgentFeature[] {
-    return buildOpenAICompatFeatures({ reasoningEffort: this.reasoningEffort });
+    return buildOpenAICompatFeatures({
+      reasoningEffort: this.reasoningEffort,
+      autoCompact: this.autoCompact,
+      autoCompactDefault: this.autoCompactDefault,
+    });
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {
-    if (featureId !== "reasoning_effort") {
-      throw new Error(`Unknown feature: ${featureId}`);
+    if (featureId === "reasoning_effort") {
+      if (normalizeOpenAICompatReasoningEffort(value) !== value) {
+        throw new Error(`Invalid reasoning effort value: ${String(value)}`);
+      }
+      this.reasoningEffort = value as OpenAICompatReasoningEffort;
+      return;
     }
-    if (normalizeOpenAICompatReasoningEffort(value) !== value) {
-      throw new Error(`Invalid reasoning effort value: ${String(value)}`);
+    if (featureId === "auto_compact") {
+      if (!OPENAI_COMPAT_AUTO_COMPACT_VALUES.includes(value as OpenAICompatAutoCompact)) {
+        throw new Error(`Invalid auto-compact value: ${String(value)}`);
+      }
+      this.autoCompact = value as OpenAICompatAutoCompact;
+      // A deliberate setting change is a fresh mandate — retry even if a
+      // previous auto-compaction was paused for lack of gain.
+      this.autoCompactDisarmed = false;
+      return;
     }
-    this.reasoningEffort = value as OpenAICompatReasoningEffort;
+    throw new Error(`Unknown feature: ${featureId}`);
   }
 
   private buildSystemPrompt(config: AgentSessionConfig): string {
@@ -974,8 +1179,9 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   private availableToolSpecs(): CompatToolSpec[] {
     return COMPAT_TOOL_SPECS.filter((spec) => {
-      // Read-only "plan" mode offers no actions.
-      if (this.modeId === "plan" && spec.kind !== "read") return false;
+      // Read-only "plan" mode offers no actions against the local machine.
+      // "network" tools (web_fetch) stay available for research but prompt.
+      if (this.modeId === "plan" && spec.kind !== "read" && spec.kind !== "network") return false;
       // The builtin web tools (web_search/web_fetch) are gated by the "web"
       // tool group, just like the injected Otto tool groups.
       if (ottoToolGroupForName(spec.name) === "web" && !this.isOttoToolGroupEnabled(spec.name)) {
@@ -985,10 +1191,18 @@ export class OpenAICompatAgentSession implements AgentSession {
     });
   }
 
-  private toolNeedsApproval(spec: CompatToolSpec): boolean {
+  private toolNeedsApproval(spec: CompatToolSpec, args: Record<string, unknown>): boolean {
     if (spec.kind === "read") return false;
     if (this.modeId === "bypassPermissions") return false;
-    if (this.modeId === "acceptEdits") return spec.kind === "execute";
+    if (this.modeId === "acceptEdits" && spec.kind === "edit") {
+      // Auto-approval is scoped to the workspace: a write to ~/.bashrc or
+      // Otto's own config is not the "file edits" the mode label promises,
+      // so anything outside the cwd subtree still prompts.
+      const target = args["path"];
+      return typeof target !== "string" || !isPathInsideWorkspace(this.cwd, target);
+    }
+    // Everything else that can act — execute always, and network because an
+    // unprompted web_fetch is an exfiltration channel for unprompted reads.
     return true;
   }
 
@@ -1063,12 +1277,16 @@ export class OpenAICompatAgentSession implements AgentSession {
    *      merge into it (incremental update) instead of re-summarizing a summary.
    *   4. Rebuild: [system, summary, ...recent].
    */
-  private async handleCompact(turn: ActiveTurn, instruction: string | null): Promise<AgentUsage> {
+  private async handleCompact(
+    turn: ActiveTurn,
+    instruction: string | null,
+    trigger: "auto" | "manual",
+  ): Promise<AgentUsage> {
     this.emit({
       type: "timeline",
       provider: this.provider,
       turnId: turn.turnId,
-      item: { type: "compaction", status: "loading", trigger: "manual" },
+      item: { type: "compaction", status: "loading", trigger },
     });
 
     // Pre-compaction context size: prefer the server-measured figure from the
@@ -1095,7 +1313,7 @@ export class OpenAICompatAgentSession implements AgentSession {
         type: "timeline",
         provider: this.provider,
         turnId: turn.turnId,
-        item: { type: "compaction", status: "completed", trigger: "manual", preTokens, postTokens },
+        item: { type: "compaction", status: "completed", trigger, preTokens, postTokens },
       });
       const maxTokens = await this.resolveContextWindowMaxTokens();
       const usage: AgentUsage = {
@@ -1169,7 +1387,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       item: {
         type: "compaction",
         status: "completed",
-        trigger: "manual",
+        trigger,
         preTokens,
         postTokens,
       },
@@ -1198,6 +1416,97 @@ export class OpenAICompatAgentSession implements AgentSession {
       turnId: turn.turnId,
     });
     return usage;
+  }
+
+  /**
+   * Auto-compaction check, run at turn start (before the new user message
+   * joins the conversation, so it always survives verbatim) and before every
+   * subsequent model round. Uses the freshest server-measured context size —
+   * the active turn's last round, falling back to the previous turn's final
+   * figure. Endpoints that report no context length never auto-compact:
+   * without a denominator there is no percentage (manual /compact still
+   * works).
+   *
+   * Loop protection: a compaction that fails or can't bring usage back under
+   * the threshold disarms the trigger. Without that, a conversation whose
+   * retained tail alone exceeds the threshold would re-summarize on every
+   * round, burning a model call each time for no reclaimed space. The trigger
+   * re-arms once measured usage drops below the threshold by other means
+   * (rewind, manual /compact, a model switch to a larger window) or when the
+   * user changes the auto-compact setting.
+   *
+   * Auto-compaction failures never fail the user's turn — the turn proceeds
+   * with the uncompacted conversation (interrupts still propagate).
+   */
+  private async maybeAutoCompact(turn: ActiveTurn): Promise<void> {
+    if (this.autoCompact === "off") {
+      return;
+    }
+    const maxTokens = await this.resolveContextWindowMaxTokens();
+    if (maxTokens === null) {
+      return;
+    }
+    const threshold = Math.floor((Number(this.autoCompact) / 100) * maxTokens);
+    const used =
+      turn.usage && typeof turn.usage.inputTokens === "number"
+        ? turn.usage.inputTokens + (turn.usage.outputTokens ?? 0)
+        : this.lastContextTokens;
+    if (used === null || used < threshold) {
+      if (used !== null) {
+        this.autoCompactDisarmed = false;
+      }
+      return;
+    }
+    if (this.autoCompactDisarmed) {
+      return;
+    }
+    let usage: AgentUsage;
+    try {
+      usage = await this.handleCompact(turn, null, "auto");
+    } catch (error) {
+      // Settle the "loading" compaction row before deciding how to proceed.
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: { type: "compaction", status: "failed", trigger: "auto" },
+      });
+      if (turn.abort.signal.aborted) {
+        throw error;
+      }
+      this.autoCompactDisarmed = true;
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: {
+          type: "error",
+          message: `Auto-compaction failed: ${message}. Auto-compaction is paused until context usage drops below the threshold — run /compact to retry manually.`,
+        },
+      });
+      return;
+    }
+    // The pre-compaction round figures no longer describe the conversation;
+    // the next round's stream re-measures it.
+    turn.usage = null;
+    const postTokens = usage.contextWindowUsedTokens ?? this.lastContextTokens;
+    if (typeof postTokens === "number" && postTokens >= threshold) {
+      this.autoCompactDisarmed = true;
+      this.emit({
+        type: "timeline",
+        provider: this.provider,
+        turnId: turn.turnId,
+        item: {
+          type: "error",
+          message:
+            `Auto-compaction reclaimed too little space (still ~${postTokens} of ` +
+            `${maxTokens} tokens). Auto-compaction is paused until usage ` +
+            `drops below the ${this.autoCompact}% threshold — run /compact with an ` +
+            `instruction, rewind, or start a fresh agent.`,
+        },
+      });
+    }
   }
 
   /**
@@ -1247,7 +1556,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     let recentTokens = 0;
     for (let index = this.messages.length - 1; index >= 1; index -= 1) {
       recentTokens += estimateTokens(JSON.stringify(this.messages[index]));
-      if (recentTokens > COMPACTION_KEEP_RECENT_TOKENS) {
+      if (recentTokens > this.keepRecentTokens) {
         break;
       }
       keepFrom = index;
@@ -1576,6 +1885,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       assistantMessageId: randomUUID(),
       abort: new AbortController(),
       roundText: "",
+      roundReasoning: "",
       finalTextParts: [],
       pendingToolCalls: new Map(),
       finishReason: null,
@@ -1617,8 +1927,17 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     if (slashCommand && slashCommand.commandName === "compact") {
       let usage: AgentUsage;
       try {
-        usage = await this.handleCompact(turn, slashCommand.args);
+        usage = await this.handleCompact(turn, slashCommand.args, "manual");
       } catch (error) {
+        // Settle the "loading" compaction row — without this it spins
+        // forever. Clients that predate the "failed" status drop this event
+        // and keep the spinning row, which matches their pre-fix behavior.
+        this.emit({
+          type: "timeline",
+          provider: this.provider,
+          turnId: turn.turnId,
+          item: { type: "compaction", status: "failed", trigger: "manual" },
+        });
         this.settleTurnFailure(turn, error);
         return;
       }
@@ -1649,6 +1968,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // The timeline keeps the typed `/command args` text; the model receives
       // the resolved MCP prompt (or the raw text when nothing matches).
       const modelText = await this.resolveMcpPromptText(promptText);
+      // Turn-start auto-compaction runs before the new user message joins the
+      // conversation: when the whole history is summarized ("never keep the
+      // entire conversation"), the instruction the model is about to act on
+      // must not be folded into the summary with it.
+      await this.maybeAutoCompact(turn);
       this.messages.push({ role: "user", content: modelText, messageId: userMessageId });
       await this.runToolLoop(turn);
     } catch (error) {
@@ -1685,15 +2009,21 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     // needs both bounds). Cached per model, so this is one probe per session.
     await this.resolveContextWindowMaxTokens();
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      // Round 0 was already checked at turn start; re-check between tool
+      // rounds so a long tool loop compacts mid-turn instead of overflowing.
+      if (round > 0) {
+        await this.maybeAutoCompact(turn);
+      }
       await this.streamCompletion(turn);
 
       const toolCalls = [...turn.pendingToolCalls.entries()]
         .sort(([a], [b]) => a - b)
         .map(([, call]) => call);
-      if (turn.roundText || toolCalls.length > 0) {
+      if (turn.roundText || turn.roundReasoning || toolCalls.length > 0) {
         this.messages.push({
           role: "assistant",
           content: turn.roundText,
+          ...(turn.roundReasoning ? { reasoning: turn.roundReasoning } : {}),
           ...(toolCalls.length > 0
             ? {
                 tool_calls: toolCalls.map(
@@ -1709,10 +2039,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       }
       if (turn.roundText) {
         turn.finalTextParts.push(turn.roundText);
-        // Consumed — settleTurnFailure must not re-append it if a later tool
-        // round gets interrupted.
-        turn.roundText = "";
       }
+      // Consumed — settleTurnFailure must not re-append these if a later
+      // tool round gets interrupted.
+      turn.roundText = "";
+      turn.roundReasoning = "";
 
       if (toolCalls.length === 0) {
         return;
@@ -1793,12 +2124,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       return `Error: tool ${call.name} is not available in the current mode`;
     }
 
-    if (this.toolNeedsApproval(spec)) {
+    if (this.toolNeedsApproval(spec, args)) {
       const response = await this.requestPermission(turn, {
         name: spec.name,
         title: spec.name,
-        description:
-          spec.kind === "execute" ? "Wants to run a shell command" : "Wants to modify a file",
+        description: COMPAT_TOOL_PROMPT_DESCRIPTIONS[spec.kind],
         args,
         detail: previewDetail,
       });
@@ -2038,6 +2368,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     const model = await this.resolveModel(endpoint);
     turn.assistantMessageId = randomUUID();
     turn.roundText = "";
+    turn.roundReasoning = "";
     turn.pendingToolCalls = new Map();
     turn.finishReason = null;
 
@@ -2089,6 +2420,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     const delta = parseStreamChunk(parsed);
     if (delta.reasoning) {
+      turn.roundReasoning += delta.reasoning;
       this.emit({
         type: "timeline",
         provider: this.provider,
@@ -2159,12 +2491,50 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     });
   }
 
+  /**
+   * A turn can end (interrupt or failure) between an assistant message's
+   * tool_calls and their tool results — e.g. the user interrupts during call
+   * #1 of 3. Strict OpenAI-compatible servers reject the next request over
+   * such a conversation with a 400, so append synthetic results for the
+   * unanswered calls. Resume gets the equivalent repair from
+   * sanitizeRestoredMessages; this covers the live conversation.
+   */
+  private repairDanglingToolCalls(): void {
+    // Only the trailing round can dangle: earlier rounds pushed all their
+    // results before the loop moved on.
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      const message = this.messages[index]!;
+      if (message.role === "user") {
+        return;
+      }
+      if (message.role !== "assistant" || !message.tool_calls) {
+        continue;
+      }
+      const answered = new Set(
+        this.messages
+          .slice(index + 1)
+          .flatMap((candidate) => (candidate.role === "tool" ? [candidate.tool_call_id] : [])),
+      );
+      for (const call of message.tool_calls) {
+        if (!answered.has(call.id)) {
+          this.messages.push({
+            role: "tool",
+            content: "[Tool call was interrupted before it completed]",
+            tool_call_id: call.id,
+          });
+        }
+      }
+      return;
+    }
+  }
+
   private settleTurnFailure(turn: ActiveTurn, error: unknown): void {
     if (this.activeTurn !== turn) {
       return;
     }
     this.activeTurn = null;
     this.failPendingPermissions();
+    this.repairDanglingToolCalls();
     if (turn.abort.signal.aborted) {
       this.emit({
         type: "turn_canceled",
@@ -2172,9 +2542,15 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         reason: "Interrupted",
         turnId: turn.turnId,
       });
-      if (turn.roundText) {
-        turn.finalTextParts.push(turn.roundText);
-        this.messages.push({ role: "assistant", content: turn.roundText });
+      if (turn.roundText || turn.roundReasoning) {
+        if (turn.roundText) {
+          turn.finalTextParts.push(turn.roundText);
+        }
+        this.messages.push({
+          role: "assistant",
+          content: turn.roundText,
+          ...(turn.roundReasoning ? { reasoning: turn.roundReasoning } : {}),
+        });
       }
       turn.resolve({
         sessionId: this.id,
@@ -2421,7 +2797,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       metadata: {
         model: this.modelId,
         modeId: this.modeId,
-        messages: this.messages.slice(-MAX_PERSISTED_MESSAGES),
+        messages: this.messages,
       },
     };
   }
@@ -2432,9 +2808,9 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
 
   /**
    * Rewind the daemon-owned conversation to just before the given user
-   * message. Persistence trims to the last MAX_PERSISTED_MESSAGES messages,
-   * so on a resumed session only that retained window is rewindable — older
-   * targets fail with the not-found error below.
+   * message. The full conversation persists (no message cap), so any
+   * previous user message is a valid rewind target — the not-found error
+   * below only fires for a truly unknown messageId.
    */
   async revertConversation(input: { messageId: string }): Promise<void> {
     if (this.activeTurn) {
@@ -2472,8 +2848,69 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     this.listeners.clear();
   }
 
+  /**
+   * Retain what streamHistory replays: user messages, assistant messages
+   * (coalesced per messageId so streamed deltas don't accumulate one event
+   * each), reasoning (coalesced per contiguous block), and tool calls
+   * (coalesced per callId so a call's running → completed/failed/canceled
+   * transitions collapse to its latest status instead of replaying every
+   * intermediate state). Usage and permission events aren't part of the
+   * displayed transcript and are dropped. Copies are stored so coalescing
+   * never mutates an event a listener already received.
+   */
+  private retainForHistory(event: AgentStreamEvent): void {
+    if (event.type !== "timeline") {
+      return;
+    }
+    const item = event.item;
+    if (item.type === "user_message") {
+      this.eventHistory.push({ ...event, item: { ...item } });
+      return;
+    }
+    if (item.type === "tool_call") {
+      const existingIdx = this.eventHistory.findIndex(
+        (candidate) =>
+          candidate.type === "timeline" &&
+          candidate.item.type === "tool_call" &&
+          candidate.item.callId === item.callId,
+      );
+      const copy = { ...event, item: { ...item } };
+      if (existingIdx >= 0) {
+        this.eventHistory[existingIdx] = copy;
+      } else {
+        this.eventHistory.push(copy);
+      }
+      return;
+    }
+    if (item.type === "reasoning") {
+      // Reasoning deltas stream contiguously within a round, so appending to
+      // a trailing reasoning event coalesces one block per round; assistant
+      // text or a tool call in between starts the next block naturally.
+      const last = this.eventHistory[this.eventHistory.length - 1];
+      if (last?.type === "timeline" && last.item.type === "reasoning") {
+        last.item.text += item.text;
+        return;
+      }
+      this.eventHistory.push({ ...event, item: { ...item } });
+      return;
+    }
+    if (item.type !== "assistant_message") {
+      return;
+    }
+    const last = this.eventHistory[this.eventHistory.length - 1];
+    if (
+      last?.type === "timeline" &&
+      last.item.type === "assistant_message" &&
+      last.item.messageId === item.messageId
+    ) {
+      last.item.text += item.text;
+      return;
+    }
+    this.eventHistory.push({ ...event, item: { ...item } });
+  }
+
   private emit(event: AgentStreamEvent): void {
-    this.eventHistory.push(event);
+    this.retainForHistory(event);
     for (const listener of this.listeners) {
       try {
         listener(event);

@@ -16,6 +16,7 @@ describe("getCompactionMarkerLabel", () => {
       "Context compacted (12K tokens)",
     );
     expect(getCompactionMarkerLabel({ status: "completed" })).toBe("Context compacted");
+    expect(getCompactionMarkerLabel({ status: "failed" })).toBe("Compaction failed");
   });
 
   it("renders labels in the active app language", async () => {

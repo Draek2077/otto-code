@@ -745,6 +745,7 @@ function resolveOpenAICompatProvider(
         ottoToolGroups: override.ottoToolGroups,
         mcpServers: override.mcpServers,
         mcpToolPermissions: override.mcpToolPermissions,
+        compaction: override.compaction,
         managedProcesses: options.managedProcesses,
       }),
   };

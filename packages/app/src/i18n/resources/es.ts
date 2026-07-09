@@ -304,6 +304,7 @@ export const es: TranslationResources = {
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado (tokens{{tokens}}K)",
       completed: "Contexto compactado",
+      failed: "Error al compactar el contexto",
     },
   },
   importSession: {

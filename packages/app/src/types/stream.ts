@@ -48,6 +48,7 @@ export type StreamItem =
   | AssistantMessageItem
   | ThoughtItem
   | ToolCallItem
+  | ActionGroupItem
   | TodoListItem
   | ActivityLogItem
   | CompactionItem;
@@ -131,6 +132,20 @@ export type AgentToolCallItem = ToolCallItem & {
   payload: { source: "agent"; data: AgentToolCallData };
 };
 
+export type ActionGroupMemberItem = ToolCallItem | ThoughtItem;
+
+/**
+ * Render-only synthetic item: a run of consecutive actions folded into one
+ * collapsed, expandable row. Never produced by the stream reducers and never
+ * persisted — see agent-stream/action-grouping.ts.
+ */
+export interface ActionGroupItem {
+  kind: "action_group";
+  id: string;
+  timestamp: Date;
+  items: ActionGroupMemberItem[];
+}
+
 export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem {
   return item.kind === "tool_call" && item.payload.source === "agent";
 }
@@ -150,7 +165,7 @@ export interface CompactionItem {
   kind: "compaction";
   id: string;
   timestamp: Date;
-  status: "loading" | "completed";
+  status: "loading" | "completed" | "failed";
   trigger?: "auto" | "manual";
   preTokens?: number;
 }
@@ -719,13 +734,14 @@ function reduceTimelineCompaction(
   >,
   timestamp: Date,
 ): StreamItem[] {
-  if (item.status === "completed") {
+  // Both terminal statuses settle the in-flight loading row in place.
+  if (item.status === "completed" || item.status === "failed") {
     const loadingIdx = state.findIndex((s) => s.kind === "compaction" && s.status === "loading");
     const existing = loadingIdx >= 0 ? state[loadingIdx] : undefined;
     if (loadingIdx >= 0 && existing && existing.kind === "compaction") {
       const updated: CompactionItem = {
         ...existing,
-        status: "completed",
+        status: item.status,
         trigger: item.trigger ?? existing.trigger,
         preTokens: item.preTokens ?? existing.preTokens,
       };

@@ -3,6 +3,8 @@ import { once } from "node:events";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as dns from "node:dns";
+import * as net from "node:net";
+import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 
 import type { ToolCallDetail } from "../agent-sdk-types.js";
 
@@ -13,7 +15,7 @@ import type { ToolCallDetail } from "../agent-sdk-types.js";
 /**
  * IP ranges that must never be reachable from web_fetch.
  * Covers: loopback, link-local, private (RFC 1918), carrier-grade,
- * unique-local, multicast, and cloud metadata endpoints.
+ * unique-local, multicast, reserved, and cloud metadata endpoints.
  */
 const BLOCKED_IP_RANGES: Array<[string, string]> = [
   // Loopback: 127.0.0.0/8
@@ -28,16 +30,18 @@ const BLOCKED_IP_RANGES: Array<[string, string]> = [
   ["192.168.0.0", "192.168.255.255"],
   // Carrier-grade NAT: 100.64.0.0/10
   ["100.64.0.0", "100.127.255.255"],
-  // Unique-local: fc00::/7 (IPv6)
-  // Handled separately via IPv6 prefix check
-  // Multicast: ff00::/8 (IPv6)
-  // Handled separately via IPv6 prefix check
   // Documentation: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
   // (not strictly needed but defensive)
   ["192.0.2.0", "192.0.2.255"],
   ["198.51.100.0", "198.51.100.255"],
   ["203.0.113.0", "203.0.113.255"],
-  // Any local: 0.0.0.0
+  // Benchmarking: 198.18.0.0/15
+  ["198.18.0.0", "198.19.255.255"],
+  // Multicast: 224.0.0.0/4
+  ["224.0.0.0", "239.255.255.255"],
+  // Reserved + broadcast: 240.0.0.0/4
+  ["240.0.0.0", "255.255.255.255"],
+  // Any local: 0.0.0.0/8
   ["0.0.0.0", "0.255.255.255"],
 ];
 
@@ -45,37 +49,67 @@ const BLOCKED_IP_RANGES: Array<[string, string]> = [
 const ALLOWED_HOSTS = new Set(["api.duckduckgo.com", "html.duckduckgo.com"]);
 
 /**
- * Convert an IPv4 address string to a 32-bit integer for range comparison.
+ * Convert an IPv4 address string to an unsigned 32-bit integer for range
+ * comparison. Throws on anything that is not a dotted quad.
  */
 function ipv4ToNumber(ip: string): number {
   const parts = ip.split(".");
-  return (
-    (Number.parseInt(parts[0], 10) << 24) |
-    (Number.parseInt(parts[1], 10) << 16) |
-    (Number.parseInt(parts[2], 10) << 8) |
-    Number.parseInt(parts[3], 10)
-  );
+  if (parts.length !== 4) {
+    throw new Error(`Not an IPv4 address: ${ip}`);
+  }
+  let value = 0;
+  for (const part of parts) {
+    const octet = Number.parseInt(part, 10);
+    if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
+      throw new Error(`Not an IPv4 address: ${ip}`);
+    }
+    value = (value * 256 + octet) >>> 0;
+  }
+  return value;
+}
+
+/**
+ * Extract the IPv4 address embedded in an IPv4-mapped IPv6 address
+ * (::ffff:a.b.c.d, including the hex form ::ffff:aabb:ccdd). Returns null for
+ * anything else. Mapped addresses must be screened with the IPv4 rules — a
+ * socket to ::ffff:127.0.0.1 reaches loopback.
+ */
+function extractMappedIpv4(lowerIp: string): string | null {
+  const dotted = lowerIp.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/u);
+  if (dotted) {
+    return dotted[1];
+  }
+  const hex = lowerIp.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u);
+  if (hex) {
+    const high = Number.parseInt(hex[1], 16);
+    const low = Number.parseInt(hex[2], 16);
+    return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+  }
+  return null;
 }
 
 /**
  * Check whether an IP address falls within any blocked range.
  * Returns true if the IP is dangerous and should be blocked.
  */
-function isBlockedIp(ip: string): boolean {
-  // IPv6: block loopback (::1), unique-local (fc00::/7), multicast (ff00::/8)
+export function isBlockedIp(ip: string): boolean {
+  // IPv6: block loopback (::1), unique-local (fc00::/7), multicast (ff00::/8),
+  // link-local (fe80::/10, over-broadly as fe*), and IPv4-mapped addresses
+  // whose embedded IPv4 is blocked.
   if (ip.includes(":")) {
     const lower = ip.toLowerCase();
-    if (
+    const mapped = extractMappedIpv4(lower);
+    if (mapped !== null) {
+      return isBlockedIp(mapped);
+    }
+    return (
       lower === "::1" ||
       lower === "::" ||
       lower.startsWith("fc") ||
       lower.startsWith("fd") ||
       lower.startsWith("fe") ||
       lower.startsWith("ff")
-    ) {
-      return true;
-    }
-    return false;
+    );
   }
 
   // IPv4: check against blocked ranges
@@ -94,58 +128,80 @@ function isBlockedIp(ip: string): boolean {
   return false;
 }
 
+interface ResolvedAddress {
+  address: string;
+  family: number;
+}
+
 /**
- * Resolve a hostname to its IP address(es) and validate none are blocked.
- * Throws if any resolved IP is in a blocked range or if resolution fails.
+ * The validated connection target for one fetch hop. `addresses` is what the
+ * socket is pinned to; empty means "no pinning" (allowlisted hosts only).
  */
-async function validateHostname(host: string): Promise<void> {
+interface ValidatedTarget {
+  addresses: ResolvedAddress[];
+}
+
+/**
+ * Resolve a hostname and validate that none of its addresses are blocked.
+ * Returns the resolved addresses so the connection can be pinned to exactly
+ * what was validated — validating and then letting fetch re-resolve would be
+ * bypassable via low-TTL DNS rebinding. Throws if the host is blocked or
+ * resolution fails.
+ */
+async function validateHostname(host: string): Promise<ValidatedTarget> {
   // Allowlist check — skip DNS validation for trusted hosts
   if (ALLOWED_HOSTS.has(host)) {
-    return;
+    return { addresses: [] };
   }
 
-  // Reject obviously internal hostnames without DNS lookup
+  // Reject well-known internal hostname patterns without DNS lookup.
   if (
     host === "localhost" ||
+    host.endsWith(".localhost") ||
     host.endsWith(".local") ||
-    host.includes("internal") ||
-    host.includes("metadata")
+    host.endsWith(".internal")
   ) {
     throw new Error(`Blocked: hostname '${host}' targets an internal network`);
   }
 
-  // Resolve DNS and validate the resulting IP(s)
-  const addresses = await new Promise<string[]>((resolve, reject) => {
-    dns.resolve4(host, (err, addrs) => {
-      if (err) {
-        // Try IPv6 as fallback
-        dns.resolve6(host, (err6, addrs6) => {
-          if (err6) {
-            reject(new Error(`DNS resolution failed for '${host}'`));
-            return;
-          }
-          resolve(addrs6);
-        });
-        return;
-      }
-      resolve(addrs);
-    });
-  });
+  // IP literals validate directly — no DNS involved. URL.hostname keeps the
+  // brackets around IPv6 literals.
+  const literal = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  const literalFamily = net.isIP(literal);
+  if (literalFamily !== 0) {
+    if (isBlockedIp(literal)) {
+      throw new Error(`Blocked: '${literal}' is in a restricted network range`);
+    }
+    return { addresses: [{ address: literal, family: literalFamily }] };
+  }
 
-  for (const addr of addresses) {
-    if (isBlockedIp(addr)) {
+  // getaddrinfo (not dns.resolve*) so hosts-file entries are validated the
+  // same way the socket would resolve them, across both address families.
+  let results: ResolvedAddress[];
+  try {
+    results = await dns.promises.lookup(host, { all: true });
+  } catch {
+    throw new Error(`DNS resolution failed for '${host}'`);
+  }
+  if (results.length === 0) {
+    throw new Error(`DNS resolution failed for '${host}'`);
+  }
+  for (const { address } of results) {
+    if (isBlockedIp(address)) {
       throw new Error(
-        `Blocked: '${host}' resolved to ${addr} which is in a restricted network range`,
+        `Blocked: '${host}' resolved to ${address} which is in a restricted network range`,
       );
     }
   }
+  return { addresses: results };
 }
 
 /**
- * Validate that a URL is safe to fetch, checking protocol, hostname, and resolved IP.
+ * Validate that a URL is safe to fetch, checking protocol, hostname, and
+ * resolved IPs. Returns the validated addresses for connection pinning.
  * Throws a descriptive error if the URL is blocked.
  */
-async function validateUrlForFetch(urlString: string): Promise<void> {
+async function validateUrlForFetch(urlString: string): Promise<ValidatedTarget> {
   const parsedUrl = new URL(urlString);
 
   // Only allow http/https
@@ -153,8 +209,40 @@ async function validateUrlForFetch(urlString: string): Promise<void> {
     throw new Error(`Blocked: only http:// and https:// URLs are allowed`);
   }
 
-  // Validate hostname and resolved IP
-  await validateHostname(parsedUrl.hostname);
+  return validateHostname(parsedUrl.hostname);
+}
+
+type PinnedLookupCallback = (
+  err: NodeJS.ErrnoException | null,
+  address: string | ResolvedAddress[],
+  family?: number,
+) => void;
+
+/**
+ * Dispatcher whose socket lookup answers from the pre-validated address set
+ * instead of re-querying DNS — the connection can only reach an IP that
+ * passed isBlockedIp. TLS keeps the hostname as servername, so certificate
+ * validation is unaffected. An empty address set (allowlisted hosts) falls
+ * back to the default resolver.
+ */
+function buildPinnedDispatcher(target: ValidatedTarget): Agent {
+  if (target.addresses.length === 0) {
+    return new Agent();
+  }
+  const pinned = target.addresses;
+  const lookup = (
+    _hostname: string,
+    options: { all?: boolean },
+    callback: PinnedLookupCallback,
+  ): void => {
+    if (options.all) {
+      callback(null, pinned);
+    } else {
+      const first = pinned[0];
+      callback(null, first.address, first.family);
+    }
+  };
+  return new Agent({ connect: { lookup: lookup as net.LookupFunction } });
 }
 
 /**
@@ -165,8 +253,14 @@ async function validateUrlForFetch(urlString: string): Promise<void> {
  * `tools` can drive them.
  */
 
-/** Gating class used by the session's permission modes. */
-export type CompatToolKind = "read" | "edit" | "execute";
+/**
+ * Gating class used by the session's permission modes. "network" tools reach
+ * the outside world and always prompt outside bypassPermissions: an unprompted
+ * web_fetch turns the unprompted read tools into a data-exfiltration channel
+ * (read a secret, smuggle it out in a GET query string), so it must never
+ * share the read tools' no-prompt treatment.
+ */
+export type CompatToolKind = "read" | "edit" | "execute" | "network";
 
 export interface CompatToolSpec {
   name: string;
@@ -271,7 +365,7 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
   },
   {
     name: "web_fetch",
-    kind: "read",
+    kind: "network",
     description:
       "Fetch the content of a web page and return it as readable text. " +
       "Use this to read the full content of a specific URL found via web_search or provided directly.",
@@ -281,7 +375,7 @@ export const COMPAT_TOOL_SPECS: CompatToolSpec[] = [
         url: { type: "string", description: "The URL to fetch" },
         max_length: {
           type: "number",
-          description: "Maximum characters to return (default 15000)",
+          description: "Maximum characters to return (default 15000, capped at 30000)",
         },
       },
       required: ["url"],
@@ -442,6 +536,20 @@ function readNumber(args: Record<string, unknown>, key: string): number | undefi
 
 function resolveToolPath(cwd: string, target: string): string {
   return path.resolve(cwd, target);
+}
+
+/**
+ * True when the target path stays inside the workspace subtree. Used to scope
+ * acceptEdits auto-approval: edits outside the cwd (~/.bashrc, Otto's own
+ * config) still prompt. Purely lexical — symlinks are not chased — so it
+ * gates prompting, it is not a sandbox.
+ */
+export function isPathInsideWorkspace(cwd: string, target: string): boolean {
+  const relative = path.relative(cwd, path.resolve(cwd, target));
+  return (
+    relative === "" ||
+    (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+  );
 }
 
 function truncateOutput(text: string, maxChars: number): { text: string; truncated: boolean } {
@@ -706,9 +814,10 @@ async function editFileTool(input: CompatToolCallInput): Promise<CompatToolOutco
       detail,
     );
   }
-  const updated = replaceAll
-    ? content.split(oldString).join(newString)
-    : content.replace(oldString, newString);
+  // split/join, never String.replace: with a string search value, replace()
+  // interprets $&, $`, $' and $$ in the replacement and silently splices
+  // surrounding file content into the write.
+  const updated = content.split(oldString).join(newString);
   try {
     await fs.writeFile(filePath, updated, "utf8");
   } catch (error) {
@@ -772,7 +881,14 @@ async function runShellCommand(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<ShellResult> {
-  const child = spawn(command, { shell: true, cwd, windowsHide: true });
+  // stdin closed from the start — a command that reads stdin should see EOF
+  // immediately instead of hanging until the timeout kills it.
+  const child = spawn(command, {
+    shell: true,
+    cwd,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let output = "";
   let timedOut = false;
 
@@ -963,44 +1079,63 @@ async function ddgHtmlSearch(query: string): Promise<DdgHtmlResult[]> {
   return parseDdgHtmlResults(html);
 }
 
-function parseDdgHtmlResults(html: string): DdgHtmlResult[] {
+interface DdgAnchorHit {
+  tag: string;
+  inner: string;
+  start: number;
+  end: number;
+}
+
+export function parseDdgHtmlResults(html: string): DdgHtmlResult[] {
   const results: DdgHtmlResult[] = [];
 
-  // DuckDuckGo HTML results are in <a class="result__a"> inside <li class="result">
-  // Each result has a <h2> for title, <a> for link, and <a class="result__snippet"> for snippet
-  const resultRegex = /<li[^>]*class="result"[^>]*>([\s\S]*?)<\/li>/gi;
-  let match;
+  // DDG's container markup changes across revisions (<li class="result">,
+  // <div class="result web-result">, …) and attribute order isn't stable, so
+  // key off the stable classes instead: the title anchor carries result__a
+  // and the snippet element (between one title anchor and the next) carries
+  // result__snippet.
+  const anchorRegex = /<a\b[^>]*\bclass="[^"]*\bresult__a\b[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snippetRegex =
+    /<([a-z]+)\b[^>]*\bclass="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/\1>/i;
 
-  while ((match = resultRegex.exec(html)) !== null) {
-    const block = match[1];
+  const anchors: DdgAnchorHit[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = anchorRegex.exec(html)) !== null && anchors.length < MAX_WEB_SEARCH_RESULTS) {
+    anchors.push({
+      tag: match[0],
+      inner: match[1],
+      start: match.index,
+      end: anchorRegex.lastIndex,
+    });
+  }
 
-    // Extract title from <h2 class="result__title"><a ...>Title</a></h2>
-    const titleMatch = block.match(/<h2[^>]*>.*?<a[^>]*>([\s\S]*?)<\/a>/i);
-    const title = titleMatch ? stripHtml(decodeHtmlEntities(titleMatch[1])).trim() : "";
+  for (const [index, anchor] of anchors.entries()) {
+    const title = stripHtml(decodeHtmlEntities(anchor.inner)).trim();
 
-    // Extract URL — DuckDuckGo uses redirect URLs, extract the original
-    const hrefMatch = block.match(/<a[^>]*href="([^"]+)"[^>]*class="result__a"/i);
-    let rawUrl = hrefMatch ? decodeURIComponent(decodeHtmlEntities(hrefMatch[1])) : "";
-
-    // DDG wraps URLs in r=... redirects; try to extract the actual URL
-    const actualUrlMatch = rawUrl.match(/r=([^&]+)/);
-    if (actualUrlMatch) {
-      rawUrl = decodeURIComponent(actualUrlMatch[1]);
+    // DDG wraps results in /l/?uddg=<encoded> redirect links; recover the
+    // destination (query params intact — stripping them breaks links that
+    // need them) and fall back to the raw href.
+    const hrefMatch = anchor.tag.match(/\bhref="([^"]+)"/i);
+    let url = hrefMatch ? decodeHtmlEntities(hrefMatch[1]) : "";
+    const uddgMatch = url.match(/[?&]uddg=([^&]+)/);
+    if (uddgMatch) {
+      try {
+        url = decodeURIComponent(uddgMatch[1]);
+      } catch {
+        // Malformed encoding — keep the redirect URL, it still resolves.
+      }
     }
 
-    // Clean up the URL — remove query params that DDG appends
-    let url = rawUrl.split(/[?&]/)[0] || "";
-
-    // Extract snippet
-    const snippetMatch = block.match(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
-    const snippet = snippetMatch ? stripHtml(decodeHtmlEntities(snippetMatch[1])).trim() : "";
+    const segment = html.slice(anchor.end, anchors[index + 1]?.start ?? html.length);
+    const snippetMatch = segment.match(snippetRegex);
+    const snippet = snippetMatch ? stripHtml(decodeHtmlEntities(snippetMatch[2])).trim() : "";
 
     if (title || url) {
       results.push({ title, url, snippet });
     }
   }
 
-  return results.slice(0, MAX_WEB_SEARCH_RESULTS);
+  return results;
 }
 
 async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutcome> {
@@ -1025,17 +1160,18 @@ async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutc
     const webResults: Array<{ title: string; url: string }> = [];
     const annotations: string[] = [];
 
-    // Extract results from Instant Answer API
+    // Extract results from the Instant Answer API. Results and annotations
+    // are joined by index later, so an annotation slot (possibly empty) is
+    // pushed for every kept result — filling them under different conditions
+    // attaches snippets to the wrong result.
     if (instantResults.Results && instantResults.Results.length > 0) {
       for (const r of instantResults.Results) {
-        const title = r.Heading || "";
         const url = r.AbstractURL || r.URL || "";
-        if (url) {
-          webResults.push({ title, url });
+        if (!url) {
+          continue;
         }
-        if (r.Text) {
-          annotations.push(r.Text);
-        }
+        webResults.push({ title: r.Heading || "", url });
+        annotations.push(r.Text ?? "");
       }
     }
 
@@ -1052,7 +1188,7 @@ async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutc
         detail: {
           ...detailBase,
           webResults,
-          ...(annotations.length > 0 ? { annotations } : {}),
+          ...(annotations.some((snippet) => snippet.length > 0) ? { annotations } : {}),
         },
       };
     }
@@ -1092,18 +1228,34 @@ async function webSearchTool(input: CompatToolCallInput): Promise<CompatToolOutc
 // web_fetch — Fetch a URL and extract readable text
 // ---------------------------------------------------------------------------
 
+interface GuardedResponse {
+  response: UndiciResponse;
+  /** Closes the pinned connection pool; call once the body is consumed. */
+  dispose: () => Promise<void>;
+}
+
 /**
  * Fetch a URL, following redirects manually so every hop is re-validated
  * against the SSRF blocklist — a public URL must not be able to redirect into
- * an internal/metadata address. Throws on blocked hosts or excessive redirects.
+ * an internal/metadata address. Each hop's connection is pinned to the
+ * addresses that passed validation (see buildPinnedDispatcher), so a low-TTL
+ * DNS-rebinding server cannot answer validation with a public IP and the
+ * connection with a private one. Throws on blocked hosts or excessive
+ * redirects.
  */
-async function fetchWithSsrfGuard(urlString: string): Promise<Response> {
+async function fetchWithSsrfGuard(urlString: string): Promise<GuardedResponse> {
   let currentUrl = urlString;
   for (let hop = 0; hop <= MAX_WEB_FETCH_REDIRECTS; hop++) {
-    await validateUrlForFetch(currentUrl);
-    const response = await fetchWithTimeout(
-      currentUrl,
-      {
+    const target = await validateUrlForFetch(currentUrl);
+    const dispatcher = buildPinnedDispatcher(target);
+    const dispose = async (): Promise<void> => {
+      await dispatcher.close().catch(() => undefined);
+    };
+    let response: UndiciResponse;
+    try {
+      // undici's own fetch, not the global one: the pinned dispatcher must
+      // come from the same undici build that executes the request.
+      response = await undiciFetch(currentUrl, {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -1111,24 +1263,65 @@ async function fetchWithSsrfGuard(urlString: string): Promise<Response> {
           "Accept-Language": "en-US,en;q=0.9",
         },
         redirect: "manual",
-      },
-      WEB_FETCH_TIMEOUT_MS,
-    );
+        signal: AbortSignal.timeout(WEB_FETCH_TIMEOUT_MS),
+        dispatcher,
+      });
+    } catch (error) {
+      await dispose();
+      throw error;
+    }
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) {
-        return response;
+        return { response, dispose };
       }
+      await response.body?.cancel().catch(() => undefined);
+      await dispose();
       if (hop === MAX_WEB_FETCH_REDIRECTS) {
         throw new Error(`Too many redirects (>${MAX_WEB_FETCH_REDIRECTS})`);
       }
       currentUrl = new URL(location, currentUrl).toString();
       continue;
     }
-    return response;
+    return { response, dispose };
   }
   throw new Error("No response received");
+}
+
+/**
+ * Read a response body up to maxBytes. Stops reading and cancels the stream
+ * the moment the cap is crossed — the whole point is that a hostile server
+ * cannot stream an unbounded body into daemon memory before a size check.
+ */
+async function readBodyWithCap(
+  response: UndiciResponse,
+  maxBytes: number,
+): Promise<{ body: Buffer; exceededCap: boolean }> {
+  if (!response.body) {
+    return { body: Buffer.alloc(0), exceededCap: false };
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = Buffer.from(value);
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { body: Buffer.concat(chunks), exceededCap: true };
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return { body: Buffer.concat(chunks), exceededCap: false };
 }
 
 async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutcome> {
@@ -1149,7 +1342,13 @@ async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutco
     });
   }
 
-  const maxLength = readNumber(input.arguments, "max_length") ?? MAX_WEB_FETCH_OUTPUT;
+  // max_length is model-controlled — clamp it so a tool result can never
+  // exceed the shared per-result context budget.
+  const requestedLength = readNumber(input.arguments, "max_length");
+  const maxLength = Math.min(
+    Math.max(requestedLength ?? MAX_WEB_FETCH_OUTPUT, 1),
+    MAX_TOOL_OUTPUT_CHARS,
+  );
 
   const detailBase: ToolCallDetail = {
     type: "fetch",
@@ -1157,26 +1356,37 @@ async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutco
   };
 
   try {
-    const response = await fetchWithSsrfGuard(urlString);
-
-    const statusText = response.status >= 400 ? response.statusText : "OK";
-
-    // Read response body
-    const buffer = await response.arrayBuffer();
-    const bytes = buffer.byteLength;
-
-    if (bytes > MAX_WEB_FETCH_BYTES) {
+    const { response, dispose } = await fetchWithSsrfGuard(urlString);
+    let bodyResult: { body: Buffer; exceededCap: boolean };
+    try {
+      // Reject oversized responses up front when the server declares a
+      // length; the streamed cap below covers servers that lie or omit it.
+      const declaredLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_WEB_FETCH_BYTES) {
+        await response.body?.cancel().catch(() => undefined);
+        return errorOutcome(
+          `web_fetch failed: Response too large (${declaredLength} bytes, max ${MAX_WEB_FETCH_BYTES})`,
+          detailBase,
+        );
+      }
+      bodyResult = await readBodyWithCap(response, MAX_WEB_FETCH_BYTES);
+    } finally {
+      await dispose();
+    }
+    if (bodyResult.exceededCap) {
       return errorOutcome(
-        `web_fetch failed: Response too large (${bytes} bytes, max ${MAX_WEB_FETCH_BYTES})`,
+        `web_fetch failed: Response too large (>${MAX_WEB_FETCH_BYTES} bytes)`,
         detailBase,
       );
     }
 
+    const statusText = response.status >= 400 ? response.statusText : "OK";
+    const bytes = bodyResult.body.byteLength;
     const encoding = normalizeBufferEncoding(
       extractCharset(response.headers.get("content-type") ?? ""),
     );
 
-    const text = Buffer.from(buffer).toString(encoding);
+    const text = bodyResult.body.toString(encoding);
     const isHtml = response.headers.get("content-type")?.includes("text/html") ?? false;
 
     let content: string;
@@ -1198,7 +1408,7 @@ async function webFetchTool(input: CompatToolCallInput): Promise<CompatToolOutco
     const output = `Fetched ${urlString} (${response.status} ${statusText}, ${bytes} bytes)\n\n${result}${truncated ? "\n\n[truncated]" : ""}`;
 
     return {
-      output,
+      output: capToolOutput(output),
       detail: {
         ...detailBase,
         result: result.slice(0, 500) + (truncated ? "..." : ""),
