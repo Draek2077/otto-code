@@ -67,7 +67,7 @@ console.log("✓ server package scripts enter supervisor\n");
 console.log("Test 2: app e2e global setup launches supervisor-entrypoint in dev mode");
 const appGlobalSetup = await readFile(appGlobalSetupPath, "utf-8");
 assert(
-  appGlobalSetup.includes('spawn(tsxBin, ["scripts/supervisor-entrypoint.ts", "--dev"]'),
+  appGlobalSetup.includes('[tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"]'),
   "app e2e setup should spawn supervisor-entrypoint.ts with --dev",
 );
 assertNoSpawnedWorkerEntrypoint("app e2e global setup", appGlobalSetup);
