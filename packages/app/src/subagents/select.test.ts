@@ -178,6 +178,7 @@ describe("selectSubagentsForParent", () => {
         status: "running",
         requiresAttention: true,
         createdAt,
+        attend: "observed",
         model: "should-not-leak",
         cwd: "/private/project",
       }),
@@ -200,9 +201,11 @@ describe("selectSubagentsForParent", () => {
         status: "running",
         requiresAttention: true,
         createdAt,
+        attend: "observed",
       },
     ]);
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
+      "attend",
       "createdAt",
       "id",
       "provider",
