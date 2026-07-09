@@ -28,12 +28,14 @@ export default defineConfig({
     {
       name: "Desktop Chrome",
       testIgnore: ["**/*.real.spec.ts"],
-      use: { ...devices["Desktop Chrome"] },
+      // E2E_BROWSER_CHANNEL lets local runs drive an installed browser (e.g.
+      // "msedge" on Windows) instead of Playwright's downloaded chromium.
+      use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
     },
     {
       name: "real-provider",
       testMatch: ["**/*.real.spec.ts"],
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
     },
   ],
   // Note: Metro is started by global-setup.ts on a dynamic port to allow parallel test runs

@@ -457,6 +457,9 @@ async function changeCodeFontSizeFromSettings(page: Page, codeFontSize: number):
 // moving the pointer to the track position for that value and releasing it.
 async function dragCodeFontSizeSlider(page: Page, codeFontSize: number): Promise<void> {
   const slider = page.getByLabel("Code font size");
+  // The fonts card sits below newer appearance sections, so the slider can be
+  // outside the viewport; raw mouse coordinates only work once it's scrolled in.
+  await slider.scrollIntoViewIfNeeded();
   const box = await slider.boundingBox();
   if (!box) {
     throw new Error("Code font size slider is not visible");

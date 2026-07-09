@@ -38,7 +38,7 @@ test.describe("Agent stream UI", () => {
   });
 
   test("keeps the viewport fixed after the user scrolls away during a stream", async ({ page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
     const agent = await seedMockAgentWorkspace({
       repoPrefix: "stream-scroll-away-",
       title: "Scroll-away anchor",
@@ -57,9 +57,12 @@ test.describe("Agent stream UI", () => {
         timeout: 30_000,
       });
       await awaitAssistantMessage(page);
+      // Tighter chat typography and action grouping slowed how fast the
+      // rendered transcript gains height, so give the stream longer to
+      // produce enough scrollable distance.
       await waitForScrollableChat(page, {
         minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
-        timeout: 30_000,
+        timeout: 120_000,
       });
       const baseline = await scrollChatAwayFromBottom(page, {
         deltaY: -900,
@@ -78,7 +81,7 @@ test.describe("Agent stream UI", () => {
     page,
     withWorkspace,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const timelineGate = await delayCreatedAgentInitialTailResponse(page);
     const workspace = await withWorkspace({
       prefix: "stream-scroll-away-delayed-history-",
@@ -106,9 +109,11 @@ test.describe("Agent stream UI", () => {
       timeout: 30_000,
     });
     await awaitAssistantMessage(page);
+    // See the scroll-away test above — height accumulates more slowly with
+    // the tighter chat typography, so allow the stream more time.
     await waitForScrollableChat(page, {
       minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
-      timeout: 45_000,
+      timeout: 120_000,
     });
     const baseline = await scrollChatAwayFromBottom(page, {
       deltaY: -900,
