@@ -542,6 +542,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleGroupConsecutiveActionsChange = useCallback(
+    (groupConsecutiveActions: boolean) => {
+      void updateSettings({ groupConsecutiveActions });
+    },
+    [updateSettings],
+  );
+
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
@@ -648,16 +655,31 @@ export function AppearanceSection() {
             value={scopedThemeValue}
             onChange={handleThemeVariantChange}
           />
+        </View>
+      </SettingsSection>
+      <SettingsSection title={t("settings.appearance.agents.title")}>
+        <View style={settingsStyles.card}>
           <LayoutToggleRow
-            title={t("settings.appearance.theme.blackTabBackground.title")}
-            hint={t("settings.appearance.theme.blackTabBackground.hint")}
+            title={t("settings.appearance.agents.blackChatBackground.title")}
+            hint={t("settings.appearance.agents.blackChatBackground.hint")}
             accessibilityLabel={t(
-              "settings.appearance.theme.blackTabBackground.accessibilityLabel",
+              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
             )}
             value={settings.blackTabBackground}
-            withBorder
+            withBorder={false}
             onValueChange={handleBlackTabBackgroundChange}
             testID="settings-black-tab-background-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
+            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
+            )}
+            value={settings.groupConsecutiveActions}
+            withBorder
+            onValueChange={handleGroupConsecutiveActionsChange}
+            testID="settings-group-consecutive-actions-switch"
           />
         </View>
       </SettingsSection>

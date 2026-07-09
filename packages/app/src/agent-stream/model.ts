@@ -6,6 +6,7 @@ import {
   getWebMountedRecentStreamItems,
   getWebPartialVirtualizationThreshold,
 } from "./web-virtualization";
+import { groupConsecutiveActionItems } from "./action-grouping";
 import { orderHeadForStreamRenderStrategy, orderTailForStreamRenderStrategy } from "./strategy";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 
@@ -40,6 +41,7 @@ export interface BuildAgentStreamRenderModelInput {
   head: StreamItem[];
   platform: "web" | "native";
   isMobileBreakpoint: boolean;
+  groupConsecutiveActions?: boolean;
 }
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -48,6 +50,9 @@ const EMPTY_AUXILIARY: StreamRenderAuxiliary = {
   turnFooter: null,
 };
 
+// Grouped tails are cached by raw-tail identity so every downstream WeakMap
+// cache (ordering, history split, layout) keys off a stable array identity.
+const groupedTailCache = new WeakMap<StreamItem[], StreamItem[]>();
 const orderedTailCache = new WeakMap<StreamItem[], Map<string, StreamItem[]>>();
 const orderedHeadCache = new WeakMap<StreamItem[], Map<string, StreamItem[]>>();
 const splitHistoryCache = new WeakMap<
@@ -154,6 +159,16 @@ function getTurnTiming(params: {
   return timing;
 }
 
+function getGroupedTail(tail: StreamItem[]): StreamItem[] {
+  const cached = groupedTailCache.get(tail);
+  if (cached) {
+    return cached;
+  }
+  const grouped = groupConsecutiveActionItems(tail);
+  groupedTailCache.set(tail, grouped);
+  return grouped;
+}
+
 export function buildAgentStreamRenderModel(
   input: BuildAgentStreamRenderModelInput,
 ): AgentStreamRenderModel {
@@ -161,10 +176,13 @@ export function buildAgentStreamRenderModel(
     platform: input.platform === "web" ? "web" : "native",
     isMobileBreakpoint: input.isMobileBreakpoint,
   });
+  // Grouping happens on the chronological tail, before strategy ordering can
+  // reverse it, and only ever on the render path — stores stay ungrouped.
+  const tailSource = input.groupConsecutiveActions ? getGroupedTail(input.tail) : input.tail;
   const orderingCacheKey = `${input.platform}:${input.isMobileBreakpoint}`;
   const orderedTail = getOrderedItems({
     cache: orderedTailCache,
-    source: input.tail,
+    source: tailSource,
     cacheKey: orderingCacheKey,
     order: (items) =>
       orderTailForStreamRenderStrategy({

@@ -1,0 +1,185 @@
+import { describe, expect, it } from "vitest";
+import type { StreamItem, ToolCallItem } from "@/types/stream";
+import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
+import { groupConsecutiveActionItems, isGroupableActionItem } from "./action-grouping";
+
+function createTimestamp(seed: number): Date {
+  return new Date(`2026-01-01T00:00:${seed.toString().padStart(2, "0")}.000Z`);
+}
+
+function assistantMessage(id: string, seed: number): StreamItem {
+  return {
+    kind: "assistant_message",
+    id,
+    text: id,
+    timestamp: createTimestamp(seed),
+  };
+}
+
+function toolCall(
+  id: string,
+  seed: number,
+  options?: { detail?: ToolCallDetail; status?: "running" | "completed" },
+): ToolCallItem {
+  return {
+    kind: "tool_call",
+    id,
+    timestamp: createTimestamp(seed),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "claude",
+        callId: id,
+        name: "Read",
+        status: options?.status ?? "completed",
+        error: null,
+        detail: options?.detail ?? { type: "read", filePath: `/tmp/${id}` },
+      },
+    },
+  };
+}
+
+function thought(id: string, seed: number): StreamItem {
+  return {
+    kind: "thought",
+    id,
+    text: id,
+    timestamp: createTimestamp(seed),
+    status: "ready",
+  };
+}
+
+function speakToolCall(id: string, seed: number): ToolCallItem {
+  return {
+    kind: "tool_call",
+    id,
+    timestamp: createTimestamp(seed),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "claude",
+        callId: id,
+        name: "speak",
+        status: "completed",
+        error: null,
+        detail: { type: "unknown", input: "hello there", output: null },
+      },
+    },
+  };
+}
+
+function expectActionGroup(item: StreamItem): Extract<StreamItem, { kind: "action_group" }> {
+  if (item.kind !== "action_group") {
+    throw new Error(`expected action_group, got ${item.kind}`);
+  }
+  return item;
+}
+
+describe("groupConsecutiveActionItems", () => {
+  it("returns the input identity when no run reaches three actions", () => {
+    const items = [
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      assistantMessage("a1", 3),
+      toolCall("t3", 4),
+      toolCall("t4", 5),
+    ];
+
+    expect(groupConsecutiveActionItems(items)).toBe(items);
+  });
+
+  it("folds a fully settled run entirely into one group", () => {
+    const items = [toolCall("t1", 1), toolCall("t2", 2), toolCall("t3", 3)];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result).toHaveLength(1);
+    const group = expectActionGroup(result[0]);
+    expect(group.items.map((item) => item.id)).toEqual(["t1", "t2", "t3"]);
+    expect(group.timestamp).toEqual(createTimestamp(3));
+  });
+
+  it("keeps live actions outside, below the settled group", () => {
+    const items = [
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      toolCall("t3", 3, { status: "running" }),
+      toolCall("t4", 4, { status: "running" }),
+    ];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result.map((item) => item.kind)).toEqual(["action_group", "tool_call", "tool_call"]);
+    const group = expectActionGroup(result[0]);
+    expect(group.items.map((item) => item.id)).toEqual(["t1", "t2"]);
+    expect(result[1].id).toBe("t3");
+    expect(result[2].id).toBe("t4");
+  });
+
+  it("does not group when fewer than two actions have settled", () => {
+    const items = [toolCall("t1", 1), toolCall("t2", 2, { status: "running" }), toolCall("t3", 3)];
+
+    expect(groupConsecutiveActionItems(items)).toBe(items);
+  });
+
+  it("keeps the group id stable while a run grows and settles", () => {
+    const whileRunning = groupConsecutiveActionItems([
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      toolCall("t3", 3, { status: "running" }),
+    ]);
+    const afterSettling = groupConsecutiveActionItems([
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      toolCall("t3", 3),
+    ]);
+
+    expect(whileRunning.map((item) => item.kind)).toEqual(["action_group", "tool_call"]);
+    expect(afterSettling.map((item) => item.kind)).toEqual(["action_group"]);
+    expect(whileRunning[0].id).toBe(afterSettling[0].id);
+    expect(expectActionGroup(afterSettling[0]).items.map((item) => item.id)).toEqual([
+      "t1",
+      "t2",
+      "t3",
+    ]);
+  });
+
+  it("groups each run independently around non-action items", () => {
+    const items = [
+      toolCall("t1", 1),
+      thought("th1", 2),
+      toolCall("t2", 3),
+      assistantMessage("a1", 4),
+      toolCall("t3", 5),
+      toolCall("t4", 6),
+    ];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result.map((item) => item.kind)).toEqual([
+      "action_group",
+      "assistant_message",
+      "tool_call",
+      "tool_call",
+    ]);
+    const group = expectActionGroup(result[0]);
+    expect(group.items.map((item) => item.id)).toEqual(["t1", "th1", "t2"]);
+  });
+
+  it("treats speak bubbles and plans as run breakers", () => {
+    const items = [
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      speakToolCall("s1", 3),
+      toolCall("t3", 4),
+      toolCall("t4", 5),
+      toolCall("t5", 6, { detail: { type: "plan", text: "the plan" } }),
+    ];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result).toBe(items);
+    expect(isGroupableActionItem(items[2])).toBe(false);
+    expect(isGroupableActionItem(items[5])).toBe(false);
+  });
+});

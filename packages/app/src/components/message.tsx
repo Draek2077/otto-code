@@ -2347,6 +2347,9 @@ interface ExpandableBadgeProps {
   isError?: boolean;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
+  // Grouped contexts (ActionGroup) space rows with a parent `gap` instead of
+  // per-row margins, so they also opt out of the expanded bottom margin.
+  disableExpandedSpacing?: boolean;
   testID?: string;
 }
 
@@ -2710,6 +2713,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   isError = false,
   isLastInSequence = false,
   disableOuterSpacing,
+  disableExpandedSpacing = false,
   testID,
 }: ExpandableBadgeProps) {
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
@@ -2867,18 +2871,20 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     // Expanded rows always need breathing room from their neighbors, even in
     // contexts (the main chat stream) that disable outer spacing to keep
     // collapsed tool-call pills tight — disableOuterSpacing predates the
-    // bordered expanded state and was never meant to gate it.
-    if (isExpanded) {
+    // bordered expanded state and was never meant to gate it. The exception
+    // is grouped contexts, where the parent spaces rows with `gap` and a
+    // per-row margin would double it (disableExpandedSpacing).
+    if (isExpanded && !disableExpandedSpacing) {
       return expandableBadgeStylesheet.containerExpandedSpacing;
     }
-    if (resolvedDisableOuterSpacing) {
+    if (resolvedDisableOuterSpacing || disableExpandedSpacing) {
       return null;
     }
     if (isLastInSequence) {
       return expandableBadgeStylesheet.containerLastInSequence;
     }
     return expandableBadgeStylesheet.containerSpacing;
-  }, [isExpanded, isLastInSequence, resolvedDisableOuterSpacing]);
+  }, [disableExpandedSpacing, isExpanded, isLastInSequence, resolvedDisableOuterSpacing]);
 
   const containerStyle = useMemo(
     () => [expandableBadgeStylesheet.container, containerSpacingStyle, style],
@@ -3029,6 +3035,7 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.isError !== next.isError) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
+  if (previous.disableExpandedSpacing !== next.disableExpandedSpacing) return false;
   if (previous.testID !== next.testID) return false;
   if (previous.onToggle !== next.onToggle) return false;
   if (previous.onOpenFile !== next.onOpenFile) return false;
@@ -3048,6 +3055,7 @@ interface ToolCallProps {
   metadata?: Record<string, unknown>;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
+  disableExpandedSpacing?: boolean;
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
@@ -3064,6 +3072,7 @@ export const ToolCall = memo(function ToolCall({
   metadata,
   isLastInSequence = false,
   disableOuterSpacing,
+  disableExpandedSpacing,
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
@@ -3196,6 +3205,7 @@ export const ToolCall = memo(function ToolCall({
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
+      disableExpandedSpacing={disableExpandedSpacing}
       onDetailHoverChange={onInlineDetailsHoverChange}
     />
   );
@@ -3212,6 +3222,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.metadata !== next.metadata) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
+  if (previous.disableExpandedSpacing !== next.disableExpandedSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
   return true;
 }

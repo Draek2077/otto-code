@@ -77,6 +77,9 @@ export interface AppSettings {
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
   blackTabBackground: boolean;
+  // Fold runs of 3+ consecutive actions in agent chat into one collapsed,
+  // expandable group; the most recent action of a run stays outside it.
+  groupConsecutiveActions: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -104,6 +107,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   workspaceToolsPlacement: "header",
   chatWidth: "default",
   blackTabBackground: false,
+  groupConsecutiveActions: true,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -316,6 +320,9 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   }
   if (typeof stored.blackTabBackground === "boolean") {
     result.blackTabBackground = stored.blackTabBackground;
+  }
+  if (typeof stored.groupConsecutiveActions === "boolean") {
+    result.groupConsecutiveActions = stored.groupConsecutiveActions;
   }
   return result;
 }

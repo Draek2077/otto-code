@@ -173,6 +173,26 @@ export const zhCN: TranslationResources = {
   agentStream: {
     empty: "开始和这个 Agent 对话...",
     scrollToBottom: "滚动到底部",
+    actionGroup: {
+      count: "{{count}} action",
+      countPlural: "{{count}} actions",
+      summary: {
+        fileRead: "{{count}} file read",
+        filesRead: "{{count}} files read",
+        fileWritten: "{{count}} file written",
+        filesWritten: "{{count}} files written",
+        searchCompleted: "{{count}} search completed",
+        searchesCompleted: "{{count}} searches completed",
+        commandRun: "{{count}} command run",
+        commandsRun: "{{count}} commands run",
+        agentTask: "{{count}} agent task",
+        agentTasks: "{{count}} agent tasks",
+        thought: "{{count}} thought",
+        thoughts: "{{count}} thoughts",
+        toolCall: "{{count}} tool call",
+        toolCalls: "{{count}} tool calls",
+      },
+    },
     permission: {
       plan: "Plan",
       required: "需要权限",
@@ -1700,10 +1720,18 @@ export const zhCN: TranslationResources = {
           horizon: "Horizon",
           powder: "Powder",
         },
-        blackTabBackground: {
-          title: "Black tab background",
-          hint: "Chat tabs and chat content use a pure black background with dark-theme colors, even in light mode",
-          accessibilityLabel: "Black tab background",
+      },
+      agents: {
+        title: "Agents",
+        blackChatBackground: {
+          title: "Black agent chat background",
+          hint: "Agent chat tabs and chat content use a pure black background with dark-theme colors, even in light mode",
+          accessibilityLabel: "Black agent chat background",
+        },
+        groupConsecutiveActions: {
+          title: "Group consecutive actions together",
+          hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
+          accessibilityLabel: "Group consecutive actions together",
         },
       },
       layout: {
