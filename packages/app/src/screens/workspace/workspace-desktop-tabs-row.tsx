@@ -23,13 +23,13 @@ import {
   ChevronDown,
   Columns2,
   Copy,
+  FileText,
   Pencil,
   RotateCw,
   Rows2,
   Globe,
   PlayFilled,
   Plus,
-  SquarePen,
   SquareTerminal,
   X,
 } from "@/components/icons/material-icons";
@@ -60,9 +60,15 @@ import {
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { useNonClientHover } from "@/hooks/use-non-client-hover";
+import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
+import {
+  computeVisibleTabActionKeys,
+  type WorkspaceTabActionDescriptor,
+} from "@/screens/workspace/workspace-tab-actions-overflow";
+import { useHostFeature } from "@/runtime/host-features";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -86,9 +92,10 @@ import {
 } from "@otto-code/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
-import { ProfileIcon, usePinnedLaunchers } from "@/workspace-pins/launch";
+import { ProfileIcon, usePinnedLaunchers, type ResolvedPin } from "@/workspace-pins/launch";
 import { runPinnedTabTarget, type TabTargetHandlers } from "@/workspace-pins/run";
-import type { PinnedTabTarget } from "@/workspace-pins/target";
+import { isTargetPinned, type PinnedTabTarget } from "@/workspace-pins/target";
+import { usePinnedTargetsStore } from "@/workspace-pins/store";
 import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
@@ -111,6 +118,16 @@ const ON_BLACK_FOREGROUND = "#fafafa";
 const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
+const TAB_MAX_WIDTH = 200;
+// Width math for the trailing-tools overflow. These mirror the style constants
+// below (newTabActionButton / pin buttons are 22, the artifact trigger is 28,
+// tabsContent pads 4 per side, tabsActions pads 8 per side). The collapse
+// decision must be derived from constants — not from measuring the strip —
+// or hiding a button would change the measurement that decided to hide it.
+const SMALL_TOOL_WIDTH = 22;
+const ARTIFACTS_TOOL_WIDTH = 28;
+const TABS_CONTENT_PADDING_TOTAL = 8;
+const TOOLS_STRIP_PADDING_TOTAL = 16;
 // Background refresh so the Preview icon reflects real server state without
 // requiring the user to open the picker first.
 const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
@@ -123,30 +140,39 @@ const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
-const ThemedSquarePen = withUnistyles(SquarePen);
-const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedPlayFilled = withUnistyles(PlayFilled);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
 const ThemedPlus = withUnistyles(Plus);
+const ThemedFileText = withUnistyles(FileText);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 
-const AGENT_ICON = <ThemedSquarePen size={14} uniProps={mutedColorMapping} />;
-const TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
-const BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
+// Leading icons for the more-actions catalog menu rows.
+const MENU_PREVIEW_ICON = <ThemedPlayFilled size={14} uniProps={mutedColorMapping} />;
+const MENU_ARTIFACTS_ICON = <ThemedFileText size={14} uniProps={mutedColorMapping} />;
+const MENU_TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
+const MENU_BROWSER_ICON = <ThemedGlobe size={14} uniProps={mutedColorMapping} />;
+const MENU_SPLIT_RIGHT_ICON = <ThemedColumns2 size={14} uniProps={mutedColorMapping} />;
+const MENU_SPLIT_DOWN_ICON = <ThemedRows2 size={14} uniProps={mutedColorMapping} />;
+
+// Pin targets for the catalog rows. Launcher pins get strip buttons; tool
+// pins exempt the tool's button from overflow collapse.
+const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
+const BROWSER_TARGET: PinnedTabTarget = { kind: "browser" };
+const PREVIEW_TARGET: PinnedTabTarget = { kind: "preview" };
+const ARTIFACT_TARGET: PinnedTabTarget = { kind: "artifact" };
+const SPLIT_RIGHT_TARGET: PinnedTabTarget = { kind: "split-right" };
+const SPLIT_DOWN_TARGET: PinnedTabTarget = { kind: "split-down" };
 const PREVIEW_BOOTSTRAP_PROMPT =
   "Detect this project's dev servers and save their configurations to `.claude/launch.json` " +
   "(create it if missing) using the format from the `preview_start` tool description. Then ask me " +
   "which ones to start, and call `preview_start` for each one I pick.";
-
-const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
-const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
-const BROWSER_TARGET: PinnedTabTarget = { kind: "browser" };
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
@@ -275,11 +301,27 @@ function WorkspaceInlineAddTabButton({
   );
 }
 
-interface WorkspacePreviewButtonProps {
+interface WorkspacePreviewControllerInput {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   paneId?: string;
   focusedAgentId: string | null;
+  /** False when this pane offers no preview tool at all — skips the poll. */
+  enabled: boolean;
+}
+
+interface WorkspacePreviewController {
+  isBusy: boolean;
+  disabled: boolean;
+  hasFocusedAgent: boolean;
+  pickerOpen: boolean;
+  pickerServers: PreviewConfiguredServer[];
+  hasRunningPreviewServer: boolean;
+  isServerRunning: (serverName: string) => boolean;
+  runPreviewFlow: () => Promise<void>;
+  handleOpenChange: (next: boolean) => void;
+  handlePickServer: (serverName: string) => void;
+  handleStopServer: (serverName: string) => void;
 }
 
 /**
@@ -287,14 +329,18 @@ interface WorkspacePreviewButtonProps {
  * preview tab in a split pane to the right — the UI-driven counterpart to the
  * agent-facing preview_start tool. Disabled unless the pane's active tab is a
  * chat, since the server to preview is resolved from that agent's cwd.
+ *
+ * The logic lives in this hook rather than the button because the tools
+ * overflow may collapse the button into the more-actions menu — the menu item
+ * then drives the same flow, with the picker opening from a hidden anchor.
  */
-function WorkspacePreviewButton({
+function useWorkspacePreviewController({
   normalizedServerId,
   normalizedWorkspaceId,
   paneId,
   focusedAgentId,
-}: WorkspacePreviewButtonProps) {
-  const { t } = useTranslation();
+  enabled,
+}: WorkspacePreviewControllerInput): WorkspacePreviewController {
   const [isBusy, setIsBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerServers, setPickerServers] = useState<PreviewConfiguredServer[]>([]);
@@ -476,7 +522,7 @@ function WorkspacePreviewButton({
   // as a chat is focused, so the icon reflects real server state without the
   // user having to open the picker first.
   useEffect(() => {
-    if (!focusedAgentCwd) {
+    if (!enabled || !focusedAgentCwd) {
       return;
     }
     const cwd = focusedAgentCwd;
@@ -487,7 +533,7 @@ function WorkspacePreviewButton({
     poll();
     const intervalId = setInterval(poll, PREVIEW_SERVER_POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [fetchAndRecordRunningServers, focusedAgentCwd]);
+  }, [enabled, fetchAndRecordRunningServers, focusedAgentCwd]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -536,8 +582,75 @@ function WorkspacePreviewButton({
     [focusedAgentId, normalizedServerId, normalizedWorkspaceId, startAndOpenPreview],
   );
 
+  const handleStopServer = useCallback(
+    (serverName: string) => {
+      setPickerOpen(false);
+      const running = runningServersRef.current.get(serverName);
+      if (running) {
+        void stopServer(running.serverId, serverName, running.port);
+      }
+    },
+    [stopServer],
+  );
+
   const disabled = !focusedAgentId || isBusy;
-  const label = focusedAgentId
+  const isServerRunning = useCallback(
+    (serverName: string) => runningServersRef.current.has(serverName),
+    [],
+  );
+
+  return useMemo(
+    () => ({
+      isBusy,
+      disabled,
+      hasFocusedAgent: focusedAgentId !== null,
+      pickerOpen,
+      pickerServers,
+      hasRunningPreviewServer,
+      isServerRunning,
+      runPreviewFlow,
+      handleOpenChange,
+      handlePickServer,
+      handleStopServer,
+    }),
+    [
+      disabled,
+      focusedAgentId,
+      handleOpenChange,
+      handlePickServer,
+      handleStopServer,
+      hasRunningPreviewServer,
+      isBusy,
+      isServerRunning,
+      pickerOpen,
+      pickerServers,
+      runPreviewFlow,
+    ],
+  );
+}
+
+function WorkspacePreviewMenuContent({ controller }: { controller: WorkspacePreviewController }) {
+  const { t } = useTranslation();
+  return (
+    <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
+      <DropdownMenuLabel>{t("workspace.tabs.actions.previewPickServer")}</DropdownMenuLabel>
+      {controller.pickerServers.map((server) => (
+        <PreviewServerMenuItem
+          key={server.name}
+          server={server}
+          onSelect={controller.handlePickServer}
+          onStop={controller.handleStopServer}
+          isRunning={controller.isServerRunning(server.name)}
+        />
+      ))}
+    </DropdownMenuContent>
+  );
+}
+
+function WorkspacePreviewButton({ controller }: { controller: WorkspacePreviewController }) {
+  const { t } = useTranslation();
+  const { disabled, hasFocusedAgent, isBusy, hasRunningPreviewServer } = controller;
+  const label = hasFocusedAgent
     ? t("workspace.tabs.actions.preview")
     : t("workspace.tabs.actions.previewDisabledTooltip");
 
@@ -550,19 +663,8 @@ function WorkspacePreviewButton({
     [disabled],
   );
 
-  const handleStopServer = useCallback(
-    (serverName: string) => {
-      setPickerOpen(false);
-      const running = runningServersRef.current.get(serverName);
-      if (running) {
-        void stopServer(running.serverId, serverName, running.port);
-      }
-    },
-    [stopServer],
-  );
-
   return (
-    <DropdownMenu open={pickerOpen} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={controller.pickerOpen} onOpenChange={controller.handleOpenChange}>
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild triggerRefProp="triggerRef" disabled={false}>
           <DropdownMenuTrigger
@@ -586,21 +688,32 @@ function WorkspacePreviewButton({
           <Text style={styles.newTabTooltipText}>{label}</Text>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
-        <DropdownMenuLabel>{t("workspace.tabs.actions.previewPickServer")}</DropdownMenuLabel>
-        {pickerServers.map((server) => {
-          const isRunning = runningServersRef.current.has(server.name);
-          return (
-            <PreviewServerMenuItem
-              key={server.name}
-              server={server}
-              onSelect={handlePickServer}
-              onStop={handleStopServer}
-              isRunning={isRunning}
-            />
-          );
-        })}
-      </DropdownMenuContent>
+      <WorkspacePreviewMenuContent controller={controller} />
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Zero-size anchor for the collapsed preview tool: the more-actions menu item
+ * runs the flow, and when a server picker is needed it opens from here (the
+ * right edge of the tab bar), since the real button isn't rendered.
+ */
+function WorkspacePreviewCollapsedAnchor({
+  controller,
+}: {
+  controller: WorkspacePreviewController;
+}) {
+  return (
+    <DropdownMenu open={controller.pickerOpen} onOpenChange={controller.handleOpenChange}>
+      <DropdownMenuTrigger
+        testID="workspace-preview-collapsed-anchor"
+        disabled
+        accessibilityElementsHidden
+        style={styles.hiddenMenuAnchor}
+      >
+        <View />
+      </DropdownMenuTrigger>
+      <WorkspacePreviewMenuContent controller={controller} />
     </DropdownMenu>
   );
 }
@@ -689,8 +802,241 @@ interface WorkspaceTabRowExtrasProps {
   showCreateBrowserTab: boolean;
   showPreviewButton: boolean;
   terminalDisabled: boolean;
+  tabsContainerWidth: number;
+  tabCount: number;
+  inlineAddButtonWidth: number;
+  onSplitRight: () => void;
+  onSplitDown: () => void;
+  showPaneSplitActions: boolean;
+  onStripLayout: (event: LayoutChangeEvent) => void;
+  /**
+   * True while the pointer is over the tab bar row — tab chips and the drag
+   * gutter included. Tracked by the row (the reveal region is wider than this
+   * strip), not by the strip itself: DOM pointerenter/leave for the no-drag
+   * islands plus non-client mouse forwarding for the Electron drag gutter.
+   */
+  rowHovered: boolean;
 }
 
+interface WorkspaceTabToolsOverflow {
+  showPreviewInline: boolean;
+  showArtifactsInline: boolean;
+  visibleLaunchers: ResolvedPin[];
+  showSplitRightInline: boolean;
+  showSplitDownInline: boolean;
+  previewButtonAbsent: boolean;
+  artifactsButtonAbsent: boolean;
+}
+
+/**
+ * Decides which pinned tool buttons fit in the tab bar. Only pinned tools
+ * have buttons at all — unpinned tools live solely in the more-actions
+ * catalog. When the pane is too narrow for the tabs at full width, pinned
+ * buttons disappear left-to-right (tabs win; the catalog row is always there,
+ * so nothing is lost) and come back as soon as there's room.
+ */
+function useWorkspaceTabToolsOverflow(input: {
+  showPreviewButton: boolean;
+  supportsArtifacts: boolean;
+  showPaneSplitActions: boolean;
+  pinnedPreview: boolean;
+  pinnedArtifact: boolean;
+  pinnedSplitRight: boolean;
+  pinnedSplitDown: boolean;
+  launchers: ResolvedPin[];
+  tabsContainerWidth: number;
+  tabCount: number;
+  inlineAddButtonWidth: number;
+}): WorkspaceTabToolsOverflow {
+  const {
+    showPreviewButton,
+    supportsArtifacts,
+    showPaneSplitActions,
+    pinnedPreview,
+    pinnedArtifact,
+    pinnedSplitRight,
+    pinnedSplitDown,
+    launchers,
+    tabsContainerWidth,
+    tabCount,
+    inlineAddButtonWidth,
+  } = input;
+
+  const pinnedButtons = useMemo(() => {
+    const list: WorkspaceTabActionDescriptor[] = [];
+    if (showPreviewButton && pinnedPreview) {
+      list.push({ key: "preview", width: SMALL_TOOL_WIDTH });
+    }
+    if (supportsArtifacts && pinnedArtifact) {
+      list.push({ key: "artifacts", width: ARTIFACTS_TOOL_WIDTH });
+    }
+    for (const launcher of launchers) {
+      list.push({ key: `pin:${launcher.key}`, width: SMALL_TOOL_WIDTH });
+    }
+    if (showPaneSplitActions && pinnedSplitRight) {
+      list.push({ key: "split-right", width: SMALL_TOOL_WIDTH });
+    }
+    if (showPaneSplitActions && pinnedSplitDown) {
+      list.push({ key: "split-down", width: SMALL_TOOL_WIDTH });
+    }
+    return list;
+  }, [
+    launchers,
+    pinnedArtifact,
+    pinnedPreview,
+    pinnedSplitDown,
+    pinnedSplitRight,
+    showPaneSplitActions,
+    showPreviewButton,
+    supportsArtifacts,
+  ]);
+
+  const visibleToolKeys = useMemo(() => {
+    if (tabsContainerWidth <= 0) {
+      // Not measured yet — keep everything; the strip is invisible until
+      // hovered anyway, so a one-frame correction can't flash.
+      return new Set(pinnedButtons.map((tool) => tool.key));
+    }
+    const desiredTabsWidth =
+      tabCount * TAB_MAX_WIDTH +
+      TABS_CONTENT_PADDING_TOTAL +
+      (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH);
+    const availableWidth =
+      tabsContainerWidth - desiredTabsWidth - TOOLS_STRIP_PADDING_TOTAL - SMALL_TOOL_WIDTH;
+    return computeVisibleTabActionKeys({ actions: pinnedButtons, availableWidth });
+  }, [inlineAddButtonWidth, pinnedButtons, tabCount, tabsContainerWidth]);
+
+  const visibleLaunchers = useMemo(
+    () => launchers.filter((launcher) => visibleToolKeys.has(`pin:${launcher.key}`)),
+    [launchers, visibleToolKeys],
+  );
+
+  const showPreviewInline = showPreviewButton && visibleToolKeys.has("preview");
+  const showArtifactsInline = supportsArtifacts && visibleToolKeys.has("artifacts");
+
+  return {
+    showPreviewInline,
+    showArtifactsInline,
+    visibleLaunchers,
+    showSplitRightInline: showPaneSplitActions && visibleToolKeys.has("split-right"),
+    showSplitDownInline: showPaneSplitActions && visibleToolKeys.has("split-down"),
+    // Tools whose button is absent (unpinned, or squeezed out by narrow
+    // panes) still need a hidden anchor so the catalog row can open their
+    // picker menus.
+    previewButtonAbsent: showPreviewButton && !showPreviewInline,
+    artifactsButtonAbsent: supportsArtifacts && !showArtifactsInline,
+  };
+}
+
+/**
+ * The pinnable tool rows of the more-actions catalog. Always rendered in full
+ * (whether or not a tool currently shows a button) — the menu is the one
+ * stable surface where every tool can be launched, pinned, or unpinned.
+ */
+function WorkspaceToolsCatalogMenuItems({
+  showPreviewRow,
+  previewDisabled,
+  onPreview,
+  showArtifactsRow,
+  onArtifacts,
+  terminalDisabled,
+  onCreateTerminal,
+  showBrowserRow,
+  onCreateBrowser,
+  showSplitRows,
+  onSplitRight,
+  onSplitDown,
+}: {
+  showPreviewRow: boolean;
+  previewDisabled: boolean;
+  onPreview: () => void;
+  showArtifactsRow: boolean;
+  onArtifacts: () => void;
+  terminalDisabled: boolean;
+  onCreateTerminal: () => void;
+  showBrowserRow: boolean;
+  onCreateBrowser: () => void;
+  showSplitRows: boolean;
+  onSplitRight: () => void;
+  onSplitDown: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {showPreviewRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-preview"
+          target={PREVIEW_TARGET}
+          label={t("workspace.tabs.actions.preview")}
+          leading={MENU_PREVIEW_ICON}
+          disabled={previewDisabled}
+          onSelect={previewDisabled ? undefined : onPreview}
+        />
+      ) : null}
+      {showArtifactsRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-artifacts"
+          target={ARTIFACT_TARGET}
+          label="Add artifact"
+          leading={MENU_ARTIFACTS_ICON}
+          onSelect={onArtifacts}
+        />
+      ) : null}
+      <PinnableMenuItem
+        testID="workspace-new-tab-menu-terminal"
+        target={TERMINAL_TARGET}
+        label={t("workspace.tabs.actions.newTerminal")}
+        leading={MENU_TERMINAL_ICON}
+        disabled={terminalDisabled}
+        onSelect={terminalDisabled ? undefined : onCreateTerminal}
+      />
+      {showBrowserRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-browser"
+          target={BROWSER_TARGET}
+          label={t("workspace.tabs.actions.newBrowser")}
+          leading={MENU_BROWSER_ICON}
+          onSelect={onCreateBrowser}
+        />
+      ) : null}
+      {showSplitRows ? (
+        <>
+          <DropdownMenuSeparator />
+          <PinnableMenuItem
+            testID="workspace-new-tab-menu-split-right"
+            target={SPLIT_RIGHT_TARGET}
+            label={t("workspace.tabs.actions.splitRight")}
+            leading={MENU_SPLIT_RIGHT_ICON}
+            onSelect={onSplitRight}
+          />
+          <PinnableMenuItem
+            testID="workspace-new-tab-menu-split-down"
+            target={SPLIT_DOWN_TARGET}
+            label={t("workspace.tabs.actions.splitDown")}
+            leading={MENU_SPLIT_DOWN_ICON}
+            onSelect={onSplitDown}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The trailing tools strip of a pane's tab bar. Tool order is fixed —
+ * preview, artifacts, pinned launchers, split right, split down — with the
+ * more-actions chevron always last. The ▾ menu is the full tool catalog:
+ * every tool is always listed there with a pin toggle. Three behaviors:
+ *
+ * - Pinning: only pinned tools/launchers have strip buttons; unpinned tools
+ *   live solely in the catalog until pinned.
+ * - Overflow: when the pane is too narrow for the tabs at full width, pinned
+ *   buttons disappear left-to-right (see `computeVisibleTabActionKeys`) —
+ *   tabs win, and the catalog row is always there.
+ * - Hover reveal: every button except the chevron is invisible until the
+ *   pointer is over the tab-bar gutter or a strip-owned menu is open. Hidden
+ *   via opacity so the geometry never changes — see docs/hover.md.
+ */
 function WorkspaceTabRowExtras({
   onCreateAgentTab,
   onCreateTerminal,
@@ -704,9 +1050,21 @@ function WorkspaceTabRowExtras({
   showCreateBrowserTab,
   showPreviewButton,
   terminalDisabled,
+  tabsContainerWidth,
+  tabCount,
+  inlineAddButtonWidth,
+  onSplitRight,
+  onSplitDown,
+  showPaneSplitActions,
+  onStripLayout,
+  rowHovered,
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
   const { config } = useDaemonConfig(normalizedServerId);
+  const isCompact = useIsCompactFormFactor();
+  const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
+  const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
+  const supportsArtifacts = useHostFeature(normalizedServerId, "artifacts");
   const profiles = useMemo(
     () => resolveTerminalProfiles(config?.terminalProfiles),
     [config?.terminalProfiles],
@@ -731,8 +1089,104 @@ function WorkspaceTabRowExtras({
 
   const launchers = usePinnedLaunchers({ serverId: normalizedServerId, onLaunch });
 
+  const previewController = useWorkspacePreviewController({
+    normalizedServerId,
+    normalizedWorkspaceId,
+    paneId,
+    focusedAgentId,
+    enabled: showPreviewButton,
+  });
+
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+
+  const pinnedPreview = usePinnedTargetsStore((state) =>
+    isTargetPinned(state.pinned, PREVIEW_TARGET),
+  );
+  const pinnedArtifact = usePinnedTargetsStore((state) =>
+    isTargetPinned(state.pinned, ARTIFACT_TARGET),
+  );
+  const pinnedSplitRight = usePinnedTargetsStore((state) =>
+    isTargetPinned(state.pinned, SPLIT_RIGHT_TARGET),
+  );
+  const pinnedSplitDown = usePinnedTargetsStore((state) =>
+    isTargetPinned(state.pinned, SPLIT_DOWN_TARGET),
+  );
+
+  const {
+    showPreviewInline,
+    showArtifactsInline,
+    visibleLaunchers,
+    showSplitRightInline,
+    showSplitDownInline,
+    previewButtonAbsent,
+    artifactsButtonAbsent,
+  } = useWorkspaceTabToolsOverflow({
+    showPreviewButton,
+    supportsArtifacts,
+    showPaneSplitActions,
+    pinnedPreview,
+    pinnedArtifact,
+    pinnedSplitRight,
+    pinnedSplitDown,
+    launchers,
+    tabsContainerWidth,
+    tabCount,
+    inlineAddButtonWidth,
+  });
+
+  // Keep the tools revealed while one of their menus is open — the pointer is
+  // inside the portaled menu then, which reads as "left the strip" to the
+  // hover tracker.
+  const toolsRevealed =
+    rowHovered || isNative || isCompact || previewController.pickerOpen || artifactsOpen;
+
+  const handlePreviewFromMenu = useCallback(() => {
+    void previewController.runPreviewFlow();
+  }, [previewController]);
+  const handleArtifactsFromMenu = useCallback(() => setArtifactsOpen(true), []);
+
   return (
-    <>
+    <View style={TABS_ACTIONS_STYLE} onLayout={onStripLayout}>
+      <View style={toolsRevealed ? styles.tabsTools : TABS_TOOLS_HIDDEN_STYLE}>
+        {showPreviewInline ? <WorkspacePreviewButton controller={previewController} /> : null}
+        {showArtifactsInline ? (
+          <ArtifactOpenMenu
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+            open={artifactsOpen}
+            onOpenChange={setArtifactsOpen}
+          />
+        ) : null}
+        <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
+        {showSplitRightInline ? (
+          <SplitActionButton
+            icon="split-right"
+            onPress={onSplitRight}
+            label={t("workspace.tabs.actions.splitRight")}
+            shortcutKeys={splitRightKeys}
+          />
+        ) : null}
+        {showSplitDownInline ? (
+          <SplitActionButton
+            icon="split-down"
+            onPress={onSplitDown}
+            label={t("workspace.tabs.actions.splitDown")}
+            shortcutKeys={splitDownKeys}
+          />
+        ) : null}
+      </View>
+      {previewButtonAbsent ? (
+        <WorkspacePreviewCollapsedAnchor controller={previewController} />
+      ) : null}
+      {artifactsButtonAbsent ? (
+        <ArtifactOpenMenu
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          open={artifactsOpen}
+          onOpenChange={setArtifactsOpen}
+          hideTrigger
+        />
+      ) : null}
       <DropdownMenu>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild triggerRefProp="triggerRef">
@@ -750,30 +1204,20 @@ function WorkspaceTabRowExtras({
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
-          <PinnableMenuItem
-            testID="workspace-new-tab-menu-agent"
-            target={DRAFT_TARGET}
-            label={t("workspace.tabs.actions.newAgent")}
-            leading={AGENT_ICON}
-            onSelect={onCreateAgentTab}
+          <WorkspaceToolsCatalogMenuItems
+            showPreviewRow={showPreviewButton}
+            previewDisabled={previewController.disabled}
+            onPreview={handlePreviewFromMenu}
+            showArtifactsRow={supportsArtifacts}
+            onArtifacts={handleArtifactsFromMenu}
+            terminalDisabled={terminalDisabled}
+            onCreateTerminal={onCreateTerminal}
+            showBrowserRow={showCreateBrowserTab}
+            onCreateBrowser={onCreateBrowser}
+            showSplitRows={showPaneSplitActions}
+            onSplitRight={onSplitRight}
+            onSplitDown={onSplitDown}
           />
-          <PinnableMenuItem
-            testID="workspace-new-tab-menu-terminal"
-            target={TERMINAL_TARGET}
-            label={t("workspace.tabs.actions.newTerminal")}
-            leading={TERMINAL_ICON}
-            disabled={terminalDisabled}
-            onSelect={terminalDisabled ? undefined : onCreateTerminal}
-          />
-          {showCreateBrowserTab ? (
-            <PinnableMenuItem
-              testID="workspace-new-tab-menu-browser"
-              target={BROWSER_TARGET}
-              label={t("workspace.tabs.actions.newBrowser")}
-              leading={BROWSER_ICON}
-              onSelect={onCreateBrowser}
-            />
-          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
           {profiles.map((profile) => (
@@ -790,17 +1234,7 @@ function WorkspaceTabRowExtras({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {showPreviewButton ? (
-        <WorkspacePreviewButton
-          normalizedServerId={normalizedServerId}
-          normalizedWorkspaceId={normalizedWorkspaceId}
-          paneId={paneId}
-          focusedAgentId={focusedAgentId}
-        />
-      ) : null}
-      <ArtifactOpenMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
-      <PinnedTargetsRow launchers={launchers} testIdPrefix="workspace-pinned-target" />
-    </>
+    </View>
   );
 }
 
@@ -1265,11 +1699,23 @@ export function WorkspaceDesktopTabsRow({
   const { t } = useTranslation();
   const router = useRouter();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
-  const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
-  const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
   const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
+  // Tools reveal on hover anywhere over the tab bar row, tab chips included.
+  // Two trackers cover it because in the Electron desktop app the row's empty
+  // gutter is a titlebar drag region (TitlebarDragRegion in split-container),
+  // whose pixels never deliver DOM pointer events — only the no-drag islands
+  // (chips, buttons, the tools strip) do. DOM pointerenter/leave covers those
+  // islands; useNonClientHover covers the drag gutter via cursor positions
+  // polled and forwarded by the Electron main process (Windows only; macOS
+  // delivers DOM hover over drag regions natively). See docs/hover.md.
+  const rowRef = useRef<View | null>(null);
+  const [rowHovered, setRowHovered] = useState(false);
+  const gutterHovered = useNonClientHover(rowRef);
+
+  const handleRowPointerEnter = useCallback(() => setRowHovered(true), []);
+  const handleRowPointerLeave = useCallback(() => setRowHovered(false), []);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
     updateMeasuredWidth(setTabsContainerWidth, event);
@@ -1293,7 +1739,7 @@ export function WorkspaceDesktopTabsRow({
       // Mirrors tabsContent's paddingHorizontal so width math stays exact.
       rowPaddingHorizontal: 4,
       tabGap: 0,
-      maxTabWidth: 200,
+      maxTabWidth: TAB_MAX_WIDTH,
       tabIconWidth: 14,
       tabHorizontalPadding: 12,
       estimatedCharWidth: 7,
@@ -1392,7 +1838,25 @@ export function WorkspaceDesktopTabsRow({
     onCreateBrowserTab({ paneId });
   }, [onCreateBrowserTab, paneId]);
 
-  const focusedAgentId = focusedTab?.target.kind === "agent" ? focusedTab.target.agentId : null;
+  // Preview works by prompting a parent agent, so only attended agents count:
+  // observed subagent tabs are read-only and can't be prompted (an agent
+  // missing from the store is treated as attended, mirroring session-store's
+  // absent-attend default).
+  const focusedTabAgentId = focusedTab?.target.kind === "agent" ? focusedTab.target.agentId : null;
+  const focusedAgentId = useSessionStore((state) =>
+    focusedTabAgentId &&
+    state.sessions[normalizedServerId]?.agents.get(focusedTabAgentId)?.attend !== "observed"
+      ? focusedTabAgentId
+      : null,
+  );
+  const paneHasEditableAgentTab = useSessionStore((state) => {
+    const agents = state.sessions[normalizedServerId]?.agents;
+    return tabs.some(
+      (item) =>
+        item.tab.target.kind === "agent" &&
+        agents?.get(item.tab.target.agentId)?.attend !== "observed",
+    );
+  });
 
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
@@ -1480,9 +1944,12 @@ export function WorkspaceDesktopTabsRow({
 
   const row = (
     <View
+      ref={rowRef}
       style={styles.tabsContainer}
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
+      onPointerEnter={handleRowPointerEnter}
+      onPointerLeave={handleRowPointerLeave}
     >
       <View style={styles.tabsBottomHairline} pointerEvents="none" />
       <ScrollView
@@ -1510,38 +1977,28 @@ export function WorkspaceDesktopTabsRow({
           onLayout={handleInlineAddButtonLayout}
         />
       </ScrollView>
-      <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
-        <WorkspaceTabRowExtras
-          onCreateAgentTab={handleCreateAgentTab}
-          onCreateTerminal={handleCreateTerminal}
-          onCreateBrowser={handleCreateBrowser}
-          onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
-          onEditProfiles={handleEditProfiles}
-          normalizedServerId={normalizedServerId}
-          normalizedWorkspaceId={normalizedWorkspaceId}
-          paneId={paneId}
-          focusedAgentId={focusedAgentId}
-          showCreateBrowserTab={showCreateBrowserTab}
-          showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab}
-          terminalDisabled={terminalDisabled}
-        />
-        {showPaneSplitActions ? (
-          <>
-            <SplitActionButton
-              icon="split-right"
-              onPress={onSplitRight}
-              label={t("workspace.tabs.actions.splitRight")}
-              shortcutKeys={splitRightKeys}
-            />
-            <SplitActionButton
-              icon="split-down"
-              onPress={onSplitDown}
-              label={t("workspace.tabs.actions.splitDown")}
-              shortcutKeys={splitDownKeys}
-            />
-          </>
-        ) : null}
-      </View>
+      <WorkspaceTabRowExtras
+        onCreateAgentTab={handleCreateAgentTab}
+        onCreateTerminal={handleCreateTerminal}
+        onCreateBrowser={handleCreateBrowser}
+        onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
+        onEditProfiles={handleEditProfiles}
+        normalizedServerId={normalizedServerId}
+        normalizedWorkspaceId={normalizedWorkspaceId}
+        paneId={paneId}
+        focusedAgentId={focusedAgentId}
+        showCreateBrowserTab={showCreateBrowserTab}
+        showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab}
+        terminalDisabled={terminalDisabled}
+        tabsContainerWidth={tabsContainerWidth}
+        tabCount={tabs.length}
+        inlineAddButtonWidth={inlineAddButtonWidth}
+        onSplitRight={onSplitRight}
+        onSplitDown={onSplitDown}
+        showPaneSplitActions={showPaneSplitActions}
+        onStripLayout={handleTabsActionsLayout}
+        rowHovered={rowHovered || gutterHovered}
+      />
     </View>
   );
 
@@ -1715,6 +2172,33 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
+  },
+  // Hover-revealed tools group. Hidden via opacity (never conditional
+  // rendering or width changes) so the strip's geometry — and therefore the
+  // tab layout math — is identical whether or not the pointer is over it.
+  tabsTools: {
+    flexDirection: "row",
+    alignItems: "center",
+    ...(isWeb
+      ? {
+          transitionProperty: "opacity",
+          transitionDuration: "120ms",
+          transitionTimingFunction: "ease-in-out",
+        }
+      : {}),
+  },
+  tabsToolsHidden: {
+    opacity: 0,
+    pointerEvents: "none",
+  },
+  // Zero-size anchor for collapsed tools whose picker menus still need a
+  // position to open from (preview server picker); must never take layout
+  // space or catch pointers.
+  hiddenMenuAnchor: {
+    width: 0,
+    height: 0,
+    opacity: 0,
+    overflow: "hidden",
   },
   inlineAddButton: {
     flexDirection: "row",
@@ -1944,3 +2428,9 @@ const styles = StyleSheet.create((theme) => ({
 
 const TAB_DROP_INDICATOR_BEFORE_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorBefore];
 const TAB_DROP_INDICATOR_AFTER_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorAfter];
+const TABS_TOOLS_HIDDEN_STYLE = [styles.tabsTools, styles.tabsToolsHidden];
+// The tools strip opts out of the Electron titlebar drag region so its whole
+// area — padding and hidden buttons included — delivers hover events, not just
+// the no-drag holes the index.html backstop punches for the buttons themselves.
+const TABS_ACTIONS_NO_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "no-drag" } as object) : null;
+const TABS_ACTIONS_STYLE = [styles.tabsActions, TABS_ACTIONS_NO_DRAG_STYLE];

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { Pin, PinOff } from "@/components/icons/material-icons";
+import { Pin, PinFilled, PinOff } from "@/components/icons/material-icons";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -11,8 +11,12 @@ import { pinnedTargetKey, type PinnedTabTarget } from "@/workspace-pins/target";
 import { usePinnedTargetsStore } from "@/workspace-pins/store";
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// Pinned state uses the same gold as a favorited star (see the model
+// selector's favorite toggle).
+const starColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 
 const ThemedPin = withUnistyles(Pin);
+const ThemedPinFilled = withUnistyles(PinFilled);
 const ThemedPinOff = withUnistyles(PinOff);
 
 interface PinnableMenuItemProps {
@@ -49,15 +53,26 @@ export function PinnableMenuItem({
     [target, toggle],
   );
 
-  const showToggle = isHovered || isNative || isCompact;
+  // Pinned rows always show their pin — a gold "favorited" marker at rest,
+  // swapping to the unpin glyph while the row is hovered. Unpinned rows keep
+  // the hover-only muted pin.
+  const showToggle = isHovered || isNative || isCompact || isPinned;
 
   const slotStyle = useMemo(
     () => [styles.pinToggleSlot, showToggle ? styles.pinToggleShown : styles.pinToggleHidden],
     [showToggle],
   );
 
-  const trailing = useMemo(
-    () => (
+  const trailing = useMemo(() => {
+    let icon = <ThemedPin size={14} uniProps={mutedColorMapping} />;
+    if (isPinned) {
+      icon = isHovered ? (
+        <ThemedPinOff size={14} uniProps={mutedColorMapping} />
+      ) : (
+        <ThemedPinFilled size={14} uniProps={starColorMapping} />
+      );
+    }
+    return (
       <View style={slotStyle} pointerEvents={showToggle ? "auto" : "none"}>
         <Pressable
           onPress={handleTogglePin}
@@ -71,16 +86,11 @@ export function PinnableMenuItem({
           }
           testID={`workspace-pin-toggle-${pinnedTargetKey(target)}`}
         >
-          {isPinned ? (
-            <ThemedPinOff size={14} uniProps={mutedColorMapping} />
-          ) : (
-            <ThemedPin size={14} uniProps={mutedColorMapping} />
-          )}
+          {icon}
         </Pressable>
       </View>
-    ),
-    [handleTogglePin, isPinned, showToggle, slotStyle, t, target],
-  );
+    );
+  }, [handleTogglePin, isHovered, isPinned, showToggle, slotStyle, t, target]);
 
   return (
     <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>

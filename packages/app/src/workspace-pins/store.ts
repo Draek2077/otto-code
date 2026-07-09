@@ -9,7 +9,7 @@ interface PinnedTargetsState {
   isPinned: (target: PinnedTabTarget) => boolean;
 }
 
-const DEFAULT_PINNED_TARGETS: PinnedTabTarget[] = [{ kind: "browser" }, { kind: "terminal" }];
+const DEFAULT_PINNED_TARGETS: PinnedTabTarget[] = [{ kind: "preview" }, { kind: "terminal" }];
 
 function applyDefaultPinnedTargets(pinned: PinnedTabTarget[]): PinnedTabTarget[] {
   const next = [...DEFAULT_PINNED_TARGETS];

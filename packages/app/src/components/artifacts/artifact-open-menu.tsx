@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { FileText, Plus } from "@/components/icons/material-icons";
 import {
@@ -21,11 +21,23 @@ import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 export interface ArtifactOpenMenuProps {
   serverId: string;
   workspaceId: string;
+  /** Controlled open state, so a collapsed trigger elsewhere can open the menu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Render only a zero-size anchor instead of the toolbar button. Used when
+   * the tab bar collapses this tool into the more-actions menu: the menu item
+   * there flips the controlled `open` on, and the dropdown anchors here.
+   */
+  hideTrigger?: boolean;
 }
 
 export function ArtifactOpenMenu({
   serverId,
   workspaceId,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: ArtifactOpenMenuProps): ReactElement | null {
   const supportsArtifacts = useHostFeature(serverId, "artifacts");
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
@@ -79,24 +91,37 @@ export function ArtifactOpenMenu({
     return null;
   }
 
+  const trigger = hideTrigger ? (
+    <DropdownMenuTrigger
+      testID="workspace-open-artifact-trigger"
+      disabled
+      accessibilityElementsHidden
+      style={styles.hiddenTrigger}
+    >
+      <View />
+    </DropdownMenuTrigger>
+  ) : (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="triggerRef">
+        <DropdownMenuTrigger
+          testID="workspace-open-artifact-trigger"
+          accessibilityRole="button"
+          accessibilityLabel="Add artifact"
+          style={styles.trigger}
+        >
+          <FileText size={16} color={styles.icon.color} />
+        </DropdownMenuTrigger>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <Text style={styles.tooltipText}>Add artifact</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+
   return (
     <>
-      <DropdownMenu>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild triggerRefProp="triggerRef">
-            <DropdownMenuTrigger
-              testID="workspace-open-artifact-trigger"
-              accessibilityRole="button"
-              accessibilityLabel="Open artifact"
-              style={styles.trigger}
-            >
-              <FileText size={16} color={styles.icon.color} />
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <Text style={styles.tooltipText}>Artifacts</Text>
-          </TooltipContent>
-        </Tooltip>
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
+        {trigger}
         <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={220}>
           {projectArtifacts.length > 0 ? (
             <>
@@ -156,6 +181,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
+  },
+  // Zero-size anchor for the collapsed mode — exists only so the dropdown has
+  // a position to open from; must never take layout space or catch pointers.
+  hiddenTrigger: {
+    width: 0,
+    height: 0,
+    opacity: 0,
+    overflow: "hidden",
   },
   icon: {
     color: theme.colors.foregroundMuted,
