@@ -591,7 +591,10 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("compaction"),
-    status: z.enum(["loading", "completed"]),
+    // COMPAT(compactionFailedStatus): "failed" added in v0.4.3. Clients older
+    // than that drop the whole timeline event on parse and keep showing the
+    // loading row — exactly their pre-"failed" behavior, so no gate is needed.
+    status: z.enum(["loading", "completed", "failed"]),
     trigger: z.enum(["auto", "manual"]).optional(),
     preTokens: z.number().optional(),
     postTokens: z.number().optional(),

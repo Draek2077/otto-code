@@ -304,6 +304,7 @@ export const ja: TranslationResources = {
       manual: "コンテキストが手動で圧縮されました",
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
       completed: "コンテキストを圧縮しました",
+      failed: "コンテキストの圧縮に失敗しました",
     },
   },
   importSession: {

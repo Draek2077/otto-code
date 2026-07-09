@@ -31,8 +31,68 @@ export function normalizeOpenAICompatReasoningEffort(value: unknown): OpenAIComp
     : "off";
 }
 
+/**
+ * Auto-compaction control: "off", or the context-window percentage at which
+ * the daemon compacts the conversation automatically. Option ids mirror
+ * COMPACTION_THRESHOLD_PERCENTS in the protocol's provider config.
+ */
+export const OPENAI_COMPAT_AUTO_COMPACT_VALUES = ["off", "50", "60", "70", "80", "90"] as const;
+
+export type OpenAICompatAutoCompact = (typeof OPENAI_COMPAT_AUTO_COMPACT_VALUES)[number];
+
+export const OPENAI_COMPAT_AUTO_COMPACT_FALLBACK: OpenAICompatAutoCompact = "80";
+
+function buildAutoCompactFeature(
+  defaultValue: OpenAICompatAutoCompact,
+): Omit<AgentFeatureSelect, "value"> {
+  return {
+    type: "select",
+    id: "auto_compact",
+    label: "Auto-compact",
+    description: "Compact the conversation automatically when context usage crosses the threshold",
+    tooltip: "Change auto-compaction",
+    icon: "summarize",
+    options: [
+      {
+        id: "off",
+        label: "Off",
+        description: "Only compact manually via /compact",
+        ...(defaultValue === "off" ? { isDefault: true } : {}),
+      },
+      ...(["50", "60", "70", "80", "90"] as const).map((percent) => {
+        const option: AgentFeatureSelect["options"][number] = {
+          id: percent,
+          label: `At ${percent}%`,
+        };
+        if (defaultValue === percent) {
+          option.isDefault = true;
+        }
+        return option;
+      }),
+    ],
+  };
+}
+
+/**
+ * Unknown persisted values normalize to the provider-configured default
+ * rather than failing the session, mirroring reasoning-effort handling.
+ */
+export function normalizeOpenAICompatAutoCompact(
+  value: unknown,
+  defaultValue: OpenAICompatAutoCompact,
+): OpenAICompatAutoCompact {
+  return OPENAI_COMPAT_AUTO_COMPACT_VALUES.includes(value as OpenAICompatAutoCompact)
+    ? (value as OpenAICompatAutoCompact)
+    : defaultValue;
+}
+
 export function buildOpenAICompatFeatures(input: {
   reasoningEffort: OpenAICompatReasoningEffort;
+  autoCompact: OpenAICompatAutoCompact;
+  autoCompactDefault: OpenAICompatAutoCompact;
 }): AgentFeature[] {
-  return [{ ...OPENAI_COMPAT_REASONING_FEATURE, value: input.reasoningEffort }];
+  return [
+    { ...OPENAI_COMPAT_REASONING_FEATURE, value: input.reasoningEffort },
+    { ...buildAutoCompactFeature(input.autoCompactDefault), value: input.autoCompact },
+  ];
 }

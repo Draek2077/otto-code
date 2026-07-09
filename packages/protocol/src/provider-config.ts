@@ -120,6 +120,31 @@ export const McpServerConfigSchema = z.discriminatedUnion("type", [
  */
 export const MCP_TOOL_PERMISSION_MODES = ["always-ask", "trust-read-only"] as const;
 
+/**
+ * Auto-compaction thresholds selectable for daemon-hosted compaction
+ * (openai-compat): percentage of the model's context window at which the
+ * conversation is compacted automatically.
+ */
+export const COMPACTION_THRESHOLD_PERCENTS = [50, 60, 70, 80, 90] as const;
+
+/**
+ * Compaction tuning for providers whose conversation the daemon owns
+ * (openai-compat). These set the provider-level defaults; the per-agent
+ * "Auto-compact" feature select overrides them at runtime.
+ */
+export const ProviderCompactionConfigSchema = z.object({
+  /** false disables auto-compaction by default for new agents (manual /compact stays). */
+  autoCompact: z.boolean().optional(),
+  /** Context-window percentage at which auto-compaction triggers. Default 80. */
+  thresholdPercent: z
+    .union([z.literal(50), z.literal(60), z.literal(70), z.literal(80), z.literal(90)])
+    .optional(),
+  /** Recent-conversation budget kept verbatim through compaction. Default 20000. */
+  keepRecentTokens: z.number().int().positive().optional(),
+});
+
+export type ProviderCompactionConfig = z.infer<typeof ProviderCompactionConfigSchema>;
+
 export const ProviderOverrideSchema = z.object({
   extends: z.string().optional(),
   label: z.string().optional(),
@@ -142,6 +167,11 @@ export const ProviderOverrideSchema = z.object({
    */
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
   mcpToolPermissions: z.enum(MCP_TOOL_PERMISSION_MODES).optional(),
+  /**
+   * Compaction defaults for providers whose conversation the daemon owns
+   * (openai-compat). Per-agent feature values win over these.
+   */
+  compaction: ProviderCompactionConfigSchema.optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });

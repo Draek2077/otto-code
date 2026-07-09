@@ -15,7 +15,7 @@ import {
   isUneventfulToolResult,
   normalizeOpenAICompatBaseUrl,
 } from "./openai-compat-agent.js";
-import { executeCompatTool } from "./openai-compat-tools.js";
+import { executeCompatTool, parseDdgHtmlResults } from "./openai-compat-tools.js";
 
 interface TestEndpoint {
   server: Server;
@@ -289,7 +289,8 @@ describe("OpenAICompatAgentClient", () => {
     expect(messages.slice(1)).toEqual([
       // The persisted messageId ties the message to its timeline item for rewind.
       { role: "user", content: "Say hello", messageId: expect.any(String) },
-      { role: "assistant", content: "Hello from test-model-a" },
+      // reasoning persists so a resumed session can replay the thinking block.
+      { role: "assistant", content: "Hello from test-model-a", reasoning: "thinking " },
     ]);
   });
 
@@ -476,8 +477,19 @@ describe("OpenAICompatAgentClient", () => {
     const texts = replayed.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
     expect(texts).toEqual([
       expect.objectContaining({ type: "user_message", text: "Say hello" }),
+      expect.objectContaining({ type: "reasoning", text: "thinking " }),
       expect.objectContaining({ type: "assistant_message", text: "Hello from test-model-a" }),
     ]);
+
+    // The retained reasoning is display-only — it must never be echoed back
+    // to the model as request input.
+    await resumed.run("Say hello again");
+    const lastRequest = endpoint.completionBodies[endpoint.completionBodies.length - 1] as {
+      messages: Array<Record<string, unknown>>;
+    };
+    for (const message of lastRequest.messages) {
+      expect(message).not.toHaveProperty("reasoning");
+    }
   });
 
   test("interrupt cancels an in-flight turn", async () => {
@@ -611,6 +623,79 @@ async function makeTempCwd(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "otto-compat-tools-"));
 }
 
+/**
+ * Fake server whose first completion round streams TWO write_file tool calls
+ * in one assistant message and whose later rounds stream plain text — used to
+ * verify the conversation stays wire-valid when a multi-call round is
+ * interrupted partway.
+ */
+async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as RecordedRequest);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        if (requests.length === 1) {
+          res.write(
+            sseChunk({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: "call_a",
+                        function: {
+                          name: "write_file",
+                          arguments: JSON.stringify({ path: "a.txt", content: "A" }),
+                        },
+                      },
+                      {
+                        index: 1,
+                        id: "call_b",
+                        function: {
+                          name: "write_file",
+                          arguments: JSON.stringify({ path: "b.txt", content: "B" }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            }),
+          );
+        } else {
+          res.write(
+            sseChunk({ choices: [{ delta: { content: "Done." }, finish_reason: "stop" }] }),
+          );
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
 describe("OpenAICompatAgentSession reasoning effort", () => {
   test("omits reasoning_effort by default and sends it after setFeature", async () => {
     const endpoint = await startEndpoint();
@@ -625,6 +710,7 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
     expect(endpoint.completionBodies[0]).not.toHaveProperty("reasoning_effort");
     expect(session.features).toEqual([
       expect.objectContaining({ id: "reasoning_effort", value: "off" }),
+      expect.objectContaining({ id: "auto_compact", value: "80" }),
     ]);
 
     await session.setFeature?.("reasoning_effort", "high");
@@ -632,6 +718,7 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
     expect(endpoint.completionBodies[1]?.reasoning_effort).toBe("high");
     expect(session.features).toEqual([
       expect.objectContaining({ id: "reasoning_effort", value: "high" }),
+      expect.objectContaining({ id: "auto_compact", value: "80" }),
     ]);
   });
 
@@ -670,14 +757,20 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
 
     await expect(
       client.listFeatures({ provider: "lmstudio", cwd: process.cwd() }),
-    ).resolves.toEqual([expect.objectContaining({ id: "reasoning_effort", value: "off" })]);
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "reasoning_effort", value: "off" }),
+      expect.objectContaining({ id: "auto_compact", value: "80" }),
+    ]);
     await expect(
       client.listFeatures({
         provider: "lmstudio",
         cwd: process.cwd(),
         featureValues: { reasoning_effort: "medium" },
       }),
-    ).resolves.toEqual([expect.objectContaining({ id: "reasoning_effort", value: "medium" })]);
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "reasoning_effort", value: "medium" }),
+      expect.objectContaining({ id: "auto_compact", value: "80" }),
+    ]);
   });
 });
 
@@ -798,6 +891,41 @@ describe("OpenAICompatAgentSession rewind", () => {
       /Message not found/,
     );
   });
+
+  test("streamHistory coalesces streamed deltas instead of retaining every event", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    await session.run("First question");
+
+    const replayed: string[] = [];
+    for await (const event of session.streamHistory()) {
+      expect(event.type).toBe("timeline");
+      if (event.type === "timeline") {
+        const item = event.item;
+        if (
+          item.type === "user_message" ||
+          item.type === "assistant_message" ||
+          item.type === "reasoning"
+        ) {
+          replayed.push(`${item.type}:${item.text}`);
+        } else {
+          replayed.push(item.type);
+        }
+      }
+    }
+    // One whole message each — not one event per streamed chunk, and no
+    // usage/turn bookkeeping events retained.
+    expect(replayed).toEqual([
+      "user_message:First question",
+      "reasoning:thinking ",
+      "assistant_message:Hello from test-model-a",
+    ]);
+  });
 });
 
 describe("OpenAICompatAgentSession tool loop", () => {
@@ -839,6 +967,44 @@ describe("OpenAICompatAgentSession tool loop", () => {
       Record<string, unknown>
     >;
     expect(persisted.some((message) => message.role === "tool")).toBe(true);
+  });
+
+  test("resumed sessions replay tool calls, not just user/assistant text", async () => {
+    const endpoint = await startToolEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    await session.run("Create note.txt");
+    const handle = session.describePersistence();
+    expect(handle).not.toBeNull();
+
+    const resumed = await client.resumeSession(handle!);
+    const replayed: AgentStreamEvent[] = [];
+    for await (const event of resumed.streamHistory()) {
+      replayed.push(event);
+    }
+    const items = replayed.flatMap((event) => (event.type === "timeline" ? [event.item] : []));
+
+    const toolItem = items.find((item) => item.type === "tool_call");
+    expect(toolItem).toEqual(
+      expect.objectContaining({ type: "tool_call", name: "write_file", status: "completed" }),
+    );
+    expect(
+      toolItem?.type === "tool_call" && toolItem.detail.type === "write" && toolItem.detail.content,
+    ).toBe("hello tools");
+    // Round 1 streamed only the tool call (no assistant text); round 2 streamed
+    // the final "File created." text after the tool result went back.
+    expect(items.map((item) => item.type)).toEqual([
+      "user_message",
+      "tool_call",
+      "assistant_message",
+    ]);
   });
 
   test("default mode asks permission for writes and executes on allow", async () => {
@@ -947,6 +1113,137 @@ describe("OpenAICompatAgentSession tool loop", () => {
     // web_search/web_fetch, leaving the three core read builtins.
     expect(toolNames).toEqual(["read_file", "list_dir", "grep_search"]);
 
+    await session.close();
+  });
+
+  // The read tools never prompt, so an unprompted web_fetch would let a
+  // prompt-injected model exfiltrate anything on disk via a GET query string.
+  test.each(["default", "acceptEdits", "plan"] as const)(
+    "web_fetch asks permission in %s mode",
+    async (modeId) => {
+      const endpoint = await startMcpDrivingEndpoint(
+        "web_fetch",
+        JSON.stringify({ url: "https://example.com/" }),
+      );
+      const client = createClient(endpoint.baseUrl);
+      const session = await client.createSession({
+        provider: "lmstudio",
+        cwd: await makeTempCwd(),
+        model: "test-model-a",
+        modeId,
+      });
+      const permissionRequests: string[] = [];
+      session.subscribe((event) => {
+        if (event.type === "permission_requested") {
+          permissionRequests.push(event.request.name);
+          void session.respondToPermission(event.request.id, { behavior: "deny" });
+        }
+      });
+
+      await session.run("Fetch the page");
+
+      expect(permissionRequests).toEqual(["web_fetch"]);
+      const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+      expect(String(toolMessage?.content)).toContain("declined");
+      await session.close();
+    },
+  );
+
+  test("acceptEdits auto-approves edits inside the workspace", async () => {
+    const endpoint = await startToolEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "acceptEdits",
+    });
+    const permissionRequests: string[] = [];
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") {
+        permissionRequests.push(event.request.name);
+        void session.respondToPermission(event.request.id, { behavior: "allow" });
+      }
+    });
+
+    await session.run("Create note.txt");
+
+    expect(permissionRequests).toEqual([]);
+    await expect(fs.readFile(path.join(cwd, "note.txt"), "utf8")).resolves.toBe("hello tools");
+    await session.close();
+  });
+
+  test("acceptEdits still prompts for edits outside the workspace", async () => {
+    const outsideDir = await makeTempCwd();
+    const outsidePath = path.join(outsideDir, "escape.txt");
+    const endpoint = await startMcpDrivingEndpoint(
+      "write_file",
+      JSON.stringify({ path: outsidePath, content: "outside" }),
+    );
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "acceptEdits",
+    });
+    const permissionRequests: string[] = [];
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") {
+        permissionRequests.push(event.request.name);
+        void session.respondToPermission(event.request.id, { behavior: "deny" });
+      }
+    });
+
+    await session.run("Write the file");
+
+    expect(permissionRequests).toEqual(["write_file"]);
+    await expect(fs.access(outsidePath)).rejects.toThrow();
+    await session.close();
+  });
+
+  test("interrupting a multi-call round leaves no dangling tool_calls", async () => {
+    const endpoint = await startTwoToolCallEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "default",
+    });
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") {
+        // Deny-and-interrupt on the first call so the second never runs.
+        void session.respondToPermission(event.request.id, {
+          behavior: "deny",
+          interrupt: true,
+        });
+      }
+    });
+
+    const result = await session.run("Create both files");
+    expect(result.canceled).toBe(true);
+
+    // The next turn must send a wire-valid conversation: every id in the
+    // assistant tool_calls has a tool result (strict servers 400 otherwise).
+    await session.run("Continue");
+    const followUp = endpoint.requests.at(-1)!;
+    const callsMessage = followUp.messages.find(
+      (message) => message.role === "assistant" && Array.isArray(message.tool_calls),
+    );
+    const rawCalls = (callsMessage?.tool_calls ?? []) as Array<{ id: string }>;
+    const assistantCalls = rawCalls.map((call) => call.id);
+    const answered = new Set(
+      followUp.messages.flatMap((message) =>
+        message.role === "tool" ? [message.tool_call_id] : [],
+      ),
+    );
+    expect(assistantCalls).toEqual(["call_a", "call_b"]);
+    for (const id of assistantCalls) {
+      expect(answered.has(id), `expected a tool result for ${id}`).toBe(true);
+    }
     await session.close();
   });
 });
@@ -1538,6 +1835,22 @@ describe("executeCompatTool", () => {
     await expect(fs.readFile(filePath, "utf8")).resolves.toBe("alpha delta alpha");
   });
 
+  test("edit_file writes $-patterns in the replacement literally", async () => {
+    const cwd = await makeTempCwd();
+    const filePath = path.join(cwd, "script.txt");
+    await fs.writeFile(filePath, "hello world\n", "utf8");
+
+    // String.replace would expand these into surrounding file content.
+    const newString = "$& $' $` $$";
+    const outcome = await executeCompatTool({
+      name: "edit_file",
+      arguments: { path: "script.txt", old_string: "world", new_string: newString },
+      cwd,
+    });
+    expect(outcome.isError).toBeUndefined();
+    await expect(fs.readFile(filePath, "utf8")).resolves.toBe(`hello ${newString}\n`);
+  });
+
   test("run_command reports output and exit code", async () => {
     const cwd = await makeTempCwd();
     const outcome = await executeCompatTool({
@@ -1588,6 +1901,16 @@ describe("executeCompatTool", () => {
       "http://10.0.0.5/",
       "http://192.168.1.1/",
       "http://metadata.google.internal/",
+      // IPv6 literals, including IPv4-mapped loopback (the URL parser
+      // normalizes the dotted form to hex: [::ffff:7f00:1]).
+      "http://[::1]/",
+      "http://[::ffff:127.0.0.1]/",
+      "http://[fd00::1]/",
+      // Additional IPv4 ranges: "this host", benchmarking, multicast, reserved.
+      "http://0.0.0.0/",
+      "http://198.18.0.5/",
+      "http://224.0.0.1/",
+      "http://255.255.255.255/",
     ];
     for (const url of blocked) {
       const outcome = await executeCompatTool({
@@ -1609,6 +1932,40 @@ describe("executeCompatTool", () => {
     });
     expect(outcome.isError).toBe(true);
     expect(outcome.output).toContain("Invalid URL");
+  });
+
+  test("DDG result parsing unwraps uddg redirects and keeps query params", () => {
+    // Current DDG markup: div containers, class before href on the anchor.
+    const html = [
+      '<div class="result results_links results_links_deep web-result ">',
+      '<div class="links_main links_deep result__body">',
+      '<h2 class="result__title">',
+      '<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs%3Fpage%3D2%26lang%3Den&amp;rut=abc">Example &amp; Friends</a>',
+      "</h2>",
+      '<a class="result__snippet" href="#">A <b>bold</b> snippet</a>',
+      "</div></div>",
+    ].join("");
+
+    const results = parseDdgHtmlResults(html);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.url).toBe("https://example.com/docs?page=2&lang=en");
+    expect(results[0]!.title).toBe("Example & Friends");
+    expect(results[0]!.snippet).toBe("A bold snippet");
+  });
+
+  test("DDG result parsing tolerates the legacy li-based markup", () => {
+    const html = [
+      '<li class="result">',
+      '<h2 class="result__title"><a href="https://example.org/page?x=1" class="result__a">Legacy Result</a></h2>',
+      '<a class="result__snippet" href="#">Old snippet</a>',
+      "</li>",
+    ].join("");
+
+    const results = parseDdgHtmlResults(html);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.url).toBe("https://example.org/page?x=1");
+    expect(results[0]!.title).toBe("Legacy Result");
+    expect(results[0]!.snippet).toBe("Old snippet");
   });
 });
 
@@ -1845,6 +2202,12 @@ describe("OpenAICompatAgentSession /compact", () => {
     // Verify turn_failed was emitted
     expect(events.some((event) => event.type === "turn_failed")).toBe(true);
 
+    // The loading compaction row settles as failed instead of spinning forever.
+    const compactionStatuses = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "compaction" ? [event.item.status] : [],
+    );
+    expect(compactionStatuses).toEqual(["loading", "failed"]);
+
     // Verify message history was NOT modified (still has the original messages)
     const messageCountAfter = session.describePersistence()?.metadata?.messages?.length;
     expect(messageCountAfter).toBe(messageCountBefore);
@@ -1967,6 +2330,308 @@ describe("OpenAICompatAgentSession /compact", () => {
     const updateMessages = updateRequest?.messages as Array<{ role: string; content: string }>;
     expect(updateMessages[1]?.content).toContain("<previous-summary>");
     expect(updateMessages[1]?.content).toContain("MERGED_SUMMARY");
+
+    await session.close();
+  });
+});
+
+/**
+ * Endpoint for auto-compaction tests: reports a context window on the models
+ * listing, streams a fixed usage figure on every chat round, and serves
+ * non-streaming compaction requests like startCompactEndpoint.
+ */
+async function startAutoCompactEndpoint(options: {
+  contextLength: number;
+  promptTokens: number;
+  summary?: string;
+  failCompaction?: boolean;
+}): Promise<TestEndpoint & { compactRequests: Array<Record<string, unknown>> }> {
+  const compactRequests: Array<Record<string, unknown>> = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: [{ id: "test-model-a", max_model_len: options.contextLength }],
+        }),
+      );
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const request = JSON.parse(body) as Record<string, unknown>;
+        if (request.stream === true) {
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+          });
+          res.write(sseChunk({ choices: [{ delta: { content: "OK" } }] }));
+          res.write(
+            sseChunk({
+              choices: [{ delta: {}, finish_reason: "stop" }],
+              usage: { prompt_tokens: options.promptTokens, completion_tokens: 2 },
+            }),
+          );
+          res.write("data: [DONE]\n\n");
+          res.end();
+          return;
+        }
+        compactRequests.push(request);
+        if (options.failCompaction) {
+          res.writeHead(500);
+          res.end("Internal server error");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: options.summary ?? "Summary of the old history.",
+                },
+              },
+            ],
+            usage: { prompt_tokens: 100, completion_tokens: 50 },
+          }),
+        );
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, compactRequests };
+}
+
+function compactionTimelineEvents(
+  events: AgentStreamEvent[],
+): Array<{ status: string; trigger?: string }> {
+  return events.flatMap((event) =>
+    event.type === "timeline" && event.item.type === "compaction"
+      ? [{ status: event.item.status, trigger: event.item.trigger }]
+      : [],
+  );
+}
+
+function errorTimelineMessages(events: AgentStreamEvent[]): string[] {
+  return events.flatMap((event) =>
+    event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
+  );
+}
+
+describe("OpenAICompatAgentSession auto-compaction", () => {
+  test("compacts automatically when context usage crosses the threshold", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 90_000, // 90% — above the default 80% threshold
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    // First turn establishes the server-measured context size (90k of 100k).
+    await session.run("First message");
+    expect(endpoint.compactRequests.length).toBe(0);
+
+    // The next turn's first round sees usage above the threshold and compacts
+    // before calling the model; the turn itself still completes normally.
+    const result = await session.run("Second message");
+    expect(result.canceled).toBe(false);
+    expect(result.finalText).toContain("OK");
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+
+    const compactions = compactionTimelineEvents(events);
+    expect(compactions).toContainEqual({ status: "loading", trigger: "auto" });
+    expect(compactions).toContainEqual(
+      expect.objectContaining({ status: "completed", trigger: "auto" }),
+    );
+
+    // The conversation was rebuilt around the summary; the new user message
+    // survived verbatim in the retained tail.
+    const persistence = session.describePersistence();
+    const messages = persistence?.metadata?.messages as Array<{ role: string; content: string }>;
+    const joined = messages.map((message) => message.content).join("\n");
+    expect(joined).toContain("Summary of the old history.");
+    expect(joined).toContain("Second message");
+
+    await session.close();
+  });
+
+  test("auto_compact 'off' disables the trigger", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 90_000,
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      featureValues: { auto_compact: "off" },
+    });
+
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBe(0);
+
+    await session.close();
+  });
+
+  test("stays idle while usage is below the threshold", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 50_000, // 50% — below the default 80% threshold
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBe(0);
+
+    await session.close();
+  });
+
+  test("provider-level compaction config sets the default threshold", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 60_000, // 60% — above a 50% threshold, below the stock 80%
+    });
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      compaction: { thresholdPercent: 50 },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+
+    await session.close();
+  });
+
+  test("provider-level autoCompact:false defaults the feature to off", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 90_000,
+    });
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      compaction: { autoCompact: false },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    expect(session.features).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact", value: "off" })]),
+    );
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBe(0);
+
+    await session.close();
+  });
+
+  test("pauses after a compaction that cannot get back under the threshold", async () => {
+    // Tiny window: the rebuilt conversation (system prompt + tool schemas +
+    // a deliberately huge summary) still estimates above the threshold, so
+    // the session must disarm instead of compacting again on every round.
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 2_000,
+      promptTokens: 1_800, // 90% of the window, above every selectable threshold
+      summary: `HUGE_SUMMARY ${"y".repeat(20_000)}`,
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBe(1);
+    expect(errorTimelineMessages(events).some((m) => m.includes("Auto-compaction is paused"))).toBe(
+      true,
+    );
+
+    // Disarmed: usage still reads above the threshold, but no new attempt.
+    await session.run("Third message");
+    expect(endpoint.compactRequests.length).toBe(1);
+
+    // An explicit setting change re-arms the trigger.
+    await session.setFeature?.("auto_compact", "50");
+    await session.run("Fourth message");
+    expect(endpoint.compactRequests.length).toBe(2);
+
+    await session.close();
+  });
+
+  test("a failed auto-compaction pauses the trigger without failing the turn", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 90_000,
+      failCompaction: true,
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("First message");
+    const result = await session.run("Second message");
+
+    // The compaction attempt failed, but the user's turn still completed.
+    expect(result.canceled).toBe(false);
+    expect(result.finalText).toContain("OK");
+    expect(endpoint.compactRequests.length).toBe(1);
+    const compactions = compactionTimelineEvents(events);
+    expect(compactions).toContainEqual({ status: "failed", trigger: "auto" });
+    expect(errorTimelineMessages(events).some((m) => m.includes("Auto-compaction failed"))).toBe(
+      true,
+    );
+
+    // Disarmed: no retry on the next turn.
+    await session.run("Third message");
+    expect(endpoint.compactRequests.length).toBe(1);
 
     await session.close();
   });

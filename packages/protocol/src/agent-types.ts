@@ -331,7 +331,8 @@ export type ToolCallTimelineItem =
 export interface CompactionTimelineItem {
   [key: string]: unknown;
   type: "compaction";
-  status: "loading" | "completed";
+  // COMPAT(compactionFailedStatus): "failed" added in v0.4.3; see messages.ts.
+  status: "loading" | "completed" | "failed";
   trigger?: "auto" | "manual";
   preTokens?: number;
   postTokens?: number;

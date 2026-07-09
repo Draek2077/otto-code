@@ -303,6 +303,7 @@ export const ru: TranslationResources = {
       manual: "Контекст сжимается вручную",
       withTokens: "Сжатый контекст (токены{{tokens}}K)",
       completed: "Контекст сжат",
+      failed: "Не удалось сжать контекст",
     },
   },
   importSession: {

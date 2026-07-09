@@ -304,6 +304,7 @@ export const fr: TranslationResources = {
       manual: "Contexte compacté manuellement",
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
       completed: "Contexte compacté",
+      failed: "Échec du compactage",
     },
   },
   importSession: {
