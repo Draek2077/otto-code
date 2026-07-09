@@ -1,13 +1,13 @@
 import { test, expect } from "./fixtures";
 import { gotoWorkspace } from "./helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
-import { togglePinFromMenu, tabRowPin } from "./helpers/pins";
+import { clickTabRowPin, togglePinFromMenu, tabRowPin } from "./helpers/pins";
 import { expectTerminalTabOpen } from "./helpers/workspace-tabs";
 import type { PinnedTabTarget } from "../src/workspace-pins/target";
 
-// "draft" pins are legacy (no longer offered in the catalog), so the pin
-// round-trip is exercised with the browser target instead.
-const BROWSER_TARGET: PinnedTabTarget = { kind: "browser" };
+// "draft" pins are legacy (no longer offered in the catalog) and browser tabs
+// are Electron-only, so the pin round-trip is exercised with the terminal
+// target — pinned by default, unpinned and re-pinned through the catalog.
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
 
 let workspace: SeededWorkspace;
@@ -26,13 +26,13 @@ test.describe("Pinned tab targets", () => {
   }) => {
     await gotoWorkspace(page, workspace.workspaceId);
 
-    await expect(tabRowPin(page, BROWSER_TARGET)).toHaveCount(0);
+    await expect(tabRowPin(page, TERMINAL_TARGET)).toBeVisible({ timeout: 10_000 });
 
-    await togglePinFromMenu(page, BROWSER_TARGET);
-    await expect(tabRowPin(page, BROWSER_TARGET)).toBeVisible({ timeout: 10_000 });
+    await togglePinFromMenu(page, TERMINAL_TARGET);
+    await expect(tabRowPin(page, TERMINAL_TARGET)).toHaveCount(0, { timeout: 10_000 });
 
-    await togglePinFromMenu(page, BROWSER_TARGET);
-    await expect(tabRowPin(page, BROWSER_TARGET)).toHaveCount(0, { timeout: 10_000 });
+    await togglePinFromMenu(page, TERMINAL_TARGET);
+    await expect(tabRowPin(page, TERMINAL_TARGET)).toBeVisible({ timeout: 10_000 });
   });
 
   test("clicking the pinned quick-launch button in the tab row opens a terminal tab", async ({
@@ -41,8 +41,7 @@ test.describe("Pinned tab targets", () => {
     test.setTimeout(45_000);
     await gotoWorkspace(page, workspace.workspaceId);
 
-    await expect(tabRowPin(page, TERMINAL_TARGET)).toBeVisible({ timeout: 10_000 });
-    await tabRowPin(page, TERMINAL_TARGET).click();
+    await clickTabRowPin(page, TERMINAL_TARGET);
 
     await expectTerminalTabOpen(page);
   });

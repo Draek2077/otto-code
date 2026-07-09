@@ -19,6 +19,22 @@ export function tabRowPin(page: Page, target: PinnedTabTarget) {
   return page.getByTestId(`workspace-pinned-target-${pinnedTargetKey(target)}`);
 }
 
+// The tab-bar tools strip is hover-revealed: until the pointer is over the
+// tab row the strip has pointer-events: none, so Playwright's pre-click
+// hit-target check fails before it ever moves the mouse (the move is what
+// would reveal the strip). Raw mouse.move first — no actionability check —
+// then the strip is revealed and a normal click passes.
+export async function clickTabRowPin(page: Page, target: PinnedTabTarget): Promise<void> {
+  const pin = tabRowPin(page, target);
+  await expect(pin).toBeVisible({ timeout: 10_000 });
+  const box = await pin.boundingBox();
+  if (!box) {
+    throw new Error("Pinned target button has no bounding box");
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await pin.click({ timeout: 10_000 });
+}
+
 export async function openNewTabMenu(page: Page): Promise<void> {
   const trigger = page
     .getByTestId("workspace-new-tab-menu-trigger")
