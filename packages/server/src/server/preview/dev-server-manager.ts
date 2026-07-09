@@ -13,7 +13,7 @@ import {
 } from "./launch-config.js";
 
 /**
- * Subsystem A of the preview bridge (projects/preview-mcp/preview-mcp-implementation.md):
+ * Subsystem A of the preview bridge (docs/preview.md):
  * pure dev-server process supervision. Spawns configured commands from
  * `.claude/launch.json`, tracks them by serverId, captures output into a
  * bounded ring buffer, polls the port for readiness, and tree-kills on stop

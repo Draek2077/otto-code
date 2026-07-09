@@ -8,7 +8,7 @@ category: Providers
 
 # Providers
 
-Otto doesn't ship its own coding agent. It launches and supervises **existing CLIs you've already installed and authenticated**, Claude Code, Codex, OpenCode, Cursor, Gemini, and the rest. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto just gives you a UI, a CLI, a relay, and orchestration on top.
+Otto doesn't ship its own coding agent. It launches and supervises **existing CLIs you've already installed and authenticated**, Claude Code, Codex, OpenCode, Cursor, Gemini, and the rest. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto adds the assistant environment on top — a UI, a CLI, a relay, orchestration, browser-verified previews, and artifacts — the same tooling for every provider, cloud or local.
 
 ## Mental model
 

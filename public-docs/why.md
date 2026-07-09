@@ -8,7 +8,9 @@ category: Getting started
 
 # Why Otto?
 
-Otto is a self-hostable platform for running and orchestrating coding agents. It runs the agent CLIs you already use, on the hardware you already have, and gives you a UI, CLI, and API to drive them from anywhere.
+Otto is a self-hostable, fully featured agentic coding assistant. It runs the agent CLIs you already use, on the hardware you already have, and gives you a UI, CLI, and API to drive them from anywhere — inside a familiar environment that never boxes you in.
+
+The mission: bring frontier-model tooling to every provider equally. Browser-verified previews, artifacts, subagent visibility, context compaction, and rich permission modes work the same whether the agent is Claude Code on a frontier API or a local model served from LM Studio — a capability isn't done when one provider has it, it's done when they all do.
 
 ## Architecture
 
@@ -41,4 +43,4 @@ Otto is a self-hostable platform for running and orchestrating coding agents. It
 
 ## What it isn't
 
-Not a hosted agent, not an IDE, not a model provider. Otto runs the CLIs you already use and stays out of the way.
+Not a hosted agent, not a model provider, and not a replacement for your text editor. Otto runs the CLIs you already use and doesn't wrap or modify them — it's the environment your agents work in: previews, artifacts, terminals, diffs, and browsers in one place, with your editor still yours.
