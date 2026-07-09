@@ -763,11 +763,19 @@ export const ar: TranslationResources = {
         tooLarge: "الفرق كبير جدًا بحيث لا يمكن عرضه",
         unified: "الفرق الموحدة",
         split: "فرق جنبًا إلى جنب",
+        switchToUnified: "التبديل إلى الفرق الموحد",
+        switchToSplit: "التبديل إلى الفرق جنبًا إلى جنب",
+        showTreeView: "إظهار شجرة المجلدات",
+        showFlatView: "إظهار قائمة الملفات المسطحة",
+        options: "خيارات الفرق",
         hideWhitespace: "إخفاء المسافة البيضاء",
+        showWhitespace: "إظهار المسافة البيضاء",
         scrollLongLines: "قم بتمرير الخطوط الطويلة",
         wrapLongLines: "لف الخطوط الطويلة",
         collapseAll: "طي كافة الملفات",
         expandAll: "قم بتوسيع كافة الملفات",
+        collapseAllFolders: "طي كافة المجلدات",
+        expandAllFolders: "توسيع كافة المجلدات",
         refreshing: "منعش",
         refresh: "ينعش",
         refreshState: "تحديث بوابة وحالة GitHub",
@@ -1131,6 +1139,12 @@ export const ar: TranslationResources = {
         uninstallFailed: "غير قادر على إلغاء تثبيت مهارات التنسيق.",
       },
     },
+  },
+  rootError: {
+    kicker: "حدث خطأ",
+    title: "واجه Otto مشكلة.",
+    body: "جرّب مرة أخرى لإعادة تحميل التطبيق. إذا استمر حدوث ذلك، فأرفق التفاصيل أدناه عند الإبلاغ عنه.",
+    details: "التفاصيل",
   },
   startup: {
     errorTitle: "حدث خطأ ما",
@@ -1588,6 +1602,7 @@ export const ar: TranslationResources = {
     },
     backToWorkspace: "خلف",
     addHost: "أضف مضيفًا",
+    enableBuiltInDaemon: "تفعيل البرنامج الخفي المدمج",
     projects: "المشاريع",
     projectList: {
       hostLoadFailed: "تعذر تحميل المشاريع من المضيف{{hostName}}:{{message}}",
@@ -1596,7 +1611,6 @@ export const ar: TranslationResources = {
     groupInfo: "حول{{title}}",
     sections: {
       general: "عام",
-      daemon: "Daemon",
       appearance: "مظهر",
       shortcuts: "الاختصارات",
       integrations: "التكامل",
@@ -1611,7 +1625,7 @@ export const ar: TranslationResources = {
       providers: "مقدمي الخدمات",
       usage: "الاستخدام",
       terminals: "Terminals",
-      host: "Host",
+      host: "نظرة عامة",
     },
     general: {
       title: "عام",
@@ -1648,6 +1662,10 @@ export const ar: TranslationResources = {
           keepRunning: "إبقاء التشغيل",
           stopOnClose: "الإيقاف عند الإغلاق",
         },
+      },
+      autoExpandReasoning: {
+        label: "عرض التفكير دائماً",
+        description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
       },
       language: {
         label: "لغة",
@@ -1784,6 +1802,9 @@ export const ar: TranslationResources = {
             full: "Full",
           },
         },
+      },
+      detailLevel: {
+        title: "مستوى التفاصيل",
       },
       fonts: {
         title: "الخطوط",

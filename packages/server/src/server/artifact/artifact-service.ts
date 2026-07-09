@@ -342,6 +342,9 @@ export class ArtifactService {
     const agent = await this.agentManager.createAgent(config, undefined, {
       initialPrompt: agentPrompt,
       initialTitle: metadata.name,
+      // Explicitly no workspace: the generator is an ephemeral internal agent
+      // that must never appear in the sidebar.
+      workspaceId: undefined,
     });
     // Register before running so cancel() can interrupt this run immediately.
     this.runningGenerations.set(artifactId, agent.id);

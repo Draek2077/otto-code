@@ -16,118 +16,186 @@ import type {
   TextStyle,
   ViewStyle,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import {
+  buttonIconSize,
+  createControlGeometry,
+  type ButtonControlSize,
+} from "@/components/ui/control-geometry";
 import { compactUp } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 
 type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive";
-type ButtonSize = "xs" | "sm" | "md" | "lg";
+type ButtonSize = ButtonControlSize;
 
-type LeftIcon = ReactElement | ComponentType<{ color: string; size: number }> | null;
+type LeftIcon =
+  | ReactElement
+  | ComponentType<{ color: string; size: number }>
+  | ((color: string) => ReactElement)
+  | null;
 
-const styles = StyleSheet.create((theme) => ({
-  base: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: compactUp(theme.spacing[2]),
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  md: {
-    paddingVertical: compactUp(theme.spacing[3]),
-    paddingHorizontal: compactUp(theme.spacing[4]),
-  },
-  xs: {
-    minHeight: compactUp(28),
-    paddingVertical: compactUp(theme.spacing[1]),
-    paddingHorizontal: compactUp(theme.spacing[3]),
-    borderRadius: theme.borderRadius.md,
-  },
-  sm: {
-    paddingVertical: compactUp(theme.spacing[1.5]),
-    paddingHorizontal: compactUp(theme.spacing[3]),
-    borderRadius: theme.borderRadius.md,
-  },
-  lg: {
-    paddingVertical: compactUp(theme.spacing[4]),
-    paddingHorizontal: compactUp(theme.spacing[6]),
-    borderRadius: theme.borderRadius.xl,
-  },
-  default: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
-  },
-  secondary: {
-    backgroundColor: theme.colors.surface3,
-    borderColor: theme.colors.surface3,
-  },
-  outline: {
-    backgroundColor: "transparent",
-    borderColor: theme.colors.borderAccent,
-  },
-  ghost: {
-    backgroundColor: "transparent",
-    borderColor: "transparent",
-  },
-  destructive: {
-    backgroundColor: theme.colors.destructive,
-    borderColor: theme.colors.destructive,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  disabled: {
-    opacity: theme.opacity[50],
-  },
-  text: {
-    color: theme.colors.foreground,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
+interface ButtonIconProps {
+  loading: boolean;
+  leftIcon?: LeftIcon;
+  iconSize: number;
+  iconColor: string;
+}
+
+function ButtonIcon({ loading, leftIcon, iconSize, iconColor }: ButtonIconProps) {
+  if (loading) {
+    return (
+      <View>
+        <ActivityIndicator size="small" color={iconColor} />
+      </View>
+    );
+  }
+
+  if (!leftIcon) return null;
+
+  if (typeof leftIcon === "object" && "type" in leftIcon) {
+    return <View>{leftIcon}</View>;
+  }
+
+  if (
+    typeof leftIcon === "function" &&
+    !leftIcon.prototype?.isReactComponent &&
+    leftIcon.length > 0
+  ) {
+    return <View>{(leftIcon as (color: string) => ReactElement)(iconColor)}</View>;
+  }
+
+  const Icon = leftIcon as ComponentType<{ color: string; size: number }>;
+  return (
+    <View>
+      <Icon color={iconColor} size={iconSize} />
+    </View>
+  );
+}
+
+const ThemedButtonIcon = withUnistyles(ButtonIcon);
+
+const foregroundIconMapping = (theme: Theme) => ({ iconColor: theme.colors.foreground });
+const foregroundMutedIconMapping = (theme: Theme) => ({
+  iconColor: theme.colors.foregroundMuted,
+});
+const accentForegroundIconMapping = (theme: Theme) => ({
+  iconColor: theme.colors.accentForeground,
+});
+const destructiveForegroundIconMapping = (theme: Theme) => ({
+  iconColor: theme.colors.destructiveForeground,
+});
+
+const styles = StyleSheet.create((theme) => {
+  const geometry = createControlGeometry(theme);
+
+  return {
+    base: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: compactUp(theme.spacing[2]),
+      borderRadius: theme.borderRadius.lg,
+      borderWidth: 1,
+      borderColor: "transparent",
     },
-    fontWeight: theme.fontWeight.normal,
-  },
-  textXs: {
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
+    // Sizes come from the shared control geometry; the compactUp overrides
+    // double touch targets on compact form factors (phones).
+    md: {
+      ...geometry.buttonMd,
+      minHeight: compactUp(geometry.buttonMd.minHeight),
+      paddingHorizontal: compactUp(geometry.buttonMd.paddingHorizontal),
     },
-  },
-  textDefault: {
-    color: theme.colors.accentForeground,
-  },
-  textDestructive: {
-    color: theme.colors.destructiveForeground,
-  },
-  textGhost: {
-    color: theme.colors.foregroundMuted,
-  },
-  textGhostHovered: {
-    color: theme.colors.foreground,
-  },
-}));
+    xs: {
+      ...geometry.buttonXs,
+      minHeight: compactUp(geometry.buttonXs.minHeight),
+      paddingHorizontal: compactUp(geometry.buttonXs.paddingHorizontal),
+    },
+    sm: {
+      ...geometry.buttonSm,
+      minHeight: compactUp(geometry.buttonSm.minHeight),
+      paddingHorizontal: compactUp(geometry.buttonSm.paddingHorizontal),
+    },
+    lg: {
+      ...geometry.buttonLg,
+      minHeight: compactUp(geometry.buttonLg.minHeight),
+      paddingHorizontal: compactUp(geometry.buttonLg.paddingHorizontal),
+    },
+    default: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    secondary: {
+      backgroundColor: theme.colors.surface3,
+      borderColor: theme.colors.surface3,
+    },
+    outline: {
+      backgroundColor: "transparent",
+      borderColor: theme.colors.borderAccent,
+    },
+    ghost: {
+      backgroundColor: "transparent",
+      borderColor: "transparent",
+    },
+    destructive: {
+      backgroundColor: theme.colors.destructive,
+      borderColor: theme.colors.destructive,
+    },
+    pressed: {
+      opacity: 0.85,
+    },
+    disabled: {
+      opacity: theme.opacity[50],
+    },
+    text: {
+      color: theme.colors.foreground,
+      ...geometry.buttonText,
+      // Explicit compact bump (not left to the ambient theme-patch scale).
+      fontSize: {
+        xs: geometry.buttonText.fontSize + 2,
+        md: geometry.buttonText.fontSize,
+      },
+      fontWeight: theme.fontWeight.normal,
+    },
+    textXs: {
+      ...geometry.buttonTextXs,
+      fontSize: {
+        xs: geometry.buttonTextXs.fontSize + 2,
+        md: geometry.buttonTextXs.fontSize,
+      },
+    },
+    textDefault: {
+      color: theme.colors.accentForeground,
+    },
+    textDestructive: {
+      color: theme.colors.destructiveForeground,
+    },
+    textGhost: {
+      color: theme.colors.foregroundMuted,
+    },
+    textGhostHovered: {
+      color: theme.colors.foreground,
+    },
+  };
+});
 
 export function Button({
   children,
   variant = "secondary",
   size = "md",
   leftIcon,
-  renderLeftIcon,
   trailing,
   style,
   textStyle,
   disabled,
   loading = false,
   accessibilityRole,
+  accessibilityState: accessibilityStateProp,
   ...props
 }: PropsWithChildren<
   Omit<PressableProps, "style"> & {
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
-    renderLeftIcon?: (color: string) => ReactElement;
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
@@ -135,7 +203,6 @@ export function Button({
   }
 >) {
   const [hovered, setHovered] = useState(false);
-  const { theme } = useUnistyles();
   const isDisabled = disabled || loading;
 
   let variantStyle: ViewStyle;
@@ -192,50 +259,21 @@ export function Button({
   );
 
   const accessibilityState = useMemo(
-    () => ({ disabled: isDisabled, busy: loading }),
-    [isDisabled, loading],
+    () => ({ ...accessibilityStateProp, disabled: isDisabled, busy: loading }),
+    [accessibilityStateProp, isDisabled, loading],
   );
 
-  function resolveIconColor(): string {
+  function resolveIconMapping() {
     if (variant === "default") {
-      return theme.colors.accentForeground;
+      return accentForegroundIconMapping;
+    }
+    if (variant === "destructive") {
+      return destructiveForegroundIconMapping;
     }
     if (variant === "ghost") {
-      return isGhostHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+      return isGhostHovered ? foregroundIconMapping : foregroundMutedIconMapping;
     }
-    return theme.colors.foreground;
-  }
-
-  function renderIcon() {
-    if (loading) {
-      return (
-        <View>
-          <ActivityIndicator size="small" color={resolveIconColor()} />
-        </View>
-      );
-    }
-
-    const color = resolveIconColor();
-
-    if (renderLeftIcon) {
-      return <View>{renderLeftIcon(color)}</View>;
-    }
-
-    if (!leftIcon) return null;
-
-    // Pre-rendered element — pass through
-    if (typeof leftIcon === "object" && "type" in leftIcon) {
-      return <View>{leftIcon}</View>;
-    }
-
-    // Component type
-    const Icon = leftIcon as ComponentType<{ color: string; size: number }>;
-    const iconSize = theme.iconSize[size];
-    return (
-      <View>
-        <Icon color={color} size={iconSize} />
-      </View>
-    );
+    return foregroundIconMapping;
   }
 
   return (
@@ -248,7 +286,12 @@ export function Button({
       onHoverOut={handleHoverOut}
       style={pressableStyle}
     >
-      {renderIcon()}
+      <ThemedButtonIcon
+        loading={loading}
+        leftIcon={leftIcon}
+        iconSize={buttonIconSize[size]}
+        uniProps={resolveIconMapping()}
+      />
       {children != null ? <Text style={resolvedTextStyle}>{children}</Text> : null}
       {trailing}
     </Pressable>

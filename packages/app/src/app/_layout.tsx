@@ -44,6 +44,7 @@ import { LeftSidebar } from "@/components/left-sidebar";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
+import { RootErrorBoundary } from "@/components/root-error-boundary";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
@@ -91,7 +92,7 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { I18nProvider } from "@/i18n/provider";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { polyfillCrypto } from "@/polyfills/crypto";
-import { queryClient } from "@/query/query-client";
+import { queryClient } from "@/data/query-client";
 import {
   getHostRuntimeStore,
   hasConfiguredLocalDaemonOverride,
@@ -1102,17 +1103,27 @@ function SheetPortalProviders({ children }: { children: ReactNode }) {
 
 function RootProviders({ children }: { children: ReactNode }) {
   return (
-    <QueryProvider>
-      <I18nProvider>
-        <SafeAreaProvider>
-          <KeyboardProvider>
-            <KeyboardShiftProvider>
-              <SheetPortalProviders>{children}</SheetPortalProviders>
-            </KeyboardShiftProvider>
-          </KeyboardProvider>
-        </SafeAreaProvider>
-      </I18nProvider>
-    </QueryProvider>
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <KeyboardShiftProvider>
+          <SheetPortalProviders>{children}</SheetPortalProviders>
+        </KeyboardShiftProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function RootAppTree() {
+  return (
+    <GestureHandlerRootView style={flexStyle}>
+      <View style={layoutStyles.surfaceFill}>
+        <RootProviders>
+          <RuntimeProviders>
+            <AppShell />
+          </RuntimeProviders>
+        </RootProviders>
+      </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1130,15 +1141,13 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={flexStyle}>
-      <View style={layoutStyles.surfaceFill}>
-        <RootProviders>
-          <RuntimeProviders>
-            <AppShell />
-          </RuntimeProviders>
-        </RootProviders>
-      </View>
-    </GestureHandlerRootView>
+    <QueryProvider>
+      <I18nProvider>
+        <RootErrorBoundary>
+          <RootAppTree />
+        </RootErrorBoundary>
+      </I18nProvider>
+    </QueryProvider>
   );
 }
 

@@ -11,5 +11,8 @@ if not exist "%APP_EXECUTABLE%" (
 
 set "ELECTRON_RUN_AS_NODE=1"
 set "OTTO_NODE_ENV=production"
+rem OTTO_DESKTOP_MANAGED marks daemons started through this bundled CLI as
+rem desktop-managed, so the desktop app restarts them when it upgrades.
+set "OTTO_DESKTOP_MANAGED=1"
 "%APP_EXECUTABLE%" --disable-warning=DEP0040 "%RESOURCES_DIR%\app.asar.unpacked\dist\daemon\node-entrypoint-runner.js" node-script "%RESOURCES_DIR%\app.asar\node_modules\@otto-code\cli\dist\index.js" %*
 exit /b %errorlevel%

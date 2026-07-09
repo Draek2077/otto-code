@@ -4,6 +4,10 @@ Otto uses **file-based JSON persistence** instead of a traditional database. All
 
 Server-side stores live under `$OTTO_HOME` (defaults to `~/.otto`), with one exception: artifacts are stored inside the project directory at `{projectCwd}/.otto/artifacts/` (see [Artifacts](#8-artifacts)).
 
+## Store Surface Rules
+
+Store APIs own persistence atomicity and should not make services coordinate raw reads and writes. A good store method maps cleanly to one SQL statement or one SQL transaction, even when the current implementation is JSON files. If a caller needs a queue, lock, read-merge-write loop, or uniqueness race workaround, that behavior belongs behind the store surface.
+
 ---
 
 ## Directory layout

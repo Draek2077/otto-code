@@ -69,6 +69,7 @@ export interface AppSettings {
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "default"
   workspaceTitleSource: WorkspaceTitleSource;
+  autoExpandReasoning: boolean;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -101,6 +102,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "default",
   workspaceTitleSource: "title",
+  autoExpandReasoning: false,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -302,6 +304,9 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     VALID_WORKSPACE_TITLE_SOURCES.has(stored.workspaceTitleSource)
   ) {
     result.workspaceTitleSource = stored.workspaceTitleSource;
+  }
+  if (typeof stored.autoExpandReasoning === "boolean") {
+    result.autoExpandReasoning = stored.autoExpandReasoning;
   }
   if (typeof stored.compactSidebarTopSpacing === "boolean") {
     result.compactSidebarTopSpacing = stored.compactSidebarTopSpacing;

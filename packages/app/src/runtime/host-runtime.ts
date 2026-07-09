@@ -47,9 +47,14 @@ import {
   shouldUseLegacyDaemonWorkspaceDirectory,
 } from "@/workspace/legacy-daemon-workspaces";
 import { invalidateCheckoutGitQueriesForServer } from "@/git/query-keys";
-import { invalidateHostAggregateQueries } from "@/query/host-aggregate-query-keys";
-import { queryClient } from "@/query/query-client";
+import { invalidateHostAggregateQueries } from "@/data/host-aggregate-query-keys";
+import { queryClient } from "@/data/query-client";
+import {
+  invalidateServerDataQueriesAfterReconnect,
+  mountServerDataPushRouter,
+} from "@/data/push-router";
 import { mountBrowserAutomationDaemonClientHandler } from "@/browser-automation/handler";
+import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 export type HostRegistryStatus = "loading" | "ready";
@@ -586,10 +591,21 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
       }),
     getClientId: () => getOrCreateClientId(),
     mountClientHandlers: ({ client, host }) => {
+      const unmountServerData = mountServerDataPushRouter({
+        client,
+        queryClient,
+        serverId: host.serverId,
+      });
       if (!browserAutomationCapabilities) {
-        return () => {};
+        return unmountServerData;
       }
-      return mountBrowserAutomationDaemonClientHandler(client, { serverId: host.serverId });
+      const unmountBrowserAutomation = mountBrowserAutomationDaemonClientHandler(client, {
+        serverId: host.serverId,
+      });
+      return () => {
+        unmountBrowserAutomation();
+        unmountServerData();
+      };
     },
   };
 }
@@ -1969,15 +1985,17 @@ export class HostRuntimeStore {
     this.lastConnectionStatusByServer.set(serverId, snapshot.connectionStatus);
     const didTransitionOnline =
       snapshot.connectionStatus === "online" && previousStatus !== "online";
-    const didTransitionOffline =
-      snapshot.connectionStatus !== "online" && previousStatus === "online";
     if (didTransitionOnline) {
       useSessionStore.getState().bumpHistorySyncGeneration(serverId);
       // Checkout git data is push-driven; pushes emitted while disconnected are gone for
       // good (the daemon dedupes by snapshot fingerprint). Mark the caches stale so active
       // queries refetch now and evicted ones on their next mount.
       void invalidateCheckoutGitQueriesForServer(queryClient, serverId);
+      invalidateServerDataQueriesAfterReconnect({ queryClient, serverId });
+      void queryClient.invalidateQueries({ queryKey: schedulesQueryBaseKey });
     }
+    const didTransitionOffline =
+      snapshot.connectionStatus !== "online" && previousStatus === "online";
     if (didTransitionOnline || didTransitionOffline) {
       // The aggregated host queries (projects, schedules, artifacts) skip
       // non-online hosts at fetch time, so any online flip changes their

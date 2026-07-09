@@ -116,7 +116,7 @@ interface CreateOttoWorktreeWorkflowDependencies extends CreateOttoWorktreeInBac
     },
   ) => Promise<CreateOttoWorktreeResult>;
   warmWorkspaceGitData: (workspace: PersistedWorkspaceRecord) => Promise<void>;
-  autoNameWorkspaceBranchForFirstAgent?: (input: {
+  autoNameWorkspaceBranchForFirstAgent: (input: {
     workspace: PersistedWorkspaceRecord;
     firstAgentContext: FirstAgentContext;
   }) => void;
@@ -593,7 +593,7 @@ export async function createOttoWorktreeWorkflow(
 
   setTimeout(() => {
     if (input.firstAgentContext) {
-      dependencies.autoNameWorkspaceBranchForFirstAgent?.({
+      dependencies.autoNameWorkspaceBranchForFirstAgent({
         workspace,
         firstAgentContext: input.firstAgentContext,
       });

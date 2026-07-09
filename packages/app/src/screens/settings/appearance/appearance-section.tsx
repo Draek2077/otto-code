@@ -477,6 +477,28 @@ function LayoutToggleRow({
   );
 }
 
+interface AutoExpandReasoningRowProps {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}
+
+function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps) {
+  const { t } = useTranslation();
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.general.autoExpandReasoning.label")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.general.autoExpandReasoning.description")}
+        </Text>
+      </View>
+      <Switch value={value} onValueChange={onChange} />
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -538,6 +560,13 @@ export function AppearanceSection() {
   const handleBlackTabBackgroundChange = useCallback(
     (blackTabBackground: boolean) => {
       void updateSettings({ blackTabBackground });
+    },
+    [updateSettings],
+  );
+
+  const handleAutoExpandReasoningChange = useCallback(
+    (autoExpandReasoning: boolean) => {
+      void updateSettings({ autoExpandReasoning });
     },
     [updateSettings],
   );
@@ -712,6 +741,14 @@ export function AppearanceSection() {
           </View>
         </SettingsSection>
       ) : null}
+      <SettingsSection title={t("settings.appearance.detailLevel.title")}>
+        <View style={settingsStyles.card}>
+          <AutoExpandReasoningRow
+            value={settings.autoExpandReasoning}
+            onChange={handleAutoExpandReasoningChange}
+          />
+        </View>
+      </SettingsSection>
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (

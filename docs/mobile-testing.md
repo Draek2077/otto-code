@@ -198,6 +198,19 @@ for i in $(seq 1 "$ITERATIONS"); do
 done
 ```
 
+### Android audio focus interruptions
+
+Voice mode uses the custom `expo-two-way-audio` Android module, so incoming calls and other system audio owners must be tested with emulator/system commands, not a JS-only test. To verify that voice resume handles denied audio focus without crashing:
+
+```bash
+adb shell am start -n ai.ottocode/.MainActivity
+# Start voice mode in an existing composer, then background Otto with Home.
+adb emu gsm call 5551234
+# Foreground Otto while the call is still ringing.
+```
+
+Expected result: Otto does not throw `RuntimeException: Audio focus request failed`; native audio reports an interruption and voice mode stops or pauses coherently.
+
 ## Unistyles + Reanimated
 
 ### The crash

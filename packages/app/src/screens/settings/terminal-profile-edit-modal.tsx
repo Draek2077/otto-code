@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
-import { FormField, FormTextInput } from "@/components/ui/form-field";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 
 // Common shell binaries — still fully freeform via allowCustomValue, since a
@@ -144,7 +144,7 @@ export function TerminalProfileEditModal({
       desktopMaxWidth={480}
     >
       <View style={styles.body}>
-        <FormField
+        <Field
           label={t("settings.host.terminalProfiles.nameLabel")}
           error={nameError}
           testID="terminal-profile-name-field"
@@ -163,9 +163,9 @@ export function TerminalProfileEditModal({
             accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
             testID="terminal-profile-name-input"
           />
-        </FormField>
+        </Field>
 
-        <FormField
+        <Field
           label={t("settings.host.terminalProfiles.commandLabel")}
           error={commandError}
           testID="terminal-profile-command-field"
@@ -177,9 +177,9 @@ export function TerminalProfileEditModal({
             placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
             testID="terminal-profile-command-input"
           />
-        </FormField>
+        </Field>
 
-        <FormField
+        <Field
           label={t("settings.host.terminalProfiles.argsLabel")}
           hint={t("settings.host.terminalProfiles.argsHint")}
           testID="terminal-profile-args-field"
@@ -199,7 +199,7 @@ export function TerminalProfileEditModal({
             accessibilityLabel={t("settings.host.terminalProfiles.argsLabel")}
             testID="terminal-profile-args-input"
           />
-        </FormField>
+        </Field>
 
         {submitError ? (
           <Text style={styles.submitError} testID="terminal-profile-submit-error">

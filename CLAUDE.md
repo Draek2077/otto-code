@@ -46,6 +46,8 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/unistyles.md](docs/unistyles.md)                                           | Unistyles gotchas — `useUnistyles()` is forbidden, alternatives in order                                                                                                               |
 | [docs/floating-panels.md](docs/floating-panels.md)                               | Anchored popovers — Portal/Modal escape for Android, lifecycle gates, keyboard-shared-value, status-bar offset, the flash                                                              |
 | [docs/expo-router.md](docs/expo-router.md)                                       | Expo Router route ownership, startup restore, and native blank-screen gotchas                                                                                                          |
+| [docs/forms.md](docs/forms.md)                                                   | Form architecture — non-React form model, form kit, load-state gating; the schedule form is the golden example                                                                         |
+| [docs/protocol-validation.md](docs/protocol-validation.md)                       | zod-aot generated inbound WebSocket validation, patched compiler regressions, schema-purity rules                                                                                      |
 | [docs/file-icons.md](docs/file-icons.md)                                         | Material icon theme integration for the file explorer                                                                                                                                  |
 | [docs/ui-icons.md](docs/ui-icons.md)                                             | General UI icons — Material Symbols vendoring, codegen script, how to add/change an icon                                                                                               |
 | [docs/providers.md](docs/providers.md)                                           | Adding a new agent provider end-to-end                                                                                                                                                 |
@@ -119,7 +121,10 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   - `npm run format:files -- CLAUDE.md packages/app/src/components/message.tsx`
 - **The protocol stays backward-compatible. Features don't have to.** Two separate contracts:
   - **Protocol contract (always):** schema changes must not break parsing in either direction. An old client must still parse messages from a new daemon; a new daemon must still parse messages from an old client.
-    - New fields: `.optional()` with a sensible default or `.transform()` fallback.
+    - New fields: `.optional()` with a sensible default.
+    - Wire schemas are pure structural declarations. Do not add `.transform()`, `.catch()`, or `.preprocess()` to WebSocket message schemas; put normalization in an explicit post-validation pass.
+    - Plain `z.union()` is forbidden when every branch has a shared literal tag. Use `z.discriminatedUnion()` unless generated-code regression tests prove that specific shape is miscompiled.
+    - `.default()` is acceptable on primitive leaves only. Never put defaults on item schemas for large arrays or big inbound containers.
     - Never flip optional → required, remove fields, or narrow types (`string` → `enum`, `nullable` → non-null).
     - Removed fields stay accepted (we stop sending them, not stop reading them).
     - Test with: "does a 6-month-old client still parse this?" and "does a 6-month-old daemon still send something this client accepts?"
