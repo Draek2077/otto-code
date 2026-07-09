@@ -2092,6 +2092,11 @@ export const zhCN: TranslationResources = {
           workspace: "工作区",
         },
       },
+      tabs: {
+        models: "模型",
+        connection: "连接",
+        tools: "工具",
+      },
       connection: {
         title: "连接",
         baseUrl: "服务器地址",

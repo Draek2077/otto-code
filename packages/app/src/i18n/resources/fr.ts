@@ -2167,6 +2167,11 @@ export const fr: TranslationResources = {
           workspace: "Espaces de travail",
         },
       },
+      tabs: {
+        models: "Modèles",
+        connection: "Connexion",
+        tools: "Outils",
+      },
       connection: {
         title: "Connexion",
         baseUrl: "URL du serveur",

@@ -2138,6 +2138,11 @@ export const ja: TranslationResources = {
           workspace: "ワークスペース",
         },
       },
+      tabs: {
+        models: "モデル",
+        connection: "接続",
+        tools: "ツール",
+      },
       connection: {
         title: "接続",
         baseUrl: "サーバー URL",

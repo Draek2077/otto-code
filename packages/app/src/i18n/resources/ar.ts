@@ -2115,6 +2115,11 @@ export const ar: TranslationResources = {
           workspace: "مساحات العمل",
         },
       },
+      tabs: {
+        models: "النماذج",
+        connection: "الاتصال",
+        tools: "الأدوات",
+      },
       connection: {
         title: "الاتصال",
         baseUrl: "عنوان الخادم",

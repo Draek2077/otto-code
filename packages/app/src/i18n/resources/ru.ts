@@ -2153,6 +2153,11 @@ export const ru: TranslationResources = {
           workspace: "Рабочие пространства",
         },
       },
+      tabs: {
+        models: "Модели",
+        connection: "Подключение",
+        tools: "Инструменты",
+      },
       connection: {
         title: "Подключение",
         baseUrl: "Адрес сервера",

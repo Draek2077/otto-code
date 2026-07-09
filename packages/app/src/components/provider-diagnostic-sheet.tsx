@@ -5,6 +5,7 @@ import {
   FileText,
   Plus,
   RotateCw,
+  Search,
   Trash2,
 } from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
@@ -14,6 +15,7 @@ import {
   ActivityIndicator,
   Pressable,
   type PressableStateCallbackType,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -43,6 +45,7 @@ import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 import {
   resolveProviderDiscoveredModels,
@@ -61,6 +64,78 @@ interface ProviderDiagnosticSheetProps {
   visible: boolean;
   onClose: () => void;
   serverId: string;
+}
+
+type ProviderSettingsTab = "models" | "connection" | "tools";
+
+function buildProviderTabOptions(
+  t: TFunction,
+  hasConnectionTab: boolean,
+  hasToolsTab: boolean,
+): SegmentedControlOption<ProviderSettingsTab>[] {
+  const options: SegmentedControlOption<ProviderSettingsTab>[] = [];
+  if (hasConnectionTab) {
+    options.push({
+      value: "connection",
+      label: t("settings.providers.tabs.connection"),
+      testID: "provider-settings-tab-connection",
+    });
+  }
+  options.push({
+    value: "models",
+    label: t("settings.providers.tabs.models"),
+    testID: "provider-settings-tab-models",
+  });
+  if (hasToolsTab) {
+    options.push({
+      value: "tools",
+      label: t("settings.providers.tabs.tools"),
+      testID: "provider-settings-tab-tools",
+    });
+  }
+  return options;
+}
+
+// null = "no explicit choice yet": the dialog opens on the first tab.
+function resolveCurrentTab(
+  activeTab: ProviderSettingsTab | null,
+  tabOptions: SegmentedControlOption<ProviderSettingsTab>[],
+): ProviderSettingsTab {
+  if (activeTab !== null && tabOptions.some((option) => option.value === activeTab)) {
+    return activeTab;
+  }
+  return tabOptions[0]?.value ?? "models";
+}
+
+// Themed leaf per docs/unistyles.md "Static Theme Imports".
+const ThemedSearchIcon = withUnistyles(Search, (theme) => ({
+  size: theme.iconSize.sm,
+  color: theme.colors.foregroundMuted,
+}));
+
+function ModelsSearchField({
+  initialValue,
+  onChange,
+}: {
+  initialValue: string;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={sheetStyles.searchField}>
+      <ThemedSearchIcon />
+      <AdaptiveTextInput
+        // @ts-expect-error - outlineStyle is web-only
+        style={MODELS_SEARCH_INPUT_STYLE}
+        placeholder={t("settings.providers.models.searchPlaceholder")}
+        initialValue={initialValue}
+        onChangeText={onChange}
+        autoCapitalize="none"
+        autoCorrect={false}
+        testID="provider-settings-search"
+      />
+    </View>
+  );
 }
 
 function rankModels<T>(items: T[], query: string, fields: (item: T) => string[]): T[] {
@@ -295,7 +370,6 @@ function ProviderConnectionSection({
 
   return (
     <View style={sheetStyles.section}>
-      <SectionHeader title={t("settings.providers.connection.title")} />
       <View style={sheetStyles.connectionCard}>
         <View style={sheetStyles.formGroup}>
           <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.baseUrl")}</Text>
@@ -434,7 +508,6 @@ function ProviderToolGroupsSection({
 
   return (
     <View style={sheetStyles.section}>
-      <SectionHeader title={t("settings.providers.tools.title")} />
       <View style={sheetStyles.connectionCard}>
         <Text style={sheetStyles.formLabel}>{t("settings.providers.tools.description")}</Text>
         {OTTO_TOOL_GROUPS.map((group) => (
@@ -494,23 +567,21 @@ function ProviderRemoveSection({
   );
 
   return (
-    <View style={sheetStyles.section}>
-      <View style={sheetStyles.removeRow}>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={removeIcon}
-          onPress={handleOpenConfirm}
-          disabled={!supportsRemove}
-          textStyle={sheetStyles.destructiveText}
-          testID="provider-remove-button"
-        >
-          {t("settings.providers.remove.button")}
-        </Button>
-        {!supportsRemove ? (
-          <Text style={sheetStyles.mutedText}>{t("settings.providers.remove.requiresUpdate")}</Text>
-        ) : null}
-      </View>
+    <View style={sheetStyles.removeRow}>
+      <Button
+        variant="outline"
+        size="sm"
+        leftIcon={removeIcon}
+        onPress={handleOpenConfirm}
+        disabled={!supportsRemove}
+        textStyle={sheetStyles.destructiveText}
+        testID="provider-remove-button"
+      >
+        {t("settings.providers.remove.button")}
+      </Button>
+      {!supportsRemove ? (
+        <Text style={sheetStyles.mutedText}>{t("settings.providers.remove.requiresUpdate")}</Text>
+      ) : null}
       {confirming ? (
         <AdaptiveModalSheet
           header={confirmHeader}
@@ -837,25 +908,25 @@ interface ProviderModalBodyProps {
   theme: { iconSize: { md: number }; colors: { foregroundMuted: string } };
 }
 
-interface ProviderSheetFooterInput {
+interface ModelsTabActionsProps {
   fetchedAtLabel: string | null;
-  isCompact: boolean;
   modelsRefreshing: boolean;
-  t: TFunction;
   onOpenAddSheet: () => void;
   onOpenDiagSheet: () => void;
   onRefreshModels: () => void;
 }
 
-function renderProviderSheetFooter({
+// Model-management actions pinned below the Models tab's scrolling list. The
+// "Updated" label reports when the model list was last fetched.
+function ModelsTabActions({
   fetchedAtLabel,
-  isCompact,
   modelsRefreshing,
-  t,
   onOpenAddSheet,
   onOpenDiagSheet,
   onRefreshModels,
-}: ProviderSheetFooterInput) {
+}: ModelsTabActionsProps) {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const contentStyle = isCompact ? sheetStyles.compactFooterContent : sheetStyles.footerContent;
   const actionsStyle = isCompact ? sheetStyles.compactFooterActions : sheetStyles.footerActions;
   const buttonStyle = isCompact ? sheetStyles.compactFooterButton : null;
@@ -1001,10 +1072,10 @@ export function ProviderDiagnosticSheet({
 }: ProviderDiagnosticSheetProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const isCompact = useIsCompactFormFactor();
   const { entries: snapshotEntries, refresh, isRefreshing } = useProvidersSnapshot(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
   const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<ProviderSettingsTab | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [diagSheetOpen, setDiagSheetOpen] = useState(false);
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
@@ -1064,10 +1135,21 @@ export function ProviderDiagnosticSheet({
   useEffect(() => {
     if (!visible) {
       setQuery("");
+      setActiveTab(null);
       setAddSheetOpen(false);
       setDiagSheetOpen(false);
     }
   }, [visible]);
+
+  const hasConnectionTab = connection !== null;
+  const hasToolsTab = providerExtends === "openai-compatible";
+  const tabOptions = useMemo(
+    () => buildProviderTabOptions(t, hasConnectionTab, hasToolsTab),
+    [hasConnectionTab, hasToolsTab, t],
+  );
+  // Falls back to the first tab until the user picks one, or if a config
+  // refresh drops the selected tab (e.g. the provider loses its connection).
+  const currentTab = resolveCurrentTab(activeTab, tabOptions);
 
   const q = query.trim();
   const filteredDiscovered = useMemo(
@@ -1106,16 +1188,37 @@ export function ProviderDiagnosticSheet({
     [additionalModels, patchConfig, provider, refresh],
   );
 
-  const sheetHeader = useMemo<SheetHeader>(
-    () => ({
-      title: providerLabel,
-      search: {
-        onChange: setQuery,
-        placeholder: t("settings.providers.models.searchPlaceholder"),
-        testID: "provider-settings-search",
-      },
-    }),
-    [providerLabel, t],
+  const sheetHeader = useMemo<SheetHeader>(() => ({ title: providerLabel }), [providerLabel]);
+
+  // Pinned sheet footer, visible on every tab. Only custom providers (config
+  // entries with `extends`) are removable; built-ins get no footer.
+  const removeFooter = useMemo(
+    () =>
+      isCustomProvider ? (
+        <ProviderRemoveSection
+          provider={provider}
+          providerLabel={providerLabel}
+          supportsRemove={supportsProviderRemove}
+          patchConfig={patchConfig}
+          onRemoved={handleRemoved}
+        />
+      ) : undefined,
+    [handleRemoved, isCustomProvider, patchConfig, provider, providerLabel, supportsProviderRemove],
+  );
+
+  const tabStrip = useMemo(
+    () => (
+      <View style={sheetStyles.tabStrip}>
+        <SegmentedControl
+          size="sm"
+          value={currentTab}
+          onValueChange={setActiveTab}
+          options={tabOptions}
+          testID="provider-settings-tabs"
+        />
+      </View>
+    ),
+    [currentTab, tabOptions],
   );
 
   return (
@@ -1125,57 +1228,76 @@ export function ProviderDiagnosticSheet({
         visible={visible}
         onClose={onClose}
         testID="provider-settings-sheet"
-        footer={renderProviderSheetFooter({
-          fetchedAtLabel,
-          isCompact,
-          modelsRefreshing,
-          t,
-          onOpenAddSheet: handleOpenAddSheet,
-          onOpenDiagSheet: handleOpenDiagSheet,
-          onRefreshModels: handleRefreshModels,
-        })}
+        subHeader={tabStrip}
+        desktopHeight={DESKTOP_SHEET_HEIGHT}
+        scrollable={false}
+        footer={removeFooter}
         snapPoints={MAIN_SNAP_POINTS}
       >
-        {connection ? (
-          <ProviderConnectionSection
-            key={`connection-${provider}`}
-            provider={provider}
-            connection={connection}
-            patchConfig={patchConfig}
-            refresh={refresh}
-          />
+        {currentTab === "models" ? (
+          <View style={sheetStyles.tabPane}>
+            <ModelsSearchField initialValue={query} onChange={setQuery} />
+            <ScrollView
+              style={sheetStyles.tabScroll}
+              contentContainerStyle={sheetStyles.tabScrollContent}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              <ProviderModalBody
+                discoveredCount={discoveredModels.length}
+                additionalCount={additionalModels.length}
+                providerSnapshotRefreshing={providerSnapshotRefreshing}
+                providerErrorMessage={providerErrorMessage}
+                modelsRefreshing={modelsRefreshing}
+                searchActive={Boolean(q)}
+                filteredDiscovered={filteredDiscovered}
+                filteredCustom={filteredCustom}
+                deletingModelId={deletingModelId}
+                onRefresh={handleRefreshModels}
+                onDeleteCustom={handleDeleteCustom}
+                theme={theme}
+              />
+            </ScrollView>
+            <ModelsTabActions
+              fetchedAtLabel={fetchedAtLabel}
+              modelsRefreshing={modelsRefreshing}
+              onOpenAddSheet={handleOpenAddSheet}
+              onOpenDiagSheet={handleOpenDiagSheet}
+              onRefreshModels={handleRefreshModels}
+            />
+          </View>
         ) : null}
-        {providerExtends === "openai-compatible" ? (
-          <ProviderToolGroupsSection
-            key={`tools-${provider}`}
-            provider={provider}
-            selectedGroups={config?.providers?.[provider]?.ottoToolGroups ?? null}
-            patchConfig={patchConfig}
-            refresh={refresh}
-          />
+        {currentTab === "connection" && connection ? (
+          <ScrollView
+            style={sheetStyles.tabScroll}
+            contentContainerStyle={sheetStyles.tabScrollContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            <ProviderConnectionSection
+              key={`connection-${provider}`}
+              provider={provider}
+              connection={connection}
+              patchConfig={patchConfig}
+              refresh={refresh}
+            />
+          </ScrollView>
         ) : null}
-        <ProviderModalBody
-          discoveredCount={discoveredModels.length}
-          additionalCount={additionalModels.length}
-          providerSnapshotRefreshing={providerSnapshotRefreshing}
-          providerErrorMessage={providerErrorMessage}
-          modelsRefreshing={modelsRefreshing}
-          searchActive={Boolean(q)}
-          filteredDiscovered={filteredDiscovered}
-          filteredCustom={filteredCustom}
-          deletingModelId={deletingModelId}
-          onRefresh={handleRefreshModels}
-          onDeleteCustom={handleDeleteCustom}
-          theme={theme}
-        />
-        {isCustomProvider ? (
-          <ProviderRemoveSection
-            provider={provider}
-            providerLabel={providerLabel}
-            supportsRemove={supportsProviderRemove}
-            patchConfig={patchConfig}
-            onRemoved={handleRemoved}
-          />
+        {currentTab === "tools" ? (
+          <ScrollView
+            style={sheetStyles.tabScroll}
+            contentContainerStyle={sheetStyles.tabScrollContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
+            <ProviderToolGroupsSection
+              key={`tools-${provider}`}
+              provider={provider}
+              selectedGroups={config?.providers?.[provider]?.ottoToolGroups ?? null}
+              patchConfig={patchConfig}
+              refresh={refresh}
+            />
+          </ScrollView>
         ) : null}
       </AdaptiveModalSheet>
       <AddCustomModelSubSheet
@@ -1247,6 +1369,42 @@ const sheetStyles = StyleSheet.create((theme) => ({
   section: {
     marginBottom: theme.spacing[4],
   },
+  // Fixed strip between the sheet header and the scrolling tab content. Row
+  // direction keeps the segmented control at its intrinsic width.
+  tabStrip: {
+    flexDirection: "row",
+    paddingHorizontal: theme.spacing[6],
+    paddingTop: theme.spacing[4],
+  },
+  // Fills the sheet's static content area: fixed rows (search, actions)
+  // sandwich the scrolling list.
+  tabPane: {
+    flex: 1,
+    minHeight: 0,
+    gap: theme.spacing[3],
+  },
+  tabScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  tabScrollContent: {
+    paddingBottom: theme.spacing[2],
+  },
+  searchField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface2,
+    paddingHorizontal: theme.spacing[3],
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: theme.spacing[2],
+    fontSize: theme.fontSize.sm,
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1283,14 +1441,12 @@ const sheetStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   footerContent: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
   compactFooterContent: {
-    flex: 1,
     gap: theme.spacing[2],
   },
   footerMeta: {
@@ -1362,8 +1518,11 @@ const sheetStyles = StyleSheet.create((theme) => ({
 }));
 
 const FORM_INPUT_STYLE = [sheetStyles.formInput, isWeb && { outlineStyle: "none" }];
+const MODELS_SEARCH_INPUT_STYLE = [sheetStyles.searchInput, isWeb && { outlineStyle: "none" }];
 const COMPACT_FOOTER_META_STYLE = [sheetStyles.footerMeta, sheetStyles.compactFooterMeta];
 
 const MAIN_SNAP_POINTS = ["65%", "92%"];
+// One size for every provider's settings dialog — tab content scrolls inside.
+const DESKTOP_SHEET_HEIGHT = 640;
 const ADD_SNAP_POINTS = ["40%"];
 const DIAGNOSTIC_SNAP_POINTS = ["50%", "85%"];
