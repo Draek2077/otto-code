@@ -469,6 +469,8 @@ than treating it as valid.
 
 The one store that lives **inside the project directory**, not under `$OTTO_HOME` — artifacts belong to the project and travel with the checkout. Each artifact is a metadata JSON file plus a sibling self-contained HTML file, written atomically. `ArtifactStore` (`packages/server/src/server/artifact/artifact-store.ts`) is constructed per project cwd; `ArtifactWatcher` watches the directory so externally-edited artifacts refresh in connected clients. Generated HTML is checked by `html-validator.ts` before an artifact is marked `ready`.
 
+Generation is agent-based, not a bespoke completion call: `ArtifactService` (`artifact-service.ts`) spawns a normal Otto agent (`AgentManager.createAgent`) with the user's chosen provider/model and a dedicated system prompt (`artifact-prompt.ts`) that constrains output to a **single, completely self-contained HTML file** — all CSS/JS inline, mirroring Claude Code's artifact discipline. The run streams as a live generation log while `status` is `generating`, its provenance lands in the `generationAgentId`/`generationProvider`/`generationModel` fields below, and cancel interrupts the agent run. Iteration ("re-prompt to modify") is the same flow re-pointed at an existing artifact: the service resets it to `generating` and spawns a fresh generation agent that rewrites the HTML in place, which the watcher then pushes to any open artifact tab.
+
 Metadata (`ArtifactMetadataSchema`, `packages/protocol/src/artifacts/types.ts`):
 
 | Field                                                        | Type                                 | Description                            |

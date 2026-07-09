@@ -201,12 +201,13 @@ const PASEO_PILLARS = [
     ],
   },
   {
-    title: "The Otto twist",
+    title: "The Otto mission",
     items: [
-      "Refreshed, refined UI",
+      "Frontier-model tooling for every provider",
       "In-browser preview verification for agents",
-      "OpenAI-compatible model providers",
+      "Artifacts, rich permission modes, new tools",
       "Local models via LM Studio, Ollama & friends",
+      "A familiar, refined UI that never boxes you in",
     ],
   },
 ] as const;
@@ -221,7 +222,7 @@ function BuiltOnPaseoSection() {
     >
       <SectionTitle
         title="Proudly built on Paseo"
-        description="Otto is an open-source fork of Paseo — everything Paseo can do, plus a unique twist on top."
+        description="Otto is an open-source fork of Paseo — everything Paseo can do, plus a mission on top: grow it into a fully featured agentic coding assistant."
       />
 
       <div className="space-y-4">
@@ -251,8 +252,11 @@ function BuiltOnPaseoSection() {
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Otto is a personal project. It started as one developer wanting to shape Paseo around a
           specific workflow, using AI coding agents to fork, refactor, and extend it — the same kind
-          of agent-driven development Otto is built to run. Every change is customization on top of
-          Mo&apos;s work, and all credit for the underlying platform belongs to him.
+          of agent-driven development Otto is built to run. That workflow has grown into a mission:
+          extend Otto into a fully featured agentic coding assistant — a familiar environment that
+          never feels constraining, with frontier-model tooling available to every provider, cloud
+          and local alike. Every change is customization on top of Mo&apos;s work, and all credit
+          for the underlying platform belongs to him.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           {PASEO_PILLARS.map((pillar) => (
@@ -392,7 +396,7 @@ function OpenAICompatibleSection() {
   return (
     <FeatureSection
       title="Bring any model"
-      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider — with the same tools, browser access, and workflow as the built-in ones. Run models locally or on your own server; your prompts never have to leave your network."
+      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider — with the same frontier-level tooling as the built-in ones: coding tools, browser-verified previews, MCP servers, context compaction, and rich permission modes. Run models locally or on your own server; your prompts never have to leave your network."
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
@@ -1779,8 +1783,9 @@ function FAQ() {
           </a>
           , with full upstream history preserved. We&apos;re proud of that lineage — Paseo is a
           fantastic platform to build on. Otto tracks upstream improvements and adds its own
-          direction on top: a refreshed UI, in-browser preview verification for agents, and
-          OpenAI-compatible model providers. Otto is an independent project and isn&apos;t
+          direction on top: growing into a fully featured agentic coding assistant, with in-browser
+          preview verification, artifacts, and frontier-model tooling brought to every provider —
+          cloud APIs and local models alike. Otto is an independent project and isn&apos;t
           affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
           testimonials are theirs, not ours.
         </FAQItem>

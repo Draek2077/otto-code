@@ -7,9 +7,11 @@ inspection, console/network capture, click/fill interaction, viewport resize,
 and screenshots — instead of asking the user to check manually.
 
 This doc covers the finished feature: settings, day-to-day server management,
-how a preview tab differs from a normal browser tab, and the
+how a preview tab differs from a normal browser tab, the design principles
+carried over from the reverse-engineered Claude Preview MCP server, and the
 `.claude/launch.json` config lifecycle. (The original reverse-engineering
-blueprint that drove the build lives with the project plans, not here.)
+blueprint that drove the build shipped and was retired; its durable decisions
+live in this doc.)
 
 ## Two subsystems, one feature
 
@@ -28,6 +30,53 @@ Agents get both as tool groups: `preview_start` / `preview_stop` /
 `browser_navigate`, `browser_network`, …) for verification. `preview_start`
 opens (or re-finds) the tab and hands back its `browserId`, which the agent
 then passes to the `browser_*` tools.
+
+## Design principles
+
+These were the load-bearing decisions carried over from reverse-engineering
+Claude Code's preview MCP server; they explain why the tools look the way
+they do and must survive future changes:
+
+- **Token economy is a first-class design axis, not an afterthought.**
+  Screenshots return JPEG (never PNG); `browser_snapshot` returns a pruned
+  accessibility tree with stable element refs, never a DOM serialization;
+  network capture is split into a summary listing (method/url/status/
+  `requestId`) with response bodies fetched on demand by `requestId` and
+  capped at 30k chars; every log tool takes `lines` caps plus `level`/`search`
+  post-filters (`level: "error"` is deliberately a keyword grep for
+  error/exception/failed/fatal, matching the Claude Preview contract).
+- **Tool descriptions are agent steering, not just API docs.**
+  `browser_evaluate` is walled off as debug-only in its own description (DOM
+  edits are lost on reload — edit source instead); screenshot self-deprecates
+  for precision work and points at `browser_inspect` for colors/fonts/spacing;
+  snapshot advertises itself as preferred over screenshot; `preview_start`
+  embeds the launch.json format with create-if-missing instructions so agents
+  can bootstrap a project themselves. Treat description text as prompt
+  engineering — review it like code.
+- **Descriptions steer, the daemon enforces.** Where a failure mode matters,
+  there is a hard server-side check behind the guardrail text — the designated
+  preview tab enforcement below (`findPreviewServerForUrl`) and the `ext:`
+  stop restrictions are the two live examples. Never rely on description text
+  alone for correctness or safety.
+- **Console/network events are push; tool calls are pull.** Both hosts buffer
+  events into bounded ring buffers read (and filtered) at call time. Network
+  capture in the Electron host is a per-tab CDP recorder
+  (`webContents.debugger`, Network domain, 500-entry ring per tab) that
+  attaches lazily on the tab's first `browser_network` call — which is why the
+  tool description tells the agent to reload after enabling, so the page's
+  traffic actually gets recorded. (`browser_logs` carries the lighter
+  Performance-API entries instead.)
+- **The verification workflow is injected as system prompt, not hoped for.**
+  Tool descriptions alone don't reliably steer local models, so the
+  openai-compatible provider injects a workflow doctrine
+  (`buildPreviewWorkflowPrompt` in
+  `packages/server/src/server/agent/providers/openai-compat-agent.ts`),
+  emitted only when the preview/browser tool groups are actually exposed:
+  start dev servers with `preview_start` (never `run_command`), verify against
+  the returned `browserId` only, and share proof (snapshot/screenshot) instead
+  of asking the user to check manually. Known gap: other providers (Claude
+  Code, Codex, …) currently get the guardrail-bearing tool descriptions but no
+  injected workflow prompt.
 
 ## Preview tabs vs. normal browser tabs
 

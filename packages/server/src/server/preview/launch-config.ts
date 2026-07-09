@@ -6,7 +6,7 @@ import { z } from "zod";
  * `.claude/launch.json` — the project-level dev-server launch config shared
  * with Claude Code's preview tooling. Otto's preview subsystem reads the same
  * file so one config drives both harnesses.
- * See projects/preview-mcp/preview-mcp-implementation.md §7.
+ * See docs/preview.md ("launch.json").
  */
 
 export const LAUNCH_CONFIG_RELATIVE_PATH = path.join(".claude", "launch.json");
