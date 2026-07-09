@@ -27,7 +27,10 @@ import {
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
+  type WorkspaceRegistry,
 } from "../workspace-registry.js";
+import type { ArtifactService } from "../artifact/artifact-service.js";
+import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import type {
   CreateScheduleInput,
   StoredSchedule,
@@ -4914,5 +4917,198 @@ describe("agent snapshot MCP serialization", () => {
     expect(content).not.toContain("[User] u2");
     expect(content).not.toContain("second answer");
     expect(content).not.toContain("first answer");
+  });
+});
+
+describe("create_artifact MCP tool", () => {
+  const logger = createTestLogger();
+
+  function createArtifactMetadataFixture(
+    overrides: Partial<ArtifactMetadata> = {},
+  ): ArtifactMetadata {
+    return {
+      id: "art-1",
+      name: "Perf report",
+      description: "Summarize the perf run",
+      projectId: "proj-1",
+      filePath: "/tmp/.otto/artifacts/art-1.html",
+      kind: "html",
+      starred: false,
+      status: "generating",
+      createdAt: "2026-07-08T00:00:00.000Z",
+      updatedAt: "2026-07-08T00:00:00.000Z",
+      generationAgentId: null,
+      generationProvider: "opencode",
+      generationModel: null,
+      errorMessage: null,
+      ...overrides,
+    };
+  }
+
+  function createArtifactWorkspaceRegistryStub() {
+    return {
+      get: vi.fn().mockResolvedValue({ workspaceId: "ws-1", projectId: "proj-1" }),
+      upsert: vi.fn(),
+    } as unknown as Pick<WorkspaceRegistry, "get" | "upsert">;
+  }
+
+  it("defaults provider, model, thinking, and project from the calling agent", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      provider: "opencode",
+      cwd: process.cwd(),
+      workspaceId: "ws-1",
+      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+    });
+    const create = vi
+      .fn()
+      .mockResolvedValue(createArtifactMetadataFixture({ generationModel: "caller-model" }));
+    const emitArtifactCreated = vi.fn();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      artifactService: { create } as unknown as ArtifactService,
+      emitArtifactCreated,
+      workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "create_artifact");
+
+    const response = await invokeToolWithParsedInput(tool, {
+      name: "Perf report",
+      description: "Summarize the perf run",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      name: "Perf report",
+      description: "Summarize the perf run",
+      projectId: "proj-1",
+      provider: "opencode",
+      model: "caller-model",
+      thinkingOptionId: "think-hard",
+    });
+    expect(emitArtifactCreated).toHaveBeenCalledTimes(1);
+    expect(emitArtifactCreated.mock.calls[0][0].id).toBe("art-1");
+    expect(response.structuredContent).toMatchObject({
+      artifactId: "art-1",
+      status: "generating",
+      provider: "opencode",
+      model: "caller-model",
+      projectId: "proj-1",
+    });
+  });
+
+  it("honors explicit provider/model, thinking option, and project over caller defaults", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      provider: "opencode",
+      cwd: process.cwd(),
+      workspaceId: "ws-1",
+      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+    });
+    const create = vi.fn().mockResolvedValue(
+      createArtifactMetadataFixture({
+        projectId: "proj-2",
+        generationProvider: "codex",
+        generationModel: "gpt-5.4",
+      }),
+    );
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      artifactService: { create } as unknown as ArtifactService,
+      workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "create_artifact");
+
+    await invokeToolWithParsedInput(tool, {
+      name: "Perf report",
+      description: "Summarize the perf run",
+      provider: "codex/gpt-5.4",
+      thinkingOptionId: "high",
+      projectId: "proj-2",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      name: "Perf report",
+      description: "Summarize the perf run",
+      projectId: "proj-2",
+      provider: "codex",
+      model: "gpt-5.4",
+      thinkingOptionId: "high",
+    });
+  });
+
+  it("derives the name from the description and drops caller thinking across providers", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      provider: "opencode",
+      cwd: process.cwd(),
+      workspaceId: "ws-1",
+      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+    });
+    const create = vi.fn().mockResolvedValue(createArtifactMetadataFixture());
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      artifactService: { create } as unknown as ArtifactService,
+      workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "create_artifact");
+
+    await invokeToolWithParsedInput(tool, {
+      description: "## Quarterly revenue dashboard\nWith per-region breakdowns and trends.",
+      provider: "codex/gpt-5.4",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      name: "Quarterly revenue dashboard",
+      description: "## Quarterly revenue dashboard\nWith per-region breakdowns and trends.",
+      projectId: "proj-1",
+      provider: "codex",
+      model: "gpt-5.4",
+    });
+  });
+
+  it("rejects providers that are not available", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      provider: "opencode",
+      cwd: process.cwd(),
+      workspaceId: "ws-1",
+      config: {},
+    });
+    const create = vi.fn();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      artifactService: { create } as unknown as ArtifactService,
+      workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "create_artifact");
+
+    await expect(
+      invokeToolWithParsedInput(tool, {
+        name: "Perf report",
+        description: "Summarize the perf run",
+        provider: "nonexistent",
+      }),
+    ).rejects.toThrow(/not available/);
+    expect(create).not.toHaveBeenCalled();
   });
 });
