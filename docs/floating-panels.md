@@ -200,6 +200,57 @@ Do not treat `onChange(-1)` as a close by itself. In a stacked
 another pushed sheet. Close React state from `onDismiss`; use `onChange` only to
 track phase.
 
+## Gotcha 7 — Electron drag regions hit-test ahead of your overlay
+
+On Electron, `-webkit-app-region: drag` rects are computed from **unclipped
+bounding boxes document-wide, ignoring DOM z-order** (electron/electron#7605).
+An overlay floating visually above a drag region (a titlebar strip, the
+workspace header label, or the New Workspace screen's full-screen drag
+overlay) is still click-dead wherever the two rects overlap — mouse-down
+starts a window drag instead of a click. Nothing logs; it feels like a CSS
+bug and typically only shows in compact mode, where pickers become
+full-screen-adjacent sheets instead of small anchored popovers.
+
+The no-drag backstop in `packages/app/public/index.html` is deliberately
+scoped (a global rule lets scrolled-away chat content punch invisible holes
+in the titlebar drag strip — same unclipped-rect behavior). It covers two
+layer families:
+
+- interactive elements inside a drag-region container
+  (`[data-app-region-drag]` / `:has(> [data-app-region-drag])`), and
+- overlays portaled to `body > :not(#root)` — react-native-web `Modal`
+  layers and `#overlay-root`.
+
+Anything that floats **inside `#root`** is NOT covered — gorhom bottom sheets
+and `@gorhom/portal` panels. Those carve themselves out with
+`FLOATING_LAYER_NO_DRAG_STYLE` (`components/desktop/app-region.ts`,
+`WebkitAppRegion: "no-drag"`), applied at three choke points:
+
+- `IsolatedBottomSheetModal` — the sheet's full-screen hosting container
+  (covers every compact-mode sheet: combobox, menus, command center,
+  `AdaptiveModalSheet`),
+- `FloatingSurface` in `components/ui/floating.tsx` — the shared frame for
+  desktop panels (hover card via `@gorhom/portal`; menus/combobox render in
+  RNW `Modal` so they're double-covered, harmlessly),
+- `AutocompletePopover` — portals into `FloatingPanelPortalHost` inside
+  `#root`, and sits directly over the New Workspace screen's full-screen
+  drag overlay.
+- `MobileSidebar`'s overlay wrapper (`left-sidebar.tsx`) — the compact
+  sidebar drawer has no `TitlebarDragRegion` of its own, so without the
+  carve-out the underlying screen header's drag strip eats clicks on its top
+  rows. The wrapper is `display: none` while closed (no boxes), so the
+  closed drawer can't hole the drag strip.
+
+Two rules when adding a new floating layer:
+
+1. If it neither portals to `<body>` nor goes through one of the choke
+   points above, stamp `FLOATING_LAYER_NO_DRAG_STYLE` on its frame or its
+   contents will be unclickable over drag strips.
+2. Apply it only to views that **exist while the panel is open**. Stamping an
+   always-mounted full-screen host (e.g. `FloatingPanelPortalHost`'s
+   absolute-fill wrapper) permanently disables titlebar dragging — the exact
+   unclipped-rect bug the scoped backstop exists to prevent.
+
 ## Recipe for a new anchored panel
 
 Before you write a new one, ask:
