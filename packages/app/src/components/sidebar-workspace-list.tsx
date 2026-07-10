@@ -84,7 +84,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { WorkspaceKebabMenu, WorkspaceMenuItems } from "@/components/sidebar/sidebar-workspace-row";
+import {
+  WorkspaceKebabMenu,
+  WorkspaceMenuItems,
+  type WorkspaceMenuItemComponent,
+} from "@/components/sidebar/sidebar-workspace-row";
 import { ThemedBlobLoader } from "@/components/blob-loader";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
@@ -556,17 +560,23 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return <ThemedMoreVertical uniProps={hovered ? foregroundSmMapping : foregroundMutedSmMapping} />;
 }
 
-function ProjectKebabMenu({
-  projectKey,
-  projectPath,
-  onRemoveProject,
-  removeProjectStatus,
-}: {
+interface ProjectMenuItemsProps {
+  ItemComponent: WorkspaceMenuItemComponent;
   projectKey: string;
   projectPath: string;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
-}) {
+}
+
+/** Shared item list for the project kebab dropdown and the right-click context
+ * menu — one source so the two menus can't drift apart. */
+function ProjectMenuItems({
+  ItemComponent: Item,
+  projectKey,
+  projectPath,
+  onRemoveProject,
+  removeProjectStatus,
+}: ProjectMenuItemsProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const handleOpenProjectSettings = useCallback(() => {
@@ -589,6 +599,51 @@ function ProjectKebabMenu({
       });
   }, [projectPath, t, toast]);
   return (
+    <>
+      {canOpenProjectSettings ? (
+        <Item
+          testID={`sidebar-project-menu-open-settings-${projectKey}`}
+          leading={settingsLeadingIcon}
+          onSelect={handleOpenProjectSettings}
+        >
+          {t("sidebar.project.actions.openSettings")}
+        </Item>
+      ) : null}
+      {canOpenInNewWindow ? (
+        <Item
+          testID={`sidebar-project-menu-open-new-window-${projectKey}`}
+          leading={openInNewWindowLeadingIcon}
+          onSelect={handleOpenInNewWindow}
+        >
+          {t("sidebar.project.actions.openNewWindow")}
+        </Item>
+      ) : null}
+      <Item
+        testID={`sidebar-project-menu-remove-${projectKey}`}
+        leading={trash2LeadingIcon}
+        status={removeProjectStatus}
+        pendingLabel={t("sidebar.project.actions.removing")}
+        onSelect={onRemoveProject}
+      >
+        {t("sidebar.project.actions.remove")}
+      </Item>
+    </>
+  );
+}
+
+function ProjectKebabMenu({
+  projectKey,
+  projectPath,
+  onRemoveProject,
+  removeProjectStatus,
+}: {
+  projectKey: string;
+  projectPath: string;
+  onRemoveProject: () => void;
+  removeProjectStatus: "idle" | "pending" | "success";
+}) {
+  const { t } = useTranslation();
+  return (
     <DropdownMenu>
       <DropdownMenuTrigger
         hitSlop={8}
@@ -600,33 +655,13 @@ function ProjectKebabMenu({
         {renderKebabTriggerIcon}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={220}>
-        {canOpenProjectSettings ? (
-          <DropdownMenuItem
-            testID={`sidebar-project-menu-open-settings-${projectKey}`}
-            leading={settingsLeadingIcon}
-            onSelect={handleOpenProjectSettings}
-          >
-            {t("sidebar.project.actions.openSettings")}
-          </DropdownMenuItem>
-        ) : null}
-        {canOpenInNewWindow ? (
-          <DropdownMenuItem
-            testID={`sidebar-project-menu-open-new-window-${projectKey}`}
-            leading={openInNewWindowLeadingIcon}
-            onSelect={handleOpenInNewWindow}
-          >
-            {t("sidebar.project.actions.openNewWindow")}
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          testID={`sidebar-project-menu-remove-${projectKey}`}
-          leading={trash2LeadingIcon}
-          status={removeProjectStatus}
-          pendingLabel={t("sidebar.project.actions.removing")}
-          onSelect={onRemoveProject}
-        >
-          {t("sidebar.project.actions.remove")}
-        </DropdownMenuItem>
+        <ProjectMenuItems
+          ItemComponent={DropdownMenuItem}
+          projectKey={projectKey}
+          projectPath={projectPath}
+          onRemoveProject={onRemoveProject}
+          removeProjectStatus={removeProjectStatus}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1298,17 +1333,47 @@ function ProjectHeaderRow({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Pressable
-        accessibilityRole="button"
-        style={projectRowStyle}
-        onPressIn={interaction.handlePressIn}
-        onTouchMove={interaction.handleTouchMove}
-        onPressOut={interaction.handlePressOut}
-        onPress={handlePress}
-        testID={`sidebar-project-row-${project.projectKey}`}
-      >
-        {rowChildren}
-      </Pressable>
+      {onRemoveProject ? (
+        <ContextMenu>
+          <ContextMenuTrigger
+            enabledOnMobile={false}
+            accessibilityRole="button"
+            style={projectRowStyle}
+            onPressIn={interaction.handlePressIn}
+            onTouchMove={interaction.handleTouchMove}
+            onPressOut={interaction.handlePressOut}
+            onPress={handlePress}
+            testID={`sidebar-project-row-${project.projectKey}`}
+          >
+            {rowChildren}
+          </ContextMenuTrigger>
+          <ContextMenuContent
+            align="start"
+            width={220}
+            testID={`sidebar-project-context-menu-${project.projectKey}`}
+          >
+            <ProjectMenuItems
+              ItemComponent={ContextMenuItem}
+              projectKey={project.projectKey}
+              projectPath={project.iconWorkingDir}
+              onRemoveProject={onRemoveProject}
+              removeProjectStatus={removeProjectStatus}
+            />
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          style={projectRowStyle}
+          onPressIn={interaction.handlePressIn}
+          onTouchMove={interaction.handleTouchMove}
+          onPressOut={interaction.handlePressOut}
+          onPress={handlePress}
+          testID={`sidebar-project-row-${project.projectKey}`}
+        >
+          {rowChildren}
+        </Pressable>
+      )}
     </View>
   );
 }

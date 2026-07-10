@@ -515,8 +515,30 @@ export function buildStandardContextMenuItems(
   return items;
 }
 
+/**
+ * True when the right-click context offers something the native menu can act
+ * on. Electron emits `context-menu` even when the renderer called
+ * `event.preventDefault()` on the DOM event (verified empirically), so an
+ * unconditional popup lands on top of the app's own React context menus
+ * (sidebar rows, pane tabs) and clobbers them. Gate the default menu to
+ * editable fields, real text selections, spellcheck suggestions, links, and
+ * images — everywhere else right-click belongs to the renderer.
+ */
+export function shouldShowDefaultContextMenu(params: Electron.ContextMenuParams): boolean {
+  return Boolean(
+    params.isEditable ||
+    params.selectionText.trim().length > 0 ||
+    params.misspelledWord ||
+    (params.linkURL && /^https?:/i.test(params.linkURL)) ||
+    (params.hasImageContents && params.srcURL),
+  );
+}
+
 export function setupDefaultContextMenu(win: BrowserWindow): void {
   win.webContents.on("context-menu", (_event, params) => {
+    if (!shouldShowDefaultContextMenu(params)) {
+      return;
+    }
     const menu = Menu.buildFromTemplate(buildStandardContextMenuItems(win.webContents, params));
     menu.popup({ window: win });
   });
