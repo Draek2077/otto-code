@@ -171,7 +171,6 @@ export const es: TranslationResources = {
     },
     mode: {
       title: "Modo",
-      searchPlaceholder: "Modos de búsqueda...",
       selectWithValue: "Seleccione el modo de agente ({{value}})",
     },
     hints: {
@@ -2156,6 +2155,40 @@ export const es: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      speech: {
+        sectionTitle: "Voz y dictado",
+        updateHost: "Actualiza el host para configurar la voz y el dictado.",
+        optionsError: "No se pudieron cargar las opciones de voz del host.",
+        saveError: "No se pudieron guardar los ajustes de voz.",
+        engines: {
+          local: "Local (en este dispositivo)",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "Dictado",
+          hint: "Convierte la entrada del micrófono en texto del compositor",
+          engine: "Motor",
+          model: "Modelo",
+        },
+        voiceMode: {
+          title: "Modo de voz",
+          hint: "Conversación hablada bidireccional con el agente",
+          sttEngine: "Motor de voz a texto",
+          sttModel: "Modelo de voz a texto",
+          ttsEngine: "Motor de texto a voz",
+          ttsModel: "Modelo de texto a voz",
+          voice: "Voz",
+          speed: "Velocidad de habla",
+          thinkingTone: "Tono de espera",
+          thinkingToneHint:
+            "Repetir un tono suave en este dispositivo mientras se espera la respuesta",
+        },
+        openaiKey: {
+          title: "Clave de API de OpenAI",
+          hint: "Se usa cuando OpenAI es el motor de voz. Se guarda en el host; déjala vacía para eliminarla.",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",

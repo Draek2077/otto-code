@@ -7,6 +7,7 @@ import type { RequestedSpeechProviders } from "../../speech-types.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
+  getLocalTtsDefaultSpeakerId,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
   type LocalSpeechModelId,
@@ -201,8 +202,7 @@ export function resolveLocalSpeechConfig(params: {
   );
 
   const resolvedVoiceTtsSpeakerId =
-    parsed.voiceLocalTtsSpeakerId ??
-    (parsed.voiceLocalTtsModel === "kokoro-en-v0_19" ? 0 : undefined);
+    parsed.voiceLocalTtsSpeakerId ?? getLocalTtsDefaultSpeakerId(parsed.voiceLocalTtsModel);
 
   return {
     sttLanguages: {

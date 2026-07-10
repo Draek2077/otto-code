@@ -145,7 +145,14 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import type { PersistedConfig } from "./persisted-config.js";
+import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
+import {
+  DEFAULT_LOCAL_STT_MODEL,
+  DEFAULT_LOCAL_TTS_MODEL,
+  getLocalTtsDefaultSpeakerId,
+  resolveLocalTtsVoiceName,
+} from "./speech/providers/local/models.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
@@ -442,6 +449,131 @@ function resolveExpressTrustProxySetting(config: OttoDaemonConfig): true | strin
   return config.trustedProxies ?? ["loopback"];
 }
 
+interface InitialMutableSttInput {
+  provider: string;
+  localModel: string | undefined;
+  openaiModel: string | undefined;
+  language: string | undefined;
+}
+
+function initialMutableSttConfig(input: InitialMutableSttInput): {
+  provider: string;
+  model?: string;
+  language?: string;
+} {
+  const model = input.provider === "local" ? input.localModel : input.openaiModel;
+  return {
+    provider: input.provider,
+    ...(model ? { model } : {}),
+    ...(input.language ? { language: input.language } : {}),
+  };
+}
+
+interface InitialMutableTtsInput {
+  provider: string;
+  local: { model: string; voice: string | undefined; speed: number | undefined };
+  openai: { model: string | undefined; voice: string | undefined };
+}
+
+function initialMutableTtsConfig(input: InitialMutableTtsInput): {
+  provider: string;
+  model?: string;
+  voice?: string;
+  speed?: number;
+} {
+  if (input.provider !== "local") {
+    return {
+      provider: input.provider,
+      ...(input.openai.model ? { model: input.openai.model } : {}),
+      ...(input.openai.voice ? { voice: input.openai.voice } : {}),
+    };
+  }
+  return {
+    provider: input.provider,
+    model: input.local.model,
+    ...(input.local.voice ? { voice: input.local.voice } : {}),
+    ...(input.local.speed !== undefined ? { speed: input.local.speed } : {}),
+  };
+}
+
+interface InitialMutableSpeechInputs {
+  requested: RequestedSpeechProviders | undefined;
+  localModels: LocalSpeechProviderConfig["models"] | undefined;
+  openai: OttoOpenAIConfig | undefined;
+  languages: { dictation: string | undefined; voice: string | undefined };
+}
+
+function collectInitialMutableSpeechInputs(config: OttoDaemonConfig): InitialMutableSpeechInputs {
+  return {
+    requested: config.speech?.providers,
+    localModels: config.speech?.local?.models,
+    openai: config.openai,
+    languages: {
+      dictation: config.speech?.sttLanguages?.dictation,
+      voice: config.speech?.sttLanguages?.voice,
+    },
+  };
+}
+
+function initialMutableDictationSection(inputs: InitialMutableSpeechInputs) {
+  return {
+    enabled: inputs.requested?.dictationStt.enabled !== false,
+    stt: initialMutableSttConfig({
+      provider: inputs.requested?.dictationStt.provider ?? "local",
+      localModel: inputs.localModels?.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
+      openaiModel: inputs.openai?.stt?.model,
+      language: inputs.languages.dictation,
+    }),
+  };
+}
+
+function resolveInitialLocalTtsSelection(
+  localModels: LocalSpeechProviderConfig["models"] | undefined,
+): { model: string; voice: string | undefined; speed: number | undefined } {
+  const model = localModels?.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL;
+  const voice = resolveLocalTtsVoiceName(
+    model,
+    localModels?.voiceTtsSpeakerId ?? getLocalTtsDefaultSpeakerId(model),
+  );
+  return { model, voice, speed: localModels?.voiceTtsSpeed };
+}
+
+function initialMutableVoiceModeSection(inputs: InitialMutableSpeechInputs) {
+  const voiceTtsEnabled = inputs.requested?.voiceTts.enabled !== false;
+  const voiceSttEnabled = inputs.requested?.voiceStt.enabled !== false;
+  return {
+    enabled: voiceTtsEnabled || voiceSttEnabled,
+    stt: initialMutableSttConfig({
+      provider: inputs.requested?.voiceStt.provider ?? "local",
+      localModel: inputs.localModels?.voiceStt ?? DEFAULT_LOCAL_STT_MODEL,
+      openaiModel: inputs.openai?.stt?.model,
+      language: inputs.languages.voice,
+    }),
+    tts: initialMutableTtsConfig({
+      provider: inputs.requested?.voiceTts.provider ?? "local",
+      local: resolveInitialLocalTtsSelection(inputs.localModels),
+      openai: { model: inputs.openai?.tts?.model, voice: inputs.openai?.tts?.voice },
+    }),
+  };
+}
+
+// The mutable speech section mirrors the resolved speech config so clients see
+// effective values (defaults included), not just what config.json happens to pin.
+function createInitialMutableSpeechConfig(
+  config: OttoDaemonConfig,
+): NonNullable<MutableDaemonConfig["speech"]> {
+  const inputs = collectInitialMutableSpeechInputs(config);
+  // Only the key stored in config.json is echoed to clients — an env-only key
+  // (OPENAI_API_KEY) stays out of the mutable config so unrelated speech
+  // patches can never copy it onto disk.
+  const persistedOpenAiApiKey = loadPersistedConfig(config.ottoHome).providers?.openai?.apiKey;
+  return {
+    dictation: initialMutableDictationSection(inputs),
+    voiceMode: initialMutableVoiceModeSection(inputs),
+    ...(persistedOpenAiApiKey ? { openai: { apiKey: persistedOpenAiApiKey } } : {}),
+  };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -463,6 +595,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
+    speech: createInitialMutableSpeechConfig(config),
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1281,6 +1414,28 @@ export async function createOttoDaemon(
   });
   logger.info({ elapsed: elapsed() }, "Speech service created");
 
+  // Hot-reload speech providers when daemon config changes (settings UI writes
+  // features.dictation/voiceMode via the daemon config store). reconfigure()
+  // no-ops when the resolved speech config is unchanged, so unrelated config
+  // patches never churn the speech worker.
+  const unsubscribeSpeechConfigChange = daemonConfigStore.onChange(() => {
+    try {
+      const persisted = loadPersistedConfig(config.ottoHome, logger);
+      const resolved = resolveSpeechConfig({
+        ottoHome: config.ottoHome,
+        env: process.env,
+        persisted,
+      });
+      void speechService
+        .reconfigure({ openaiConfig: resolved.openai, speechConfig: resolved.speech })
+        .catch((error: unknown) => {
+          logger.warn({ err: error }, "Speech reconfigure failed after config change");
+        });
+    } catch (error) {
+      logger.warn({ err: error }, "Failed to re-resolve speech config after config change");
+    }
+  });
+
   logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
   const start = async () => {
@@ -1498,6 +1653,7 @@ export async function createOttoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
+    unsubscribeSpeechConfigChange();
     speechService.stop();
     toolArtifactService.stop();
     await scheduleService.stop().catch(() => undefined);

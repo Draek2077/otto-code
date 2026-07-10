@@ -171,7 +171,6 @@ export const ar: TranslationResources = {
     },
     mode: {
       title: "وضع",
-      searchPlaceholder: "أوضاع البحث...",
       selectWithValue: "حدد وضع الوكيل ({{value}})",
     },
     hints: {
@@ -2111,6 +2110,39 @@ export const ar: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      speech: {
+        sectionTitle: "الصوت والإملاء",
+        updateHost: "حدِّث المضيف لضبط الصوت والإملاء.",
+        optionsError: "تعذَّر تحميل خيارات الصوت من المضيف.",
+        saveError: "تعذَّر حفظ إعدادات الصوت.",
+        engines: {
+          local: "محلي (على هذا الجهاز)",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "الإملاء",
+          hint: "يحوِّل إدخال الميكروفون إلى نص في المحرِّر",
+          engine: "المحرّك",
+          model: "النموذج",
+        },
+        voiceMode: {
+          title: "الوضع الصوتي",
+          hint: "محادثة صوتية ثنائية الاتجاه مع الوكيل",
+          sttEngine: "محرّك تحويل الكلام إلى نص",
+          sttModel: "نموذج تحويل الكلام إلى نص",
+          ttsEngine: "محرّك تحويل النص إلى كلام",
+          ttsModel: "نموذج تحويل النص إلى كلام",
+          voice: "الصوت",
+          speed: "سرعة الكلام",
+          thinkingTone: "نغمة التفكير",
+          thinkingToneHint: "تكرار نغمة خفيفة على هذا الجهاز أثناء انتظار الرد",
+        },
+        openaiKey: {
+          title: "مفتاح OpenAI API",
+          hint: "يُستخدم عندما يكون OpenAI محرك الكلام. يُخزَّن على المضيف؛ اتركه فارغًا لإزالته.",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",

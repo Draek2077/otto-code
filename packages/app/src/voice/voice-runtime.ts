@@ -59,6 +59,8 @@ export interface VoiceRuntimeDeps {
   getServerInfo(serverId: string): DaemonServerInfo | null;
   activateKeepAwake(tag: string): Promise<void>;
   deactivateKeepAwake(tag: string): Promise<void>;
+  /** Device-local gate for the repeating thinking tone. Defaults to enabled. */
+  isThinkingToneEnabled?(): boolean;
 }
 
 interface RuntimeSessionState {
@@ -430,7 +432,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     return (
       state.snapshot.isVoiceMode &&
       state.snapshot.phase === "waiting" &&
-      !state.telemetry.isSpeaking
+      !state.telemetry.isSpeaking &&
+      (deps.isThinkingToneEnabled?.() ?? true)
     );
   }
 
@@ -469,6 +472,12 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
     const playNext = () => {
       if (!cue.active || cue.token !== token) {
+        return;
+      }
+      // The settings toggle has no phase transition to trigger reconcileCue,
+      // so re-check it on every repeat.
+      if (!(deps.isThinkingToneEnabled?.() ?? true)) {
+        stopCue();
         return;
       }
       cue.playing = true;

@@ -12,9 +12,21 @@ export interface OpenAiSpeechProviderConfig {
   tts?: Partial<TTSConfig> & { apiKey?: string };
 }
 
-const OpenAiTtsVoiceSchema = z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]);
+const OpenAiTtsVoiceSchema = z.enum([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 
-const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd"]);
+const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd", "gpt-4o-mini-tts"]);
 
 const NumberLikeSchema = z.union([z.number(), z.string().trim().min(1)]);
 

@@ -8,11 +8,17 @@ import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
 } from "@otto-code/protocol/messages";
+import {
+  LocalSttModelIdSchema,
+  LocalTtsModelIdSchema,
+  resolveLocalTtsSpeakerId,
+} from "./speech/providers/local/models.js";
 
 export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 
 type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonConfig;
 type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
+type MutableSpeechConfig = import("@otto-code/protocol/messages").MutableSpeechConfig;
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
 
 interface LoggerLike {
@@ -292,7 +298,168 @@ function mergeMutableConfigIntoPersistedConfig(params: {
         : {}),
     },
     agents: nextAgents,
+    features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
+    providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),
   } as PersistedConfig;
+}
+
+// The speech OpenAI key lives at providers.openai.apiKey in config.json (the
+// path the speech config resolver reads). An empty string in the patch removes
+// the stored key; sibling fields (baseUrl, stt/tts endpoints) are preserved.
+function mergeSpeechOpenAiIntoPersistedProviders(
+  persisted: PersistedConfig,
+  speech: MutableSpeechConfig | undefined,
+): PersistedConfig["providers"] {
+  const apiKey = speech?.openai?.apiKey;
+  if (apiKey === undefined) {
+    return persisted.providers;
+  }
+  const trimmed = apiKey.trim();
+  const openai: Record<string, unknown> = { ...persisted.providers?.openai };
+  if (trimmed.length === 0) {
+    delete openai["apiKey"];
+  } else {
+    openai["apiKey"] = trimmed;
+  }
+  const next = { ...persisted.providers } as NonNullable<PersistedConfig["providers"]>;
+  if (Object.keys(openai).length > 0) {
+    next.openai = openai as NonNullable<PersistedConfig["providers"]>["openai"];
+  } else {
+    delete next.openai;
+  }
+  return next;
+}
+
+type PersistedFeatures = NonNullable<PersistedConfig["features"]>;
+
+function isSpeechEngineId(value: unknown): value is "local" | "openai" {
+  return value === "local" || value === "openai";
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function buildPersistedSttFields(params: {
+  stt: NonNullable<MutableSpeechConfig["dictation"]>["stt"];
+  existing: { provider?: "local" | "openai"; model?: string; language?: string } | undefined;
+}): Record<string, unknown> {
+  const { stt, existing } = params;
+  if (!stt) {
+    return { ...existing };
+  }
+  const provider = isSpeechEngineId(stt.provider) ? stt.provider : existing?.provider;
+  const model =
+    provider === "local"
+      ? LocalSttModelIdSchema.safeParse(stt.model ?? "").data
+      : nonEmptyString(stt.model);
+  const language = nonEmptyString(stt.language) ?? existing?.language;
+  return {
+    ...existing,
+    ...(provider ? { provider } : {}),
+    // An unknown model id for the selected engine is dropped rather than
+    // persisted, so a bad patch can never wedge config.json.
+    ...(model ? { model } : {}),
+    ...(language ? { language } : {}),
+  };
+}
+
+function buildPersistedTtsFields(params: {
+  tts: NonNullable<MutableSpeechConfig["voiceMode"]>["tts"];
+  existing: Record<string, unknown> | undefined;
+}): Record<string, unknown> {
+  const { tts, existing } = params;
+  if (!tts) {
+    return { ...existing };
+  }
+  const provider = isSpeechEngineId(tts.provider)
+    ? tts.provider
+    : (existing?.["provider"] as "local" | "openai" | undefined);
+  const next: Record<string, unknown> = {
+    ...existing,
+    ...(provider ? { provider } : {}),
+    ...(typeof tts.speed === "number" && Number.isFinite(tts.speed) ? { speed: tts.speed } : {}),
+  };
+
+  if (provider === "local") {
+    const localModel = LocalTtsModelIdSchema.safeParse(tts.model ?? "").data;
+    if (localModel) {
+      next["model"] = localModel;
+      const voiceName = nonEmptyString(tts.voice);
+      const speakerId = voiceName ? resolveLocalTtsSpeakerId(localModel, voiceName) : undefined;
+      if (speakerId !== undefined) {
+        next["speakerId"] = speakerId;
+      }
+    }
+    // The persisted `voice` field is OpenAI-only; local voices persist as speakerId.
+    delete next["voice"];
+    return next;
+  }
+
+  const model = nonEmptyString(tts.model);
+  if (model) {
+    next["model"] = model;
+  }
+  const voice = nonEmptyString(tts.voice);
+  if (voice) {
+    next["voice"] = voice;
+  }
+  delete next["speakerId"];
+  return next;
+}
+
+function mergeSpeechIntoPersistedFeatures(
+  persisted: PersistedConfig,
+  speech: MutableSpeechConfig | undefined,
+): PersistedConfig["features"] {
+  if (!speech) {
+    return persisted.features;
+  }
+  const existing: PersistedFeatures = persisted.features ?? {};
+
+  const dictation = speech.dictation
+    ? {
+        ...existing.dictation,
+        ...(speech.dictation.enabled !== undefined ? { enabled: speech.dictation.enabled } : {}),
+        ...(speech.dictation.stt
+          ? {
+              stt: buildPersistedSttFields({
+                stt: speech.dictation.stt,
+                existing: existing.dictation?.stt,
+              }),
+            }
+          : {}),
+      }
+    : existing.dictation;
+
+  const voiceMode = speech.voiceMode
+    ? {
+        ...existing.voiceMode,
+        ...(speech.voiceMode.enabled !== undefined ? { enabled: speech.voiceMode.enabled } : {}),
+        ...(speech.voiceMode.stt
+          ? {
+              stt: buildPersistedSttFields({
+                stt: speech.voiceMode.stt,
+                existing: existing.voiceMode?.stt,
+              }),
+            }
+          : {}),
+        ...(speech.voiceMode.tts
+          ? {
+              tts: buildPersistedTtsFields({
+                tts: speech.voiceMode.tts,
+                existing: existing.voiceMode?.tts as Record<string, unknown> | undefined,
+              }),
+            }
+          : {}),
+      }
+    : existing.voiceMode;
+
+  return {
+    ...existing,
+    ...(dictation ? { dictation } : {}),
+    ...(voiceMode ? { voiceMode } : {}),
+  } as PersistedConfig["features"];
 }
 
 function readBrowserToolsEnabled(mutable: MutableDaemonConfig): boolean {

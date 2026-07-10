@@ -8,6 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import { queryClient } from "@/data/query-client";
+import {
+  APP_SETTINGS_QUERY_KEY,
+  DEFAULT_CLIENT_SETTINGS,
+  type AppSettings,
+} from "@/hooks/use-settings/storage";
 import { useSessionStore } from "@/stores/session-store";
 import { createAudioEngine } from "@/voice/audio-engine";
 import type { AudioEngine } from "@/voice/audio-engine-types";
@@ -145,6 +151,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       deactivateKeepAwake: async (tag) => {
         await deactivateKeepAwake(tag);
       },
+      isThinkingToneEnabled: () =>
+        queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY)?.voiceThinkingTone ??
+        DEFAULT_CLIENT_SETTINGS.voiceThinkingTone,
     });
 
     engineRef.current = engine;

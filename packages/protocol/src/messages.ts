@@ -163,6 +163,63 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
+
+// Speech engine ids and model ids stay plain strings on the wire so adding an
+// engine or model never breaks an older peer; the daemon validates values
+// against its own catalog when applying a patch.
+const MutableSpeechSttConfigSchema = z
+  .object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    language: z.string().optional(),
+  })
+  .passthrough();
+
+const MutableSpeechTtsConfigSchema = z
+  .object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+    // Voice name (e.g. "af_heart" for local Kokoro, "alloy" for OpenAI). The
+    // daemon maps local voice names to sherpa speaker ids internally.
+    voice: z.string().optional(),
+    speed: z.number().optional(),
+  })
+  .passthrough();
+
+const MutableSpeechDictationConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    stt: MutableSpeechSttConfigSchema.optional(),
+  })
+  .passthrough();
+
+const MutableSpeechVoiceModeConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    stt: MutableSpeechSttConfigSchema.optional(),
+    tts: MutableSpeechTtsConfigSchema.optional(),
+  })
+  .passthrough();
+
+// Credentials for the OpenAI speech engine. The key persists to config.json
+// (providers.openai.apiKey) like provider env keys do, and is echoed back in
+// get_daemon_config_response the same way provider connection keys are.
+const MutableSpeechOpenAiConfigSchema = z
+  .object({
+    apiKey: z.string().optional(),
+  })
+  .passthrough();
+
+export const MutableSpeechConfigSchema = z
+  .object({
+    dictation: MutableSpeechDictationConfigSchema.optional(),
+    voiceMode: MutableSpeechVoiceModeConfigSchema.optional(),
+    openai: MutableSpeechOpenAiConfigSchema.optional(),
+  })
+  .passthrough();
+
+export type MutableSpeechConfig = z.infer<typeof MutableSpeechConfigSchema>;
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -177,6 +234,8 @@ export const MutableDaemonConfigSchema = z
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
+    // Absent on daemons without the speechSettings feature.
+    speech: MutableSpeechConfigSchema.optional(),
   })
   .passthrough();
 
@@ -195,6 +254,9 @@ export const MutableDaemonConfigPatchSchema = z
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
+    // Gated by server_info features.speechSettings; every field is optional so
+    // patches deep-merge into the daemon's current speech config.
+    speech: MutableSpeechConfigSchema.optional(),
   })
   .partial()
   .passthrough();
@@ -1104,6 +1166,11 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   type: z.literal("set_daemon_config_request"),
   requestId: z.string(),
   config: MutableDaemonConfigPatchSchema,
+});
+
+export const SpeechSettingsGetOptionsRequestSchema = z.object({
+  type: z.literal("speech.settings.get_options.request"),
+  requestId: z.string(),
 });
 
 export const ReadProjectConfigRequestMessageSchema = z.object({
@@ -2239,6 +2306,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DiagnosticsRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
+  SpeechSettingsGetOptionsRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -2579,6 +2647,8 @@ export const ServerInfoStatusPayloadSchema = z
         codeIndex: z.boolean().optional(),
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: z.boolean().optional(),
+        // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        speechSettings: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3267,6 +3337,55 @@ export const GetDaemonConfigResponseMessageSchema = z.object({
     })
     .passthrough(),
 });
+
+const SpeechEngineOptionSchema = z.object({
+  id: z.string(),
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+const LocalSpeechSttModelOptionSchema = z.object({
+  id: z.string(),
+  // Short display name (e.g. "Parakeet v2 (English)"); older daemons omit it
+  // and clients fall back to the id.
+  label: z.string().optional(),
+  description: z.string(),
+});
+
+const LocalSpeechTtsModelOptionSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  description: z.string(),
+  voices: z.array(z.string()),
+  defaultVoice: z.string(),
+});
+
+export const SpeechSettingsGetOptionsResponseSchema = z.object({
+  type: z.literal("speech.settings.get_options.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      options: z.object({
+        sttEngines: z.array(SpeechEngineOptionSchema),
+        ttsEngines: z.array(SpeechEngineOptionSchema),
+        local: z.object({
+          sttModels: z.array(LocalSpeechSttModelOptionSchema),
+          ttsModels: z.array(LocalSpeechTtsModelOptionSchema),
+        }),
+        openai: z.object({
+          configured: z.boolean(),
+          sttModels: z.array(z.string()),
+          ttsModels: z.array(z.string()),
+          ttsVoices: z.array(z.string()),
+        }),
+      }),
+    })
+    .passthrough(),
+});
+
+export type SpeechSettingsOptions = z.infer<
+  typeof SpeechSettingsGetOptionsResponseSchema
+>["payload"]["options"];
 
 export const DaemonGetStatusResponseSchema = z.object({
   type: z.literal("daemon.get_status.response"),
@@ -4723,6 +4842,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DiagnosticsResponseSchema,
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
+  SpeechSettingsGetOptionsResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,

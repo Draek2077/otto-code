@@ -29,6 +29,10 @@ import type { BinaryFrame } from "@otto-code/protocol/binary-frames/index";
 import { CursorError } from "./pagination/cursor.js";
 import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
+import {
+  EMPTY_SPEECH_SETTINGS_OPTIONS,
+  type SpeechSettingsOptions,
+} from "./speech/speech-settings-options.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import {
   buildConfigOverrides,
@@ -466,6 +470,7 @@ export interface SessionOptions {
     sttLanguage?: string;
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
+  getSpeechSettingsOptions?: () => SpeechSettingsOptions;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -554,6 +559,7 @@ export class Session {
   private readonly gitMutation: GitMutationService;
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly daemonConfigStore: DaemonConfigStore;
+  private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -640,12 +646,14 @@ export class Session {
       voice,
       voiceBridge,
       dictation,
+      getSpeechSettingsOptions,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
     } = options;
     this.clientId = clientId;
+    this.getSpeechSettingsOptions = getSpeechSettingsOptions ?? null;
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
@@ -1597,6 +1605,15 @@ export class Session {
           payload: {
             requestId: msg.requestId,
             config: this.daemonConfigStore.patch(msg.config),
+          },
+        });
+        return undefined;
+      case "speech.settings.get_options.request":
+        this.emit({
+          type: "speech.settings.get_options.response",
+          payload: {
+            requestId: msg.requestId,
+            options: this.getSpeechSettingsOptions?.() ?? EMPTY_SPEECH_SETTINGS_OPTIONS,
           },
         });
         return undefined;

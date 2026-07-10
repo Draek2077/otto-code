@@ -1072,6 +1072,7 @@ export class VoiceAssistantWebSocketServer {
               getSpeechReadiness: () => this.speech!.getReadiness(),
             }
           : undefined,
+      getSpeechSettingsOptions: this.speech ? () => this.speech!.getSettingsOptions() : undefined,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -1260,6 +1261,8 @@ export class VoiceAssistantWebSocketServer {
         codeIndex: true,
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: true,
+        // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        speechSettings: this.speech !== null,
       },
     };
   }
