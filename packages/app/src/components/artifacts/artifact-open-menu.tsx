@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { FileText, Plus } from "@/components/icons/material-icons";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { FileText, Plus, TriangleAlert } from "@/components/icons/material-icons";
+import { ThemedBlobLoader } from "@/components/blob-loader";
+import type { Theme } from "@/styles/theme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,9 +25,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ArtifactCreateSheet } from "@/components/artifacts/artifact-create-sheet";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
 import { openArtifactTab } from "@/artifacts/open-artifact-tab";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
+import { artifactMatchesWorkspace } from "@/artifacts/artifact-derivation";
 import { useHostFeature } from "@/runtime/host-features";
-import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { useWorkspaceDirectory, useWorkspaceProjectId } from "@/stores/session-store-hooks";
 
 export interface ArtifactOpenMenuProps {
   serverId: string;
@@ -39,6 +41,21 @@ export interface ArtifactOpenMenuProps {
    * there flips the controlled `open` on, and the dropdown anchors here.
    */
   hideTrigger?: boolean;
+}
+
+const ThemedTriangleAlert = withUnistyles(TriangleAlert);
+const generatingLeading = <ThemedBlobLoader size={14} />;
+const errorLeadingColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
+const errorLeading = <ThemedTriangleAlert size={14} uniProps={errorLeadingColorMapping} />;
+
+function menuItemLeading(status: AggregatedArtifact["status"]): ReactElement | undefined {
+  if (status === "generating") {
+    return generatingLeading;
+  }
+  if (status === "error") {
+    return errorLeading;
+  }
+  return undefined;
 }
 
 function triggerStyle({
@@ -62,22 +79,26 @@ export function ArtifactOpenMenu({
 }: ArtifactOpenMenuProps): ReactElement | null {
   const supportsArtifacts = useHostFeature(serverId, "artifacts");
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
+  const projectId = useWorkspaceProjectId(serverId, workspaceId);
   // Fetch all artifacts on the host and match them to this workspace by path
-  // (repo root vs. worktree), not by an exact server-side projectId filter —
-  // the stored projectId is the repo root while cwd may be a worktree path with
-  // OS-native separators, so an exact match would drop legitimate artifacts.
+  // (repo root vs. worktree) with a legacy grouping-key fallback — see
+  // artifactMatchesWorkspace.
   const { artifacts } = useArtifacts();
   const isCompact = useIsCompactFormFactor();
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
 
   const projectArtifacts = useMemo(
     () =>
       artifacts.filter(
         (artifact) =>
-          artifact.serverId === serverId && artifactBelongsToWorkspace(artifact.projectId, cwd),
+          artifact.serverId === serverId &&
+          artifactMatchesWorkspace({
+            artifactProjectId: artifact.projectId,
+            workspaceCwd: cwd,
+            workspaceProjectId: projectId,
+          }),
       ),
-    [artifacts, serverId, cwd],
+    [artifacts, serverId, cwd, projectId],
   );
 
   const handleOpen = useCallback(
@@ -87,23 +108,15 @@ export function ArtifactOpenMenu({
     [serverId, workspaceId],
   );
 
-  // Once the just-created artifact reports ready, open it as a tab.
-  useEffect(() => {
-    if (!pendingOpenId) {
-      return;
-    }
-    const ready = projectArtifacts.find(
-      (artifact) => artifact.id === pendingOpenId && artifact.status === "ready",
-    );
-    if (ready) {
-      setPendingOpenId(null);
-      handleOpen(ready.id);
-    }
-  }, [pendingOpenId, projectArtifacts, handleOpen]);
-
-  const handleCreated = useCallback((input: { artifact: { id: string } }) => {
-    setPendingOpenId(input.artifact.id);
-  }, []);
+  // Open the tab as soon as the artifact record exists, without waiting for
+  // generation to finish — the tab shows a generating spinner and a link back
+  // to the agent session (see ArtifactPanel) until content is ready.
+  const handleCreated = useCallback(
+    (input: { artifact: { id: string } }) => {
+      handleOpen(input.artifact.id);
+    },
+    [handleOpen],
+  );
 
   const handleOpenCreate = useCallback(() => setCreateOpen(true), []);
   const handleCloseCreate = useCallback(() => setCreateOpen(false), []);
@@ -249,15 +262,17 @@ function ArtifactSheetItem({
   artifact: AggregatedArtifact;
   onOpen: (artifactId: string) => void;
 }): ReactElement {
-  const isReady = artifact.status === "ready";
+  // Every status is openable: generating shows a spinner and a link to the
+  // generating agent session, and a failed generation shows the failure (or
+  // falls back to the last successful content, if any) — see ArtifactPanel.
   const handleSelect = useCallback(() => {
     onOpen(artifact.id);
   }, [artifact.id, onOpen]);
   return (
     <ContextMenuItem
       testID={`workspace-open-artifact-${artifact.id}`}
-      disabled={!isReady}
-      onSelect={isReady ? handleSelect : undefined}
+      leading={menuItemLeading(artifact.status)}
+      onSelect={handleSelect}
     >
       {artifact.name || artifact.id}
     </ContextMenuItem>
@@ -271,15 +286,17 @@ function ArtifactMenuItem({
   artifact: AggregatedArtifact;
   onOpen: (artifactId: string) => void;
 }): ReactElement {
-  const isReady = artifact.status === "ready";
+  // Every status is openable: generating shows a spinner and a link to the
+  // generating agent session, and a failed generation shows the failure (or
+  // falls back to the last successful content, if any) — see ArtifactPanel.
   const handleSelect = useCallback(() => {
     onOpen(artifact.id);
   }, [artifact.id, onOpen]);
   return (
     <DropdownMenuItem
       testID={`workspace-open-artifact-${artifact.id}`}
-      disabled={!isReady}
-      onSelect={isReady ? handleSelect : undefined}
+      leading={menuItemLeading(artifact.status)}
+      onSelect={handleSelect}
     >
       {artifact.name || artifact.id}
     </DropdownMenuItem>

@@ -32,10 +32,11 @@ import {
   Copy,
   Ellipsis,
   EllipsisVertical,
+  Explore,
+  ExploreOff,
   FileText,
   Globe,
   Import as ImportIcon,
-  PanelRight,
   Pencil,
   RotateCw,
   Settings,
@@ -69,7 +70,6 @@ import {
 } from "@/components/ui/floating-panel-portal";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { MountedTabActiveContext, SplitContainer } from "@/components/split-container";
-import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceGitActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
@@ -227,6 +227,12 @@ function getWorkspaceScripts(
   return workspaceDescriptor?.scripts ?? EMPTY_WORKSPACE_SCRIPTS;
 }
 
+function getWorkspaceProjectId(
+  workspaceDescriptor: WorkspaceDescriptor | null | undefined,
+): string | null {
+  return workspaceDescriptor?.projectId || null;
+}
+
 interface WorkspaceFileLocationFields {
   path: string | null;
   lineStart?: number;
@@ -269,8 +275,8 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
-const ThemedPanelRight = withUnistyles(PanelRight);
-const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
+const ThemedExplore = withUnistyles(Explore);
+const ThemedExploreOff = withUnistyles(ExploreOff);
 
 interface DynamicProviderIconProps {
   iconKey: string;
@@ -287,6 +293,8 @@ const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// Matches the selected-tab icon accent in the desktop tabs row (WorkspaceTabIcon).
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 // Size-folding variants: `uniProps` mappings read the live theme, so folding
 // `theme.iconSize.*` into the mapping keeps these icons reactive to the compact
 // (mobile) icon-doubling patch — a plain `size={16}` prop is a frozen literal.
@@ -302,7 +310,10 @@ const mutedMdMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.md,
 });
-const sourceControlPanelStrokeWidth15 = { strokeWidth: 1.5 };
+const accentMdMapping = (theme: Theme) => ({
+  color: theme.colors.accentBright,
+  size: theme.iconSize.md,
+});
 
 const MENU_NEW_AGENT_ICON = <ThemedSquarePen uniProps={mutedMdMapping} />;
 const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal uniProps={mutedMdMapping} />;
@@ -1898,6 +1909,7 @@ function WorkspaceScreenContent({
   const generatingArtifactAgentIds = useGeneratingArtifactAgentIds({
     serverId: normalizedServerId,
     workspaceDirectory,
+    projectId: getWorkspaceProjectId(workspaceDescriptor),
   });
   const reconcileAgentVisibility = useMemo(
     () =>
@@ -3596,11 +3608,15 @@ function WorkspaceScreenContent({
                   style={explorerToggleStyle}
                 >
                   {({ hovered, pressed }) => {
-                    const active = isExplorerOpen || hovered || pressed;
-                    const colorMapping = active ? foregroundMdMapping : mutedMdMapping;
+                    const inactiveMapping =
+                      hovered || pressed ? foregroundMdMapping : mutedMdMapping;
                     return (
                       <>
-                        <ThemedSourceControlPanelIcon uniProps={colorMapping} />
+                        {isExplorerOpen ? (
+                          <ThemedExplore uniProps={accentMdMapping} />
+                        ) : (
+                          <ThemedExploreOff uniProps={inactiveMapping} />
+                        )}
                         {workspaceDescriptor?.diffStat && !isSidebarOpen ? (
                           <DiffStat
                             additions={workspaceDescriptor.diffStat.additions}
@@ -3643,8 +3659,10 @@ function WorkspaceScreenContent({
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
-              const colorMapping = isExplorerOpen || hovered ? foregroundMdMapping : mutedMdMapping;
-              return <ThemedPanelRight uniProps={colorMapping} />;
+              if (isExplorerOpen) {
+                return <ThemedExplore uniProps={accentMdMapping} />;
+              }
+              return <ThemedExploreOff uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />;
             }}
           </HeaderToggleButton>
         ) : null}
@@ -3661,16 +3679,16 @@ function WorkspaceScreenContent({
             accessibilityState={explorerToggleAccessibilityState}
           >
             {({ hovered }) => {
-              const colorMapping =
-                isExplorerOpen || hovered ? foregroundColorMapping : mutedColorMapping;
-              return isGitCheckout ? (
-                <ThemedSourceControlPanelIcon
+              if (isExplorerOpen) {
+                return (
+                  <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+                );
+              }
+              return (
+                <ThemedExploreOff
                   size={headerActionIconSize.lg}
-                  uniProps={colorMapping}
-                  {...sourceControlPanelStrokeWidth15}
+                  uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
                 />
-              ) : (
-                <ThemedPanelRight size={headerActionIconSize.lg} uniProps={colorMapping} />
               );
             }}
           </HeaderToggleButton>
@@ -4066,7 +4084,13 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    paddingRight: theme.spacing[2],
+    // No trailing padding on desktop: the "..." trigger's own hover-chrome
+    // padding already provides the header's 8px rhythm to whatever follows
+    // (tool buttons or the explorer toggle) — padding on top doubled the gap.
+    paddingRight: {
+      xs: theme.spacing[2],
+      md: 0,
+    },
     gap: {
       xs: 0,
       md: theme.spacing[2],

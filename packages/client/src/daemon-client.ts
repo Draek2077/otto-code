@@ -4975,6 +4975,7 @@ export class DaemonClient {
     projectId?: string;
     provider?: string;
     model?: string;
+    thinkingOptionId?: string;
     requestId?: string;
   }): Promise<ArtifactUpdatePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4987,6 +4988,9 @@ export class DaemonClient {
         ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
         ...(options.provider !== undefined ? { provider: options.provider } : {}),
         ...(options.model !== undefined ? { model: options.model } : {}),
+        ...(options.thinkingOptionId !== undefined
+          ? { thinkingOptionId: options.thinkingOptionId }
+          : {}),
       },
       responseType: "artifact.update.response",
     });

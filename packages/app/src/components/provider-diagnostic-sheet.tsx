@@ -442,6 +442,8 @@ function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
       return t("settings.providers.tools.groups.terminals");
     case "schedules":
       return t("settings.providers.tools.groups.schedules");
+    case "artifacts":
+      return t("settings.providers.tools.groups.artifacts");
     case "workspace":
       return t("settings.providers.tools.groups.workspace");
   }
@@ -482,11 +484,13 @@ function ToolGroupToggleRow({
 function ProviderToolGroupsSection({
   provider,
   selectedGroups,
+  supportsArtifactsGroup,
   patchConfig,
   refresh,
 }: {
   provider: string;
   selectedGroups: readonly OttoToolGroup[] | null;
+  supportsArtifactsGroup: boolean;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
@@ -494,9 +498,20 @@ function ProviderToolGroupsSection({
   const [savingGroup, setSavingGroup] = useState<OttoToolGroup | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+  // Old daemons reject "artifacts" in ottoToolGroups patches, so hide the
+  // toggle and keep the value out of written lists until the daemon declares it.
+  const availableGroups = useMemo(
+    () =>
+      supportsArtifactsGroup
+        ? OTTO_TOOL_GROUPS
+        : OTTO_TOOL_GROUPS.filter((group) => group !== "artifacts"),
+    [supportsArtifactsGroup],
+  );
+
   const enabled = useMemo(
-    () => new Set<OttoToolGroup>(selectedGroups ?? OTTO_TOOL_GROUPS),
-    [selectedGroups],
+    () => new Set<OttoToolGroup>(selectedGroups ?? availableGroups),
+    [selectedGroups, availableGroups],
   );
 
   const handleToggle = useCallback(
@@ -507,7 +522,7 @@ function ProviderToolGroupsSection({
       } else {
         nextSet.delete(group);
       }
-      const nextGroups = OTTO_TOOL_GROUPS.filter((candidate) => nextSet.has(candidate));
+      const nextGroups = availableGroups.filter((candidate) => nextSet.has(candidate));
       setSavingGroup(group);
       setError(null);
       void patchConfig({ providers: { [provider]: { ottoToolGroups: nextGroups } } })
@@ -517,14 +532,14 @@ function ProviderToolGroupsSection({
         })
         .finally(() => setSavingGroup((current) => (current === group ? null : current)));
     },
-    [enabled, patchConfig, provider, refresh, t],
+    [availableGroups, enabled, patchConfig, provider, refresh, t],
   );
 
   return (
     <View style={sheetStyles.section}>
       <View style={sheetStyles.connectionCard}>
         <Text style={sheetStyles.formLabel}>{t("settings.providers.tools.description")}</Text>
-        {OTTO_TOOL_GROUPS.map((group) => (
+        {availableGroups.map((group) => (
           <ToolGroupToggleRow
             key={group}
             group={group}
@@ -1286,6 +1301,9 @@ export function ProviderDiagnosticSheet({
   const supportsProviderRemove = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.providerRemove === true,
   );
+  const supportsArtifactsToolGroup = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.artifactsToolGroup === true,
+  );
   const handleRemoved = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -1467,6 +1485,7 @@ export function ProviderDiagnosticSheet({
               key={`tools-${provider}`}
               provider={provider}
               selectedGroups={config?.providers?.[provider]?.ottoToolGroups ?? null}
+              supportsArtifactsGroup={supportsArtifactsToolGroup}
               patchConfig={patchConfig}
               refresh={refresh}
             />
@@ -1709,7 +1728,10 @@ const FORM_INPUT_STYLE = [sheetStyles.formInput, isWeb && { outlineStyle: "none"
 const MODELS_SEARCH_INPUT_STYLE = [sheetStyles.searchInput, isWeb && { outlineStyle: "none" }];
 const COMPACT_FOOTER_META_STYLE = [sheetStyles.footerMeta, sheetStyles.compactFooterMeta];
 
-const MAIN_SNAP_POINTS = ["65%", "92%"];
+// Single detent on purpose: this sheet has a sticky footer, and gorhom sizes
+// the content column for the highest detent — at a lower resting detent the
+// footer would sit below the fold, unreachable by scrolling.
+const MAIN_SNAP_POINTS = ["92%"];
 // One size for every provider's settings dialog — tab content scrolls inside.
 const DESKTOP_SHEET_HEIGHT = 640;
 const ADD_SNAP_POINTS = ["40%"];

@@ -54,6 +54,7 @@ const READ_ONLY_TOOLS = new Set([
   "inspect_provider",
   "list_worktrees",
   "list_pending_permissions",
+  "list_artifacts",
 ]);
 
 const INTERACT_TOOLS = new Set([

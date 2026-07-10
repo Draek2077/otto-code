@@ -25,10 +25,10 @@ export const ArtifactCreateRequestSchema = z.object({
   requestId: z.string(),
 });
 
-// Update edits an artifact's metadata (name/description/project/provider/model)
-// WITHOUT re-running generation — editing never regenerates; the user triggers
-// that separately. Every field except artifactId is optional; only provided
-// fields overwrite.
+// Update edits an artifact's metadata (name/description/project/provider/
+// model/thinking) WITHOUT re-running generation — editing never regenerates;
+// the user triggers that separately. Every field except artifactId is
+// optional; only provided fields overwrite.
 export const ArtifactUpdateRequestSchema = z.object({
   type: z.literal("artifact.update.request"),
   artifactId: z.string(),
@@ -37,6 +37,7 @@ export const ArtifactUpdateRequestSchema = z.object({
   projectId: z.string().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  thinkingOptionId: z.string().optional(),
   requestId: z.string(),
 });
 

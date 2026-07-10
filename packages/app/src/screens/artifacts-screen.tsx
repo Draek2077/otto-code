@@ -13,6 +13,7 @@ import {
   ArtifactCreateSheet,
   type ArtifactEditTarget,
 } from "@/components/artifacts/artifact-create-sheet";
+import { ArtifactViewDialog } from "@/components/artifacts/artifact-view-dialog";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
 import { useArtifactMutations } from "@/artifacts/use-artifact-mutations";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
@@ -55,6 +56,7 @@ function toEditTarget(artifact: AggregatedArtifact): ArtifactEditTarget {
     description: artifact.description,
     provider: artifact.generationProvider,
     model: artifact.generationModel,
+    thinkingOptionId: artifact.generationThinkingOptionId ?? null,
   };
 }
 
@@ -68,7 +70,13 @@ function ArtifactsScreenContent(): ReactElement {
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<ArtifactStatusFilter>("all");
   const [form, setForm] = useState<ArtifactFormState>({ mode: "closed" });
+  const [viewingArtifact, setViewingArtifact] = useState<AggregatedArtifact | null>(null);
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
+  const handleView = useCallback(
+    (artifact: AggregatedArtifact) => setViewingArtifact(artifact),
+    [],
+  );
+  const closeView = useCallback(() => setViewingArtifact(null), []);
   const handleEdit = useCallback(
     (artifact: AggregatedArtifact) => setForm({ mode: "edit", artifact }),
     [],
@@ -154,6 +162,7 @@ function ArtifactsScreenContent(): ReactElement {
         onStatusFilterChange={setStatusFilter}
         onRetry={refetch}
         onCreate={openCreate}
+        onView={handleView}
         onEdit={handleEdit}
         onRegenerate={handleRegenerate}
         onCancel={handleCancel}
@@ -166,6 +175,7 @@ function ArtifactsScreenContent(): ReactElement {
         artifact={form.mode === "edit" ? toEditTarget(form.artifact) : undefined}
         onClose={closeForm}
       />
+      <ArtifactViewDialog artifact={viewingArtifact} onClose={closeView} />
     </View>
   );
 }
@@ -184,6 +194,7 @@ interface ArtifactsBodyProps {
   onStatusFilterChange: (status: ArtifactStatusFilter) => void;
   onRetry: () => void;
   onCreate: () => void;
+  onView: (artifact: AggregatedArtifact) => void;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
@@ -205,6 +216,7 @@ function ArtifactsBody({
   onStatusFilterChange,
   onRetry,
   onCreate,
+  onView,
   onEdit,
   onRegenerate,
   onCancel,
@@ -258,23 +270,31 @@ function ArtifactsBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.filterRowControls}>
+        <View style={styles.projectFilterSlot}>
           <ProjectFilter
             options={projectOptions}
             value={projectFilter}
             onChange={onProjectFilterChange}
           />
-          <SegmentedControl
-            size="sm"
-            value={statusFilter}
-            onValueChange={onStatusFilterChange}
-            options={STATUS_FILTER_OPTIONS}
-            testID="artifacts-status-filter"
-          />
         </View>
-        <Button leftIcon={Plus} onPress={onCreate} size="sm" testID="artifacts-new">
+        <Button
+          leftIcon={Plus}
+          onPress={onCreate}
+          size="sm"
+          style={styles.newButton}
+          testID="artifacts-new"
+        >
           New artifact
         </Button>
+      </View>
+      <View style={styles.statusRow}>
+        <SegmentedControl
+          size="sm"
+          value={statusFilter}
+          onValueChange={onStatusFilterChange}
+          options={STATUS_FILTER_OPTIONS}
+          testID="artifacts-status-filter"
+        />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -287,6 +307,7 @@ function ArtifactsBody({
             artifacts={artifacts}
             showHost={showHost}
             projectNameByCwd={projectNameByCwd}
+            onView={onView}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}
@@ -327,12 +348,20 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
   },
-  filterRowControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
+  projectFilterSlot: {
     flexShrink: 1,
-    flexWrap: "wrap",
+  },
+  // Tames the compactUp button doubling so the button and the project filter
+  // beside it share the same field height at every width.
+  newButton: {
+    minHeight: 44,
+    paddingHorizontal: theme.spacing[4],
+  },
+  statusRow: {
+    flexDirection: "row",
+    justifyContent: { xs: "center", md: "flex-start" },
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[3],
   },
   scroll: {
     flex: 1,

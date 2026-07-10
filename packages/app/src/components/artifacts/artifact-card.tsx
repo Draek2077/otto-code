@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
+  Eye,
   FileText,
   MoreVertical,
   RotateCw,
@@ -29,6 +30,7 @@ import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 // Themed lucide wrappers so menu icons can live as module-scope constants
 // (avoids the react-perf jsx-as-prop rule) without calling useUnistyles in
 // render — see docs/unistyles.md and the schedule-row precedent.
+const ThemedEye = withUnistyles(Eye);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedX = withUnistyles(X);
@@ -45,6 +47,7 @@ function stopPressInPropagation(event: { stopPropagation?: () => void }) {
   event.stopPropagation?.();
 }
 
+const viewLeading = <ThemedEye size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const editLeading = <ThemedFileText size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const regenerateLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const cancelLeading = <ThemedX size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
@@ -54,6 +57,8 @@ export interface ArtifactCardProps {
   artifact: AggregatedArtifact;
   /** Resolved project name for the artifact's stored project, when known. */
   projectName: string | null;
+  /** Open a read-only preview dialog of the rendered artifact. */
+  onView: (artifact: AggregatedArtifact) => void;
   /** Open the edit dialog (also the card's primary click). */
   onEdit: (artifact: AggregatedArtifact) => void;
   /** Re-run generation with the stored config. */
@@ -80,6 +85,7 @@ function formatDate(iso: string): string {
 function ArtifactCardComponent({
   artifact,
   projectName,
+  onView,
   onEdit,
   onRegenerate,
   onCancel,
@@ -92,6 +98,7 @@ function ArtifactCardComponent({
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
 
+  const handleView = useCallback(() => onView(artifact), [artifact, onView]);
   const handleEdit = useCallback(() => onEdit(artifact), [artifact, onEdit]);
   const handleRegenerate = useCallback(() => onRegenerate(artifact), [artifact, onRegenerate]);
   const handleCancel = useCallback(() => onCancel(artifact), [artifact, onCancel]);
@@ -160,6 +167,7 @@ function ArtifactCardComponent({
           </Pressable>
           <ArtifactKebabMenu
             artifact={artifact}
+            onView={handleView}
             onEdit={handleEdit}
             onRegenerate={handleRegenerate}
             onCancel={handleCancel}
@@ -190,12 +198,14 @@ function ArtifactCardComponent({
 
 function ArtifactKebabMenu({
   artifact,
+  onView,
   onEdit,
   onRegenerate,
   onCancel,
   onDelete,
 }: {
   artifact: AggregatedArtifact;
+  onView: () => void;
   onEdit: () => void;
   onRegenerate: () => void;
   onCancel: () => void;
@@ -215,6 +225,14 @@ function ArtifactKebabMenu({
         <MoreVertical size={18} color={styles.icon.color} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" width={200}>
+        <DropdownMenuItem
+          leading={viewLeading}
+          disabled={isGenerating}
+          onSelect={isGenerating ? undefined : onView}
+          testID={`artifact-menu-view-${artifact.id}`}
+        >
+          View artifact
+        </DropdownMenuItem>
         <DropdownMenuItem
           leading={editLeading}
           onSelect={onEdit}

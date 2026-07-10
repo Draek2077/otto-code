@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
-import { artifactBelongsToWorkspace, sortArtifacts } from "@/artifacts/artifact-derivation";
+import { artifactMatchesWorkspace, sortArtifacts } from "@/artifacts/artifact-derivation";
 import { artifactsQueryBaseKey } from "@/data/host-aggregate-query-keys";
 import {
   fetchAggregatedArtifacts,
@@ -92,16 +92,18 @@ const EMPTY_AGENT_IDS: string[] = [];
 export function useGeneratingArtifactAgentIds(input: {
   serverId: string;
   workspaceDirectory: string | null;
+  /** The workspace's project grouping key (WorkspaceDescriptor.projectId). */
+  projectId: string | null;
 }): Set<string> {
   const runtime = getHostRuntimeStore();
   const hostInputs = useArtifactHostInputs();
 
   useArtifactNotifications();
 
-  const { serverId, workspaceDirectory } = input;
+  const { serverId, workspaceDirectory, projectId } = input;
   const select = useCallback(
     (data: FetchAggregatedArtifactsResult) => {
-      if (!workspaceDirectory) {
+      if (!workspaceDirectory && !projectId) {
         return EMPTY_AGENT_IDS;
       }
       const ids: string[] = [];
@@ -110,14 +112,18 @@ export function useGeneratingArtifactAgentIds(input: {
           artifact.serverId === serverId &&
           artifact.status === "generating" &&
           artifact.generationAgentId &&
-          artifactBelongsToWorkspace(artifact.projectId, workspaceDirectory)
+          artifactMatchesWorkspace({
+            artifactProjectId: artifact.projectId,
+            workspaceCwd: workspaceDirectory,
+            workspaceProjectId: projectId,
+          })
         ) {
           ids.push(artifact.generationAgentId);
         }
       }
       return ids.length > 0 ? ids.sort() : EMPTY_AGENT_IDS;
     },
-    [serverId, workspaceDirectory],
+    [serverId, workspaceDirectory, projectId],
   );
 
   const query = useQuery({
