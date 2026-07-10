@@ -147,13 +147,14 @@ const darkDiffColors = {
   diffDeletion: "#ef4444", // red-500
 };
 
-// Status colors — semantic signals for success/danger/warning/merged. Used by
-// check statuses, PR states, and review decisions. Kept a step darker than the
-// raw palette so they read as signals, not neon.
+// Status colors — semantic signals for success/danger/warning/info/merged.
+// Used by check statuses, PR states, review decisions, and agent mode tiers.
+// Kept a step darker than the raw palette so they read as signals, not neon.
 const lightStatusColors = {
   statusSuccess: "#15803d", // green-700
   statusDanger: "#b91c1c", // red-700
   statusWarning: "#d97706", // amber-600
+  statusInfo: "#0284c7", // sky-600
   statusMerged: "#7c3aed", // purple-600
 };
 
@@ -161,6 +162,7 @@ const darkStatusColors = {
   statusSuccess: "#16a34a", // green-600
   statusDanger: "#dc2626", // red-600
   statusWarning: "#f59e0b", // amber-500
+  statusInfo: "#38bdf8", // sky-400 — light blue that holds on dark surfaces
   statusMerged: "#9333ea", // purple-600
 };
 
@@ -186,6 +188,7 @@ interface LightThemeConfig {
   borderAccent: string;
   accent: string;
   accentBright: string;
+  accentForeground?: string;
   destructive: string;
   spinnerPrimary: string;
   spinnerSecondary: string;
@@ -236,7 +239,11 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // Brand
     accent: tint.accent,
     accentBright: tint.accentBright,
-    accentForeground: "#ffffff",
+    accentForeground: tint.accentForeground ?? "#ffffff",
+    // ON-state switch knob. Distinct from accentForeground (glyph ink): light
+    // accents are always mid-dark saturated colors (they must hold on white),
+    // so a white knob always contrasts — even where glyphs use dark ink.
+    switchThumbOn: "#ffffff",
 
     // Semantic
     destructive: tint.destructive,
@@ -287,7 +294,11 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
 // mode" get, and the light half of the System (auto) pair. Muted text and
 // borders are a step darker than a plain white/zinc bg so secondary text
 // clears WCAG AA (foregroundMuted #62626b on #ffffff ≈ 5.6:1) and panel edges
-// read clearly.
+// read clearly. The accent is the one deliberate exception: matched to
+// Twilight's blue for salience, it sits at the sRGB gamut edge for chroma and
+// trades small-text AA for vibrancy (a 4.5:1 yellow is physically olive) —
+// mirroring Twilight, which ships white-on-accent fills at ~2.5:1. Accent
+// fills therefore carry a dark warm ink (accentForeground) instead of white.
 const daylightColors = buildLightSemanticColors({
   surface0: "#ffffff",
   surface1: "#fafafa",
@@ -302,11 +313,12 @@ const daylightColors = buildLightSemanticColors({
   scrollbarHandle: "#3f3f46",
   border: "#dcdce0", // was #e4e4e7 — clearer panel separation
   borderAccent: "#ececf1",
-  accent: "#8c7300", // sunny deep yellow (hue ~49°, not orange) — ~4.6:1 on white
-  accentBright: "#a08400", // brighter step, ~3.6:1 on white
+  accent: "#b98d00", // golden sun (hue ~46°, yellow not orange) — ~3.1:1 on white, max chroma at that lightness; shared with spinnerPrimary
+  accentBright: "#c29200", // brighter step (links, selected-tab icons) — ~2.8:1 on white
+  accentForeground: "#181300", // deep warm ink on gold fills — ~6.1:1 (white on gold washes out)
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
-  spinnerPrimary: "#0891b2", // neutral light keeps the cyan/magenta pair, darkened to hold on white
-  spinnerSecondary: "#c026d3",
+  spinnerPrimary: "#b98d00", // namesake gold — the daylight sun, held just dark enough for white
+  spinnerSecondary: "#0d8ede", // clear azure — the daytime sky behind it
 });
 
 // Sherbet — soft pastel peach surfaces with a saturated raspberry accent and
@@ -495,6 +507,10 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: tint.accentForeground ?? "#ffffff",
+    // ON-state switch knob. Follows accentForeground here because dark themes
+    // only override it when the accent is near-white (Graphite, Midnight) —
+    // exactly the case where a white knob would vanish into the track.
+    switchThumbOn: tint.accentForeground ?? "#ffffff",
 
     destructive: tint.destructive,
     destructiveForeground: "#ffffff",
@@ -562,8 +578,8 @@ const neutralDarkColors = buildDarkSemanticColors({
   accent: "#7ea6d9",
   accentBright: "#bcd6f2",
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
-  spinnerPrimary: "#63ccff", // neutral dark keeps the cyan/magenta pair, lifted to glow on dark
-  spinnerSecondary: "#eb66f0",
+  spinnerPrimary: "#79b3f2", // namesake twilight blue, lifted to glow on dark
+  spinnerSecondary: "#f591b5", // Belt-of-Venus rose — the pink dusk band opposite the sunset
 });
 
 // Evergreen — Otto's teal-green identity. Muted text, borders, and the bright
@@ -1111,7 +1127,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
   ReturnType<typeof buildBlackFromLightColors>
 > = {
   // Daylight — neutral zinc counterpart; same steps as Twilight-on-black with
-  // Daylight's deep yellow and cyan/magenta spinner pair lifted for dark.
+  // Daylight's vibrant gold and its sun/sky spinner pair lifted for dark.
   daylight: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#161619",
@@ -1125,11 +1141,12 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#8a8a93",
     border: "#26262c",
     borderAccent: "#323239",
-    accent: "#8c7300",
+    accent: "#b98d00", // ~6.9:1 on black — same golden sun as light Daylight
     accentBright: "#ffd54f", // sunny gold, ~14.9:1 on black
+    accentForeground: "#181300", // match light Daylight's ink-on-gold fills
     destructive: "#c44a4a",
-    spinnerPrimary: "#63ccff",
-    spinnerSecondary: "#eb66f0",
+    spinnerPrimary: "#ffc933", // namesake gold sun, lifted to glow on black
+    spinnerSecondary: "#5bb8f5", // daytime sky, lifted
   }),
   // Sherbet — warm plum-peach cast with the raspberry accent lifted to glow.
   pastel: buildBlackFromLightColors({
