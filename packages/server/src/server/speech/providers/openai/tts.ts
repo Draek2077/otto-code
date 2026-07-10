@@ -8,8 +8,20 @@ export type { SpeechStreamResult };
 export interface TTSConfig {
   apiKey: string;
   baseUrl?: string;
-  model?: "tts-1" | "tts-1-hd";
-  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+  model?: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts" | (string & {});
+  voice?:
+    | "alloy"
+    | "ash"
+    | "ballad"
+    | "coral"
+    | "echo"
+    | "fable"
+    | "nova"
+    | "onyx"
+    | "sage"
+    | "shimmer"
+    | "verse"
+    | (string & {});
   responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
 }
 

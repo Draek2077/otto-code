@@ -43,14 +43,14 @@ describe("resolveSpeechConfig", () => {
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
-        voiceTts: "kokoro-en-v0_19",
-        voiceTtsSpeakerId: 0,
+        voiceTts: "kokoro-multi-lang-v1_0",
+        voiceTtsSpeakerId: 3,
       },
     });
     expect(result.speech.local?.models.dictationStt).toBe("parakeet-tdt-0.6b-v2-int8");
     expect(result.speech.local?.models.voiceStt).toBe("parakeet-tdt-0.6b-v2-int8");
-    expect(result.speech.local?.models.voiceTts).toBe("kokoro-en-v0_19");
-    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(0);
+    expect(result.speech.local?.models.voiceTts).toBe("kokoro-multi-lang-v1_0");
+    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(3);
     expect(result.speech.sttLanguages).toEqual({
       dictation: "en",
       voice: "en",

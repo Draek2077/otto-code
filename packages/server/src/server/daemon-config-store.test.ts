@@ -119,6 +119,125 @@ describe("DaemonConfigStore", () => {
     });
   });
 
+  test("patch persists speech settings into config.json features", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        speech: {
+          dictation: { enabled: true, stt: { provider: "local" } },
+          voiceMode: { enabled: true, tts: { provider: "local" } },
+        },
+      },
+      undefined,
+    );
+
+    store.patch({
+      speech: {
+        dictation: {
+          enabled: true,
+          stt: { provider: "local", model: "parakeet-tdt-0.6b-v3-int8", language: "fr" },
+        },
+        voiceMode: {
+          tts: {
+            provider: "local",
+            model: "kokoro-multi-lang-v1_0",
+            voice: "af_sky",
+            speed: 1.2,
+          },
+        },
+      },
+    });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.features?.dictation).toEqual({
+      enabled: true,
+      stt: { provider: "local", model: "parakeet-tdt-0.6b-v3-int8", language: "fr" },
+    });
+    // af_sky is speaker id 10 in kokoro-multi-lang-v1_0; local voices persist as speakerId.
+    expect(persisted.features?.voiceMode?.tts).toEqual({
+      provider: "local",
+      model: "kokoro-multi-lang-v1_0",
+      speakerId: 10,
+      speed: 1.2,
+    });
+  });
+
+  test("patch maps openai tts voice names into the persisted voice enum", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        speech: {},
+      },
+      undefined,
+    );
+
+    store.patch({
+      speech: {
+        voiceMode: {
+          tts: { provider: "openai", model: "gpt-4o-mini-tts", voice: "coral" },
+        },
+      },
+    });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.features?.voiceMode?.tts).toEqual({
+      provider: "openai",
+      model: "gpt-4o-mini-tts",
+      voice: "coral",
+    });
+  });
+
+  test("patch persists the speech openai api key into providers.openai and clears on empty", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        speech: {},
+      },
+      undefined,
+    );
+
+    store.patch({ speech: { openai: { apiKey: "  sk-test-123  " } } });
+    expect(loadPersistedConfig(ottoHome).providers?.openai?.apiKey).toBe("sk-test-123");
+
+    // Unrelated speech patches leave the stored key alone.
+    store.patch({ speech: { voiceMode: { enabled: false } } });
+    expect(loadPersistedConfig(ottoHome).providers?.openai?.apiKey).toBe("sk-test-123");
+
+    // An empty key removes it from config.json.
+    store.patch({ speech: { openai: { apiKey: "" } } });
+    expect(loadPersistedConfig(ottoHome).providers?.openai?.apiKey).toBeUndefined();
+  });
+
   test("patch persists append system prompt into config.json", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);

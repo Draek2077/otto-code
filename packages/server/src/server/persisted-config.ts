@@ -139,7 +139,21 @@ const FeatureVoiceModeSchema = z
       .object({
         provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
-        voice: z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]).optional(),
+        voice: z
+          .enum([
+            "alloy",
+            "ash",
+            "ballad",
+            "coral",
+            "echo",
+            "fable",
+            "nova",
+            "onyx",
+            "sage",
+            "shimmer",
+            "verse",
+          ])
+          .optional(),
         speakerId: z.number().int().optional(),
         speed: z.number().optional(),
       })

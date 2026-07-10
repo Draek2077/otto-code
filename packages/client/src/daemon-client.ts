@@ -109,7 +109,11 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@otto-code/protocol/agent-types";
-import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
+import type {
+  MutableDaemonConfig,
+  MutableDaemonConfigPatch,
+  SpeechSettingsOptions,
+} from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
 import {
@@ -4245,6 +4249,17 @@ export class DaemonClient {
         config,
       },
       responseType: "set_daemon_config_response",
+    });
+  }
+
+  async getSpeechSettingsOptions(
+    requestId?: string,
+  ): Promise<{ requestId: string; options: SpeechSettingsOptions }> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "speech.settings.get_options.request",
+      },
     });
   }
 

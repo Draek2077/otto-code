@@ -70,6 +70,9 @@ export interface AppSettings {
   syntaxTheme: SyntaxThemeId; // default "default"
   workspaceTitleSource: WorkspaceTitleSource;
   autoExpandReasoning: boolean;
+  // Repeating cue tone while voice mode waits for the agent's reply.
+  // Device-local: gates playback on this device only.
+  voiceThinkingTone: boolean;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -103,6 +106,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   syntaxTheme: "default",
   workspaceTitleSource: "title",
   autoExpandReasoning: false,
+  voiceThinkingTone: true,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -307,6 +311,9 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   }
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
+  }
+  if (typeof stored.voiceThinkingTone === "boolean") {
+    result.voiceThinkingTone = stored.voiceThinkingTone;
   }
   if (typeof stored.compactSidebarTopSpacing === "boolean") {
     result.compactSidebarTopSpacing = stored.compactSidebarTopSpacing;

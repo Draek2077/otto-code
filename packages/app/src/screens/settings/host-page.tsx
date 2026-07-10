@@ -53,6 +53,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { ProvidersSection } from "@/screens/settings/providers-section";
+import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -278,11 +279,16 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <SettingsSection title={t("settings.hostSections.agents")}>
-          <InjectOttoToolsCard serverId={serverId} />
-          <BrowserToolsOptInCard serverId={serverId} />
-          <AppendSystemPromptCard serverId={serverId} />
-        </SettingsSection>
+        <>
+          <SettingsSection title={t("settings.hostSections.agents")}>
+            <InjectOttoToolsCard serverId={serverId} />
+            <BrowserToolsOptInCard serverId={serverId} />
+            <AppendSystemPromptCard serverId={serverId} />
+          </SettingsSection>
+          <SettingsSection title={t("settings.host.speech.sectionTitle")}>
+            <SpeechSettingsCards serverId={serverId} />
+          </SettingsSection>
+        </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>

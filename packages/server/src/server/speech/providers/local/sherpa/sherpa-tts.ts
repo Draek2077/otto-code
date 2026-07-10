@@ -4,9 +4,10 @@ import { existsSync } from "node:fs";
 
 import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
 import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
+import { getSherpaOnnxTtsLayout, type LocalTtsModelId } from "./model-catalog.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
 
-export type SherpaTtsPreset = "kokoro-en-v0_19";
+export type SherpaTtsPreset = LocalTtsModelId;
 
 export interface SherpaTtsConfig {
   preset: SherpaTtsPreset;
@@ -42,7 +43,8 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
 
   constructor(config: SherpaTtsConfig, logger: pino.Logger) {
     this.logger = logger.child({ module: "speech", provider: "local", component: "tts" });
-    this.speakerId = config.speakerId ?? 0;
+    const layout = getSherpaOnnxTtsLayout(config.preset);
+    this.speakerId = config.speakerId ?? layout.defaultSpeakerId;
     this.speed = config.speed ?? 1.0;
 
     const sherpa = loadSherpaOnnxNode();
@@ -50,15 +52,19 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
       throw new Error("sherpa-onnx-node OfflineTts is unavailable");
     }
 
-    const modelPath = `${config.modelDir}/model.onnx`;
+    const modelPath = `${config.modelDir}/${layout.modelFile}`;
     const voicesPath = `${config.modelDir}/voices.bin`;
     const tokensPath = `${config.modelDir}/tokens.txt`;
     const dataDir = `${config.modelDir}/espeak-ng-data`;
+    const lexiconPaths = layout.lexiconFiles.map((file) => `${config.modelDir}/${file}`);
 
     assertFileExists(modelPath, "TTS model");
     assertFileExists(voicesPath, "TTS voices");
     assertFileExists(tokensPath, "TTS tokens");
     assertFileExists(dataDir, "TTS espeak-ng dataDir");
+    for (const lexiconPath of lexiconPaths) {
+      assertFileExists(lexiconPath, "TTS lexicon");
+    }
 
     const modelConfig = {
       kokoro: {
@@ -66,6 +72,9 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
         voices: voicesPath,
         tokens: tokensPath,
         dataDir,
+        // Kokoro v1.x ships lexicons for EN/ZH; other languages fall back to
+        // espeak-ng phonemes from dataDir. v0.19 has no lexicon files.
+        ...(lexiconPaths.length > 0 ? { lexicon: lexiconPaths.join(",") } : {}),
         lengthScale: config.lengthScale ?? 1.0,
       },
     };

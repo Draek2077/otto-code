@@ -16,6 +16,10 @@ import {
   validateOpenAiCredentialRequirements,
 } from "./providers/openai/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
+import {
+  buildSpeechSettingsOptions,
+  type SpeechSettingsOptions,
+} from "./speech-settings-options.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
 
@@ -340,6 +344,11 @@ function resolveEffectiveProviderIds(params: {
   };
 }
 
+export interface SpeechServiceConfigUpdate {
+  openaiConfig?: OttoOpenAIConfig;
+  speechConfig?: OttoSpeechConfig;
+}
+
 export interface SpeechService {
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
@@ -349,6 +358,9 @@ export interface SpeechService {
   resolveDictationSttLanguage: () => string;
   getReadiness: () => SpeechReadinessSnapshot;
   onReadinessChange: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
+  getSettingsOptions: () => SpeechSettingsOptions;
+  /** Apply a new resolved config without restarting the daemon. No-op when unchanged. */
+  reconfigure: (next: SpeechServiceConfigUpdate) => Promise<void>;
   start: () => void;
   stop: () => void;
   ready: Promise<void>;
@@ -360,10 +372,9 @@ export function createSpeechService(params: {
   speechConfig?: OttoSpeechConfig;
 }): SpeechService {
   const logger = params.logger.child({ module: "speech-runtime" });
-  const speechConfig = params.speechConfig ?? null;
-  const openaiConfig = params.openaiConfig;
-  const providers = resolveRequestedSpeechProviders(speechConfig);
-  const requestedProviders = describeRequestedProviders(providers);
+  let speechConfig = params.speechConfig ?? null;
+  let openaiConfig = params.openaiConfig;
+  let providers = resolveRequestedSpeechProviders(speechConfig);
 
   validateOpenAiCredentialRequirements({
     providers,
@@ -373,7 +384,7 @@ export function createSpeechService(params: {
 
   logger.info(
     {
-      requestedProviders,
+      requestedProviders: describeRequestedProviders(providers),
       availability: {
         openai: getOpenAiSpeechAvailability(openaiConfig),
       },
@@ -546,7 +557,7 @@ export function createSpeechService(params: {
     if (unavailableFeatures.length > 0) {
       logger.warn(
         {
-          requestedProviders,
+          requestedProviders: describeRequestedProviders(providers),
           effectiveProviders,
           unavailableFeatures,
           missingLocalModelIds,
@@ -556,7 +567,7 @@ export function createSpeechService(params: {
     } else {
       logger.info(
         {
-          requestedProviders,
+          requestedProviders: describeRequestedProviders(providers),
           effectiveProviders,
         },
         "Speech provider reconciliation completed",
@@ -708,6 +719,46 @@ export function createSpeechService(params: {
     localCleanup();
   };
 
+  const configFingerprint = (
+    speech: OttoSpeechConfig | null,
+    openai: OttoOpenAIConfig | undefined,
+  ): string => JSON.stringify({ speech, openai: openai ?? null });
+  let lastConfigFingerprint = configFingerprint(speechConfig, openaiConfig);
+
+  const reconfigure = async (next: SpeechServiceConfigUpdate): Promise<void> => {
+    if (stopped) {
+      return;
+    }
+    const nextSpeechConfig = next.speechConfig ?? null;
+    const nextFingerprint = configFingerprint(nextSpeechConfig, next.openaiConfig);
+    if (nextFingerprint === lastConfigFingerprint) {
+      return;
+    }
+    lastConfigFingerprint = nextFingerprint;
+    speechConfig = nextSpeechConfig;
+    openaiConfig = next.openaiConfig;
+    providers = resolveRequestedSpeechProviders(speechConfig);
+
+    validateOpenAiCredentialRequirements({ providers, openaiConfig, logger });
+    logger.info(
+      { requestedProviders: describeRequestedProviders(providers) },
+      "Speech configuration changed; reconciling providers",
+    );
+
+    // Drain a reconcile that started before the config swap so the follow-up
+    // pass below is guaranteed to see the new config. A reconcile that starts
+    // after the swap already reads the new closure state.
+    const inFlightBeforeSwap = reconcileInFlight;
+    if (inFlightBeforeSwap) {
+      await inFlightBeforeSwap.catch(() => undefined);
+    }
+    await runReconcile();
+    if (missingLocalModelIds.length > 0) {
+      startBackgroundDownload();
+    }
+    scheduleMonitor();
+  };
+
   return {
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,
@@ -717,6 +768,11 @@ export function createSpeechService(params: {
     resolveDictationSttLanguage: () => speechConfig?.sttLanguages?.dictation ?? "en",
     getReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
     onReadinessChange: subscribeSpeechReadiness,
+    getSettingsOptions: () =>
+      buildSpeechSettingsOptions({
+        openaiAvailability: getOpenAiSpeechAvailability(openaiConfig),
+      }),
+    reconfigure,
     start,
     stop,
     ready,

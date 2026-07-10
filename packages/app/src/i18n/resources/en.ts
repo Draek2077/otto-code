@@ -169,7 +169,6 @@ export const en = {
     },
     mode: {
       title: "Mode",
-      searchPlaceholder: "Search modes...",
       selectWithValue: "Select agent mode ({{value}})",
     },
     hints: {
@@ -2121,6 +2120,39 @@ export const en = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      speech: {
+        sectionTitle: "Voice & dictation",
+        updateHost: "Update the host to configure voice and dictation.",
+        optionsError: "Couldn't load speech options from the host.",
+        saveError: "Couldn't save speech settings.",
+        engines: {
+          local: "Local (on this device)",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "Dictation",
+          hint: "Turn microphone input into composer text",
+          engine: "Engine",
+          model: "Model",
+        },
+        voiceMode: {
+          title: "Voice mode",
+          hint: "Two-way spoken conversation with the agent",
+          sttEngine: "Speech-to-text engine",
+          sttModel: "Speech-to-text model",
+          ttsEngine: "Text-to-speech engine",
+          ttsModel: "Text-to-speech model",
+          voice: "Voice",
+          speed: "Speaking speed",
+          thinkingTone: "Thinking tone",
+          thinkingToneHint: "Repeat a soft tone on this device while waiting for the reply",
+        },
+        openaiKey: {
+          title: "OpenAI API key",
+          hint: "Used when OpenAI is the speech engine. Stored on the host; leave empty to remove.",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",

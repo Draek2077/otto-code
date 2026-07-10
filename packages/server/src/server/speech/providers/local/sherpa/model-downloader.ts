@@ -1,4 +1,4 @@
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -68,17 +68,39 @@ async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
   }
 }
 
+// A bare `tar` on Windows can resolve to Git's MSYS GNU tar (when Git's
+// usr\bin precedes System32 on PATH), which parses `C:\...` as a remote
+// `host:file` spec and dies with "Cannot connect to C: resolve failed"
+// (exit 128). The system bsdtar handles Windows paths and .tar.bz2 natively.
+export function resolveTarBinary(): string {
+  if (process.platform === "win32") {
+    const systemRoot = process.env["SystemRoot"] ?? "C:\\Windows";
+    const systemTar = path.join(systemRoot, "System32", "tar.exe");
+    if (existsSync(systemTar)) {
+      return systemTar;
+    }
+  }
+  return "tar";
+}
+
 async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawnProcess("tar", ["xf", archivePath, "-C", destDir], {
-      stdio: "inherit",
+    const child = spawnProcess(resolveTarBinary(), ["xf", archivePath, "-C", destDir], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
     });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`tar exited with code ${code}`));
+      else {
+        const detail = stderr.trim().slice(0, 500);
+        reject(new Error(`tar exited with code ${code}${detail ? `: ${detail}` : ""}`));
+      }
     });
   });
 }

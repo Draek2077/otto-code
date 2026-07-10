@@ -171,7 +171,6 @@ export const ja: TranslationResources = {
     },
     mode: {
       title: "モード",
-      searchPlaceholder: "モードを検索...",
       selectWithValue: "エージェントモードを選択（{{value}}）",
     },
     hints: {
@@ -2131,6 +2130,39 @@ export const ja: TranslationResources = {
       },
       agents: {
         unavailable: "エージェントを管理するにはこのホストに接続してください",
+      },
+      speech: {
+        sectionTitle: "音声と音声入力",
+        updateHost: "音声機能を設定するにはホストを更新してください。",
+        optionsError: "ホストから音声オプションを読み込めませんでした。",
+        saveError: "音声設定を保存できませんでした。",
+        engines: {
+          local: "ローカル（このデバイス上）",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "音声入力",
+          hint: "マイク入力をコンポーザーのテキストに変換します",
+          engine: "エンジン",
+          model: "モデル",
+        },
+        voiceMode: {
+          title: "ボイスモード",
+          hint: "エージェントとの双方向音声会話",
+          sttEngine: "音声認識エンジン",
+          sttModel: "音声認識モデル",
+          ttsEngine: "音声合成エンジン",
+          ttsModel: "音声合成モデル",
+          voice: "ボイス",
+          speed: "話す速さ",
+          thinkingTone: "思考中トーン",
+          thinkingToneHint: "返答を待つ間、このデバイスでソフトなトーンを繰り返します",
+        },
+        openaiKey: {
+          title: "OpenAI APIキー",
+          hint: "音声エンジンにOpenAIを選んだ場合に使用します。ホストに保存され、空にすると削除されます。",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "ワークスペースを管理するにはこのホストに接続してください",

@@ -171,7 +171,6 @@ export const zhCN: TranslationResources = {
     },
     mode: {
       title: "Mode",
-      searchPlaceholder: "搜索 modes...",
       selectWithValue: "选择 Agent mode（{{value}}）",
     },
     hints: {
@@ -2093,6 +2092,39 @@ export const zhCN: TranslationResources = {
       },
       agents: {
         unavailable: "连接到这个 Host 以管理 Agent",
+      },
+      speech: {
+        sectionTitle: "语音与听写",
+        updateHost: "更新 Host 以配置语音和听写。",
+        optionsError: "无法从 Host 加载语音选项。",
+        saveError: "无法保存语音设置。",
+        engines: {
+          local: "本地（此设备上）",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "听写",
+          hint: "将麦克风输入转换为输入框文本",
+          engine: "引擎",
+          model: "模型",
+        },
+        voiceMode: {
+          title: "语音模式",
+          hint: "与 Agent 进行双向语音对话",
+          sttEngine: "语音转文字引擎",
+          sttModel: "语音转文字模型",
+          ttsEngine: "文字转语音引擎",
+          ttsModel: "文字转语音模型",
+          voice: "音色",
+          speed: "语速",
+          thinkingTone: "思考提示音",
+          thinkingToneHint: "等待回复时在此设备上重复播放柔和提示音",
+        },
+        openaiKey: {
+          title: "OpenAI API 密钥",
+          hint: "当语音引擎为 OpenAI 时使用。保存在 Host 上；留空即可删除。",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "连接到这个 Host 以管理 Workspace",

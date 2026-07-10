@@ -171,7 +171,6 @@ export const ru: TranslationResources = {
     },
     mode: {
       title: "Режим",
-      searchPlaceholder: "Режимы поиска...",
       selectWithValue: "Выберите режим агента ({{value}})",
     },
     hints: {
@@ -2147,6 +2146,39 @@ export const ru: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      speech: {
+        sectionTitle: "Голос и диктовка",
+        updateHost: "Обновите хост, чтобы настроить голос и диктовку.",
+        optionsError: "Не удалось загрузить голосовые параметры с хоста.",
+        saveError: "Не удалось сохранить голосовые настройки.",
+        engines: {
+          local: "Локально (на этом устройстве)",
+          openai: "OpenAI",
+        },
+        dictation: {
+          title: "Диктовка",
+          hint: "Превращает речь с микрофона в текст в поле ввода",
+          engine: "Движок",
+          model: "Модель",
+        },
+        voiceMode: {
+          title: "Голосовой режим",
+          hint: "Двусторонний голосовой разговор с агентом",
+          sttEngine: "Движок распознавания речи",
+          sttModel: "Модель распознавания речи",
+          ttsEngine: "Движок синтеза речи",
+          ttsModel: "Модель синтеза речи",
+          voice: "Голос",
+          speed: "Скорость речи",
+          thinkingTone: "Тон ожидания",
+          thinkingToneHint: "Повторять мягкий сигнал на этом устройстве в ожидании ответа",
+        },
+        openaiKey: {
+          title: "API-ключ OpenAI",
+          hint: "Используется, когда OpenAI выбран движком речи. Хранится на хосте; оставьте пустым, чтобы удалить.",
+          placeholder: "sk-…",
+        },
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",
