@@ -10,7 +10,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { X } from "@/components/icons/material-icons";
+import { DocumentSearch, Files, X } from "@/components/icons/material-icons";
+import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
 import {
   formatPrTabLabel,
@@ -408,7 +410,9 @@ export function ExplorerSidebar({
 interface ExplorerTabButtonProps {
   tab: ExplorerTab;
   active: boolean;
-  label?: string;
+  /** Accessible name; rendered as text unless `iconOnly`, then shown as a tooltip below. */
+  label: string;
+  iconOnly?: boolean;
   onTabPress: (tab: ExplorerTab) => void;
   testID: string;
   children?: React.ReactNode;
@@ -418,6 +422,7 @@ function ExplorerTabButton({
   tab,
   active,
   label,
+  iconOnly = false,
   onTabPress,
   testID,
   children,
@@ -425,11 +430,30 @@ function ExplorerTabButton({
   const handlePress = useCallback(() => onTabPress(tab), [onTabPress, tab]);
   const tabStyle = useMemo(() => [styles.tab, active && styles.tabActive], [active]);
   const tabTextStyle = useMemo(() => [styles.tabText, active && styles.tabTextActive], [active]);
-  return (
-    <Pressable testID={testID} style={tabStyle} onPress={handlePress}>
+  const accessibilityState = useMemo(() => ({ selected: active }), [active]);
+  const button = (
+    <Pressable
+      testID={testID}
+      style={tabStyle}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={accessibilityState}
+    >
       {children}
-      {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
+      {iconOnly ? null : <Text style={tabTextStyle}>{label}</Text>}
     </Pressable>
+  );
+  if (!iconOnly) {
+    return button;
+  }
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <Text style={styles.tabTooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -517,25 +541,49 @@ function ExplorerSidebarContent({
               tab="changes"
               active={resolvedTab === "changes"}
               label={t("workspace.tabs.explorer.changes")}
+              iconOnly
               onTabPress={onTabPress}
               testID="explorer-tab-changes"
-            />
+            >
+              <SourceControlPanelIcon
+                size={iconSize.sm}
+                color={
+                  resolvedTab === "changes" ? theme.colors.foreground : theme.colors.foregroundMuted
+                }
+              />
+            </ExplorerTabButton>
           )}
           <ExplorerTabButton
             tab="files"
             active={resolvedTab === "files"}
             label={t("workspace.tabs.explorer.files")}
+            iconOnly
             onTabPress={onTabPress}
             testID="explorer-tab-files"
-          />
+          >
+            <Files
+              size={iconSize.sm}
+              color={
+                resolvedTab === "files" ? theme.colors.foreground : theme.colors.foregroundMuted
+              }
+            />
+          </ExplorerTabButton>
           {hasProjectSearch && (
             <ExplorerTabButton
               tab="search"
               active={resolvedTab === "search"}
               label={t("workspace.tabs.explorer.search")}
+              iconOnly
               onTabPress={onTabPress}
               testID="explorer-tab-search"
-            />
+            >
+              <DocumentSearch
+                size={iconSize.sm}
+                color={
+                  resolvedTab === "search" ? theme.colors.foreground : theme.colors.foregroundMuted
+                }
+              />
+            </ExplorerTabButton>
           )}
           {isGit && showPrTab && (
             <ExplorerTabButton
@@ -713,6 +761,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabTextMuted: {
     opacity: 0.8,
+  },
+  tabTooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   headerRightSection: {
     flexDirection: "row",

@@ -25,7 +25,7 @@ import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { Button } from "@/components/ui/button";
-import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { compactUp, ICON_SIZE, useIconSize, type Theme } from "@/styles/theme";
 import {
   Combobox,
   ComboboxItem,
@@ -630,6 +630,10 @@ export function CombinedModelSelector({
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
+  // Live icon size — the static ICON_SIZE import never sees the compact
+  // doubling, which would leave this trigger's glyph half the size of the
+  // neighboring mode/effort chip icons on compact breakpoints.
+  const iconSize = useIconSize();
   const [isOpen, setIsOpen] = useState(false);
   const [isContentReady, setIsContentReady] = useState(platformIsWeb);
   const [view, setView] = useState<SelectorView>({ kind: "all" });
@@ -864,7 +868,7 @@ export function CombinedModelSelector({
           testID="combined-model-selector"
         >
           {hasSelectedProvider ? (
-            <ProviderGlyph provider={selectedProvider} size={ICON_SIZE.md} />
+            <ProviderGlyph provider={selectedProvider} size={iconSize.md} />
           ) : null}
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
@@ -910,15 +914,18 @@ export function CombinedModelSelector({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // Geometry mirrors the composer's mode/effort chips (mode-control `chip`,
+  // agent-controls `modeBadge`) — all three sit in the same toolbar row and
+  // must scale together on compact breakpoints.
   trigger: {
-    height: 28,
+    height: compactUp(28),
     minWidth: 0,
     flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "transparent",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
+    gap: compactUp(theme.spacing[1]),
+    paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius["2xl"],
   },
   triggerHovered: {
@@ -941,6 +948,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 0,
     paddingVertical: 0,
     height: "auto",
+    // The only non-fill custom trigger is the composer's icon-only badge; the
+    // wrapper paints its hover/pressed state, so it must be circular to match
+    // the other icon badges in the toolbar (triggerFill zeroes this back out).
+    borderRadius: theme.borderRadius.full,
   },
   // Stretch the wrapper (and, via column + stretch, its single child) to the
   // full width of the field, with no background or rounding of its own.

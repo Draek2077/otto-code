@@ -522,7 +522,9 @@ function ProjectRowTrailingActions({
         />
       ) : null}
       {shouldRenderKebabSlot ? (
-        <SidebarWorkspaceTrailingActionSlot>
+        <SidebarWorkspaceTrailingActionSlot
+          style={onRemoveProject ? styles.projectKebabActionSlot : undefined}
+        >
           <SidebarWorkspaceTrailingActionBase visible={Boolean(diffStat) && !actionsVisible}>
             {diffStat && !actionsVisible ? (
               <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
@@ -2663,8 +2665,16 @@ const styles = StyleSheet.create((theme) => ({
   projectTrailingActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
+    // 2px of clear space between the + and kebab button chrome — the kebab
+    // slot below reserves the button's real footprint so this gap is honest.
+    gap: 2,
     flexShrink: 0,
+  },
+  // The shared trailing slot only reserves 18px, but the right-anchored kebab
+  // overlay is compactUp(24) wide — without this the kebab chrome bleeds left
+  // over the + button.
+  projectKebabActionSlot: {
+    minWidth: compactUp(24),
   },
   projectKebabButton: {
     width: compactUp(24),

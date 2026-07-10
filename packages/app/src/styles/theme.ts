@@ -743,14 +743,17 @@ export const ICON_SIZE = {
 } as const;
 
 // Breakpoint-shaped value for a geometry style property (padding, minHeight, gap, ...)
-// that should double on compact form factors (`xs`/`sm` breakpoints — see
-// `useIsCompactFormFactor`). For use inside `StyleSheet.create` factories, where
+// that should scale up (2x by default) on compact form factors (`xs`/`sm` breakpoints —
+// see `useIsCompactFormFactor`). For use inside `StyleSheet.create` factories, where
 // Unistyles resolves per-breakpoint object literals regardless of where the value
 // came from. Not for `theme.iconSize`/`theme.fontSize` reads — those are patched
 // globally at runtime by `applyAppearance` instead.
-export function compactUp(value: number): Record<"xs" | "sm" | "md" | "lg" | "xl", number> {
-  const doubled = value * 2;
-  return { xs: doubled, sm: doubled, md: value, lg: value, xl: value };
+export function compactUp(
+  value: number,
+  factor = 2,
+): Record<"xs" | "sm" | "md" | "lg" | "xl", number> {
+  const scaled = value * factor;
+  return { xs: scaled, sm: scaled, md: value, lg: value, xl: value };
 }
 
 function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {

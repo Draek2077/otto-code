@@ -2240,6 +2240,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Active outline is an accent-to-border vertical gradient (accent at the tab
   // top, fading into the plain pane border where the chip meets the content).
+  // The accent stop is at 50% alpha to keep the highlight subtle; the border
+  // stop stays solid so the fade still fuses with the pane border below. On
+  // web the theme color resolves to a CSS var, so alpha must go through
+  // color-mix() — a hex "80" suffix on a var() is invalid CSS and silently
+  // drops the whole declaration (fill layer included).
   // On web this is the two-layer gradient-border technique: the fill layer is
   // clipped to the padding box, the gradient layer to the border box, so the
   // gradient shows only through the transparent 1px border ring. Native can't
@@ -2248,15 +2253,15 @@ const styles = StyleSheet.create((theme) => ({
     ? ({
         backgroundImage:
           `linear-gradient(${theme.colors.surface0}, ${theme.colors.surface0}), ` +
-          `linear-gradient(to bottom, ${theme.colors.accent}, ${theme.colors.border})`,
+          `linear-gradient(to bottom, color-mix(in srgb, ${theme.colors.accent} 50%, transparent), ${theme.colors.border})`,
         backgroundOrigin: "border-box",
         backgroundClip: "padding-box, border-box",
       } as object)
     : {
         backgroundColor: theme.colors.surface0,
-        borderTopColor: theme.colors.accent,
-        borderLeftColor: theme.colors.accent,
-        borderRightColor: theme.colors.accent,
+        borderTopColor: `${theme.colors.accent}80`,
+        borderLeftColor: `${theme.colors.accent}80`,
+        borderRightColor: `${theme.colors.accent}80`,
       },
   // Black tab background setting: the active chat tab's fill inside the border
   // goes pure black so it fuses with the black chat pane below (see the
@@ -2268,7 +2273,7 @@ const styles = StyleSheet.create((theme) => ({
       ? ({
           backgroundImage:
             "linear-gradient(#000000, #000000), " +
-            `linear-gradient(to bottom, ${theme.colors.accent}, ${theme.colors.border})`,
+            `linear-gradient(to bottom, color-mix(in srgb, ${theme.colors.accent} 50%, transparent), ${theme.colors.border})`,
         } as object)
       : {}),
   },

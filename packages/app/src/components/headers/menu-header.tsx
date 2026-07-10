@@ -1,9 +1,9 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { PanelLeft } from "@/components/icons/material-icons";
-import { compactUp } from "@/styles/theme";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { PanelLeft, PanelLeftClose } from "@/components/icons/material-icons";
+import { compactUp, type Theme } from "@/styles/theme";
 import { ScreenHeader } from "./screen-header";
 import { ScreenTitle } from "./screen-title";
 import { HeaderToggleButton } from "./header-toggle-button";
@@ -28,17 +28,28 @@ const MOBILE_MENU_LINE_WIDTH = 16;
 const MOBILE_MENU_LINE_SHORT_WIDTH = 8;
 const MOBILE_MENU_LINE_HEIGHT = 2;
 
-function MobileMenuIcon({ color }: { color: string }) {
-  const lineStyle = useMemo(() => [styles.mobileMenuLine, { backgroundColor: color }], [color]);
-  const shortLineStyle = useMemo(
-    () => [styles.mobileMenuLine, styles.mobileMenuLineShort, { backgroundColor: color }],
-    [color],
-  );
+const ThemedPanelLeft = withUnistyles(PanelLeft);
+const ThemedPanelLeftClose = withUnistyles(PanelLeftClose);
+
+const accentMdMapping = (theme: Theme) => ({
+  color: theme.colors.accentBright,
+  size: theme.iconSize.md,
+});
+const foregroundMdMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.md,
+});
+const mutedMdMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
+
+function MobileMenuIcon() {
   return (
     <View style={styles.mobileMenuIcon} pointerEvents="none">
-      <View style={lineStyle} />
-      <View style={lineStyle} />
-      <View style={shortLineStyle} />
+      <View style={styles.mobileMenuLine} />
+      <View style={styles.mobileMenuLine} />
+      <View style={mobileMenuShortLineStyle} />
     </View>
   );
 }
@@ -49,7 +60,6 @@ export function SidebarMenuToggle({
   testID = "menu-button",
   nativeID = "menu-button",
 }: SidebarMenuToggleProps = {}) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const isOpen = usePanelStore((state) => selectIsAgentListOpen(state, { isCompact: isMobile }));
@@ -58,9 +68,6 @@ export function SidebarMenuToggle({
     () => (getShortcutOs() === "mac" ? ["mod", "B"] : ["mod", "."]),
     [],
   );
-
-  const menuIconColor =
-    !isMobile && isOpen ? theme.colors.foreground : theme.colors.foregroundMuted;
 
   const handlePress = useCallback(() => {
     toggleAgentListForLayout({ isCompact: isMobile });
@@ -83,9 +90,16 @@ export function SidebarMenuToggle({
       accessibilityState={accessibilityState}
     >
       {isMobile ? (
-        <MobileMenuIcon color={menuIconColor} />
+        <MobileMenuIcon />
       ) : (
-        <PanelLeft size={theme.iconSize.md} color={menuIconColor} />
+        ({ hovered, pressed }) => {
+          if (isOpen) {
+            return <ThemedPanelLeftClose uniProps={accentMdMapping} />;
+          }
+          return (
+            <ThemedPanelLeft uniProps={hovered || pressed ? foregroundMdMapping : mutedMdMapping} />
+          );
+        }
       )}
     </HeaderToggleButton>
   );
@@ -121,8 +135,11 @@ const styles = StyleSheet.create((theme) => ({
     width: compactUp(MOBILE_MENU_LINE_WIDTH),
     height: compactUp(MOBILE_MENU_LINE_HEIGHT),
     borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.foregroundMuted,
   },
   mobileMenuLineShort: {
     width: compactUp(MOBILE_MENU_LINE_SHORT_WIDTH),
   },
 }));
+
+const mobileMenuShortLineStyle = [styles.mobileMenuLine, styles.mobileMenuLineShort];

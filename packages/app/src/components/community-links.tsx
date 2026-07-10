@@ -79,5 +79,9 @@ const styles = StyleSheet.create(() => ({
     justifyContent: "center",
     alignItems: "center",
     gap: 0,
+    // Row-container parents don't shrink children by default, which keeps the
+    // buttons on one overflowing line instead of letting flexWrap kick in.
+    flexShrink: 1,
+    maxWidth: "100%",
   },
 }));

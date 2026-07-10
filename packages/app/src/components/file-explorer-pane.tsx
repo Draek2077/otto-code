@@ -74,7 +74,7 @@ import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -160,7 +160,22 @@ function TreeRowItem({
 }: TreeRowItemProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const isDirectory = entry.kind === "directory";
+  // Hover lives on a plain outer View (see docs/hover.md) so the kebab can
+  // collapse without the nested-Pressable hover fight; the menu stays mounted
+  // while open so the dropdown keeps its anchor.
+  const [isHovered, setIsHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showMenu = isHovered || menuOpen || isNative || isCompact;
+
+  const handlePointerEnter = useCallback(() => {
+    setIsHovered(true);
+  }, []);
+
+  const handlePointerLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
 
   const handlePress = useCallback(() => {
     onEntryPress(entry);
@@ -181,12 +196,12 @@ function TreeRowItem({
   );
 
   const pressableStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+    ({ pressed }: PressableStateCallbackType) => [
       styles.entryRow,
       { paddingLeft: theme.spacing[2] + depth * TREE_INDENT_PER_LEVEL },
-      (Boolean(hovered) || pressed || isSelected) && styles.entryRowActive,
+      (isHovered || pressed || isSelected) && styles.entryRowActive,
     ],
-    [depth, isSelected, theme.spacing],
+    [depth, isHovered, isSelected, theme.spacing],
   );
 
   const handleCopy = useCallback(() => {
@@ -223,63 +238,77 @@ function TreeRowItem({
   );
 
   return (
-    <Pressable
-      onPress={handlePress}
-      // @ts-ignore - onContextMenu is web-only and not in RN types.
-      onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
-      style={pressableStyle}
+    <View
+      style={styles.entryRowContainer}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
     >
-      <TreeIndentGuides depth={depth} />
-      <View style={styles.entryInfo}>
-        <View style={styles.entryIcon}>
-          {(() => {
-            if (!isDirectory) {
-              return <SvgXml xml={getFileIconSvg(entry.name)} width={16} height={16} />;
-            }
-            if (loading) return <ActivityIndicator size="small" />;
-            return <TreeChevron expanded={isExpanded} />;
-          })()}
-        </View>
-        <Text style={styles.entryName} numberOfLines={1}>
-          {entry.name}
-        </Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger hitSlop={8} onPressIn={stopPressInPropagation} style={menuButtonStyle}>
-          <MoreVertical size={16} color={theme.colors.foregroundMuted} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" width={220}>
-          <EntryMetaBlock entry={entry} />
-          <DropdownMenuSeparator />
-          {onToggleContextEntry ? (
-            <DropdownMenuItem
-              leading={contextLeading}
-              onSelect={handleToggleContext}
-              testID={
-                isInContext ? "file-explorer-remove-from-context" : "file-explorer-add-to-context"
+      <Pressable
+        onPress={handlePress}
+        // @ts-ignore - onContextMenu is web-only and not in RN types.
+        onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
+        style={pressableStyle}
+      >
+        <TreeIndentGuides depth={depth} />
+        <View style={styles.entryInfo}>
+          <View style={styles.entryIcon}>
+            {(() => {
+              if (!isDirectory) {
+                return <SvgXml xml={getFileIconSvg(entry.name)} width={16} height={16} />;
               }
+              if (loading) return <ActivityIndicator size="small" />;
+              return <TreeChevron expanded={isExpanded} />;
+            })()}
+          </View>
+          <Text style={styles.entryName} numberOfLines={1}>
+            {entry.name}
+          </Text>
+        </View>
+        {showMenu ? (
+          <DropdownMenu onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger
+              hitSlop={8}
+              onPressIn={stopPressInPropagation}
+              style={menuButtonStyle}
             >
-              {isInContext
-                ? t("workspace.fileExplorer.context.removeFromContext")
-                : t("workspace.fileExplorer.context.addToContext")}
-            </DropdownMenuItem>
-          ) : null}
-          {entry.kind === "file" && onEditEntry ? (
-            <DropdownMenuItem leading={editLeading} onSelect={handleEdit}>
-              {t("workspace.fileExplorer.context.edit")}
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
-            {t("workspace.fileExplorer.context.copyPath")}
-          </DropdownMenuItem>
-          {entry.kind === "file" ? (
-            <DropdownMenuItem leading={downloadLeading} onSelect={handleDownload}>
-              {t("workspace.fileExplorer.context.download")}
-            </DropdownMenuItem>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </Pressable>
+              <MoreVertical size={16} color={theme.colors.foregroundMuted} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" width={220}>
+              <EntryMetaBlock entry={entry} />
+              <DropdownMenuSeparator />
+              {onToggleContextEntry ? (
+                <DropdownMenuItem
+                  leading={contextLeading}
+                  onSelect={handleToggleContext}
+                  testID={
+                    isInContext
+                      ? "file-explorer-remove-from-context"
+                      : "file-explorer-add-to-context"
+                  }
+                >
+                  {isInContext
+                    ? t("workspace.fileExplorer.context.removeFromContext")
+                    : t("workspace.fileExplorer.context.addToContext")}
+                </DropdownMenuItem>
+              ) : null}
+              {entry.kind === "file" && onEditEntry ? (
+                <DropdownMenuItem leading={editLeading} onSelect={handleEdit}>
+                  {t("workspace.fileExplorer.context.edit")}
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
+                {t("workspace.fileExplorer.context.copyPath")}
+              </DropdownMenuItem>
+              {entry.kind === "file" ? (
+                <DropdownMenuItem leading={downloadLeading} onSelect={handleDownload}>
+                  {t("workspace.fileExplorer.context.download")}
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </Pressable>
+    </View>
   );
 }
 
@@ -1580,10 +1609,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
+  entryRowContainer: {
+    position: "relative",
+  },
   entryRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    // Pin the height the 30px kebab button would give the row, so rows don't
+    // shrink (and hover-flicker) when the kebab collapses.
+    minHeight: 34,
     paddingVertical: 2,
     paddingRight: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
