@@ -187,27 +187,38 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindBoth: false,
 };
 
+// Icons/colorTiers live here (not in AGENT_PROVIDER_DEFINITIONS) because
+// openai-compatible providers are registered dynamically, so the registry's
+// definition-based mode decoration has nothing to merge from.
 export const OPENAI_COMPAT_MODES: AgentMode[] = [
   {
     id: "default",
     label: "Always Ask",
     description: "Prompts for permission before running commands or editing files",
+    icon: "ShieldQuestionMark",
+    colorTier: "neutral",
   },
   {
     id: "acceptEdits",
     label: "Accept File Edits",
     description:
       "Automatically approves file edits inside the workspace; still asks before running commands",
+    icon: "ShieldPerson",
+    colorTier: "safe",
   },
   {
     id: "plan",
     label: "Read Only",
     description: "Only read tools are available — no edits or commands; web fetches still ask",
+    icon: "ShieldToggle",
+    colorTier: "planning",
   },
   {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",
+    icon: "PrivacyTip",
+    colorTier: "dangerous",
     isUnattended: true,
   },
 ];

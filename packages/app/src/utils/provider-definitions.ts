@@ -12,7 +12,7 @@ function buildProviderModes(entry: ProviderSnapshotEntry): AgentProviderModeDefi
   return entryModes.map((mode) =>
     Object.assign({}, mode, {
       icon: (mode.icon ?? "ShieldCheck") as AgentModeIcon,
-      colorTier: (mode.colorTier ?? "moderate") as AgentModeColorTier,
+      colorTier: (mode.colorTier ?? "neutral") as AgentModeColorTier,
     }),
   );
 }

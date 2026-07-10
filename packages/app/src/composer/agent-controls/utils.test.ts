@@ -4,9 +4,12 @@ import {
   getFeatureHighlightColor,
   getFeatureTooltip,
   getAgentControlHintKey,
+  getModeTierColor,
+  hexColorWithAlpha,
   formatThinkingOptionLabel,
   normalizeModelId,
   resolveAgentModelSelection,
+  type ModeTierColors,
 } from "./utils";
 
 describe("getAgentControlHintKey", () => {
@@ -39,6 +42,50 @@ describe("feature metadata helpers", () => {
     expect(getFeatureHighlightColor("fast_mode")).toBe("yellow");
     expect(getFeatureHighlightColor("plan_mode")).toBe("blue");
     expect(getFeatureHighlightColor("other")).toBe("default");
+  });
+});
+
+describe("getModeTierColor", () => {
+  const palette: ModeTierColors = {
+    safe: "green",
+    moderate: "yellow",
+    dangerous: "red",
+    planning: "blue",
+  };
+
+  it("maps named tiers to their palette colors", () => {
+    expect(getModeTierColor("safe", palette)).toBe("green");
+    expect(getModeTierColor("moderate", palette)).toBe("yellow");
+    expect(getModeTierColor("dangerous", palette)).toBe("red");
+    expect(getModeTierColor("planning", palette)).toBe("blue");
+  });
+
+  it("passes hex tiers through unchanged", () => {
+    expect(getModeTierColor("#ff6b6b", palette)).toBe("#ff6b6b");
+  });
+
+  it("returns undefined for neutral, unknown, and missing tiers", () => {
+    expect(getModeTierColor("neutral", palette)).toBeUndefined();
+    expect(getModeTierColor("mystery", palette)).toBeUndefined();
+    expect(getModeTierColor(undefined, palette)).toBeUndefined();
+  });
+});
+
+describe("hexColorWithAlpha", () => {
+  it("appends the alpha channel to 6-digit hex colors", () => {
+    expect(hexColorWithAlpha("#dc2626", 0.5)).toBe("#dc262680");
+    expect(hexColorWithAlpha("#38BDF8", 1)).toBe("#38BDF8ff");
+    expect(hexColorWithAlpha("#38bdf8", 0)).toBe("#38bdf800");
+  });
+
+  it("expands 3-digit hex colors before appending alpha", () => {
+    expect(hexColorWithAlpha("#f00", 0.5)).toBe("#ff000080");
+  });
+
+  it("returns undefined for non-hex colors", () => {
+    expect(hexColorWithAlpha("red", 0.5)).toBeUndefined();
+    expect(hexColorWithAlpha("rgba(0,0,0,1)", 0.5)).toBeUndefined();
+    expect(hexColorWithAlpha("#dc26", 0.5)).toBeUndefined();
   });
 });
 

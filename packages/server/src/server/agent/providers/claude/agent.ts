@@ -287,11 +287,6 @@ const DEFAULT_MODES: AgentMode[] = [
     description: "Prompts for permission the first time a tool is used",
   },
   {
-    id: "auto",
-    label: "Auto mode",
-    description: "Uses a model classifier to review permission prompts automatically",
-  },
-  {
     id: "acceptEdits",
     label: "Accept File Edits",
     description: "Automatically approves edit-focused tools without prompting",
@@ -300,6 +295,11 @@ const DEFAULT_MODES: AgentMode[] = [
     id: "plan",
     label: "Plan Mode",
     description: "Analyze the codebase without executing tools or edits",
+  },
+  {
+    id: "auto",
+    label: "Auto mode",
+    description: "Uses a model classifier to review permission prompts automatically",
   },
   {
     id: "bypassPermissions",

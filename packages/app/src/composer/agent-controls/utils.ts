@@ -33,6 +33,48 @@ export function getFeatureTooltip(feature: Pick<AgentFeature, "label" | "tooltip
   return feature.tooltip ?? feature.label;
 }
 
+/** Theme colors for the named mode color tiers (see AgentModeColorTier). */
+export interface ModeTierColors {
+  safe: string;
+  moderate: string;
+  dangerous: string;
+  planning: string;
+}
+
+/**
+ * Resolves a mode's colorTier to a concrete color. Returns undefined for
+ * "neutral" and unknown tiers so callers fall back to their default color.
+ */
+export function getModeTierColor(
+  colorTier: string | undefined,
+  palette: ModeTierColors,
+): string | undefined {
+  if (!colorTier) return undefined;
+  if (colorTier.startsWith("#")) return colorTier;
+  if (colorTier in palette) return palette[colorTier as keyof ModeTierColors];
+  return undefined;
+}
+
+/**
+ * Applies an alpha channel to a hex color (#rgb or #rrggbb). Returns undefined
+ * for anything else so callers skip the treatment rather than paint garbage.
+ */
+export function hexColorWithAlpha(color: string, alpha: number): string | undefined {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
+  if (!match) return undefined;
+  let hex = match[1];
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  const alphaHex = Math.round(Math.min(Math.max(alpha, 0), 1) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${hex}${alphaHex}`;
+}
+
 export function getFeatureHighlightColor(featureId: string): FeatureHighlightColor {
   switch (featureId) {
     case "fast_mode":
