@@ -246,6 +246,15 @@ describe("OpenAICompatAgentClient", () => {
     expect(catalog.models.map((model) => model.id)).toEqual(["test-model-a", "test-model-b"]);
     expect(catalog.models[0]?.isDefault).toBe(true);
     expect(catalog.models[0]?.provider).toBe("lmstudio");
+    // Effort is advertised per model like every other provider, so the
+    // standard Effort control drives reasoning_effort.
+    expect(catalog.models[0]?.thinkingOptions?.map((option) => option.id)).toEqual([
+      "off",
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(catalog.models[0]?.defaultThinkingOptionId).toBe("off");
   });
 
   test("reports an actionable error when the server is unreachable", async () => {
@@ -697,7 +706,7 @@ async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: Re
 }
 
 describe("OpenAICompatAgentSession reasoning effort", () => {
-  test("omits reasoning_effort by default and sends it after setFeature", async () => {
+  test("omits reasoning_effort by default and sends it after setThinkingOption", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -708,21 +717,52 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
 
     await session.run("Say hello");
     expect(endpoint.completionBodies[0]).not.toHaveProperty("reasoning_effort");
+    // Effort lives on the model-level thinking option now, not in features.
     expect(session.features).toEqual([
-      expect.objectContaining({ id: "reasoning_effort", value: "off" }),
       expect.objectContaining({ id: "auto_compact", value: "80" }),
     ]);
 
-    await session.setFeature?.("reasoning_effort", "high");
+    await session.setThinkingOption?.("high");
     await session.run("Say hello again");
     expect(endpoint.completionBodies[1]?.reasoning_effort).toBe("high");
-    expect(session.features).toEqual([
-      expect.objectContaining({ id: "reasoning_effort", value: "high" }),
-      expect.objectContaining({ id: "auto_compact", value: "80" }),
-    ]);
   });
 
-  test("restores reasoning effort from featureValues", async () => {
+  test("clears back to off when the thinking option is set to null", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      thinkingOptionId: "medium",
+    });
+
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("medium");
+
+    await session.setThinkingOption?.(null);
+    await session.run("Say hello again");
+    expect(endpoint.completionBodies[1]).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("seeds the effort from config.thinkingOptionId over legacy featureValues", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      thinkingOptionId: "high",
+      featureValues: { reasoning_effort: "low" },
+    });
+
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("high");
+  });
+
+  // COMPAT(openaiCompatReasoningFeature): agents created before the effort
+  // unification persisted the value as featureValues.reasoning_effort.
+  test("restores reasoning effort from legacy featureValues", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);
     const session = await client.createSession({
@@ -736,6 +776,22 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
     expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("low");
   });
 
+  // COMPAT(openaiCompatReasoningFeature): old clients may still send the
+  // reasoning_effort feature select even though it is no longer advertised.
+  test("still accepts the legacy reasoning_effort feature update", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.setFeature?.("reasoning_effort", "high");
+    await session.run("Say hello");
+    expect(endpoint.completionBodies[0]?.reasoning_effort).toBe("high");
+  });
+
   test("rejects unknown features and invalid values", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);
@@ -745,32 +801,20 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
       model: "test-model-a",
     });
 
+    await expect(session.setThinkingOption?.("extreme")).rejects.toThrow(/Invalid effort/);
     await expect(session.setFeature?.("reasoning_effort", "extreme")).rejects.toThrow(
       /Invalid reasoning effort/,
     );
     await expect(session.setFeature?.("unknown_feature", true)).rejects.toThrow(/Unknown feature/);
   });
 
-  test("listFeatures seeds the draft select from featureValues", async () => {
+  test("listFeatures no longer advertises a reasoning select", async () => {
     const endpoint = await startEndpoint();
     const client = createClient(endpoint.baseUrl);
 
     await expect(
       client.listFeatures({ provider: "lmstudio", cwd: process.cwd() }),
-    ).resolves.toEqual([
-      expect.objectContaining({ id: "reasoning_effort", value: "off" }),
-      expect.objectContaining({ id: "auto_compact", value: "80" }),
-    ]);
-    await expect(
-      client.listFeatures({
-        provider: "lmstudio",
-        cwd: process.cwd(),
-        featureValues: { reasoning_effort: "medium" },
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({ id: "reasoning_effort", value: "medium" }),
-      expect.objectContaining({ id: "auto_compact", value: "80" }),
-    ]);
+    ).resolves.toEqual([expect.objectContaining({ id: "auto_compact", value: "80" })]);
   });
 });
 

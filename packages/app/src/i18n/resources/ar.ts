@@ -154,11 +154,11 @@ export const ar: TranslationResources = {
       select: "حدد مزود الوكيل",
     },
     thinking: {
-      title: "التفكير",
+      title: "الجهد",
       unknown: "مجهول",
       extraHigh: "ارتفاع إضافي",
-      select: "حدد خيار التفكير",
-      selectWithValue: "حدد خيار التفكير ({{value}})",
+      select: "حدد الجهد",
+      selectWithValue: "حدد الجهد ({{value}})",
     },
     model: {
       unknown: "نموذج غير معروف",
@@ -2238,6 +2238,7 @@ export const ar: TranslationResources = {
           agents: "إدارة الوكلاء",
           terminals: "الطرفيات",
           schedules: "الجداول",
+          artifacts: "المخرجات",
           workspace: "مساحات العمل",
         },
       },

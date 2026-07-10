@@ -152,11 +152,11 @@ export const en = {
       select: "Select agent provider",
     },
     thinking: {
-      title: "Thinking",
+      title: "Effort",
       unknown: "Unknown",
       extraHigh: "Extra high",
-      select: "Select thinking option",
-      selectWithValue: "Select thinking option ({{value}})",
+      select: "Select effort",
+      selectWithValue: "Select effort ({{value}})",
     },
     model: {
       unknown: "Unknown model",
@@ -2274,6 +2274,7 @@ export const en = {
           agents: "Agent management",
           terminals: "Terminals",
           schedules: "Schedules",
+          artifacts: "Artifacts",
           workspace: "Workspaces",
         },
       },

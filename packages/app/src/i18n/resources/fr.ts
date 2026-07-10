@@ -155,11 +155,11 @@ export const fr: TranslationResources = {
       select: "Sélectionnez le fournisseur d'agent",
     },
     thinking: {
-      title: "Pensée",
+      title: "Effort",
       unknown: "Inconnu",
       extraHigh: "Très haut",
-      select: "Sélectionnez l'option de réflexion",
-      selectWithValue: "Sélectionnez l'option de réflexion ({{value}})",
+      select: "Sélectionner l'effort",
+      selectWithValue: "Sélectionner l'effort ({{value}})",
     },
     model: {
       unknown: "Modèle inconnu",
@@ -2290,6 +2290,7 @@ export const fr: TranslationResources = {
           agents: "Gestion des agents",
           terminals: "Terminaux",
           schedules: "Planifications",
+          artifacts: "Artéfacts",
           workspace: "Espaces de travail",
         },
       },
