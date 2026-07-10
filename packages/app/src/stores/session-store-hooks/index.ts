@@ -13,6 +13,7 @@ import {
   selectWorkspaceFields,
   selectWorkspaceKeys,
   selectWorkspaceOrderByScope,
+  selectWorkspaceProjectId,
   selectWorkspaceStatusesForBadges,
   selectWorkspaceStructureProjects,
   workspaceEqualityFns,
@@ -77,6 +78,18 @@ export function useWorkspaceDirectory(
   return useStoreWithEqualityFn(
     useSessionStore,
     (state) => selectWorkspaceDirectory(state, serverId, workspaceId),
+    workspaceEqualityFns.identity,
+  );
+}
+
+/** The workspace's project grouping key — see selectWorkspaceProjectId. */
+export function useWorkspaceProjectId(
+  serverId: string | null,
+  workspaceId: string | null,
+): string | null {
+  return useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectWorkspaceProjectId(state, serverId, workspaceId),
     workspaceEqualityFns.identity,
   );
 }

@@ -104,6 +104,7 @@ export class ArtifactSession {
         projectId: msg.projectId,
         provider: msg.provider,
         model: msg.model,
+        thinkingOptionId: msg.thinkingOptionId,
       });
       this.host.emit({
         type: "artifact.update.response",

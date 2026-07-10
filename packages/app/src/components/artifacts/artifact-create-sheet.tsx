@@ -8,8 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ChevronDown, Folder } from "@/components/icons/material-icons";
+import { Brain, ChevronDown, Folder } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
+import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import {
   AdaptiveModalSheet,
@@ -20,6 +21,7 @@ import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/com
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { getProviderIcon } from "@/components/provider-icons";
+import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { useAgentFormState, type FormInitialValues } from "@/hooks/use-agent-form-state";
 import { useProjects } from "@/hooks/use-projects";
 import { useArtifactMutations } from "@/artifacts/use-artifact-mutations";
@@ -41,7 +43,10 @@ export interface ArtifactEditTarget {
   description: string;
   provider: string | null;
   model: string | null;
+  thinkingOptionId: string | null;
 }
+
+type ThinkingOptions = NonNullable<AgentModelDefinition["thinkingOptions"]>;
 
 export interface ArtifactCreateSheetProps {
   visible: boolean;
@@ -130,6 +135,7 @@ function buildArtifactFormInitialValues(input: {
   isEdit: boolean;
   provider: string | null | undefined;
   model: string | null | undefined;
+  thinkingOptionId: string | null | undefined;
 }): FormInitialValues | undefined {
   const values: FormInitialValues = {};
   if (input.cwd) {
@@ -138,6 +144,7 @@ function buildArtifactFormInitialValues(input: {
   if (input.isEdit && input.provider) {
     values.provider = input.provider as FormInitialValues["provider"];
     values.model = input.model ?? undefined;
+    values.thinkingOptionId = input.thinkingOptionId ?? undefined;
   }
   return Object.keys(values).length > 0 ? values : undefined;
 }
@@ -182,7 +189,6 @@ async function submitArtifactForm(input: {
   projectId: string;
   provider: string;
   model: string;
-  modeId: string;
   thinkingOptionId: string;
   createArtifact: ReturnType<typeof useArtifactMutations>["createArtifact"];
   updateArtifact: ReturnType<typeof useArtifactMutations>["updateArtifact"];
@@ -199,6 +205,7 @@ async function submitArtifactForm(input: {
         projectId: input.projectId,
         provider: input.provider,
         model: input.model || undefined,
+        thinkingOptionId: input.thinkingOptionId || undefined,
       },
     });
     return { serverId: input.editTarget.serverId, artifact };
@@ -211,7 +218,6 @@ async function submitArtifactForm(input: {
       projectId: input.projectId,
       provider: input.provider,
       model: input.model || undefined,
-      modeId: input.modeId || undefined,
       thinkingOptionId: input.thinkingOptionId || undefined,
     },
   });
@@ -284,8 +290,9 @@ export function ArtifactCreateSheet({
         isEdit,
         provider: artifact?.provider,
         model: artifact?.model,
+        thinkingOptionId: artifact?.thinkingOptionId,
       }),
-    [resolvedInitialCwd, isEdit, artifact?.provider, artifact?.model],
+    [resolvedInitialCwd, isEdit, artifact?.provider, artifact?.model, artifact?.thinkingOptionId],
   );
 
   const form = useAgentFormState({
@@ -296,21 +303,23 @@ export function ArtifactCreateSheet({
     onlineServerIds,
   });
 
+  // No mode field: artifact generation always runs unattended (the service
+  // only honors unattended modes and otherwise resolves the provider's
+  // unattended default), so offering a mode picker here would be a no-op.
   const {
     selectedServerId,
     selectedProvider,
     selectedModel,
-    selectedMode,
     selectedThinkingOptionId,
+    setThinkingOptionFromUser,
+    availableThinkingOptions,
     workingDir,
     setProviderAndModelFromUser,
     clearProviderSelectionFromUser,
-    setModeFromUser,
     setSelectedServerId,
     setSelectedServerIdFromUser,
     setWorkingDir,
     setWorkingDirFromUser,
-    modeOptions,
     modelSelectorProviders,
     isAllModelsLoading,
     persistFormPreferences,
@@ -433,7 +442,6 @@ export function ArtifactCreateSheet({
         projectId: trimmedWorkingDir,
         provider: selectedProvider,
         model: selectedModel,
-        modeId: selectedMode,
         thinkingOptionId: selectedThinkingOptionId,
         createArtifact,
         updateArtifact,
@@ -454,7 +462,6 @@ export function ArtifactCreateSheet({
     onCreated,
     persistFormPreferences,
     updateArtifact,
-    selectedMode,
     selectedModel,
     selectedProvider,
     selectedThinkingOptionId,
@@ -564,79 +571,19 @@ export function ArtifactCreateSheet({
         />
       </View>
 
-      {modeOptions.length > 0 ? (
-        <ModeField options={modeOptions} selectedMode={selectedMode} onSelect={setModeFromUser} />
+      {selectedModel && availableThinkingOptions.length > 0 ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>Effort</Text>
+          <ThinkingField
+            options={availableThinkingOptions}
+            value={selectedThinkingOptionId}
+            onSelect={setThinkingOptionFromUser}
+          />
+        </View>
       ) : null}
 
       {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
     </AdaptiveModalSheet>
-  );
-}
-
-function ModeField({
-  options,
-  selectedMode,
-  onSelect,
-}: {
-  options: { id: string; label: string }[];
-  selectedMode: string;
-  onSelect: (modeId: string) => void;
-}): ReactElement {
-  const anchorRef = useRef<View>(null);
-  const [open, setOpen] = useState(false);
-
-  const comboboxOptions = useMemo<ComboboxOption[]>(
-    () => options.map((option) => ({ id: option.id, label: option.label })),
-    [options],
-  );
-  const selectedLabel =
-    options.find((option) => option.id === selectedMode)?.label ?? "Default mode";
-
-  const handleSelect = useCallback(
-    (id: string) => {
-      onSelect(id);
-      setOpen(false);
-    },
-    [onSelect],
-  );
-  const handlePress = useCallback(() => setOpen((current) => !current), []);
-  const triggerStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.selectTrigger,
-      (Boolean(hovered) || pressed || open) && styles.selectTriggerActive,
-    ],
-    [open],
-  );
-
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>Mode</Text>
-      <View ref={anchorRef} collapsable={false}>
-        <Pressable
-          onPress={handlePress}
-          style={triggerStyle}
-          accessibilityRole="button"
-          accessibilityLabel={`Select mode (${selectedLabel})`}
-          testID="artifact-mode-trigger"
-        >
-          <Text style={styles.selectTriggerText} numberOfLines={1}>
-            {selectedLabel}
-          </Text>
-          <ChevronDown size={16} color={styles.chevron.color} />
-        </Pressable>
-      </View>
-      <Combobox
-        options={comboboxOptions}
-        value={selectedMode}
-        onSelect={handleSelect}
-        searchable={comboboxOptions.length > 6}
-        title="Select mode"
-        open={open}
-        onOpenChange={setOpen}
-        anchorRef={anchorRef}
-        desktopPlacement="bottom-start"
-      />
-    </View>
   );
 }
 
@@ -738,6 +685,135 @@ function ProjectField({
         renderOption={renderOption}
       />
     </>
+  );
+}
+
+function ThinkingField({
+  options,
+  value,
+  onSelect,
+}: {
+  options: ThinkingOptions;
+  value: string;
+  onSelect: (thinkingOptionId: string) => void;
+}): ReactElement {
+  const anchorRef = useRef<View>(null);
+  const [open, setOpen] = useState(false);
+
+  const comboboxOptions = useMemo<ComboboxOption[]>(
+    () =>
+      options.map((option) => ({
+        id: option.id,
+        label: formatThinkingOptionLabel(option),
+      })),
+    [options],
+  );
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      onSelect(id);
+      setOpen(false);
+    },
+    [onSelect],
+  );
+  const handlePress = useCallback(() => setOpen((current) => !current), []);
+  const triggerStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.selectTrigger,
+      (Boolean(hovered) || pressed || open) && styles.selectTriggerActive,
+    ],
+    [open],
+  );
+
+  const selectedOption = options.find((option) => option.id === value);
+  const selectedLabelSource = selectedOption ?? (value ? { id: value } : null);
+  const displayValue = selectedLabelSource
+    ? formatThinkingOptionLabel(selectedLabelSource)
+    : "Select effort";
+  const isPlaceholder = !selectedLabelSource;
+
+  const renderOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <ThinkingOptionItem option={option} selected={selected} active={active} onPress={onPress} />
+    ),
+    [],
+  );
+
+  return (
+    <>
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={handlePress}
+          style={triggerStyle}
+          accessibilityRole="button"
+          accessibilityLabel={`Select effort (${displayValue})`}
+          testID="artifact-thinking-trigger"
+        >
+          <Text
+            style={isPlaceholder ? styles.selectTriggerPlaceholder : styles.selectTriggerText}
+            numberOfLines={1}
+          >
+            {displayValue}
+          </Text>
+          <ChevronDown size={16} color={styles.chevron.color} />
+        </Pressable>
+      </View>
+      <Combobox
+        options={comboboxOptions}
+        value={value}
+        onSelect={handleSelect}
+        searchable={comboboxOptions.length > 6}
+        searchPlaceholder="Search effort options..."
+        emptyText="No effort options found"
+        title="Select effort"
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+        renderOption={renderOption}
+      />
+    </>
+  );
+}
+
+function ThinkingOptionItem({
+  option,
+  selected,
+  active,
+  onPress,
+}: {
+  option: ComboboxOption;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+}): ReactElement {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        <Brain size={16} color={styles.chevron.color} />
+      </View>
+    ),
+    [],
+  );
+  return (
+    <ComboboxItem
+      testID={`artifact-thinking-option-${option.id}`}
+      label={option.label}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
   );
 }
 

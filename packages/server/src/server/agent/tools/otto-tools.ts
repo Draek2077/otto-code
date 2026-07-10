@@ -2,8 +2,9 @@ import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
-import type { AgentMode, AgentProvider } from "../agent-sdk-types.js";
+import type { AgentMode, AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
+import { resolveEffortOption } from "../effort-levels.js";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -64,7 +65,7 @@ import {
 } from "../lifecycle-command.js";
 import type { GitHubService } from "../../../services/github-service.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
-import type { WorkspaceRegistry } from "../../workspace-registry.js";
+import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
 import { WorktreeRequestError } from "../../worktree-errors.js";
 import {
   archiveCommand,
@@ -104,6 +105,12 @@ export interface OttoToolHostDependencies {
   archiveWorkspaceRecord?: ArchiveDependencies["archiveWorkspaceRecord"];
   emitWorkspaceUpdatesForWorkspaceIds?: ArchiveDependencies["emitWorkspaceUpdatesForWorkspaceIds"];
   workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "upsert">;
+  /**
+   * Resolves a workspace's project grouping key to the project's canonical
+   * root path, so create_artifact can stamp artifacts with the same
+   * path-shaped projectId the client's create sheet stores.
+   */
+  projectRegistry?: Pick<ProjectRegistry, "get">;
   markWorkspaceArchiving?: ArchiveDependencies["markWorkspaceArchiving"];
   clearWorkspaceArchiving?: ArchiveDependencies["clearWorkspaceArchiving"];
   createOttoWorktree?: CreateOttoWorktreeWorkflowFn;
@@ -122,6 +129,8 @@ export interface OttoToolHostDependencies {
   artifactService?: ArtifactService | null;
   /** Broadcasts artifact.created.notification to every connected client. */
   emitArtifactCreated?: (artifact: ArtifactMetadata) => void;
+  /** Broadcasts artifact.updated.notification to every connected client. */
+  emitArtifactUpdated?: (artifact: ArtifactMetadata) => void;
   ottoHome?: string;
   worktreesRoot?: string;
   /**
@@ -284,6 +293,7 @@ interface ScheduleUpdateToolInput {
   provider?: string;
   model?: string | null;
   mode?: string | null;
+  thinkingOptionId?: string | null;
   cwd?: string;
   expiresIn?: string;
   clearExpires?: boolean;
@@ -354,6 +364,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     ...(providerModelPatch.provider !== undefined ? { provider: providerModelPatch.provider } : {}),
     ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
     ...(input.mode !== undefined ? { modeId: input.mode } : {}),
+    ...(input.thinkingOptionId !== undefined ? { thinkingOptionId: input.thinkingOptionId } : {}),
     ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
   };
 
@@ -457,6 +468,203 @@ function resolveArtifactProviderModel(params: {
   return { provider: resolved.provider, model };
 }
 
+/**
+ * Thinking options and modes are provider-scoped, so the caller's own effort
+ * level and permission mode only carry over when the caller's provider is the
+ * one generating. The mode is a request, not a demand: the artifact service
+ * only honors unattended modes and otherwise resolves the provider's
+ * unattended default, so an attended caller mode can never stall generation
+ * on an approval prompt.
+ */
+function resolveArtifactGenerationSettings(params: {
+  provider: AgentProvider;
+  thinkingOptionIdArg?: string;
+  modeIdArg?: string;
+  callerProvider?: AgentProvider;
+  callerThinkingOptionId?: string;
+  callerModeId?: string;
+}): { thinkingOptionId: string | undefined; modeId: string | undefined } {
+  const sameProviderAsCaller = params.callerProvider === params.provider;
+  return {
+    thinkingOptionId:
+      params.thinkingOptionIdArg ??
+      (sameProviderAsCaller ? params.callerThinkingOptionId : undefined),
+    modeId: params.modeIdArg ?? (sameProviderAsCaller ? params.callerModeId : undefined),
+  };
+}
+
+const EFFORT_INPUT_DESCRIPTION =
+  "Effort: a canonical level (off, minimal, low, medium, high, xhigh, max), resolved to the nearest option the target model supports, or an exact option id from the model's thinkingOptions in list_models.";
+
+/**
+ * Resolve a requested effort — canonical level or exact option id — against a
+ * provider's advertised models. Levels clamp to the nearest supported option.
+ * When the target model (or its thinkingOptions) isn't in the snapshot the
+ * request passes through unchanged and the provider normalizes it like any
+ * hand-typed id.
+ */
+function resolveEffortAgainstModels(params: {
+  requested: string;
+  models: readonly AgentModelDefinition[];
+  model: string | undefined;
+}): string {
+  const definition = params.model
+    ? params.models.find((candidate) => candidate.id === params.model)
+    : (params.models.find((candidate) => candidate.isDefault) ?? params.models[0]);
+  const thinkingOptions = definition?.thinkingOptions;
+  if (!thinkingOptions || thinkingOptions.length === 0) {
+    return params.requested;
+  }
+  return resolveEffortOption({ requested: params.requested, thinkingOptions }).optionId;
+}
+
+const ArtifactToolSummarySchema = z.object({
+  artifactId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  status: z.string(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  thinkingOptionId: z.string().nullable(),
+  modeId: z.string().nullable(),
+  projectId: z.string(),
+  updatedAt: z.string(),
+  errorMessage: z.string().nullable(),
+});
+
+function toArtifactToolSummary(artifact: ArtifactMetadata) {
+  return {
+    artifactId: artifact.id,
+    name: artifact.name,
+    description: artifact.description,
+    status: artifact.status,
+    provider: artifact.generationProvider,
+    model: artifact.generationModel,
+    thinkingOptionId: artifact.generationThinkingOptionId ?? null,
+    modeId: artifact.generationModeId ?? null,
+    projectId: artifact.projectId,
+    updatedAt: artifact.updatedAt,
+    errorMessage: artifact.errorMessage,
+  };
+}
+
+async function requireArtifact(
+  artifactService: ArtifactService,
+  artifactId: string,
+): Promise<ArtifactMetadata> {
+  const artifact = (await artifactService.list()).find((candidate) => candidate.id === artifactId);
+  if (!artifact) {
+    throw new Error(`Artifact ${artifactId} not found. Call list_artifacts for ids.`);
+  }
+  return artifact;
+}
+
+interface ArtifactUpdateToolInput {
+  artifactId: string;
+  name?: string;
+  description?: string;
+  provider?: string;
+  model?: string | null;
+  thinkingOptionId?: string | null;
+  projectId?: string;
+}
+
+/**
+ * Work out the provider/model the update leaves the artifact on: the patch
+ * values to store (undefined = unchanged, null model = clear) and the
+ * effective pair to resolve a requested effort against.
+ */
+function resolveArtifactUpdateTargets(
+  input: ArtifactUpdateToolInput,
+  existing: ArtifactMetadata,
+): {
+  provider: AgentProvider | undefined;
+  model: string | null | undefined;
+  effortProvider: AgentProvider | null;
+  effortModel: string | undefined;
+} {
+  const providerPatch = input.provider
+    ? resolveScheduleProviderAndModel({
+        provider: input.provider,
+        defaultProvider: input.provider as AgentProvider,
+      })
+    : undefined;
+  // An explicit model arg beats one embedded in provider/<model>.
+  const model = input.model !== undefined ? input.model : providerPatch?.model;
+  const effortProvider = (providerPatch?.provider ??
+    existing.generationProvider) as AgentProvider | null;
+  const effortModel = model === null ? undefined : (model ?? existing.generationModel ?? undefined);
+  return { provider: providerPatch?.provider, model, effortProvider, effortModel };
+}
+
+/**
+ * Effort patch for update_artifact: undefined = unchanged, null = clear
+ * (the service stores empty string as null), string = resolve strictly.
+ */
+function resolveArtifactUpdateEffort(params: {
+  requested: string | null | undefined;
+  models: readonly AgentModelDefinition[];
+  model: string | undefined;
+}): string | undefined {
+  if (params.requested === undefined) {
+    return undefined;
+  }
+  if (params.requested === null) {
+    return "";
+  }
+  return resolveEffortAgainstModels({
+    requested: params.requested,
+    models: params.models,
+    model: params.model,
+  });
+}
+
+function buildArtifactUpdateServiceInput(
+  input: ArtifactUpdateToolInput,
+  targets: { provider: AgentProvider | undefined; model: string | null | undefined },
+  thinkingPatch: string | undefined,
+) {
+  return {
+    artifactId: input.artifactId,
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+    ...(targets.provider ? { provider: targets.provider } : {}),
+    // The service stores empty string as null (clear back to provider default).
+    ...(targets.model !== undefined ? { model: targets.model ?? "" } : {}),
+    ...(thinkingPatch !== undefined ? { thinkingOptionId: thinkingPatch } : {}),
+  };
+}
+
+/**
+ * Effort resolution for values that may be inherited rather than asked for:
+ * an explicit request resolves strictly (unknown values throw), while an
+ * effort inherited from a caller on another provider gets clamped, or
+ * dropped (undefined) when it can't be mapped.
+ */
+function resolveEffortOrDropInherited(params: {
+  requested: string | undefined;
+  explicit: boolean;
+  models: readonly AgentModelDefinition[] | undefined;
+  model: string | undefined;
+}): string | undefined {
+  if (!params.requested) {
+    return undefined;
+  }
+  try {
+    return resolveEffortAgainstModels({
+      requested: params.requested,
+      models: params.models ?? [],
+      model: params.model,
+    });
+  } catch (error) {
+    if (params.explicit) {
+      throw error;
+    }
+    return undefined;
+  }
+}
+
 const MAX_DERIVED_ARTIFACT_NAME_LENGTH = 60;
 
 // Fallback title when the agent passes only a description: first non-empty
@@ -480,10 +688,21 @@ function deriveArtifactName(description: string): string {
   return `${clipped.trimEnd()}…`;
 }
 
+/**
+ * Resolve the projectId to stamp on a created artifact. Artifacts store the
+ * project's canonical *root path* (matching what the client's create sheet
+ * stores and what the app's project pickers/filters key on) — NOT the
+ * registry's opaque grouping key (`remote:host/owner/repo` for repos with a
+ * git remote), which nothing client-side can display or match against a
+ * workspace. The workspace record only carries the grouping key, so map it
+ * through the project registry to the project's rootPath; fall back to the
+ * workspace's cwd when the project record is missing.
+ */
 async function resolveArtifactProjectId(params: {
   projectIdArg?: string;
   callerWorkspaceId?: string;
   workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "upsert">;
+  projectRegistry?: Pick<ProjectRegistry, "get">;
 }): Promise<string> {
   const explicitProjectId = params.projectIdArg?.trim();
   if (explicitProjectId) {
@@ -491,8 +710,14 @@ async function resolveArtifactProjectId(params: {
   }
   if (params.callerWorkspaceId && params.workspaceRegistry) {
     const record = await params.workspaceRegistry.get(params.callerWorkspaceId);
-    if (record?.projectId) {
-      return record.projectId;
+    if (record) {
+      const project = record.projectId ? await params.projectRegistry?.get(record.projectId) : null;
+      if (project?.rootPath) {
+        return project.rootPath;
+      }
+      if (record.cwd) {
+        return record.cwd;
+      }
     }
   }
   throw new Error("projectId is required because it could not be derived from your workspace");
@@ -709,6 +934,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     };
   };
 
+  const listProviderModels = async (provider: AgentProvider): Promise<AgentModelDefinition[]> => {
+    const entry = (await providerSnapshotManager.listProviders({ wait: true })).find(
+      (candidate) => candidate.provider === provider,
+    );
+    return entry?.models ?? [];
+  };
+
   const resolveNewAgentScheduleTarget = (params?: { provider?: string; cwd?: string }) => {
     if (!params?.provider?.trim()) {
       throw new Error("provider is required when target is new-agent");
@@ -769,7 +1001,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   const CreateAgentSettingsInputSchema = z
     .object({
       modeId: z.string().optional().describe("Session mode to configure before the first run."),
-      thinkingOptionId: z.string().optional().describe("Thinking option ID."),
+      thinkingOptionId: z.string().optional().describe(EFFORT_INPUT_DESCRIPTION),
       features: z
         .record(z.string(), z.unknown())
         .optional()
@@ -784,7 +1016,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         .string()
         .nullable()
         .optional()
-        .describe("Thinking option ID. Pass null to clear."),
+        .describe(`${EFFORT_INPUT_DESCRIPTION} Pass null to clear.`),
       features: z
         .record(z.string(), z.unknown())
         .optional()
@@ -795,7 +1027,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     .object({
       modeId: z.string().optional().describe("Draft session mode ID."),
       model: z.string().optional().describe("Draft model ID."),
-      thinkingOptionId: z.string().optional().describe("Draft thinking option ID."),
+      thinkingOptionId: z.string().optional().describe("Draft effort option id."),
       features: z
         .record(z.string(), z.unknown())
         .optional()
@@ -1156,6 +1388,18 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
         detached = resolvedArgs.parsedArgs.relationship.kind === "detached";
       }
+      let requestedThinkingOptionId = parsedArgs.settings?.thinkingOptionId;
+      if (requestedThinkingOptionId) {
+        const { provider: targetProvider, model: targetModel } = resolveScheduleProviderAndModel({
+          provider: parsedArgs.provider,
+          defaultProvider: parsedArgs.provider,
+        });
+        requestedThinkingOptionId = resolveEffortAgainstModels({
+          requested: requestedThinkingOptionId,
+          models: await listProviderModels(targetProvider),
+          model: targetModel,
+        });
+      }
       const {
         snapshot,
         background: createdInBackground,
@@ -1181,7 +1425,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           initialPrompt: parsedArgs.initialPrompt,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
-          thinking: parsedArgs.settings?.thinkingOptionId,
+          thinking: requestedThinkingOptionId,
           features: parsedArgs.settings?.features,
           labels: parsedArgs.labels,
           mode: parsedArgs.settings?.modeId,
@@ -1791,7 +2035,19 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         await agentManager.setAgentModel(agentId, settings.model);
       }
       if (settings?.thinkingOptionId !== undefined) {
-        await agentManager.setAgentThinkingOption(agentId, settings.thinkingOptionId);
+        let thinkingOptionId = settings.thinkingOptionId;
+        const agent = agentManager.getAgent(agentId);
+        if (thinkingOptionId !== null && agent) {
+          // Resolve against the model this call leaves the agent on.
+          const targetModel =
+            settings.model !== undefined ? (settings.model ?? undefined) : agent.config.model;
+          thinkingOptionId = resolveEffortAgainstModels({
+            requested: thinkingOptionId,
+            models: await listProviderModels(agent.provider),
+            model: targetModel,
+          });
+        }
+        await agentManager.setAgentThinkingOption(agentId, thinkingOptionId);
       }
       if (settings?.features) {
         for (const [featureId, value] of Object.entries(settings.features)) {
@@ -1873,7 +2129,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create artifact",
       description:
-        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a dedicated background agent and shown in the client\'s Artifacts screen. Returns immediately with status "generating"; the artifact flips to "ready" (or "error") on its own, typically within a few minutes — no need to wait or poll. The generator cannot see this conversation, so the description must carry all content, data, and requirements it needs.',
+        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a dedicated background agent and shown in the client\'s Artifacts screen. Returns immediately with status "generating"; the artifact flips to "ready" (or "error") on its own, typically within a few minutes — no need to wait or poll. The generator always runs unattended (bypass/no approval prompts) and inherits your provider, model, effort, and mode unless overridden. The generator cannot see this conversation, so the description must carry all content, data, and requirements it needs.',
       inputSchema: {
         name: z
           .string()
@@ -1912,14 +2168,24 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .optional()
           .describe(
-            "Thinking/effort option id for the generation agent (see inspect_provider). Defaults to your own thinking option when generating with your provider.",
+            `${EFFORT_INPUT_DESCRIPTION} Defaults to your own effort option when generating with your provider.`,
+          ),
+        modeId: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            "Permission mode id for the generation agent (see modes with isUnattended: true in list_providers or inspect_provider). Only unattended (bypass) modes are honored — anything else falls back to the provider's unattended default, so generation never stalls on approval prompts. Defaults to your own mode when generating with your provider.",
           ),
         projectId: z
           .string()
           .trim()
           .min(1)
           .optional()
-          .describe("Project to file the artifact under. Defaults to your workspace's project."),
+          .describe(
+            "Project to file the artifact under, as the project's root directory path. Defaults to your workspace's project.",
+          ),
       },
       outputSchema: {
         artifactId: z.string(),
@@ -1927,6 +2193,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         status: z.string(),
         provider: z.string(),
         model: z.string().nullable(),
+        thinkingOptionId: z.string().nullable(),
+        modeId: z.string().nullable(),
         projectId: z.string(),
         guidance: z.string(),
       },
@@ -1937,6 +2205,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       provider?: string;
       model?: string;
       thinkingOptionId?: string;
+      modeId?: string;
       projectId?: string;
     }) => {
       const artifactService = options.artifactService;
@@ -1951,11 +2220,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         callerProvider: callerAgent?.provider,
         callerModel: callerAgent?.config.model,
       });
-      // Thinking options are provider-scoped, so the caller's own effort level
-      // only carries over when the caller's provider is the one generating.
-      const thinkingOptionId =
-        input.thinkingOptionId ??
-        (callerAgent?.provider === provider ? callerAgent?.config.thinkingOptionId : undefined);
+      const { thinkingOptionId, modeId } = resolveArtifactGenerationSettings({
+        provider,
+        thinkingOptionIdArg: input.thinkingOptionId,
+        modeIdArg: input.modeId,
+        callerProvider: callerAgent?.provider,
+        callerThinkingOptionId: callerAgent?.config.thinkingOptionId,
+        callerModeId: callerAgent?.config.modeId,
+      });
       const name = input.name?.trim() || deriveArtifactName(input.description);
 
       const providerEntry = (await providerSnapshotManager.listProviders({ wait: true })).find(
@@ -1967,10 +2239,18 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         );
       }
 
+      const resolvedThinkingOptionId = resolveEffortOrDropInherited({
+        requested: thinkingOptionId,
+        explicit: Boolean(input.thinkingOptionId),
+        models: providerEntry.models,
+        model,
+      });
+
       const projectId = await resolveArtifactProjectId({
         projectIdArg: input.projectId,
         callerWorkspaceId: callerAgent?.workspaceId,
         workspaceRegistry: options.workspaceRegistry,
+        projectRegistry: options.projectRegistry,
       });
 
       const artifact = await artifactService.create({
@@ -1979,7 +2259,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         projectId,
         provider,
         ...(model ? { model } : {}),
-        ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        ...(resolvedThinkingOptionId ? { thinkingOptionId: resolvedThinkingOptionId } : {}),
+        ...(modeId ? { modeId } : {}),
       });
       options.emitArtifactCreated?.(artifact);
 
@@ -1991,9 +2272,159 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           status: artifact.status,
           provider,
           model: artifact.generationModel,
+          thinkingOptionId: artifact.generationThinkingOptionId ?? null,
+          modeId: artifact.generationModeId ?? null,
           projectId: artifact.projectId,
           guidance:
-            'Generation runs in the background; the artifact appears in the Artifacts screen and flips to "ready" when done. You do not need to wait or poll.',
+            'Generation runs unattended in the background; the artifact appears in the Artifacts screen and flips to "ready" when done. You do not need to wait or poll.',
+        }),
+      };
+    },
+  );
+
+  registerTool(
+    "list_artifacts",
+    {
+      title: "List artifacts",
+      description:
+        "List generated artifacts with their ids, status, and generation settings, optionally filtered by project.",
+      inputSchema: {
+        projectId: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Filter by project root directory path. Omit to list every project."),
+      },
+      outputSchema: {
+        artifacts: z.array(ArtifactToolSummarySchema),
+      },
+    },
+    async ({ projectId }) => {
+      const artifactService = options.artifactService;
+      if (!artifactService) {
+        throw new Error("Artifact service is not available on this daemon");
+      }
+      const artifacts = (await artifactService.list(projectId)).map(toArtifactToolSummary);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ artifacts }),
+      };
+    },
+  );
+
+  registerTool(
+    "update_artifact",
+    {
+      title: "Update artifact",
+      description:
+        "Edit an artifact's metadata — name, prompt, project, provider, model, effort — WITHOUT re-running generation. Call generate_artifact afterwards to re-generate with the new settings.",
+      inputSchema: {
+        artifactId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Artifact to edit; call list_artifacts for ids."),
+        name: z.string().trim().min(1).optional().describe("New name."),
+        description: z.string().trim().min(1).optional().describe("New generation prompt."),
+        provider: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("New provider, as <provider> or <provider>/<model>."),
+        model: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe("New model id (null to clear back to the provider default)."),
+        thinkingOptionId: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe(`New effort (null to clear). ${EFFORT_INPUT_DESCRIPTION}`),
+        projectId: z.string().trim().min(1).optional().describe("New project root directory path."),
+      },
+      outputSchema: ArtifactToolSummarySchema.shape,
+    },
+    async (input: ArtifactUpdateToolInput) => {
+      const artifactService = options.artifactService;
+      if (!artifactService) {
+        throw new Error("Artifact service is not available on this daemon");
+      }
+      const existing = await requireArtifact(artifactService, input.artifactId);
+      const targets = resolveArtifactUpdateTargets(input, existing);
+      if (targets.provider) {
+        const entry = (await providerSnapshotManager.listProviders({ wait: true })).find(
+          (candidate) => candidate.provider === targets.provider,
+        );
+        if (!entry?.enabled) {
+          throw new Error(
+            `Provider "${targets.provider}" is not available. Call list_providers for options.`,
+          );
+        }
+      }
+      const effortModels =
+        input.thinkingOptionId && targets.effortProvider
+          ? await listProviderModels(targets.effortProvider)
+          : [];
+      const thinkingPatch = resolveArtifactUpdateEffort({
+        requested: input.thinkingOptionId,
+        models: effortModels,
+        model: targets.effortModel,
+      });
+      const updated = await artifactService.update(
+        buildArtifactUpdateServiceInput(input, targets, thinkingPatch),
+      );
+      options.emitArtifactUpdated?.(updated);
+      return {
+        content: [],
+        structuredContent: ensureValidJson(toArtifactToolSummary(updated)),
+      };
+    },
+  );
+
+  registerTool(
+    "generate_artifact",
+    {
+      title: "Generate artifact",
+      description:
+        "Re-run generation for an existing artifact using its stored settings (prompt, provider, model, effort). Edit those first via update_artifact. Generation runs unattended in the background.",
+      inputSchema: {
+        artifactId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Artifact to regenerate; call list_artifacts for ids."),
+      },
+      outputSchema: {
+        ...ArtifactToolSummarySchema.shape,
+        guidance: z.string(),
+      },
+    },
+    async ({ artifactId }) => {
+      const artifactService = options.artifactService;
+      if (!artifactService) {
+        throw new Error("Artifact service is not available on this daemon");
+      }
+      const existing = await requireArtifact(artifactService, artifactId);
+      if (existing.status === "generating") {
+        throw new Error(
+          `Artifact ${artifactId} is already generating. Wait for it to finish or cancel it from the Artifacts screen first.`,
+        );
+      }
+      const artifact = await artifactService.regenerate(artifactId);
+      options.emitArtifactUpdated?.(artifact);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({
+          ...toArtifactToolSummary(artifact),
+          guidance:
+            'Generation runs unattended in the background; the artifact appears in the Artifacts screen and flips to "ready" when done. You do not need to wait or poll.',
         }),
       };
     },
@@ -2216,14 +2647,53 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           "Provider, or provider/model (for example: codex or codex/gpt-5.4).",
         ),
         cwd: z.string().optional(),
+        thinkingOptionId: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            `${EFFORT_INPUT_DESCRIPTION} Defaults to your own effort option when scheduling your provider.`,
+          ),
         maxRuns: z.number().int().positive().optional(),
         expiresIn: z.string().optional(),
       },
       outputSchema: ScheduleSummarySchema.shape,
     },
-    async ({ prompt, cron, timezone, name, provider, cwd, maxRuns, expiresIn }) => {
+    async ({
+      prompt,
+      cron,
+      timezone,
+      name,
+      provider,
+      cwd,
+      thinkingOptionId,
+      maxRuns,
+      expiresIn,
+    }) => {
       if (!scheduleService) {
         throw new Error("Schedule service is not configured");
+      }
+
+      const baseTarget = resolveNewAgentScheduleTarget({ provider, cwd });
+      const config: typeof baseTarget.config & { thinkingOptionId?: string } = {
+        ...baseTarget.config,
+      };
+      const inheritedEffort =
+        typeof config.thinkingOptionId === "string" ? config.thinkingOptionId : undefined;
+      const requestedEffort = thinkingOptionId ?? inheritedEffort;
+      if (requestedEffort) {
+        const resolved = resolveEffortOrDropInherited({
+          requested: requestedEffort,
+          explicit: Boolean(thinkingOptionId),
+          models: await listProviderModels(config.provider),
+          model: config.model,
+        });
+        if (resolved === undefined) {
+          delete config.thinkingOptionId;
+        } else {
+          config.thinkingOptionId = resolved;
+        }
       }
 
       const expiresAt = buildScheduleExpiry(expiresIn);
@@ -2233,7 +2703,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
         }),
-        target: resolveNewAgentScheduleTarget({ provider, cwd }),
+        target: { type: "new-agent", config },
         ...(name?.trim() ? { name: name.trim() } : {}),
         ...(maxRuns === undefined ? {} : { maxRuns }),
         ...(expiresAt === undefined ? {} : { expiresAt }),
@@ -2465,6 +2935,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .nullable()
           .optional()
           .describe("New mode for new-agent target (null to clear)."),
+        thinkingOptionId: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe(`New effort for new-agent target (null to clear). ${EFFORT_INPUT_DESCRIPTION}`),
         cwd: z.string().trim().min(1).optional().describe("New cwd for new-agent target."),
         expiresIn: z
           .string()
@@ -2479,7 +2956,35 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         throw new Error("Schedule service is not configured");
       }
 
-      const schedule = await scheduleService.update(buildScheduleUpdateInput(input));
+      let resolvedInput = input;
+      if (typeof input.thinkingOptionId === "string") {
+        // Resolve against the provider/model the schedule ends up with —
+        // either from this same update or from the stored target.
+        const existing = await scheduleService.inspect(input.id);
+        const existingConfig =
+          existing?.target.type === "new-agent" ? existing.target.config : undefined;
+        const providerModelPatch = resolveScheduleUpdateProviderAndModel({
+          provider: input.provider,
+          model: input.model,
+        });
+        const provider = providerModelPatch.provider ?? existingConfig?.provider;
+        const model =
+          providerModelPatch.model !== undefined
+            ? (providerModelPatch.model ?? undefined)
+            : existingConfig?.model;
+        if (provider) {
+          resolvedInput = {
+            ...input,
+            thinkingOptionId: resolveEffortAgainstModels({
+              requested: input.thinkingOptionId,
+              models: await listProviderModels(provider as AgentProvider),
+              model,
+            }),
+          };
+        }
+      }
+
+      const schedule = await scheduleService.update(buildScheduleUpdateInput(resolvedInput));
 
       return {
         content: [],

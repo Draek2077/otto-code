@@ -1118,6 +1118,7 @@ export async function createOttoDaemon(
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
     workspaceRegistry,
+    projectRegistry,
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: createAgentCommandDependencies.ensureWorkspaceForCreate,
@@ -1129,6 +1130,12 @@ export async function createOttoDaemon(
     emitArtifactCreated: (artifact) => {
       emitExternalSessionMessage({
         type: "artifact.created.notification",
+        payload: { artifact },
+      });
+    },
+    emitArtifactUpdated: (artifact) => {
+      emitExternalSessionMessage({
+        type: "artifact.updated.notification",
         payload: { artifact },
       });
     },

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ProviderOverrideSchema } from "./provider-config.js";
+import { ottoToolGroupForName, ProviderOverrideSchema } from "./provider-config.js";
 
 describe("ProviderOverrideSchema MCP fields", () => {
   test("parses overrides without the MCP fields (old configs stay valid)", () => {
@@ -48,5 +48,21 @@ describe("ProviderOverrideSchema MCP fields", () => {
         mcpServers: { files: { type: "stdio" } },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("ottoToolGroupForName", () => {
+  test("maps artifact tools to the artifacts group, not the agents catch-all", () => {
+    expect(ottoToolGroupForName("create_artifact")).toBe("artifacts");
+  });
+
+  test("keeps schedule and heartbeat tools in the schedules group", () => {
+    expect(ottoToolGroupForName("create_schedule")).toBe("schedules");
+    expect(ottoToolGroupForName("create_heartbeat")).toBe("schedules");
+    expect(ottoToolGroupForName("list_schedules")).toBe("schedules");
+  });
+
+  test("falls back to agents for lifecycle tools", () => {
+    expect(ottoToolGroupForName("create_agent")).toBe("agents");
   });
 });

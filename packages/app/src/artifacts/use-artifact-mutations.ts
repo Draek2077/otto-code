@@ -19,6 +19,7 @@ export interface UpdateArtifactVariables {
     projectId?: string;
     provider?: string;
     model?: string;
+    thinkingOptionId?: string;
   };
 }
 
@@ -104,6 +105,9 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
         ...(updates.projectId !== undefined ? { projectId: updates.projectId } : {}),
         ...(updates.provider !== undefined ? { provider: updates.provider } : {}),
         ...(updates.model !== undefined ? { model: updates.model } : {}),
+        ...(updates.thinkingOptionId !== undefined
+          ? { thinkingOptionId: updates.thinkingOptionId }
+          : {}),
       });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to update artifact");

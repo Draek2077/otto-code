@@ -25,6 +25,10 @@ interface ArtifactWatcherOptions {
 interface WatchHandle {
   watcher: FSWatcher | null;
   timeoutTimer: ReturnType<typeof setTimeout> | null;
+  // Fired once the artifact flips to "ready", after the store update commits.
+  // Lets the service clean up generation-scoped state (e.g. a regeneration
+  // backup file) without the watcher knowing what that state is.
+  onReady: (() => void) | null;
 }
 
 export class ArtifactWatcher {
@@ -45,12 +49,12 @@ export class ArtifactWatcher {
     this.onTimeout = options.onTimeout;
   }
 
-  watch(artifactId: string, filePath: string): void {
+  watch(artifactId: string, filePath: string, onReady?: () => void): void {
     if (this.handles.has(artifactId)) {
       return;
     }
 
-    const handle: WatchHandle = { watcher: null, timeoutTimer: null };
+    const handle: WatchHandle = { watcher: null, timeoutTimer: null, onReady: onReady ?? null };
     this.handles.set(artifactId, handle);
 
     const validation = validateHtmlFile(filePath);
@@ -167,11 +171,13 @@ export class ArtifactWatcher {
   }
 
   private async updateToReady(artifactId: string): Promise<void> {
+    const onReady = this.handles.get(artifactId)?.onReady;
     this.unwatch(artifactId);
 
     try {
       await this.store.update(artifactId, { status: "ready" });
       this.logger.info({ artifactId }, "Artifact generation complete - marked as ready");
+      onReady?.();
       this.emitUpdatedNotification(artifactId);
     } catch (error) {
       this.logger.error({ error, artifactId }, "Failed to update artifact status to ready");

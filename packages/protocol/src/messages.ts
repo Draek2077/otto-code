@@ -2577,6 +2577,8 @@ export const ServerInfoStatusPayloadSchema = z
         projectSearch: z.boolean().optional(),
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         codeIndex: z.boolean().optional(),
+        // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        artifactsToolGroup: z.boolean().optional(),
       })
       .optional(),
   })

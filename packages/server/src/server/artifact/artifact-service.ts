@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
@@ -20,6 +20,7 @@ export interface UpdateArtifactInput {
   projectId?: string;
   provider?: string;
   model?: string;
+  thinkingOptionId?: string;
 }
 
 const GENERATION_CANCELLED_MESSAGE = "Generation cancelled";
@@ -63,6 +64,12 @@ export class ArtifactService {
   // artifactId -> generation agentId, for the lifetime of an active run. Lets
   // cancel() interrupt the agent even before generationAgentId is persisted.
   private readonly runningGenerations = new Map<string, string>();
+  // artifactId -> path of the prior HTML, set only while a *regeneration* is
+  // in flight (never on a first-ever generation, which has nothing to back
+  // up). Restored on failure/cancel/timeout so a failed regeneration doesn't
+  // destroy an artifact's last successful output; discarded once the new
+  // generation succeeds.
+  private readonly regenerationBackups = new Map<string, string>();
 
   constructor(options: ArtifactServiceOptions) {
     this.projectCwd = options.projectCwd;
@@ -95,6 +102,7 @@ export class ArtifactService {
 
   async delete(artifactId: string): Promise<void> {
     this.watcher.unwatch(artifactId);
+    await this.discardBackup(artifactId);
     await this.store.delete(artifactId);
   }
 
@@ -148,6 +156,8 @@ export class ArtifactService {
       generationAgentId: null,
       generationProvider: input.provider,
       generationModel: input.model ?? null,
+      generationModeId: input.modeId ?? null,
+      generationThinkingOptionId: input.thinkingOptionId ?? null,
       errorMessage: null,
     };
 
@@ -177,6 +187,9 @@ export class ArtifactService {
       ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
       ...(input.provider !== undefined ? { generationProvider: input.provider } : {}),
       ...(input.model !== undefined ? { generationModel: input.model || null } : {}),
+      ...(input.thinkingOptionId !== undefined
+        ? { generationThinkingOptionId: input.thinkingOptionId || null }
+        : {}),
     });
     const updated = await this.store.get(input.artifactId);
     if (!updated) {
@@ -212,20 +225,30 @@ export class ArtifactService {
       throw new ArtifactNotFoundError(artifactId);
     }
 
-    // Remove the prior HTML before watching: the watcher marks an artifact
-    // "ready" the instant it sees a valid file on disk, so leaving the old
-    // output in place would flip status straight back to "ready" with stale
-    // content and stop watching before the new agent writes anything.
-    await rm(updated.filePath, { force: true });
-    this.watcher.watch(artifactId, updated.filePath);
+    // Move the prior HTML out of the way before watching, rather than
+    // deleting it: the watcher marks an artifact "ready" the instant it sees
+    // a valid file at filePath, so leaving the old output in place would flip
+    // status straight back to "ready" with stale content and stop watching
+    // before the new agent writes anything. Keeping it as a backup lets a
+    // failed regeneration restore the last successful version instead of
+    // losing it outright.
+    await this.backupBeforeRegenerate(artifactId, updated.filePath);
+    this.watcher.watch(artifactId, updated.filePath, () => {
+      void this.discardBackup(artifactId);
+    });
     void this.spawnArtifactAgent(artifactId, updated, {
       name: updated.name,
       description: updated.description,
       projectId: updated.projectId,
       provider,
       model,
-    }).catch((error) => {
+      // Re-run with the originally requested mode/effort. The mode is safe to
+      // replay as-is: spawnArtifactAgent only honors it if unattended.
+      modeId: updated.generationModeId ?? undefined,
+      thinkingOptionId: updated.generationThinkingOptionId ?? undefined,
+    }).catch(async (error) => {
       this.logger.error({ err: error, artifactId }, "Failed to regenerate artifact");
+      await this.restoreBackup(artifactId);
       void this.store.update(artifactId, { status: "error", errorMessage: String(error) });
     });
 
@@ -278,12 +301,65 @@ export class ArtifactService {
       }
     }
 
+    // If this aborted a regeneration (not a first-ever generation), restore
+    // the prior successful output rather than leaving the artifact with none.
+    await this.restoreBackup(artifactId);
+
     await this.store.update(artifactId, {
       status: "error",
       errorMessage,
       generationAgentId: null,
     });
     return this.store.get(artifactId);
+  }
+
+  /** Move the current HTML aside so a regeneration can't be mistaken for
+   * "ready" by the watcher. No-ops (leaves nothing to restore) when there's
+   * no prior file — a first-ever generation has none. */
+  private async backupBeforeRegenerate(artifactId: string, filePath: string): Promise<void> {
+    const backupPath = `${filePath}.bak`;
+    try {
+      await rename(filePath, backupPath);
+      this.regenerationBackups.set(artifactId, backupPath);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /** Restore a regeneration's backup after a failed/cancelled/timed-out
+   * attempt. No-op if there's no backup (first-ever generation, or already
+   * consumed). */
+  private async restoreBackup(artifactId: string): Promise<void> {
+    const backupPath = this.regenerationBackups.get(artifactId);
+    if (!backupPath) {
+      return;
+    }
+    this.regenerationBackups.delete(artifactId);
+    try {
+      await rename(backupPath, this.resolveHtmlPath(artifactId));
+    } catch (error) {
+      this.logger.warn(
+        { err: error, artifactId },
+        "Failed to restore artifact backup after failed regeneration",
+      );
+    }
+  }
+
+  /** Drop a regeneration's backup once the new generation has succeeded. */
+  private async discardBackup(artifactId: string): Promise<void> {
+    const backupPath = this.regenerationBackups.get(artifactId);
+    if (!backupPath) {
+      return;
+    }
+    this.regenerationBackups.delete(artifactId);
+    try {
+      await rm(backupPath, { force: true });
+    } catch (error) {
+      this.logger.warn({ err: error, artifactId }, "Failed to remove stale artifact backup");
+    }
   }
 
   private async spawnArtifactAgent(

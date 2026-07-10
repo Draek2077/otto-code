@@ -1258,6 +1258,8 @@ export class VoiceAssistantWebSocketServer {
         projectSearch: true,
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         codeIndex: true,
+        // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        artifactsToolGroup: true,
       },
     };
   }

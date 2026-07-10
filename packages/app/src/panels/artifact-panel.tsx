@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
-import { FileText } from "@/components/icons/material-icons";
+import { FileText, TriangleAlert } from "@/components/icons/material-icons";
 import { ArtifactHtmlView } from "@/components/artifacts/artifact-html-view";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -79,6 +79,23 @@ function ArtifactPanel() {
     );
   }
 
+  // A failed generation with no recoverable content (first-ever generation,
+  // or a failed regeneration with nothing to fall back to) has nothing to
+  // render — show the failure plainly instead of a generic fetch error.
+  if (artifact?.status === "error" && !content) {
+    return (
+      <View style={styles.centered}>
+        <TriangleAlert size={20} color={theme.colors.palette.red[500]} />
+        <Text style={errorStyle}>{artifact.errorMessage ?? error ?? "Generation failed"}</Text>
+        {generationAgentId ? (
+          <Button variant="ghost" size="sm" onPress={handleViewGenerationLog}>
+            View generation log
+          </Button>
+        ) : null}
+      </View>
+    );
+  }
+
   if (error) {
     return (
       <View style={styles.centered}>
@@ -97,6 +114,19 @@ function ArtifactPanel() {
 
   return (
     <View style={styles.container}>
+      {artifact?.status === "error" ? (
+        <View style={styles.errorBanner}>
+          <TriangleAlert size={14} color={theme.colors.palette.red[300]} />
+          <Text style={styles.errorBannerText} numberOfLines={2}>
+            {artifact.errorMessage ?? "Regeneration failed — showing the last successful version."}
+          </Text>
+          {generationAgentId ? (
+            <Button variant="ghost" size="sm" onPress={handleViewGenerationLog}>
+              View log
+            </Button>
+          ) : null}
+        </View>
+      ) : null}
       <ArtifactHtmlView html={content} />
     </View>
   );
@@ -127,5 +157,18 @@ const styles = StyleSheet.create((theme) => ({
   message: {
     fontSize: 13,
     textAlign: "center",
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: theme.colors.palette.red[300],
+    fontSize: theme.fontSize.xs,
   },
 }));

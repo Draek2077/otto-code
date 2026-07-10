@@ -133,6 +133,24 @@ export function selectWorkspaceDirectory(
   return selectWorkspace(state, serverId, workspaceId)?.workspaceDirectory || null;
 }
 
+/**
+ * The workspace's project grouping key (`WorkspaceDescriptor.projectId`) — a
+ * repo-remote key like `remote:host/owner/repo` when the repo has a git
+ * remote, otherwise a filesystem path (main repo root, or cwd for non-git).
+ * Distinct from `workspaceDirectory`/`projectRootPath`, which are always
+ * real paths: this is the opaque id worktrees of the same repo share, and
+ * the same value the server stamps onto artifacts via `create_artifact`'s
+ * `resolveArtifactProjectId`. Compare artifact.projectId against this with
+ * `artifactBelongsToProject`, never against a cwd/path.
+ */
+export function selectWorkspaceProjectId(
+  state: SessionsSnapshot,
+  serverId: string | null,
+  workspaceId: string | null,
+): string | null {
+  return selectWorkspace(state, serverId, workspaceId)?.projectId || null;
+}
+
 export function selectWorkspaceExists(
   state: SessionsSnapshot,
   serverId: string | null,

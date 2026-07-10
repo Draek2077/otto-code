@@ -20,6 +20,13 @@ export const ArtifactMetadataSchema = z.object({
   generationAgentId: z.string().nullable(),
   generationProvider: z.string().nullable(),
   generationModel: z.string().nullable(),
+  // Requested generation mode/effort, persisted so regeneration re-runs with
+  // the same settings. Optional: records written before these fields existed
+  // omit them (no migrations). The mode is a *request* — the artifact service
+  // only honors unattended modes and otherwise resolves the provider's
+  // unattended default, so generation never stalls on an approval prompt.
+  generationModeId: z.string().nullable().optional(),
+  generationThinkingOptionId: z.string().nullable().optional(),
   errorMessage: z.string().nullable(),
 });
 export type ArtifactMetadata = z.infer<typeof ArtifactMetadataSchema>;

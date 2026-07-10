@@ -21,6 +21,10 @@ export const ProviderModeSchema = z
     description: z.string().nullish(),
     icon: z.string().nullish(),
     colorTier: z.string().nullish(),
+    // True for bypass/no-approval modes. Declared (not just passthrough) so
+    // calling agents can see which modes are valid for unattended work such
+    // as create_artifact's modeId.
+    isUnattended: z.boolean().nullish(),
   })
   .passthrough();
 

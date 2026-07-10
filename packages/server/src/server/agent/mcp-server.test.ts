@@ -25,6 +25,7 @@ import {
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
+  type ProjectRegistry,
   type WorkspaceRegistry,
 } from "../workspace-registry.js";
 import type { ArtifactService } from "../artifact/artifact-service.js";
@@ -5430,23 +5431,39 @@ describe("create_artifact MCP tool", () => {
 
   function createArtifactWorkspaceRegistryStub() {
     return {
-      get: vi.fn().mockResolvedValue({ workspaceId: "ws-1", projectId: "proj-1" }),
+      get: vi
+        .fn()
+        .mockResolvedValue({ workspaceId: "ws-1", projectId: "proj-1", cwd: "/repo/worktree" }),
       upsert: vi.fn(),
     } as unknown as Pick<WorkspaceRegistry, "get" | "upsert">;
   }
 
-  it("defaults provider, model, thinking, and project from the calling agent", async () => {
+  // Artifacts store the project's canonical root *path* as projectId (the
+  // client's create sheet contract), so the tool must resolve the workspace's
+  // grouping key through the project registry rather than storing it raw.
+  function createArtifactProjectRegistryStub() {
+    return {
+      get: vi.fn().mockResolvedValue({ projectId: "proj-1", rootPath: "/repo/root" }),
+    } as unknown as Pick<ProjectRegistry, "get">;
+  }
+
+  it("defaults provider, model, thinking, mode, and project from the calling agent", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.getAgent.mockReturnValue({
       id: "agent-1",
       provider: "opencode",
       cwd: process.cwd(),
       workspaceId: "ws-1",
-      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+      config: { model: "caller-model", thinkingOptionId: "think-hard", modeId: "bypass" },
     });
-    const create = vi
-      .fn()
-      .mockResolvedValue(createArtifactMetadataFixture({ generationModel: "caller-model" }));
+    const create = vi.fn().mockResolvedValue(
+      createArtifactMetadataFixture({
+        generationModel: "caller-model",
+        generationThinkingOptionId: "think-hard",
+        generationModeId: "bypass",
+        projectId: "/repo/root",
+      }),
+    );
     const emitArtifactCreated = vi.fn();
     const server = await createAgentMcpServer({
       agentManager,
@@ -5455,6 +5472,7 @@ describe("create_artifact MCP tool", () => {
       artifactService: { create } as unknown as ArtifactService,
       emitArtifactCreated,
       workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      projectRegistry: createArtifactProjectRegistryStub(),
       callerAgentId: "agent-1",
       logger,
     });
@@ -5468,10 +5486,11 @@ describe("create_artifact MCP tool", () => {
     expect(create).toHaveBeenCalledWith({
       name: "Perf report",
       description: "Summarize the perf run",
-      projectId: "proj-1",
+      projectId: "/repo/root",
       provider: "opencode",
       model: "caller-model",
       thinkingOptionId: "think-hard",
+      modeId: "bypass",
     });
     expect(emitArtifactCreated).toHaveBeenCalledTimes(1);
     expect(emitArtifactCreated.mock.calls[0][0].id).toBe("art-1");
@@ -5480,18 +5499,20 @@ describe("create_artifact MCP tool", () => {
       status: "generating",
       provider: "opencode",
       model: "caller-model",
-      projectId: "proj-1",
+      thinkingOptionId: "think-hard",
+      modeId: "bypass",
+      projectId: "/repo/root",
     });
   });
 
-  it("honors explicit provider/model, thinking option, and project over caller defaults", async () => {
+  it("honors explicit provider/model, thinking option, mode, and project over caller defaults", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.getAgent.mockReturnValue({
       id: "agent-1",
       provider: "opencode",
       cwd: process.cwd(),
       workspaceId: "ws-1",
-      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+      config: { model: "caller-model", thinkingOptionId: "think-hard", modeId: "caller-mode" },
     });
     const create = vi.fn().mockResolvedValue(
       createArtifactMetadataFixture({
@@ -5516,6 +5537,7 @@ describe("create_artifact MCP tool", () => {
       description: "Summarize the perf run",
       provider: "codex/gpt-5.4",
       thinkingOptionId: "high",
+      modeId: "codex-bypass",
       projectId: "proj-2",
     });
 
@@ -5526,17 +5548,18 @@ describe("create_artifact MCP tool", () => {
       provider: "codex",
       model: "gpt-5.4",
       thinkingOptionId: "high",
+      modeId: "codex-bypass",
     });
   });
 
-  it("derives the name from the description and drops caller thinking across providers", async () => {
+  it("derives the name from the description and drops caller thinking and mode across providers", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.getAgent.mockReturnValue({
       id: "agent-1",
       provider: "opencode",
       cwd: process.cwd(),
       workspaceId: "ws-1",
-      config: { model: "caller-model", thinkingOptionId: "think-hard" },
+      config: { model: "caller-model", thinkingOptionId: "think-hard", modeId: "caller-mode" },
     });
     const create = vi.fn().mockResolvedValue(createArtifactMetadataFixture());
     const server = await createAgentMcpServer({
@@ -5545,6 +5568,7 @@ describe("create_artifact MCP tool", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       artifactService: { create } as unknown as ArtifactService,
       workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      projectRegistry: createArtifactProjectRegistryStub(),
       callerAgentId: "agent-1",
       logger,
     });
@@ -5558,10 +5582,46 @@ describe("create_artifact MCP tool", () => {
     expect(create).toHaveBeenCalledWith({
       name: "Quarterly revenue dashboard",
       description: "## Quarterly revenue dashboard\nWith per-region breakdowns and trends.",
-      projectId: "proj-1",
+      projectId: "/repo/root",
       provider: "codex",
       model: "gpt-5.4",
     });
+  });
+
+  it("falls back to the workspace cwd when the project record is missing", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue({
+      id: "agent-1",
+      provider: "opencode",
+      cwd: process.cwd(),
+      workspaceId: "ws-1",
+      config: {},
+    });
+    const create = vi.fn().mockResolvedValue(createArtifactMetadataFixture());
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      artifactService: { create } as unknown as ArtifactService,
+      workspaceRegistry: createArtifactWorkspaceRegistryStub(),
+      projectRegistry: {
+        get: vi.fn().mockResolvedValue(null),
+      } as unknown as Pick<ProjectRegistry, "get">,
+      callerAgentId: "agent-1",
+      logger,
+    });
+    const tool = registeredTool(server, "create_artifact");
+
+    await invokeToolWithParsedInput(tool, {
+      name: "Perf report",
+      description: "Summarize the perf run",
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "/repo/worktree",
+      }),
+    );
   });
 
   it("rejects providers that are not available", async () => {
@@ -5593,5 +5653,197 @@ describe("create_artifact MCP tool", () => {
       }),
     ).rejects.toThrow(/not available/);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("artifact record MCP tools (list/update/generate)", () => {
+  const logger = createTestLogger();
+
+  function artifactFixture(overrides: Partial<ArtifactMetadata> = {}): ArtifactMetadata {
+    return {
+      id: "art-1",
+      name: "Perf report",
+      description: "Summarize the perf run",
+      projectId: "/repo/root",
+      filePath: "/tmp/.otto/artifacts/art-1.html",
+      kind: "html",
+      starred: false,
+      status: "ready",
+      createdAt: "2026-07-08T00:00:00.000Z",
+      updatedAt: "2026-07-09T00:00:00.000Z",
+      generationAgentId: null,
+      generationProvider: "opencode",
+      generationModel: "base-model",
+      generationThinkingOptionId: "medium",
+      generationModeId: null,
+      errorMessage: null,
+      ...overrides,
+    };
+  }
+
+  async function createServer(
+    artifactService: Partial<ArtifactService>,
+    options?: {
+      emitArtifactUpdated?: (artifact: ArtifactMetadata) => void;
+      withEffortModels?: boolean;
+    },
+  ) {
+    const { agentManager, agentStorage } = createTestDeps();
+    const { manager, stub } = createOpenCodeManager();
+    if (options?.withEffortModels) {
+      stub.listProviders.mockResolvedValue([
+        {
+          provider: "opencode",
+          status: "ready",
+          enabled: true,
+          modes: [],
+          models: [
+            {
+              provider: "opencode",
+              id: "base-model",
+              label: "Base model",
+              isDefault: true,
+              thinkingOptions: [
+                { id: "low", label: "Low" },
+                { id: "medium", label: "Medium" },
+                { id: "high", label: "High" },
+              ],
+            },
+          ],
+        },
+      ]);
+    }
+    return createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: manager,
+      artifactService: artifactService as unknown as ArtifactService,
+      ...(options?.emitArtifactUpdated ? { emitArtifactUpdated: options.emitArtifactUpdated } : {}),
+      logger,
+    });
+  }
+
+  it("list_artifacts passes the project filter through and maps summaries", async () => {
+    const list = vi.fn().mockResolvedValue([artifactFixture()]);
+    const server = await createServer({ list });
+    const tool = registeredTool(server, "list_artifacts");
+
+    const response = await invokeToolWithParsedInput(tool, { projectId: "/repo/root" });
+
+    expect(list).toHaveBeenCalledWith("/repo/root");
+    expect(response.structuredContent).toMatchObject({
+      artifacts: [
+        {
+          artifactId: "art-1",
+          name: "Perf report",
+          status: "ready",
+          provider: "opencode",
+          model: "base-model",
+          thinkingOptionId: "medium",
+          projectId: "/repo/root",
+        },
+      ],
+    });
+  });
+
+  it("update_artifact resolves a canonical effort level and broadcasts the update", async () => {
+    const list = vi.fn().mockResolvedValue([artifactFixture()]);
+    const update = vi
+      .fn()
+      .mockResolvedValue(artifactFixture({ generationThinkingOptionId: "high", name: "Renamed" }));
+    const emitArtifactUpdated = vi.fn();
+    const server = await createServer(
+      { list, update },
+      {
+        emitArtifactUpdated,
+        withEffortModels: true,
+      },
+    );
+    const tool = registeredTool(server, "update_artifact");
+
+    const response = await invokeToolWithParsedInput(tool, {
+      artifactId: "art-1",
+      name: "Renamed",
+      // "xhigh" is not offered by the model; the resolver clamps to "high".
+      thinkingOptionId: "xhigh",
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      artifactId: "art-1",
+      name: "Renamed",
+      thinkingOptionId: "high",
+    });
+    expect(emitArtifactUpdated).toHaveBeenCalledTimes(1);
+    expect(response.structuredContent).toMatchObject({
+      artifactId: "art-1",
+      name: "Renamed",
+      thinkingOptionId: "high",
+    });
+  });
+
+  it("update_artifact clears model and effort with nulls", async () => {
+    const list = vi.fn().mockResolvedValue([artifactFixture()]);
+    const update = vi
+      .fn()
+      .mockResolvedValue(
+        artifactFixture({ generationModel: null, generationThinkingOptionId: null }),
+      );
+    const server = await createServer({ list, update });
+    const tool = registeredTool(server, "update_artifact");
+
+    await invokeToolWithParsedInput(tool, {
+      artifactId: "art-1",
+      model: null,
+      thinkingOptionId: null,
+    });
+
+    // The service stores empty string as null (clear back to defaults).
+    expect(update).toHaveBeenCalledWith({
+      artifactId: "art-1",
+      model: "",
+      thinkingOptionId: "",
+    });
+  });
+
+  it("update_artifact rejects unknown artifacts", async () => {
+    const list = vi.fn().mockResolvedValue([]);
+    const update = vi.fn();
+    const server = await createServer({ list, update });
+    const tool = registeredTool(server, "update_artifact");
+
+    await expect(
+      invokeToolWithParsedInput(tool, { artifactId: "missing", name: "Renamed" }),
+    ).rejects.toThrow(/not found/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("generate_artifact re-runs generation and broadcasts the update", async () => {
+    const list = vi.fn().mockResolvedValue([artifactFixture()]);
+    const regenerate = vi.fn().mockResolvedValue(artifactFixture({ status: "generating" }));
+    const emitArtifactUpdated = vi.fn();
+    const server = await createServer({ list, regenerate }, { emitArtifactUpdated });
+    const tool = registeredTool(server, "generate_artifact");
+
+    const response = await invokeToolWithParsedInput(tool, { artifactId: "art-1" });
+
+    expect(regenerate).toHaveBeenCalledWith("art-1");
+    expect(emitArtifactUpdated).toHaveBeenCalledTimes(1);
+    expect(response.structuredContent).toMatchObject({
+      artifactId: "art-1",
+      status: "generating",
+      guidance: expect.stringContaining("unattended"),
+    });
+  });
+
+  it("generate_artifact refuses while a generation is already running", async () => {
+    const list = vi.fn().mockResolvedValue([artifactFixture({ status: "generating" })]);
+    const regenerate = vi.fn();
+    const server = await createServer({ list, regenerate });
+    const tool = registeredTool(server, "generate_artifact");
+
+    await expect(invokeToolWithParsedInput(tool, { artifactId: "art-1" })).rejects.toThrow(
+      /already generating/,
+    );
+    expect(regenerate).not.toHaveBeenCalled();
   });
 });
