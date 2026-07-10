@@ -3,6 +3,7 @@ import type {
   AudioEngineCallbacks,
   AudioPlaybackSource,
 } from "@/voice/audio-engine-types";
+import { resamplePcm16 } from "@/voice/resample-pcm16";
 
 interface QueuedAudio {
   audio: AudioPlaybackSource;
@@ -21,49 +22,6 @@ function parsePcmSampleRate(mimeType: string): number | null {
   }
   const rate = Number(match[1]);
   return Number.isFinite(rate) && rate > 0 ? rate : null;
-}
-
-function resamplePcm16(pcm: Uint8Array, fromRate: number, toRate: number): Uint8Array {
-  if (fromRate === toRate) {
-    return pcm;
-  }
-
-  const inputSamples = Math.floor(pcm.length / 2);
-  const outputSamples = Math.floor((inputSamples * toRate) / fromRate);
-  const out = new Uint8Array(outputSamples * 2);
-  const ratio = fromRate / toRate;
-
-  const readInt16 = (sampleIndex: number): number => {
-    const i = sampleIndex * 2;
-    if (i + 1 >= pcm.length) {
-      return 0;
-    }
-    const lo = pcm[i];
-    const hi = pcm[i + 1];
-    let value = (hi << 8) | lo;
-    if (value & 0x8000) {
-      value = value - 0x10000;
-    }
-    return value;
-  };
-
-  const writeInt16 = (sampleIndex: number, value: number): void => {
-    const clamped = Math.max(-32768, Math.min(32767, Math.round(value)));
-    const i = sampleIndex * 2;
-    out[i] = clamped & 0xff;
-    out[i + 1] = (clamped >> 8) & 0xff;
-  };
-
-  for (let i = 0; i < outputSamples; i++) {
-    const srcPos = i * ratio;
-    const i0 = Math.floor(srcPos);
-    const frac = srcPos - i0;
-    const s0 = readInt16(i0);
-    const s1 = readInt16(Math.min(inputSamples - 1, i0 + 1));
-    writeInt16(i, s0 + (s1 - s0) * frac);
-  }
-
-  return out;
 }
 
 export function createAudioEngine(
