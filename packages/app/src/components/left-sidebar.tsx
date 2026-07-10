@@ -35,6 +35,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -356,6 +357,12 @@ function FooterIconButton({
   theme: SidebarTheme;
   ref?: RefObject<View | null>;
 } & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
+  const isCompactLayout = useIsCompactFormFactor();
+  // Footer icons are always scaled up on every form factor, and another 1.5x on
+  // compact so they stay comfortably tappable. Static ICON_SIZE (not
+  // theme.iconSize) — the theme tokens are already doubled on compact by
+  // applyAppearance, which would compound here.
+  const baseIconSize = iconSize ?? ICON_SIZE.md * 1.5;
   return (
     <Pressable
       {...pressableProps}
@@ -370,11 +377,8 @@ function FooterIconButton({
       onPress={onPress}
     >
       {({ hovered }) => (
-        // Footer icons are always scaled up on every form factor. Static
-        // ICON_SIZE (not theme.iconSize) — the theme tokens are already doubled
-        // on compact by applyAppearance, which would compound here.
         <Icon
-          size={iconSize ?? ICON_SIZE.md * 1.5}
+          size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
         />
       )}
@@ -814,10 +818,18 @@ function MobileSidebar({
   // display is React-owned on the plain wrapper View (no animated styles), so
   // a hidden overlay stays hidden no matter what Reanimated's Fabric overlay
   // reverts the panel transform to after a heavy commit (reanimated#9635).
+  //
+  // The no-drag carve-out is required because this drawer renders inside
+  // #root with no TitlebarDragRegion of its own: without it, the underlying
+  // screen header's Electron drag strip eats clicks on the drawer's top rows
+  // (drag rects ignore DOM z-order — docs/floating-panels.md Gotcha 7).
+  // display:none removes the wrapper's boxes entirely, so the closed drawer
+  // cannot punch a hole in the drag strip.
   const overlayStyle = useMemo(
     () => [
       StyleSheet.absoluteFillObject,
       { display: overlayVisible ? ("flex" as const) : ("none" as const) },
+      FLOATING_LAYER_NO_DRAG_STYLE,
     ],
     [overlayVisible],
   );
@@ -1346,8 +1358,9 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   footerIconButton: {
-    width: theme.spacing[8],
-    height: theme.spacing[8],
+    // 1.5x on compact to wrap the icons' matching compact upscale.
+    width: compactUp(theme.spacing[8], 1.5),
+    height: compactUp(theme.spacing[8], 1.5),
     alignItems: "center",
     justifyContent: "center",
     padding: 0,

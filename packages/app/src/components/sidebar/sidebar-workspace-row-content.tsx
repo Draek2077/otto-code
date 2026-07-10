@@ -5,6 +5,7 @@ import {
   Text,
   View,
   type GestureResponderEvent,
+  type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -459,8 +460,15 @@ export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
   );
 }
 
-export function SidebarWorkspaceTrailingActionSlot({ children }: { children: ReactNode }) {
-  return <View style={sidebarWorkspaceRowStyles.trailingActionSlot}>{children}</View>;
+export function SidebarWorkspaceTrailingActionSlot({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const slotStyle = useMemo(() => [sidebarWorkspaceRowStyles.trailingActionSlot, style], [style]);
+  return <View style={slotStyle}>{children}</View>;
 }
 
 export function SidebarWorkspaceTrailingActionBase({

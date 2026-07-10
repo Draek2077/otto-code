@@ -276,23 +276,31 @@ function SchedulesScreenBody({
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.filterRowControls}>
+        <View style={styles.projectFilterSlot}>
           <ProjectFilter
             options={projectOptions}
             value={projectFilter}
             onChange={onProjectFilterChange}
           />
-          <SegmentedControl
-            size="sm"
-            value={statusFilter}
-            onValueChange={onStatusFilterChange}
-            options={STATUS_FILTER_OPTIONS}
-            testID="schedules-status-filter"
-          />
         </View>
-        <Button leftIcon={Plus} onPress={onCreate} size="sm" testID="schedules-new">
+        <Button
+          leftIcon={Plus}
+          onPress={onCreate}
+          size="sm"
+          style={styles.newButton}
+          testID="schedules-new"
+        >
           New schedule
         </Button>
+      </View>
+      <View style={styles.statusRow}>
+        <SegmentedControl
+          size="sm"
+          value={statusFilter}
+          onValueChange={onStatusFilterChange}
+          options={STATUS_FILTER_OPTIONS}
+          testID="schedules-status-filter"
+        />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -352,12 +360,20 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
   },
-  filterRowControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
+  projectFilterSlot: {
     flexShrink: 1,
-    flexWrap: "wrap",
+  },
+  // Tames the compactUp button doubling so the button and the project filter
+  // beside it share the same field height at every width.
+  newButton: {
+    minHeight: 44,
+    paddingHorizontal: theme.spacing[4],
+  },
+  statusRow: {
+    flexDirection: "row",
+    justifyContent: { xs: "center", md: "flex-start" },
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[3],
   },
   scroll: {
     flex: 1,

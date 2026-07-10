@@ -102,7 +102,9 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    minHeight: 36,
+    // Matches the "New artifact"/"New schedule" button beside it: field-height
+    // touch target at every width.
+    minHeight: 44,
     maxWidth: 240,
   },
   triggerActive: {

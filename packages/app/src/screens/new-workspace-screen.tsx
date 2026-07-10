@@ -176,8 +176,7 @@ interface PickerSelection {
 const BRANCH_OPTION_PREFIX = "branch:";
 const PR_OPTION_PREFIX = "github-pr:";
 const PROJECT_ICON_FALLBACK_FONT_SIZE = 10;
-// Height of a single picker-trigger badge. The Base-row spacer reserves exactly
-// this so toggling Isolation to Local hides the row without shifting the form.
+// Height of a single picker-trigger badge.
 const BADGE_HEIGHT = 28;
 
 function RefPickerBadgeContent({
@@ -1580,13 +1579,8 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
     <View testID="new-workspace-ref-picker-row" style={styles.formStack}>
       <FormRow>{projectControl}</FormRow>
       {hostControl ? <FormRow>{hostControl}</FormRow> : null}
-      {/* Keep fixed row height when git-only controls are hidden. */}
-      {isolationControl ? (
-        <FormRow>{isolationControl}</FormRow>
-      ) : (
-        <View style={styles.baseSpacer} />
-      )}
-      {baseControl ? <FormRow>{baseControl}</FormRow> : <View style={styles.baseSpacer} />}
+      {isolationControl ? <FormRow>{isolationControl}</FormRow> : null}
+      {baseControl ? <FormRow>{baseControl}</FormRow> : null}
     </View>
   ) : (
     <View testID="new-workspace-ref-picker-row" style={styles.formStackDesktop}>
@@ -2371,9 +2365,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingLeft: theme.spacing[4],
     gap: theme.spacing[1],
-  },
-  baseSpacer: {
-    height: BADGE_HEIGHT,
   },
   badge: {
     flexDirection: "row",

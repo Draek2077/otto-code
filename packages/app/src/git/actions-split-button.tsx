@@ -283,9 +283,13 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[2],
+    // Icon-only content (16px) is shorter than the label's line height — pin
+    // the same minimum so all three workspace-tools split buttons match.
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
+    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
     width: 28,

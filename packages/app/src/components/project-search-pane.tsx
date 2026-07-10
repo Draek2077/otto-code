@@ -729,6 +729,7 @@ export function ProjectSearchPane({
           renderItem={renderRow}
           keyExtractor={keyExtractor}
           style={styles.resultsList}
+          contentContainerStyle={styles.resultsListContent}
           onLayout={scrollbar.onLayout}
           onScroll={scrollbar.onScroll}
           onContentSizeChange={scrollbar.onContentSizeChange}
@@ -1073,10 +1074,15 @@ const styles = StyleSheet.create((theme) => ({
   resultsArea: {
     flex: 1,
     minHeight: 0,
-    paddingTop: theme.spacing[1],
   },
   resultsList: {
     flex: 1,
+  },
+  // Breathing room above the first row lives inside the scroll content, not on
+  // the wrapper — wrapper padding sits outside the viewport and shows as a dead
+  // band that clips scrolled rows below the summary separator.
+  resultsListContent: {
+    paddingTop: theme.spacing[1],
   },
   centerState: {
     alignItems: "center",
