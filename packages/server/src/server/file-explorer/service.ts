@@ -1,11 +1,14 @@
-import { constants, promises as fs } from "fs";
+import { createHash } from "node:crypto";
+import { constants, promises as fs, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
+import { writeFileAtomic } from "../atomic-file.js";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 
 export type ExplorerEntryKind = "file" | "directory";
 export type ExplorerFileKind = "text" | "image" | "binary";
 export type ExplorerEncoding = "utf-8" | "base64" | "none";
+export type ExplorerEol = "lf" | "crlf";
 
 export interface ListDirectoryParams {
   root: string;
@@ -38,7 +41,33 @@ export interface FileExplorerFile {
   mimeType?: string;
   size: number;
   modifiedAt: string;
+  // Present for text files on the inline JSON read path; the editor keeps
+  // both as its save-precondition baseline.
+  eol?: ExplorerEol;
+  hash?: string;
 }
+
+export interface WriteFileParams {
+  root: string;
+  relativePath: string;
+  content: string;
+  expectedModifiedAt: string;
+  expectedHash?: string;
+  /** Only the deleted-file "save re-creates" flow sets this. */
+  allowCreate?: boolean;
+  /** EOL to apply when creating (there is no on-disk EOL to detect). */
+  eol?: ExplorerEol;
+}
+
+export interface ExplorerFileIdentity {
+  modifiedAt: string;
+  hash: string;
+  size: number;
+}
+
+export type WriteExplorerFileResult =
+  | { status: "ok"; modifiedAt: string; hash: string; size: number; eol: ExplorerEol }
+  | { status: "conflict"; modifiedAt: string; hash: string; content?: string; eol?: ExplorerEol };
 
 export interface FileExplorerFileBytes {
   path: string;
@@ -165,14 +194,172 @@ export async function readExplorerFile({
     };
   }
 
+  const text = Buffer.from(file.bytes).toString("utf-8");
   return {
     path: file.path,
     kind: file.kind,
     encoding: "utf-8",
-    content: Buffer.from(file.bytes).toString("utf-8"),
+    content: text,
     mimeType: file.mimeType,
     size: file.size,
     modifiedAt: file.modifiedAt,
+    eol: detectEol(text),
+    hash: sha256Hex(file.bytes),
+  };
+}
+
+/**
+ * Conditional, atomic save for the text editor. Refuses to write unless the
+ * on-disk file still matches the identity the client last read (hash when
+ * provided, mtime otherwise) — a mismatch returns a conflict and leaves the
+ * file untouched. Content arrives LF-normalized; the file's detected EOL is
+ * re-applied so uniform CRLF files round-trip byte-identical.
+ */
+export async function writeExplorerFile({
+  root,
+  relativePath,
+  content,
+  expectedModifiedAt,
+  expectedHash,
+  allowCreate,
+  eol: requestedEol,
+}: WriteFileParams): Promise<WriteExplorerFileResult> {
+  const filePath = await resolveScopedPath({ root, relativePath });
+
+  // The editor only saves files it opened; a missing target is never an
+  // invitation to create one through this RPC — except the explicit
+  // deleted-file "save re-creates" flow.
+  let handle: FileHandle;
+  try {
+    handle = await openFileForRead(filePath.resolvedPath);
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      if (allowCreate) {
+        return createExplorerFile({
+          resolvedPath: filePath.resolvedPath,
+          content,
+          eol: requestedEol ?? "lf",
+        });
+      }
+      throw new Error("File no longer exists on disk", { cause: error });
+    }
+    throw error;
+  }
+
+  let stats: Stats;
+  let currentBytes: Buffer;
+  try {
+    stats = await handle.stat();
+    if (!stats.isFile()) {
+      throw new Error("Requested path is not a file");
+    }
+    currentBytes = await handle.readFile();
+  } finally {
+    await handle.close();
+  }
+
+  const currentModifiedAt = stats.mtime.toISOString();
+  const currentHash = sha256Hex(currentBytes);
+  const unchanged = expectedHash
+    ? expectedHash === currentHash
+    : expectedModifiedAt === currentModifiedAt;
+  if (!unchanged) {
+    return buildConflictResult(currentBytes, currentModifiedAt);
+  }
+
+  if (isLikelyBinary(currentBytes)) {
+    throw new Error("Refusing to overwrite a binary file");
+  }
+
+  const eol = detectEol(currentBytes.toString("utf-8"));
+  const outputBytes = applyEol(content, eol);
+  // The check-then-replace window is unavoidable without file locks; the
+  // replacement itself is all-or-nothing, and mode is preserved so executable
+  // scripts keep their bits.
+  await writeFileAtomic(filePath.resolvedPath, outputBytes, { mode: stats.mode });
+  const newStats = await fs.stat(filePath.resolvedPath);
+  return {
+    status: "ok",
+    modifiedAt: newStats.mtime.toISOString(),
+    hash: sha256Hex(outputBytes),
+    size: outputBytes.length,
+    eol,
+  };
+}
+
+async function createExplorerFile({
+  resolvedPath,
+  content,
+  eol,
+}: {
+  resolvedPath: string;
+  content: string;
+  eol: ExplorerEol;
+}): Promise<WriteExplorerFileResult> {
+  const outputBytes = applyEol(content, eol);
+  // Exclusive create: if the file reappeared between the missing-open above
+  // and here, surface the newcomer as a conflict rather than clobbering it.
+  let handle: FileHandle;
+  try {
+    handle = await fs.open(resolvedPath, "wx");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") {
+      const currentBytes = await fs.readFile(resolvedPath);
+      const stats = await fs.stat(resolvedPath);
+      return buildConflictResult(currentBytes, stats.mtime.toISOString());
+    }
+    throw error;
+  }
+  try {
+    await handle.writeFile(outputBytes);
+  } finally {
+    await handle.close();
+  }
+  const stats = await fs.stat(resolvedPath);
+  return {
+    status: "ok",
+    modifiedAt: stats.mtime.toISOString(),
+    hash: sha256Hex(outputBytes),
+    size: outputBytes.length,
+    eol,
+  };
+}
+
+/**
+ * Containment-checked stat (+ hash) used by the file watcher. Returns a null
+ * identity when the file does not exist; throws on containment violations.
+ * Passing the previous identity skips re-hashing when mtime and size are
+ * unchanged.
+ */
+export async function resolveExplorerFileIdentity({
+  root,
+  relativePath,
+  previous,
+}: ReadFileParams & { previous?: ExplorerFileIdentity | null }): Promise<{
+  resolvedPath: string;
+  identity: ExplorerFileIdentity | null;
+}> {
+  const filePath = await resolveScopedPath({ root, relativePath });
+  let stats: Stats;
+  try {
+    stats = await fs.stat(filePath.resolvedPath);
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { resolvedPath: filePath.resolvedPath, identity: null };
+    }
+    throw error;
+  }
+  if (!stats.isFile()) {
+    return { resolvedPath: filePath.resolvedPath, identity: null };
+  }
+  const modifiedAt = stats.mtime.toISOString();
+  if (previous && previous.modifiedAt === modifiedAt && previous.size === stats.size) {
+    return { resolvedPath: filePath.resolvedPath, identity: previous };
+  }
+  const bytes = await fs.readFile(filePath.resolvedPath);
+  return {
+    resolvedPath: filePath.resolvedPath,
+    identity: { modifiedAt, hash: sha256Hex(bytes), size: stats.size },
   };
 }
 
@@ -343,6 +530,49 @@ function normalizeRelativePath({ root, targetPath }: { root: string; targetPath:
 
 function textMimeTypeForExtension(ext: string): string {
   return TEXT_MIME_TYPES[ext] ?? DEFAULT_TEXT_MIME_TYPE;
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function applyEol(content: string, eol: ExplorerEol): Buffer {
+  const normalized = content.replace(/\r\n?/g, "\n");
+  return Buffer.from(eol === "crlf" ? normalized.replace(/\n/g, "\r\n") : normalized, "utf-8");
+}
+
+function buildConflictResult(currentBytes: Buffer, modifiedAt: string): WriteExplorerFileResult {
+  const hash = sha256Hex(currentBytes);
+  if (isLikelyBinary(currentBytes)) {
+    return { status: "conflict", modifiedAt, hash };
+  }
+  const currentText = currentBytes.toString("utf-8");
+  return {
+    status: "conflict",
+    modifiedAt,
+    hash,
+    content: currentText,
+    eol: detectEol(currentText),
+  };
+}
+
+// Majority rule: a mixed-EOL file is normalized to its dominant ending on the
+// next save. Uniform files (the overwhelmingly common case) round-trip
+// byte-identical.
+function detectEol(text: string): ExplorerEol {
+  let crlf = 0;
+  let lf = 0;
+  for (let idx = 0; idx < text.length; idx += 1) {
+    if (text.charCodeAt(idx) !== 10) {
+      continue;
+    }
+    if (idx > 0 && text.charCodeAt(idx - 1) === 13) {
+      crlf += 1;
+    } else {
+      lf += 1;
+    }
+  }
+  return crlf > lf ? "crlf" : "lf";
 }
 
 function isLikelyBinary(buffer: Buffer): boolean {

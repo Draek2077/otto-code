@@ -1,4 +1,12 @@
-import React, { useContext, useEffect, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
@@ -7,6 +15,9 @@ import {
   ScrollView as RNScrollView,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -14,14 +25,15 @@ import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { highlightCode, type HighlightToken } from "@otto-code/highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
-import { isWeb } from "@/constants/platform";
+import { splitMarkdownFrontmatter } from "@/components/markdown-frontmatter";
+import { isNative, isWeb } from "@/constants/platform";
+import { SvgXml } from "react-native-svg";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { persistAttachmentFromBytes } from "@/attachments/service";
@@ -40,6 +52,37 @@ interface CodeLineProps {
   highlighted: boolean;
 }
 
+/** What the preview learned about the file after reading it. */
+export interface FilePreviewFileInfo {
+  kind: "text" | "image" | "binary";
+  isMarkdown: boolean;
+}
+
+/** Scroll-viewport snapshot the split view uses for proportional sync. */
+export interface PreviewScrollMetrics {
+  scrollTop: number;
+  contentHeight: number;
+  clientHeight: number;
+}
+
+/** A press landed in the preview content (split-view click alignment). */
+export interface PreviewPointerDown {
+  /** Y within the scrolled content, px. */
+  contentY: number;
+  /** Y within the visible viewport, px. */
+  viewportOffsetY: number;
+  contentHeight: number;
+}
+
+/** Imperative scroll surface the split view drives; never echoes sync events. */
+export interface FilePreviewSyncHandle {
+  getMetrics(): PreviewScrollMetrics;
+  /** Scroll so `fraction` (0..1) of the scrollable range is above the viewport. */
+  scrollToFraction(fraction: number): void;
+  /** Scroll so content Y `contentY` sits `viewportOffsetY` px below the viewport top. */
+  scrollToContentY(contentY: number, viewportOffsetY: number): void;
+}
+
 interface FilePreviewBodyProps {
   preview: ExplorerFile | null;
   isLoading: boolean;
@@ -47,6 +90,12 @@ interface FilePreviewBodyProps {
   isMobile: boolean;
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
+  svgXml: string | null;
+  /** Live buffer contents to render instead of the disk read (split view). */
+  contentOverride?: string | null;
+  syncRef?: React.Ref<FilePreviewSyncHandle>;
+  onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
+  onPointerDownSync?: (pointer: PreviewPointerDown) => void;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -75,14 +124,25 @@ function formatFileSize({ size }: { size: number }): string {
 async function createFilePanePreview(file: FileReadResult | null): Promise<{
   file: ExplorerFile | null;
   imageAttachment: AttachmentMetadata | null;
+  svgXml: string | null;
 }> {
   if (!file) {
-    return { file: null, imageAttachment: null };
+    return { file: null, imageAttachment: null, svgXml: null };
   }
 
   const explorerFile = explorerFileFromReadResult(file);
   if (file.kind !== "image") {
-    return { file: explorerFile, imageAttachment: null };
+    return { file: explorerFile, imageAttachment: null, svgXml: null };
+  }
+
+  // Native Image can't decode SVG; render the raw XML via react-native-svg
+  // instead of persisting an attachment it could never display.
+  if (isNative && file.mime === "image/svg+xml") {
+    return {
+      file: explorerFile,
+      imageAttachment: null,
+      svgXml: new TextDecoder().decode(file.bytes),
+    };
   }
 
   const imageAttachment = await persistAttachmentFromBytes({
@@ -101,6 +161,7 @@ async function createFilePanePreview(file: FileReadResult | null): Promise<{
   return {
     file: explorerFile,
     imageAttachment,
+    svgXml: null,
   };
 }
 
@@ -189,6 +250,25 @@ const codeLineStyles = StyleSheet.create((theme) => ({
   },
 }));
 
+function NativeSvgPreview({ xml, size }: { xml: string; size: number }) {
+  const { t } = useTranslation();
+  const [failed, setFailed] = useState(false);
+  const handleError = useCallback(() => setFailed(true), []);
+  if (failed) {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
+        <Text style={styles.binaryMetaText}>{formatFileSize({ size })}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.previewSvg}>
+      <SvgXml xml={xml} width="100%" height="100%" onError={handleError} />
+    </View>
+  );
+}
+
 function FilePreviewBody({
   preview,
   isLoading,
@@ -196,26 +276,152 @@ function FilePreviewBody({
   isMobile,
   location,
   imagePreviewUri,
+  svgXml,
+  contentOverride,
+  syncRef,
+  onScrolledSync,
+  onPointerDownSync,
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const filePath = location.path;
   const isMarkdownFile =
     preview?.kind === "text" && isRenderedMarkdownFile(filePath) && !location.lineStart;
+  const effectiveContent = useMemo(() => {
+    if (preview?.kind !== "text") {
+      return "";
+    }
+    return contentOverride ?? preview.content ?? "";
+  }, [contentOverride, preview]);
 
   const previewScrollRef = useRef<RNScrollView>(null);
-  const webScrollbarStyle = useWebScrollbarStyle();
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
     enabled: showDesktopWebScrollbar,
   });
+  const horizontalScrollRef = useRef<RNScrollView>(null);
+  const horizontalScrollbar = useWebScrollViewScrollbar(horizontalScrollRef, {
+    enabled: showDesktopWebScrollbar,
+    axis: "horizontal",
+  });
+
+  // Split-view sync plumbing: track the viewport imperatively (re-rendering
+  // per scroll frame would be wasteful) and swallow the echo of our own
+  // programmatic scrolls so the two panes cannot ping-pong.
+  const syncMetricsRef = useRef<PreviewScrollMetrics>({
+    scrollTop: 0,
+    contentHeight: 0,
+    clientHeight: 0,
+  });
+  const suppressNextScrollSyncRef = useRef(false);
+  const onScrolledSyncRef = useRef(onScrolledSync);
+  onScrolledSyncRef.current = onScrolledSync;
+  const onPointerDownSyncRef = useRef(onPointerDownSync);
+  onPointerDownSyncRef.current = onPointerDownSync;
+
+  const handleSyncScroll = useCallback((event: { nativeEvent: NativeScrollEvent }) => {
+    const metrics = syncMetricsRef.current;
+    metrics.scrollTop = event.nativeEvent.contentOffset.y;
+    metrics.contentHeight = event.nativeEvent.contentSize.height;
+    metrics.clientHeight = event.nativeEvent.layoutMeasurement.height;
+    if (suppressNextScrollSyncRef.current) {
+      suppressNextScrollSyncRef.current = false;
+      return;
+    }
+    onScrolledSyncRef.current?.({ ...metrics });
+  }, []);
+
+  const handleSyncLayout = useCallback((event: LayoutChangeEvent) => {
+    syncMetricsRef.current.clientHeight = event.nativeEvent.layout.height;
+  }, []);
+
+  const handleSyncContentSize = useCallback((_width: number, height: number) => {
+    syncMetricsRef.current.contentHeight = height;
+  }, []);
+
+  // Merged scrollbar + sync handlers so the JSX passes stable references.
+  const {
+    onLayout: scrollbarOnLayout,
+    onScroll: scrollbarOnScroll,
+    onContentSizeChange: scrollbarOnContentSizeChange,
+  } = scrollbar;
+  const handleVerticalLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      scrollbarOnLayout(event);
+      handleSyncLayout(event);
+    },
+    [handleSyncLayout, scrollbarOnLayout],
+  );
+  const handleVerticalScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollbarOnScroll(event);
+      handleSyncScroll(event);
+    },
+    [handleSyncScroll, scrollbarOnScroll],
+  );
+  const handleVerticalContentSizeChange = useCallback(
+    (width: number, height: number) => {
+      scrollbarOnContentSizeChange(width, height);
+      handleSyncContentSize(width, height);
+    },
+    [handleSyncContentSize, scrollbarOnContentSizeChange],
+  );
+
+  const scrollToSyncTop = useCallback((top: number) => {
+    const metrics = syncMetricsRef.current;
+    const max = Math.max(0, metrics.contentHeight - metrics.clientHeight);
+    const clamped = Math.max(0, Math.min(top, max));
+    if (Math.abs(clamped - metrics.scrollTop) < 0.5) {
+      return;
+    }
+    suppressNextScrollSyncRef.current = true;
+    metrics.scrollTop = clamped;
+    previewScrollRef.current?.scrollTo({ y: clamped, animated: false });
+  }, []);
+
+  useImperativeHandle(
+    syncRef,
+    () => ({
+      getMetrics: () => ({ ...syncMetricsRef.current }),
+      scrollToFraction: (fraction: number) => {
+        const metrics = syncMetricsRef.current;
+        const max = Math.max(0, metrics.contentHeight - metrics.clientHeight);
+        scrollToSyncTop(Math.max(0, Math.min(fraction, 1)) * max);
+      },
+      scrollToContentY: (contentY: number, viewportOffsetY: number) => {
+        scrollToSyncTop(contentY - viewportOffsetY);
+      },
+    }),
+    [scrollToSyncTop],
+  );
+
+  // Click alignment is web-only: it needs the content's bounding rect to turn
+  // a pointer position into a content Y.
+  const syncContentRef = useRef<View>(null);
+  const handleSyncPointerDown = useCallback((event: { nativeEvent: { clientY?: number } }) => {
+    if (!isWeb || !onPointerDownSyncRef.current) {
+      return;
+    }
+    const node = syncContentRef.current as unknown as HTMLElement | null;
+    const clientY = event.nativeEvent.clientY;
+    if (!node || typeof clientY !== "number" || typeof node.getBoundingClientRect !== "function") {
+      return;
+    }
+    const contentY = clientY - node.getBoundingClientRect().top;
+    const metrics = syncMetricsRef.current;
+    onPointerDownSyncRef.current({
+      contentY,
+      viewportOffsetY: contentY - metrics.scrollTop,
+      contentHeight: metrics.contentHeight,
+    });
+  }, []);
 
   const highlightedLines = useMemo(() => {
     if (!preview || preview.kind !== "text" || isMarkdownFile) {
       return null;
     }
 
-    return highlightCode(preview.content ?? "", filePath);
-  }, [isMarkdownFile, preview, filePath]);
+    return highlightCode(effectiveContent, filePath);
+  }, [isMarkdownFile, preview, effectiveContent, filePath]);
 
   const gutterWidth = useMemo(() => {
     if (!highlightedLines) return 0;
@@ -270,33 +476,47 @@ function FilePreviewBody({
 
   if (preview.kind === "text") {
     if (isMarkdownFile) {
+      const { frontmatter, body } = splitMarkdownFrontmatter(effectiveContent);
       return (
         <View style={styles.previewScrollContainer}>
           <RNScrollView
             ref={previewScrollRef}
             style={styles.previewContent}
             contentContainerStyle={styles.previewMarkdownScrollContent}
-            onLayout={scrollbar.onLayout}
-            onScroll={scrollbar.onScroll}
-            onContentSizeChange={scrollbar.onContentSizeChange}
+            onLayout={handleVerticalLayout}
+            onScroll={handleVerticalScroll}
+            onContentSizeChange={handleVerticalContentSizeChange}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={!showDesktopWebScrollbar}
           >
-            <MarkdownRenderer text={preview.content ?? ""} />
+            <View ref={syncContentRef} onPointerDown={handleSyncPointerDown}>
+              {frontmatter ? (
+                <View style={styles.frontmatterBlock} testID="file-pane-frontmatter">
+                  <Text selectable style={styles.frontmatterText}>
+                    {frontmatter}
+                  </Text>
+                </View>
+              ) : null}
+              <MarkdownRenderer text={body} />
+            </View>
           </RNScrollView>
           {scrollbar.overlay}
         </View>
       );
     }
 
-    const lines = highlightedLines ?? [[{ text: preview.content ?? "", style: null }]];
+    const lines = highlightedLines ?? [[{ text: effectiveContent, style: null }]];
     const keyedLines = lines.map((tokens, index) => ({
       key: `line-${index}`,
       tokens,
       lineNumber: index + 1,
     }));
     const codeLines = (
-      <View dataSet={CODE_SURFACE_DATASET}>
+      <View
+        ref={syncContentRef}
+        onPointerDown={handleSyncPointerDown}
+        dataSet={CODE_SURFACE_DATASET}
+      >
         {keyedLines.map(({ key, tokens, lineNumber }) => (
           <CodeLine
             key={key}
@@ -318,9 +538,9 @@ function FilePreviewBody({
         <RNScrollView
           ref={previewScrollRef}
           style={styles.previewContent}
-          onLayout={scrollbar.onLayout}
-          onScroll={scrollbar.onScroll}
-          onContentSizeChange={scrollbar.onContentSizeChange}
+          onLayout={handleVerticalLayout}
+          onScroll={handleVerticalScroll}
+          onContentSizeChange={handleVerticalContentSizeChange}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={!showDesktopWebScrollbar}
         >
@@ -328,10 +548,14 @@ function FilePreviewBody({
             <View style={styles.previewCodeScrollContent}>{codeLines}</View>
           ) : (
             <RNScrollView
+              ref={horizontalScrollRef}
               horizontal
               nestedScrollEnabled
-              showsHorizontalScrollIndicator
-              style={webScrollbarStyle}
+              onLayout={horizontalScrollbar.onLayout}
+              onScroll={horizontalScrollbar.onScroll}
+              onContentSizeChange={horizontalScrollbar.onContentSizeChange}
+              scrollEventThrottle={16}
+              showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
               contentContainerStyle={styles.previewCodeScrollContent}
             >
               {codeLines}
@@ -339,12 +563,13 @@ function FilePreviewBody({
           )}
         </RNScrollView>
         {scrollbar.overlay}
+        {horizontalScrollbar.overlay}
       </View>
     );
   }
 
   if (preview.kind === "image") {
-    if (!imagePreviewUri) {
+    if (!svgXml && !imagePreviewUri) {
       return (
         <View style={styles.centerState}>
           <ActivityIndicator size="small" />
@@ -365,11 +590,15 @@ function FilePreviewBody({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={!showDesktopWebScrollbar}
         >
-          <RNImage
-            source={imageSource ?? undefined}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
+          {svgXml ? (
+            <NativeSvgPreview xml={svgXml} size={preview.size} />
+          ) : (
+            <RNImage
+              source={imageSource ?? undefined}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
         </RNScrollView>
         {scrollbar.overlay}
       </View>
@@ -384,15 +613,29 @@ function FilePreviewBody({
   );
 }
 
-export function FilePane({
-  serverId,
-  workspaceRoot,
-  location,
-}: {
+export interface FilePreviewProps {
   serverId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
-}) {
+  /** Live buffer contents to render instead of the disk read (split view). */
+  contentOverride?: string | null;
+  /** Reports what kind of file the read produced (gates the editor modes). */
+  onFileInfo?: (info: FilePreviewFileInfo | null) => void;
+  syncRef?: React.Ref<FilePreviewSyncHandle>;
+  onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
+  onPointerDownSync?: (pointer: PreviewPointerDown) => void;
+}
+
+export function FilePreview({
+  serverId,
+  workspaceRoot,
+  location,
+  contentOverride,
+  onFileInfo,
+  syncRef,
+  onScrolledSync,
+  onPointerDownSync,
+}: FilePreviewProps) {
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isMobile;
@@ -428,6 +671,8 @@ export function FilePane({
       if (!client || !readTarget) {
         return {
           file: null as ExplorerFile | null,
+          imageAttachment: null,
+          svgXml: null,
           error: t("workspace.terminal.hostDisconnected"),
         };
       }
@@ -437,12 +682,14 @@ export function FilePane({
         return {
           file: preview.file,
           imageAttachment: preview.imageAttachment,
+          svgXml: preview.svgXml,
           error: null,
         };
       } catch (error) {
         return {
           file: null,
           imageAttachment: null,
+          svgXml: null,
           error: error instanceof Error ? error.message : t("panels.file.failedToLoad"),
         };
       }
@@ -451,6 +698,33 @@ export function FilePane({
     refetchOnMount: true,
   });
   const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
+
+  // The viewer is always clean, so it simply follows the disk: any watch
+  // event re-reads the file. COMPAT(textEditor): old daemons ignore the
+  // subscription; the viewer falls back to its tab-activation refetch.
+  const refetchFile = query.refetch;
+  useEffect(() => {
+    if (!client || !readTarget) {
+      return;
+    }
+    return client.watchFile(readTarget.cwd, readTarget.path, () => {
+      void refetchFile();
+    });
+  }, [client, readTarget, refetchFile]);
+
+  const fileKind = query.data?.file?.kind ?? null;
+  const onFileInfoRef = useRef(onFileInfo);
+  onFileInfoRef.current = onFileInfo;
+  useEffect(() => {
+    onFileInfoRef.current?.(
+      fileKind
+        ? {
+            kind: fileKind,
+            isMarkdown: fileKind === "text" && isRenderedMarkdownFile(location.path),
+          }
+        : null,
+    );
+  }, [fileKind, location.path]);
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
@@ -467,65 +741,91 @@ export function FilePane({
         isMobile={isMobile}
         location={location}
         imagePreviewUri={imagePreviewUri}
+        svgXml={query.data?.svgXml ?? null}
+        contentOverride={contentOverride}
+        syncRef={syncRef}
+        onScrolledSync={onScrolledSync}
+        onPointerDownSync={onPointerDownSync}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
-  container: {
-    flex: 1,
-    minHeight: 0,
-    backgroundColor: theme.colors.surface0,
-  },
-  centerState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: theme.spacing[4],
-  },
-  loadingText: {
-    marginTop: theme.spacing[2],
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  errorText: {
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
-  emptyText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
-  binaryMetaText: {
-    marginTop: theme.spacing[2],
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  previewScrollContainer: {
-    flex: 1,
-    minHeight: 0,
-  },
-  previewContent: {
-    flex: 1,
-    minHeight: 0,
-  },
-  previewCodeScrollContent: {
-    padding: theme.spacing[4],
-  },
-  previewMarkdownScrollContent: {
-    padding: theme.spacing[4],
-  },
-  previewImageScrollContent: {
-    flexGrow: 1,
-    padding: theme.spacing[4],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  previewImage: {
-    width: "100%",
-    height: 420,
-  },
-}));
+const styles = StyleSheet.create((theme) => {
+  return {
+    container: {
+      flex: 1,
+      minHeight: 0,
+      backgroundColor: theme.colors.surface0,
+    },
+    centerState: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: theme.spacing[4],
+    },
+    loadingText: {
+      marginTop: theme.spacing[2],
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+    },
+    errorText: {
+      color: theme.colors.destructive,
+      fontSize: theme.fontSize.sm,
+      textAlign: "center",
+    },
+    emptyText: {
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+      textAlign: "center",
+    },
+    binaryMetaText: {
+      marginTop: theme.spacing[2],
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+    },
+    previewScrollContainer: {
+      flex: 1,
+      minHeight: 0,
+    },
+    previewContent: {
+      flex: 1,
+      minHeight: 0,
+    },
+    previewCodeScrollContent: {
+      padding: theme.spacing[4],
+    },
+    previewMarkdownScrollContent: {
+      padding: theme.spacing[4],
+    },
+    frontmatterBlock: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 8,
+      backgroundColor: theme.colors.surface1,
+      paddingHorizontal: theme.spacing[3],
+      paddingVertical: theme.spacing[2],
+      marginBottom: theme.spacing[3],
+    },
+    frontmatterText: {
+      color: theme.colors.foregroundMuted,
+      fontFamily: theme.fontFamily.mono,
+      fontSize: theme.fontSize.code,
+      lineHeight: theme.fontSize.code * 1.45,
+    },
+    previewImageScrollContent: {
+      flexGrow: 1,
+      padding: theme.spacing[4],
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewImage: {
+      width: "100%",
+      height: 420,
+    },
+    previewSvg: {
+      width: "100%",
+      height: 420,
+    },
+  };
+});

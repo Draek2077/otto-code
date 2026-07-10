@@ -106,8 +106,9 @@ import {
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import {
   buildOpenProjectRoute,
   buildProjectsSettingsRoute,
@@ -1220,11 +1221,11 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const isCompactLayout = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
   const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
-  const webScrollbarStyle = useWebScrollbarStyle();
-  const scrollViewStyle = useMemo(
-    () => [styles.scrollView, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
+  const showDesktopWebScrollbar = isWeb && !isCompactLayout;
+  const desktopScrollRef = useRef<ScrollView>(null);
+  const desktopScrollbar = useWebScrollViewScrollbar(desktopScrollRef, {
+    enabled: showDesktopWebScrollbar,
+  });
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
@@ -1573,7 +1574,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     return (
       <View style={styles.container}>
         <BackHeader title={t("settings.title")} onBack={handleBackToWorkspace} />
-        <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <SettingsSidebar
             view={view}
             onSelectSection={handleSelectSection}
@@ -1604,7 +1605,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           titleAccessory={detailHeader?.titleAccessory}
           onBack={detailBackHandler}
         />
-        <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>
         </ScrollView>
         {addHostModals}
@@ -1651,9 +1652,21 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
             }
             leftStyle={desktopStyles.detailLeft}
           />
-          <ScrollView style={scrollViewStyle} contentContainerStyle={insetBottomStyle}>
-            <View style={styles.content}>{content}</View>
-          </ScrollView>
+          <View style={styles.scrollView}>
+            <ScrollView
+              ref={desktopScrollRef}
+              style={styles.scrollView}
+              contentContainerStyle={insetBottomStyle}
+              onLayout={desktopScrollbar.onLayout}
+              onScroll={desktopScrollbar.onScroll}
+              onContentSizeChange={desktopScrollbar.onContentSizeChange}
+              scrollEventThrottle={16}
+              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+            >
+              <View style={styles.content}>{content}</View>
+            </ScrollView>
+            {desktopScrollbar.overlay}
+          </View>
         </View>
       </View>
       {addHostModals}

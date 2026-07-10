@@ -33,7 +33,6 @@ import { compactUp } from "@/styles/theme";
 import { Check, CheckCircle } from "@/components/icons/material-icons";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { isWeb } from "@/constants/platform";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
 
@@ -479,7 +478,6 @@ export function DropdownMenuContent({
     useDropdownMenuContext("DropdownMenuContent");
   const [modalVisible, setModalVisible] = useState(false);
   const surfaceNativeID = useId();
-  const webScrollbarStyle = useWebScrollbarStyle();
   const [closing, setClosing] = useState(false);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<Size | null>(null);
@@ -634,8 +632,8 @@ export function DropdownMenuContent({
     align,
   ]);
   const scrollViewportStyle = useMemo(
-    () => [webScrollbarStyle, visibleContentSize ? { height: visibleContentSize.height } : null],
-    [visibleContentSize, webScrollbarStyle],
+    () => (visibleContentSize ? { height: visibleContentSize.height } : null),
+    [visibleContentSize],
   );
 
   if (!modalVisible) return null;

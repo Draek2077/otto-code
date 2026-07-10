@@ -105,7 +105,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
   filterTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   filterTriggerPressed: {
     backgroundColor: theme.colors.surface3,

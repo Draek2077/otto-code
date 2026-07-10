@@ -90,9 +90,17 @@ export function buildOpenAICompatFeatures(input: {
   reasoningEffort: OpenAICompatReasoningEffort;
   autoCompact: OpenAICompatAutoCompact;
   autoCompactDefault: OpenAICompatAutoCompact;
+  /** Provider config hides the per-agent select; the default applies silently. */
+  hideAutoCompact?: boolean;
 }): AgentFeature[] {
-  return [
+  const features: AgentFeature[] = [
     { ...OPENAI_COMPAT_REASONING_FEATURE, value: input.reasoningEffort },
-    { ...buildAutoCompactFeature(input.autoCompactDefault), value: input.autoCompact },
   ];
+  if (!input.hideAutoCompact) {
+    features.push({
+      ...buildAutoCompactFeature(input.autoCompactDefault),
+      value: input.autoCompact,
+    });
+  }
+  return features;
 }

@@ -35,6 +35,7 @@ import {
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
+import { applyTaskListMarkers } from "./task-lists";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
 
@@ -61,7 +62,9 @@ function compactMarkdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRe
   return { style: createCompactMarkdownStyles(theme) };
 }
 
-const defaultMarkdownParser = MarkdownIt({ typographer: true, linkify: true });
+const defaultMarkdownParser = applyTaskListMarkers(
+  MarkdownIt({ typographer: true, linkify: true }),
+);
 const EMPTY_TEXT_STYLE: TextStyle = {};
 const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, minWidth: 0 };
 export interface MarkdownRendererProps {

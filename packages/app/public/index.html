@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#181B1A" />
+    <meta name="theme-color" content="#18181b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Otto" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -85,15 +85,57 @@
         -webkit-app-region: no-drag !important;
       }
 
+      /* Portaled overlays are the second place no-drag is required. Popup
+         menus, dialogs, and sheets render in react-native-web Modal layers
+         appended directly to <body> (plus the #overlay-root portal host) —
+         outside #root and outside any drag-region container, so the scoped
+         rule above never reaches them. Drag regions hit-test ahead of DOM
+         z-order, so without no-drag an open menu is click-dead wherever it
+         overlaps a titlebar strip or a pane tab-bar gutter (context menus
+         open at the cursor — inside that gutter). Unlike app content, these
+         layers exist only while an overlay is open, so they cannot punch
+         persistent holes in the drag strip. */
+      body
+        > :not(#root)
+        :is(
+          button,
+          a,
+          input,
+          textarea,
+          select,
+          [role="button"],
+          [role="link"],
+          [role="textbox"],
+          [role="combobox"],
+          [role="tab"],
+          [role="switch"],
+          [role="checkbox"],
+          [role="slider"],
+          [role="menuitem"],
+          [tabindex],
+          [contenteditable="true"]
+        ) {
+        -webkit-app-region: no-drag !important;
+      }
+
       /* Suppress the browser's default focus outline — it appears on mouse
          clicks and looks out of place against our themed surfaces. Keep a
-         themed ring for keyboard users via :focus-visible. */
+         themed ring for keyboard users via :focus-visible. This is the
+         pre-mount shell ring; once React themes the app the live accent takes
+         over. Accent is theme-chosen now, so mirror the System pair's two
+         defaults: Daylight's deep yellow on light, Twilight's pale blue on
+         dark. */
       *:focus {
         outline: none;
       }
       *:focus-visible {
-        outline: 2px solid #20744a;
+        outline: 2px solid #8c7300;
         outline-offset: 2px;
+      }
+      @media (prefers-color-scheme: dark) {
+        *:focus-visible {
+          outline-color: #7ea6d9;
+        }
       }
     </style>
   </head>

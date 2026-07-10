@@ -12,12 +12,14 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
+  FileText,
   Folder,
   GitBranch,
   GitPullRequest,
   X,
 } from "@/components/icons/material-icons";
 import { Composer } from "@/composer";
+import { Button } from "@/components/ui/button";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import { HostStatusDot } from "@/components/host-status-dot";
@@ -77,6 +79,7 @@ import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import { resolveReadmeFileName, runViewDocumentation } from "./new-workspace-view-documentation";
 import {
   getWorkspaceNamingAttachments,
   remapDraftCwdToWorkspace,
@@ -131,7 +134,7 @@ function resolveVisibleDraftContextScopeKeys(input: {
 }
 
 function isNewWorkspacePending(input: {
-  pendingAction: "chat" | "empty" | null;
+  pendingAction: "chat" | "empty" | "docs" | null;
   isDraftHandoffActive: boolean;
 }): boolean {
   return input.pendingAction !== null || input.isDraftHandoffActive;
@@ -356,6 +359,45 @@ function CheckoutHintBadge({
         <X size={iconSize} color={iconColor} />
       </Pressable>
     </View>
+  );
+}
+
+function ViewDocumentationButton({
+  readmeFileName,
+  onPress,
+  loading,
+  disabled,
+  label,
+  icon,
+}: {
+  readmeFileName: string | null | undefined;
+  onPress: (readmeFileName: string) => void;
+  loading: boolean;
+  disabled: boolean;
+  label: string;
+  icon: ReactElement;
+}) {
+  const handlePress = useCallback(() => {
+    if (readmeFileName) {
+      onPress(readmeFileName);
+    }
+  }, [onPress, readmeFileName]);
+  if (!readmeFileName) {
+    return null;
+  }
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      leftIcon={icon}
+      onPress={handlePress}
+      loading={loading}
+      disabled={disabled}
+      style={styles.viewDocumentationButton}
+      testID="new-workspace-view-documentation"
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -1591,7 +1633,7 @@ export function NewWorkspaceScreen({
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
-  const [pendingAction, setPendingAction] = useState<"chat" | "empty" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"chat" | "empty" | "docs" | null>(null);
   const [manualPickerSelection, setManualPickerSelection] = useState<PickerSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -1681,7 +1723,8 @@ export function NewWorkspaceScreen({
 
   const clientReady = isConnected && Boolean(client);
   const hasSelectedSourceDirectory = selectedSourceDirectory !== null;
-  const pickerQueryEnabled = pickerOpen && clientReady && hasSelectedSourceDirectory;
+  const clientAndDirectoryReady = clientReady && hasSelectedSourceDirectory;
+  const pickerQueryEnabled = pickerOpen && clientAndDirectoryReady;
 
   const checkoutStatusQuery = useQuery({
     queryKey: ["checkout-status", selectedServerId, selectedSourceDirectory],
@@ -1692,12 +1735,27 @@ export function NewWorkspaceScreen({
       const connectedClient = withConnectedClient();
       return connectedClient.getCheckoutStatus(selectedSourceDirectory);
     },
-    enabled: clientReady && hasSelectedSourceDirectory,
+    enabled: clientAndDirectoryReady,
     staleTime: Infinity,
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+
+  const readmeQuery = useQuery({
+    queryKey: ["new-workspace-readme", selectedServerId, selectedSourceDirectory],
+    queryFn: () =>
+      resolveReadmeFileName({
+        sourceDirectory: selectedSourceDirectory,
+        getClient: withConnectedClient,
+      }),
+    enabled: clientAndDirectoryReady,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
+  const readmeFileName = readmeQuery.data;
 
   const currentBranch = checkoutStatusQuery.data?.currentBranch ?? null;
   const { effectiveIsolation, setIsolation, canCreateWorktree, showRefPicker } =
@@ -2028,6 +2086,25 @@ export function NewWorkspaceScreen({
     [composerState, draftId, draftKey, ensureWorkspace, forkDraftSetup, selectedServerId, t, toast],
   );
 
+  const handleViewDocumentation = useCallback(
+    (documentationFileName: string) => {
+      setErrorMessage(null);
+      setPendingAction("docs");
+      void runViewDocumentation({
+        readmeFileName: documentationFileName,
+        ensureWorkspace,
+        serverId: selectedServerId,
+        sourceDirectory: selectedSourceDirectory,
+        onError: (message) => {
+          setPendingAction(null);
+          setErrorMessage(message);
+          toast.error(message);
+        },
+      });
+    },
+    [ensureWorkspace, selectedServerId, selectedSourceDirectory, toast],
+  );
+
   const renderPickerOption = useCallback(
     (props: {
       option: ComboboxOptionType;
@@ -2176,6 +2253,10 @@ export function NewWorkspaceScreen({
     ],
   );
   const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
+  const viewDocumentationIcon = useMemo(
+    () => <FileText size={theme.iconSize.sm} color={theme.colors.foreground} />,
+    [theme.iconSize.sm, theme.colors.foreground],
+  );
 
   return (
     <FileDropZone style={styles.container}>
@@ -2187,6 +2268,14 @@ export function NewWorkspaceScreen({
             <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
           </View>
           {formStack}
+          <ViewDocumentationButton
+            readmeFileName={readmeFileName}
+            onPress={handleViewDocumentation}
+            loading={pendingAction === "docs"}
+            disabled={isPending}
+            label={t("newWorkspace.viewDocumentation")}
+            icon={viewDocumentationIcon}
+          />
           <Composer
             externalKeyboardShift
             agentId={draftKey}
@@ -2257,13 +2346,18 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 20,
   },
   formStack: {
-    marginBottom: theme.spacing[8],
+    marginBottom: theme.spacing[3],
     gap: theme.spacing[2],
+  },
+  viewDocumentationButton: {
+    alignSelf: "flex-start",
+    marginLeft: theme.spacing[4],
+    marginBottom: theme.spacing[4],
   },
   formStackDesktop: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: theme.spacing[8],
+    marginBottom: theme.spacing[3],
     // The badge adds its own left padding; offset it so the project icon's left
     // edge lands exactly on the "New workspace" title's left edge.
     paddingLeft: theme.spacing[4],

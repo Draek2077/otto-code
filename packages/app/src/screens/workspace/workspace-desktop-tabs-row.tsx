@@ -120,12 +120,11 @@ const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 const TAB_MAX_WIDTH = 200;
 // Width math for the trailing-tools overflow. These mirror the style constants
-// below (newTabActionButton / pin buttons are 22, the artifact trigger is 28,
+// below (newTabActionButton / pin buttons / the artifact trigger are 22,
 // tabsContent pads 4 per side, tabsActions pads 8 per side). The collapse
 // decision must be derived from constants — not from measuring the strip —
 // or hiding a button would change the measurement that decided to hide it.
 const SMALL_TOOL_WIDTH = 22;
-const ARTIFACTS_TOOL_WIDTH = 28;
 const TABS_CONTENT_PADDING_TOTAL = 8;
 const TOOLS_STRIP_PADDING_TOTAL = 16;
 // Background refresh so the Preview icon reflects real server state without
@@ -868,7 +867,7 @@ function useWorkspaceTabToolsOverflow(input: {
       list.push({ key: "preview", width: SMALL_TOOL_WIDTH });
     }
     if (supportsArtifacts && pinnedArtifact) {
-      list.push({ key: "artifacts", width: ARTIFACTS_TOOL_WIDTH });
+      list.push({ key: "artifacts", width: SMALL_TOOL_WIDTH });
     }
     for (const launcher of launchers) {
       list.push({ key: `pin:${launcher.key}`, width: SMALL_TOOL_WIDTH });
@@ -2239,17 +2238,39 @@ const styles = StyleSheet.create((theme) => ({
     borderTopRightRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
   },
-  tabActive: {
-    backgroundColor: theme.colors.surface0,
-    borderTopColor: theme.colors.border,
-    borderLeftColor: theme.colors.border,
-    borderRightColor: theme.colors.border,
-  },
+  // Active outline is an accent-to-border vertical gradient (accent at the tab
+  // top, fading into the plain pane border where the chip meets the content).
+  // On web this is the two-layer gradient-border technique: the fill layer is
+  // clipped to the padding box, the gradient layer to the border box, so the
+  // gradient shows only through the transparent 1px border ring. Native can't
+  // paint gradient borders, so it falls back to a solid accent ring.
+  tabActive: isWeb
+    ? ({
+        backgroundImage:
+          `linear-gradient(${theme.colors.surface0}, ${theme.colors.surface0}), ` +
+          `linear-gradient(to bottom, ${theme.colors.accent}, ${theme.colors.border})`,
+        backgroundOrigin: "border-box",
+        backgroundClip: "padding-box, border-box",
+      } as object)
+    : {
+        backgroundColor: theme.colors.surface0,
+        borderTopColor: theme.colors.accent,
+        borderLeftColor: theme.colors.accent,
+        borderRightColor: theme.colors.accent,
+      },
   // Black tab background setting: the active chat tab's fill inside the border
   // goes pure black so it fuses with the black chat pane below (see the
-  // `black` scoped theme in `panels/agent-panel.tsx`).
+  // `black` scoped theme in `panels/agent-panel.tsx`). On web the fill lives
+  // in the first background layer, so it must be re-declared there too.
   tabActiveBlack: {
     backgroundColor: "#000000",
+    ...(isWeb
+      ? ({
+          backgroundImage:
+            "linear-gradient(#000000, #000000), " +
+            `linear-gradient(to bottom, ${theme.colors.accent}, ${theme.colors.border})`,
+        } as object)
+      : {}),
   },
   tabSlot: {
     position: "relative",
@@ -2347,7 +2368,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   newTabActionButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   newTabTooltipText: {
     color: theme.colors.foreground,

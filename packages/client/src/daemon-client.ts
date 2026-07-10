@@ -22,9 +22,19 @@ import type {
   AgentPermissionResolvedMessage,
   CreateAgentRequestMessage,
   CreateOttoWorktreeRequest,
+  CodeListFilesResponse,
+  CodeSymbolLocation,
   FileDownloadTokenResponse,
+  FileEol,
+  FileReplaceFileResult,
+  FileReplaceRequest,
+  FileReplaceResponse,
+  FileSearchResultPayload,
+  FileSearchSummary,
   FileUploadResponse,
   FileExplorerResponse,
+  FileWatchEventPayload,
+  FileWriteResult,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
   GitSetupOptions,
@@ -355,6 +365,50 @@ export interface FileReadResult {
   kind: LegacyFileExplorerFilePayload["kind"];
   modifiedAt: string;
 }
+export interface TextFileReadResult {
+  path: string;
+  content: string;
+  size: number;
+  modifiedAt: string;
+  eol: FileEol;
+  hash: string | null;
+}
+export interface FileWriteOptions {
+  cwd: string;
+  path: string;
+  content: string;
+  expectedModifiedAt: string;
+  expectedHash?: string;
+  /** Only the deleted-file "save re-creates" flow sets these two. */
+  allowCreate?: boolean;
+  eol?: FileEol;
+  requestId?: string;
+}
+export type {
+  FileReplaceFileResult,
+  FileSearchResultPayload,
+  FileSearchSummary,
+  FileWatchEventPayload,
+  FileWriteResult,
+};
+
+export interface FileSearchOptions {
+  cwd: string;
+  query: string;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  regexp?: boolean;
+  include?: string;
+  exclude?: string;
+  /** Called once per file with matches while the scan streams. */
+  onFileResult: (result: FileSearchResultPayload) => void;
+  requestId?: string;
+}
+
+export type FileReplaceFilesInput = FileReplaceRequest["files"];
+export type FileReplaceResultPayload = FileReplaceResponse["payload"];
+export type { CodeSymbolLocation };
+export type CodeListFilesResultPayload = CodeListFilesResponse["payload"];
 export interface FileUploadInput {
   fileName: string;
   mimeType: string;
@@ -1036,6 +1090,10 @@ export class DaemonClient {
   private pendingBinaryFileReads = new Map<string, PendingBinaryFileRead>();
   private activeBinaryFileTransfers = new Map<string, BinaryFileTransferState>();
   private completedBinaryFileReads = new Map<string, FileReadResult>();
+  private readonly fileWatchRefCounts = new Map<
+    string,
+    { count: number; cwd: string; path: string }
+  >();
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
   private readonly logConnectionPath: "direct" | "relay";
@@ -2127,6 +2185,27 @@ export class DaemonClient {
         ...(subscription.workspaceId !== undefined
           ? { workspaceId: subscription.workspaceId }
           : {}),
+      });
+    }
+  }
+
+  // A reconnect starts a fresh daemon session with no watch subscriptions, but
+  // the UI components watching those files never unmount, so watchFile is never
+  // re-called. Re-issue subscribe for every still-referenced file so live
+  // updates resume after a drop.
+  private resubscribeFileWatches(): void {
+    if (this.fileWatchRefCounts.size === 0) {
+      return;
+    }
+    for (const entry of this.fileWatchRefCounts.values()) {
+      if (entry.count <= 0) {
+        continue;
+      }
+      this.sendSessionMessage({
+        type: "file.watch.subscribe.request",
+        cwd: entry.cwd,
+        path: entry.path,
+        requestId: this.createRequestId(),
       });
     }
   }
@@ -3750,6 +3829,200 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Text-editor read: inline JSON path so the payload carries the editor's
+   * save-precondition baseline (modifiedAt, eol, hash) alongside the content.
+   */
+  async readTextFile(cwd: string, path: string, requestId?: string): Promise<TextFileReadResult> {
+    const payload = await this.requestFileExplorer(cwd, path, "file", requestId, false);
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    const file = payload.file;
+    if (!file) {
+      throw new Error("File unavailable.");
+    }
+    if (file.kind !== "text" || typeof file.content !== "string") {
+      throw new Error("File is not a text file.");
+    }
+    return {
+      path: file.path,
+      content: file.content,
+      size: file.size,
+      modifiedAt: file.modifiedAt,
+      // COMPAT(textEditor): added in v0.4.4 — the editor is gated on
+      // features.textEditor, so a gated daemon always sends both fields.
+      eol: file.eol ?? "lf",
+      hash: file.hash ?? null,
+    };
+  }
+
+  /** Conditional save — see FileWriteRequestSchema for the no-clobber contract. */
+  async writeFile(options: FileWriteOptions): Promise<FileWriteResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.write.request",
+        cwd: options.cwd,
+        path: options.path,
+        content: options.content,
+        expectedModifiedAt: options.expectedModifiedAt,
+        expectedHash: options.expectedHash,
+        allowCreate: options.allowCreate,
+        eol: options.eol,
+      },
+      responseType: "file.write.response",
+    });
+    return payload.result;
+  }
+
+  /**
+   * Project-wide search. Per-file results stream through onFileResult (the
+   * daemon emits them in order, before the summary response resolves); the
+   * returned summary carries the completion status and totals.
+   */
+  async searchFiles(options: FileSearchOptions): Promise<FileSearchSummary> {
+    const resolvedRequestId = this.createRequestId(options.requestId);
+    const offResults = this.on("file.search.result", (message) => {
+      if (message.type !== "file.search.result") {
+        return;
+      }
+      if (message.payload.searchId === resolvedRequestId) {
+        options.onFileResult(message.payload);
+      }
+    });
+    try {
+      return await this.sendCorrelatedSessionRequest({
+        requestId: resolvedRequestId,
+        message: {
+          type: "file.search.request",
+          cwd: options.cwd,
+          query: options.query,
+          caseSensitive: options.caseSensitive,
+          wholeWord: options.wholeWord,
+          regexp: options.regexp,
+          include: options.include,
+          exclude: options.exclude,
+        },
+        responseType: "file.search.response",
+      });
+    } finally {
+      offResults();
+    }
+  }
+
+  /** Gitignore-aware workspace file listing for the fuzzy finder. */
+  async listCodeFiles(cwd: string, requestId?: string): Promise<CodeListFilesResultPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.list_files.request", cwd },
+      responseType: "code.list_files.response",
+    });
+  }
+
+  /** Name-based go-to-definition: one hit jumps, multiple hits are a picker. */
+  async findCodeSymbols(
+    cwd: string,
+    name: string,
+    requestId?: string,
+  ): Promise<CodeSymbolLocation[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.symbols.request", cwd, name },
+      responseType: "code.symbols.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.locations;
+  }
+
+  /** Definition symbols for a single file (document outline). */
+  async getCodeOutline(
+    cwd: string,
+    path: string,
+    requestId?: string,
+  ): Promise<CodeSymbolLocation[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.outline.request", cwd, path },
+      responseType: "code.outline.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.symbols;
+  }
+
+  /** Preview-first project replace — see FileReplaceRequestSchema. */
+  async replaceFiles(options: {
+    cwd: string;
+    replacement: string;
+    files: FileReplaceFilesInput;
+    requestId?: string;
+  }): Promise<FileReplaceResultPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.replace.request",
+        cwd: options.cwd,
+        replacement: options.replacement,
+        files: options.files,
+      },
+      responseType: "file.replace.response",
+    });
+  }
+
+  /**
+   * Watch a workspace file for external changes. Reference-counted per
+   * (cwd, path): the daemon subscription is created for the first watcher and
+   * torn down when the last disposer runs; events fan out to every caller.
+   */
+  watchFile(
+    cwd: string,
+    path: string,
+    onEvent: (event: FileWatchEventPayload) => void,
+  ): () => void {
+    const key = `${cwd} ${path}`;
+    const offMessage = this.on("file.watch.event", (message) => {
+      if (message.type !== "file.watch.event") {
+        return;
+      }
+      if (message.payload.cwd === cwd && message.payload.path === path) {
+        onEvent(message.payload);
+      }
+    });
+    let entry = this.fileWatchRefCounts.get(key);
+    if (!entry) {
+      entry = { count: 0, cwd, path };
+      this.fileWatchRefCounts.set(key, entry);
+    }
+    entry.count += 1;
+    if (entry.count === 1) {
+      void this.sendCorrelatedSessionRequest({
+        message: { type: "file.watch.subscribe.request", cwd, path },
+        responseType: "file.watch.subscribe.response",
+      }).catch(() => undefined);
+    }
+    const trackedEntry = entry;
+    let disposed = false;
+    return () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      offMessage();
+      trackedEntry.count -= 1;
+      if (trackedEntry.count <= 0) {
+        this.fileWatchRefCounts.delete(key);
+        void this.sendCorrelatedSessionRequest({
+          message: { type: "file.watch.unsubscribe.request", cwd, path },
+          responseType: "file.watch.unsubscribe.response",
+        }).catch(() => undefined);
+      }
+    };
+  }
+
   async uploadFile(input: FileUploadInput): Promise<FileUploadResult> {
     const bytes = asUint8Array(input.bytes);
     if (!bytes) {
@@ -5299,6 +5572,7 @@ export class DaemonClient {
           this.startLivenessHeartbeat();
           this.resubscribeCheckoutDiffSubscriptions();
           this.resubscribeTerminalDirectorySubscriptions();
+          this.resubscribeFileWatches();
           this.flushPendingSendQueue();
           this.resolveConnect();
         }

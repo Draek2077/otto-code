@@ -6,9 +6,19 @@ import {
   type FileTransferFrame,
 } from "@otto-code/protocol/binary-frames/index";
 import type {
+  CodeListFilesRequest,
+  CodeOutlineRequest,
+  CodeSymbolsRequest,
   FileDownloadTokenRequest,
   FileExplorerRequest,
+  FileReplaceRequest,
+  FileSearchRequest,
+  FileSearchSummary,
   FileUploadRequest,
+  FileWatchSubscribeRequest,
+  FileWatchUnsubscribeRequest,
+  FileWriteRequest,
+  FileWriteResult,
   SessionInboundMessage,
   SessionOutboundMessage,
 } from "../../messages.js";
@@ -19,7 +29,15 @@ import {
   listDirectoryEntries,
   readExplorerFile,
   readExplorerFileBytes,
+  writeExplorerFile,
 } from "../../file-explorer/service.js";
+import { SessionFileWatcher } from "../../file-explorer/file-watcher.js";
+import { replaceInWorkspaceFiles, searchWorkspaceFiles } from "../../file-explorer/file-search.js";
+import {
+  getFileOutline,
+  listWorkspaceFiles,
+  WorkspaceSymbolIndex,
+} from "../../file-explorer/code-index.js";
 import { getProjectIcon } from "../../../utils/project-icon.js";
 
 /**
@@ -39,6 +57,8 @@ export interface WorkspaceFilesSessionOptions {
   downloadTokenStore: DownloadTokenStore;
   ottoHome: string;
   logger: pino.Logger;
+  /** Test hook: tighten the watcher's timing so specs stay fast. */
+  watchOptions?: { pollIntervalMs?: number; debounceMs?: number };
 }
 
 /**
@@ -53,12 +73,73 @@ export class WorkspaceFilesSession {
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly logger: pino.Logger;
   private readonly fileUploads: FileUploadStore;
+  private readonly fileWatcher: SessionFileWatcher;
+  private readonly symbolIndex = new WorkspaceSymbolIndex();
+  private activeSearchSignal: { superseded: boolean } | null = null;
 
   constructor(options: WorkspaceFilesSessionOptions) {
     this.host = options.host;
     this.downloadTokenStore = options.downloadTokenStore;
     this.logger = options.logger;
     this.fileUploads = new FileUploadStore({ ottoHome: options.ottoHome });
+    this.fileWatcher = new SessionFileWatcher({
+      logger: options.logger,
+      emitEvent: (event) => {
+        this.host.emit({ type: "file.watch.event", payload: event });
+      },
+      ...options.watchOptions,
+    });
+  }
+
+  dispose(): void {
+    this.fileWatcher.dispose();
+  }
+
+  async handleFileWatchSubscribeRequest(request: FileWatchSubscribeRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const respond = (ok: boolean, error: string | null): void => {
+      this.host.emit({
+        type: "file.watch.subscribe.response",
+        payload: {
+          cwd: cwd || request.cwd,
+          path: request.path,
+          ok,
+          error,
+          requestId: request.requestId,
+        },
+      });
+    };
+    if (!cwd) {
+      respond(false, "cwd is required");
+      return;
+    }
+    try {
+      await this.fileWatcher.subscribe({ cwd, path: request.path });
+      respond(true, null);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path },
+        `Failed to subscribe file watch for workspace ${cwd}`,
+      );
+      respond(false, getErrorMessage(error));
+    }
+  }
+
+  handleFileWatchUnsubscribeRequest(request: FileWatchUnsubscribeRequest): void {
+    const cwd = request.cwd.trim();
+    if (cwd) {
+      this.fileWatcher.unsubscribe({ cwd, path: request.path });
+    }
+    this.host.emit({
+      type: "file.watch.unsubscribe.response",
+      payload: {
+        cwd: cwd || request.cwd,
+        path: request.path,
+        ok: Boolean(cwd),
+        error: cwd ? null : "cwd is required",
+        requestId: request.requestId,
+      },
+    });
   }
 
   async handleFileExplorerRequest(request: FileExplorerRequest): Promise<void> {
@@ -166,6 +247,261 @@ export class WorkspaceFilesSession {
           file: null,
           error: getErrorMessage(error),
           requestId,
+        },
+      });
+    }
+  }
+
+  async handleFileWriteRequest(request: FileWriteRequest): Promise<void> {
+    const { cwd: workspaceCwd, path: requestedPath, requestId } = request;
+    const cwd = workspaceCwd.trim();
+    const emitResult = (result: FileWriteResult): void => {
+      this.host.emit({
+        type: "file.write.response",
+        payload: {
+          cwd: cwd || workspaceCwd,
+          path: requestedPath,
+          result,
+          requestId,
+        },
+      });
+    };
+
+    if (!cwd) {
+      emitResult({ status: "error", message: "cwd is required" });
+      return;
+    }
+
+    try {
+      const outcome = await writeExplorerFile({
+        root: cwd,
+        relativePath: requestedPath,
+        content: request.content,
+        expectedModifiedAt: request.expectedModifiedAt,
+        expectedHash: request.expectedHash,
+        allowCreate: request.allowCreate,
+        eol: request.eol,
+      });
+      if (outcome.status === "ok") {
+        // The file's symbols may have changed; the next lookup rebuilds.
+        this.symbolIndex.invalidate(cwd);
+      }
+      emitResult(outcome);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: requestedPath },
+        `Failed to fulfill file write request for workspace ${cwd}`,
+      );
+      emitResult({ status: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  async handleFileSearchRequest(request: FileSearchRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const respond = (summary: Omit<FileSearchSummary, "cwd" | "requestId">): void => {
+      this.host.emit({
+        type: "file.search.response",
+        payload: { cwd: cwd || request.cwd, requestId: request.requestId, ...summary },
+      });
+    };
+    if (!cwd) {
+      respond({ status: "error", error: "cwd is required", fileCount: 0, matchCount: 0 });
+      return;
+    }
+    // One search at a time per session: a new query supersedes the previous
+    // scan mid-flight (the UI issues explicit, press-enter searches).
+    if (this.activeSearchSignal) {
+      this.activeSearchSignal.superseded = true;
+    }
+    const signal = { superseded: false };
+    this.activeSearchSignal = signal;
+    try {
+      const outcome = await searchWorkspaceFiles({
+        root: cwd,
+        query: request.query,
+        caseSensitive: request.caseSensitive,
+        wholeWord: request.wholeWord,
+        regexp: request.regexp,
+        include: request.include,
+        exclude: request.exclude,
+        signal,
+        onFileResult: (result) => {
+          this.host.emit({
+            type: "file.search.result",
+            payload: {
+              cwd,
+              searchId: request.requestId,
+              path: result.path,
+              hash: result.hash,
+              matches: result.matches,
+            },
+          });
+        },
+      });
+      respond({
+        status: outcome.status,
+        error: null,
+        fileCount: outcome.fileCount,
+        matchCount: outcome.matchCount,
+      });
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, query: request.query },
+        `Failed to run project search for workspace ${cwd}`,
+      );
+      respond({ status: "error", error: getErrorMessage(error), fileCount: 0, matchCount: 0 });
+    } finally {
+      if (this.activeSearchSignal === signal) {
+        this.activeSearchSignal = null;
+      }
+    }
+  }
+
+  async handleFileReplaceRequest(request: FileReplaceRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    if (!cwd) {
+      this.host.emit({
+        type: "file.replace.response",
+        payload: {
+          cwd: request.cwd,
+          results: [],
+          error: "cwd is required",
+          requestId: request.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const results = await replaceInWorkspaceFiles({
+        root: cwd,
+        replacement: request.replacement,
+        files: request.files,
+      });
+      if (results.some((result) => result.status === "ok")) {
+        this.symbolIndex.invalidate(cwd);
+      }
+      this.host.emit({
+        type: "file.replace.response",
+        payload: { cwd, results, error: null, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.logger.error({ err: error, cwd }, `Failed to run project replace for workspace ${cwd}`);
+      this.host.emit({
+        type: "file.replace.response",
+        payload: { cwd, results: [], error: getErrorMessage(error), requestId: request.requestId },
+      });
+    }
+  }
+
+  async handleCodeListFilesRequest(request: CodeListFilesRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    if (!cwd) {
+      this.host.emit({
+        type: "code.list_files.response",
+        payload: {
+          cwd: request.cwd,
+          files: [],
+          truncated: false,
+          error: "cwd is required",
+          requestId: request.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const { files, truncated } = await listWorkspaceFiles(cwd);
+      this.host.emit({
+        type: "code.list_files.response",
+        payload: { cwd, files, truncated, error: null, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.logger.error({ err: error, cwd }, `Failed to list files for workspace ${cwd}`);
+      this.host.emit({
+        type: "code.list_files.response",
+        payload: {
+          cwd,
+          files: [],
+          truncated: false,
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  async handleCodeSymbolsRequest(request: CodeSymbolsRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    if (!cwd) {
+      this.host.emit({
+        type: "code.symbols.response",
+        payload: {
+          cwd: request.cwd,
+          name: request.name,
+          locations: [],
+          error: "cwd is required",
+          requestId: request.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const locations = await this.symbolIndex.findSymbol(cwd, request.name);
+      this.host.emit({
+        type: "code.symbols.response",
+        payload: { cwd, name: request.name, locations, error: null, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, name: request.name },
+        `Failed to resolve symbol for workspace ${cwd}`,
+      );
+      this.host.emit({
+        type: "code.symbols.response",
+        payload: {
+          cwd,
+          name: request.name,
+          locations: [],
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  async handleCodeOutlineRequest(request: CodeOutlineRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    if (!cwd) {
+      this.host.emit({
+        type: "code.outline.response",
+        payload: {
+          cwd: request.cwd,
+          path: request.path,
+          symbols: [],
+          error: "cwd is required",
+          requestId: request.requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const symbols = await getFileOutline(cwd, request.path);
+      this.host.emit({
+        type: "code.outline.response",
+        payload: { cwd, path: request.path, symbols, error: null, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path },
+        `Failed to build outline for workspace ${cwd}`,
+      );
+      this.host.emit({
+        type: "code.outline.response",
+        payload: {
+          cwd,
+          path: request.path,
+          symbols: [],
+          error: getErrorMessage(error),
+          requestId: request.requestId,
         },
       });
     }

@@ -149,6 +149,23 @@ describe("workspace attachments store", () => {
     expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
   });
 
+  it("dedupes repeated file context attachments by path while keeping other files", () => {
+    const fileA: WorkspaceComposerAttachment = {
+      kind: "file_context",
+      id: "src/a.ts",
+      path: "src/a.ts",
+    };
+    const fileB: WorkspaceComposerAttachment = {
+      kind: "file_context",
+      id: "src/b.ts",
+      path: "src/b.ts",
+    };
+
+    const withBoth = appendWorkspaceAttachment([fileA], fileB);
+    expect(withBoth).toEqual([fileA, fileB]);
+    expect(appendWorkspaceAttachment(withBoth, { ...fileA })).toEqual([fileB, { ...fileA }]);
+  });
+
   it("adds a workspace attachment against the current scope state", () => {
     resetWorkspaceAttachmentsStore();
     const scopeKey = buildWorkspaceAttachmentScopeKey({

@@ -1347,7 +1347,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   refreshButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   refreshIcon: {
     width: theme.iconSize.md,
@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 4,
   },
   kebabButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   cardBody: {
     paddingHorizontal: theme.spacing[3],

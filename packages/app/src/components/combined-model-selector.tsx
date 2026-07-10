@@ -922,7 +922,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius["2xl"],
   },
   triggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   triggerPressed: {
     backgroundColor: theme.colors.surface0,
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create((theme) => ({
     transform: [{ scale: 0.7 }],
   },
   rowIconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   rowIconButtonPressed: {
     backgroundColor: theme.colors.surface1,
@@ -1057,7 +1057,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   favoriteButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   favoriteButtonPressed: {
     backgroundColor: theme.colors.surface1,

@@ -2564,6 +2564,86 @@ describe("OpenAICompatAgentSession auto-compaction", () => {
     await session.close();
   });
 
+  test("compaction.hideSelector hides the feature and ignores per-agent values", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 60_000, // 60% — above the provider default 50% threshold
+    });
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      compaction: { thresholdPercent: 50, hideSelector: true },
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      // Persisted per-agent value from before the selector was hidden: it must
+      // not override the provider default while the selector stays hidden.
+      featureValues: { auto_compact: "off" },
+    });
+
+    expect(session.features).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact" })]),
+    );
+    await expect(
+      client.listFeatures({
+        provider: "lmstudio",
+        cwd: process.cwd(),
+        featureValues: { auto_compact: "off" },
+      }),
+    ).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact" })]),
+    );
+
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+
+    await session.close();
+  });
+
+  test("applyCompactionConfig re-applies provider settings to a live session", async () => {
+    const endpoint = await startAutoCompactEndpoint({
+      contextLength: 100_000,
+      promptTokens: 60_000, // 60% — below the stock 80%, above the new 50%
+    });
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    expect(session.features).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact", value: "80" })]),
+    );
+
+    // Hide the selector and lower the threshold: the select disappears and
+    // the new default becomes live — compaction now triggers at 60% usage.
+    expect(session.applyCompactionConfig?.({ thresholdPercent: 50, hideSelector: true })).toBe(
+      true,
+    );
+    expect(session.features).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact" })]),
+    );
+    await session.run("First message");
+    await session.run("Second message");
+    expect(endpoint.compactRequests.length).toBeGreaterThan(0);
+
+    // Unhide: the select returns, seeded with the provider default.
+    expect(session.applyCompactionConfig?.({ thresholdPercent: 50 })).toBe(true);
+    expect(session.features).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "auto_compact", value: "50" })]),
+    );
+
+    // No-op re-apply reports no change.
+    expect(session.applyCompactionConfig?.({ thresholdPercent: 50 })).toBe(false);
+
+    await session.close();
+  });
+
   test("pauses after a compaction that cannot get back under the threshold", async () => {
     // Tiny window: the rebuilt conversation (system prompt + tool schemas +
     // a deliberately huge summary) still estimates above the threshold, so

@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import {
   CircleDot,
   FileText,
+  Folder,
   GitPullRequest,
   MessageSquareCode,
   MousePointer2,
@@ -109,6 +110,24 @@ export function getWorkspaceAttachmentPillContent(
       subtitle: getTextAttachmentSubtitle(attachment.attachment, t),
     };
   }
+  if (attachment.kind === "file_context") {
+    const isDirectory = attachment.entryKind === "directory";
+    const fileName = attachment.path.split("/").findLast(Boolean) ?? attachment.path;
+    if (attachment.lineStart != null) {
+      return {
+        icon: attachmentFileIcon,
+        title: `${fileName}:${attachment.lineStart}`,
+        subtitle: t("composer.attachments.lineContext"),
+      };
+    }
+    return {
+      icon: isDirectory ? attachmentFolderIcon : attachmentFileIcon,
+      title: fileName,
+      subtitle: isDirectory
+        ? t("composer.attachments.folderContext")
+        : t("composer.attachments.fileContext"),
+    };
+  }
   return {
     icon: attachmentReviewIcon,
     title: t("message.attachments.review"),
@@ -117,6 +136,7 @@ export function getWorkspaceAttachmentPillContent(
 }
 
 const ThemedAttachmentFileText = withUnistyles(FileText);
+const ThemedAttachmentFolder = withUnistyles(Folder);
 const ThemedAttachmentGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedAttachmentCircleDot = withUnistyles(CircleDot);
 const ThemedAttachmentMessageSquareCode = withUnistyles(MessageSquareCode);
@@ -141,6 +161,7 @@ const attachmentGithubIssueIcon = (
   <ThemedAttachmentCircleDot uniProps={iconForegroundMutedMapping} />
 );
 const attachmentFileIcon = <ThemedAttachmentFileText uniProps={iconForegroundMutedMapping} />;
+const attachmentFolderIcon = <ThemedAttachmentFolder uniProps={iconForegroundMutedMapping} />;
 const attachmentBrowserIcon = (
   <ThemedAttachmentMousePointer uniProps={iconForegroundMutedMapping} />
 );

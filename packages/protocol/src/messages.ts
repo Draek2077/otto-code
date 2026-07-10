@@ -1902,6 +1902,8 @@ const FileExplorerEntrySchema = z.object({
   modifiedAt: z.string(),
 });
 
+export const FileEolSchema = z.enum(["lf", "crlf"]);
+
 const FileExplorerFileSchema = z.object({
   path: z.string(),
   kind: z.enum(["text", "image", "binary"]),
@@ -1910,6 +1912,10 @@ const FileExplorerFileSchema = z.object({
   mimeType: z.string().optional(),
   size: z.number(),
   modifiedAt: z.string(),
+  // COMPAT(textEditor): added in v0.4.4 for editor buffers (text files on the
+  // inline JSON read path only); old daemons omit both fields.
+  eol: FileEolSchema.optional(),
+  hash: z.string().optional(),
 });
 
 const FileExplorerDirectorySchema = z.object({
@@ -1945,6 +1951,112 @@ export const FileUploadRequestSchema = z.object({
   mimeType: z.string().min(1),
   size: z.number().int().nonnegative(),
   modifiedAt: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * Text-editor save. A conditional write: the request carries the client's
+ * last-known file identity and the daemon refuses to clobber content it did
+ * not hand out — a mismatch comes back as a typed conflict, never a write.
+ */
+export const FileWriteRequestSchema = z.object({
+  type: z.literal("file.write.request"),
+  cwd: z.string(),
+  path: z.string(),
+  // LF-normalized UTF-8 text; the daemon re-applies the file's detected EOL.
+  content: z.string(),
+  expectedModifiedAt: z.string(),
+  expectedHash: z.string().optional(),
+  // Set only by the deleted-file "save re-creates" flow; a missing target is
+  // otherwise never an invitation to create one. When the file reappeared in
+  // the meantime, the normal precondition check still applies.
+  allowCreate: z.boolean().optional(),
+  // EOL to apply when creating (there is no on-disk EOL to detect).
+  eol: FileEolSchema.optional(),
+  requestId: z.string(),
+});
+
+// Subscriptions exist only for paths open in tabs; the daemon cleans them up
+// when the session ends.
+export const FileWatchSubscribeRequestSchema = z.object({
+  type: z.literal("file.watch.subscribe.request"),
+  cwd: z.string(),
+  path: z.string(),
+  requestId: z.string(),
+});
+
+export const FileWatchUnsubscribeRequestSchema = z.object({
+  type: z.literal("file.watch.unsubscribe.request"),
+  cwd: z.string(),
+  path: z.string(),
+  requestId: z.string(),
+});
+
+// ctags-style navigation (no LSP). All three are daemon RPCs so the client
+// never touches the filesystem; the symbol index is name-based and honest.
+export const CodeListFilesRequestSchema = z.object({
+  type: z.literal("code.list_files.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+export const CodeSymbolsRequestSchema = z.object({
+  type: z.literal("code.symbols.request"),
+  cwd: z.string(),
+  name: z.string(),
+  requestId: z.string(),
+});
+
+export const CodeOutlineRequestSchema = z.object({
+  type: z.literal("code.outline.request"),
+  cwd: z.string(),
+  path: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * Project-wide search ("Find in Files" semantics: explicit search, not
+ * per-keystroke). Results stream as file.search.result events correlated by
+ * searchId (= this requestId); a new search from the same session supersedes
+ * any in-flight one.
+ */
+export const FileSearchRequestSchema = z.object({
+  type: z.literal("file.search.request"),
+  cwd: z.string(),
+  query: z.string(),
+  caseSensitive: z.boolean().optional(),
+  wholeWord: z.boolean().optional(),
+  regexp: z.boolean().optional(),
+  include: z.string().optional(),
+  exclude: z.string().optional(),
+  requestId: z.string(),
+});
+
+const FileReplaceMatchSchema = z.object({
+  /** 1-based line number. */
+  line: z.number().int().positive(),
+  /** 1-based character column of the match start. */
+  column: z.number().int().positive(),
+  /** Match length in characters. */
+  length: z.number().int().nonnegative(),
+});
+
+/**
+ * Preview-first project replace. Each file carries the hash the preview was
+ * built against — files changed since are skipped and reported, never
+ * corrupted. The replacement string is literal (no capture references in v1).
+ */
+export const FileReplaceRequestSchema = z.object({
+  type: z.literal("file.replace.request"),
+  cwd: z.string(),
+  replacement: z.string(),
+  files: z.array(
+    z.object({
+      path: z.string(),
+      expectedHash: z.string(),
+      matches: z.array(FileReplaceMatchSchema),
+    }),
+  ),
   requestId: z.string(),
 });
 
@@ -2203,6 +2315,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
+  FileWriteRequestSchema,
+  FileWatchSubscribeRequestSchema,
+  FileWatchUnsubscribeRequestSchema,
+  FileSearchRequestSchema,
+  FileReplaceRequestSchema,
+  CodeListFilesRequestSchema,
+  CodeSymbolsRequestSchema,
+  CodeOutlineRequestSchema,
   ClearAgentAttentionMessageSchema,
   ClientHeartbeatMessageSchema,
   PingMessageSchema,
@@ -2451,6 +2571,12 @@ export const ServerInfoStatusPayloadSchema = z
         artifacts: z.boolean().optional(),
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: z.boolean().optional(),
+        // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        textEditor: z.boolean().optional(),
+        // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        projectSearch: z.boolean().optional(),
+        // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        codeIndex: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4011,6 +4137,190 @@ export const FileUploadResponseSchema = z.object({
   }),
 });
 
+export const FileWriteResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    modifiedAt: z.string(),
+    hash: z.string(),
+    size: z.number(),
+    eol: FileEolSchema,
+  }),
+  // The file on disk is not what the client last saw; nothing was written.
+  // `content` carries the current disk text so the client can offer reload or
+  // an informed overwrite (a second conditional write against this identity)
+  // without another round-trip.
+  z.object({
+    status: z.literal("conflict"),
+    modifiedAt: z.string(),
+    hash: z.string(),
+    content: z.string().optional(),
+    eol: FileEolSchema.optional(),
+  }),
+  z.object({
+    status: z.literal("error"),
+    message: z.string(),
+  }),
+]);
+
+export const FileWriteResponseSchema = z.object({
+  type: z.literal("file.write.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    result: FileWriteResultSchema,
+    requestId: z.string(),
+  }),
+});
+
+export const FileWatchSubscribeResponseSchema = z.object({
+  type: z.literal("file.watch.subscribe.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const FileWatchUnsubscribeResponseSchema = z.object({
+  type: z.literal("file.watch.unsubscribe.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeListFilesResponseSchema = z.object({
+  type: z.literal("code.list_files.response"),
+  payload: z.object({
+    cwd: z.string(),
+    files: z.array(z.string()),
+    truncated: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeSymbolKindSchema = z.enum(["function", "class", "type", "variable", "property"]);
+
+export const CodeSymbolLocationSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  kind: CodeSymbolKindSchema,
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+});
+
+export const CodeSymbolsResponseSchema = z.object({
+  type: z.literal("code.symbols.response"),
+  payload: z.object({
+    cwd: z.string(),
+    name: z.string(),
+    locations: z.array(CodeSymbolLocationSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeOutlineResponseSchema = z.object({
+  type: z.literal("code.outline.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    symbols: z.array(CodeSymbolLocationSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const FileSearchMatchSchema = z.object({
+  /** 1-based line number. */
+  line: z.number().int().positive(),
+  /** 1-based character column of the match start within the full line. */
+  column: z.number().int().positive(),
+  /** Match length in characters. */
+  length: z.number().int().nonnegative(),
+  /** Display line (possibly truncated around the match). */
+  lineText: z.string(),
+  /** 0-based offset of the match within lineText. */
+  previewStart: z.number().int().nonnegative(),
+});
+
+// One event per file with matches, streamed while the scan runs.
+export const FileSearchResultEventSchema = z.object({
+  type: z.literal("file.search.result"),
+  payload: z.object({
+    cwd: z.string(),
+    searchId: z.string(),
+    path: z.string(),
+    /** File content hash at match time — the replace precondition. */
+    hash: z.string(),
+    matches: z.array(FileSearchMatchSchema),
+  }),
+});
+
+export const FileSearchResponseSchema = z.object({
+  type: z.literal("file.search.response"),
+  payload: z.object({
+    cwd: z.string(),
+    status: z.enum(["completed", "truncated", "superseded", "error"]),
+    error: z.string().nullable(),
+    fileCount: z.number(),
+    matchCount: z.number(),
+    requestId: z.string(),
+  }),
+});
+
+export const FileReplaceFileResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    path: z.string(),
+    replacedCount: z.number(),
+    modifiedAt: z.string(),
+    hash: z.string(),
+  }),
+  // The file changed since the preview; nothing was written to it.
+  z.object({
+    status: z.literal("skipped"),
+    path: z.string(),
+    reason: z.string(),
+  }),
+  z.object({
+    status: z.literal("error"),
+    path: z.string(),
+    message: z.string(),
+  }),
+]);
+
+export const FileReplaceResponseSchema = z.object({
+  type: z.literal("file.replace.response"),
+  payload: z.object({
+    cwd: z.string(),
+    results: z.array(FileReplaceFileResultSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Pushed to subscribers when a watched file changes under the editor. Carries
+// the fresh disk identity (null when the file is gone) so clients can ignore
+// echoes of their own saves; content is re-read on demand.
+export const FileWatchEventSchema = z.object({
+  type: z.literal("file.watch.event"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    change: z.enum(["changed", "deleted", "recreated"]),
+    modifiedAt: z.string().nullable(),
+    hash: z.string().nullable(),
+    size: z.number().nullable(),
+  }),
+});
+
 export const ListProviderModelsResponseMessageSchema = z.object({
   type: z.literal("list_provider_models_response"),
   payload: z.object({
@@ -4466,6 +4776,16 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectIconResponseSchema,
   FileDownloadTokenResponseSchema,
   FileUploadResponseSchema,
+  FileWriteResponseSchema,
+  FileWatchSubscribeResponseSchema,
+  FileWatchUnsubscribeResponseSchema,
+  FileWatchEventSchema,
+  FileSearchResultEventSchema,
+  FileSearchResponseSchema,
+  FileReplaceResponseSchema,
+  CodeListFilesResponseSchema,
+  CodeSymbolsResponseSchema,
+  CodeOutlineResponseSchema,
   ListProviderModelsResponseMessageSchema,
   ListProviderModesResponseMessageSchema,
   ListProviderFeaturesResponseMessageSchema,
@@ -4843,6 +5163,31 @@ export type FileDownloadTokenRequest = z.infer<typeof FileDownloadTokenRequestSc
 export type FileDownloadTokenResponse = z.infer<typeof FileDownloadTokenResponseSchema>;
 export type FileUploadRequest = z.infer<typeof FileUploadRequestSchema>;
 export type FileUploadResponse = z.infer<typeof FileUploadResponseSchema>;
+export type FileEol = z.infer<typeof FileEolSchema>;
+export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
+export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
+export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
+export type FileWatchSubscribeRequest = z.infer<typeof FileWatchSubscribeRequestSchema>;
+export type FileWatchUnsubscribeRequest = z.infer<typeof FileWatchUnsubscribeRequestSchema>;
+export type FileWatchEvent = z.infer<typeof FileWatchEventSchema>;
+export type FileWatchEventPayload = FileWatchEvent["payload"];
+export type FileSearchRequest = z.infer<typeof FileSearchRequestSchema>;
+export type FileSearchMatch = z.infer<typeof FileSearchMatchSchema>;
+export type FileSearchResultEvent = z.infer<typeof FileSearchResultEventSchema>;
+export type FileSearchResultPayload = FileSearchResultEvent["payload"];
+export type FileSearchResponse = z.infer<typeof FileSearchResponseSchema>;
+export type FileSearchSummary = FileSearchResponse["payload"];
+export type FileReplaceRequest = z.infer<typeof FileReplaceRequestSchema>;
+export type FileReplaceResponse = z.infer<typeof FileReplaceResponseSchema>;
+export type FileReplaceFileResult = z.infer<typeof FileReplaceFileResultSchema>;
+export type CodeListFilesRequest = z.infer<typeof CodeListFilesRequestSchema>;
+export type CodeListFilesResponse = z.infer<typeof CodeListFilesResponseSchema>;
+export type CodeSymbolsRequest = z.infer<typeof CodeSymbolsRequestSchema>;
+export type CodeSymbolsResponse = z.infer<typeof CodeSymbolsResponseSchema>;
+export type CodeOutlineRequest = z.infer<typeof CodeOutlineRequestSchema>;
+export type CodeOutlineResponse = z.infer<typeof CodeOutlineResponseSchema>;
+export type CodeSymbolLocation = z.infer<typeof CodeSymbolLocationSchema>;
+export type CodeSymbolKind = z.infer<typeof CodeSymbolKindSchema>;
 export type RestartServerRequestMessage = z.infer<typeof RestartServerRequestMessageSchema>;
 export type ShutdownServerRequestMessage = z.infer<typeof ShutdownServerRequestMessageSchema>;
 export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessageSchema>;

@@ -1,6 +1,8 @@
 export type { HighlightStyle, HighlightToken } from "./types.js";
 export { getParserForFile, isLanguageSupported, getSupportedExtensions } from "./parsers.js";
 export { highlightCode, highlightLine } from "./highlighter.js";
+export { extractSymbols } from "./symbols.js";
+export type { CodeSymbol, SymbolKind } from "./symbols.js";
 export { darkHighlightColors, lightHighlightColors } from "./colors.js";
 export type { SyntaxThemeId, SyntaxThemeOption, SyntaxColors } from "./themes.js";
 export {

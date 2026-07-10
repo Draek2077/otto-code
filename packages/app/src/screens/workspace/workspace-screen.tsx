@@ -78,6 +78,7 @@ import {
   selectIsAgentListOpen,
   selectIsFileExplorerOpen,
   usePanelStore,
+  type ExplorerTab,
 } from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
@@ -115,6 +116,7 @@ import { shouldShowWorkspaceSetup, useWorkspaceSetupStore } from "@/stores/works
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
+import { getPanelRegistration } from "@/panels/panel-registry";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { confirmArchiveChat } from "@/components/archive-chat-warning";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -199,6 +201,7 @@ import {
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
+import { setFileViewModeFor } from "@/stores/file-view-store";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -1974,6 +1977,8 @@ function WorkspaceScreenContent({
   const toggleFileExplorerForCheckout = usePanelStore(
     (state) => state.toggleFileExplorerForCheckout,
   );
+  const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
+  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
@@ -1996,6 +2001,20 @@ function WorkspaceScreenContent({
       checkout: activeExplorerCheckout,
     });
   }, [activeExplorerCheckout, isMobile, toggleFileExplorerForCheckout]);
+
+  const handleOpenExplorerTab = useCallback(
+    (tab: ExplorerTab) => {
+      if (!activeExplorerCheckout) {
+        return;
+      }
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout: activeExplorerCheckout,
+      });
+      setExplorerTabForCheckout({ ...activeExplorerCheckout, tab });
+    },
+    [activeExplorerCheckout, isMobile, openFileExplorerForCheckout, setExplorerTabForCheckout],
+  );
 
   const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
   const explorerToggleStyle = useCallback(
@@ -2372,13 +2391,23 @@ function WorkspaceScreenContent({
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
-    function handleOpenFileFromExplorer(filePath: string) {
+    function handleOpenFileFromExplorer(
+      filePath: string,
+      options?: { edit?: boolean; lineStart?: number },
+    ) {
       if (!persistenceKey) {
         return;
       }
-      const location = normalizeWorkspaceFileLocation({ path: filePath });
+      const location = normalizeWorkspaceFileLocation({
+        path: filePath,
+        lineStart: options?.lineStart,
+      });
       if (!location) {
         return;
+      }
+      if (options?.edit) {
+        // One tab per file: "Edit" opens the same file tab in editor view.
+        setFileViewModeFor({ persistenceKey, path: location.path, mode: "editor" });
       }
       const tabId = openWorkspaceTabFocused(persistenceKey, createWorkspaceFileTabTarget(location));
       if (tabId) {
@@ -2777,6 +2806,18 @@ function WorkspaceScreenContent({
       if (!tab) {
         return;
       }
+      // Panels can veto their own close (e.g. the editor's unsaved-changes
+      // guard); terminal/agent closes below keep their dedicated confirms.
+      const registration = getPanelRegistration(tab.target.kind);
+      if (registration?.confirmClose) {
+        const confirmed = await registration.confirmClose(tab.target, {
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+        });
+        if (!confirmed) {
+          return;
+        }
+      }
       if (tab.target.kind === "terminal") {
         await handleCloseTerminalTab({ tabId, terminalId: tab.target.terminalId });
         return;
@@ -2787,7 +2828,14 @@ function WorkspaceScreenContent({
       }
       handleCloseDraftOrFileTab({ tabId, target: tab.target });
     },
-    [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab],
+    [
+      allTabDescriptorsById,
+      handleCloseAgentTab,
+      handleCloseDraftOrFileTab,
+      handleCloseTerminalTab,
+      normalizedServerId,
+      normalizedWorkspaceId,
+    ],
   );
 
   const handleCopyAgentId = useCallback(
@@ -3083,13 +3131,24 @@ function WorkspaceScreenContent({
 
   const handleWorkspaceSidebarAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
-      if (action.id !== "sidebar.toggle.right") {
-        return false;
+      switch (action.id) {
+        case "sidebar.toggle.right":
+          handleToggleExplorer();
+          return true;
+        case "sidebar.open.files":
+          handleOpenExplorerTab("files");
+          return true;
+        case "sidebar.open.search":
+          handleOpenExplorerTab("search");
+          return true;
+        case "sidebar.open.changes":
+          handleOpenExplorerTab("changes");
+          return true;
+        default:
+          return false;
       }
-      handleToggleExplorer();
-      return true;
     },
-    [handleToggleExplorer],
+    [handleOpenExplorerTab, handleToggleExplorer],
   );
 
   const handleWorkspacePaneAction = useCallback(
@@ -3209,7 +3268,12 @@ function WorkspaceScreenContent({
 
   useKeyboardActionHandler({
     handlerId: `workspace-sidebar-actions:${normalizedServerId}:${normalizedWorkspaceId}`,
-    actions: ["sidebar.toggle.right"] as const,
+    actions: [
+      "sidebar.toggle.right",
+      "sidebar.open.files",
+      "sidebar.open.search",
+      "sidebar.open.changes",
+    ] as const,
     enabled: Boolean(isRouteFocused && normalizedServerId && normalizedWorkspaceId),
     priority: 100,
     isActive: () => true,
@@ -3949,7 +4013,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   headerActionButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   // Fixed touch-target box for the mobile "..." trigger — doubled alongside the
   // icon it wraps (`theme.iconSize.md`/`.lg`) so the icon keeps breathing room
@@ -3985,7 +4049,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   sourceControlButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   sourceControlDiffStat: {
     paddingLeft: theme.spacing[2],
@@ -4006,7 +4070,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   newTabActionButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   newTabTooltipText: {
     fontSize: theme.fontSize.sm,

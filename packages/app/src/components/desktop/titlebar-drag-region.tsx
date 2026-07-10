@@ -19,7 +19,11 @@ import { isNative } from "@/constants/platform";
  * bounding boxes (electron/electron#7605), so a global no-drag rule lets chat
  * content scrolled behind the titlebar punch invisible holes in the drag strip.
  * Unannotated elements never subtract from a drag region, so scoping the rule
- * fixes that without touching how content renders.
+ * fixes that without touching how content renders. Portaled overlay layers
+ * (react-native-web Modal divs and #overlay-root, both direct children of
+ * <body>) get their own no-drag rule in index.html: menus and dialogs float
+ * above the strips and would otherwise be click-dead over them, and they only
+ * exist while open so they can't punch persistent holes.
  *
  * The resizer is Windows/Linux only (titlebarpart.css:249 scopes to .windows/.linux).
  * On macOS, Electron handles edge resize natively.

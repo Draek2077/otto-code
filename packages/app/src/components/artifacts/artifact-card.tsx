@@ -376,7 +376,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.base,
   },
   headerActionHovered: {
-    backgroundColor: theme.colors.surface3,
+    backgroundColor: theme.colors.surfaceHover,
   },
   headerActionPressed: {
     backgroundColor: theme.colors.surface4,

@@ -60,6 +60,7 @@ import Animated, {
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { MarkdownRenderer, type MarkdownStyles } from "@/components/markdown/renderer";
+import { applyTaskListMarkers } from "@/components/markdown/task-lists";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
@@ -1572,7 +1573,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   spacing = "default",
 }: AssistantMessageProps) {
   const markdownParser = useMemo(() => {
-    const parser = MarkdownIt({ typographer: true, linkify: true });
+    const parser = applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }));
     const defaultValidateLink = parser.validateLink.bind(parser);
     parser.validateLink = (url: string) => {
       if (url.trim().toLowerCase().startsWith("file://")) {

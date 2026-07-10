@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Heart } from "@/components/icons/material-icons";
@@ -23,6 +23,9 @@ export function CommunityLinks() {
     (color: string) => <DiscordIcon color={color} size={iconSize.sm} />,
     [iconSize.sm],
   );
+  const githubIcon = useMemo(() => ({ render: renderGitHubIcon }), [renderGitHubIcon]);
+  const heartIcon = useMemo(() => ({ render: renderHeartIcon }), [renderHeartIcon]);
+  const discordIcon = useMemo(() => ({ render: renderDiscordIcon }), [renderDiscordIcon]);
 
   const handleOpenGitHub = useCallback(() => {
     void openExternalUrl("https://github.com/Draek2077/otto-code");
@@ -41,7 +44,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={renderGitHubIcon}
+        leftIcon={githubIcon}
         onPress={handleOpenGitHub}
         testID="community-links-github-star"
       >
@@ -50,7 +53,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={renderHeartIcon}
+        leftIcon={heartIcon}
         onPress={handleOpenSponsor}
         testID="community-links-sponsor"
       >
@@ -59,7 +62,7 @@ export function CommunityLinks() {
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={renderDiscordIcon}
+        leftIcon={discordIcon}
         onPress={handleOpenDiscord}
         testID="community-links-discord"
       >

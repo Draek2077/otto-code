@@ -1401,6 +1401,7 @@ export class Session {
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchPreviewMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
+      this.dispatchWorkspaceFilesMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
@@ -1713,6 +1714,13 @@ export class Session {
         return this.handleWorkspaceClearAttentionRequest(msg);
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchWorkspaceFilesMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "file_explorer_request":
         return this.workspaceFilesSession.handleFileExplorerRequest(msg);
       case "project_icon_request":
@@ -1722,6 +1730,23 @@ export class Session {
       case "file.upload.request":
         this.workspaceFilesSession.handleFileUploadRequest(msg);
         return undefined;
+      case "file.write.request":
+        return this.workspaceFilesSession.handleFileWriteRequest(msg);
+      case "file.watch.subscribe.request":
+        return this.workspaceFilesSession.handleFileWatchSubscribeRequest(msg);
+      case "file.watch.unsubscribe.request":
+        this.workspaceFilesSession.handleFileWatchUnsubscribeRequest(msg);
+        return undefined;
+      case "file.search.request":
+        return this.workspaceFilesSession.handleFileSearchRequest(msg);
+      case "file.replace.request":
+        return this.workspaceFilesSession.handleFileReplaceRequest(msg);
+      case "code.list_files.request":
+        return this.workspaceFilesSession.handleCodeListFilesRequest(msg);
+      case "code.symbols.request":
+        return this.workspaceFilesSession.handleCodeSymbolsRequest(msg);
+      case "code.outline.request":
+        return this.workspaceFilesSession.handleCodeOutlineRequest(msg);
       default:
         return undefined;
     }
@@ -5878,6 +5903,8 @@ export class Session {
     this.checkoutSession.cleanup();
 
     this.workspaceGitObserver.dispose();
+
+    this.workspaceFilesSession.dispose();
 
     this.artifactSession.stop();
   }

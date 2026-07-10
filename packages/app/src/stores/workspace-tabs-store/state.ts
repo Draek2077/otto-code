@@ -515,13 +515,8 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "browser" && typeof raw.browserId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId });
   }
-  if (kind === "file" && typeof raw.path === "string") {
-    return normalizeWorkspaceTabTarget({
-      kind: "file",
-      path: raw.path,
-      lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
-      lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
-    });
+  if (kind === "file" || kind === "editor") {
+    return coerceFileLikeTabTarget(raw);
   }
   if (kind === "setup" && typeof raw.workspaceId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "setup", workspaceId: raw.workspaceId });
@@ -530,6 +525,22 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
     return normalizeWorkspaceTabTarget({ kind: "artifact", artifactId: raw.artifactId });
   }
   return null;
+}
+
+// COMPAT(unifiedFileTab): added 2026-07-09 — persisted "editor" tabs from
+// before the editor/preview unification coerce to plain file tabs (the view
+// mode now lives in the file-view store). Drop the "editor" acceptance once
+// stored states predating it are gone (target: 2027-01).
+function coerceFileLikeTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
+  if (typeof raw.path !== "string") {
+    return null;
+  }
+  return normalizeWorkspaceTabTarget({
+    kind: "file",
+    path: raw.path,
+    lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
+    lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
+  });
 }
 
 function migrateSingleTab(rawTab: unknown, now: number): WorkspaceTab | null {

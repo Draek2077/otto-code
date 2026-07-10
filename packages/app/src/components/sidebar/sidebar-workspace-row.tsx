@@ -766,6 +766,6 @@ const styles = StyleSheet.create((theme) => ({
     marginLeft: 2,
   },
   kebabButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
 }));

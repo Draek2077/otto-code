@@ -314,7 +314,7 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   splitButtonPrimaryDisabled: {
     opacity: 0.6,
@@ -343,6 +343,6 @@ const styles = StyleSheet.create((theme) => ({
     borderLeftColor: theme.colors.borderAccent,
   },
   splitButtonCaretHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
 }));

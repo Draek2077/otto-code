@@ -152,7 +152,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   buttonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceHover,
   },
   label: {
     // Explicit compact bump (not left to the ambient theme-patch scale).

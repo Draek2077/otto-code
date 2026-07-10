@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { Plus } from "@/components/icons/material-icons";
+import { FilePlus, Plus } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
@@ -230,16 +230,31 @@ function ArtifactsBody({
     );
   }
 
-  let emptyFilterText = "No artifacts yet";
+  if (!hasAny) {
+    return (
+      <View style={styles.centered} testID="artifacts-empty">
+        <Text style={styles.message}>No artifacts yet</Text>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={FilePlus}
+          onPress={onCreate}
+          testID="artifacts-empty-new"
+        >
+          Create an artifact
+        </Button>
+      </View>
+    );
+  }
+
+  let emptyFilterText = "No artifacts for this project";
   if (statusFilter !== "all") {
     const label = STATUS_FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label;
     emptyFilterText = `No ${label?.toLowerCase()} artifacts`;
-  } else if (projectFilter !== undefined) {
-    emptyFilterText = "No artifacts for this project";
   }
 
   // The filter is always shown so every project stays selectable — including
-  // ones with no artifacts, which fall through to the watermark below.
+  // ones with no artifacts, which fall through to the empty text below.
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
@@ -279,18 +294,8 @@ function ArtifactsBody({
             onDelete={onDelete}
           />
         ) : (
-          <View style={styles.filterEmpty} testID="artifacts-empty">
+          <View style={styles.filterEmpty} testID="artifacts-filter-empty">
             <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
-            {hasAny ? null : (
-              <Button
-                variant="ghost"
-                leftIcon={Plus}
-                onPress={onCreate}
-                testID="artifacts-empty-new"
-              >
-                Create your first artifact
-              </Button>
-            )}
           </View>
         )}
       </ScrollView>
@@ -341,7 +346,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingVertical: theme.spacing[6],
     alignItems: "center",
-    gap: theme.spacing[4],
   },
   filterEmptyText: {
     color: theme.colors.foregroundMuted,

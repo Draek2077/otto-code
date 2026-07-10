@@ -84,7 +84,7 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   slotHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
 }));
 

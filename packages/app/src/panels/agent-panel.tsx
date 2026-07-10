@@ -1420,6 +1420,16 @@ function ActiveAgentComposer({
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const handleOpenWorkspaceAttachment = useCallback(
     (attachment: WorkspaceComposerAttachment) => {
+      if (attachment.kind === "file_context") {
+        if (attachment.entryKind === "directory") {
+          return;
+        }
+        paneContext.openFileInWorkspace({
+          location: { path: attachment.path },
+          disposition: "main",
+        });
+        return;
+      }
       if (attachment.kind !== "review") {
         return;
       }
@@ -1437,7 +1447,13 @@ function ActiveAgentComposer({
         tab: "changes",
       });
     },
-    [isCompactFormFactor, openFileExplorerForCheckout, serverId, setExplorerTabForCheckout],
+    [
+      isCompactFormFactor,
+      openFileExplorerForCheckout,
+      paneContext,
+      serverId,
+      setExplorerTabForCheckout,
+    ],
   );
 
   const handleClientSlashCommand = useCallback(
@@ -1539,6 +1555,7 @@ function ActiveAgentComposer({
         onChangeText={agentInputDraft.setText}
         attachments={agentInputDraft.attachments}
         attachmentScopeKeys={attachmentScopeKeys}
+        attachmentWriteScopeKey={workspaceAttachmentScopeKey}
         onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
         onChangeAttachments={agentInputDraft.setAttachments}
         cwd={cwd}

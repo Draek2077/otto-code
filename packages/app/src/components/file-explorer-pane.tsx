@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactElement, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -24,14 +32,26 @@ import {
   Eye,
   EyeOff,
   MoreVertical,
+  Paperclip,
   RotateCw,
+  Search,
+  SquarePen,
 } from "@/components/icons/material-icons";
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
+import { FileFinderOverlay } from "@/components/file-finder-overlay";
+import {
+  useWorkspaceAttachments,
+  useWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
 import { useDownloadStore } from "@/stores/download-store";
 import {
   DropdownMenu,
@@ -40,6 +60,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  contextMenuAnchorFromEvent,
+} from "@/components/ui/context-menu";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 import { usePanelStore, type SortOption } from "@/stores/panel-store";
@@ -74,6 +101,17 @@ interface TreeRowItemProps {
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void;
   onDownloadEntry: (entry: ExplorerEntry) => void;
+  onEditEntry?: (entry: ExplorerEntry) => void;
+  onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  onShowContextMenu?: (request: EntryContextMenuRequest) => void;
+  isInContext: boolean;
+}
+
+/** Right-click target for the pane-level context menu (web only). */
+interface EntryContextMenuRequest {
+  entry: ExplorerEntry;
+  x: number;
+  y: number;
 }
 
 function stopPressInPropagation(event: { stopPropagation?: () => void }) {
@@ -115,6 +153,10 @@ function TreeRowItem({
   onEntryPress,
   onCopyPath,
   onDownloadEntry,
+  onEditEntry,
+  onToggleContextEntry,
+  onShowContextMenu,
+  isInContext,
 }: TreeRowItemProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -123,6 +165,20 @@ function TreeRowItem({
   const handlePress = useCallback(() => {
     onEntryPress(entry);
   }, [onEntryPress, entry]);
+
+  const handleContextMenu = useCallback(
+    (event: unknown) => {
+      if (!onShowContextMenu) {
+        return;
+      }
+      const anchor = contextMenuAnchorFromEvent(event);
+      if (!anchor) {
+        return;
+      }
+      onShowContextMenu({ entry, x: anchor.x, y: anchor.y });
+    },
+    [entry, onShowContextMenu],
+  );
 
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -141,6 +197,14 @@ function TreeRowItem({
     onDownloadEntry(entry);
   }, [onDownloadEntry, entry]);
 
+  const handleEdit = useCallback(() => {
+    onEditEntry?.(entry);
+  }, [onEditEntry, entry]);
+
+  const handleToggleContext = useCallback(() => {
+    onToggleContextEntry?.(entry);
+  }, [onToggleContextEntry, entry]);
+
   const copyLeading = useMemo(
     () => <Copy size={14} color={theme.colors.foregroundMuted} />,
     [theme.colors.foregroundMuted],
@@ -149,9 +213,22 @@ function TreeRowItem({
     () => <Download size={14} color={theme.colors.foregroundMuted} />,
     [theme.colors.foregroundMuted],
   );
+  const editLeading = useMemo(
+    () => <SquarePen size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const contextLeading = useMemo(
+    () => <Paperclip size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
 
   return (
-    <Pressable onPress={handlePress} style={pressableStyle}>
+    <Pressable
+      onPress={handlePress}
+      // @ts-ignore - onContextMenu is web-only and not in RN types.
+      onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
+      style={pressableStyle}
+    >
       <TreeIndentGuides depth={depth} />
       <View style={styles.entryInfo}>
         <View style={styles.entryIcon}>
@@ -172,25 +249,26 @@ function TreeRowItem({
           <MoreVertical size={16} color={theme.colors.foregroundMuted} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" width={220}>
-          <View style={styles.contextMetaBlock}>
-            <View style={styles.contextMetaRow}>
-              <Text style={styles.contextMetaLabel} numberOfLines={1}>
-                {t("workspace.fileExplorer.context.size")}
-              </Text>
-              <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
-                {formatFileSize({ size: entry.size })}
-              </Text>
-            </View>
-            <View style={styles.contextMetaRow}>
-              <Text style={styles.contextMetaLabel} numberOfLines={1}>
-                {t("workspace.fileExplorer.context.modified")}
-              </Text>
-              <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
-                {formatTimeAgo(new Date(entry.modifiedAt))}
-              </Text>
-            </View>
-          </View>
+          <EntryMetaBlock entry={entry} />
           <DropdownMenuSeparator />
+          {onToggleContextEntry ? (
+            <DropdownMenuItem
+              leading={contextLeading}
+              onSelect={handleToggleContext}
+              testID={
+                isInContext ? "file-explorer-remove-from-context" : "file-explorer-add-to-context"
+              }
+            >
+              {isInContext
+                ? t("workspace.fileExplorer.context.removeFromContext")
+                : t("workspace.fileExplorer.context.addToContext")}
+            </DropdownMenuItem>
+          ) : null}
+          {entry.kind === "file" && onEditEntry ? (
+            <DropdownMenuItem leading={editLeading} onSelect={handleEdit}>
+              {t("workspace.fileExplorer.context.edit")}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
             {t("workspace.fileExplorer.context.copyPath")}
           </DropdownMenuItem>
@@ -205,11 +283,132 @@ function TreeRowItem({
   );
 }
 
+function EntryMetaBlock({ entry }: { entry: ExplorerEntry }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.contextMetaBlock}>
+      <View style={styles.contextMetaRow}>
+        <Text style={styles.contextMetaLabel} numberOfLines={1}>
+          {t("workspace.fileExplorer.context.size")}
+        </Text>
+        <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
+          {formatFileSize({ size: entry.size })}
+        </Text>
+      </View>
+      <View style={styles.contextMetaRow}>
+        <Text style={styles.contextMetaLabel} numberOfLines={1}>
+          {t("workspace.fileExplorer.context.modified")}
+        </Text>
+        <Text style={styles.contextMetaValue} numberOfLines={1} ellipsizeMode="tail">
+          {formatTimeAgo(new Date(entry.modifiedAt))}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Pane-level right-click menu (web only) — one shared instance serving every
+ * tree row, mirroring the row's "..." dropdown actions.
+ */
+function EntryContextMenu({
+  request,
+  onOpenChange,
+  onCopyPath,
+  onDownloadEntry,
+  onEditEntry,
+  onToggleContextEntry,
+  isInContext,
+}: {
+  request: EntryContextMenuRequest | null;
+  onOpenChange: (open: boolean) => void;
+  onCopyPath: (path: string) => void;
+  onDownloadEntry: (entry: ExplorerEntry) => void;
+  onEditEntry?: (entry: ExplorerEntry) => void;
+  onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  isInContext: boolean;
+}) {
+  const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const entry = request?.entry ?? null;
+
+  const handleToggleContext = useCallback(() => {
+    if (entry) onToggleContextEntry?.(entry);
+  }, [entry, onToggleContextEntry]);
+  const handleEdit = useCallback(() => {
+    if (entry) onEditEntry?.(entry);
+  }, [entry, onEditEntry]);
+  const handleCopy = useCallback(() => {
+    if (entry) onCopyPath(entry.path);
+  }, [entry, onCopyPath]);
+  const handleDownload = useCallback(() => {
+    if (entry) onDownloadEntry(entry);
+  }, [entry, onDownloadEntry]);
+
+  const contextLeading = useMemo(
+    () => <Paperclip size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const editLeading = useMemo(
+    () => <SquarePen size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const copyLeading = useMemo(
+    () => <Copy size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const downloadLeading = useMemo(
+    () => <Download size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+
+  return (
+    <ContextMenu open={request !== null} onOpenChange={onOpenChange} anchor={request}>
+      <ContextMenuContent width={220} testID="file-explorer-context-menu">
+        {entry ? (
+          <>
+            <EntryMetaBlock entry={entry} />
+            <ContextMenuSeparator />
+            {onToggleContextEntry ? (
+              <ContextMenuItem
+                leading={contextLeading}
+                onSelect={handleToggleContext}
+                testID={
+                  isInContext
+                    ? "file-explorer-context-menu-remove-from-context"
+                    : "file-explorer-context-menu-add-to-context"
+                }
+              >
+                {isInContext
+                  ? t("workspace.fileExplorer.context.removeFromContext")
+                  : t("workspace.fileExplorer.context.addToContext")}
+              </ContextMenuItem>
+            ) : null}
+            {entry.kind === "file" && onEditEntry ? (
+              <ContextMenuItem leading={editLeading} onSelect={handleEdit}>
+                {t("workspace.fileExplorer.context.edit")}
+              </ContextMenuItem>
+            ) : null}
+            <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
+              {t("workspace.fileExplorer.context.copyPath")}
+            </ContextMenuItem>
+            {entry.kind === "file" ? (
+              <ContextMenuItem leading={downloadLeading} onSelect={handleDownload}>
+                {t("workspace.fileExplorer.context.download")}
+              </ContextMenuItem>
+            ) : null}
+          </>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 interface FileExplorerPaneProps {
   serverId: string;
   workspaceId?: string | null;
   workspaceRoot: string;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
 interface TreeRow {
@@ -332,6 +531,81 @@ export function FileExplorerPane({
     [hasWorkspaceScope, onOpenFile, selectExplorerEntry],
   );
 
+  const canEditFiles = useTextEditorFeature(serverId);
+  const handleEditEntry = useMemo(() => {
+    if (!canEditFiles || !onOpenFile) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) => {
+      if (!hasWorkspaceScope) {
+        return;
+      }
+      selectExplorerEntry(entry.path);
+      onOpenFile(entry.path, { edit: true });
+    };
+  }, [canEditFiles, hasWorkspaceScope, onOpenFile, selectExplorerEntry]);
+
+  // "Add to context" mirrors the diff pane's review comments: the file lands
+  // in the workspace-scoped attachment store, shows as a composer pill, and
+  // can be removed from either side. Offered only while an agent tab is the
+  // focused pane, so the attachment has a visible destination.
+  const focusedAgentId = useSessionStore(
+    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
+  );
+  const attachmentScopeKey = useWorkspaceAttachmentScopeKey({
+    serverId,
+    workspaceId,
+    cwd: normalizedWorkspaceRoot,
+  });
+  const workspaceAttachments = useWorkspaceAttachments(attachmentScopeKey);
+  const contextFilePaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const attachment of workspaceAttachments) {
+      if (attachment.kind === "file_context") {
+        paths.add(attachment.path);
+      }
+    }
+    return paths;
+  }, [workspaceAttachments]);
+  const handleToggleContextEntry = useMemo(() => {
+    if (!focusedAgentId) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) => {
+      const { attachmentsByScope, setWorkspaceAttachments, addWorkspaceAttachment } =
+        useWorkspaceAttachmentsStore.getState();
+      const current = attachmentsByScope[attachmentScopeKey] ?? [];
+      const remaining = current.filter(
+        (attachment) => !(attachment.kind === "file_context" && attachment.path === entry.path),
+      );
+      if (remaining.length !== current.length) {
+        setWorkspaceAttachments({ scopeKey: attachmentScopeKey, attachments: remaining });
+        return;
+      }
+      addWorkspaceAttachment({
+        scopeKey: attachmentScopeKey,
+        attachment: {
+          kind: "file_context",
+          id: entry.path,
+          path: entry.path,
+          entryKind: entry.kind,
+        },
+      });
+    };
+  }, [attachmentScopeKey, focusedAgentId]);
+
+  const [contextMenuRequest, setContextMenuRequest] = useState<EntryContextMenuRequest | null>(
+    null,
+  );
+  const handleShowContextMenu = useCallback((request: EntryContextMenuRequest) => {
+    setContextMenuRequest(request);
+  }, []);
+  const handleContextMenuOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setContextMenuRequest(null);
+    }
+  }, []);
+
   const handleEntryPress = useCallback(
     (entry: ExplorerEntry) => {
       if (entry.kind === "directory") {
@@ -435,13 +709,21 @@ export function FileExplorerPane({
         onEntryPress={handleEntryPress}
         onCopyPath={handleCopyPath}
         onDownloadEntry={handleDownloadEntry}
+        onEditEntry={handleEditEntry}
+        onToggleContextEntry={handleToggleContextEntry}
+        onShowContextMenu={handleShowContextMenu}
+        contextFilePaths={contextFilePaths}
       />
     ),
     [
+      contextFilePaths,
       expandedPaths,
       handleEntryPress,
       handleCopyPath,
       handleDownloadEntry,
+      handleEditEntry,
+      handleToggleContextEntry,
+      handleShowContextMenu,
       isDirectoryLoading,
       selectedEntryPath,
     ],
@@ -464,6 +746,18 @@ export function FileExplorerPane({
       setCurrentPath: false,
     });
   }, [requestDirectoryListing]);
+
+  const canIndexCode = useProjectSearchFeature(serverId);
+  const [finderOpen, setFinderOpen] = useState(false);
+  const openFinder = useCallback(() => setFinderOpen(true), []);
+  const closeFinder = useCallback(() => setFinderOpen(false), []);
+  const handleFinderOpenFile = useCallback(
+    (path: string) => {
+      selectExplorerEntry(path);
+      onOpenFile?.(path);
+    },
+    [onOpenFile, selectExplorerEntry],
+  );
 
   if (!hasWorkspaceScope) {
     return (
@@ -491,8 +785,29 @@ export function FileExplorerPane({
         handleRefresh={handleRefresh}
         handleBackFromError={handleBackFromError}
         handleRetry={handleRetry}
+        onOpenFinder={canIndexCode ? openFinder : undefined}
         sortTriggerStyle={sortTriggerStyle}
         iconButtonStyle={iconButtonStyle}
+      />
+      {canIndexCode ? (
+        <FileFinderOverlay
+          serverId={serverId}
+          workspaceRoot={normalizedWorkspaceRoot}
+          visible={finderOpen}
+          onClose={closeFinder}
+          onOpenFile={handleFinderOpenFile}
+        />
+      ) : null}
+      <EntryContextMenu
+        request={contextMenuRequest}
+        onOpenChange={handleContextMenuOpenChange}
+        onCopyPath={handleCopyPath}
+        onDownloadEntry={handleDownloadEntry}
+        onEditEntry={handleEditEntry}
+        onToggleContextEntry={handleToggleContextEntry}
+        isInContext={Boolean(
+          contextMenuRequest && contextFilePaths.has(contextMenuRequest.entry.path),
+        )}
       />
     </View>
   );
@@ -514,6 +829,7 @@ interface FileExplorerPaneContentProps {
   handleRefresh: () => void;
   handleBackFromError: () => void;
   handleRetry: () => void;
+  onOpenFinder?: () => void;
   sortTriggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   iconButtonStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
 }
@@ -537,6 +853,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     handleRefresh,
     handleBackFromError,
     handleRetry,
+    onOpenFinder,
     sortTriggerStyle: sortTriggerStyleProp,
     iconButtonStyle: iconButtonStyleProp,
   } = props;
@@ -596,40 +913,67 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           <ChevronDown size={12} color={theme.colors.foregroundMuted} />
         </Pressable>
         <View style={styles.headerActions}>
-          <Pressable
-            onPress={handleToggleHiddenFiles}
-            hitSlop={8}
-            style={hiddenFilesToggleStyle}
-            accessibilityRole="button"
-            accessibilityLabel={hiddenFilesToggleAccessibilityLabel}
-            accessibilityState={hiddenFilesToggleAccessibilityState}
-          >
-            {showHiddenFiles ? (
-              <Eye size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-            ) : (
-              <EyeOff size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-            )}
-          </Pressable>
-          <Pressable
-            onPress={handleRefresh}
-            disabled={isRefreshFetching}
-            hitSlop={8}
-            style={iconButtonStyleProp}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isRefreshFetching
-                ? t("workspace.fileExplorer.actions.refreshing")
-                : t("workspace.fileExplorer.actions.refresh")
-            }
-          >
-            <View style={styles.refreshIcon}>
-              {isRefreshFetching ? (
-                <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          {onOpenFinder ? (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger
+                onPress={onOpenFinder}
+                hitSlop={8}
+                style={iconButtonStyleProp}
+                accessibilityRole="button"
+                accessibilityLabel={t("fileFinder.open")}
+                testID="file-explorer-open-finder"
+              >
+                <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <Text style={styles.tooltipText}>{t("fileFinder.open")}</Text>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger
+              onPress={handleToggleHiddenFiles}
+              hitSlop={8}
+              style={hiddenFilesToggleStyle}
+              accessibilityRole="button"
+              accessibilityLabel={hiddenFilesToggleAccessibilityLabel}
+              accessibilityState={hiddenFilesToggleAccessibilityState}
+            >
+              {showHiddenFiles ? (
+                <Eye size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               ) : (
-                <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <EyeOff size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               )}
-            </View>
-          </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{hiddenFilesToggleAccessibilityLabel}</Text>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger
+              onPress={handleRefresh}
+              disabled={isRefreshFetching}
+              hitSlop={8}
+              style={iconButtonStyleProp}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isRefreshFetching
+                  ? t("workspace.fileExplorer.actions.refreshing")
+                  : t("workspace.fileExplorer.actions.refresh")
+              }
+            >
+              <View style={styles.refreshIcon}>
+                {isRefreshFetching ? (
+                  <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                ) : (
+                  <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                )}
+              </View>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{t("workspace.fileExplorer.actions.refresh")}</Text>
+            </TooltipContent>
+          </Tooltip>
         </View>
       </View>
       {treeRows.length === 0 ? (
@@ -877,6 +1221,10 @@ function TreeRowDispatcher({
   onEntryPress,
   onCopyPath,
   onDownloadEntry,
+  onEditEntry,
+  onToggleContextEntry,
+  onShowContextMenu,
+  contextFilePaths,
 }: {
   info: ListRenderItemInfo<TreeRow>;
   expandedPaths: Set<string>;
@@ -885,6 +1233,10 @@ function TreeRowDispatcher({
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void | Promise<void>;
   onDownloadEntry: (entry: ExplorerEntry) => void;
+  onEditEntry?: (entry: ExplorerEntry) => void;
+  onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  onShowContextMenu?: (request: EntryContextMenuRequest) => void;
+  contextFilePaths: ReadonlySet<string>;
 }) {
   const entry = info.item.entry;
   const depth = info.item.depth;
@@ -903,6 +1255,10 @@ function TreeRowDispatcher({
       onEntryPress={onEntryPress}
       onCopyPath={onCopyPath}
       onDownloadEntry={onDownloadEntry}
+      onEditEntry={onEditEntry}
+      onToggleContextEntry={onToggleContextEntry}
+      onShowContextMenu={onShowContextMenu}
+      isInContext={contextFilePaths.has(entry.path)}
     />
   );
 }
@@ -1065,7 +1421,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.base,
   },
   sortTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   sortTriggerText: {
     fontSize: theme.fontSize.xs,
@@ -1075,6 +1431,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   treeList: {
     flex: 1,
@@ -1200,7 +1560,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   iconButtonActive: {
     backgroundColor: theme.colors.surface2,

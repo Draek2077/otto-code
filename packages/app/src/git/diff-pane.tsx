@@ -35,6 +35,7 @@ import {
   ArrowDownUp,
   ChevronDown,
   Columns2,
+  Copy,
   Download,
   FolderTree,
   GitCommitHorizontal,
@@ -45,6 +46,7 @@ import {
   Pilcrow,
   RefreshCcw,
   RotateCw,
+  SquarePen,
   Upload,
   WrapText,
 } from "@/components/icons/material-icons";
@@ -82,6 +84,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  contextMenuAnchorFromEvent,
+} from "@/components/ui/context-menu";
+import * as Clipboard from "expo-clipboard";
+import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { lineNumberGutterWidth } from "@/components/code-insets";
@@ -205,10 +216,26 @@ interface DiffFileSectionProps {
   showDir?: boolean;
   onToggle: (path: string) => void;
   onHeaderHeightChange?: (path: string, height: number) => void;
+  onShowContextMenu?: (input: DiffContextMenuRequest) => void;
   testID?: string;
 }
 
 const EMPTY_COMMENTS: readonly ReviewDraftComment[] = [];
+
+/** Right-click target for the pane-level context menu (web only). */
+interface DiffContextMenuRequest {
+  path: string;
+  /** 1-based line in the current file, when the click landed on a diff line. */
+  lineStart?: number;
+  x: number;
+  y: number;
+}
+
+type LineContextMenuHandler = (input: {
+  target: ReviewableDiffTarget;
+  x: number;
+  y: number;
+}) => void;
 
 function noopStartComment(): void {}
 
@@ -220,6 +247,7 @@ function LongPressableLine({
   onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
+  onLineContextMenu,
   style,
   children,
 }: {
@@ -228,6 +256,7 @@ function LongPressableLine({
   onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
+  onLineContextMenu?: LineContextMenuHandler;
   style: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
@@ -250,11 +279,31 @@ function LongPressableLine({
       onHoverTargetChange?.(null);
     }
   }, [hoverTargetKey, onHoverChange, onHoverTargetChange]);
+  const handleContextMenu = useCallback(
+    (event: unknown) => {
+      if (!reviewTarget || !onLineContextMenu) {
+        return;
+      }
+      const anchor = contextMenuAnchorFromEvent(event);
+      if (!anchor) {
+        return;
+      }
+      onLineContextMenu({ target: reviewTarget, x: anchor.x, y: anchor.y });
+    },
+    [onLineContextMenu, reviewTarget],
+  );
   const hoverStyle = useMemo(() => [style, DIFF_LINE_HOVER_STYLE], [style]);
 
-  if (isWeb && (onHoverChange || onHoverTargetChange)) {
+  const hasContextMenu = Boolean(reviewTarget && onLineContextMenu);
+  if (isWeb && (onHoverChange || onHoverTargetChange || hasContextMenu)) {
     return (
-      <Pressable onHoverIn={handleHoverIn} onHoverOut={handleHoverOut} style={hoverStyle}>
+      <Pressable
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+        // @ts-ignore - onContextMenu is web-only and not in RN types.
+        onContextMenu={hasContextMenu ? handleContextMenu : undefined}
+        style={hoverStyle}
+      >
         {children}
       </Pressable>
     );
@@ -360,6 +409,7 @@ function DiffTextLine({
   onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
+  onLineContextMenu,
   textTestID,
 }: {
   line: DiffLine;
@@ -370,6 +420,7 @@ function DiffTextLine({
   onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
+  onLineContextMenu?: LineContextMenuHandler;
   textTestID?: string;
 }) {
   const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
@@ -400,6 +451,7 @@ function DiffTextLine({
       onHoverChange={onHoverChange}
       hoverTargetKey={hoverTargetKey}
       onHoverTargetChange={onHoverTargetChange}
+      onLineContextMenu={onLineContextMenu}
       style={containerStyle}
     >
       {line.type !== "header" && visibleTokens ? (
@@ -426,6 +478,7 @@ function SplitTextLine({
   onHoverChange,
   hoverTargetKey,
   onHoverTargetChange,
+  onLineContextMenu,
 }: {
   line: SplitDiffDisplayLine | null;
   wrapLines: boolean;
@@ -434,6 +487,7 @@ function SplitTextLine({
   onHoverChange?: (hovered: boolean) => void;
   hoverTargetKey?: string | null;
   onHoverTargetChange?: (key: string | null) => void;
+  onLineContextMenu?: LineContextMenuHandler;
 }) {
   const visibleTokens = line && hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
   const rowMetricsStyle = useDiffRowMetricsStyle(textMetricsStyle);
@@ -463,6 +517,7 @@ function SplitTextLine({
       onHoverChange={onHoverChange}
       hoverTargetKey={hoverTargetKey}
       onHoverTargetChange={onHoverTargetChange}
+      onLineContextMenu={onLineContextMenu}
       style={containerStyle}
     >
       {visibleTokens ? (
@@ -486,6 +541,7 @@ function DiffLineView({
   textMetricsStyle,
   reviewTarget,
   reviewActions,
+  onLineContextMenu,
 }: {
   line: DiffLine;
   lineNumber: number | null;
@@ -494,6 +550,7 @@ function DiffLineView({
   textMetricsStyle: TextStyle;
   reviewTarget?: ReviewableDiffTarget | null;
   reviewActions?: InlineReviewActions;
+  onLineContextMenu?: LineContextMenuHandler;
 }) {
   const [isLineHovered, setIsLineHovered] = useState(false);
   const visibleTokens = hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
@@ -522,6 +579,7 @@ function DiffLineView({
       reviewTarget={reviewTarget}
       reviewActions={reviewActions}
       onHoverChange={setIsLineHovered}
+      onLineContextMenu={onLineContextMenu}
       style={containerStyle}
     >
       <DiffGutterCell
@@ -553,12 +611,14 @@ function SplitDiffLine({
   wrapLines,
   textMetricsStyle,
   reviewActions,
+  onLineContextMenu,
 }: {
   line: SplitDiffDisplayLine | null;
   gutterWidth: number;
   wrapLines: boolean;
   textMetricsStyle: TextStyle;
   reviewActions?: InlineReviewActions;
+  onLineContextMenu?: LineContextMenuHandler;
 }) {
   const [isLineHovered, setIsLineHovered] = useState(false);
   const visibleTokens = line && hasVisibleDiffTokens(line.tokens) ? line.tokens : null;
@@ -587,6 +647,7 @@ function SplitDiffLine({
       reviewTarget={line?.reviewTarget}
       reviewActions={reviewActions}
       onHoverChange={setIsLineHovered}
+      onLineContextMenu={onLineContextMenu}
       style={containerStyle}
     >
       <DiffGutterCell
@@ -729,6 +790,7 @@ function SplitDiffColumn({
   wrapLines,
   textMetricsStyle,
   reviewActions,
+  onLineContextMenu,
   showDivider = false,
 }: {
   rows: SplitDiffRow[];
@@ -737,6 +799,7 @@ function SplitDiffColumn({
   wrapLines: boolean;
   textMetricsStyle: TextStyle;
   reviewActions?: InlineReviewActions;
+  onLineContextMenu?: LineContextMenuHandler;
   showDivider?: boolean;
 }) {
   const [scrollWidth, setScrollWidth] = useState(0);
@@ -790,6 +853,7 @@ function SplitDiffColumn({
                   wrapLines={wrapLines}
                   textMetricsStyle={textMetricsStyle}
                   reviewActions={reviewActions}
+                  onLineContextMenu={onLineContextMenu}
                 />
                 <InlineReviewRow
                   reviewTarget={line?.reviewTarget}
@@ -881,6 +945,7 @@ function SplitDiffColumn({
                   reviewActions={reviewActions}
                   hoverTargetKey={reviewTargetKey}
                   onHoverTargetChange={setHoveredReviewTargetKey}
+                  onLineContextMenu={onLineContextMenu}
                 />
                 <InlineReviewThreadContent
                   reviewTarget={line?.reviewTarget}
@@ -905,6 +970,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
   showDir = true,
   onToggle,
   onHeaderHeightChange,
+  onShowContextMenu,
   testID,
 }: DiffFileSectionProps) {
   const { t } = useTranslation();
@@ -916,6 +982,20 @@ const DiffFileHeader = memo(function DiffFileHeader({
     pressHandledRef.current = true;
     onToggle(file.path);
   }, [file.path, onToggle]);
+
+  const handleContextMenu = useCallback(
+    (event: unknown) => {
+      if (!onShowContextMenu) {
+        return;
+      }
+      const anchor = contextMenuAnchorFromEvent(event);
+      if (!anchor) {
+        return;
+      }
+      onShowContextMenu({ path: file.path, x: anchor.x, y: anchor.y });
+    },
+    [file.path, onShowContextMenu],
+  );
 
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
@@ -980,6 +1060,8 @@ const DiffFileHeader = memo(function DiffFileHeader({
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             onPress={toggleExpanded}
+            // @ts-ignore - onContextMenu is web-only and not in RN types.
+            onContextMenu={onShowContextMenu ? handleContextMenu : undefined}
           >
             <View style={styles.fileHeaderLeft}>
               {showDir ? null : (
@@ -1032,6 +1114,7 @@ function DiffFileBody({
   codeFontSize,
   textMetricsStyle,
   reviewActions,
+  onLineContextMenu,
   onBodyHeightChange,
   testID,
 }: {
@@ -1041,6 +1124,7 @@ function DiffFileBody({
   codeFontSize: number;
   textMetricsStyle: TextStyle;
   reviewActions?: InlineReviewActions;
+  onLineContextMenu?: LineContextMenuHandler;
   onBodyHeightChange?: (file: ParsedDiffFile, height: number) => void;
   testID?: string;
 }) {
@@ -1102,6 +1186,7 @@ function DiffFileBody({
                 wrapLines={wrapLines}
                 textMetricsStyle={textMetricsStyle}
                 reviewActions={reviewActions}
+                onLineContextMenu={onLineContextMenu}
               />
               <SplitDiffColumn
                 rows={rows}
@@ -1110,6 +1195,7 @@ function DiffFileBody({
                 wrapLines={wrapLines}
                 textMetricsStyle={textMetricsStyle}
                 reviewActions={reviewActions}
+                onLineContextMenu={onLineContextMenu}
                 showDivider
               />
             </View>
@@ -1132,6 +1218,7 @@ function DiffFileBody({
                       textMetricsStyle={textMetricsStyle}
                       reviewTarget={reviewTarget}
                       reviewActions={reviewActions}
+                      onLineContextMenu={onLineContextMenu}
                     />
                     <InlineReviewRow
                       reviewTarget={reviewTarget}
@@ -1190,6 +1277,7 @@ function DiffFileBody({
                       reviewActions={reviewActions}
                       hoverTargetKey={reviewTarget?.key ?? null}
                       onHoverTargetChange={setHoveredReviewTargetKey}
+                      onLineContextMenu={onLineContextMenu}
                       textTestID={`diff-code-text-${index}`}
                     />
                     <InlineReviewThreadContent
@@ -1214,6 +1302,7 @@ interface GitDiffPaneProps {
   workspaceId?: string | null;
   cwd: string;
   enabled?: boolean;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
 type PressableStyleFn = (
@@ -1246,6 +1335,15 @@ const DIFF_OPTIONS_WHITESPACE_ICON = (
 );
 const DIFF_OPTIONS_WRAP_ICON = (
   <ThemedWrapText size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+
+const ThemedSquarePen = withUnistyles(SquarePen);
+const ThemedCopy = withUnistyles(Copy);
+const DIFF_CONTEXT_EDIT_ICON = (
+  <ThemedSquarePen size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_CONTEXT_COPY_PATH_ICON = (
+  <ThemedCopy size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 
 interface DiffLayoutToggleProps {
@@ -1733,7 +1831,7 @@ function shouldEnableCheckoutDiff(input: { paneEnabled: boolean; isGit: boolean 
   return input.paneEnabled && input.isGit;
 }
 
-export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPaneProps) {
+export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }: GitDiffPaneProps) {
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
@@ -2217,6 +2315,51 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
     }
   }, [allFileDiffsExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
 
+  // One pane-level context menu serves every file header and diff line
+  // (web right-click); per-line menus would be too heavy for large diffs.
+  const canEditFiles = useTextEditorFeature(serverId);
+  const [contextMenuRequest, setContextMenuRequest] = useState<DiffContextMenuRequest | null>(null);
+
+  const handleShowFileContextMenu = useCallback((input: DiffContextMenuRequest) => {
+    setContextMenuRequest(input);
+  }, []);
+
+  const handleLineContextMenu = useCallback<LineContextMenuHandler>(({ target, x, y }) => {
+    // Prefer the new-side line number — that's what maps onto the file on
+    // disk. Removed lines fall back to the old-side number as a near match.
+    setContextMenuRequest({
+      path: target.filePath,
+      lineStart: target.newLineNumber ?? target.oldLineNumber ?? undefined,
+      x,
+      y,
+    });
+  }, []);
+
+  const handleContextMenuOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setContextMenuRequest(null);
+    }
+  }, []);
+
+  const handleContextMenuEdit = useCallback(() => {
+    if (!contextMenuRequest || !onOpenFile) {
+      return;
+    }
+    onOpenFile(contextMenuRequest.path, { edit: true, lineStart: contextMenuRequest.lineStart });
+  }, [contextMenuRequest, onOpenFile]);
+
+  const handleContextMenuCopyPath = useCallback(() => {
+    if (!contextMenuRequest) {
+      return;
+    }
+    void Clipboard.setStringAsync(
+      buildAbsoluteExplorerPath({
+        workspaceRoot: normalizedWorkspaceRoot,
+        entryPath: contextMenuRequest.path,
+      }),
+    );
+  }, [contextMenuRequest, normalizedWorkspaceRoot]);
+
   const renderFlatItem = useCallback(
     ({ item }: { item: DiffFlatItem }) => {
       if (item.type === "folder") {
@@ -2243,6 +2386,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
             showDir={viewMode === "flat"}
             onToggle={handleToggleExpanded}
             onHeaderHeightChange={handleHeaderHeightChange}
+            onShowContextMenu={handleShowFileContextMenu}
             testID={`diff-file-${item.fileIndex}`}
           />
         );
@@ -2255,6 +2399,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
           codeFontSize={codeFontSize}
           textMetricsStyle={diffTextMetricsStyle}
           reviewActions={reviewActions}
+          onLineContextMenu={handleLineContextMenu}
           onBodyHeightChange={handleBodyHeightChange}
           testID={`diff-file-${item.fileIndex}-body`}
         />
@@ -2267,6 +2412,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
       handleBodyHeightChange,
       handleFolderRowHeightChange,
       handleHeaderHeightChange,
+      handleLineContextMenu,
+      handleShowFileContextMenu,
       handleToggleExpanded,
       handleToggleFolder,
       reviewActions,
@@ -2390,14 +2537,16 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
     <View style={styles.container}>
       {isGit && (currentBranchName || isMobile) ? (
         <View style={styles.header} testID="changes-header">
-          <BranchSwitcher
-            currentBranchName={currentBranchName}
-            serverId={serverId}
-            workspaceId={workspaceId ?? cwd}
-            workspaceDirectory={cwd}
-            isGitCheckout={isGit}
-            testID="changes-branch-switcher"
-          />
+          <View style={styles.headerBranchArea}>
+            <BranchSwitcher
+              currentBranchName={currentBranchName}
+              serverId={serverId}
+              workspaceId={workspaceId ?? cwd}
+              workspaceDirectory={cwd}
+              isGitCheckout={isGit}
+              testID="changes-branch-switcher"
+            />
+          </View>
           {isMobile ? <GitActionsSplitButton gitActions={gitActions} /> : null}
         </View>
       ) : null}
@@ -2483,6 +2632,31 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled }: GitDiffPane
         {bodyContent}
         {hasChanges ? scrollbar.overlay : null}
       </View>
+
+      <ContextMenu
+        open={contextMenuRequest !== null}
+        onOpenChange={handleContextMenuOpenChange}
+        anchor={contextMenuRequest}
+      >
+        <ContextMenuContent width={220} testID="changes-context-menu">
+          {canEditFiles && onOpenFile ? (
+            <ContextMenuItem
+              leading={DIFF_CONTEXT_EDIT_ICON}
+              onSelect={handleContextMenuEdit}
+              testID="changes-context-menu-edit"
+            >
+              {t("workspace.fileExplorer.context.edit")}
+            </ContextMenuItem>
+          ) : null}
+          <ContextMenuItem
+            leading={DIFF_CONTEXT_COPY_PATH_ICON}
+            onSelect={handleContextMenuCopyPath}
+            testID="changes-context-menu-copy-path"
+          >
+            {t("workspace.fileExplorer.context.copyPath")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </View>
   );
 }
@@ -2495,12 +2669,17 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[2] - 1.75,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  headerBranchArea: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    justifyContent: "center",
   },
   diffStatusContainer: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
@@ -2531,7 +2710,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   diffModeTriggerHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   diffModeTriggerPressed: {
     backgroundColor: theme.colors.surface2,

@@ -1,13 +1,23 @@
-import { forwardRef, useMemo, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import {
+  forwardRef,
+  useMemo,
+  useRef,
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   ScrollView,
   StyleSheet,
+  View,
   type ScrollViewProps,
   type StyleProp,
-  type View,
   type ViewStyle,
 } from "react-native";
 import Animated from "react-native-reanimated";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 export interface FloatingSurfaceProps extends Omit<ComponentProps<typeof Animated.View>, "style"> {
@@ -52,16 +62,43 @@ export function FloatingScrollView({
     return flattened ? inlineUnistylesStyle(stripUnistylesMetadata(flattened)) : undefined;
   }, [style]);
 
-  return (
+  const scrollRef = useRef<ScrollView>(null);
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isCompact;
+  const scrollbar = useWebScrollViewScrollbar(scrollRef, {
+    enabled: showDesktopWebScrollbar,
+  });
+
+  const scrollView = (
     <ScrollView
+      ref={scrollRef}
       bounces={bounces}
       contentContainerStyle={contentContainerStyle}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      showsVerticalScrollIndicator={showDesktopWebScrollbar ? false : showsVerticalScrollIndicator}
+      onLayout={scrollbar.onLayout}
+      onScroll={scrollbar.onScroll}
+      onContentSizeChange={scrollbar.onContentSizeChange}
+      scrollEventThrottle={16}
       style={inlineStyle}
     >
       {children}
     </ScrollView>
+  );
+
+  if (!showDesktopWebScrollbar) {
+    return scrollView;
+  }
+
+  // Wrap the scroll view so the auto-hiding overlay scrollbar can position
+  // against it. The wrapper sizes to the scroll view (which keeps whatever
+  // height/flex bound the caller applied via `style`), so the overlay aligns
+  // to the real viewport and stays inert when the content does not overflow.
+  return (
+    <View>
+      {scrollView}
+      {scrollbar.overlay}
+    </View>
   );
 }
 

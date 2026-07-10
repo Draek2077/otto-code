@@ -63,6 +63,9 @@ function getOpenAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Open chat history attachment";
   }
+  if (attachment.kind === "file_context") {
+    return "Open file context attachment";
+  }
   return t("composer.attachments.openReview");
 }
 
@@ -79,12 +82,18 @@ function getRemoveAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Remove chat history attachment";
   }
+  if (attachment.kind === "file_context") {
+    return "Remove file context attachment";
+  }
   return t("composer.attachments.removeReview");
 }
 
 function getPillTestID(attachment: WorkspaceComposerAttachment): string {
   if (attachment.kind === "chat_history") {
     return "composer-chat-history-attachment-pill";
+  }
+  if (attachment.kind === "file_context") {
+    return "composer-file-context-attachment-pill";
   }
   return "composer-review-attachment-pill";
 }
@@ -167,6 +176,7 @@ function useWorkspaceAttachmentBinding({
         if (
           selected.kind === "browser_element" ||
           selected.kind === "chat_history" ||
+          selected.kind === "file_context" ||
           isPullRequestContextAttachment(selected)
         ) {
           const selectedKey = getAttachmentKey(selected);
@@ -183,7 +193,10 @@ function useWorkspaceAttachmentBinding({
 
   const openAttachment = useCallback(
     ({ attachment }: OpenWorkspaceAttachmentInput) => {
-      if (!isWorkspaceAttachment(attachment) || attachment.kind !== "review") {
+      if (
+        !isWorkspaceAttachment(attachment) ||
+        (attachment.kind !== "review" && attachment.kind !== "file_context")
+      ) {
         return false;
       }
       onOpenWorkspaceAttachment?.(attachment);

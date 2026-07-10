@@ -133,13 +133,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     minWidth: 0,
     paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    marginLeft: -theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
   },
   triggerHovered: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surfaceHover,
   },
   branchLabel: {
     fontSize: {

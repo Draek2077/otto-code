@@ -15,7 +15,7 @@ import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { buildLineDiff, parseUnifiedDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { extensionFromPath, highlightToKeyedLines } from "@/utils/highlight-cache";
@@ -23,8 +23,79 @@ import { HighlightedLines } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
+
+// Vertical code/output scroll with the auto-hiding desktop-web overlay
+// scrollbar. Sections share this so each scroll area gets its own overlay
+// without hand-wiring a ref + hook at every call site.
+function CodeVerticalScroll({
+  style,
+  contentContainerStyle,
+  fill = false,
+  children,
+}: {
+  style: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  fill?: boolean;
+  children: ReactNode;
+}) {
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isCompact;
+  const ref = React.useRef<RNScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(ref, { enabled: showDesktopWebScrollbar });
+  const scrollView = (
+    <ScrollView
+      ref={ref}
+      style={style}
+      contentContainerStyle={contentContainerStyle}
+      nestedScrollEnabled
+      onLayout={scrollbar.onLayout}
+      onScroll={scrollbar.onScroll}
+      onContentSizeChange={scrollbar.onContentSizeChange}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+    >
+      {children}
+    </ScrollView>
+  );
+  if (!showDesktopWebScrollbar) return scrollView;
+  return (
+    <View style={fill ? styles.fillHeight : undefined}>
+      {scrollView}
+      {scrollbar.overlay}
+    </View>
+  );
+}
+
+// Nested horizontal code scroll. An auto-hiding overlay can't pin to the
+// viewport when it lives inside a vertically-scrolling parent, so on desktop
+// web we drop the old always-on tinted scrollbar and hide the native
+// indicator (scrolling still works via trackpad / shift-wheel).
+function CodeHorizontalScroll({
+  style,
+  contentContainerStyle,
+  children,
+}: {
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isCompact;
+  return (
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      style={style}
+      contentContainerStyle={contentContainerStyle}
+      showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
+    >
+      {children}
+    </ScrollView>
+  );
+}
 
 // ---- Content Component ----
 
@@ -46,7 +117,6 @@ interface DetailStyles {
   jsonScrollErrorCombined: StyleProp<ViewStyle>;
   fullBleedContainerStyle: StyleProp<ViewStyle>;
   loadingContainerStyle: StyleProp<ViewStyle>;
-  webScrollbarStyle: StyleProp<ViewStyle>;
   resolvedMaxHeight: number | undefined;
   shouldFill: boolean;
   isFullBleed: boolean;
@@ -70,7 +140,6 @@ function useDetailStyles(
   resolvedMaxHeight: number | undefined,
   fillAvailableHeight: boolean,
 ): DetailStyles {
-  const webScrollbarStyle = useWebScrollbarStyle();
   const isFullBleed = resolveIsFullBleed(detail);
   const shouldFill = resolveShouldFill(detail, fillAvailableHeight);
   const codeBlockStyle = isFullBleed ? styles.fullBleedBlock : styles.diffContainer;
@@ -88,35 +157,26 @@ function useDetailStyles(
       styles.codeVerticalScroll,
       resolvedMaxHeight !== undefined && inlineUnistylesStyle({ maxHeight: resolvedMaxHeight }),
       shouldFill && styles.fillHeight,
-      webScrollbarStyle,
     ],
-    [resolvedMaxHeight, shouldFill, webScrollbarStyle],
+    [resolvedMaxHeight, shouldFill],
   );
   const scrollAreaFillStyle = useMemo(
     () => [
       styles.scrollArea,
       resolvedMaxHeight !== undefined && inlineUnistylesStyle({ maxHeight: resolvedMaxHeight }),
       shouldFill && styles.fillHeight,
-      webScrollbarStyle,
     ],
-    [resolvedMaxHeight, shouldFill, webScrollbarStyle],
+    [resolvedMaxHeight, shouldFill],
   );
   const scrollAreaStyle = useMemo(
     () => [
       styles.scrollArea,
       resolvedMaxHeight !== undefined && inlineUnistylesStyle({ maxHeight: resolvedMaxHeight }),
-      webScrollbarStyle,
     ],
-    [resolvedMaxHeight, webScrollbarStyle],
+    [resolvedMaxHeight],
   );
-  const jsonScrollCombined = useMemo(
-    () => [styles.jsonScroll, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
-  const jsonScrollErrorCombined = useMemo(
-    () => [styles.jsonScroll, styles.jsonScrollError, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
+  const jsonScrollCombined = useMemo(() => styles.jsonScroll, []);
+  const jsonScrollErrorCombined = useMemo(() => [styles.jsonScroll, styles.jsonScrollError], []);
   const fullBleedContainerStyle = useMemo(
     () => [
       isFullBleed ? styles.fullBleedContainer : styles.paddedContainer,
@@ -139,7 +199,6 @@ function useDetailStyles(
     jsonScrollErrorCombined,
     fullBleedContainerStyle,
     loadingContainerStyle,
-    webScrollbarStyle,
     resolvedMaxHeight,
     shouldFill,
     isFullBleed,
@@ -169,19 +228,12 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <ScrollView
+        <CodeVerticalScroll
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
+          fill={ds.shouldFill}
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
                 <Text style={styles.shellPrompt}>$ </Text>
@@ -189,8 +241,8 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
                 {hasOutput ? `\n\n${commandOutput}` : ""}
               </Text>
             </View>
-          </ScrollView>
-        </ScrollView>
+          </CodeHorizontalScroll>
+        </CodeVerticalScroll>
       </View>
     </View>
   );
@@ -214,26 +266,19 @@ function WorktreeSetupDetailSection({
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <ScrollView
+        <CodeVerticalScroll
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
+          fill={ds.shouldFill}
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={styles.scrollText}>
                 {hasLog ? setupLog : `Preparing worktree ${branchName} at ${worktreePath}`}
               </Text>
             </View>
-          </ScrollView>
-        </ScrollView>
+          </CodeHorizontalScroll>
+        </CodeVerticalScroll>
       </View>
     </View>
   );
@@ -379,19 +424,12 @@ function SubAgentDetailSection({
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <ScrollView
+        <CodeVerticalScroll
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
+          fill={ds.shouldFill}
         >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-            contentContainerStyle={styles.codeHorizontalContent}
-          >
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               {childSessionId ? (
                 <Text selectable style={styles.subAgentSessionText}>
@@ -411,8 +449,8 @@ function SubAgentDetailSection({
                 hasActions={hasActions}
               />
             </View>
-          </ScrollView>
-        </ScrollView>
+          </CodeHorizontalScroll>
+        </CodeVerticalScroll>
       </View>
     </View>
   );
@@ -460,18 +498,12 @@ function ScrollableTextSection({
     [content, filePath],
   );
   const body = (
-    <ScrollView
+    <CodeVerticalScroll
       style={ds.scrollAreaFillStyle}
       contentContainerStyle={styles.scrollContent}
-      nestedScrollEnabled
-      showsVerticalScrollIndicator={true}
+      fill={ds.shouldFill}
     >
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={true}
-        style={ds.webScrollbarStyle}
-      >
+      <CodeHorizontalScroll>
         {keyedLines ? (
           <HighlightedLines lines={keyedLines} startLine={startLine} />
         ) : (
@@ -479,8 +511,8 @@ function ScrollableTextSection({
             {content}
           </Text>
         )}
-      </ScrollView>
-    </ScrollView>
+      </CodeHorizontalScroll>
+    </CodeVerticalScroll>
   );
   if (!wrapInSectionFill) return body;
   return <View style={ds.sectionFillStyle}>{body}</View>;
@@ -495,23 +527,17 @@ interface FetchDetailProps {
 function FetchDetailSection({ url, result, ds }: FetchDetailProps) {
   return (
     <View style={ds.sectionFillStyle}>
-      <ScrollView
+      <CodeVerticalScroll
         style={ds.scrollAreaFillStyle}
         contentContainerStyle={styles.scrollContent}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator
+        fill={ds.shouldFill}
       >
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator
-          style={ds.webScrollbarStyle}
-        >
+        <CodeHorizontalScroll>
           <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {result ? `${url}\n\n${result}` : url}
           </Text>
-        </ScrollView>
-      </ScrollView>
+        </CodeHorizontalScroll>
+      </CodeVerticalScroll>
     </View>
   );
 }
@@ -539,23 +565,13 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.content) {
     out.push(
       <View key="search-content" style={styles.section}>
-        <ScrollView
-          style={ds.scrollAreaStyle}
-          contentContainerStyle={styles.scrollContent}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator
-        >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            style={ds.webScrollbarStyle}
-          >
+        <CodeVerticalScroll style={ds.scrollAreaStyle} contentContainerStyle={styles.scrollContent}>
+          <CodeHorizontalScroll>
             <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
               {detail.content}
             </Text>
-          </ScrollView>
-        </ScrollView>
+          </CodeHorizontalScroll>
+        </CodeVerticalScroll>
       </View>,
     );
   }
@@ -640,17 +656,14 @@ function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunct
     );
     out.push(
       <View key={`${section.title}-value`} style={styles.section}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
+        <CodeHorizontalScroll
           style={ds.jsonScrollCombined}
           contentContainerStyle={styles.jsonContent}
-          showsHorizontalScrollIndicator={true}
         >
           <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {value}
           </Text>
-        </ScrollView>
+        </CodeHorizontalScroll>
       </View>,
     );
   }
@@ -742,17 +755,14 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
   return (
     <View style={styles.section}>
       <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCallDetails.error")}</Text>
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
+      <CodeHorizontalScroll
         style={ds.jsonScrollErrorCombined}
         contentContainerStyle={styles.jsonContent}
-        showsHorizontalScrollIndicator={true}
       >
         <Text selectable style={SCROLL_TEXT_ERROR_STYLE} dataSet={CODE_SURFACE_DATASET}>
           {errorText}
         </Text>
-      </ScrollView>
+      </CodeHorizontalScroll>
     </View>
   );
 }

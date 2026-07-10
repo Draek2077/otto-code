@@ -355,7 +355,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   disabled: {
     opacity: 0.5,

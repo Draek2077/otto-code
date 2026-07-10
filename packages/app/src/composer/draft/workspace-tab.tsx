@@ -696,6 +696,7 @@ export function WorkspaceDraftAgentTab({
           onChangeText={draftInput.setText}
           attachments={draftInput.attachments}
           attachmentScopeKeys={attachmentScopeKeys}
+          attachmentWriteScopeKey={workspaceAttachmentScopeKey}
           onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
           onChangeAttachments={draftInput.setAttachments}
           cwd={composerState.workingDir}

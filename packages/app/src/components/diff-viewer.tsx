@@ -6,12 +6,13 @@ import { StyleSheet } from "react-native-unistyles";
 import type { DiffLine } from "@/utils/tool-call-parsers";
 import { diffLinePrefix } from "@/utils/diff-highlight";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { withAlpha } from "@/styles/rgba-alpha";
 import { getCodeInsets } from "./code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
 
@@ -128,7 +129,12 @@ export function DiffViewer({
   const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
   const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
-  const webScrollbarStyle = useWebScrollbarStyle();
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isCompact;
+  const verticalScrollRef = React.useRef<RNScrollView>(null);
+  const verticalScrollbar = useWebScrollViewScrollbar(verticalScrollRef, {
+    enabled: showDesktopWebScrollbar,
+  });
   const handleInnerLayout = React.useCallback(
     (e: { nativeEvent: { layout: { width: number } } }) =>
       setScrollViewWidth(e.nativeEvent.layout.width),
@@ -140,9 +146,12 @@ export function DiffViewer({
       styles.verticalScroll,
       maxHeight !== undefined && inlineUnistylesStyle({ maxHeight }),
       fillAvailableHeight && styles.fillHeight,
-      webScrollbarStyle,
     ],
-    [maxHeight, fillAvailableHeight, webScrollbarStyle],
+    [maxHeight, fillAvailableHeight],
+  );
+  const verticalWrapperStyle = React.useMemo(
+    () => (fillAvailableHeight ? styles.fillHeight : undefined),
+    [fillAvailableHeight],
   );
   const linesContainerStyle = React.useMemo(
     () => [
@@ -180,8 +189,7 @@ export function DiffViewer({
     <ScrollView
       horizontal
       nestedScrollEnabled
-      showsHorizontalScrollIndicator
-      style={webScrollbarStyle}
+      showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
       contentContainerStyle={styles.horizontalContent}
       onLayout={handleInnerLayout}
     >
@@ -190,14 +198,22 @@ export function DiffViewer({
   );
 
   const content = (
-    <ScrollView
-      style={outerScrollStyle}
-      contentContainerStyle={webVerticalContentStyle}
-      nestedScrollEnabled
-      showsVerticalScrollIndicator
-    >
-      {horizontalScroll}
-    </ScrollView>
+    <View style={verticalWrapperStyle}>
+      <ScrollView
+        ref={verticalScrollRef}
+        style={outerScrollStyle}
+        contentContainerStyle={webVerticalContentStyle}
+        nestedScrollEnabled
+        onLayout={verticalScrollbar.onLayout}
+        onScroll={verticalScrollbar.onScroll}
+        onContentSizeChange={verticalScrollbar.onContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+      >
+        {horizontalScroll}
+      </ScrollView>
+      {verticalScrollbar.overlay}
+    </View>
   );
 
   return content;

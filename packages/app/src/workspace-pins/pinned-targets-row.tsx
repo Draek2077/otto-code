@@ -49,7 +49,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   pinButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   tooltipText: {
     color: theme.colors.foreground,

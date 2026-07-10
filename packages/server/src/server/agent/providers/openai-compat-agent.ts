@@ -114,6 +114,12 @@ function resolveAutoCompactDefault(
   return OPENAI_COMPAT_AUTO_COMPACT_FALLBACK;
 }
 
+function resolveKeepRecentTokens(compaction: ProviderCompactionConfig | null | undefined): number {
+  return typeof compaction?.keepRecentTokens === "number" && compaction.keepRecentTokens > 0
+    ? compaction.keepRecentTokens
+    : COMPACTION_KEEP_RECENT_TOKENS;
+}
+
 /**
  * Pre-summarization pruning (zero-LLM) reclaims context before we spend a model
  * call: uneventful tool results are elided and oversized older tool outputs are
@@ -783,15 +789,19 @@ export class OpenAICompatAgentClient implements AgentClient {
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
     const autoCompactDefault = resolveAutoCompactDefault(this.compaction);
+    const hideAutoCompact = this.compaction?.hideSelector === true;
     return buildOpenAICompatFeatures({
       reasoningEffort: normalizeOpenAICompatReasoningEffort(
         config.featureValues?.["reasoning_effort"],
       ),
-      autoCompact: normalizeOpenAICompatAutoCompact(
-        config.featureValues?.["auto_compact"],
-        autoCompactDefault,
-      ),
+      autoCompact: hideAutoCompact
+        ? autoCompactDefault
+        : normalizeOpenAICompatAutoCompact(
+            config.featureValues?.["auto_compact"],
+            autoCompactDefault,
+          ),
       autoCompactDefault,
+      hideAutoCompact,
     });
   }
 
@@ -943,7 +953,13 @@ export class OpenAICompatAgentSession implements AgentSession {
   private modeId: string;
   private reasoningEffort: OpenAICompatReasoningEffort;
   /** Provider-level default for the auto_compact feature select. */
-  private readonly autoCompactDefault: OpenAICompatAutoCompact;
+  private autoCompactDefault: OpenAICompatAutoCompact;
+  /**
+   * Provider config hides the per-agent auto_compact select: the feature is
+   * omitted from `features` and persisted per-agent values are ignored, so
+   * the provider default always applies.
+   */
+  private autoCompactHidden: boolean;
   /** Effective auto-compact setting: "off" or the trigger percentage. */
   private autoCompact: OpenAICompatAutoCompact;
   /**
@@ -954,7 +970,7 @@ export class OpenAICompatAgentSession implements AgentSession {
    */
   private autoCompactDisarmed = false;
   /** Recent-conversation budget kept verbatim through compaction. */
-  private readonly keepRecentTokens: number;
+  private keepRecentTokens: number;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -1019,15 +1035,14 @@ export class OpenAICompatAgentSession implements AgentSession {
       options.config.featureValues?.["reasoning_effort"],
     );
     this.autoCompactDefault = resolveAutoCompactDefault(options.compaction);
-    this.autoCompact = normalizeOpenAICompatAutoCompact(
-      options.config.featureValues?.["auto_compact"],
-      this.autoCompactDefault,
-    );
-    this.keepRecentTokens =
-      typeof options.compaction?.keepRecentTokens === "number" &&
-      options.compaction.keepRecentTokens > 0
-        ? options.compaction.keepRecentTokens
-        : COMPACTION_KEEP_RECENT_TOKENS;
+    this.autoCompactHidden = options.compaction?.hideSelector === true;
+    this.autoCompact = this.autoCompactHidden
+      ? this.autoCompactDefault
+      : normalizeOpenAICompatAutoCompact(
+          options.config.featureValues?.["auto_compact"],
+          this.autoCompactDefault,
+        );
+    this.keepRecentTokens = resolveKeepRecentTokens(options.compaction);
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
@@ -1101,6 +1116,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       reasoningEffort: this.reasoningEffort,
       autoCompact: this.autoCompact,
       autoCompactDefault: this.autoCompactDefault,
+      hideAutoCompact: this.autoCompactHidden,
     });
   }
 
@@ -1123,6 +1139,35 @@ export class OpenAICompatAgentSession implements AgentSession {
       return;
     }
     throw new Error(`Unknown feature: ${featureId}`);
+  }
+
+  /**
+   * Live re-apply of provider-level compaction config so settings edits reach
+   * running chats without a restart. Sessions still sitting on the old default
+   * follow the new default; an explicit per-agent pick is kept unless the
+   * selector is hidden, which always forces the default.
+   */
+  applyCompactionConfig(compaction: ProviderCompactionConfig | null): boolean {
+    const previousDefault = this.autoCompactDefault;
+    const previousHidden = this.autoCompactHidden;
+    const previousValue = this.autoCompact;
+
+    this.autoCompactDefault = resolveAutoCompactDefault(compaction);
+    this.autoCompactHidden = compaction?.hideSelector === true;
+    this.keepRecentTokens = resolveKeepRecentTokens(compaction);
+    if (this.autoCompactHidden || previousValue === previousDefault) {
+      this.autoCompact = this.autoCompactDefault;
+    }
+    if (this.autoCompact !== previousValue) {
+      // Same fresh-mandate rule as setFeature: a deliberate settings change
+      // re-arms a paused auto-compaction.
+      this.autoCompactDisarmed = false;
+    }
+    return (
+      this.autoCompact !== previousValue ||
+      this.autoCompactHidden !== previousHidden ||
+      this.autoCompactDefault !== previousDefault
+    );
   }
 
   private buildSystemPrompt(config: AgentSessionConfig): string {

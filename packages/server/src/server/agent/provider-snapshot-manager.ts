@@ -22,6 +22,7 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./provider-launch-config.js";
+import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import {
   buildProviderRegistry,
   shutdownAgentClients,
@@ -127,7 +128,19 @@ export interface ProviderDiagnosticResult {
 
 export interface AgentManagerProviderState {
   providerDefinitions: Partial<
-    Record<AgentProvider, { enabled: boolean; derivedFromProviderId: string | null }>
+    Record<
+      AgentProvider,
+      {
+        enabled: boolean;
+        derivedFromProviderId: string | null;
+        /**
+         * Provider-level compaction config for daemon-hosted conversations
+         * (openai-compat). Forwarded so live sessions can absorb settings
+         * edits without a restart.
+         */
+        compaction: ProviderCompactionConfig | null;
+      }
+    >
   >;
   clients: Partial<Record<AgentProvider, AgentClient>>;
 }
@@ -251,6 +264,7 @@ export class ProviderSnapshotManager {
       providerDefinitions[provider] = {
         enabled: definition.enabled,
         derivedFromProviderId: definition.derivedFromProviderId,
+        compaction: this.providerOverrides?.[provider]?.compaction ?? null,
       };
       if (definition.enabled) {
         clients[provider] = this.ensureClient(provider, definition);
