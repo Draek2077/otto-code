@@ -3,6 +3,7 @@ import { Keyboard, View, useWindowDimensions } from "react-native";
 import { Portal } from "@gorhom/portal";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
+import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import { Autocomplete, type AutocompleteOption } from "@/components/ui/autocomplete";
 import {
   measureFloatingPanelPortalHost,
@@ -130,8 +131,13 @@ export function AutocompletePopover({
     transform: [{ translateY: openShift.value - shift.value }],
   }));
 
+  // The popover portals into a FloatingPanelPortalHost inside #root, outside
+  // any drag-region container — without the no-drag carve-out its options are
+  // click-dead over Electron drag rects (the New Workspace screen's content
+  // view is one big drag region behind the composer). The frame exists only
+  // while the popover is open, so this can't punch persistent drag holes.
   const composedStyle = useMemo(
-    () => [baseStyle, animatedTransformStyle],
+    () => [baseStyle, animatedTransformStyle, FLOATING_LAYER_NO_DRAG_STYLE],
     [baseStyle, animatedTransformStyle],
   );
 

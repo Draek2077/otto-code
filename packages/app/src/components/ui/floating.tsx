@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated from "react-native-reanimated";
+import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
@@ -33,8 +34,13 @@ export const FloatingSurface = forwardRef<View, FloatingSurfaceProps>(function F
     const flattened = StyleSheet.flatten(frameStyle);
     return flattened ? inlineUnistylesStyle(stripUnistylesMetadata(flattened)) : undefined;
   }, [frameStyle]);
+  // Floating surfaces exist only while their panel is open, so carving them
+  // out of Electron's window-drag rects here can't punch persistent holes in
+  // the titlebar drag strip. Without this, panels portaled inside #root
+  // (e.g. the workspace hover card) are click-dead over drag regions.
   const surfaceStyle = useMemo(
-    () => appendStyle(style, inlineFrameStyle),
+    () =>
+      appendStyle(appendStyle(style, inlineFrameStyle), FLOATING_LAYER_NO_DRAG_STYLE ?? undefined),
     [inlineFrameStyle, style],
   );
   return <Animated.View {...props} ref={ref} style={surfaceStyle} />;

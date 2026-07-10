@@ -5,6 +5,7 @@ import {
 import React from "react";
 import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ElementRef } from "react";
+import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import {
   type BottomSheetController,
   createBottomSheetVisibilityTracker,
@@ -25,11 +26,25 @@ export const IsolatedBottomSheetModal = forwardRef<
   IsolatedBottomSheetModalRef,
   IsolatedBottomSheetModalProps
 >(function IsolatedBottomSheetModal(props, ref) {
-  const { children, presentation = "push", ...bottomSheetProps } = props;
+  const { children, presentation = "push", containerStyle, ...bottomSheetProps } = props;
+  // Gorhom sheets render through @gorhom/portal INSIDE #root, outside both
+  // no-drag backstop rules in index.html — without this carve-out a presented
+  // sheet is click-dead wherever it overlaps an Electron drag rect (titlebar
+  // strips, the New Workspace screen's full-screen drag overlay). The hosting
+  // container is a full-screen view that exists only while the sheet is
+  // presented, so this can't punch persistent holes in the drag strip.
+  const resolvedContainerStyle = useMemo(
+    () =>
+      FLOATING_LAYER_NO_DRAG_STYLE
+        ? [containerStyle, FLOATING_LAYER_NO_DRAG_STYLE]
+        : containerStyle,
+    [containerStyle],
+  );
   const modal = (
     <GorhomBottomSheetModal
       {...bottomSheetProps}
       ref={ref}
+      containerStyle={resolvedContainerStyle}
       enableDismissOnClose
       stackBehavior={presentation}
     >
