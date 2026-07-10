@@ -132,7 +132,6 @@ test.describe("Schedules", () => {
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     const modelTrigger = page.getByTestId("schedule-model-trigger");
     const thinkingTrigger = page.getByTestId("schedule-thinking-trigger");
-    const modeTrigger = page.getByTestId("schedule-mode-trigger");
     await expect(hostTrigger).toBeVisible({ timeout: 30_000 });
     await expect(hostTrigger).toBeDisabled();
     await expectSettled(hostTrigger);
@@ -141,8 +140,9 @@ test.describe("Schedules", () => {
     await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
     await expectSettled(modelTrigger);
     await expect(thinkingTrigger).toHaveCount(0);
-    await expect(modeTrigger).toBeVisible({ timeout: 30_000 });
-    await expectSettled(modeTrigger);
+    // No mode field: schedule runs are always unattended, so the form never
+    // offers a mode picker.
+    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
     await expect(page.getByTestId("schedule-cadence-preset-trigger")).toContainText("Daily 9:00");
@@ -193,7 +193,6 @@ test.describe("Schedules", () => {
     const hostTrigger = page.getByTestId("schedule-host-trigger");
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     const modelTrigger = page.getByTestId("schedule-model-trigger");
-    const modeTrigger = page.getByTestId("schedule-mode-trigger");
 
     await expect(hostTrigger).toContainText("Fake host", { timeout: 30_000 });
     await expect(hostTrigger).toBeDisabled();
@@ -202,8 +201,7 @@ test.describe("Schedules", () => {
     await expectSettled(projectTrigger);
     await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
     await expectSettled(modelTrigger);
-    await expect(modeTrigger).toContainText("Load test", { timeout: 30_000 });
-    await expectSettled(modeTrigger);
+    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("schedule-cadence-preset-trigger")).toContainText("Daily 9:00");
   });
@@ -230,7 +228,9 @@ test.describe("Schedules", () => {
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     await expect(projectTrigger).toContainText(/select project/i);
     await expectSettled(projectTrigger);
-    await expect(page.getByTestId("schedule-model-trigger")).toHaveCount(0);
+    // The model field shows immediately (no stepped disclosure); pristine
+    // create has no selection yet.
+    await expect(page.getByTestId("schedule-model-trigger")).toContainText(/select model/i);
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);

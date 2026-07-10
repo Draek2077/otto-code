@@ -196,7 +196,6 @@ describe("schedule form model", () => {
     expect(form.getState()).toMatchObject({
       selectedServerId: "host-b",
       selectedModelDisplay: { label: "Model B" },
-      selectedModeDisplay: { label: "Load test" },
       selectedThinkingDisplay: { label: "High" },
       providerResolutionByServerId: { "host-b": "complete" },
       providerSnapshotRequest: null,
@@ -236,23 +235,27 @@ describe("schedule form model", () => {
       archiveOnFinish: true,
       isolation: "local",
       effectiveIsolation: "local",
-      providerResolutionByServerId: {},
+      // Create immediately requests the host-scoped snapshot so models are
+      // offered before a project is picked.
+      providerResolutionByServerId: { "host-a": "pending" },
+      providerSnapshotRequest: { serverId: "host-a", cwd: "" },
     });
   });
 
-  it("derives the host to project to model disclosure chain from model state", () => {
+  it("offers project and model immediately; capability fields follow model state", () => {
     const form = open({
       mode: "create",
       defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
     });
 
+    // No stepped disclosure: project and model show from the start, isolation
+    // waits for a git project, effort waits for a model with effort options.
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
-      showModelField: false,
+      showModelField: true,
       showThinkingField: false,
-      showModeField: false,
       showIsolationField: false,
-      showArchiveOnFinishField: false,
+      showArchiveOnFinishField: true,
     });
 
     form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
@@ -261,7 +264,6 @@ describe("schedule form model", () => {
       showProjectField: true,
       showModelField: true,
       showThinkingField: false,
-      showModeField: false,
       showIsolationField: true,
       showArchiveOnFinishField: true,
     });
@@ -273,9 +275,46 @@ describe("schedule form model", () => {
       showProjectField: true,
       showModelField: true,
       showThinkingField: true,
-      showModeField: true,
       showIsolationField: true,
       showArchiveOnFinishField: true,
+    });
+  });
+
+  it("keeps the selected model across same-host project changes", () => {
+    const projectC = target({
+      serverId: "host-a",
+      projectKey: "project-c",
+      projectName: "Project C",
+      cwd: "/repo/c",
+    });
+    const form = open({
+      mode: "create",
+      defaults: {
+        serverId: "host-a",
+        projectTargets: [...PROJECT_TARGETS, projectC],
+        preferences: {},
+      },
+    });
+    form.applyProviderSnapshot("host-a", providerSnapshot(HOST_A_MODELS));
+    form.setModel("mock", "model-a");
+
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+
+    expect(form.getState()).toMatchObject({
+      workingDir: "/repo/a",
+      selectedProvider: "mock",
+      selectedModel: "model-a",
+      providerSnapshotRequest: { serverId: "host-a", cwd: "/repo/a" },
+    });
+
+    form.applyProviderSnapshot("host-a", providerSnapshot(HOST_A_MODELS));
+    form.setProject(projectC.optionId, { label: "Project C" });
+
+    expect(form.getState()).toMatchObject({
+      workingDir: "/repo/c",
+      selectedProvider: "mock",
+      selectedModel: "model-a",
+      providerSnapshotRequest: { serverId: "host-a", cwd: "/repo/c" },
     });
   });
 
@@ -331,26 +370,6 @@ describe("schedule form model", () => {
       (unsupportedHost.getState() as unknown as { submitArchiveOnFinish?: boolean })
         .submitArchiveOnFinish,
     ).toBeUndefined();
-  });
-
-  it("shows modes for providers without selectable models", () => {
-    const form = open({
-      mode: "create",
-      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
-    });
-
-    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
-    form.applyProviderSnapshot("host-a", providerSnapshot([]));
-    form.setModel("mock", "");
-
-    expect(form.getState()).toMatchObject({
-      selectedProvider: "mock",
-      selectedModel: "",
-      disclosure: {
-        showModeField: true,
-        showThinkingField: false,
-      },
-    });
   });
 
   it("preserves stored worktree isolation until host resolution proves it unavailable", () => {

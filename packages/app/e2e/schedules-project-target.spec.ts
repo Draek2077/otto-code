@@ -196,7 +196,9 @@ test.describe("Schedules project target", () => {
     await expectStableHeight(formSheet);
     await expect(page.getByTestId("schedule-host-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-project-trigger")).toBeVisible();
-    await expect(page.getByTestId("schedule-model-trigger")).toHaveCount(0);
+    // No stepped disclosure: the model field is offered before a project is
+    // picked (models are host-scoped, not project-scoped).
+    await expect(page.getByTestId("schedule-model-trigger")).toContainText(/select model/i);
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
@@ -215,8 +217,9 @@ test.describe("Schedules project target", () => {
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
-    await expect(page.getByTestId("schedule-mode-trigger")).toBeVisible();
-    await expectSettled(page.getByTestId("schedule-mode-trigger"));
+    // No mode field: schedule runs are always unattended, so the form never
+    // offers a mode picker (an attended mode would fail at the first prompt).
+    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-isolation-trigger")).toHaveCount(0);
     await expect(page.getByText("Worktree isolation is available for git projects.")).toHaveCount(
       0,
@@ -302,14 +305,16 @@ test.describe("Schedules project target", () => {
     const thinkingTrigger = page.getByTestId("schedule-thinking-trigger");
     const modeTrigger = page.getByTestId("schedule-mode-trigger");
     await expect(hostTrigger).toBeVisible({ timeout: 30_000 });
-    await expect(projectTrigger).toHaveCount(0);
-    await expect(modelTrigger).toHaveCount(0);
+    // Project and model are visible from the start (disabled until a host is
+    // chosen) — fields are never revealed step by step.
+    await expect(projectTrigger).toBeVisible();
+    await expect(modelTrigger).toBeVisible();
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await hostTrigger.click();
     await page.getByTestId(`schedule-host-option-${serverId}`).click();
     await expect(projectTrigger).toBeVisible();
-    await expect(modelTrigger).toHaveCount(0);
+    await expect(modelTrigger).toContainText(/select model/i);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -323,14 +328,13 @@ test.describe("Schedules project target", () => {
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
     await expect(thinkingTrigger).toHaveCount(0);
-    await expect(modeTrigger).toBeVisible();
-    await expectSettled(modeTrigger);
+    await expect(modeTrigger).toHaveCount(0);
 
     await hostTrigger.click();
     await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
     await expect(hostTrigger).toContainText("Fake host");
     await expect(projectTrigger).toContainText(/select project/i);
-    await expect(modelTrigger).toHaveCount(0);
+    await expect(modelTrigger).toContainText(/select model/i);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
