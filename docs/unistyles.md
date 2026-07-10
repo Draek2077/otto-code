@@ -111,6 +111,12 @@ On first mount this can paint with the current adaptive or initial theme. If app
 
 This applies broadly to non-`style` props that carry theme-dependent values, such as component props named `color`, `trackColor`, `tintColor`, `backgroundStyle`, `handleIndicatorStyle`, and other library-specific style props. The [3rd-party view decision algorithm](https://www.unistyl.es/v3/references/3rd-party-views) recommends explicit handling for these cases, and [issue #1030](https://github.com/jpudysz/react-native-unistyles/issues/1030) shows a related native-prop update edge case around `Image.tintColor`. Treat these values as React props unless wrapped with `withUnistyles`.
 
+### On web, third-party components drop Unistyles styles entirely
+
+Staleness is the mild version. On web it is worse: `StyleSheet.create` returns style objects whose style values are **non-enumerable** properties (see `removeInlineStyles` in `react-native-unistyles/src/web/utils/unistyle.ts`) — only Unistyles-tracked components can read them. Pass such a style to a component the Babel plugin does not remap (`@gorhom/bottom-sheet`'s `BottomSheetScrollView`, any third-party view) and spreading/flattening yields an empty object: **no styles apply at all, silently, from first paint**. Native is unaffected, so the symptom is web-only — which is how `AdaptiveModalSheet`'s bottom sheet shipped with its `contentContainerStyle` padding and the scroll view's `flexShrink` missing on web (content flush to the sheet edge, sticky footer pushed off-screen) while looking fine on device.
+
+Fix pattern: give the third-party component only plain RN style objects (module-level `const`, theme-free), and put themed layout on a core `View` wrapped around the children — the wrapper-`View` pattern below. Grep candidates: any `style`/`contentContainerStyle` on a `BottomSheet*` component that references a Unistyles `styles.*` entry.
+
 ## Fix Patterns
 
 Preferred pattern: put themed backgrounds on a normal wrapper view, and keep `contentContainerStyle` theme-free.
