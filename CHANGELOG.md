@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.4 - 2026-07-10
+
+### Added
+
+- Open and edit files directly in a workspace tab, with a live preview and split view alongside the editor
+- Jump to any symbol in a file, or to a specific line, without leaving the editor
+- Select code and ask an agent to refactor it right from the editor
+- Jump to any file by typing part of its name
+- Search and replace text across the whole project, with a warning before a replace could touch more than expected
+- Markdown files show checkable task lists
+- "Find in files" from the Changes view reveals and scrolls to the file in the Files tree
+- Add a file to the conversation straight from the Changes view, matching the Files and Search panes
+- Add an artifact from the workspace menu on mobile, opening in a bottom sheet
+
+### Improved
+
+- Provider settings are organized into Connection, Models, and Tools tabs instead of one long scrolling list
+- The search sidebar shortcut now focuses the search box automatically
+
+### Fixed
+
+- Feature toggles in the mobile Features sheet show their labels clearly instead of being crammed together
+
 ## 0.4.3 - 2026-07-09
 
 ### Added
