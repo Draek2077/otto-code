@@ -337,7 +337,11 @@ function OpenScheduleFormSheet({
         newAgentConfig: {
           provider,
           model: state.selectedModel || null,
-          modeId: state.selectedMode || null,
+          // Always null: schedule runs are unattended and there is no mode
+          // field anymore. Explicit null (not omission) so editing a schedule
+          // clears any mode stored by an older client — a stored attended
+          // mode would fail the run at its first approval prompt.
+          modeId: null,
           thinkingOptionId: state.selectedThinkingOptionId || null,
           cwd,
           ...(state.submitArchiveOnFinish !== undefined
@@ -360,7 +364,6 @@ function OpenScheduleFormSheet({
           provider,
           cwd,
           model: state.selectedModel || undefined,
-          modeId: state.selectedMode || undefined,
           thinkingOptionId: state.selectedThinkingOptionId || undefined,
           ...(state.submitArchiveOnFinish !== undefined
             ? { archiveOnFinish: state.submitArchiveOnFinish }
@@ -571,15 +574,6 @@ function ScheduleTargetFields({
     return null;
   }, [selectedHost, state.selectedServerId]);
   const projectOptions = state.projectOptions;
-  const modeOptions = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      state.modeOptions.map((option) => ({
-        id: option.id,
-        value: option.id,
-        label: option.label,
-      })),
-    [state.modeOptions],
-  );
   const thinkingOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
       state.availableThinkingOptions.map((option) => ({
@@ -605,12 +599,6 @@ function ScheduleTargetFields({
   const handleSelectModel = useCallback(
     (provider: AgentProvider, modelId: string) => {
       model.setModel(provider, modelId);
-    },
-    [model],
-  );
-  const handleSelectMode = useCallback(
-    (modeId: string) => {
-      model.setSessionMode(modeId);
     },
     [model],
   );
@@ -742,36 +730,18 @@ function ScheduleTargetFields({
 
       {state.disclosure.showThinkingField ? (
         <SelectField
-          label="Thinking"
+          label="Effort"
           value={state.selectedThinkingOptionId || null}
           selectedDisplay={state.selectedThinkingDisplay}
           options={thinkingOptions}
           onChange={handleSelectThinking}
-          placeholder="Select thinking"
-          emptyText="No thinking options found"
+          placeholder="Select effort"
+          emptyText="No effort options found"
           searchable={thinkingOptions.length > 6}
-          title="Select thinking"
+          title="Select effort"
           size={controlSize}
           triggerTestID="schedule-thinking-trigger"
           renderOption={renderThinkingOption}
-        />
-      ) : null}
-
-      {state.disclosure.showModeField ? (
-        <SelectField
-          label="Mode"
-          value={state.selectedMode || null}
-          selectedDisplay={state.selectedModeDisplay}
-          options={modeOptions}
-          onChange={handleSelectMode}
-          placeholder="Default mode"
-          emptyText="No modes found"
-          disabled={modeOptions.length === 0}
-          hint={modeOptions.length === 0 ? "No modes are available for this model." : undefined}
-          searchable={modeOptions.length > 6}
-          title="Select mode"
-          size={controlSize}
-          triggerTestID="schedule-mode-trigger"
         />
       ) : null}
 

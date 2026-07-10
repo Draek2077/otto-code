@@ -7,8 +7,10 @@ export function useScheduleFormProviderSnapshot(
   state: ScheduleFormState,
 ) {
   const serverId = state.providerSnapshotRequest?.serverId ?? state.selectedServerId;
+  // An empty cwd fetches the host-scoped ("home") snapshot, so models are
+  // available before a project is picked.
   const cwd = state.providerSnapshotRequest?.cwd ?? state.workingDir;
-  const enabled = state.targetKind === "new-agent" && Boolean(serverId && cwd.trim());
+  const enabled = state.targetKind === "new-agent" && Boolean(serverId);
   const snapshot = useProvidersSnapshot(serverId ?? null, {
     cwd,
     enabled,

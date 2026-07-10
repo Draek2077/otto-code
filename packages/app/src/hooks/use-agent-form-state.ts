@@ -213,7 +213,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   const validServerIds = useMemo(() => new Set(daemons.map((d) => d.serverId)), [daemons]);
 
-  const [{ form: formState, userModified, resolution }, dispatch] = useReducer(
+  const [{ form: formState, userModified }, dispatch] = useReducer(
     resolveAgentForm,
     initialServerId,
     (serverId) => ({
@@ -327,8 +327,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     dispatch({ type: "REQUEST_RESOLUTION" });
   }, [isVisible, isCreateFlow, resolutionIntentKey]);
 
+  // Dispatched on every provider-data or preference change while the form is
+  // open (not just once per open) so preselection can recover when a stale
+  // snapshot heals. completeResolution no-ops once a provider has settled and
+  // respects the userModified flags, so it never overrides a real selection.
   useEffect(() => {
-    if (!isVisible || !isCreateFlow || resolution.status !== "pending") {
+    if (!isVisible || !isCreateFlow) {
       return;
     }
     if (isPreferencesLoading) {
@@ -357,7 +361,6 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     isPreferencesLoading,
     isVisible,
     preferences,
-    resolution.status,
     snapshotEntries,
     snapshotProviderModelsByProvider,
     snapshotResolvableProviderDefinitionMap,

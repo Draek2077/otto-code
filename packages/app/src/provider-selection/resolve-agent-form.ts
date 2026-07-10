@@ -505,7 +505,12 @@ function completeResolution(
   state: AgentFormReducerState,
   action: CompleteResolutionAction,
 ): AgentFormReducerState {
-  if (state.resolution.status === "completed") {
+  // Once a provider has settled, background snapshot/preference updates must
+  // not change the selection out from under the user. But while NOTHING is
+  // selected, resolution keeps retrying: the preferred provider may have been
+  // unresolvable in a stale snapshot (e.g. a remote endpoint that was briefly
+  // unreachable) and should be picked up once fresh entries arrive.
+  if (state.resolution.status === "completed" && state.form.provider !== null) {
     return state;
   }
   const resolved = resolveFormStateFromProviderModels(
@@ -516,8 +521,10 @@ function completeResolution(
     state.form,
     action.allowedProviderMap,
   );
+  const changed = hasFormStateChanged(state.form, resolved);
+  if (!changed && state.resolution.status === "completed") return state;
   const nextState = { ...state, resolution: { status: "completed" } as const };
-  if (!hasFormStateChanged(state.form, resolved)) return nextState;
+  if (!changed) return nextState;
   return { ...nextState, form: resolved };
 }
 

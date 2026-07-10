@@ -1,5 +1,4 @@
 import type {
-  AgentMode,
   AgentModelDefinition,
   AgentProvider,
   ProviderSnapshotEntry,
@@ -59,7 +58,6 @@ export interface ScheduleDisclosureState {
   showProjectField: boolean;
   showModelField: boolean;
   showThinkingField: boolean;
-  showModeField: boolean;
   showIsolationField: boolean;
   showArchiveOnFinishField: boolean;
 }
@@ -92,16 +90,22 @@ export interface ScheduleFormState {
   selectedServerId: string | null;
   selectedProvider: AgentProvider | null;
   selectedModel: string;
+  /**
+   * Internal only — no mode field is rendered and modeId is never submitted:
+   * schedule runs are unattended, so a mode picker would be a trap (an
+   * attended mode fails the run at its first approval prompt). The value
+   * still rides along the shared provider-selection resolution so the user's
+   * per-provider mode preference (used by attended forms like the composer)
+   * is preserved rather than clobbered when this form persists preferences.
+   */
   selectedMode: string;
   selectedThinkingOptionId: string;
   workingDir: string;
   projectDisplay: ScheduleFormDisplay | null;
   selectedProjectOptionId: string;
   selectedModelDisplay: ScheduleFormDisplay | null;
-  selectedModeDisplay: ScheduleFormDisplay;
   selectedThinkingDisplay: ScheduleFormDisplay | null;
   modelSelectorProviders: ProviderSelectorProvider[];
-  modeOptions: AgentMode[];
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
   archiveOnFinish: boolean;
   isolation: "local" | "worktree";
@@ -128,7 +132,6 @@ export interface ScheduleFormModel {
   setProject: (optionId: string, display: ScheduleFormDisplay) => void;
   setModel: (provider: AgentProvider, modelId: string) => void;
   setThinking: (thinkingOptionId: string) => void;
-  setSessionMode: (modeId: string) => void;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setMaxRuns: (value: string) => void;
@@ -235,13 +238,6 @@ function resolveSelectedEntry(
   return entries.find((entry) => entry.provider === provider) ?? null;
 }
 
-function resolveModeOptions(
-  entries: readonly ProviderSnapshotEntry[],
-  provider: AgentProvider | null,
-): AgentMode[] {
-  return resolveSelectedEntry(entries, provider)?.modes ?? [];
-}
-
 function resolveAvailableModels(
   entries: readonly ProviderSnapshotEntry[],
   provider: AgentProvider | null,
@@ -288,17 +284,6 @@ function resolveModelDisplay(input: {
     modelId,
   );
   return { label: model?.label ?? modelId };
-}
-
-function resolveModeDisplay(input: {
-  modeOptions: readonly AgentMode[];
-  modeId: string;
-}): ScheduleFormDisplay {
-  const modeId = input.modeId.trim();
-  if (!modeId) {
-    return { label: "Default mode" };
-  }
-  return { label: input.modeOptions.find((mode) => mode.id === modeId)?.label ?? modeId };
 }
 
 function resolveThinkingDisplay(input: {
@@ -386,10 +371,12 @@ function buildProviderSnapshotRequest(input: {
   selectedServerId: string | null;
   workingDir: string;
 }): ScheduleProviderSnapshotRequest | null {
-  if (input.targetKind !== "new-agent" || !input.selectedServerId || !input.workingDir.trim()) {
+  if (input.targetKind !== "new-agent" || !input.selectedServerId) {
     return null;
   }
-  return { serverId: input.selectedServerId, cwd: input.workingDir };
+  // An empty cwd asks for the host-scoped ("home") snapshot: models load as
+  // soon as a host is known, before any project is picked.
+  return { serverId: input.selectedServerId, cwd: input.workingDir.trim() };
 }
 
 function buildInitialProjectDisplay(input: {
@@ -412,13 +399,6 @@ function buildInitialModelDisplay(modelId: string): ScheduleFormDisplay | null {
     return null;
   }
   return { label: modelId };
-}
-
-function buildInitialModeDisplay(modeId: string): ScheduleFormDisplay {
-  if (!modeId) {
-    return { label: "Default mode" };
-  }
-  return { label: modeId };
 }
 
 function buildInitialThinkingDisplay(thinkingOptionId: string): ScheduleFormDisplay | null {
@@ -519,30 +499,26 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
       showProjectField: false,
       showModelField: false,
       showThinkingField: false,
-      showModeField: false,
       showIsolationField: false,
       showArchiveOnFinishField: false,
     };
   }
 
-  const hasProject = state.workingDir.trim().length > 0;
-  const hasSelectedProvider = Boolean(state.selectedProvider);
+  // Project and model are always offered — models come from the host (a
+  // project only re-scopes provider config), so neither field waits on the
+  // other. The remaining flags are capability gates, not disclosure steps:
+  // effort exists per model, worktrees per git project, archive-on-finish per
+  // host feature.
   const hasSelectedModel = Boolean(state.selectedProvider && state.selectedModel.trim());
-  const showProjectField = state.mode === "edit" || Boolean(state.selectedServerId);
-  const showModelField = hasProject;
   return {
-    showProjectField,
-    showModelField,
-    showThinkingField:
-      showModelField && hasSelectedModel && state.availableThinkingOptions.length > 0,
-    showModeField: showModelField && hasSelectedProvider && state.modeOptions.length > 0,
-    showIsolationField: hasProject && state.canUseWorktreeIsolation,
-    showArchiveOnFinishField:
-      hasProject &&
-      selectedHostSupportsWorkspaceMultiplicity({
-        hosts: state.hosts,
-        selectedServerId: state.selectedServerId,
-      }),
+    showProjectField: true,
+    showModelField: true,
+    showThinkingField: hasSelectedModel && state.availableThinkingOptions.length > 0,
+    showIsolationField: state.canUseWorktreeIsolation,
+    showArchiveOnFinishField: selectedHostSupportsWorkspaceMultiplicity({
+      hosts: state.hosts,
+      selectedServerId: state.selectedServerId,
+    }),
   };
 }
 
@@ -574,7 +550,6 @@ function updateDerivedState(input: {
   targets: readonly ScheduleProjectTarget[];
   providerEntries: readonly ProviderSnapshotEntry[];
 }): ScheduleFormState {
-  const modeOptions = resolveModeOptions(input.providerEntries, input.state.selectedProvider);
   const availableThinkingOptions = resolveThinkingOptions(
     input.providerEntries,
     input.state.selectedProvider,
@@ -610,12 +585,10 @@ function updateDerivedState(input: {
       provider: input.state.selectedProvider,
       modelId: input.state.selectedModel,
     }),
-    selectedModeDisplay: resolveModeDisplay({ modeOptions, modeId: input.state.selectedMode }),
     selectedThinkingDisplay: resolveThinkingDisplay({
       options: availableThinkingOptions,
       thinkingOptionId: input.state.selectedThinkingOptionId,
     }),
-    modeOptions,
     availableThinkingOptions,
     canUseWorktreeIsolation,
     effectiveIsolation,
@@ -673,10 +646,8 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     }),
     selectedProjectOptionId: resolveSelectedProjectOptionId(selectedProjectTarget),
     selectedModelDisplay: buildInitialModelDisplay(initialModel),
-    selectedModeDisplay: buildInitialModeDisplay(initialMode),
     selectedThinkingDisplay: buildInitialThinkingDisplay(initialThinking),
     modelSelectorProviders: [],
-    modeOptions: [],
     availableThinkingOptions: [],
     archiveOnFinish: config?.archiveOnFinish ?? true,
     isolation: resolveInitialIsolation({ config, preferences: snapshot.defaults.preferences }),
@@ -690,7 +661,6 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
       showProjectField: false,
       showModelField: false,
       showThinkingField: false,
-      showModeField: false,
       showIsolationField: false,
       showArchiveOnFinishField: false,
     },
@@ -817,21 +787,21 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
   }
 
   function requestProviderSnapshot(serverId: string | null, cwd: string): void {
-    const trimmedCwd = cwd.trim();
-    if (!serverId || !trimmedCwd) {
+    if (!serverId) {
       publish({
         ...state,
         providerSnapshotRequest: null,
       });
       return;
     }
+    // Empty cwd = host-scoped ("home") snapshot; see buildProviderSnapshotRequest.
     publish({
       ...state,
       providerResolutionByServerId: {
         ...state.providerResolutionByServerId,
         [serverId]: "pending",
       },
-      providerSnapshotRequest: { serverId, cwd: trimmedCwd },
+      providerSnapshotRequest: { serverId, cwd: cwd.trim() },
     });
   }
 
@@ -844,10 +814,8 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       selectedMode: "",
       selectedThinkingOptionId: "",
       modelSelectorProviders: [],
-      modeOptions: [],
       availableThinkingOptions: [],
       selectedModelDisplay: null,
-      selectedModeDisplay: { label: "Default mode" },
       selectedThinkingDisplay: null,
       providerSnapshotRequest: null,
     };
@@ -960,6 +928,9 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           providerResolutionByServerId: {},
         }),
       );
+      if (serverId) {
+        requestProviderSnapshot(serverId, "");
+      }
     },
     setProject(optionId, display) {
       if (closed) {
@@ -969,8 +940,8 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       if (!target) {
         return;
       }
-      const providerScopeChanged =
-        state.selectedServerId !== target.serverId || state.workingDir !== target.cwd;
+      const serverChanged = state.selectedServerId !== target.serverId;
+      const providerScopeChanged = serverChanged || state.workingDir !== target.cwd;
       if (!providerScopeChanged && state.selectedProjectOptionId === target.optionId) {
         return;
       }
@@ -982,11 +953,13 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
       };
-      publish(providerScopeChanged ? clearProviderSelection(nextState) : nextState);
-      if (!providerScopeChanged) {
-        return;
+      // A same-host project change keeps the user's provider/model choice —
+      // the re-scoped snapshot re-validates it on arrival. Only a host change
+      // resets the selection.
+      publish(serverChanged ? clearProviderSelection(nextState) : nextState);
+      if (providerScopeChanged) {
+        requestProviderSnapshot(target.serverId, target.cwd);
       }
-      requestProviderSnapshot(target.serverId, target.cwd);
     },
     setModel(provider, modelId) {
       if (closed) {
@@ -1019,13 +992,6 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       }
       userModified = { ...userModified, thinkingOptionId: true };
       publish({ ...state, selectedThinkingOptionId: thinkingOptionId });
-    },
-    setSessionMode(modeId) {
-      if (closed) {
-        return;
-      }
-      userModified = { ...userModified, modeId: true };
-      publish({ ...state, selectedMode: modeId });
     },
     setName(value) {
       publish({ ...state, name: value });
