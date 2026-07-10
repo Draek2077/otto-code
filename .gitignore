@@ -8,6 +8,9 @@ dist/
 out/
 result
 
+# graphify — knowledge graph outputs are personal/derived; .graphifyignore stays tracked
+graphify-out/
+
 # Environment variables
 .env
 .env.test
