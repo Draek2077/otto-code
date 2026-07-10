@@ -1,0 +1,49 @@
+# Build / release artifacts (belt-and-suspenders on top of .gitignore)
+dist/
+build/
+out/
+release/
+packages/*/dist/
+packages/*/build/
+packages/*/release/
+packages/*/.dev/
+packages/desktop/release/
+packages/desktop/dist/
+packages/app/.expo/
+packages/app/web-build/
+packages/app/android/build/
+packages/app/ios/build/
+packages/website/.next/
+packages/website/out/
+
+# Bundled JS (Expo static, minified webpack output)
+**/expo/static/**
+**/unpacked/**
+**/*.min.js
+**/*.bundle.js
+**/*.chunk.js
+
+# Generated / cache
+.dev/
+.turbo/
+.cache/
+coverage/
+.playwright/
+playwright-report/
+test-results/
+**/__snapshots__/
+**/*.tsbuildinfo
+
+# Vendored / checked-in binaries, model catalogs
+**/*.wasm
+**/*.onnx
+**/*.tflite
+
+# Sync artifacts (i18n mirror, generated schemas)
+packages/protocol/src/generated/**
+**/*.d.ts.map
+**/*.js.map
+
+# Docs' rendered output only (keep source .md)
+docs/_build/
+public-docs/dist/
