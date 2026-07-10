@@ -8,6 +8,13 @@ import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 
 let workspace: SeededWorkspace;
 
+// The bulk-replace confirmation dialog only appears at 10+ selected matches
+// (see project-search-replace-warning.ts); alpha.ts needs that many "shared"
+// occurrences so the replace-selected step below actually exercises it.
+const ALPHA_MATCH_COUNT = 10;
+const alphaLines = (token: string) =>
+  Array.from({ length: ALPHA_MATCH_COUNT }, (_, i) => `const v${i} = ${token};`).join("\n") + "\n";
+
 test.beforeAll(async () => {
   // .gitignore exclusion is covered by the daemon unit tests; the seed helper
   // git-adds each file, so it can't stage a gitignored path.
@@ -15,7 +22,7 @@ test.beforeAll(async () => {
     repoPrefix: "project-search-",
     repo: {
       files: [
-        { path: "src/alpha.ts", content: "const shared = 1;\nconst other = shared;\n" },
+        { path: "src/alpha.ts", content: alphaLines("shared") },
         { path: "src/beta.ts", content: "shared here too\n" },
       ],
     },
@@ -37,8 +44,8 @@ test.describe("Project search", () => {
     await input.fill("shared");
     await input.press("Enter");
 
-    // 3 matches across 2 files.
-    await expect(page.getByTestId("project-search-summary")).toHaveText("3 matches in 2 files", {
+    // 10 matches in alpha.ts, 1 in beta.ts.
+    await expect(page.getByTestId("project-search-summary")).toHaveText("11 matches in 2 files", {
       timeout: 30_000,
     });
     await expect(page.getByTestId("project-search-file-src/alpha.ts")).toBeVisible();
@@ -63,7 +70,7 @@ test.describe("Project search", () => {
       .poll(() => readFileSync(join(workspace.repoPath, "src/alpha.ts"), "utf-8"), {
         timeout: 15_000,
       })
-      .toBe("const renamed = 1;\nconst other = renamed;\n");
+      .toBe(alphaLines("renamed"));
     // The unchecked file is untouched.
     expect(readFileSync(join(workspace.repoPath, "src/beta.ts"), "utf-8")).toBe(
       "shared here too\n",
