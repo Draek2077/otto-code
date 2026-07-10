@@ -46,6 +46,8 @@ import {
   normalizeOpenAICompatReasoningEffort,
   OPENAI_COMPAT_AUTO_COMPACT_FALLBACK,
   OPENAI_COMPAT_AUTO_COMPACT_VALUES,
+  OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID,
+  OPENAI_COMPAT_THINKING_OPTIONS,
   type OpenAICompatAutoCompact,
   type OpenAICompatReasoningEffort,
 } from "./openai-compat-feature-definitions.js";
@@ -747,6 +749,11 @@ export class OpenAICompatAgentClient implements AgentClient {
         id,
         label: id,
         isDefault: index === 0,
+        // Whether a given endpoint model honors reasoning_effort isn't
+        // discoverable from /models, so every model advertises the full set
+        // with "off" as the safe default (off omits the parameter entirely).
+        thinkingOptions: [...OPENAI_COMPAT_THINKING_OPTIONS],
+        defaultThinkingOptionId: OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID,
       };
       const contextWindowMaxTokens = contextLengths.get(id);
       if (typeof contextWindowMaxTokens === "number") {
@@ -791,9 +798,6 @@ export class OpenAICompatAgentClient implements AgentClient {
     const autoCompactDefault = resolveAutoCompactDefault(this.compaction);
     const hideAutoCompact = this.compaction?.hideSelector === true;
     return buildOpenAICompatFeatures({
-      reasoningEffort: normalizeOpenAICompatReasoningEffort(
-        config.featureValues?.["reasoning_effort"],
-      ),
       autoCompact: hideAutoCompact
         ? autoCompactDefault
         : normalizeOpenAICompatAutoCompact(
@@ -1031,8 +1035,13 @@ export class OpenAICompatAgentSession implements AgentSession {
       options.config.modeId && VALID_MODE_IDS.has(options.config.modeId)
         ? options.config.modeId
         : "default";
+    // Effort comes from the model-level thinking option like every other
+    // provider. COMPAT(openaiCompatReasoningFeature): added in v0.4.5 — agents
+    // created before the unification persisted the value as the
+    // featureValues.reasoning_effort select instead; drop the fallback when
+    // floor >= v0.4.5 (target 2027-01).
     this.reasoningEffort = normalizeOpenAICompatReasoningEffort(
-      options.config.featureValues?.["reasoning_effort"],
+      options.config.thinkingOptionId || options.config.featureValues?.["reasoning_effort"],
     );
     this.autoCompactDefault = resolveAutoCompactDefault(options.compaction);
     this.autoCompactHidden = options.compaction?.hideSelector === true;
@@ -1113,14 +1122,29 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   get features(): AgentFeature[] {
     return buildOpenAICompatFeatures({
-      reasoningEffort: this.reasoningEffort,
       autoCompact: this.autoCompact,
       autoCompactDefault: this.autoCompactDefault,
       hideAutoCompact: this.autoCompactHidden,
     });
   }
 
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    // null clears back to the model default; "off" omits reasoning_effort
+    // from requests entirely.
+    if (thinkingOptionId === null) {
+      this.reasoningEffort = OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID;
+      return;
+    }
+    if (normalizeOpenAICompatReasoningEffort(thinkingOptionId) !== thinkingOptionId) {
+      throw new Error(`Invalid effort option: ${String(thinkingOptionId)}`);
+    }
+    this.reasoningEffort = thinkingOptionId as OpenAICompatReasoningEffort;
+  }
+
   async setFeature(featureId: string, value: unknown): Promise<void> {
+    // COMPAT(openaiCompatReasoningFeature): added in v0.4.5 — effort is no
+    // longer advertised as a feature, but old clients may still send the
+    // reasoning_effort select; drop when floor >= v0.4.5 (target 2027-01).
     if (featureId === "reasoning_effort") {
       if (normalizeOpenAICompatReasoningEffort(value) !== value) {
         throw new Error(`Invalid reasoning effort value: ${String(value)}`);

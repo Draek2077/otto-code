@@ -154,11 +154,11 @@ export const zhCN: TranslationResources = {
       select: "选择 Agent Provider",
     },
     thinking: {
-      title: "Thinking",
+      title: "Effort",
       unknown: "未知",
       extraHigh: "Extra high",
-      select: "选择 thinking 选项",
-      selectWithValue: "选择 thinking 选项（{{value}}）",
+      select: "选择 effort 选项",
+      selectWithValue: "选择 effort 选项（{{value}}）",
     },
     model: {
       unknown: "未知 Model",
@@ -2215,6 +2215,7 @@ export const zhCN: TranslationResources = {
           agents: "代理管理",
           terminals: "终端",
           schedules: "计划任务",
+          artifacts: "产物",
           workspace: "工作区",
         },
       },

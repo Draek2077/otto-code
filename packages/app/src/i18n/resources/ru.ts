@@ -154,11 +154,11 @@ export const ru: TranslationResources = {
       select: "Выберите поставщика агентов",
     },
     thinking: {
-      title: "мышление",
+      title: "Усилие",
       unknown: "Неизвестный",
       extraHigh: "Очень высокий",
-      select: "Выберите вариант мышления",
-      selectWithValue: "Выберите вариант мышления ({{value}})",
+      select: "Выберите усилие",
+      selectWithValue: "Выберите усилие ({{value}})",
     },
     model: {
       unknown: "Неизвестная модель",
@@ -2275,6 +2275,7 @@ export const ru: TranslationResources = {
           agents: "Управление агентами",
           terminals: "Терминалы",
           schedules: "Расписания",
+          artifacts: "Артефакты",
           workspace: "Рабочие пространства",
         },
       },

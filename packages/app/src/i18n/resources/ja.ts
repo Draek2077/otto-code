@@ -154,11 +154,11 @@ export const ja: TranslationResources = {
       select: "エージェントプロバイダーを選択",
     },
     thinking: {
-      title: "思考",
+      title: "労力",
       unknown: "不明",
       extraHigh: "非常に高い",
-      select: "思考オプションを選択",
-      selectWithValue: "思考オプションを選択（{{value}}）",
+      select: "労力を選択",
+      selectWithValue: "労力を選択（{{value}}）",
     },
     model: {
       unknown: "不明なモデル",
@@ -2261,6 +2261,7 @@ export const ja: TranslationResources = {
           agents: "エージェント管理",
           terminals: "ターミナル",
           schedules: "スケジュール",
+          artifacts: "アーティファクト",
           workspace: "ワークスペース",
         },
       },

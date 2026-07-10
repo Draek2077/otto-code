@@ -1,23 +1,25 @@
-import type { AgentFeature, AgentFeatureSelect } from "../agent-sdk-types.js";
+import type { AgentFeature, AgentFeatureSelect, AgentSelectOption } from "../agent-sdk-types.js";
 
 export const OPENAI_COMPAT_REASONING_EFFORTS = ["off", "low", "medium", "high"] as const;
 
 export type OpenAICompatReasoningEffort = (typeof OPENAI_COMPAT_REASONING_EFFORTS)[number];
 
-export const OPENAI_COMPAT_REASONING_FEATURE: Omit<AgentFeatureSelect, "value"> = {
-  type: "select",
-  id: "reasoning_effort",
-  label: "Reasoning",
-  description: "Reasoning effort requested from the model",
-  tooltip: "Change reasoning",
-  icon: "brain",
-  options: [
-    { id: "off", label: "Off", description: "Don't request reasoning", isDefault: true },
-    { id: "low", label: "Low" },
-    { id: "medium", label: "Medium" },
-    { id: "high", label: "High" },
-  ],
-};
+/**
+ * Effort advertised per model as `thinkingOptions`, like every other
+ * provider, so the standard Effort control (composer, schedule form,
+ * artifact form) drives it. The selection maps onto the request's
+ * `reasoning_effort` parameter. Custom provider profiles that declare their
+ * own per-model `thinkingOptions` override these defaults in the registry
+ * merge.
+ */
+export const OPENAI_COMPAT_THINKING_OPTIONS: readonly AgentSelectOption[] = [
+  { id: "off", label: "Off", description: "Don't request reasoning", isDefault: true },
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+
+export const OPENAI_COMPAT_DEFAULT_THINKING_OPTION_ID: OpenAICompatReasoningEffort = "off";
 
 /**
  * "off" omits the reasoning_effort parameter from requests entirely, so
@@ -87,15 +89,12 @@ export function normalizeOpenAICompatAutoCompact(
 }
 
 export function buildOpenAICompatFeatures(input: {
-  reasoningEffort: OpenAICompatReasoningEffort;
   autoCompact: OpenAICompatAutoCompact;
   autoCompactDefault: OpenAICompatAutoCompact;
   /** Provider config hides the per-agent select; the default applies silently. */
   hideAutoCompact?: boolean;
 }): AgentFeature[] {
-  const features: AgentFeature[] = [
-    { ...OPENAI_COMPAT_REASONING_FEATURE, value: input.reasoningEffort },
-  ];
+  const features: AgentFeature[] = [];
   if (!input.hideAutoCompact) {
     features.push({
       ...buildAutoCompactFeature(input.autoCompactDefault),

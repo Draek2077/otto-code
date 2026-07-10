@@ -154,11 +154,11 @@ export const ptBR: TranslationResources = {
       select: "Selecionar provedor do agente",
     },
     thinking: {
-      title: "Raciocínio",
+      title: "Esforço",
       unknown: "Desconhecido",
       extraHigh: "Extra alto",
-      select: "Selecionar opção de raciocínio",
-      selectWithValue: "Selecionar opção de raciocínio ({{value}})",
+      select: "Selecionar esforço",
+      selectWithValue: "Selecionar esforço ({{value}})",
     },
     model: {
       unknown: "Modelo desconhecido",
@@ -2271,6 +2271,7 @@ export const ptBR: TranslationResources = {
           agents: "Gerenciamento de agentes",
           terminals: "Terminais",
           schedules: "Agendamentos",
+          artifacts: "Artefatos",
           workspace: "Espaços de trabalho",
         },
       },
