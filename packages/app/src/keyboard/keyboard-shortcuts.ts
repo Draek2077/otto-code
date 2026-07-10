@@ -147,6 +147,9 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "toggle-left-sidebar": "settings.shortcuts.help.toggleLeftSidebar",
   "toggle-right-sidebar": "settings.shortcuts.help.toggleRightSidebar",
   "toggle-both-sidebars": "settings.shortcuts.help.toggleBothSidebars",
+  "open-files-sidebar": "settings.shortcuts.help.openFilesSidebar",
+  "open-search-sidebar": "settings.shortcuts.help.openSearchSidebar",
+  "open-changes-sidebar": "settings.shortcuts.help.openChangesSidebar",
   "toggle-settings": "settings.shortcuts.help.toggleSettings",
   "toggle-focus": "settings.shortcuts.help.toggleFocusMode",
   "cycle-theme": "settings.shortcuts.help.cycleTheme",
@@ -755,6 +758,84 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     action: "sidebar.toggle.right",
     combo: "Ctrl+`",
     when: { commandCenter: false },
+  },
+
+  // --- Open files sidebar ---
+  {
+    id: "sidebar-open-files-cmd-f-mac",
+    action: "sidebar.open.files",
+    combo: "Cmd+F",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "open-files-sidebar",
+      section: "panels",
+      label: "Open files sidebar",
+      keys: ["mod", "F"],
+    },
+  },
+  {
+    id: "sidebar-open-files-ctrl-f-non-mac",
+    action: "sidebar.open.files",
+    combo: "Ctrl+F",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "open-files-sidebar",
+      section: "panels",
+      label: "Open files sidebar",
+      keys: ["mod", "F"],
+    },
+  },
+
+  // --- Open search sidebar ---
+  {
+    id: "sidebar-open-search-cmd-s-mac",
+    action: "sidebar.open.search",
+    combo: "Cmd+S",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "open-search-sidebar",
+      section: "panels",
+      label: "Open search sidebar",
+      keys: ["mod", "S"],
+    },
+  },
+  {
+    id: "sidebar-open-search-ctrl-s-non-mac",
+    action: "sidebar.open.search",
+    combo: "Ctrl+S",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "open-search-sidebar",
+      section: "panels",
+      label: "Open search sidebar",
+      keys: ["mod", "S"],
+    },
+  },
+
+  // --- Open changes sidebar ---
+  {
+    id: "sidebar-open-changes-cmd-h-mac",
+    action: "sidebar.open.changes",
+    combo: "Cmd+H",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "open-changes-sidebar",
+      section: "panels",
+      label: "Open changes sidebar",
+      keys: ["mod", "H"],
+    },
+  },
+  {
+    id: "sidebar-open-changes-ctrl-h-non-mac",
+    action: "sidebar.open.changes",
+    combo: "Ctrl+H",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "open-changes-sidebar",
+      section: "panels",
+      label: "Open changes sidebar",
+      keys: ["mod", "H"],
+    },
   },
 
   // --- Toggle both sidebars ---

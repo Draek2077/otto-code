@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -19,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { getDesktopDaemonLogs, type DesktopDaemonLogs } from "@/desktop/daemon/desktop-daemon";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { isWeb } from "@/constants/platform";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 
 interface StartupSplashScreenProps {
@@ -197,15 +198,16 @@ const styles = StyleSheet.create((theme) => ({
 export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const webScrollbarStyle = useWebScrollbarStyle();
-  const errorScrollViewStyle = useMemo(
-    () => [styles.errorScrollView, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
-  const logsScrollStyle = useMemo(
-    () => [styles.logsScroll, webScrollbarStyle],
-    [webScrollbarStyle],
-  );
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isCompact;
+  const errorScrollRef = useRef<ScrollView>(null);
+  const errorScrollbar = useWebScrollViewScrollbar(errorScrollRef, {
+    enabled: showDesktopWebScrollbar,
+  });
+  const logsScrollRef = useRef<ScrollView>(null);
+  const logsScrollbar = useWebScrollViewScrollbar(logsScrollRef, {
+    enabled: showDesktopWebScrollbar,
+  });
   const [daemonLogs, setDaemonLogs] = useState<DesktopDaemonLogs | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -301,9 +303,14 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     <View style={styles.errorScreen}>
       <TitlebarDragRegion />
       <ScrollView
-        style={errorScrollViewStyle}
+        ref={errorScrollRef}
+        style={styles.errorScrollView}
         contentContainerStyle={styles.errorScrollContent}
-        showsVerticalScrollIndicator
+        onLayout={errorScrollbar.onLayout}
+        onScroll={errorScrollbar.onScroll}
+        onContentSizeChange={errorScrollbar.onContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showDesktopWebScrollbar}
       >
         <View style={styles.errorContent}>
           <View style={styles.errorHeader}>
@@ -321,14 +328,20 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
 
           <View style={styles.logsContainer}>
             <ScrollView
-              style={logsScrollStyle}
+              ref={logsScrollRef}
+              style={styles.logsScroll}
               contentContainerStyle={styles.logsContent}
-              showsVerticalScrollIndicator
+              onLayout={logsScrollbar.onLayout}
+              onScroll={logsScrollbar.onScroll}
+              onContentSizeChange={logsScrollbar.onContentSizeChange}
+              scrollEventThrottle={16}
+              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
             >
               <Text dataSet={CODE_SURFACE_DATASET} selectable style={styles.logsText}>
                 {logsText}
               </Text>
             </ScrollView>
+            {logsScrollbar.overlay}
           </View>
 
           <View style={styles.actionRow}>
@@ -347,6 +360,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
           </View>
         </View>
       </ScrollView>
+      {errorScrollbar.overlay}
     </View>
   );
 }

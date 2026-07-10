@@ -1252,6 +1252,12 @@ export class VoiceAssistantWebSocketServer {
         artifacts: true,
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: true,
+        // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        textEditor: true,
+        // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        projectSearch: true,
+        // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
+        codeIndex: true,
       },
     };
   }

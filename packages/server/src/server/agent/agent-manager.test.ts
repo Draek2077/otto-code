@@ -36,6 +36,7 @@ import type {
 } from "./agent-sdk-types.js";
 import type { OttoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
+import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -6849,6 +6850,86 @@ test("listImportableSessions skips providers that lack supportsSessionListing ev
   expect(listableClient.calls).toBe(1);
   expect(nonListableClient.calls).toBe(0);
   expect(result.map((d) => d.provider)).toEqual(["claude"]);
+});
+
+test("updateProviderRegistry pushes compaction config into live sessions and re-emits state", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-compaction-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class CompactionRecordingSession extends TestAgentSession {
+    readonly applied: Array<ProviderCompactionConfig | null> = [];
+    private hidden = false;
+
+    get features(): AgentFeature[] {
+      return this.hidden
+        ? []
+        : [{ type: "select", id: "auto_compact", label: "Auto-compact", options: [], value: "80" }];
+    }
+
+    applyCompactionConfig(compaction: ProviderCompactionConfig | null): boolean {
+      this.applied.push(compaction);
+      const nextHidden = compaction?.hideSelector === true;
+      const changed = nextHidden !== this.hidden;
+      this.hidden = nextHidden;
+      return changed;
+    }
+  }
+
+  class CompactionClient extends TestAgentClient {
+    session: CompactionRecordingSession | null = null;
+
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      this.session = new CompactionRecordingSession(config);
+      return this.session;
+    }
+  }
+
+  const client = new CompactionClient();
+  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  const states: ManagedAgent[] = [];
+  manager.subscribe(
+    (event) => {
+      if (event.type === "agent_state" && event.agent.id === snapshot.id) {
+        states.push(event.agent);
+      }
+    },
+    { agentId: snapshot.id, replayState: false },
+  );
+
+  const hiddenCompaction: ProviderCompactionConfig = { thresholdPercent: 50, hideSelector: true };
+  manager.updateProviderRegistry({
+    providerDefinitions: {
+      codex: { enabled: true, derivedFromProviderId: null, compaction: hiddenCompaction },
+    },
+    clients: {},
+  });
+
+  // The live session absorbed the config and the emitted state carries the
+  // recomputed feature list (auto_compact select gone).
+  expect(client.session?.applied).toEqual([hiddenCompaction]);
+  expect(states.length).toBeGreaterThanOrEqual(1);
+  expect(states[states.length - 1].features).toEqual([]);
+
+  // Re-applying the same config changes nothing, so no state is re-emitted.
+  const emittedBefore = states.length;
+  manager.updateProviderRegistry({
+    providerDefinitions: {
+      codex: { enabled: true, derivedFromProviderId: null, compaction: hiddenCompaction },
+    },
+    clients: {},
+  });
+  expect(states.length).toBe(emittedBefore);
+
+  // Definitions that didn't resolve compaction leave live sessions untouched.
+  manager.updateProviderRegistry({
+    providerDefinitions: { codex: { enabled: true, derivedFromProviderId: null } },
+    clients: {},
+  });
+  expect(client.session?.applied).toHaveLength(2);
 });
 
 test("user_message events wrapping a otto-system envelope are not added to the timeline", async () => {

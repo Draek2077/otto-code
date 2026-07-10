@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import type { TextInputProps } from "react-native";
+import type { PressableStateCallbackType, TextInputProps } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
@@ -140,6 +140,9 @@ const styles = StyleSheet.create((theme) => ({
   closeButton: {
     padding: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
+  },
+  closeButtonHovered: {
+    backgroundColor: theme.colors.surfaceHover,
   },
   searchRow: {
     flexDirection: "row",
@@ -302,6 +305,13 @@ export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
   },
 );
 
+function closeButtonStyle({
+  hovered,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [styles.closeButton, (Boolean(hovered) || pressed) && styles.closeButtonHovered];
+}
+
 export function SheetHeaderView({
   header,
   onClose,
@@ -360,7 +370,7 @@ export function SheetHeaderView({
         {showCloseButton ? (
           <Pressable
             accessibilityLabel={t("common.actions.close")}
-            style={styles.closeButton}
+            style={closeButtonStyle}
             onPress={onClose}
           >
             {({ pressed }) => (

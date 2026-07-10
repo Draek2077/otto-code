@@ -2037,7 +2037,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: `${String(theme.colors.accent)}20`,
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   iconButtonDisabled: {
     opacity: 0.45,

@@ -10,6 +10,7 @@ import {
   isDelegatedAgent,
   PARENT_AGENT_ID_LABEL,
 } from "@otto-code/protocol/agent-labels";
+import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
@@ -198,6 +199,12 @@ interface AgentManagerRescueTimeouts {
 interface ProviderEnabledFlag {
   enabled: boolean;
   derivedFromProviderId?: string | null;
+  /**
+   * Provider-level compaction config for daemon-hosted conversations.
+   * Undefined = caller didn't resolve it (leave live sessions untouched);
+   * null = resolved as unset.
+   */
+  compaction?: ProviderCompactionConfig | null;
 }
 type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
 type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
@@ -625,6 +632,16 @@ export class AgentManager {
     for (const [provider, client] of Object.entries(input.clients)) {
       if (client) {
         this.clients.set(provider, client);
+      }
+    }
+    // Live sessions absorb provider-level compaction edits (default level,
+    // hidden selector) so open chats reflect settings changes immediately.
+    for (const agent of this.agents.values()) {
+      if (!agent.session?.applyCompactionConfig) continue;
+      const definition = input.providerDefinitions[agent.provider];
+      if (!definition || definition.compaction === undefined) continue;
+      if (agent.session.applyCompactionConfig(definition.compaction)) {
+        this.emitState(agent);
       }
     }
   }

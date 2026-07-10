@@ -32,6 +32,18 @@ export interface ArtifactOpenMenuProps {
   hideTrigger?: boolean;
 }
 
+function triggerStyle({
+  hovered,
+  pressed,
+  open,
+}: {
+  hovered: boolean;
+  pressed: boolean;
+  open: boolean;
+}) {
+  return [styles.trigger, (hovered || pressed || open) && styles.triggerHovered];
+}
+
 export function ArtifactOpenMenu({
   serverId,
   workspaceId,
@@ -107,9 +119,9 @@ export function ArtifactOpenMenu({
           testID="workspace-open-artifact-trigger"
           accessibilityRole="button"
           accessibilityLabel="Add artifact"
-          style={styles.trigger}
+          style={triggerStyle}
         >
-          <FileText size={16} color={styles.icon.color} />
+          <FileText size={14} color={styles.icon.color} />
         </DropdownMenuTrigger>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
@@ -176,11 +188,14 @@ function ArtifactMenuItem({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: 28,
-    height: 28,
+    width: 22,
+    height: 22,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
+  },
+  triggerHovered: {
+    backgroundColor: theme.colors.surfaceHover,
   },
   // Zero-size anchor for the collapsed mode — exists only so the dropdown has
   // a position to open from; must never take layout space or catch pointers.

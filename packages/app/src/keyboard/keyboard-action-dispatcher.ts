@@ -27,6 +27,9 @@ export type KeyboardActionId =
   | "workspace.pane.close"
   | "workspace.terminal.new"
   | "sidebar.toggle.right"
+  | "sidebar.open.files"
+  | "sidebar.open.search"
+  | "sidebar.open.changes"
   | "workspace.new"
   | "worktree.new"
   | "worktree.archive";
@@ -58,6 +61,9 @@ export type KeyboardActionDefinition =
   | { id: "workspace.pane.close"; scope: KeyboardActionScope }
   | { id: "workspace.terminal.new"; scope: KeyboardActionScope }
   | { id: "sidebar.toggle.right"; scope: KeyboardActionScope }
+  | { id: "sidebar.open.files"; scope: KeyboardActionScope }
+  | { id: "sidebar.open.search"; scope: KeyboardActionScope }
+  | { id: "sidebar.open.changes"; scope: KeyboardActionScope }
   | { id: "workspace.new"; scope: KeyboardActionScope }
   | { id: "worktree.new"; scope: KeyboardActionScope }
   | { id: "worktree.archive"; scope: KeyboardActionScope };

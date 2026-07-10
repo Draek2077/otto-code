@@ -64,6 +64,8 @@ Sizes: `xs` for ultra-tight inline triggers. `sm` for any button sitting in a ro
 
 A `<Pressable>` wrapping a `<Text>` is a sixth variant. It is wrong. `<Button>` accepts `style`, `textStyle`, `leftIcon`, `disabled`, `size`, and `variant`.
 
+Icon buttons and compact triggers (kebabs, header actions, pane-toolbar buttons, close/dismiss buttons, filter and picker chips) take their hover/press chrome from `surfaceHover` — a translucent overlay token that reads identically on any surface, base or elevated. Hand-picking `surface1`/`surface2`/`surface3` (or `surfaceSidebarHover`) as an icon-button hover background is drift; those tokens are for opaque fills and row hovers, not button chrome. Every icon button gets the chrome: an icon-only Pressable whose hover feedback is just an icon tint is missing it.
+
 ---
 
 ## 5. Borders
@@ -185,7 +187,7 @@ The row anatomy is a content column with an optional trailing slot. Inside a car
 
 Rows that drill into a detail lead with a chevron in the trailing slot (`ChevronRight`, `iconSize.sm`, `foregroundMuted`). The whole row is the `<Pressable>`. Pair-device row (`packages/app/src/screens/settings/host-page.tsx:644-668`), provider row (`packages/app/src/screens/settings/providers-section.tsx:92-132`), project row in the projects list. Chevron means navigation.
 
-Kebab menus (`<DropdownMenu>` with `<MoreVertical size={14} />` trigger) are for actions on the row, not navigation. Trigger style: `padding: 2`, `borderRadius: 4`, hover background `surface2`. Menu position: `align="end"`. Items use `<DropdownMenuItem leading={<Icon size={14} color={foregroundMuted} />} ...>`. Visibility is `isHovered || isTouchPlatform` — hover-revealed on web, always visible on native (`packages/app/src/components/sidebar-workspace-list.tsx:684-770`).
+Kebab menus (`<DropdownMenu>` with `<MoreVertical size={14} />` trigger) are for actions on the row, not navigation. Trigger style: `padding: 2`, `borderRadius: 4`, hover background `surfaceHover`. Menu position: `align="end"`. Items use `<DropdownMenuItem leading={<Icon size={14} color={foregroundMuted} />} ...>`. Visibility is `isHovered || isTouchPlatform` — hover-revealed on web, always visible on native (`packages/app/src/components/sidebar-workspace-list.tsx:684-770`).
 
 A row may carry both a chevron and a kebab when both navigation and row-level actions apply. Chevron sits at the end; kebab sits before it.
 

@@ -89,6 +89,21 @@ export type UserComposerAttachment =
   | { kind: "github_issue"; item: GitHubSearchItem }
   | { kind: "github_pr"; item: GitHubSearchItem };
 
+/**
+ * A workspace file, folder, or specific line the user attached (from the file
+ * explorer or project search) as prompt context.
+ */
+export interface FileContextAttachment {
+  kind: "file_context";
+  /** Dedupe id within a scope: the path, or `${path}:${lineStart}` for a line. */
+  id: string;
+  path: string;
+  /** Whether the path is a file or a folder; absent means file. */
+  entryKind?: "file" | "directory";
+  /** 1-based line number, when this attachment targets a specific line rather than the whole file. */
+  lineStart?: number;
+}
+
 export type WorkspaceComposerAttachment =
   | {
       kind: "browser_element";
@@ -96,6 +111,7 @@ export type WorkspaceComposerAttachment =
     }
   | PullRequestContextAttachment
   | ChatHistoryContextAttachment
+  | FileContextAttachment
   | {
       kind: "review";
       attachment: Extract<AgentAttachment, { type: "review" }>;

@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -30,6 +30,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ScrollableCodeSurface, SurfaceCard } from "@/components/ui/scrollable-code-surface";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useToast } from "@/contexts/toast-context";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
@@ -43,8 +44,13 @@ import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
 import type { AgentModelDefinition, AgentProvider } from "@otto-code/protocol/agent-types";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
-import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import {
+  COMPACTION_THRESHOLD_PERCENTS,
+  OTTO_TOOL_GROUPS,
+  type OttoToolGroup,
+} from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
+import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 import {
@@ -66,12 +72,13 @@ interface ProviderDiagnosticSheetProps {
   serverId: string;
 }
 
-type ProviderSettingsTab = "models" | "connection" | "tools";
+type ProviderSettingsTab = "models" | "connection" | "tools" | "agents";
 
 function buildProviderTabOptions(
   t: TFunction,
   hasConnectionTab: boolean,
   hasToolsTab: boolean,
+  hasAgentsTab: boolean,
 ): SegmentedControlOption<ProviderSettingsTab>[] {
   const options: SegmentedControlOption<ProviderSettingsTab>[] = [];
   if (hasConnectionTab) {
@@ -91,6 +98,13 @@ function buildProviderTabOptions(
       value: "tools",
       label: t("settings.providers.tabs.tools"),
       testID: "provider-settings-tab-tools",
+    });
+  }
+  if (hasAgentsTab) {
+    options.push({
+      value: "agents",
+      label: t("settings.providers.tabs.agents"),
+      testID: "provider-settings-tab-agents",
     });
   }
   return options;
@@ -526,6 +540,149 @@ function ProviderToolGroupsSection({
   );
 }
 
+type ProviderCompactionLevel = "off" | "50" | "60" | "70" | "80" | "90";
+
+// Mirrors the daemon's resolveAutoCompactDefault: autoCompact:false wins,
+// otherwise thresholdPercent, otherwise the stock 80%.
+function readProviderCompactionSettings(entry: Record<string, unknown> | null): {
+  level: ProviderCompactionLevel;
+  hideSelector: boolean;
+} {
+  const raw = entry?.["compaction"];
+  const compaction =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  const hideSelector = compaction?.["hideSelector"] === true;
+  if (compaction?.["autoCompact"] === false) {
+    return { level: "off", hideSelector };
+  }
+  const threshold = compaction?.["thresholdPercent"];
+  const level =
+    typeof threshold === "number" &&
+    (COMPACTION_THRESHOLD_PERCENTS as readonly number[]).includes(threshold)
+      ? (String(threshold) as ProviderCompactionLevel)
+      : "80";
+  return { level, hideSelector };
+}
+
+/**
+ * Agent-behavior defaults for daemon-hosted providers (openai-compatible):
+ * the default Auto-compact level applied to new chats, and whether each chat
+ * shows its own Auto-compact selector or silently uses that default.
+ */
+function ProviderAgentsSection({
+  provider,
+  configEntry,
+  patchConfig,
+  refresh,
+}: {
+  provider: string;
+  configEntry: Record<string, unknown> | null;
+  patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
+  refresh: (providers?: AgentProvider[]) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { level, hideSelector } = readProviderCompactionSettings(configEntry);
+
+  const levelOptions = useMemo<SelectFieldOption<ProviderCompactionLevel>[]>(
+    () => [
+      {
+        id: "off",
+        value: "off",
+        label: t("settings.providers.agents.compactionOff"),
+        description: t("settings.providers.agents.compactionOffDescription"),
+        testID: "provider-compaction-level-off",
+      },
+      ...COMPACTION_THRESHOLD_PERCENTS.map((percent) => ({
+        id: String(percent),
+        value: String(percent) as ProviderCompactionLevel,
+        label: t("settings.providers.agents.compactionAtPercent", { percent }),
+        testID: `provider-compaction-level-${percent}`,
+      })),
+    ],
+    [t],
+  );
+  const selectedOption = levelOptions.find((option) => option.value === level) ?? null;
+  const selectedDisplay = useMemo(
+    () => (selectedOption ? { label: selectedOption.label } : null),
+    [selectedOption],
+  );
+
+  const applyPatch = useCallback(
+    (compaction: Record<string, unknown>) => {
+      setSaving(true);
+      setError(null);
+      void patchConfig({ providers: { [provider]: { compaction } } })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.agents.saveFailed"));
+        })
+        .finally(() => setSaving(false));
+    },
+    [patchConfig, provider, refresh, t],
+  );
+
+  const handleLevelChange = useCallback(
+    (next: ProviderCompactionLevel) => {
+      applyPatch(
+        next === "off"
+          ? { autoCompact: false }
+          : { autoCompact: true, thresholdPercent: Number(next) },
+      );
+    },
+    [applyPatch],
+  );
+
+  const handleShowSelectorChange = useCallback(
+    (next: boolean) => {
+      applyPatch({ hideSelector: !next });
+    },
+    [applyPatch],
+  );
+
+  return (
+    <View style={sheetStyles.section}>
+      <View style={sheetStyles.connectionCard}>
+        <View style={sheetStyles.formGroup}>
+          <SelectField
+            label={t("settings.providers.agents.compactionLabel")}
+            hint={t("settings.providers.agents.compactionHint")}
+            value={level}
+            selectedDisplay={selectedDisplay}
+            options={levelOptions}
+            onChange={handleLevelChange}
+            placeholder={t("settings.providers.agents.compactionLabel")}
+            emptyText={t("settings.providers.agents.compactionLabel")}
+            disabled={saving}
+            size="sm"
+            testID="provider-compaction-level"
+            triggerTestID="provider-compaction-level-trigger"
+          />
+          <View style={sheetStyles.toolGroupRow}>
+            <View style={sheetStyles.switchLabelGroup}>
+              <Text style={sheetStyles.formLabel}>
+                {t("settings.providers.agents.showSelectorLabel")}
+              </Text>
+              <Text style={sheetStyles.mutedText}>
+                {t("settings.providers.agents.showSelectorDescription")}
+              </Text>
+            </View>
+            <Switch
+              value={!hideSelector}
+              onValueChange={handleShowSelectorChange}
+              disabled={saving}
+              testID="provider-compaction-show-selector"
+            />
+          </View>
+          {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function ProviderRemoveSection({
   provider,
   providerLabel,
@@ -908,6 +1065,36 @@ interface ProviderModalBodyProps {
   theme: { iconSize: { md: number }; colors: { foregroundMuted: string } };
 }
 
+// Tab panes own their scrolling (the sheet is scrollable={false} so per-tab
+// actions stay pinned), so each pane wires up the app's auto-hiding web
+// scrollbar overlay instead of showing the native one.
+function TabScrollView({ children }: { children: ReactNode }) {
+  const isCompact = useIsCompactFormFactor();
+  const showWebScrollbar = isWeb && !isCompact;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: showWebScrollbar });
+
+  return (
+    <View style={sheetStyles.tabScroll}>
+      <ScrollView
+        ref={scrollRef}
+        style={sheetStyles.tabScroll}
+        contentContainerStyle={sheetStyles.tabScrollContent}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        onLayout={scrollbar.onLayout}
+        onScroll={scrollbar.onScroll}
+        onContentSizeChange={scrollbar.onContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showWebScrollbar}
+      >
+        {children}
+      </ScrollView>
+      {scrollbar.overlay}
+    </View>
+  );
+}
+
 interface ModelsTabActionsProps {
   fetchedAtLabel: string | null;
   modelsRefreshing: boolean;
@@ -1143,9 +1330,10 @@ export function ProviderDiagnosticSheet({
 
   const hasConnectionTab = connection !== null;
   const hasToolsTab = providerExtends === "openai-compatible";
+  const hasAgentsTab = providerExtends === "openai-compatible";
   const tabOptions = useMemo(
-    () => buildProviderTabOptions(t, hasConnectionTab, hasToolsTab),
-    [hasConnectionTab, hasToolsTab, t],
+    () => buildProviderTabOptions(t, hasConnectionTab, hasToolsTab, hasAgentsTab),
+    [hasAgentsTab, hasConnectionTab, hasToolsTab, t],
   );
   // Falls back to the first tab until the user picks one, or if a config
   // refresh drops the selected tab (e.g. the provider loses its connection).
@@ -1237,12 +1425,7 @@ export function ProviderDiagnosticSheet({
         {currentTab === "models" ? (
           <View style={sheetStyles.tabPane}>
             <ModelsSearchField initialValue={query} onChange={setQuery} />
-            <ScrollView
-              style={sheetStyles.tabScroll}
-              contentContainerStyle={sheetStyles.tabScrollContent}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
+            <TabScrollView>
               <ProviderModalBody
                 discoveredCount={discoveredModels.length}
                 additionalCount={additionalModels.length}
@@ -1257,7 +1440,7 @@ export function ProviderDiagnosticSheet({
                 onDeleteCustom={handleDeleteCustom}
                 theme={theme}
               />
-            </ScrollView>
+            </TabScrollView>
             <ModelsTabActions
               fetchedAtLabel={fetchedAtLabel}
               modelsRefreshing={modelsRefreshing}
@@ -1268,12 +1451,7 @@ export function ProviderDiagnosticSheet({
           </View>
         ) : null}
         {currentTab === "connection" && connection ? (
-          <ScrollView
-            style={sheetStyles.tabScroll}
-            contentContainerStyle={sheetStyles.tabScrollContent}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
+          <TabScrollView>
             <ProviderConnectionSection
               key={`connection-${provider}`}
               provider={provider}
@@ -1281,15 +1459,10 @@ export function ProviderDiagnosticSheet({
               patchConfig={patchConfig}
               refresh={refresh}
             />
-          </ScrollView>
+          </TabScrollView>
         ) : null}
         {currentTab === "tools" ? (
-          <ScrollView
-            style={sheetStyles.tabScroll}
-            contentContainerStyle={sheetStyles.tabScrollContent}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
+          <TabScrollView>
             <ProviderToolGroupsSection
               key={`tools-${provider}`}
               provider={provider}
@@ -1297,7 +1470,18 @@ export function ProviderDiagnosticSheet({
               patchConfig={patchConfig}
               refresh={refresh}
             />
-          </ScrollView>
+          </TabScrollView>
+        ) : null}
+        {currentTab === "agents" ? (
+          <TabScrollView>
+            <ProviderAgentsSection
+              key={`agents-${provider}`}
+              provider={provider}
+              configEntry={providerConfigEntry}
+              patchConfig={patchConfig}
+              refresh={refresh}
+            />
+          </TabScrollView>
         ) : null}
       </AdaptiveModalSheet>
       <AddCustomModelSubSheet
@@ -1356,7 +1540,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   headerActions: {
     flexDirection: "row",
@@ -1502,6 +1686,10 @@ const sheetStyles = StyleSheet.create((theme) => ({
     flex: 1,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
+  },
+  switchLabelGroup: {
+    flex: 1,
+    gap: theme.spacing[1],
   },
   formActions: {
     flexDirection: "row",

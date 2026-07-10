@@ -218,6 +218,9 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface0, // Workspace main background
+    // Hover/press chrome for icon buttons and compact triggers. Translucent
+    // so the same token reads identically on any surface, base or elevated.
+    surfaceHover: "rgba(0, 0, 0, 0.06)",
 
     // Text
     foreground: tint.foreground,
@@ -299,8 +302,8 @@ const daylightColors = buildLightSemanticColors({
   scrollbarHandle: "#3f3f46",
   border: "#dcdce0", // was #e4e4e7 — clearer panel separation
   borderAccent: "#ececf1",
-  accent: "#20744A",
-  accentBright: "#1d8a4e", // darker than the old #239956 so accent text reads on white
+  accent: "#8c7300", // sunny deep yellow (hue ~49°, not orange) — ~4.6:1 on white
+  accentBright: "#a08400", // brighter step, ~3.6:1 on white
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
   spinnerPrimary: "#0891b2", // neutral light keeps the cyan/magenta pair, darkened to hold on white
   spinnerSecondary: "#c026d3",
@@ -477,6 +480,9 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
+    // Hover/press chrome for icon buttons and compact triggers. Translucent
+    // so the same token reads identically on any surface, base or elevated.
+    surfaceHover: "rgba(255, 255, 255, 0.07)",
 
     foreground: "#fafafa",
     foregroundMuted: tint.foregroundMuted,
@@ -536,7 +542,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // ---------------------------------------------------------------------------
 
 // Dark (displayed as "Twilight") — the neutral default dark theme. Untinted
-// zinc surfaces with Otto's green kept only as the accent, deliberately
+// zinc surfaces with a pale blue kept only as the accent, deliberately
 // non-flashy: this is the theme people who "just want dark mode" get, and the
 // dark half of the System (auto) pair. Distinct from Graphite, which deepens
 // the base and goes monochrome (near-white accent).
@@ -553,8 +559,8 @@ const neutralDarkColors = buildDarkSemanticColors({
   scrollbarHandle: "#7b7b84",
   border: "#2b2b30",
   borderAccent: "#36363d",
-  accent: "#20744A",
-  accentBright: "#8ce0af",
+  accent: "#7ea6d9",
+  accentBright: "#bcd6f2",
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
   spinnerPrimary: "#63ccff", // neutral dark keeps the cyan/magenta pair, lifted to glow on dark
   spinnerSecondary: "#eb66f0",
@@ -1102,7 +1108,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
   ReturnType<typeof buildBlackFromLightColors>
 > = {
   // Daylight — neutral zinc counterpart; same steps as Twilight-on-black with
-  // Daylight's brand green and cyan/magenta spinner pair lifted for dark.
+  // Daylight's deep yellow and cyan/magenta spinner pair lifted for dark.
   daylight: buildBlackFromLightColors({
     surface0: "#000000",
     surface1: "#161619",
@@ -1116,8 +1122,8 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#8a8a93",
     border: "#26262c",
     borderAccent: "#323239",
-    accent: "#20744A",
-    accentBright: "#8ce0af",
+    accent: "#8c7300",
+    accentBright: "#ffd54f", // sunny gold, ~14.9:1 on black
     destructive: "#c44a4a",
     spinnerPrimary: "#63ccff",
     spinnerSecondary: "#eb66f0",

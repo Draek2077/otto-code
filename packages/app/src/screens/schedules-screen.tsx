@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { Plus } from "@/components/icons/material-icons";
+import { CalendarPlus, Plus } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
@@ -253,7 +253,13 @@ function SchedulesScreenBody({
       <View style={styles.centered} testID="schedules-empty">
         {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
         <Text style={styles.message}>No schedules yet</Text>
-        <Button variant="ghost" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={CalendarPlus}
+          onPress={onCreate}
+          testID="schedules-empty-new"
+        >
           Create a schedule
         </Button>
       </View>

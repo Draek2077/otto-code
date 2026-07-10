@@ -36,6 +36,8 @@ import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
+import { ProjectSearchPane } from "./project-search-pane";
+import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
@@ -51,7 +53,7 @@ interface ExplorerSidebarProps {
   workspaceId?: string | null;
   workspaceRoot: string;
   isGit: boolean;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
 interface ExplorerSidebarSharedState {
@@ -431,6 +433,21 @@ function ExplorerTabButton({
   );
 }
 
+function resolveActiveExplorerTab(input: {
+  activeTab: ExplorerTab;
+  isGit: boolean;
+  hasProjectSearch: boolean;
+  showPrTab: boolean;
+}): ExplorerTab {
+  const featureCoerced =
+    input.activeTab === "search" && !input.hasProjectSearch ? "files" : input.activeTab;
+  const requested =
+    !input.isGit && (featureCoerced === "changes" || featureCoerced === "pr")
+      ? "files"
+      : featureCoerced;
+  return requested === "pr" && !input.showPrTab ? "changes" : requested;
+}
+
 interface SidebarContentProps {
   activeTab: ExplorerTab;
   onTabPress: (tab: ExplorerTab) => void;
@@ -441,7 +458,7 @@ interface SidebarContentProps {
   isGit: boolean;
   isMobile: boolean;
   isOpen: boolean;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
 }
 
 function ExplorerSidebarContent({
@@ -470,9 +487,8 @@ function ExplorerSidebarContent({
   });
   const hasPullRequest = prPane.prNumber !== null;
   const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
-  const requestedTab: ExplorerTab =
-    !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
-  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
+  const hasProjectSearch = useProjectSearchFeature(serverId);
+  const resolvedTab = resolveActiveExplorerTab({ activeTab, isGit, hasProjectSearch, showPrTab });
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
   const handlePrRetry = useCallback(() => {
@@ -512,6 +528,15 @@ function ExplorerSidebarContent({
             onTabPress={onTabPress}
             testID="explorer-tab-files"
           />
+          {hasProjectSearch && (
+            <ExplorerTabButton
+              tab="search"
+              active={resolvedTab === "search"}
+              label={t("workspace.tabs.explorer.search")}
+              onTabPress={onTabPress}
+              testID="explorer-tab-search"
+            />
+          )}
           {isGit && showPrTab && (
             <ExplorerTabButton
               tab="pr"
@@ -546,10 +571,19 @@ function ExplorerSidebarContent({
             workspaceId={workspaceId}
             cwd={workspaceRoot}
             enabled={isOpen}
+            onOpenFile={onOpenFile}
           />
         )}
         {resolvedTab === "files" && (
           <FileExplorerPane
+            serverId={serverId}
+            workspaceId={workspaceId}
+            workspaceRoot={workspaceRoot}
+            onOpenFile={onOpenFile}
+          />
+        )}
+        {resolvedTab === "search" && (
+          <ProjectSearchPane
             serverId={serverId}
             workspaceId={workspaceId}
             workspaceRoot={workspaceRoot}

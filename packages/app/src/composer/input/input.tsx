@@ -30,7 +30,7 @@ import {
   Mic,
   MicOff,
   CornerDownLeft,
-  Plus,
+  Paperclip,
   Square,
 } from "@/components/icons/material-icons";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
@@ -208,7 +208,7 @@ function AttachButtonIcon({
   const colorMapping = hovered ? iconForegroundMapping : iconForegroundMutedMapping;
   return (
     <View ref={onAttachButtonRef} collapsable={false} style={styles.attachButtonAnchor}>
-      <ThemedPlus size={buttonIconSize} uniProps={colorMapping} />
+      <ThemedPaperclip size={buttonIconSize} uniProps={colorMapping} />
     </View>
   );
 }
@@ -2134,7 +2134,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   tooltipRow: {
     flexDirection: "row",
@@ -2187,7 +2187,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
 })) as unknown as Record<string, object>;
 
-const ThemedPlus = withUnistyles(Plus);
+const ThemedPaperclip = withUnistyles(Paperclip);
 const ThemedMic = withUnistyles(Mic);
 const ThemedMicOff = withUnistyles(MicOff);
 const ThemedArrowUp = withUnistyles(ArrowUp);

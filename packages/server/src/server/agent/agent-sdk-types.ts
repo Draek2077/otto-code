@@ -1,6 +1,7 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
 import type { AgentAttachment, AgentContextUsage } from "@otto-code/protocol/messages";
+import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
 
 export type { AgentProviderNotice };
@@ -686,6 +687,12 @@ export interface AgentSession {
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;
+  /**
+   * Apply updated provider-level compaction defaults to a live session
+   * (providers whose conversation the daemon owns). Returns true when the
+   * effective settings changed so the manager knows to re-emit agent state.
+   */
+  applyCompactionConfig?(compaction: ProviderCompactionConfig | null): boolean;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;

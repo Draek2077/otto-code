@@ -68,8 +68,8 @@ export function SidebarCallout({
             {onDismiss ? (
               <Pressable
                 onPress={onDismiss}
-                hitSlop={8}
-                style={styles.dismissButton}
+                hitSlop={6}
+                style={dismissButtonStyle}
                 testID={testID ? `${testID}-dismiss` : undefined}
                 accessibilityLabel={t("sidebarCallout.dismiss")}
                 accessibilityRole="button"
@@ -106,6 +106,13 @@ export function SidebarCallout({
       </View>
     </View>
   );
+}
+
+function dismissButtonStyle({
+  hovered,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [styles.dismissButton, (Boolean(hovered) || pressed) && styles.dismissButtonHovered];
 }
 
 function SidebarCalloutActionButton({
@@ -157,10 +164,16 @@ const styles = StyleSheet.create((theme) => ({
     borderTopColor: theme.colors.destructive,
   },
   dismissButton: {
-    width: 14,
-    height: 14,
+    width: 22,
+    height: 22,
+    marginVertical: -4,
+    marginRight: -4,
+    borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+  dismissButtonHovered: {
+    backgroundColor: theme.colors.surfaceHover,
   },
   body: {
     gap: theme.spacing[2],

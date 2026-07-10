@@ -9,6 +9,7 @@ import {
 import {
   WebDesktopScrollbarOverlay,
   useWebDesktopScrollbarMetrics,
+  type ScrollbarAxis,
   type ScrollbarMetrics,
 } from "./web-desktop-scrollbar";
 import { isWeb as platformIsWeb } from "@/constants/platform";
@@ -60,12 +61,20 @@ export function useWebElementScrollbar(
   options?: {
     enabled?: boolean;
     contentRef?: RefObject<HTMLElement | null>;
+    /** Also render a horizontal overlay for elements that scroll on both axes. */
+    horizontal?: boolean;
   },
 ): ReactNode {
   const enabled = (options?.enabled ?? true) && platformIsWeb;
   const contentRef = options?.contentRef;
+  const horizontal = options?.horizontal ?? false;
 
   const [metrics, setMetrics] = useState<ScrollbarMetrics>({
+    offset: 0,
+    viewportSize: 0,
+    contentSize: 0,
+  });
+  const [horizontalMetrics, setHorizontalMetrics] = useState<ScrollbarMetrics>({
     offset: 0,
     viewportSize: 0,
     contentSize: 0,
@@ -101,6 +110,16 @@ export function useWebElementScrollbar(
         contentSize: el.scrollHeight,
       };
       setMetrics((prev) => (metricsChanged(prev, next) ? next : prev));
+      if (horizontal) {
+        const nextHorizontal: ScrollbarMetrics = {
+          offset: el.scrollLeft,
+          viewportSize: el.clientWidth,
+          contentSize: el.scrollWidth,
+        };
+        setHorizontalMetrics((prev) =>
+          metricsChanged(prev, nextHorizontal) ? nextHorizontal : prev,
+        );
+      }
     }
 
     element.addEventListener("scroll", update, { passive: true });
@@ -122,7 +141,7 @@ export function useWebElementScrollbar(
       style.msOverflowStyle = previousMsOverflowStyle;
       style.scrollbarGutter = previousScrollbarGutter;
     };
-  }, [contentRef, elementRef, enabled]);
+  }, [contentRef, elementRef, enabled, horizontal]);
 
   const onScrollToOffset = useCallback(
     (offset: number) => {
@@ -131,10 +150,27 @@ export function useWebElementScrollbar(
     [elementRef],
   );
 
+  const onScrollToHorizontalOffset = useCallback(
+    (offset: number) => {
+      elementRef.current?.scrollTo({ left: offset, behavior: "auto" });
+    },
+    [elementRef],
+  );
+
   if (!enabled) return null;
 
   return (
-    <WebDesktopScrollbarOverlay enabled metrics={metrics} onScrollToOffset={onScrollToOffset} />
+    <>
+      <WebDesktopScrollbarOverlay enabled metrics={metrics} onScrollToOffset={onScrollToOffset} />
+      {horizontal ? (
+        <WebDesktopScrollbarOverlay
+          enabled
+          axis="horizontal"
+          metrics={horizontalMetrics}
+          onScrollToOffset={onScrollToHorizontalOffset}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -151,10 +187,11 @@ interface WebScrollViewScrollbar {
 
 export function useWebScrollViewScrollbar(
   scrollableRef: RefObject<ScrollView | FlatList | null>,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; axis?: ScrollbarAxis },
 ): WebScrollViewScrollbar {
   const enabled = (options?.enabled ?? true) && platformIsWeb;
-  const metricsHook = useWebDesktopScrollbarMetrics();
+  const axis = options?.axis ?? "vertical";
+  const metricsHook = useWebDesktopScrollbarMetrics(axis);
 
   const onScrollToOffset = useCallback(
     (offset: number) => {
@@ -162,15 +199,22 @@ export function useWebScrollViewScrollbar(
       if (!scrollable) return;
       if ("scrollToOffset" in scrollable) {
         scrollable.scrollToOffset({ offset, animated: false });
+      } else if (axis === "horizontal") {
+        scrollable.scrollTo({ x: offset, animated: false });
       } else {
         scrollable.scrollTo({ y: offset, animated: false });
       }
     },
-    [scrollableRef],
+    [axis, scrollableRef],
   );
 
   const overlay: ReactNode = enabled ? (
-    <WebDesktopScrollbarOverlay enabled metrics={metricsHook} onScrollToOffset={onScrollToOffset} />
+    <WebDesktopScrollbarOverlay
+      enabled
+      axis={axis}
+      metrics={metricsHook}
+      onScrollToOffset={onScrollToOffset}
+    />
   ) : null;
 
   return {

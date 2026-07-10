@@ -139,19 +139,19 @@ export function GitActionsSplitButton({
       styles.splitButtonPrimary,
       Boolean(fill) && styles.fillItem,
       (Boolean(hovered) || pressed) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceHover }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
     ],
-    [fill, primaryDisabled, theme.colors.surface2],
+    [fill, primaryDisabled, theme.colors.surfaceHover],
   );
 
   const caretTriggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
       styles.splitButtonCaret,
       (hovered || pressed || open) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceHover }),
     ],
-    [theme.colors.surface2],
+    [theme.colors.surfaceHover],
   );
 
   return (

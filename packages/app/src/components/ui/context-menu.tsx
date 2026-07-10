@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { isWeb, isNative } from "@/constants/platform";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 
 // Keep parity with dropdown-menu action statuses.
 export type ActionStatus = "idle" | "pending" | "success";
@@ -199,6 +198,28 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
   return null;
 }
 
+/**
+ * Extracts an anchor point (window coordinates) from a web `contextmenu` or a
+ * native press event, suppressing the default browser menu. For imperative
+ * menus that have no `ContextMenuTrigger` — pass the result to the
+ * `ContextMenu` `anchor` prop. Returns null when the event carries no usable
+ * coordinates.
+ */
+export function contextMenuAnchorFromEvent(event: unknown): { x: number; y: number } | null {
+  if (typeof event === "object" && event !== null) {
+    const preventDefault = Reflect.get(event, "preventDefault");
+    const stopPropagation = Reflect.get(event, "stopPropagation");
+    if (isCallable(preventDefault)) preventDefault.call(event);
+    if (isCallable(stopPropagation)) stopPropagation.call(event);
+  }
+  const point = coerceEventPoint(event);
+  if (!point) {
+    return null;
+  }
+  const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+  return { x: point.pageX, y: point.pageY + statusBarHeight };
+}
+
 function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
   if (typeof ref === "function") {
     ref(value);
@@ -213,11 +234,18 @@ export function ContextMenu({
   open,
   defaultOpen,
   onOpenChange,
+  anchor,
   children,
 }: PropsWithChildren<{
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Anchor point in window coordinates for menus opened imperatively (no
+   * `ContextMenuTrigger`) — e.g. a single shared menu serving many rows.
+   * Use `contextMenuAnchorFromEvent` to derive it from the source event.
+   */
+  anchor?: { x: number; y: number } | null;
 }>): ReactElement {
   const triggerRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
@@ -232,6 +260,14 @@ export function ContextMenu({
       setAnchorRect(null);
     }
   }, [isOpen]);
+
+  const anchorX = anchor?.x;
+  const anchorY = anchor?.y;
+  useEffect(() => {
+    if (isOpen && anchorX !== undefined && anchorY !== undefined) {
+      setAnchorRect({ x: anchorX, y: anchorY, width: 0, height: 0 });
+    }
+  }, [anchorX, anchorY, isOpen]);
 
   const value = useMemo<ContextMenuContextValue>(
     () => ({
@@ -390,7 +426,6 @@ export function ContextMenuContent({
   const { t } = useTranslation();
   const context = useContextMenuContext("ContextMenuContent");
   const { theme } = useUnistyles();
-  const webScrollbarStyle = useWebScrollbarStyle();
   const isMobile = useIsCompactFormFactor();
   const useMobileSheet = isMobile && mobileMode === "sheet";
   const { open, setOpen, triggerRef, anchorRect } = context;
@@ -580,7 +615,6 @@ export function ContextMenuContent({
           <FloatingScrollView
             bounces={false}
             showsVerticalScrollIndicator
-            style={webScrollbarStyle}
             contentContainerStyle={SCROLL_CONTENT_CONTAINER_STYLE}
           >
             {children}

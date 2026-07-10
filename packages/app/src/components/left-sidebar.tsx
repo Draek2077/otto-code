@@ -2,15 +2,15 @@ import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
   FileText,
-  FolderPlusBold,
+  FolderPlus,
   History,
-  HomeBold,
+  Home,
   ListChevronsDownUp,
   ListChevronsUpDown,
   Plus,
   Search,
-  ServerBold,
-  SettingsBold,
+  Server,
+  Settings,
   X,
   type IconComponent,
 } from "@/components/icons/material-icons";
@@ -431,7 +431,7 @@ function SidebarHostPicker({
             onPress={handleOpen}
             testID="sidebar-hosts-trigger"
             accessibilityLabel="Hosts"
-            icon={ServerBold}
+            icon={Server}
             iconSize={ICON_SIZE.sm * 1.5}
             theme={theme}
           />
@@ -563,7 +563,7 @@ function SidebarFooter({
               onPress={handleHome}
               testID="sidebar-home"
               accessibilityLabel={labels.home}
-              icon={HomeBold}
+              icon={Home}
               theme={theme}
             />
           </TooltipTrigger>
@@ -577,7 +577,7 @@ function SidebarFooter({
               onPress={handleSettings}
               testID="sidebar-settings"
               accessibilityLabel={labels.settings}
-              icon={SettingsBold}
+              icon={Settings}
               theme={theme}
             />
           </TooltipTrigger>
@@ -593,7 +593,7 @@ function SidebarFooter({
               onPress={handleOpenProject}
               testID="sidebar-add-project"
               accessibilityLabel={labels.addProject}
-              icon={FolderPlusBold}
+              icon={FolderPlus}
               theme={theme}
             />
           </TooltipTrigger>
@@ -1112,25 +1112,42 @@ function WorkspacesSectionHeader({
   const setSectionsCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.setSectionsCollapsed,
   );
-  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const handleSetAllCollapsed = useCallback(
-    (collapsed: boolean) => {
-      if (groupMode === "status") {
-        const statusGroupKeys = Array.from(
-          new Set(statusWorkspacePlacements.map((placement) => placement.statusBucket)),
-        );
-        setSectionsCollapsed({ statusGroupKeys, collapsed });
-        return;
-      }
-      setSectionsCollapsed({
-        projectKeys: projects.map((project) => project.projectKey),
-        collapsed,
-      });
-    },
-    [groupMode, projects, setSectionsCollapsed, statusWorkspacePlacements],
+  const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
+    (state) => state.collapsedProjectKeys,
   );
-  const handleExpandAll = useCallback(() => handleSetAllCollapsed(false), [handleSetAllCollapsed]);
-  const handleCollapseAll = useCallback(() => handleSetAllCollapsed(true), [handleSetAllCollapsed]);
+  const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
+    (state) => state.collapsedStatusGroupKeys,
+  );
+  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
+  const allSectionsExpanded = useMemo(() => {
+    if (groupMode === "status") {
+      return statusWorkspacePlacements.every(
+        (placement) => !collapsedStatusGroupKeys.has(placement.statusBucket),
+      );
+    }
+    return projects.every((project) => !collapsedProjectKeys.has(project.projectKey));
+  }, [
+    collapsedProjectKeys,
+    collapsedStatusGroupKeys,
+    groupMode,
+    projects,
+    statusWorkspacePlacements,
+  ]);
+  const handleToggleExpandAll = useCallback(() => {
+    const collapsed = allSectionsExpanded;
+    if (groupMode === "status") {
+      const statusGroupKeys = Array.from(
+        new Set(statusWorkspacePlacements.map((placement) => placement.statusBucket)),
+      );
+      setSectionsCollapsed({ statusGroupKeys, collapsed });
+      return;
+    }
+    setSectionsCollapsed({
+      projectKeys: projects.map((project) => project.projectKey),
+      collapsed,
+    });
+  }, [allSectionsExpanded, groupMode, projects, setSectionsCollapsed, statusWorkspacePlacements]);
+  const expandAllLabel = allSectionsExpanded ? "Collapse all" : "Expand all";
   const headerIconButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
@@ -1170,42 +1187,28 @@ function WorkspacesSectionHeader({
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Expand all"
-              testID="sidebar-expand-all"
+              accessibilityLabel={expandAllLabel}
+              testID="sidebar-toggle-expand-all"
               style={headerIconButtonStyle}
-              onPress={handleExpandAll}
+              onPress={handleToggleExpandAll}
             >
-              {({ hovered, pressed }) => (
-                <ListChevronsUpDown
-                  size={theme.iconSize.sm}
-                  color={headerIconColor({ hovered, pressed })}
-                />
-              )}
+              {({ hovered, pressed }) =>
+                allSectionsExpanded ? (
+                  <ListChevronsDownUp
+                    size={theme.iconSize.sm}
+                    color={headerIconColor({ hovered, pressed })}
+                  />
+                ) : (
+                  <ListChevronsUpDown
+                    size={theme.iconSize.sm}
+                    color={headerIconColor({ hovered, pressed })}
+                  />
+                )
+              }
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Expand all" />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Collapse all"
-              testID="sidebar-collapse-all"
-              style={headerIconButtonStyle}
-              onPress={handleCollapseAll}
-            >
-              {({ hovered, pressed }) => (
-                <ListChevronsDownUp
-                  size={theme.iconSize.sm}
-                  color={headerIconColor({ hovered, pressed })}
-                />
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Collapse all" />
+            <HeaderIconTooltipContent label={expandAllLabel} />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
@@ -1293,7 +1296,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   workspacesHeaderIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceHover,
   },
   sidebarContent: {
     flex: 1,
@@ -1351,7 +1354,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
   },
   footerIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceHover,
   },
   tooltipRow: {
     flexDirection: "row",

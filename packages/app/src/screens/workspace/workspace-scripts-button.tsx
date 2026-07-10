@@ -539,7 +539,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   ghostButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],
@@ -547,7 +547,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   splitButtonText: {
     fontSize: theme.fontSize.sm,

@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { ScrollView, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
-import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 interface DiffScrollProps {
   children: React.ReactNode;
@@ -16,8 +16,12 @@ export function DiffScroll({
   style,
   contentContainerStyle,
 }: DiffScrollProps) {
-  const webScrollbarStyle = useWebScrollbarStyle();
-  const combinedStyle = useMemo(() => [style, webScrollbarStyle], [style, webScrollbarStyle]);
+  // This per-row horizontal scroller is nested inside a vertically-scrolling
+  // list, so an auto-hiding overlay scrollbar can't pin to the viewport. On
+  // desktop web we drop the old always-on tinted scrollbar and hide the native
+  // indicator (scrolling still works via trackpad / shift-wheel).
+  const isCompact = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = !isCompact;
   const handleLayout = useCallback(
     (e: LayoutChangeEvent) => onScrollViewWidthChange(e.nativeEvent.layout.width),
     [onScrollViewWidthChange],
@@ -27,8 +31,8 @@ export function DiffScroll({
     <ScrollView
       horizontal
       nestedScrollEnabled
-      showsHorizontalScrollIndicator
-      style={combinedStyle}
+      showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
+      style={style}
       contentContainerStyle={contentContainerStyle}
       onLayout={handleLayout}
     >

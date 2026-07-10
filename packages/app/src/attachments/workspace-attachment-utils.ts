@@ -23,6 +23,7 @@ export function isWorkspaceAttachment(
     attachment?.kind === "review" ||
     attachment?.kind === "browser_element" ||
     attachment?.kind === "chat_history" ||
+    attachment?.kind === "file_context" ||
     isPullRequestContextAttachment(attachment)
   );
 }
@@ -35,6 +36,7 @@ export function userAttachmentsOnly(
       attachment.kind !== "review" &&
       attachment.kind !== "browser_element" &&
       attachment.kind !== "chat_history" &&
+      attachment.kind !== "file_context" &&
       !isPullRequestContextAttachment(attachment),
   );
 }
@@ -60,6 +62,43 @@ export function workspaceAttachmentToSubmitAttachment(
   }
   if (attachment.kind === "chat_history") {
     return attachment.attachment;
+  }
+  if (attachment.kind === "file_context") {
+    if (attachment.entryKind === "directory") {
+      return {
+        type: "text",
+        mimeType: "text/plain",
+        title: `Folder · ${attachment.path}`,
+        text: [
+          "Workspace folder attached as context by the user.",
+          `Path: ${attachment.path}`,
+          "List this folder and read the relevant files inside it before responding.",
+        ].join("\n"),
+      };
+    }
+    if (attachment.lineStart != null) {
+      return {
+        type: "text",
+        mimeType: "text/plain",
+        title: `File · ${attachment.path}:${attachment.lineStart}`,
+        text: [
+          "Workspace file line attached as context by the user.",
+          `Path: ${attachment.path}`,
+          `Line: ${attachment.lineStart}`,
+          "Read this file, focusing on the line above, before responding.",
+        ].join("\n"),
+      };
+    }
+    return {
+      type: "text",
+      mimeType: "text/plain",
+      title: `File · ${attachment.path}`,
+      text: [
+        "Workspace file attached as context by the user.",
+        `Path: ${attachment.path}`,
+        "Read this file for its current contents before responding.",
+      ].join("\n"),
+    };
   }
   return attachment.kind === "review" ? attachment.attachment : null;
 }

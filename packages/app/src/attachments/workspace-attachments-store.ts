@@ -83,6 +83,7 @@ function areWorkspaceAttachmentsEqual(
 function getContextAttachmentKey(attachment: WorkspaceComposerAttachment): string | null {
   const isContextAttachment =
     attachment.kind === "chat_history" ||
+    attachment.kind === "file_context" ||
     attachment.kind === "github.pull_request_comment" ||
     attachment.kind === "github.pull_request_review" ||
     attachment.kind === "github.pull_request_check";

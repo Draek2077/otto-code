@@ -2640,7 +2640,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectActionButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
+    backgroundColor: theme.colors.surfaceHover,
   },
   projectActionButtonText: {
     color: theme.colors.foregroundMuted,
@@ -2655,7 +2655,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectIconActionButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   projectIconActionButtonHidden: {
     opacity: 0,
@@ -2675,7 +2675,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   projectKebabButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   projectTrailingControlSlot: {
     width: compactUp(24),
@@ -2818,7 +2818,7 @@ const styles = StyleSheet.create((theme) => ({
     marginLeft: 2,
   },
   kebabButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   statusDotNeedsInput: {
     backgroundColor: theme.colors.palette.amber[500],

@@ -28,10 +28,11 @@ import {
   AudioLines,
   CircleDot,
   FileText,
+  Folder,
   GitPullRequest,
   Github,
   Image as ImageIcon,
-  Paperclip,
+  UploadFile,
 } from "@/components/icons/material-icons";
 import Animated from "react-native-reanimated";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -106,7 +107,11 @@ import type {
 } from "@/attachments/types";
 import type { PickedFile } from "@/attachments/picked-file";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
-import { useWorkspaceAttachmentsForScopes } from "@/attachments/workspace-attachments-store";
+import {
+  useWorkspaceAttachmentsForScopes,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
+import { useDirectorySearchQuery } from "@/hooks/use-directory-search-query";
 import { droppedItemsToPickedFiles } from "@/composer/attachments/drop";
 import { getFileTypeLabel } from "@/attachments/file-types";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
@@ -126,6 +131,7 @@ type AttachmentListUpdater =
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
 
 const EMPTY_ATTACHMENT_SCOPE_KEYS: readonly string[] = [];
+const EMPTY_FOLDER_SEARCH_PATHS: readonly string[] = [];
 
 function noop() {}
 const noopCallback = () => {};
@@ -167,12 +173,12 @@ function resolveMessagePlaceholder(isDesktopWebBreakpoint: boolean, t: TFunction
     : t("composer.placeholders.mobile");
 }
 
-function resolveGithubSearchEnabled(
-  isGithubPickerOpen: boolean,
+function resolvePickerSearchEnabled(
+  isPickerOpen: boolean,
   isConnected: boolean,
   cwd: string,
 ): boolean {
-  return isGithubPickerOpen && isConnected && cwd.trim().length > 0;
+  return isPickerOpen && isConnected && cwd.trim().length > 0;
 }
 
 function resolveCheckoutRemoteUrl(
@@ -765,6 +771,8 @@ interface ComposerProps {
   onChangeText: (text: string) => void;
   attachments: UserComposerAttachment[];
   attachmentScopeKeys?: readonly string[];
+  /** Scope key new workspace attachments (e.g. a folder added from the attach menu) are written to. Defaults to the first entry of `attachmentScopeKeys`. */
+  attachmentWriteScopeKey?: string;
   onOpenWorkspaceAttachment?: (attachment: WorkspaceComposerAttachment) => void;
   onChangeAttachments: (updater: AttachmentListUpdater) => void;
   cwd: string;
@@ -977,6 +985,7 @@ export function Composer({
   onChangeText,
   attachments,
   attachmentScopeKeys = EMPTY_ATTACHMENT_SCOPE_KEYS,
+  attachmentWriteScopeKey,
   onOpenWorkspaceAttachment,
   onChangeAttachments,
   cwd,
@@ -1066,6 +1075,8 @@ export function Composer({
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
   const [isGithubPickerOpen, setIsGithubPickerOpen] = useState(false);
   const [githubSearchQuery, setGithubSearchQuery] = useState("");
+  const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
+  const [folderSearchQuery, setFolderSearchQuery] = useState("");
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
@@ -1726,7 +1737,7 @@ export function Composer({
     serverId,
     cwd,
     query: githubSearchQueryTrimmed,
-    enabled: resolveGithubSearchEnabled(isGithubPickerOpen, isConnected, cwd),
+    enabled: resolvePickerSearchEnabled(isGithubPickerOpen, isConnected, cwd),
   });
 
   const githubSearchItemsRaw = githubSearchResultsQuery.data?.items;
@@ -1741,16 +1752,52 @@ export function Composer({
     [githubSearchItems, githubSearchQueryTrimmed],
   );
 
-  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(
-    () => [
-      {
-        id: "image",
-        label: t("composer.attachments.addImage"),
-        icon: <ThemedImageIcon size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
-        onSelect: () => {
-          void handlePickImage();
-        },
-      },
+  const folderSearchQueryTrimmed = folderSearchQuery.trim();
+  const folderSearchResultsQuery = useDirectorySearchQuery({
+    client,
+    serverId,
+    cwd,
+    query: folderSearchQueryTrimmed,
+    enabled: resolvePickerSearchEnabled(isFolderPickerOpen, isConnected, cwd),
+  });
+  const folderSearchPaths = folderSearchResultsQuery.data ?? EMPTY_FOLDER_SEARCH_PATHS;
+  const folderSearchOptions: ComboboxOption[] = useMemo(
+    () =>
+      folderSearchPaths.map((path) => ({
+        id: path,
+        label: path,
+        kind: "directory" as const,
+      })),
+    [folderSearchPaths],
+  );
+
+  const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
+    (state) => state.addWorkspaceAttachment,
+  );
+  const folderAttachmentScopeKey = attachmentWriteScopeKey ?? attachmentScopeKeys[0];
+  const handleSelectFolder = useCallback(
+    (path: string) => {
+      if (!folderAttachmentScopeKey) return;
+      addWorkspaceAttachment({
+        scopeKey: folderAttachmentScopeKey,
+        attachment: { kind: "file_context", id: path, path, entryKind: "directory" },
+      });
+    },
+    [addWorkspaceAttachment, folderAttachmentScopeKey],
+  );
+
+  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
+    const items: (AttachmentMenuItem | null)[] = [
+      folderAttachmentScopeKey
+        ? {
+            id: "folder",
+            label: t("composer.attachments.addFolder"),
+            icon: <ThemedFolder size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+            onSelect: () => {
+              setIsFolderPickerOpen(true);
+            },
+          }
+        : null,
       {
         id: "github",
         label: t("composer.attachments.addIssueOrPr"),
@@ -1762,14 +1809,22 @@ export function Composer({
       {
         id: "file",
         label: t("composer.attachments.addFile"),
-        icon: <ThemedPaperclip size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+        icon: <ThemedUploadFile size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
         onSelect: () => {
           void handlePickFile();
         },
       },
-    ],
-    [handlePickImage, handlePickFile, t, iconSize.md],
-  );
+      {
+        id: "image",
+        label: t("composer.attachments.addImage"),
+        icon: <ThemedImageIcon size={iconSize.md} uniProps={iconForegroundMutedMapping} />,
+        onSelect: () => {
+          void handlePickImage();
+        },
+      },
+    ];
+    return items.filter((item): item is AttachmentMenuItem => item !== null);
+  }, [handlePickImage, handlePickFile, folderAttachmentScopeKey, t, iconSize.md]);
 
   const handleToggleGithubItem = useCallback(
     (item: GitHubSearchItem) => {
@@ -1833,6 +1888,16 @@ export function Composer({
       }
     },
     [setGithubSearchQuery],
+  );
+
+  const handleFolderPickerOpenChange = useCallback(
+    (open: boolean) => {
+      setIsFolderPickerOpen(open);
+      if (!open) {
+        setFolderSearchQuery("");
+      }
+    },
+    [setFolderSearchQuery],
   );
 
   const renderGithubPickerOption = useCallback(
@@ -1919,6 +1984,9 @@ export function Composer({
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
     : t("composer.github.noResults");
+  const folderEmptyText = folderSearchResultsQuery.isFetching
+    ? t("composer.folder.searching")
+    : t("composer.folder.noResults");
   const autocompleteVisible = autocomplete.isVisible && isPaneFocused;
 
   return (
@@ -2001,6 +2069,20 @@ export function Composer({
                 anchorRef={attachButtonRef}
                 emptyText={githubEmptyText}
                 renderOption={renderGithubPickerOption}
+              />
+              <Combobox
+                options={folderSearchOptions}
+                value=""
+                onSelect={handleSelectFolder}
+                searchable
+                searchPlaceholder={t("composer.folder.searchPlaceholder")}
+                title={t("composer.folder.title")}
+                open={isFolderPickerOpen}
+                onOpenChange={handleFolderPickerOpenChange}
+                onSearchQueryChange={setFolderSearchQuery}
+                desktopPlacement="top-start"
+                anchorRef={attachButtonRef}
+                emptyText={folderEmptyText}
               />
             </View>
           </ChatWidthBounds>
@@ -2113,7 +2195,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     borderColor: theme.colors.palette.green[800],
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surfaceHover,
   },
   attachmentTray: {
     flexDirection: "row",
@@ -2182,7 +2264,8 @@ const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
-const ThemedPaperclip = withUnistyles(Paperclip);
+const ThemedUploadFile = withUnistyles(UploadFile);
+const ThemedFolder = withUnistyles(Folder);
 const ThemedImageIcon = withUnistyles(ImageIcon);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedGithub = withUnistyles(Github);

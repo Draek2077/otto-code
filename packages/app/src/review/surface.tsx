@@ -742,10 +742,10 @@ const styles = StyleSheet.create((theme) => ({
       : {}),
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surface3,
+    backgroundColor: theme.colors.surfaceHover,
   },
   iconButtonDestructiveHovered: {
-    backgroundColor: theme.colors.surface3,
+    backgroundColor: theme.colors.surfaceHover,
   },
   editorBlock: {
     minHeight: INLINE_REVIEW_EDITOR_HEIGHT,
