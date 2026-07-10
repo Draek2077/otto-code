@@ -407,6 +407,7 @@ export const zhCN: TranslationResources = {
         copyPath: "复制路径",
         download: "下载",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },

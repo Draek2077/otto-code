@@ -32,6 +32,7 @@ import {
   Copy,
   Ellipsis,
   EllipsisVertical,
+  FileText,
   Globe,
   Import as ImportIcon,
   PanelRight,
@@ -147,6 +148,8 @@ import {
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
+import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
+import { useHostFeature } from "@/runtime/host-features";
 import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
@@ -260,6 +263,7 @@ const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedX = withUnistyles(X);
+const ThemedFileText = withUnistyles(FileText);
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
@@ -303,6 +307,7 @@ const sourceControlPanelStrokeWidth15 = { strokeWidth: 1.5 };
 const MENU_NEW_AGENT_ICON = <ThemedSquarePen uniProps={mutedMdMapping} />;
 const MENU_NEW_TERMINAL_ICON = <ThemedSquareTerminal uniProps={mutedMdMapping} />;
 const MENU_NEW_BROWSER_ICON = <ThemedGlobe uniProps={mutedMdMapping} />;
+const MENU_ADD_ARTIFACT_ICON = <ThemedFileText uniProps={mutedMdMapping} />;
 const MENU_IMPORT_ICON = <ThemedImport uniProps={mutedMdMapping} />;
 const MENU_COPY_ICON = <ThemedCopy uniProps={mutedMdMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
@@ -985,6 +990,7 @@ function useCloseTabs(): UseCloseTabsResult {
 
 interface WorkspaceHeaderMenuProps {
   normalizedServerId: string;
+  normalizedWorkspaceId: string;
   currentBranchName: string | null;
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
@@ -1102,6 +1108,7 @@ function compactHeaderActionTriggerStyle({
 
 function WorkspaceHeaderMenu({
   normalizedServerId,
+  normalizedWorkspaceId,
   currentBranchName,
   showWorkspaceSetup,
   showCreateBrowserTab,
@@ -1131,6 +1138,12 @@ function WorkspaceHeaderMenu({
     () => resolveTerminalProfiles(config?.terminalProfiles),
     [config?.terminalProfiles],
   );
+  const supportsArtifacts = useHostFeature(normalizedServerId, "artifacts");
+  // The artifacts dropdown is its own controlled menu anchored to a hidden
+  // zero-size trigger (same pattern as the tab row's collapsed tools): the
+  // "Add artifact" item below flips it open after this menu dismisses.
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const handleOpenArtifacts = useCallback(() => setArtifactsOpen(true), []);
 
   const handleEditProfiles = useCallback(() => {
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
@@ -1148,118 +1161,138 @@ function WorkspaceHeaderMenu({
   );
 
   return (
-    <DropdownMenu>
-      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger asChild triggerRefProp="triggerRef">
-          <DropdownMenuTrigger
-            testID="workspace-header-menu-trigger"
-            style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
-            accessibilityRole="button"
-            accessibilityLabel={t("workspace.header.actions.workspaceActions")}
-          >
-            {renderTriggerIcon}
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent
-          testID="workspace-header-menu-tooltip"
-          side="left"
-          align="center"
-          offset={8}
-        >
-          <Text style={styles.headerMenuTooltipText}>
-            {t("workspace.header.actions.workspaceActionsTooltip")}
-          </Text>
-        </TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="start" width={220} testID="workspace-header-menu">
-        <DropdownMenuItem
-          testID="workspace-header-new-agent"
-          leading={menuNewAgentIcon}
-          onSelect={onCreateDraftTab}
-        >
-          {t("workspace.header.actions.newAgent")}
-        </DropdownMenuItem>
-        {showCreateBrowserTab ? (
-          <DropdownMenuItem
-            testID="workspace-header-new-browser"
-            leading={menuNewBrowserIcon}
-            onSelect={onCreateBrowser}
-          >
-            {t("workspace.header.actions.newBrowser")}
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          testID="workspace-header-import-agent"
-          leading={menuImportIcon}
-          disabled={importAgentDisabled}
-          onSelect={onOpenImportSheet}
-        >
-          {t("workspace.header.actions.importSession")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          testID="workspace-header-copy-path"
-          leading={menuCopyIcon}
-          disabled={copyPathDisabled}
-          onSelect={onCopyWorkspacePath}
-        >
-          {t("workspace.header.actions.copyPath")}
-        </DropdownMenuItem>
-        {currentBranchName ? (
-          <DropdownMenuItem
-            testID="workspace-header-copy-branch-name"
-            leading={menuCopyIcon}
-            onSelect={onCopyBranchName}
-          >
-            {t("workspace.header.actions.copyBranchName")}
-          </DropdownMenuItem>
-        ) : null}
-        {showWorkspaceSetup ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              testID="workspace-header-show-setup"
-              leading={menuSettingsIcon}
-              onSelect={onOpenSetupTab}
+    <>
+      <DropdownMenu>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild triggerRefProp="triggerRef">
+            <DropdownMenuTrigger
+              testID="workspace-header-menu-trigger"
+              style={isMobile ? compactHeaderActionTriggerStyle : headerActionTriggerStyle}
+              accessibilityRole="button"
+              accessibilityLabel={t("workspace.header.actions.workspaceActions")}
             >
-              {t("workspace.header.actions.showSetup")}
+              {renderTriggerIcon}
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent
+            testID="workspace-header-menu-tooltip"
+            side="left"
+            align="center"
+            offset={8}
+          >
+            <Text style={styles.headerMenuTooltipText}>
+              {t("workspace.header.actions.workspaceActionsTooltip")}
+            </Text>
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="start" width={220} testID="workspace-header-menu">
+          <DropdownMenuItem
+            testID="workspace-header-new-agent"
+            leading={menuNewAgentIcon}
+            onSelect={onCreateDraftTab}
+          >
+            {t("workspace.header.actions.newAgent")}
+          </DropdownMenuItem>
+          {showCreateBrowserTab ? (
+            <DropdownMenuItem
+              testID="workspace-header-new-browser"
+              leading={menuNewBrowserIcon}
+              onSelect={onCreateBrowser}
+            >
+              {t("workspace.header.actions.newBrowser")}
             </DropdownMenuItem>
-          </>
-        ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
-        <DropdownMenuItem
-          testID="workspace-header-new-terminal"
-          leading={menuNewTerminalIcon}
-          disabled={createTerminalDisabled}
-          onSelect={onCreateTerminal}
-        >
-          {t("workspace.header.actions.newTerminal")}
-        </DropdownMenuItem>
-        {profiles.map((profile) => (
-          <HeaderMenuProfileItem
-            key={profile.id}
-            profile={profile}
+          ) : null}
+          {supportsArtifacts ? (
+            <DropdownMenuItem
+              testID="workspace-header-add-artifact"
+              leading={MENU_ADD_ARTIFACT_ICON}
+              onSelect={handleOpenArtifacts}
+            >
+              Add artifact
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            testID="workspace-header-import-agent"
+            leading={menuImportIcon}
+            disabled={importAgentDisabled}
+            onSelect={onOpenImportSheet}
+          >
+            {t("workspace.header.actions.importSession")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            testID="workspace-header-copy-path"
+            leading={menuCopyIcon}
+            disabled={copyPathDisabled}
+            onSelect={onCopyWorkspacePath}
+          >
+            {t("workspace.header.actions.copyPath")}
+          </DropdownMenuItem>
+          {currentBranchName ? (
+            <DropdownMenuItem
+              testID="workspace-header-copy-branch-name"
+              leading={menuCopyIcon}
+              onSelect={onCopyBranchName}
+            >
+              {t("workspace.header.actions.copyBranchName")}
+            </DropdownMenuItem>
+          ) : null}
+          {showWorkspaceSetup ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                testID="workspace-header-show-setup"
+                leading={menuSettingsIcon}
+                onSelect={onOpenSetupTab}
+              >
+                {t("workspace.header.actions.showSetup")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
+          <DropdownMenuItem
+            testID="workspace-header-new-terminal"
+            leading={menuNewTerminalIcon}
             disabled={createTerminalDisabled}
-            onCreateTerminalWithProfile={onCreateTerminalWithProfile}
-          />
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          testID="workspace-header-edit-terminal-profiles"
-          onSelect={handleEditProfiles}
-        >
-          {t("workspace.tabs.actions.editTerminalProfiles")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          testID="workspace-header-open-settings"
-          leading={menuSettingsIcon}
-          onSelect={handleOpenSettings}
-        >
-          {t("workspace.header.actions.settings")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            onSelect={onCreateTerminal}
+          >
+            {t("workspace.header.actions.newTerminal")}
+          </DropdownMenuItem>
+          {profiles.map((profile) => (
+            <HeaderMenuProfileItem
+              key={profile.id}
+              profile={profile}
+              disabled={createTerminalDisabled}
+              onCreateTerminalWithProfile={onCreateTerminalWithProfile}
+            />
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            testID="workspace-header-edit-terminal-profiles"
+            onSelect={handleEditProfiles}
+          >
+            {t("workspace.tabs.actions.editTerminalProfiles")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            testID="workspace-header-open-settings"
+            leading={menuSettingsIcon}
+            onSelect={handleOpenSettings}
+          >
+            {t("workspace.header.actions.settings")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {supportsArtifacts ? (
+        <ArtifactOpenMenu
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          open={artifactsOpen}
+          onOpenChange={setArtifactsOpen}
+          hideTrigger
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1367,6 +1400,7 @@ function WorkspaceHeaderTitleBar({
       <View style={styles.compactHeaderMenuCluster}>
         <WorkspaceHeaderMenu
           normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
           currentBranchName={currentBranchName}
           showWorkspaceSetup={showWorkspaceSetup}
           showCreateBrowserTab={showCreateBrowserTab}
@@ -1979,6 +2013,7 @@ function WorkspaceScreenContent({
   );
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
+  const requestProjectSearchFocus = usePanelStore((state) => state.requestProjectSearchFocus);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
@@ -3140,6 +3175,7 @@ function WorkspaceScreenContent({
           return true;
         case "sidebar.open.search":
           handleOpenExplorerTab("search");
+          requestProjectSearchFocus();
           return true;
         case "sidebar.open.changes":
           handleOpenExplorerTab("changes");
@@ -3148,7 +3184,7 @@ function WorkspaceScreenContent({
           return false;
       }
     },
-    [handleOpenExplorerTab, handleToggleExplorer],
+    [handleOpenExplorerTab, handleToggleExplorer, requestProjectSearchFocus],
   );
 
   const handleWorkspacePaneAction = useCallback(

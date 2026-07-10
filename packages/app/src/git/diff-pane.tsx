@@ -43,6 +43,7 @@ import {
   List,
   ListChevronsDownUp,
   ListChevronsUpDown,
+  Paperclip,
   Pilcrow,
   RefreshCcw,
   RotateCw,
@@ -115,6 +116,7 @@ import {
 import { isWeb, isNative } from "@/constants/platform";
 import {
   buildWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachments,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import {
@@ -1339,11 +1341,18 @@ const DIFF_OPTIONS_WRAP_ICON = (
 
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedCopy = withUnistyles(Copy);
+const ThemedPaperclip = withUnistyles(Paperclip);
 const DIFF_CONTEXT_EDIT_ICON = (
   <ThemedSquarePen size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 const DIFF_CONTEXT_COPY_PATH_ICON = (
   <ThemedCopy size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_CONTEXT_FIND_IN_FILES_ICON = (
+  <ThemedFolderTree size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
+  <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />
 );
 
 interface DiffLayoutToggleProps {
@@ -1831,6 +1840,109 @@ function shouldEnableCheckoutDiff(input: { paneEnabled: boolean; isGit: boolean 
   return input.paneEnabled && input.isGit;
 }
 
+/** Attachment dedupe id: the path, or `${path}:${lineStart}` for a diff line. */
+function buildDiffContextAttachmentId(request: { path: string; lineStart?: number }): string {
+  return request.lineStart != null ? `${request.path}:${request.lineStart}` : request.path;
+}
+
+interface DiffContextAttachmentToggle {
+  isInContext: boolean;
+  label: string;
+  onToggle: () => void;
+}
+
+/**
+ * "Add to context" for the Changes context menu, mirroring the file explorer's
+ * and project search's: the file (or a specific diff line) lands in the
+ * workspace-scoped attachment store as a composer pill. Returns null while no
+ * agent tab is the focused pane, so the attachment has a visible destination.
+ */
+function useDiffContextAttachmentToggle({
+  serverId,
+  scopeKey,
+  request,
+}: {
+  serverId: string;
+  scopeKey: string;
+  request: DiffContextMenuRequest | null;
+}): DiffContextAttachmentToggle | null {
+  const { t } = useTranslation();
+  const focusedAgentId = useSessionStore(
+    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
+  );
+  const workspaceAttachments = useWorkspaceAttachments(scopeKey);
+  const contextAttachmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const attachment of workspaceAttachments) {
+      if (attachment.kind === "file_context") {
+        ids.add(attachment.id);
+      }
+    }
+    return ids;
+  }, [workspaceAttachments]);
+
+  const onToggle = useCallback(() => {
+    if (!request) {
+      return;
+    }
+    const contextId = buildDiffContextAttachmentId(request);
+    const { attachmentsByScope, setWorkspaceAttachments, addWorkspaceAttachment } =
+      useWorkspaceAttachmentsStore.getState();
+    const current = attachmentsByScope[scopeKey] ?? [];
+    const remaining = current.filter(
+      (attachment) => !(attachment.kind === "file_context" && attachment.id === contextId),
+    );
+    if (remaining.length !== current.length) {
+      setWorkspaceAttachments({ scopeKey, attachments: remaining });
+      return;
+    }
+    addWorkspaceAttachment({
+      scopeKey,
+      attachment: {
+        kind: "file_context",
+        id: contextId,
+        path: request.path,
+        lineStart: request.lineStart,
+      },
+    });
+  }, [request, scopeKey]);
+
+  if (!focusedAgentId || !request) {
+    return null;
+  }
+  const isInContext = contextAttachmentIds.has(buildDiffContextAttachmentId(request));
+  let label: string;
+  if (request.lineStart != null) {
+    label = isInContext
+      ? t("projectSearch.removeLineFromContext", { line: request.lineStart })
+      : t("projectSearch.addLineToContext", { line: request.lineStart });
+  } else {
+    label = isInContext
+      ? t("workspace.fileExplorer.context.removeFromContext")
+      : t("workspace.fileExplorer.context.addToContext");
+  }
+  return { isInContext, label, onToggle };
+}
+
+function DiffContextToggleMenuItem({ toggle }: { toggle: DiffContextAttachmentToggle | null }) {
+  if (!toggle) {
+    return null;
+  }
+  return (
+    <ContextMenuItem
+      leading={DIFF_CONTEXT_ADD_TO_CONTEXT_ICON}
+      onSelect={toggle.onToggle}
+      testID={
+        toggle.isInContext
+          ? "changes-context-menu-remove-from-context"
+          : "changes-context-menu-add-to-context"
+      }
+    >
+      {toggle.label}
+    </ContextMenuItem>
+  );
+}
+
 export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }: GitDiffPaneProps) {
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
@@ -1984,28 +2096,23 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     () => buildWorkspaceAttachmentScopeKey({ serverId, workspaceId, cwd }),
     [cwd, serverId, workspaceId],
   );
-  const setWorkspaceAttachments = useWorkspaceAttachmentsStore(
-    (state) => state.setWorkspaceAttachments,
-  );
-  const clearWorkspaceAttachments = useWorkspaceAttachmentsStore(
-    (state) => state.clearWorkspaceAttachments,
-  );
 
+  // This pane owns only the review slice of the attachment scope: file-context
+  // pills added from this pane's context menu (or the Files/Search panes) must
+  // survive review-snapshot updates and this pane unmounting.
   useEffect(() => {
-    setWorkspaceAttachments({
-      scopeKey: workspaceAttachmentScopeKey,
-      attachments: reviewAttachment ? [reviewAttachment] : [],
-    });
-
-    return () => {
-      clearWorkspaceAttachments({ scopeKey: workspaceAttachmentScopeKey });
+    const syncReviewAttachment = (attachment: typeof reviewAttachment) => {
+      const store = useWorkspaceAttachmentsStore.getState();
+      const current = store.attachmentsByScope[workspaceAttachmentScopeKey] ?? [];
+      const others = current.filter((existing) => existing.kind !== "review");
+      store.setWorkspaceAttachments({
+        scopeKey: workspaceAttachmentScopeKey,
+        attachments: attachment ? [...others, attachment] : others,
+      });
     };
-  }, [
-    clearWorkspaceAttachments,
-    reviewAttachment,
-    setWorkspaceAttachments,
-    workspaceAttachmentScopeKey,
-  ]);
+    syncReviewAttachment(reviewAttachment);
+    return () => syncReviewAttachment(null);
+  }, [reviewAttachment, workspaceAttachmentScopeKey]);
   const { githubFeaturesEnabled, payloadError: prPayloadError } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
@@ -2360,6 +2467,23 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     );
   }, [contextMenuRequest, normalizedWorkspaceRoot]);
 
+  const handleContextMenuFindInFiles = useCallback(() => {
+    if (!contextMenuRequest) {
+      return;
+    }
+    // Stash the reveal first so the Files pane finds it on mount, then switch
+    // tabs. The pane expands the parent folders and scrolls the row into view.
+    const { requestFilesReveal, setExplorerTabForCheckout } = usePanelStore.getState();
+    requestFilesReveal(contextMenuRequest.path);
+    setExplorerTabForCheckout({ serverId, cwd, isGit: true, tab: "files" });
+  }, [contextMenuRequest, cwd, serverId]);
+
+  const contextAttachmentToggle = useDiffContextAttachmentToggle({
+    serverId,
+    scopeKey: workspaceAttachmentScopeKey,
+    request: contextMenuRequest,
+  });
+
   const renderFlatItem = useCallback(
     ({ item }: { item: DiffFlatItem }) => {
       if (item.type === "folder") {
@@ -2639,6 +2763,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         anchor={contextMenuRequest}
       >
         <ContextMenuContent width={220} testID="changes-context-menu">
+          <DiffContextToggleMenuItem toggle={contextAttachmentToggle} />
           {canEditFiles && onOpenFile ? (
             <ContextMenuItem
               leading={DIFF_CONTEXT_EDIT_ICON}
@@ -2648,6 +2773,13 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
               {t("workspace.fileExplorer.context.edit")}
             </ContextMenuItem>
           ) : null}
+          <ContextMenuItem
+            leading={DIFF_CONTEXT_FIND_IN_FILES_ICON}
+            onSelect={handleContextMenuFindInFiles}
+            testID="changes-context-menu-find-in-files"
+          >
+            {t("workspace.fileExplorer.context.findInFiles")}
+          </ContextMenuItem>
           <ContextMenuItem
             leading={DIFF_CONTEXT_COPY_PATH_ICON}
             onSelect={handleContextMenuCopyPath}

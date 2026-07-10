@@ -82,6 +82,13 @@ export interface PanelState {
   explorerSortOption: SortOption;
   explorerShowHiddenFiles: boolean;
   explorerFilesSplitRatio: number;
+  // Ephemeral (not persisted): bumped when a keyboard action wants the project
+  // search input focused; the search pane consumes it back to 0.
+  projectSearchFocusToken: number;
+  // Ephemeral (not persisted): set when another pane (e.g. the Changes view)
+  // wants a file revealed in the Files tree; the file explorer consumes it
+  // back to null. The token disambiguates repeat reveals of the same path.
+  filesRevealRequest: { path: string; token: number } | null;
 
   // Actions
   toggleFocusMode: () => void;
@@ -110,6 +117,10 @@ export interface PanelState {
   setExplorerSortOption: (option: SortOption) => void;
   toggleExplorerShowHiddenFiles: () => void;
   setExplorerFilesSplitRatio: (ratio: number) => void;
+  requestProjectSearchFocus: () => void;
+  clearProjectSearchFocusRequest: () => void;
+  requestFilesReveal: (path: string) => void;
+  clearFilesRevealRequest: () => void;
 }
 
 const DEFAULT_DESKTOP_OPEN = isWeb;
@@ -138,6 +149,8 @@ export const usePanelStore = create<PanelState>()(
       explorerSortOption: "name",
       explorerShowHiddenFiles: true,
       explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
+      projectSearchFocusToken: 0,
+      filesRevealRequest: null,
 
       toggleFocusMode: () =>
         set((state) => ({
@@ -287,6 +300,14 @@ export const usePanelStore = create<PanelState>()(
             ? clampExplorerFilesSplitRatio(ratio)
             : DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
         }),
+      requestProjectSearchFocus: () =>
+        set((state) => ({ projectSearchFocusToken: state.projectSearchFocusToken + 1 })),
+      clearProjectSearchFocusRequest: () => set({ projectSearchFocusToken: 0 }),
+      requestFilesReveal: (path) =>
+        set((state) => ({
+          filesRevealRequest: { path, token: (state.filesRevealRequest?.token ?? 0) + 1 },
+        })),
+      clearFilesRevealRequest: () => set({ filesRevealRequest: null }),
     }),
     {
       name: "panel-state",

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import type {
   LayoutChangeEvent,
@@ -36,6 +36,7 @@ import { isWeb } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { isEditorBufferDirty } from "@/editor/editor-buffer-store";
 import { useSessionStore } from "@/stores/session-store";
+import { usePanelStore } from "@/stores/panel-store";
 import {
   useWorkspaceAttachments,
   useWorkspaceAttachmentScopeKey,
@@ -264,6 +265,19 @@ export function ProjectSearchPane({
       setContextMenuRequest(null);
     }
   }, []);
+
+  const queryInputRef = useRef<TextInput | null>(null);
+  // The search-sidebar keyboard shortcut wants the query input focused, both
+  // when this pane is already visible and when the shortcut just mounted it.
+  // The token is consumed back to 0 so later remounts don't steal focus.
+  const focusToken = usePanelStore((state) => state.projectSearchFocusToken);
+  useEffect(() => {
+    if (focusToken === 0) {
+      return;
+    }
+    usePanelStore.getState().clearProjectSearchFocusRequest();
+    queryInputRef.current?.focus();
+  }, [focusToken]);
 
   const resultsListRef = useRef<FlatList<ResultRow>>(null);
   const scrollbar = useWebScrollViewScrollbar(resultsListRef, {
@@ -595,6 +609,7 @@ export function ProjectSearchPane({
             </Pressable>
           ) : null}
           <ThemedSearchInput
+            ref={queryInputRef}
             style={styles.queryInput}
             value={query}
             onChangeText={setQuery}

@@ -411,6 +411,7 @@ export const fr: TranslationResources = {
         copyPath: "Copier le chemin",
         download: "Télécharger",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },

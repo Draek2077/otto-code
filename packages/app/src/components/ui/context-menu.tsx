@@ -557,21 +557,24 @@ export function ContextMenuContent({
 
   if (useMobileSheet) {
     return (
-      <ContextMenuContext.Provider value={context}>
-        <IsolatedBottomSheetModal
-          ref={bottomSheetRef}
-          index={0}
-          snapPoints={sheetSnapPoints}
-          enableDynamicSizing={false}
-          onChange={handleSheetChange}
-          onDismiss={handleSheetDismiss}
-          backdropComponent={renderSheetBackdrop}
-          enablePanDownToClose
-          backgroundStyle={sheetBackgroundStyle}
-          handleIndicatorStyle={sheetHandleStyle}
-          keyboardBehavior="extend"
-          keyboardBlurBehavior="restore"
-        >
+      <IsolatedBottomSheetModal
+        ref={bottomSheetRef}
+        index={0}
+        snapPoints={sheetSnapPoints}
+        enableDynamicSizing={false}
+        onChange={handleSheetChange}
+        onDismiss={handleSheetDismiss}
+        backdropComponent={renderSheetBackdrop}
+        enablePanDownToClose
+        backgroundStyle={sheetBackgroundStyle}
+        handleIndicatorStyle={sheetHandleStyle}
+        keyboardBehavior="extend"
+        keyboardBlurBehavior="restore"
+      >
+        {/* The sheet's children are teleported to the app-root portal host, so
+            the ambient ContextMenu provider doesn't reach them — re-provide
+            inside the portaled subtree, not around the modal. */}
+        <ContextMenuContext.Provider value={context}>
           <BottomSheetScrollView
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"
@@ -580,8 +583,8 @@ export function ContextMenuContent({
           >
             {children}
           </BottomSheetScrollView>
-        </IsolatedBottomSheetModal>
-      </ContextMenuContext.Provider>
+        </ContextMenuContext.Provider>
+      </IsolatedBottomSheetModal>
     );
   }
 

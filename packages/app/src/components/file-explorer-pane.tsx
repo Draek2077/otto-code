@@ -747,6 +747,85 @@ export function FileExplorerPane({
     });
   }, [requestDirectoryListing]);
 
+  // "Find in files" from the Changes view: consume the reveal request by
+  // expanding the target's parent folders (fetching any missing listings),
+  // then scroll the row into view once the tree contains it.
+  const filesRevealRequest = usePanelStore((state) => state.filesRevealRequest);
+  const [pendingRevealPath, setPendingRevealPath] = useState<string | null>(null);
+  useEffect(() => {
+    setPendingRevealPath(null);
+  }, [workspaceStateKey]);
+  useEffect(() => {
+    if (!filesRevealRequest || !hasWorkspaceScope || !workspaceStateKey) {
+      return;
+    }
+    usePanelStore.getState().clearFilesRevealRequest();
+    const revealPath = filesRevealRequest.path;
+    if (!usePanelStore.getState().explorerShowHiddenFiles && isHiddenExplorerPath(revealPath)) {
+      handleToggleHiddenFiles();
+    }
+    const parents = collectRevealParentDirectories(revealPath);
+    const missingExpanded = parents.filter((parent) => !expandedPaths.has(parent));
+    if (missingExpanded.length > 0) {
+      setExpandedPathsForWorkspace(workspaceStateKey, [
+        ...Array.from(expandedPaths),
+        ...missingExpanded,
+      ]);
+    }
+    for (const parent of parents) {
+      if (!directories.has(parent)) {
+        void requestDirectoryListing(parent, { recordHistory: false, setCurrentPath: false });
+      }
+    }
+    selectExplorerEntry(revealPath);
+    setPendingRevealPath(revealPath);
+  }, [
+    directories,
+    expandedPaths,
+    filesRevealRequest,
+    handleToggleHiddenFiles,
+    hasWorkspaceScope,
+    requestDirectoryListing,
+    selectExplorerEntry,
+    setExpandedPathsForWorkspace,
+    workspaceStateKey,
+  ]);
+
+  const treeRowCountRef = useRef(0);
+  treeRowCountRef.current = treeRows.length;
+  useEffect(() => {
+    if (!pendingRevealPath) {
+      return;
+    }
+    const index = treeRows.findIndex((row) => row.entry.path === pendingRevealPath);
+    if (index < 0) {
+      return;
+    }
+    setPendingRevealPath(null);
+    treeListRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false });
+  }, [pendingRevealPath, treeRows]);
+
+  // Reveal targets are usually outside the rendered window; estimate the
+  // offset, let the list render there, then land on the exact row.
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      treeListRef.current?.scrollToOffset({
+        offset: info.averageItemLength * info.index,
+        animated: false,
+      });
+      setTimeout(() => {
+        if (info.index < treeRowCountRef.current) {
+          treeListRef.current?.scrollToIndex({
+            index: info.index,
+            viewPosition: 0.5,
+            animated: false,
+          });
+        }
+      }, 100);
+    },
+    [],
+  );
+
   const canIndexCode = useProjectSearchFeature(serverId);
   const [finderOpen, setFinderOpen] = useState(false);
   const openFinder = useCallback(() => setFinderOpen(true), []);
@@ -785,6 +864,7 @@ export function FileExplorerPane({
         handleRefresh={handleRefresh}
         handleBackFromError={handleBackFromError}
         handleRetry={handleRetry}
+        handleScrollToIndexFailed={handleScrollToIndexFailed}
         onOpenFinder={canIndexCode ? openFinder : undefined}
         sortTriggerStyle={sortTriggerStyle}
         iconButtonStyle={iconButtonStyle}
@@ -829,6 +909,7 @@ interface FileExplorerPaneContentProps {
   handleRefresh: () => void;
   handleBackFromError: () => void;
   handleRetry: () => void;
+  handleScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
   onOpenFinder?: () => void;
   sortTriggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   iconButtonStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
@@ -853,6 +934,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     handleRefresh,
     handleBackFromError,
     handleRetry,
+    handleScrollToIndexFailed,
     onOpenFinder,
     sortTriggerStyle: sortTriggerStyleProp,
     iconButtonStyle: iconButtonStyleProp,
@@ -992,6 +1074,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           onLayout={scrollbar.onLayout}
           onScroll={scrollbar.onScroll}
           onContentSizeChange={scrollbar.onContentSizeChange}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={!showDesktopWebScrollbar}
           initialNumToRender={24}
@@ -1348,6 +1431,16 @@ async function refreshExplorerDirectories({
     ),
   );
   return null;
+}
+
+/** Parent directory paths for a workspace-relative entry path, shallowest first. */
+function collectRevealParentDirectories(path: string): string[] {
+  const segments = path.split("/").filter((segment) => segment.length > 0 && segment !== ".");
+  const parents: string[] = [];
+  for (let index = 1; index < segments.length; index++) {
+    parents.push(segments.slice(0, index).join("/"));
+  }
+  return parents;
 }
 
 function getErrorRecoveryPath(state: AgentFileExplorerState | undefined): string {
