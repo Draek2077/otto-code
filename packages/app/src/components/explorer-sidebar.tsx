@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   Pressable,
   useWindowDimensions,
   StyleSheet as RNStyleSheet,
+  type LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
@@ -472,6 +473,15 @@ function resolveActiveExplorerTab(input: {
   return requested === "pr" && !input.showPrTab ? "changes" : requested;
 }
 
+interface ExplorerTabDef {
+  tab: ExplorerTab;
+  label: string;
+  testID: string;
+  /** The PR tab keeps its label (it carries the PR number); others collapse to icons. */
+  alwaysLabeled?: boolean;
+  renderIcon: (color: string) => React.ReactNode;
+}
+
 interface SidebarContentProps {
   activeTab: ExplorerTab;
   onTabPress: (tab: ExplorerTab) => void;
@@ -530,84 +540,107 @@ function ExplorerSidebarContent({
     [padding.right],
   );
 
+  const [headerWidth, setHeaderWidth] = useState(0);
+  const [rightSectionWidth, setRightSectionWidth] = useState(0);
+  const [labeledTabsWidth, setLabeledTabsWidth] = useState(0);
+  const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    setHeaderWidth(event.nativeEvent.layout.width);
+  }, []);
+  const handleRightSectionLayout = useCallback((event: LayoutChangeEvent) => {
+    setRightSectionWidth(event.nativeEvent.layout.width);
+  }, []);
+  const handleLabeledTabsLayout = useCallback((event: LayoutChangeEvent) => {
+    setLabeledTabsWidth(event.nativeEvent.layout.width);
+  }, []);
+
+  const tabDefs: ExplorerTabDef[] = [];
+  if (isGit) {
+    tabDefs.push({
+      tab: "changes",
+      label: t("workspace.tabs.explorer.changes"),
+      testID: "explorer-tab-changes",
+      renderIcon: (color) => <SourceControlPanelIcon size={iconSize.sm} color={color} />,
+    });
+  }
+  tabDefs.push({
+    tab: "files",
+    label: t("workspace.tabs.explorer.files"),
+    testID: "explorer-tab-files",
+    renderIcon: (color) => <Files size={iconSize.sm} color={color} />,
+  });
+  if (hasProjectSearch) {
+    tabDefs.push({
+      tab: "search",
+      label: t("workspace.tabs.explorer.search"),
+      testID: "explorer-tab-search",
+      renderIcon: (color) => <DocumentSearch size={iconSize.sm} color={color} />,
+    });
+  }
+  if (isGit && showPrTab) {
+    tabDefs.push({
+      tab: "pr",
+      label: prTabLabel,
+      testID: "explorer-tab-pr",
+      alwaysLabeled: true,
+      renderIcon: (color) => <PullRequestTabIcon size={iconSize.sm} color={color} />,
+    });
+  }
+
+  // headerWidth includes the header's own padding: spacing[2] on the left,
+  // padding.right (window-controls chrome) on the right. Keep one more
+  // spacing[2] of breathing room before the right section.
+  const availableTabsWidth = headerWidth - theme.spacing[2] * 2 - padding.right - rightSectionWidth;
+  const showTabLabels =
+    headerWidth > 0 && labeledTabsWidth > 0 && labeledTabsWidth <= availableTabsWidth;
+
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
       {/* Header with tabs and close button */}
-      <View style={headerStyle} testID="explorer-header">
+      <View style={headerStyle} testID="explorer-header" onLayout={handleHeaderLayout}>
         <TitlebarDragRegion />
         <View style={styles.tabsContainer}>
-          {isGit && (
-            <ExplorerTabButton
-              tab="changes"
-              active={resolvedTab === "changes"}
-              label={t("workspace.tabs.explorer.changes")}
-              iconOnly
-              onTabPress={onTabPress}
-              testID="explorer-tab-changes"
-            >
-              <SourceControlPanelIcon
-                size={iconSize.sm}
-                color={
-                  resolvedTab === "changes" ? theme.colors.foreground : theme.colors.foregroundMuted
-                }
-              />
-            </ExplorerTabButton>
-          )}
-          <ExplorerTabButton
-            tab="files"
-            active={resolvedTab === "files"}
-            label={t("workspace.tabs.explorer.files")}
-            iconOnly
-            onTabPress={onTabPress}
-            testID="explorer-tab-files"
-          >
-            <Files
-              size={iconSize.sm}
-              color={
-                resolvedTab === "files" ? theme.colors.foreground : theme.colors.foregroundMuted
-              }
-            />
-          </ExplorerTabButton>
-          {hasProjectSearch && (
-            <ExplorerTabButton
-              tab="search"
-              active={resolvedTab === "search"}
-              label={t("workspace.tabs.explorer.search")}
-              iconOnly
-              onTabPress={onTabPress}
-              testID="explorer-tab-search"
-            >
-              <DocumentSearch
-                size={iconSize.sm}
-                color={
-                  resolvedTab === "search" ? theme.colors.foreground : theme.colors.foregroundMuted
-                }
-              />
-            </ExplorerTabButton>
-          )}
-          {isGit && showPrTab && (
-            <ExplorerTabButton
-              tab="pr"
-              active={resolvedTab === "pr"}
-              label={prTabLabel}
-              onTabPress={onTabPress}
-              testID="explorer-tab-pr"
-            >
-              <PullRequestTabIcon
-                size={iconSize.sm}
-                color={
-                  resolvedTab === "pr" ? theme.colors.foreground : theme.colors.foregroundMuted
-                }
-              />
-            </ExplorerTabButton>
-          )}
+          {tabDefs.map((def) => {
+            const active = resolvedTab === def.tab;
+            return (
+              <ExplorerTabButton
+                key={def.tab}
+                tab={def.tab}
+                active={active}
+                label={def.label}
+                iconOnly={!def.alwaysLabeled && !showTabLabels}
+                onTabPress={onTabPress}
+                testID={def.testID}
+              >
+                {def.renderIcon(active ? theme.colors.foreground : theme.colors.foregroundMuted)}
+              </ExplorerTabButton>
+            );
+          })}
         </View>
-        <View style={styles.headerRightSection}>
+        <View style={styles.headerRightSection} onLayout={handleRightSectionLayout}>
           {isMobile && (
             <Pressable onPress={onClose} style={styles.closeButton}>
               <X size={iconSize.md} color={theme.colors.foregroundMuted} />
             </Pressable>
           )}
+        </View>
+        {/* Invisible clone of the fully-labeled tab row: its natural width
+            decides whether the real tabs can afford labels. Absolute with
+            pointerEvents none so it affects neither layout, clicks, nor the
+            titlebar drag region. */}
+        <View
+          style={styles.tabsMeasureRow}
+          pointerEvents="none"
+          aria-hidden
+          onLayout={handleLabeledTabsLayout}
+        >
+          {tabDefs.map((def) => (
+            <View key={def.tab} style={styles.tab}>
+              {def.renderIcon(theme.colors.foregroundMuted)}
+              <Text style={styles.tabText} numberOfLines={1}>
+                {def.label}
+              </Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -736,6 +769,15 @@ const styles = StyleSheet.create((theme) => ({
   tabsContainer: {
     flexDirection: "row",
     gap: theme.spacing[1],
+  },
+  // Off-layout twin of tabsContainer used only to measure the labeled width.
+  tabsMeasureRow: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    flexDirection: "row",
+    gap: theme.spacing[1],
+    opacity: 0,
   },
   tab: {
     flexDirection: "row",
