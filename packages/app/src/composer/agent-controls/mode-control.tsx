@@ -14,10 +14,14 @@ import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import {
   Bot,
+  LocalPolice,
+  PrivacyTip,
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
+  ShieldPerson,
   ShieldQuestionMark,
+  ShieldToggle,
 } from "@/components/icons/material-icons";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { type SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -33,7 +37,13 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { compactUp, useIconSize } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
-import { formatAgentModeLabel, getAgentControlHintKey } from "@/composer/agent-controls/utils";
+import {
+  formatAgentModeLabel,
+  getAgentControlHintKey,
+  getModeTierColor,
+  hexColorWithAlpha,
+  type ModeTierColors,
+} from "@/composer/agent-controls/utils";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -55,10 +65,14 @@ interface ModeIconProps {
 
 const MODE_ICONS: Record<string, ComponentType<ModeIconProps>> = {
   Bot,
+  LocalPolice,
+  PrivacyTip,
   ShieldCheck,
   ShieldAlert,
   ShieldOff,
+  ShieldPerson,
   ShieldQuestionMark,
+  ShieldToggle,
 };
 
 interface ModeComboboxOptionProps {
@@ -69,6 +83,7 @@ interface ModeComboboxOptionProps {
   provider: string;
   providerDefinitions: AgentProviderDefinition[];
   iconColor: string;
+  tierColors: ModeTierColors;
 }
 
 function ModeComboboxOption({
@@ -79,13 +94,16 @@ function ModeComboboxOption({
   provider,
   providerDefinitions,
   iconColor,
+  tierColors,
 }: ModeComboboxOptionProps) {
   const visuals = getModeVisuals(provider, option.id, providerDefinitions);
   const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
+  const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
+  const resolvedIconColor = tierColor ?? iconColor;
   const iconSize = useIconSize();
   const leadingSlot = useMemo(
-    () => (IconComponent ? <IconComponent size={iconSize.md} color={iconColor} /> : null),
-    [IconComponent, iconColor, iconSize.md],
+    () => (IconComponent ? <IconComponent size={iconSize.md} color={resolvedIconColor} /> : null),
+    [IconComponent, resolvedIconColor, iconSize.md],
   );
   return (
     <ComboboxItem
@@ -94,6 +112,7 @@ function ModeComboboxOption({
       active={active}
       onPress={onPress}
       leadingSlot={leadingSlot}
+      labelColor={tierColor}
     />
   );
 }
@@ -107,10 +126,6 @@ interface AgentModeControlViewProps {
   disabled?: boolean;
   /** Render as an icon-only badge (compact toolbar) instead of an icon + label chip. */
   iconOnly?: boolean;
-}
-
-function normalizeSearchQuery(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 function AgentModeControlView({
@@ -129,33 +144,43 @@ function AgentModeControlView({
   const anchorRef = useRef<View>(null);
   const keyboardHandlerIdRef = useRef(`mode-control:${Math.random().toString(36).slice(2)}`);
   const [open, setOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
   const selectedMode = useMemo(() => {
     if (modeOptions.length === 0) return null;
     return modeOptions.find((m) => m.id === selectedModeId) ?? modeOptions[0];
   }, [modeOptions, selectedModeId]);
 
+  const tierColors = useMemo<ModeTierColors>(
+    () => ({
+      safe: theme.colors.statusSuccess,
+      moderate: theme.colors.statusWarning,
+      dangerous: theme.colors.statusDanger,
+      planning: theme.colors.statusInfo,
+    }),
+    [
+      theme.colors.statusSuccess,
+      theme.colors.statusWarning,
+      theme.colors.statusDanger,
+      theme.colors.statusInfo,
+    ],
+  );
+
   const visuals = selectedMode
     ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
     : undefined;
   const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const iconColor = theme.colors.foregroundMuted;
+  const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
+  const iconColor = tierColor ?? theme.colors.foregroundMuted;
   const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
 
-  const allOptions = useMemo<ComboboxOption[]>(
+  // Modes are a small finite set (like effort levels) — no search needed.
+  const options = useMemo<ComboboxOption[]>(
     () => modeOptions.map((m) => ({ id: m.id, label: formatAgentModeLabel(m) })),
     [modeOptions],
   );
-  const options = useMemo<ComboboxOption[]>(() => {
-    const q = normalizeSearchQuery(searchQuery);
-    if (!q) return allOptions;
-    return allOptions.filter((o) => o.label.toLowerCase().includes(q));
-  }, [allOptions, searchQuery]);
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next);
-    if (!next) setSearchQuery("");
   }, []);
 
   const handlePress = useCallback(() => handleOpenChange(!open), [handleOpenChange, open]);
@@ -202,31 +227,38 @@ function AgentModeControlView({
         provider={provider}
         providerDefinitions={providerDefinitions}
         iconColor={theme.colors.foreground}
+        tierColors={tierColors}
       />
     ),
-    [provider, providerDefinitions, theme.colors.foreground],
+    [provider, providerDefinitions, theme.colors.foreground, tierColors],
   );
+
+  // Non-neutral modes tint the whole chip with the tier color at half opacity
+  // so the active mode reads at a glance; hover/press nudge the tint stronger.
+  const tierTint = tierColor ? hexColorWithAlpha(tierColor, 0.05) : undefined;
+  const tierTintActive = tierColor ? hexColorWithAlpha(tierColor, 0.1) : undefined;
 
   const pressableStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType) => [
       iconOnly ? styles.iconChip : styles.chip,
       hovered && styles.chipHovered,
       (pressed || open) && styles.chipPressed,
+      tierTint ? { backgroundColor: hovered || pressed || open ? tierTintActive : tierTint } : null,
       disabled && styles.chipDisabled,
     ],
-    [open, disabled, iconOnly],
+    [open, disabled, iconOnly, tierTint, tierTintActive],
   );
 
-  const labelStyle = styles.chipLabel;
+  // Low-churn inline color (one value per tier per theme); flows through React
+  // like the icon colors above rather than the Unistyles native path.
+  const labelStyle = useMemo(
+    () => [styles.chipLabel, tierColor ? { color: tierColor } : null],
+    [tierColor],
+  );
 
   const sheetHeader = useMemo<SheetHeader>(
     () => ({
       title: t("agentControls.mode.title"),
-      search: {
-        onChange: setSearchQuery,
-        placeholder: t("agentControls.mode.searchPlaceholder"),
-        testID: "mode-search-input",
-      },
     }),
     [t],
   );
@@ -269,6 +301,7 @@ function AgentModeControlView({
         options={options}
         value={selectedMode.id}
         onSelect={handleSelect}
+        searchable={false}
         open={open}
         onOpenChange={handleOpenChange}
         anchorRef={anchorRef}

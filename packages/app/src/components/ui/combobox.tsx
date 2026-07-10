@@ -226,6 +226,8 @@ export function SearchInput({
 
 export interface ComboboxItemProps {
   label: string;
+  /** Overrides the default label color (e.g. agent mode tier colors). */
+  labelColor?: string;
   description?: string;
   kind?: "directory" | "file";
   leadingSlot?: ReactNode;
@@ -241,6 +243,7 @@ export interface ComboboxItemProps {
 
 export function ComboboxItem({
   label,
+  labelColor,
   description,
   kind,
   leadingSlot,
@@ -287,11 +290,16 @@ export function ComboboxItem({
     [description],
   );
 
+  const itemLabelStyle = useMemo(
+    () => [styles.comboboxItemLabel, labelColor ? { color: labelColor } : null],
+    [labelColor],
+  );
+
   return (
     <Pressable testID={testID} disabled={disabled} onPress={onPress} style={itemPressableStyle}>
       {leadingContent}
       <View style={itemContentStyle}>
-        <Text numberOfLines={1} style={styles.comboboxItemLabel}>
+        <Text numberOfLines={1} style={itemLabelStyle}>
           {label}
         </Text>
         {description ? (
@@ -845,7 +853,10 @@ function buildFloatingMiddleware(input: FloatingMiddlewareInput) {
   const { collisionPadding, isDesktopAboveSearch, setAvailableSize, setReferenceWidth } = input;
   return [
     floatingOffset(isWeb ? 5 : 4),
-    ...(isWeb ? [] : [flip({ padding: collisionPadding })]),
+    // flip so the popover opens above the trigger when the space below is too
+    // short for the options; above-search mode positions itself manually from
+    // the trigger's bottom edge and must not flip.
+    ...(isDesktopAboveSearch ? [] : [flip({ padding: collisionPadding })]),
     ...(isDesktopAboveSearch ? [] : [shift({ padding: collisionPadding })]),
     floatingSize({
       padding: collisionPadding,

@@ -1,7 +1,15 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-types.js";
 
-export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning" | `#${string}`;
+// Tiers map to signal colors in the client (safe=green, moderate=yellow,
+// dangerous=red, planning=blue); "neutral" renders in the default text color.
+export type AgentModeColorTier =
+  | "neutral"
+  | "safe"
+  | "moderate"
+  | "dangerous"
+  | "planning"
+  | `#${string}`;
 // Open string by design: the client looks icons up in a registry and falls back
 // to a default for unknown values. Daemon downgrades unknown icons for clients
 // that pre-date the open-string contract (see CLIENT_CAPS.customModeIcons).
@@ -40,35 +48,35 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     id: "default",
     label: "Always Ask",
     description: "Prompts for permission the first time a tool is used",
-    icon: "ShieldCheck",
-    colorTier: "safe",
-  },
-  {
-    id: "auto",
-    label: "Auto mode",
-    description: "Uses a model classifier to review permission prompts automatically",
     icon: "ShieldQuestionMark",
-    colorTier: "moderate",
+    colorTier: "neutral",
   },
   {
     id: "acceptEdits",
     label: "Accept File Edits",
     description: "Automatically approves edit-focused tools without prompting",
-    icon: "ShieldAlert",
-    colorTier: "moderate",
+    icon: "ShieldPerson",
+    colorTier: "safe",
   },
   {
     id: "plan",
     label: "Plan Mode",
     description: "Analyze the codebase without executing tools or edits",
-    icon: "ShieldCheck",
+    icon: "ShieldToggle",
     colorTier: "planning",
+  },
+  {
+    id: "auto",
+    label: "Auto mode",
+    description: "Uses a model classifier to review permission prompts automatically",
+    icon: "LocalPolice",
+    colorTier: "moderate",
   },
   {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",
-    icon: "ShieldAlert",
+    icon: "PrivacyTip",
     colorTier: "dangerous",
     isUnattended: true,
   },
