@@ -407,6 +407,7 @@ export const ar: TranslationResources = {
         copyPath: "نسخ المسار",
         download: "تحميل",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },

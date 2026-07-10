@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { FileText, Plus } from "@/components/icons/material-icons";
 import {
@@ -10,6 +10,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  useContextMenu,
+} from "@/components/ui/context-menu";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArtifactCreateSheet } from "@/components/artifacts/artifact-create-sheet";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
@@ -58,6 +67,7 @@ export function ArtifactOpenMenu({
   // the stored projectId is the repo root while cwd may be a worktree path with
   // OS-native separators, so an exact match would drop legitimate artifacts.
   const { artifacts } = useArtifacts();
+  const isCompact = useIsCompactFormFactor();
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
 
@@ -101,6 +111,44 @@ export function ArtifactOpenMenu({
 
   if (!supportsArtifacts) {
     return null;
+  }
+
+  // Compact form factors get a bottom sheet instead of a dropdown anchored to
+  // a (possibly hidden zero-size) trigger — the header "..." menu item flips
+  // `open` on and the sheet slides up with the same artifact list + create row.
+  if (isCompact) {
+    return (
+      <>
+        <ContextMenu open={open} onOpenChange={onOpenChange}>
+          {hideTrigger ? null : <ArtifactSheetTriggerButton />}
+          <ContextMenuContent mobileMode="sheet" testID="workspace-open-artifact-sheet">
+            {projectArtifacts.length > 0 ? (
+              <>
+                <ContextMenuLabel>Artifacts</ContextMenuLabel>
+                {projectArtifacts.map((artifact) => (
+                  <ArtifactSheetItem key={artifact.id} artifact={artifact} onOpen={handleOpen} />
+                ))}
+                <ContextMenuSeparator />
+              </>
+            ) : null}
+            <ContextMenuItem
+              testID="workspace-open-artifact-create"
+              leading={createLeading}
+              onSelect={handleOpenCreate}
+            >
+              Create artifact
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+        <ArtifactCreateSheet
+          visible={createOpen}
+          onClose={handleCloseCreate}
+          initialServerId={serverId}
+          initialProjectCwd={cwd ?? undefined}
+          onCreated={handleCreated}
+        />
+      </>
+    );
   }
 
   const trigger = hideTrigger ? (
@@ -161,6 +209,58 @@ export function ArtifactOpenMenu({
         onCreated={handleCreated}
       />
     </>
+  );
+}
+
+// Plain-press trigger for the compact sheet — ContextMenuTrigger only opens on
+// long-press/right-click, but this toolbar button should open on tap.
+function ArtifactSheetTriggerButton(): ReactElement {
+  const { open, setOpen } = useContextMenu();
+  const handlePress = useCallback(() => setOpen(true), [setOpen]);
+  const pressableStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) =>
+      triggerStyle({ hovered, pressed, open }),
+    [open],
+  );
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="triggerRef">
+        <Pressable
+          testID="workspace-open-artifact-trigger"
+          accessibilityRole="button"
+          accessibilityLabel="Add artifact"
+          onPress={handlePress}
+          style={pressableStyle}
+        >
+          <FileText size={14} color={styles.icon.color} />
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <Text style={styles.tooltipText}>Add artifact</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ArtifactSheetItem({
+  artifact,
+  onOpen,
+}: {
+  artifact: AggregatedArtifact;
+  onOpen: (artifactId: string) => void;
+}): ReactElement {
+  const isReady = artifact.status === "ready";
+  const handleSelect = useCallback(() => {
+    onOpen(artifact.id);
+  }, [artifact.id, onOpen]);
+  return (
+    <ContextMenuItem
+      testID={`workspace-open-artifact-${artifact.id}`}
+      disabled={!isReady}
+      onSelect={isReady ? handleSelect : undefined}
+    >
+      {artifact.name || artifact.id}
+    </ContextMenuItem>
   );
 }
 

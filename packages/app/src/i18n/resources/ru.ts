@@ -410,6 +410,7 @@ export const ru: TranslationResources = {
         copyPath: "Копировать путь",
         download: "Скачать",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },

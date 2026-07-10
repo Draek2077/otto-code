@@ -411,6 +411,7 @@ export const ptBR: TranslationResources = {
         copyPath: "Copiar caminho",
         download: "Baixar",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },

@@ -411,6 +411,7 @@ export const ja: TranslationResources = {
         copyPath: "パスをコピー",
         download: "ダウンロード",
         edit: "Edit",
+        findInFiles: "Find in files",
         addToContext: "Add to context",
         removeFromContext: "Remove from context",
       },
