@@ -113,9 +113,11 @@ import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildOpenProjectRoute,
   parseHostAgentRouteFromPathname,
+  parseHostWorkspaceRouteFromPathname,
   parseServerIdFromPathname,
   parseWorkspaceOpenIntent,
 } from "@/utils/host-routes";
+import { isExplorerUnderWindowControls } from "@/utils/desktop-window";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
@@ -763,18 +765,30 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
 function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   const { theme } = useUnistyles();
-  const surface0 = theme.colors.surface0;
+  const pathname = usePathname();
+  const isCompactLayout = useIsCompactFormFactor();
+  const explorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
+  const focusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
+  const explorerUnderControls = isExplorerUnderWindowControls({
+    isCompact: isCompactLayout,
+    explorerOpen,
+    focusModeEnabled,
+    isWorkspaceRoute: parseHostWorkspaceRouteFromPathname(pathname) !== null,
+  });
+  const backgroundColor = explorerUnderControls
+    ? theme.colors.surfaceSidebar
+    : theme.colors.surface0;
   const foreground = theme.colors.foreground;
 
   useEffect(() => {
     if (!enabled || isNative) return;
     void updateDesktopWindowControls({
-      backgroundColor: surface0,
+      backgroundColor,
       foregroundColor: foreground,
     }).catch((error) => {
       console.warn("[DesktopWindow] Failed to update window controls overlay", error);
     });
-  }, [enabled, surface0, foreground]);
+  }, [enabled, backgroundColor, foreground]);
 
   return null;
 }

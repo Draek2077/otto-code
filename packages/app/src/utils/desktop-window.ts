@@ -17,6 +17,17 @@ interface RawWindowControlsPadding {
   top: number;
 }
 
+export interface WindowControlsOverlayInsets {
+  left: number;
+  right: number;
+}
+
+interface WindowControlsOverlayLike {
+  visible: boolean;
+  getTitlebarAreaRect: () => { x: number; width: number };
+  addEventListener?: (type: "geometrychange", listener: () => void) => void;
+}
+
 type WindowControlsPaddingRole =
   | "sidebar"
   | "header"
@@ -74,8 +85,95 @@ function startFullscreenSubscription() {
   })();
 }
 
+// The window-controls overlay geometry (navigator.windowControlsOverlay) gives
+// the exact chrome-button footprint per OS, unlike the DESKTOP_* constants which
+// are one-size guesses. Cached at module level like the fullscreen flag so hook
+// remounts don't flash the fallback constant before the first read.
+let cachedOverlayInsets: WindowControlsOverlayInsets | null = null;
+const overlayInsetsSubscribers = new Set<(value: WindowControlsOverlayInsets | null) => void>();
+let overlayInsetsSubscriptionStarted = false;
+
+function setCachedOverlayInsets(value: WindowControlsOverlayInsets | null) {
+  const unchanged =
+    cachedOverlayInsets === value ||
+    (cachedOverlayInsets !== null &&
+      value !== null &&
+      cachedOverlayInsets.left === value.left &&
+      cachedOverlayInsets.right === value.right);
+  if (unchanged) return;
+  cachedOverlayInsets = value;
+  for (const sub of overlayInsetsSubscribers) {
+    sub(value);
+  }
+}
+
+function getWindowControlsOverlay(): WindowControlsOverlayLike | null {
+  if (isNative || !getIsElectronRuntime()) return null;
+  if (typeof navigator === "undefined") return null;
+  const overlay = (navigator as { windowControlsOverlay?: WindowControlsOverlayLike })
+    .windowControlsOverlay;
+  return overlay ?? null;
+}
+
+export function resolveOverlayInsets(input: {
+  visible: boolean;
+  rect: { x: number; width: number } | null;
+  innerWidth: number;
+}): WindowControlsOverlayInsets | null {
+  if (!input.visible || !input.rect) return null;
+  if (input.rect.width <= 0 || input.innerWidth <= 0) return null;
+  const left = Math.max(0, Math.round(input.rect.x));
+  const right = Math.max(0, Math.round(input.innerWidth - input.rect.x - input.rect.width));
+  // A rect spanning the full window means the platform draws no overlay
+  // controls — treat as "no geometry" so callers fall back to the constants.
+  if (left <= 0 && right <= 0) return null;
+  return { left, right };
+}
+
+function refreshOverlayInsets() {
+  const overlay = getWindowControlsOverlay();
+  if (!overlay) return;
+  let rect: { x: number; width: number } | null = null;
+  try {
+    rect = overlay.getTitlebarAreaRect();
+  } catch (error) {
+    console.warn("[DesktopWindow] Failed to read window-controls overlay rect", error);
+  }
+  setCachedOverlayInsets(
+    resolveOverlayInsets({ visible: overlay.visible, rect, innerWidth: window.innerWidth }),
+  );
+}
+
+function startOverlayInsetsSubscription() {
+  if (overlayInsetsSubscriptionStarted) return;
+  const overlay = getWindowControlsOverlay();
+  if (!overlay) return;
+  overlayInsetsSubscriptionStarted = true;
+  refreshOverlayInsets();
+  // geometrychange fires on window resize too, keeping the right inset in sync
+  // with innerWidth.
+  overlay.addEventListener?.("geometrychange", refreshOverlayInsets);
+}
+
+function useWindowControlsOverlayInsets(): WindowControlsOverlayInsets | null {
+  const [insets, setInsets] = useState(cachedOverlayInsets);
+
+  useEffect(() => {
+    startOverlayInsetsSubscription();
+    // Sync to any value that resolved between render and effect.
+    setInsets(cachedOverlayInsets);
+    overlayInsetsSubscribers.add(setInsets);
+    return () => {
+      overlayInsetsSubscribers.delete(setInsets);
+    };
+  }, []);
+
+  return insets;
+}
+
 function useRawWindowControlsPadding(): RawWindowControlsPadding {
   const [isFullscreen, setIsFullscreen] = useState(cachedIsFullscreen);
+  const overlayInsets = useWindowControlsOverlayInsets();
 
   useEffect(() => {
     startFullscreenSubscription();
@@ -91,6 +189,7 @@ function useRawWindowControlsPadding(): RawWindowControlsPadding {
     isElectron: getIsElectronRuntime(),
     isMac: getIsElectronRuntimeMac(),
     isFullscreen,
+    overlayInsets,
   });
 }
 
@@ -98,11 +197,14 @@ export function resolveRawWindowControlsPadding(input: {
   isElectron: boolean;
   isMac: boolean;
   isFullscreen: boolean;
+  overlayInsets?: WindowControlsOverlayInsets | null;
 }): RawWindowControlsPadding {
   if (!input.isElectron || input.isFullscreen) {
     return { left: 0, right: 0, top: 0 };
   }
 
+  // Mac keeps the constants: traffic-light position is set by our own
+  // trafficLightPosition option, so the guess is already exact.
   if (input.isMac) {
     return {
       left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
@@ -113,9 +215,28 @@ export function resolveRawWindowControlsPadding(input: {
 
   return {
     left: 0,
-    right: DESKTOP_WINDOW_CONTROLS_WIDTH,
+    right: input.overlayInsets?.right ?? DESKTOP_WINDOW_CONTROLS_WIDTH,
     top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
   };
+}
+
+/**
+ * True when the explorer sidebar surface sits under the window-controls
+ * overlay (Windows/Linux chrome buttons live top-right, where the explorer
+ * docks). The overlay background must then match `surfaceSidebar` instead of
+ * `surface0`, or the buttons render on a mismatched color patch. The explorer
+ * only renders on workspace routes, on non-compact layouts, outside focus
+ * mode — mirroring `shouldShowWorkspaceExplorerSidebar` plus the store flag.
+ */
+export function isExplorerUnderWindowControls(input: {
+  isCompact: boolean;
+  explorerOpen: boolean;
+  focusModeEnabled: boolean;
+  isWorkspaceRoute: boolean;
+}): boolean {
+  return (
+    !input.isCompact && input.explorerOpen && !input.focusModeEnabled && input.isWorkspaceRoute
+  );
 }
 
 export function useWindowControlsPadding(role: WindowControlsPaddingRole): {

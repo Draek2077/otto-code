@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  isExplorerUnderWindowControls,
+  resolveOverlayInsets,
   resolveRawWindowControlsPadding,
   resolveWindowControlsPadding,
 } from "@/utils/desktop-window";
@@ -39,6 +41,87 @@ describe("resolveWindowControlsPadding", () => {
       right: 0,
       top: 0,
     });
+  });
+
+  it("uses the measured overlay right inset instead of the constant on Windows and Linux", () => {
+    expect(
+      resolveRawWindowControlsPadding({
+        isElectron: true,
+        isMac: false,
+        isFullscreen: false,
+        overlayInsets: { left: 0, right: 138 },
+      }),
+    ).toEqual({
+      left: 0,
+      right: 138,
+      top: 48,
+    });
+  });
+
+  it("ignores overlay insets on mac where the traffic-light constants are already exact", () => {
+    expect(
+      resolveRawWindowControlsPadding({
+        isElectron: true,
+        isMac: true,
+        isFullscreen: false,
+        overlayInsets: { left: 72, right: 0 },
+      }),
+    ).toEqual({
+      left: 78,
+      right: 0,
+      top: 45,
+    });
+  });
+
+  it("ignores overlay insets in fullscreen", () => {
+    expect(
+      resolveRawWindowControlsPadding({
+        isElectron: true,
+        isMac: false,
+        isFullscreen: true,
+        overlayInsets: { left: 0, right: 138 },
+      }),
+    ).toEqual({
+      left: 0,
+      right: 0,
+      top: 0,
+    });
+  });
+});
+
+describe("resolveOverlayInsets", () => {
+  it("computes the right inset from the titlebar area rect and window width", () => {
+    expect(
+      resolveOverlayInsets({ visible: true, rect: { x: 0, width: 1062 }, innerWidth: 1200 }),
+    ).toEqual({
+      left: 0,
+      right: 138,
+    });
+  });
+
+  it("computes a left inset when the controls sit on the left", () => {
+    expect(
+      resolveOverlayInsets({ visible: true, rect: { x: 72, width: 1128 }, innerWidth: 1200 }),
+    ).toEqual({
+      left: 72,
+      right: 0,
+    });
+  });
+
+  it("returns null when the overlay is not visible", () => {
+    expect(
+      resolveOverlayInsets({ visible: false, rect: { x: 0, width: 1062 }, innerWidth: 1200 }),
+    ).toBeNull();
+  });
+
+  it("returns null when the rect could not be read", () => {
+    expect(resolveOverlayInsets({ visible: true, rect: null, innerWidth: 1200 })).toBeNull();
+  });
+
+  it("returns null when the rect spans the full window (no drawn controls)", () => {
+    expect(
+      resolveOverlayInsets({ visible: true, rect: { x: 0, width: 1200 }, innerWidth: 1200 }),
+    ).toBeNull();
   });
 
   it("pads the main header for window controls when the app sidebar is closed", () => {
@@ -103,5 +186,62 @@ describe("resolveWindowControlsPadding", () => {
       right: 140,
       top: 0,
     });
+  });
+});
+
+describe("isExplorerUnderWindowControls", () => {
+  it("reports the explorer surface when it is open on a non-compact workspace route", () => {
+    expect(
+      isExplorerUnderWindowControls({
+        isCompact: false,
+        explorerOpen: true,
+        focusModeEnabled: false,
+        isWorkspaceRoute: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("falls back to the app surface when the explorer is closed", () => {
+    expect(
+      isExplorerUnderWindowControls({
+        isCompact: false,
+        explorerOpen: false,
+        focusModeEnabled: false,
+        isWorkspaceRoute: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to the app surface in focus mode, which hides the explorer", () => {
+    expect(
+      isExplorerUnderWindowControls({
+        isCompact: false,
+        explorerOpen: true,
+        focusModeEnabled: true,
+        isWorkspaceRoute: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to the app surface off workspace routes where no explorer renders", () => {
+    expect(
+      isExplorerUnderWindowControls({
+        isCompact: false,
+        explorerOpen: true,
+        focusModeEnabled: false,
+        isWorkspaceRoute: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to the app surface on compact layouts where the explorer is an overlay sheet", () => {
+    expect(
+      isExplorerUnderWindowControls({
+        isCompact: true,
+        explorerOpen: true,
+        focusModeEnabled: false,
+        isWorkspaceRoute: true,
+      }),
+    ).toBe(false);
   });
 });
