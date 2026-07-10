@@ -2,8 +2,17 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import type { PressableStateCallbackType, TextInputProps } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import type { LayoutChangeEvent, PressableStateCallbackType, TextInputProps } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
@@ -238,6 +247,37 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const SEARCH_INPUT_STYLE = [styles.searchInput, isWeb && { outlineStyle: "none" }];
+
+// @gorhom/bottom-sheet components are not Unistyles-tracked: on web, Unistyles
+// style objects carry their values as non-enumerable properties, so any style
+// passed to them silently applies nothing (see docs/unistyles.md). The scroll
+// view gets only this plain RN style; themed content layout (padding/gap)
+// lives on a core View wrapped around the children instead.
+// flexGrow: 0 overrides react-native-web's ScrollView default (flexGrow: 1) so
+// the footer sits directly under short content instead of being pinned to the
+// sheet bottom; flexShrink lets the scroll view shrink inside the fixed-height
+// sheet so the footer stays visible when content overflows.
+const BOTTOM_SHEET_SCROLL_STYLE = { flexGrow: 0, flexShrink: 1, minHeight: 0 } as const;
+
+// Default @gorhom/bottom-sheet handle: 10px padding + 4px indicator + 10px padding.
+const SHEET_HANDLE_HEIGHT = 24;
+// A content-hugged sheet may grow to at most this fraction of the window;
+// beyond it the content scrolls.
+const MAX_SHEET_HEIGHT_FRACTION = 0.9;
+// Shown only until the first layout measurement lands (usually within a frame).
+const MEASURING_SNAP_POINTS = ["65%"];
+// Non-scrollable sheets have flex-sized content with no natural height to
+// measure, so they keep the fixed two-detent default.
+const STATIC_SNAP_POINTS = ["65%", "90%"];
+
+function useSheetPartHeight(): [number, (event: LayoutChangeEvent) => void] {
+  const [height, setHeight] = useState(0);
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.ceil(event.nativeEvent.layout.height);
+    setHeight((current) => (current === next ? current : next));
+  }, []);
+  return [height, onLayout];
+}
 const WEB_EXIT_DURATION_MS = 160;
 
 function SheetBackground({ style }: BottomSheetBackgroundProps) {
@@ -515,7 +555,45 @@ export function AdaptiveModalSheet({
   const desktopScrollbar = useWebScrollViewScrollbar(desktopScrollRef, {
     enabled: webScrollbar && !isMobile,
   });
-  const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
+  // Default mobile behavior: a single snap point measured from the sheet's
+  // natural content height, so the bottom sheet hugs its content the way the
+  // desktop dialog does and the footer sits directly under the content.
+  // Multi-detent defaults are a trap for sheets with footers: gorhom sizes the
+  // content column for the HIGHEST detent, so at a lower resting detent a
+  // column footer sits below the fold where no amount of scrolling reaches it.
+  const { height: windowHeight } = useWindowDimensions();
+  const [headerHeight, onHeaderLayout] = useSheetPartHeight();
+  const [subHeaderHeight, onSubHeaderLayout] = useSheetPartHeight();
+  const [contentHeight, onContentLayout] = useSheetPartHeight();
+  const [footerHeight, onFooterLayout] = useSheetPartHeight();
+  const resolvedSnapPoints = useMemo(() => {
+    if (snapPoints) {
+      return snapPoints;
+    }
+    if (!scrollable) {
+      return STATIC_SNAP_POINTS;
+    }
+    if (headerHeight === 0 || contentHeight === 0) {
+      return MEASURING_SNAP_POINTS;
+    }
+    const measured =
+      SHEET_HANDLE_HEIGHT +
+      headerHeight +
+      (subHeader ? subHeaderHeight : 0) +
+      contentHeight +
+      (footer ? footerHeight : 0);
+    return [Math.min(measured, Math.round(windowHeight * MAX_SHEET_HEIGHT_FRACTION))];
+  }, [
+    snapPoints,
+    scrollable,
+    headerHeight,
+    subHeader,
+    subHeaderHeight,
+    contentHeight,
+    footer,
+    footerHeight,
+    windowHeight,
+  ]);
   const compactSafeAreaPadding = useMemo(
     () =>
       getCompactSheetSafeAreaPadding({
@@ -672,20 +750,28 @@ export function AdaptiveModalSheet({
         accessible={false}
         presentation={presentation}
       >
-        <SheetHeaderView header={header} onClose={onClose} testID={testID} />
-        {subHeader}
+        <View onLayout={onHeaderLayout}>
+          <SheetHeaderView header={header} onClose={onClose} testID={testID} />
+        </View>
+        {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
         {scrollable ? (
           <BottomSheetScrollView
-            contentContainerStyle={bottomSheetContentStyle}
+            style={BOTTOM_SHEET_SCROLL_STYLE}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {children}
+            <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
+              {children}
+            </View>
           </BottomSheetScrollView>
         ) : (
           <View style={bottomSheetStaticContentStyle}>{children}</View>
         )}
-        {footer ? <View style={footerStyle}>{footer}</View> : null}
+        {footer ? (
+          <View style={footerStyle} onLayout={onFooterLayout}>
+            {footer}
+          </View>
+        ) : null}
       </IsolatedBottomSheetModal>
     );
   }
