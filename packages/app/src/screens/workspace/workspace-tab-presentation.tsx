@@ -4,7 +4,8 @@ import { Check } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
-import { ThemedBlobLoader } from "@/components/blob-loader";
+import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -22,6 +23,10 @@ export interface WorkspaceTabPresentation {
   titleState: "ready" | "loading";
   icon: React.ComponentType<{ size: number; color: string }>;
   statusBucket: SidebarStateBucket | null;
+  /** Personality spinner colors for the busy loader; null ⇒ theme spinner. */
+  personalitySpinner?: { glowA: string; glowB: string } | null;
+  /** Provider id — fills the non-loading agent glyph with the personality gradient. */
+  provider?: string;
 }
 
 const DEFAULT_STATUS_DOT_SIZE = 7;
@@ -84,6 +89,8 @@ function WorkspaceTabPresentationResolverInner({
       titleState: descriptor.titleState,
       icon: descriptor.icon,
       statusBucket: descriptor.statusBucket,
+      personalitySpinner: descriptor.personalitySpinner ?? null,
+      provider: descriptor.provider,
     }),
     [
       descriptor.icon,
@@ -91,6 +98,8 @@ function WorkspaceTabPresentationResolverInner({
       descriptor.statusBucket,
       descriptor.subtitle,
       descriptor.titleState,
+      descriptor.personalitySpinner,
+      descriptor.provider,
       tab.key,
       tab.kind,
     ],
@@ -166,16 +175,31 @@ export function WorkspaceTabIcon({
   );
 
   if (shouldShowLoader) {
+    const spinner = presentation.personalitySpinner;
     return (
       <View style={agentIconWrapperStyle}>
-        <ThemedBlobLoader size={resolvedSize - 1} />
+        {spinner ? (
+          <BlobLoader size={resolvedSize - 1} glowA={spinner.glowA} glowB={spinner.glowB} />
+        ) : (
+          <ThemedBlobLoader size={resolvedSize - 1} />
+        )}
       </View>
     );
   }
 
+  const spinner = presentation.personalitySpinner;
   return (
     <View style={agentIconWrapperStyle}>
-      <Icon size={resolvedSize} color={iconColor} />
+      {spinner && presentation.provider ? (
+        <PersonalityProviderIcon
+          provider={presentation.provider}
+          size={resolvedSize}
+          glowA={spinner.glowA}
+          glowB={spinner.glowB}
+        />
+      ) : (
+        <Icon size={resolvedSize} color={iconColor} />
+      )}
       {statusDotColor ? <View style={statusDotStyle} /> : null}
     </View>
   );

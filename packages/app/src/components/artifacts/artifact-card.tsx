@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ThemedBlobLoader } from "@/components/blob-loader";
+import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { ProjectRow } from "@/components/project-row";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -287,9 +287,16 @@ function headerActionStyle({
 
 function ArtifactStatusBadge({ artifact }: { artifact: AggregatedArtifact }) {
   if (artifact.status === "generating") {
+    // Render in the generating personality's spinner identity when it was
+    // snapshotted at create time; otherwise fall back to the theme's colors.
+    const spinner = artifact.generationSpinner;
     return (
       <View style={styles.statusRow}>
-        <ThemedBlobLoader size={16} />
+        {spinner ? (
+          <BlobLoader size={16} glowA={spinner.glowA} glowB={spinner.glowB} />
+        ) : (
+          <ThemedBlobLoader size={16} />
+        )}
         <Text style={styles.metaText}>Generating…</Text>
       </View>
     );

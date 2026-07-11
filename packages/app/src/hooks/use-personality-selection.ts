@@ -118,6 +118,7 @@ export function usePersonalitySelection(
         return {
           id: personality.id,
           name: personality.name,
+          provider: personality.provider,
           subtitle: `${personality.provider} · ${personality.model}`,
           glowA: personality.spinner?.glowA,
           glowB: personality.spinner?.glowB,

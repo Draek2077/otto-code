@@ -113,11 +113,10 @@ import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildOpenProjectRoute,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceRouteFromPathname,
   parseServerIdFromPathname,
   parseWorkspaceOpenIntent,
 } from "@/utils/host-routes";
-import { isExplorerUnderWindowControls, startDesktopResizeReflow } from "@/utils/desktop-window";
+import { startDesktopResizeReflow } from "@/utils/desktop-window";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
@@ -774,17 +773,15 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
 function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   const { theme } = useUnistyles();
-  const pathname = usePathname();
-  const isCompactLayout = useIsCompactFormFactor();
-  const explorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const focusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
-  const explorerUnderControls = isExplorerUnderWindowControls({
-    isCompact: isCompactLayout,
-    explorerOpen,
-    focusModeEnabled,
-    isWorkspaceRoute: parseHostWorkspaceRouteFromPathname(pathname) !== null,
-  });
-  const backgroundColor = explorerUnderControls
+  // The explorer sidebar is the only surface that sits under the window controls
+  // in a different color. Follow its *actual* painted state (owned by the
+  // workspace screen) rather than predicting from route + open flag: during the
+  // workspace load pause the route is already active and the flag is set, but the
+  // sidebar hasn't rendered, so predicting would flip the chrome to the sidebar
+  // color too early. This flag is true only once the sidebar is on screen, and
+  // false everywhere else (so other pages switch to surface0 immediately).
+  const explorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
+  const backgroundColor = explorerSidebarVisible
     ? theme.colors.surfaceSidebar
     : theme.colors.surface0;
   const foreground = theme.colors.foreground;

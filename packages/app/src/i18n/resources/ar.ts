@@ -788,6 +788,7 @@ export const ar: TranslationResources = {
         wrapLongLines: "لف الخطوط الطويلة",
         collapseAll: "طي كافة الملفات",
         expandAll: "قم بتوسيع كافة الملفات",
+        expandAllTooManyFiles: "عدد الملفات كبير جدًا لتوسيع الكل",
         collapseAllFolders: "طي كافة المجلدات",
         expandAllFolders: "توسيع كافة المجلدات",
         refreshing: "منعش",
@@ -1927,6 +1928,11 @@ export const ar: TranslationResources = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

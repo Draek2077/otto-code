@@ -6,6 +6,18 @@ export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
 export const ArtifactStatusSchema = z.enum(["generating", "ready", "error"]);
 export type ArtifactStatus = z.infer<typeof ArtifactStatusSchema>;
 
+// Two glow colors for the generating spinner, snapshotted from the Agent
+// Personality the artifact was generated under (BlobLoader glowA/glowB), so its
+// card spinner renders in the personality's identity. Passthrough for
+// forward-compat, mirroring AgentPersonalitySpinnerSchema in messages.ts.
+export const ArtifactSpinnerSchema = z
+  .object({
+    glowA: z.string().min(1),
+    glowB: z.string().min(1),
+  })
+  .passthrough();
+export type ArtifactSpinner = z.infer<typeof ArtifactSpinnerSchema>;
+
 export const ArtifactMetadataSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -27,6 +39,11 @@ export const ArtifactMetadataSchema = z.object({
   // unattended default, so generation never stalls on an approval prompt.
   generationModeId: z.string().nullable().optional(),
   generationThinkingOptionId: z.string().nullable().optional(),
+  // Spinner glow colors of the Agent Personality this artifact was generated
+  // under, snapshotted at create time like the provider/model above. Absent ⇒
+  // the card falls back to the theme's default spinner colors. Purely additive
+  // (no daemon floor needed). See projects/agent-personalities/.
+  generationSpinner: ArtifactSpinnerSchema.nullable().optional(),
   errorMessage: z.string().nullable(),
 });
 export type ArtifactMetadata = z.infer<typeof ArtifactMetadataSchema>;
@@ -82,4 +99,7 @@ export interface CreateArtifactInput {
   modeId?: string;
   thinkingOptionId?: string;
   systemPrompt?: string;
+  /** Spinner colors of the chosen Agent Personality, snapshotted onto the
+   * artifact so its generating card renders in the personality's identity. */
+  spinner?: ArtifactSpinner;
 }

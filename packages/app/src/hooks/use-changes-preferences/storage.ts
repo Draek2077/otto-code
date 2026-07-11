@@ -1,5 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+import {
+  CHANGES_TOOLBAR_ITEM_IDS,
+  DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
+  type ChangesToolbarItemId,
+} from "@/git/changes-toolbar/items";
 
 export const CHANGES_PREFERENCES_STORAGE_KEY = "@otto:changes-preferences";
 export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
@@ -10,6 +15,7 @@ const changesPreferencesSchema = z.object({
   viewMode: z.enum(["flat", "tree"]).optional(),
   wrapLines: z.boolean().optional(),
   hideWhitespace: z.boolean().optional(),
+  pinnedToolbarItems: z.array(z.enum(CHANGES_TOOLBAR_ITEM_IDS)).optional(),
 });
 
 export interface ChangesPreferences {
@@ -17,6 +23,7 @@ export interface ChangesPreferences {
   viewMode: "flat" | "tree";
   wrapLines: boolean;
   hideWhitespace: boolean;
+  pinnedToolbarItems: ChangesToolbarItemId[];
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
@@ -24,6 +31,7 @@ export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
   viewMode: "flat",
   wrapLines: false,
   hideWhitespace: false,
+  pinnedToolbarItems: DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
 };
 
 export interface KeyValueStorage {

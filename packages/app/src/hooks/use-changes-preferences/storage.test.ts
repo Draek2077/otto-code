@@ -31,6 +31,7 @@ describe("loadChangesPreferencesFromStorage", () => {
       viewMode: "flat",
       wrapLines: true,
       hideWhitespace: false,
+      pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(JSON.stringify(result));
   });
@@ -53,9 +54,28 @@ describe("loadChangesPreferencesFromStorage", () => {
       viewMode: "tree",
       hideWhitespace: true,
       wrapLines: false,
+      pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(persisted);
     expect(storage.entries.size).toBe(1);
+  });
+
+  it("loads a persisted pinned-toolbar set verbatim", async () => {
+    const persisted = JSON.stringify({
+      layout: "unified",
+      viewMode: "flat",
+      hideWhitespace: false,
+      wrapLines: false,
+      pinnedToolbarItems: ["wrap", "refresh"],
+    });
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: persisted,
+    });
+
+    const result = await loadChangesPreferencesFromStorage(storage);
+
+    expect(result.pinnedToolbarItems).toEqual(["wrap", "refresh"]);
+    expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(persisted);
   });
 });
 

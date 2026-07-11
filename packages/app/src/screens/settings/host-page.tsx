@@ -301,30 +301,8 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   );
 }
 
-export function HostGitProvidersPage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <SettingsSection title={t("settings.host.gitProviders.sectionTitle")}>
-          <GitProvidersSettingsCards serverId={serverId} />
-        </SettingsSection>
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
+// Git-provider settings are folded into the Workspaces page as a "Git" panel —
+// too few options to warrant their own sidebar category.
 export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -337,9 +315,14 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <SettingsSection title={t("settings.hostSections.workspaces")}>
-          <AutoArchiveMergedWorkspacesCard serverId={serverId} />
-        </SettingsSection>
+        <>
+          <SettingsSection title={t("settings.hostSections.workspaces")}>
+            <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+          </SettingsSection>
+          <SettingsSection title={t("settings.hostSections.gitProviders")}>
+            <GitProvidersSettingsCards serverId={serverId} />
+          </SettingsSection>
+        </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>
           <Text style={styles.emptyText}>{t("settings.host.workspaces.unavailable")}</Text>

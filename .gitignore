@@ -11,6 +11,9 @@ result
 # graphify — knowledge graph outputs are personal/derived; .graphifyignore stays tracked
 graphify-out/
 
+# understand-anything — all tool output (intermediate/, tmp/, knowledge-graph.json); .understandignore lives inside and is ignored with it
+.ua/
+
 # Environment variables
 .env
 .env.test

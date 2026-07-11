@@ -27,6 +27,7 @@ import { createControlGeometry, type FieldControlSize } from "@/components/ui/co
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { getProviderIcon } from "@/components/provider-icons";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
 import {
   SelectField,
@@ -635,10 +636,11 @@ function ScheduleTargetFields({
       onApply: applyPersonality,
       currentSelection: personalityCurrentSelection,
     });
-  const selectedPersonalityName = useMemo(
-    () => personalities.find((entry) => entry.id === selectedPersonalityId)?.name ?? null,
+  const selectedPersonality = useMemo(
+    () => personalities.find((entry) => entry.id === selectedPersonalityId) ?? null,
     [personalities, selectedPersonalityId],
   );
+  const selectedPersonalityName = selectedPersonality?.name ?? null;
   const handleModelOpen = useCallback(() => {
     providerSnapshot.refetchIfStale(state.selectedProvider);
   }, [providerSnapshot, state.selectedProvider]);
@@ -661,8 +663,18 @@ function ScheduleTargetFields({
     [],
   );
   const modelTriggerLeading = useMemo(
-    () => <ProviderGlyph provider={state.selectedProvider} />,
-    [state.selectedProvider],
+    () =>
+      selectedPersonality ? (
+        <PersonalityProviderIcon
+          provider={selectedPersonality.provider}
+          size={16}
+          glowA={selectedPersonality.glowA}
+          glowB={selectedPersonality.glowB}
+        />
+      ) : (
+        <ProviderGlyph provider={state.selectedProvider} />
+      ),
+    [selectedPersonality, state.selectedProvider],
   );
   const renderModelTrigger = useCallback(
     ({
@@ -770,7 +782,9 @@ function ScheduleTargetFields({
         </Field>
       ) : null}
 
-      {state.disclosure.showThinkingField ? (
+      {/* A personality already fixes its own effort, so hide the picker while
+          one is selected — the whole point is not having to choose it. */}
+      {!selectedPersonalityId && state.disclosure.showThinkingField ? (
         <SelectField
           label="Effort"
           value={state.selectedThinkingOptionId || null}

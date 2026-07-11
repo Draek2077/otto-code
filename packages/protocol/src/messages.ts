@@ -906,6 +906,11 @@ export const AgentSnapshotPayloadSchema = z.object({
   // the client falls back to the theme's default spinner colors. Purely additive
   // (no daemon floor needed). See projects/agent-personalities/.
   personalitySpinner: AgentPersonalitySpinnerSchema.optional(),
+  // Name of the Agent Personality this agent was spawned from, so the running
+  // agent's controls keep showing the personality identity (trigger label +
+  // effort hidden) instead of reverting to the raw model. Absent ⇒ no bound
+  // personality. Purely additive. See projects/agent-personalities/.
+  personalityName: z.string().optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -1428,6 +1433,12 @@ export type CreateAgentWorktreeTarget = z.infer<typeof CreateAgentWorktreeTarget
 export const CreateAgentRequestMessageSchema = z.object({
   type: z.literal("create_agent_request"),
   config: AgentSessionConfigSchema,
+  // Optional personality id. When present the daemon resolves the personality
+  // against this cwd's provider snapshot and snapshots its identity (spinner,
+  // voice, prompt) onto the agent — the brain (provider/model/mode/effort) still
+  // comes from `config`, so hand-deviations in the picker keep the identity.
+  // COMPAT(agentPersonalities): added in v0.5.0; gate lives in features.agentPersonalities.
+  personality: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
   workspaceId: z.string().optional(),
   worktreeName: z.string().optional(),

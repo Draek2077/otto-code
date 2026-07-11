@@ -116,6 +116,10 @@ import {
   type AgentRunOptions,
   type AgentSessionConfig,
 } from "./agent/agent-sdk-types.js";
+import {
+  resolvePersonality,
+  type ResolvedPersonalitySnapshot,
+} from "./agent/agent-personalities.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
@@ -2834,11 +2838,59 @@ export class Session {
   /**
    * Handle create agent request
    */
+  /**
+   * Resolve an optional personality id against the roster + this cwd's provider
+   * snapshot and fold its identity onto the create config. Availability is
+   * re-checked here (the cwd may differ from where the picker resolved it); an
+   * unavailable or unknown personality is skipped with a warning rather than
+   * failing the create — the agent still runs with the chosen brain, just
+   * without personality identity. The brain fields are never overridden; only
+   * `personalitySnapshot` and (when the caller set none) `systemPrompt` are added.
+   */
+  private async applyPersonalityIdentityToConfig(
+    config: AgentSessionConfig,
+    personalityId: string | undefined,
+  ): Promise<AgentSessionConfig> {
+    if (!personalityId) {
+      return config;
+    }
+    const roster = this.daemonConfigStore.get().agentPersonalities?.personalities ?? [];
+    const personality = roster.find((entry) => entry.id === personalityId);
+    if (!personality) {
+      this.sessionLogger.warn(
+        { personalityId },
+        "create_agent: personality id not found in roster; spawning without personality identity",
+      );
+      return config;
+    }
+    const entries = await this.providerSnapshotManager.listProviders({
+      cwd: config.cwd,
+      wait: true,
+    });
+    const resolution = resolvePersonality(personality, entries);
+    if (resolution.status === "unavailable") {
+      this.sessionLogger.warn(
+        { personalityId, reason: resolution.reason },
+        "create_agent: personality unavailable for cwd; spawning without personality identity",
+      );
+      return config;
+    }
+    const snapshot: ResolvedPersonalitySnapshot = resolution.snapshot;
+    return {
+      ...config,
+      personalitySnapshot: snapshot,
+      ...(config.systemPrompt === undefined && snapshot.systemPrompt !== undefined
+        ? { systemPrompt: snapshot.systemPrompt }
+        : {}),
+    };
+  }
+
   private async handleCreateAgentRequest(
     msg: Extract<SessionInboundMessage, { type: "create_agent_request" }>,
   ): Promise<void> {
     const {
       config,
+      personality,
       worktreeName,
       requestId,
       initialPrompt,
@@ -2880,9 +2932,18 @@ export class Session {
         hasLegacyGitOptions: Boolean(git),
       });
       createdWorktreeForCleanup = createdWorktree;
-      const createAgentConfig: AgentSessionConfig = createdWorktree
+      const baseCreateAgentConfig: AgentSessionConfig = createdWorktree
         ? { ...config, cwd: createdWorktree.worktree.worktreePath }
         : config;
+      // A composer-selected personality arrives by id; resolve it against the
+      // (possibly worktree) cwd and snapshot its identity onto the agent so the
+      // live spinner, voice, and prompt read as that personality. The brain in
+      // `config` (provider/model/mode/effort) is authoritative — hand-deviations
+      // in the picker keep the identity but override the settings.
+      const createAgentConfig = await this.applyPersonalityIdentityToConfig(
+        baseCreateAgentConfig,
+        personality,
+      );
       const workspaceId = await this.workspaceProvisioning.resolveOrCreateWorkspaceIdForCreateAgent(
         {
           createdWorktree,

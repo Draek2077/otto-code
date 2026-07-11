@@ -13,6 +13,18 @@ export interface PanelDescriptor {
   titleState: "ready" | "loading";
   icon: ComponentType<PanelIconProps>;
   statusBucket: SidebarStateBucket | null;
+  /**
+   * Personality spinner colors for this tab's busy loader, when the agent was
+   * spawned from a personality. Absent/null ⇒ the tab uses the theme spinner.
+   * Only the agent panel sets this; other panels leave it undefined.
+   */
+  personalitySpinner?: { glowA: string; glowB: string } | null;
+  /**
+   * Provider id for the tab glyph. Lets the non-loading agent tab fill its
+   * provider icon with the personality gradient (paired with personalitySpinner).
+   * Only the agent panel sets this.
+   */
+  provider?: string;
 }
 
 export interface PanelDescriptorContext {

@@ -23,6 +23,12 @@ const GLOW_B_REVOLUTIONS = 3;
 const GLOW_CYAN = "#4ec4ff";
 const GLOW_MAGENTA = "#e14fe8";
 
+// Shared fallback glow pair, reused by the static gradient provider icon so a
+// personality with no custom colors looks the same whether shown as a spinner
+// or a gradient-filled glyph.
+export const GLOW_DEFAULT_A = GLOW_CYAN;
+export const GLOW_DEFAULT_B = GLOW_MAGENTA;
+
 // Every BlobLoader on screen reads this one clock so instances animate in
 // lockstep instead of drifting out of phase (same pattern as SyncedLoader).
 const sharedBlobProgress = makeMutable(0);

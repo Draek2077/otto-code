@@ -131,6 +131,12 @@ export interface Agent {
    * the theme's default spinner colors. See projects/agent-personalities/.
    */
   personalitySpinner?: { glowA: string; glowB: string } | null;
+  /**
+   * Name of the Agent Personality this agent was spawned from. Present ⇒ the
+   * running-agent controls keep the personality identity (model trigger shows
+   * the name, effort chip hidden). Absent/null ⇒ plain provider/model controls.
+   */
+  personalityName?: string | null;
 }
 
 export interface WorkspaceDescriptor {

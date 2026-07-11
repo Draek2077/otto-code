@@ -586,6 +586,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleHidePinnedToolbarOptionsChange = useCallback(
+    (hidePinnedToolbarOptions: boolean) => {
+      void updateSettings({ hidePinnedToolbarOptions });
+    },
+    [updateSettings],
+  );
+
   const commitUiFontFamily = useCallback(
     (value: string) => {
       const sanitized = sanitizeFontFamily(value);
@@ -727,6 +734,17 @@ export function AppearanceSection() {
               testID="settings-workspace-tools-placement-switch"
             />
             <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
+            <LayoutToggleRow
+              title={t("settings.appearance.layout.hidePinnedToolbarOptions.title")}
+              hint={t("settings.appearance.layout.hidePinnedToolbarOptions.hint")}
+              accessibilityLabel={t(
+                "settings.appearance.layout.hidePinnedToolbarOptions.accessibilityLabel",
+              )}
+              value={settings.hidePinnedToolbarOptions}
+              withBorder
+              onValueChange={handleHidePinnedToolbarOptionsChange}
+              testID="settings-hide-pinned-toolbar-options-switch"
+            />
           </View>
         </SettingsSection>
       ) : null}

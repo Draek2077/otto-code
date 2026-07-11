@@ -796,6 +796,7 @@ export const en = {
         wrapLongLines: "Wrap long lines",
         collapseAll: "Collapse all files",
         expandAll: "Expand all files",
+        expandAllTooManyFiles: "Too many files to expand all",
         collapseAllFolders: "Collapse all folders",
         expandAllFolders: "Expand all folders",
         refreshing: "Refreshing",
@@ -1936,6 +1937,11 @@ export const en = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

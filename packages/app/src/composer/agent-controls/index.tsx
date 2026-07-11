@@ -32,6 +32,7 @@ import { compactUp } from "@/styles/theme";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import {
   CombinedModelSelector,
   type SelectorPersonality,
@@ -77,6 +78,52 @@ import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 interface AgentControlOption {
   id: string;
   label: string;
+}
+
+// Synthetic id for the read-only personality identity shown on a running agent's
+// controls. The agent carries only the personality name (not the roster id), so
+// this stands in as the selected id purely to drive the trigger label.
+const RUNNING_AGENT_PERSONALITY_ID = "__running_agent_personality__";
+
+/**
+ * Build the read-only personality identity for a running agent's controls: a
+ * one-entry roster (labels the model trigger, no section since no onSelect) plus
+ * effort hidden while a personality is bound. Returns bare provider/model
+ * controls when the agent has no personality.
+ */
+function buildRunningAgentPersonalityControls(input: {
+  provider: string;
+  personalityName: string | null;
+  personalitySpinner: { glowA: string; glowB: string } | null;
+  thinkingOptions: AgentControlOption[];
+}): {
+  personalities: SelectorPersonality[] | undefined;
+  selectedPersonalityId: string | undefined;
+  thinkingOptions: AgentControlOption[] | undefined;
+} {
+  const { provider, personalityName, personalitySpinner, thinkingOptions } = input;
+  if (!personalityName) {
+    return {
+      personalities: undefined,
+      selectedPersonalityId: undefined,
+      thinkingOptions: thinkingOptions.length > 1 ? thinkingOptions : undefined,
+    };
+  }
+  return {
+    personalities: [
+      {
+        id: RUNNING_AGENT_PERSONALITY_ID,
+        name: personalityName,
+        provider,
+        subtitle: "",
+        available: true,
+        glowA: personalitySpinner?.glowA,
+        glowB: personalitySpinner?.glowB,
+      },
+    ],
+    selectedPersonalityId: RUNNING_AGENT_PERSONALITY_ID,
+    thinkingOptions: undefined,
+  };
 }
 
 type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
@@ -330,6 +377,41 @@ function resolveProviderIcon(provider: string) {
   return getProviderIcon(provider);
 }
 
+/**
+ * Icon for the compact (mobile) icon-only model trigger: the provider glyph
+ * filled with the selected personality's colors (static 45° gradient) when one
+ * is bound, otherwise the plain muted provider glyph. Mirrors the desktop
+ * trigger's `TriggerLeadingIcon` so the personality identity reads on both.
+ */
+function CompactModelTriggerIcon({
+  provider,
+  ProviderIcon,
+  personality,
+  size,
+  color,
+}: {
+  provider: string;
+  ProviderIcon: ReturnType<typeof getProviderIcon> | null;
+  personality: SelectorPersonality | null;
+  size: number;
+  color: string;
+}) {
+  if (personality && provider.trim().length > 0) {
+    return (
+      <PersonalityProviderIcon
+        provider={provider}
+        size={size}
+        glowA={personality.glowA}
+        glowB={personality.glowB}
+      />
+    );
+  }
+  if (ProviderIcon) {
+    return <ProviderIcon size={size} color={color} />;
+  }
+  return null;
+}
+
 type AgentControlsSlice = {
   provider: string;
   cwd: string | null;
@@ -338,6 +420,8 @@ type AgentControlsSlice = {
   features: AgentFeature[] | undefined;
   thinkingOptionId: string | null | undefined;
   lastUsage: unknown;
+  personalityName: string | null;
+  personalitySpinner: { glowA: string; glowB: string } | null;
 } | null;
 
 function selectAgentControlsSlice(
@@ -357,6 +441,8 @@ function selectAgentControlsSlice(
     features: currentAgent.features,
     thinkingOptionId: currentAgent.thinkingOptionId,
     lastUsage: currentAgent.lastUsage,
+    personalityName: currentAgent.personalityName ?? null,
+    personalitySpinner: currentAgent.personalitySpinner ?? null,
   };
 }
 
@@ -644,6 +730,8 @@ function ControlledAgentControls({
           renderThinkingOption={renderThinkingOption}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
+          personalities={personalities}
+          selectedPersonalityId={selectedPersonalityId}
         />
       ) : (
         <SheetAgentControlsContent
@@ -734,6 +822,9 @@ interface DesktopAgentControlsContentProps {
   }) => ReactElement;
   extras?: ReactNode;
   modelSelectorServerId: string | null;
+  /** Read-only personality identity for a running personality agent (label only). */
+  personalities?: SelectorPersonality[];
+  selectedPersonalityId?: string | null;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
@@ -783,6 +874,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     renderThinkingOption,
     extras,
     modelSelectorServerId,
+    personalities,
+    selectedPersonalityId,
   } = props;
 
   return (
@@ -836,6 +929,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 serverId={modelSelectorServerId}
                 desktopPlacement="top-start"
                 desktopMinWidth={360}
+                personalities={personalities}
+                selectedPersonalityId={selectedPersonalityId}
               />
             </View>
           </TooltipTrigger>
@@ -999,17 +1094,27 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     [handleCloseSheet, handleOpenSheet],
   );
 
+  const selectedPersonality = useMemo(
+    () => personalities?.find((entry) => entry.id === selectedPersonalityId) ?? null,
+    [personalities, selectedPersonalityId],
+  );
+
   // Icon-only on mobile — the label rarely fits next to the mode chip and the
   // other toolbar controls, so it's dropped instead of wrapping or truncating.
+  // A bound personality still tints the glyph with its colors (see desktop).
   const renderModelTrigger = useCallback(
     () => (
       <View pointerEvents="none" style={styles.prefsButton} testID="agent-controls-model">
-        {ProviderIcon ? (
-          <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-        ) : null}
+        <CompactModelTriggerIcon
+          provider={provider}
+          ProviderIcon={ProviderIcon}
+          personality={selectedPersonality}
+          size={theme.iconSize.md}
+          color={theme.colors.foregroundMuted}
+        />
       </View>
     ),
-    [ProviderIcon, theme.iconSize.md, theme.colors.foregroundMuted],
+    [ProviderIcon, provider, selectedPersonality, theme.iconSize.md, theme.colors.foregroundMuted],
   );
 
   const thinkingButtonStyle = makeBadgePressableStyle(
@@ -1604,6 +1709,22 @@ export const AgentControls = memo(function AgentControls({
     [serverId, agentId, isCompactLayout],
   );
 
+  // A personality-bound running agent keeps its identity in the controls,
+  // read-only: the model trigger shows the personality name and the effort chip
+  // is hidden (the personality fixed effort at spawn). No onSelect/onClear is
+  // wired, so the picker never renders a personalities section — a live agent
+  // can't switch personality mid-stream, only its raw model.
+  const personalityControls = useMemo(
+    () =>
+      buildRunningAgentPersonalityControls({
+        provider: agent?.provider ?? "",
+        personalityName: agent?.personalityName ?? null,
+        personalitySpinner: agent?.personalitySpinner ?? null,
+        thinkingOptions,
+      }),
+    [agent?.provider, agent?.personalityName, agent?.personalitySpinner, thinkingOptions],
+  );
+
   if (!agent) {
     return null;
   }
@@ -1617,7 +1738,7 @@ export const AgentControls = memo(function AgentControls({
       onSelectModel={handleSelectModel}
       favoriteKeys={favoriteKeys}
       onToggleFavoriteModel={handleToggleFavoriteModel}
-      thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
+      thinkingOptions={personalityControls.thinkingOptions}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={handleSelectThinkingOption}
       features={agent.features}
@@ -1631,6 +1752,8 @@ export const AgentControls = memo(function AgentControls({
       desktopExtras={modeChip}
       modelSelectorServerId={serverId}
       isCompactLayout={isCompactLayout}
+      personalities={personalityControls.personalities}
+      selectedPersonalityId={personalityControls.selectedPersonalityId}
     />
   );
 });
@@ -1683,6 +1806,12 @@ export function DraftAgentControls({
 
   const effectiveSelectedThinkingOption =
     selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
+
+  // A selected personality fixes its own effort at spawn, so hide the effort
+  // chip while one is chosen — mirrors the artifact/schedule sheets, where the
+  // whole point is not having to pick effort by hand.
+  const thinkingOptionsForControls =
+    selectedPersonalityId || mappedThinkingOptions.length === 0 ? undefined : mappedThinkingOptions;
 
   const modelOptions = useMemo<AgentControlOption[]>(
     () =>
@@ -1754,7 +1883,7 @@ export function DraftAgentControls({
         {selectedProvider ? (
           <ControlledAgentControls
             provider={selectedProvider}
-            thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+            thinkingOptions={thinkingOptionsForControls}
             selectedThinkingOptionId={effectiveSelectedThinkingOption}
             onSelectThinkingOption={onSelectThinkingOption}
             features={features}
@@ -1782,7 +1911,7 @@ export function DraftAgentControls({
       isModelLoading={isAllModelsLoading}
       favoriteKeys={favoriteKeys}
       onToggleFavoriteModel={handleToggleFavorite}
-      thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+      thinkingOptions={thinkingOptionsForControls}
       selectedThinkingOptionId={effectiveSelectedThinkingOption}
       onSelectThinkingOption={onSelectThinkingOption}
       features={features}

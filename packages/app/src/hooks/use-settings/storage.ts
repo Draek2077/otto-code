@@ -84,6 +84,10 @@ export interface AppSettings {
   // Fold runs of 3+ consecutive actions in agent chat into one collapsed,
   // expandable group; the most recent action of a run stays outside it.
   groupConsecutiveActions: boolean;
+  // Keep the pinned tab-bar and diff-toolbar options hidden until the pointer
+  // is over their toolbar area (web only — hover). When false (default), pinned
+  // options are always visible.
+  hidePinnedToolbarOptions: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -114,6 +118,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
+  hidePinnedToolbarOptions: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -335,6 +340,9 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   }
   if (typeof stored.groupConsecutiveActions === "boolean") {
     result.groupConsecutiveActions = stored.groupConsecutiveActions;
+  }
+  if (typeof stored.hidePinnedToolbarOptions === "boolean") {
+    result.hidePinnedToolbarOptions = stored.hidePinnedToolbarOptions;
   }
   return result;
 }

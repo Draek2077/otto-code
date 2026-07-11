@@ -296,6 +296,8 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   config?: AgentSessionConfig;
   provider?: AgentProvider;
   cwd?: string;
+  /** Optional personality id; the daemon snapshots its identity onto the agent. */
+  personality?: CreateAgentRequestMessage["personality"];
   env?: CreateAgentRequestMessage["env"];
   workspaceId?: string;
   initialPrompt?: string;
@@ -2233,6 +2235,7 @@ export class DaemonClient {
       type: "create_agent_request",
       requestId,
       config,
+      ...(options.personality ? { personality: options.personality } : {}),
       ...(options.env ? { env: options.env } : {}),
       ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
@@ -5035,6 +5038,7 @@ export class DaemonClient {
     modeId?: string;
     thinkingOptionId?: string;
     systemPrompt?: string;
+    spinner?: { glowA: string; glowB: string };
     requestId?: string;
   }): Promise<ArtifactCreatePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -5049,6 +5053,7 @@ export class DaemonClient {
         ...(options.modeId ? { modeId: options.modeId } : {}),
         ...(options.thinkingOptionId ? { thinkingOptionId: options.thinkingOptionId } : {}),
         ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+        ...(options.spinner ? { spinner: options.spinner } : {}),
       },
       responseType: "artifact.create.response",
     });

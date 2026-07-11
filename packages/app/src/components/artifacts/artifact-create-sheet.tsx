@@ -23,6 +23,7 @@ import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { usePersonalitySelection } from "@/hooks/use-personality-selection";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { getProviderIcon } from "@/components/provider-icons";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { useAgentFormState, type FormInitialValues } from "@/hooks/use-agent-form-state";
 import { useProjects } from "@/hooks/use-projects";
@@ -192,6 +193,7 @@ async function submitArtifactForm(input: {
   provider: string;
   model: string;
   thinkingOptionId: string;
+  spinner: { glowA: string; glowB: string } | undefined;
   createArtifact: ReturnType<typeof useArtifactMutations>["createArtifact"];
   updateArtifact: ReturnType<typeof useArtifactMutations>["updateArtifact"];
 }): Promise<{ serverId: string; artifact: ArtifactMetadata }> {
@@ -221,6 +223,7 @@ async function submitArtifactForm(input: {
       provider: input.provider,
       model: input.model || undefined,
       thinkingOptionId: input.thinkingOptionId || undefined,
+      spinner: input.spinner,
     },
   });
   return { serverId: input.createServerId, artifact };
@@ -373,6 +376,15 @@ export function ArtifactCreateSheet({
     () => personalities.find((entry) => entry.id === selectedPersonalityId)?.name ?? null,
     [personalities, selectedPersonalityId],
   );
+  // Snapshot the chosen personality's spinner glow so the generating card
+  // renders in its identity. Only when both glows are present (custom
+  // personalities may omit the pair) — otherwise the card falls back to theme.
+  const selectedPersonalitySpinner = useMemo(() => {
+    const personality = personalities.find((entry) => entry.id === selectedPersonalityId);
+    return personality?.glowA && personality.glowB
+      ? { glowA: personality.glowA, glowB: personality.glowB }
+      : undefined;
+  }, [personalities, selectedPersonalityId]);
 
   const handleSelectProject = useCallback(
     (target: ScheduleProjectTarget) => {
@@ -408,12 +420,14 @@ export function ArtifactCreateSheet({
       <ModelTrigger
         label={selectedPersonalityName ?? selectedModelLabel}
         provider={selectedProvider}
+        hasPersonality={Boolean(selectedPersonalityName)}
+        personalitySpinner={selectedPersonalitySpinner}
         disabled={disabled}
         active={hovered || pressed || isOpen}
         isPlaceholder={!selectedModel && !selectedPersonalityName}
       />
     ),
-    [selectedModel, selectedProvider, selectedPersonalityName],
+    [selectedModel, selectedProvider, selectedPersonalityName, selectedPersonalitySpinner],
   );
 
   const { createArtifact, updateArtifact, isCreating, isUpdating } = useArtifactMutations();
@@ -476,6 +490,7 @@ export function ArtifactCreateSheet({
         provider: selectedProvider,
         model: selectedModel,
         thinkingOptionId: selectedThinkingOptionId,
+        spinner: selectedPersonalitySpinner,
         createArtifact,
         updateArtifact,
       });
@@ -498,6 +513,7 @@ export function ArtifactCreateSheet({
     selectedModel,
     selectedProvider,
     selectedThinkingOptionId,
+    selectedPersonalitySpinner,
     trimmedWorkingDir,
   ]);
 
@@ -608,7 +624,9 @@ export function ArtifactCreateSheet({
         />
       </View>
 
-      {selectedModel && availableThinkingOptions.length > 0 ? (
+      {/* A personality already fixes its own effort, so hide the picker while
+          one is selected — the whole point is not having to choose it. */}
+      {!selectedPersonalityId && selectedModel && availableThinkingOptions.length > 0 ? (
         <View style={styles.field}>
           <Text style={styles.label}>Effort</Text>
           <ThinkingField
@@ -896,12 +914,16 @@ function ProviderGlyph({ provider }: { provider: string | null }): ReactElement 
 function ModelTrigger({
   label,
   provider,
+  hasPersonality,
+  personalitySpinner,
   disabled,
   active,
   isPlaceholder,
 }: {
   label: string;
   provider: string | null;
+  hasPersonality: boolean;
+  personalitySpinner?: { glowA: string; glowB: string };
   disabled: boolean;
   active: boolean;
   isPlaceholder: boolean;
@@ -916,7 +938,16 @@ function ModelTrigger({
   );
   return (
     <View pointerEvents="none" style={containerStyle} testID="artifact-model-trigger">
-      <ProviderGlyph provider={provider} />
+      {hasPersonality && provider ? (
+        <PersonalityProviderIcon
+          provider={provider}
+          size={16}
+          glowA={personalitySpinner?.glowA}
+          glowB={personalitySpinner?.glowB}
+        />
+      ) : (
+        <ProviderGlyph provider={provider} />
+      )}
       <Text
         style={isPlaceholder ? styles.selectTriggerPlaceholder : styles.selectTriggerText}
         numberOfLines={1}

@@ -20,7 +20,7 @@ import {
   Star,
   StarFilled,
 } from "@/components/icons/material-icons";
-import { BlobLoader } from "@/components/blob-loader";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
@@ -96,6 +96,8 @@ const accentMapping = (theme: Theme) => ({ color: theme.colors.accent });
 export interface SelectorPersonality {
   id: string;
   name: string;
+  /** Provider id — picks the glyph filled with the personality's gradient. */
+  provider: string;
   subtitle: string;
   glowA?: string;
   glowB?: string;
@@ -139,6 +141,37 @@ function ProviderGlyph({
   const color =
     tone === "foreground" ? styles.providerIconForeground.color : styles.providerIconMuted.color;
   return <Icon size={size} color={color} />;
+}
+
+/**
+ * Leading glyph for the selector trigger. With a selected personality that
+ * carries both spinner colors, the provider icon is filled with those colors as
+ * a static 45° gradient (identity without an animated spinner); otherwise the
+ * plain provider glyph. Nothing when there is no provider.
+ */
+function TriggerLeadingIcon({
+  personality,
+  provider,
+  size,
+}: {
+  personality: SelectorPersonality | null;
+  provider: string | null;
+  size: number;
+}) {
+  if (!provider) {
+    return null;
+  }
+  if (personality) {
+    return (
+      <PersonalityProviderIcon
+        provider={provider}
+        size={size}
+        glowA={personality.glowA}
+        glowB={personality.glowB}
+      />
+    );
+  }
+  return <ProviderGlyph provider={provider} size={size} />;
 }
 
 function HeaderSettingsIcon({ disabled }: { disabled: boolean }) {
@@ -583,7 +616,12 @@ function PersonalityRow({
       accessibilityState={a11yState}
       testID={`personality-row-${personality.id}`}
     >
-      <BlobLoader size={ICON_SIZE.md} glowA={personality.glowA} glowB={personality.glowB} />
+      <PersonalityProviderIcon
+        provider={personality.provider}
+        size={ICON_SIZE.md}
+        glowA={personality.glowA}
+        glowB={personality.glowB}
+      />
       <View style={styles.personalityText}>
         <Text style={styles.personalityName} numberOfLines={1}>
           {personality.name}
@@ -783,7 +821,11 @@ export function CombinedModelSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
 
-  const hasPersonalities = (personalities?.length ?? 0) > 0;
+  // Only a *selectable* roster (one that renders the personalities section)
+  // changes the view layout. A read-only identity roster — passed with a
+  // selected id but no onSelectPersonality, as the running-agent controls do to
+  // label the trigger — must not suppress the single-provider bypass.
+  const hasPersonalities = (personalities?.length ?? 0) > 0 && Boolean(onSelectPersonality);
 
   // Single-provider mode: only one provider → skip Level 1 entirely. But when a
   // personality roster is present it lives in the "all" view, so keep that view.
@@ -851,6 +893,18 @@ export function CombinedModelSelector({
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
 
+  // A selected personality owns the trigger's identity — its name and spinner
+  // glow stand in for the raw model label/provider glyph, so the composer chip
+  // reads "Atlas" (with its blob) instead of "Fable 5". Deviating the model by
+  // hand keeps the personality selected, so this stays sticky through overrides.
+  const selectedPersonality = useMemo(
+    () =>
+      selectedPersonalityId
+        ? (personalities?.find((entry) => entry.id === selectedPersonalityId) ?? null)
+        : null,
+    [personalities, selectedPersonalityId],
+  );
+
   const selectedModelLabel = useMemo(() => {
     return resolveSelectedModelLabel({
       providers,
@@ -879,6 +933,10 @@ export function CombinedModelSelector({
   }, [providers, view]);
 
   const triggerLabel = useMemo(() => {
+    if (selectedPersonality) {
+      return selectedPersonality.name;
+    }
+
     if (
       selectedModelLabel === t("modelSelector.loading") ||
       selectedModelLabel === t("modelSelector.selectModel")
@@ -887,7 +945,7 @@ export function CombinedModelSelector({
     }
 
     return buildSelectedTriggerLabel(selectedModelLabel);
-  }, [selectedModelLabel, t]);
+  }, [selectedModelLabel, selectedPersonality, t]);
 
   useEffect(() => {
     if (platformIsWeb) {
@@ -1030,9 +1088,11 @@ export function CombinedModelSelector({
           accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
           testID="combined-model-selector"
         >
-          {hasSelectedProvider ? (
-            <ProviderGlyph provider={selectedProvider} size={iconSize.md} />
-          ) : null}
+          <TriggerLeadingIcon
+            personality={selectedPersonality}
+            provider={hasSelectedProvider ? selectedProvider : null}
+            size={iconSize.md}
+          />
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
           </Text>
