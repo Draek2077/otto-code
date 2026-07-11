@@ -1275,6 +1275,78 @@ export const en = {
         text: "Outsmarting the chaos, one prompt at a time.",
         attribution: "- Your AI Agent",
       },
+      {
+        text: "To err is human, but to really foul things up you need a computer.",
+        attribution: "- Paul R. Ehrlich",
+      },
+      {
+        text: "Computers are useless. They can only give you answers.",
+        attribution: "- Pablo Picasso",
+      },
+      {
+        text: "The real danger is not that computers will begin to think like men, but that men will begin to think like computers.",
+        attribution: "- Sydney J. Harris",
+      },
+      {
+        text: "Hardware: the parts of a computer system that can be kicked.",
+        attribution: "- Jeff Pesis",
+      },
+      {
+        text: "Programming today is a race between software engineers striving to build bigger and better idiot-proof programs, and the universe trying to produce bigger and better idiots. So far, the universe is winning.",
+        attribution: "- Rick Cook",
+      },
+      {
+        text: "Always code as if the guy who ends up maintaining your code will be a violent psychopath who knows where you live.",
+        attribution: "- John Woods",
+      },
+      {
+        text: "A computer once beat me at chess, but it was no match for me at kick boxing.",
+        attribution: "- Emo Philips",
+      },
+      {
+        text: "Never trust a computer you can't throw out a window.",
+        attribution: "- Steve Wozniak",
+      },
+      {
+        text: "The question of whether a computer can think is no more interesting than the question of whether a submarine can swim.",
+        attribution: "- Edsger W. Dijkstra",
+      },
+      {
+        text: "Machines take me by surprise with great frequency.",
+        attribution: "- Alan Turing",
+      },
+      {
+        text: "Talk is cheap. Show me the code.",
+        attribution: "- Linus Torvalds",
+      },
+      {
+        text: "Measuring programming progress by lines of code is like measuring aircraft building progress by weight.",
+        attribution: "- Bill Gates",
+      },
+      {
+        text: "Debugging is twice as hard as writing the code in the first place. Therefore, if you write the code as cleverly as possible, you are, by definition, not smart enough to debug it.",
+        attribution: "- Brian Kernighan",
+      },
+      {
+        text: "One machine can do the work of fifty ordinary men. No machine can do the work of one extraordinary man.",
+        attribution: "- Elbert Hubbard",
+      },
+      {
+        text: "There are only two industries that refer to their customers as 'users': illegal drugs and software.",
+        attribution: "- Edward Tufte",
+      },
+      {
+        text: "I read your entire codebase in one second. We need to talk.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "It's not a hallucination — it's thinking outside the training data.",
+        attribution: "- Your AI Agent",
+      },
+      {
+        text: "I could stop using em-dashes — but then how would you know it's me?",
+        attribution: "- Your AI Agent",
+      },
     ],
     tiles: {
       addProject: {
