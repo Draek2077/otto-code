@@ -457,6 +457,7 @@ export function createWorkspaceLayoutStore(
           }
 
           set((state) => {
+            const hadPersistedLayout = normalizedWorkspaceKey in state.layoutByWorkspace;
             const currentLayout = getWorkspaceLayout(
               state.layoutByWorkspace,
               normalizedWorkspaceKey,
@@ -469,7 +470,15 @@ export function createWorkspaceLayoutStore(
               },
               snapshot,
             );
-            if (nextState.layout === currentLayout) {
+            // Materialize the entry on the first reconcile for this workspace even
+            // when reconciliation is a no-op (empty workspace: no agents/terminals
+            // to open). The desktop pane-splits render gate keys the tabs row off a
+            // non-null persisted layout, so without this a cold deep-link to a fresh
+            // workspace can leave `layoutByWorkspace[key]` unset — and the tabs row
+            // never mounts — until the draft-seed effect wins a race. Persisting the
+            // reconciled (default, single empty pane) layout here mounts the shell
+            // deterministically; draft-seed then fills in the draft tab.
+            if (nextState.layout === currentLayout && hadPersistedLayout) {
               return state;
             }
 
