@@ -12,6 +12,7 @@ import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPermissionResult,
+  AgentPersonalityUpdate,
   AgentPromptInput,
   AgentProvider,
   AgentRunOptions,
@@ -1150,6 +1151,21 @@ export class OpenAICompatAgentSession implements AgentSession {
       throw new Error(`Invalid effort option: ${String(thinkingOptionId)}`);
     }
     this.reasoningEffort = thinkingOptionId as OpenAICompatReasoningEffort;
+  }
+
+  async applyPersonality(update: AgentPersonalityUpdate): Promise<void> {
+    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.systemPrompt = update.systemPrompt;
+    this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
+    // The daemon owns this conversation: the system prompt is just messages[0],
+    // re-sent wholesale on every request, so rebuilding it in place applies the
+    // new personality prompt from the very next turn — no session restart.
+    const rebuilt = { role: "system" as const, content: this.buildSystemPrompt(this.config) };
+    if (this.messages[0]?.role === "system") {
+      this.messages[0] = rebuilt;
+    } else {
+      this.messages.unshift(rebuilt);
+    }
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {

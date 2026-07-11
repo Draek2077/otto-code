@@ -177,7 +177,10 @@ export function createMarkdownStyles(theme: Theme) {
 
     code_inline: {
       ...webSelectableTextStyle,
-      backgroundColor: themeColorRef(theme, "surface2"),
+      // surface3, not surface2: assistant prose renders inside a surface2
+      // bubble (see assistantMessageStylesheet.bubble), where a surface2 chip
+      // would vanish into the bubble background.
+      backgroundColor: themeColorRef(theme, "surface3"),
       color: themeColorRef(theme, "foreground"),
       paddingHorizontal: theme.spacing[1],
       paddingVertical: 2,

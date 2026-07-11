@@ -60,7 +60,10 @@ export function getGapBetweenStreamItems(
     return 0;
   }
   if (isSameAssistantBlockGroup({ item, other: belowItem })) {
-    return SPACING[3];
+    // Same-reply segments butt together so the assistant bubble background is
+    // continuous across promoted blocks; AssistantMessage paints the former
+    // SPACING[3] gap inside the bubble (bubbleCompactBottom paddingBottom).
+    return 0;
   }
   return SPACING[4];
 }

@@ -10,6 +10,18 @@ category: Configuration
 
 Otto has first-class voice support for dictation and voice mode conversations with your coding environment.
 
+## Configuring voice in Host settings
+
+The quickest way to set voice up is **Host settings → Speech**, no config editing required. Three cards:
+
+- **Dictation** — turn dictation on, pick the speech-to-text engine (local or OpenAI) and model.
+- **Voice mode** — turn voice mode on, pick STT and TTS engines and models, choose a **voice** (with a preview button), and set the **speaking speed** (0.75× / 1× / 1.25× / 1.5×).
+- **OpenAI speech key** — one shared API key that unlocks the OpenAI STT/TTS engines. Leave it empty to use local speech only.
+
+Everything below documents the same settings as `config.json` and environment variables, for headless hosts, scripting, or advanced tuning. The UI writes the same config, so you can mix the two.
+
+[Agent personalities](/docs/personalities) can carry a voice of their own — an agent spawned from one speaks in that voice instead of the host default. If a personality's voice isn't available on the host, playback falls back to the default voice.
+
 ## Philosophy
 
 Voice is local-first. You can run speech fully on-device, or choose OpenAI for speech features. For voice reasoning/orchestration, Otto reuses agent providers already installed and authenticated on your machine.
@@ -25,9 +37,19 @@ This keeps credentials and execution in your environment and avoids introducing 
 
 ## Local Speech
 
-Local speech defaults to model IDs `parakeet-tdt-0.6b-v2-int8` (STT) and `kokoro-en-v0_19` (TTS, speaker 0 / voice 00).
+Local speech defaults to model IDs `parakeet-tdt-0.6b-v2-int8` (STT) and `kokoro-multi-lang-v1_0` (TTS, "Kokoro v1.0", default voice `af_heart`).
 
 Missing models are downloaded at daemon startup into `$OTTO_HOME/models/local-speech`. Downloads happen only for missing files.
+
+### Local TTS models (voices)
+
+| Model ID                      | Notes                                                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `kokoro-multi-lang-v1_0`      | Kokoro v1.0 (default). 53 voices across English, Spanish, French, Hindi, Italian, Japanese, Portuguese, and Chinese. |
+| `kokoro-int8-multi-lang-v1_0` | Kokoro v1.0, int8 — the same voices, smaller and faster, slightly lower fidelity.                                    |
+| `kokoro-en-v0_19`             | Kokoro v0.19 (legacy). 11 English voices. The former default.                                                        |
+
+Pick a voice by name (e.g. `af_heart`) rather than a numeric speaker id; the Host settings voice picker lists the friendly names, and the preview button plays a sample.
 
 ### Local STT models and language support
 
@@ -48,7 +70,12 @@ Missing models are downloaded at daemon startup into `$OTTO_HOME/models/local-sp
     "voiceMode": {
       "llm": { "provider": "claude", "model": "haiku" },
       "stt": { "provider": "local", "model": "parakeet-tdt-0.6b-v2-int8", "language": "en" },
-      "tts": { "provider": "local", "model": "kokoro-en-v0_19", "speakerId": 0 }
+      "tts": {
+        "provider": "local",
+        "model": "kokoro-multi-lang-v1_0",
+        "voice": "af_heart",
+        "speed": 1
+      }
     }
   },
   "providers": {

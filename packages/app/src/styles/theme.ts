@@ -209,6 +209,18 @@ const lightTerminalAnsi = {
   brightCyan: "#06b6d4",
 } as const;
 
+// Mixes a #rrggbb color toward white by `amount` (0..1). For deriving tokens
+// inside the theme builders only — stylesheets read theme colors as CSS vars
+// on web, so color math there is impossible (see the surfaceUserBubble note).
+function lightenHex(hex: string, amount: number): string {
+  const value = Number.parseInt(hex.slice(1, 7), 16);
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
+  const r = mix((value >> 16) & 0xff);
+  const g = mix((value >> 8) & 0xff);
+  const b = mix(value & 0xff);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
 function buildLightSemanticColors(tint: LightThemeConfig) {
   return {
     // Surfaces (layers)
@@ -224,6 +236,16 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(0, 0, 0, 0.06)",
+    // Chat speech bubbles: 75%-alpha surface fills so the chat background
+    // (including the black chat scope) tints through. Derived here, not in
+    // components — web CSSVars mode emits var(--...) for theme color reads
+    // inside stylesheets, so string math there produces invalid CSS.
+    surfaceUserBubble: `${tint.surface3}bf`,
+    surfaceAssistantBubble: `${tint.surface2}bf`,
+    // In-place busy scrim (e.g. the workspace-archiving overlay): 80%-alpha
+    // app background so the content underneath dims through. Same rule as the
+    // bubbles above — derived here, never `${surface0}cc` in a stylesheet.
+    surfaceScrim: `${tint.surface0}cc`,
 
     // Text
     foreground: tint.foreground,
@@ -235,6 +257,13 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // Borders
     border: tint.border,
     borderAccent: tint.borderAccent, // Softer accent border for low-emphasis outlines
+    // Active desktop-tab outline: half-alpha accent. Native paints it as a
+    // solid border ring; web feeds it into the tab's gradient outline.
+    borderTabActive: `${tint.accent}80`,
+    // Inner highlight ring nested inside the active tab outline: the outline's
+    // accent lightened a step, at 25% alpha. Alpha is baked into the token for
+    // the same CSS-var reason as above.
+    borderTabActiveInner: `${lightenHex(tint.accent, 0.25)}40`,
 
     // Brand
     accent: tint.accent,
@@ -464,11 +493,13 @@ interface DarkThemeConfig {
   spinnerSecondary: string;
 }
 
-// Primary text ink for every dark variant. A warm eggshell rather than pure
-// #fafafa — a few points darker and gently warmed so long reading sessions on
-// dark surfaces don't glare. Shared across foreground, its legacy aliases, and
-// the terminal so all dark "white" text moves together.
-const darkForeground = "#e9e4d8";
+// Primary text ink for every dark variant. A neutral off-white rather than
+// pure #fafafa — a few points darker so long reading sessions on dark
+// surfaces don't glare, but zero saturation so it can't clash with any
+// theme's tint (the earlier warm eggshell read yellow on cool themes).
+// Shared across foreground, its legacy aliases, and the terminal so all
+// dark "white" text moves together.
+const darkForeground = "#e4e4e4";
 
 const darkTerminalAnsi = {
   red: "#e07070",
@@ -501,6 +532,12 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(255, 255, 255, 0.07)",
+    // Chat speech bubbles — see the light builder's note; must stay derived
+    // inside the theme builders, never via string math in stylesheets.
+    surfaceUserBubble: `${tint.surface3}bf`,
+    surfaceAssistantBubble: `${tint.surface2}bf`,
+    // In-place busy scrim — see the light builder's note.
+    surfaceScrim: `${tint.surface0}cc`,
 
     foreground: darkForeground,
     foregroundMuted: tint.foregroundMuted,
@@ -509,6 +546,10 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     border: tint.border,
     borderAccent: tint.borderAccent,
+    // Active desktop-tab outline — see the light builder's note.
+    borderTabActive: `${tint.accent}80`,
+    // Inner active-tab highlight ring — see the light builder's note.
+    borderTabActiveInner: `${lightenHex(tint.accent, 0.25)}40`,
 
     accent: tint.accent,
     accentBright: tint.accentBright,
@@ -1006,6 +1047,12 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     surface2: tint.surface2,
     surface3: tint.surface3,
     surface4: tint.surface4,
+    // Re-derive the bubble fills from this variant's lifted surfaces so the
+    // black scope doesn't inherit the dark variant's tint through the merge.
+    surfaceUserBubble: `${tint.surface3}bf`,
+    surfaceAssistantBubble: `${tint.surface2}bf`,
+    // Scrim re-derived from the black canvas, matching the surface0 override.
+    surfaceScrim: "#000000cc",
     surfaceDiffEmpty: tint.surfaceDiffEmpty,
     border: tint.border,
     borderAccent: tint.borderAccent,

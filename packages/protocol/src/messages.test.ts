@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
+  AgentSnapshotPayloadSchema,
   FileExplorerRequestSchema,
+  MutableDaemonConfigPatchSchema,
+  MutableDaemonConfigSchema,
   OttoWorktreeArchiveRequestSchema,
   parseServerInfoStatusPayload,
   SessionInboundMessageSchema,
@@ -479,5 +482,80 @@ describe("daemon update messages", () => {
         phase: "installing",
       },
     });
+  });
+});
+
+function agentSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "agent-1",
+    provider: "codex",
+    cwd: "/repo/app",
+    model: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    lastUserMessageAt: null,
+    status: "idle",
+    capabilities: {
+      supportsStreaming: false,
+      supportsSessionPersistence: false,
+      supportsDynamicModes: false,
+      supportsMcpServers: false,
+      supportsReasoningStream: false,
+      supportsToolInvocations: false,
+    },
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: [],
+    persistence: null,
+    title: null,
+    ...overrides,
+  };
+}
+
+describe("agent personalities compatibility", () => {
+  test("agent snapshot without any personality fields still parses (pre-personality daemon)", () => {
+    const parsed = AgentSnapshotPayloadSchema.parse(agentSnapshot());
+    expect(parsed.personalityName).toBeUndefined();
+    expect(parsed.personalityId).toBeUndefined();
+    expect(parsed.personalitySpinner).toBeUndefined();
+  });
+
+  test("agent snapshot with personality identity fields parses and preserves them", () => {
+    const parsed = AgentSnapshotPayloadSchema.parse(
+      agentSnapshot({
+        personalityName: "Vera",
+        personalityId: "personality-vera",
+        personalitySpinner: { glowA: "#f43f5e", glowB: "#fbbf24" },
+      }),
+    );
+    expect(parsed.personalityName).toBe("Vera");
+    expect(parsed.personalityId).toBe("personality-vera");
+    expect(parsed.personalitySpinner).toEqual({ glowA: "#f43f5e", glowB: "#fbbf24" });
+  });
+
+  test("daemon config without agentPersonalities parses to the default empty roster", () => {
+    const parsed = MutableDaemonConfigSchema.parse({ mcp: { injectIntoAgents: true } });
+    expect(parsed.agentPersonalities).toEqual({ personalities: [] });
+  });
+
+  test("a config patch without agentPersonalities cannot inject the default (roster-wipe guard)", () => {
+    const parsed = MutableDaemonConfigPatchSchema.parse({ appendSystemPrompt: "x" });
+    expect(parsed).not.toHaveProperty("agentPersonalities");
+  });
+
+  test("agent.personality.set request/response round-trip through the unions", () => {
+    const request = SessionInboundMessageSchema.parse({
+      type: "agent.personality.set.request",
+      agentId: "agent-1",
+      personalityId: null,
+      requestId: "req-1",
+    });
+    expect(request.type).toBe("agent.personality.set.request");
+
+    const response = SessionOutboundMessageSchema.parse({
+      type: "agent.personality.set.response",
+      payload: { requestId: "req-1", agentId: "agent-1", accepted: true, error: null },
+    });
+    expect(response.type).toBe("agent.personality.set.response");
   });
 });

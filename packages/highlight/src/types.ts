@@ -32,4 +32,10 @@ export interface HighlightToken {
 export interface DiffBackgroundColors {
   diffAdded: string;
   diffRemoved: string;
+  // Intraline emphasis pair: the same hues at a stronger alpha, for the
+  // changed-span highlight layered over a diff row. Derived here rather than
+  // re-alpha'd in app stylesheets — on web, Unistyles CSSVars mode hands
+  // stylesheets `var(--...)` strings that string math cannot re-alpha.
+  diffAddedEmphasis: string;
+  diffRemovedEmphasis: string;
 }

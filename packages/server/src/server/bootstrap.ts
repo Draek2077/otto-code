@@ -948,6 +948,11 @@ export async function createOttoDaemon(
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
+    // Counted at the createAgent choke point so composer, MCP create_agent,
+    // and schedule spawns all land in the per-personality usage stats.
+    onPersonalitySpawn: (personalityId) => {
+      void personalityStatsStore.increment(personalityId);
+    },
     mcpAuthToken: agentMcpAuthToken,
     logger,
   });
@@ -1304,9 +1309,6 @@ export async function createOttoDaemon(
     scheduleService,
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
-    recordPersonalitySpawn: (personalityId) => {
-      void personalityStatsStore.increment(personalityId);
-    },
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,

@@ -811,6 +811,13 @@ export class Session {
           agentManager.setAgentFeature(agentId, featureId, value),
         setThinking: (agentId, thinkingOptionId) =>
           agentManager.setAgentThinkingOption(agentId, thinkingOptionId),
+        setPersonality: async (agentId, personalityId) => {
+          const snapshot =
+            personalityId === null
+              ? null
+              : await this.resolvePersonalitySnapshotForAgent(agentId, personalityId);
+          return agentManager.setAgentPersonality(agentId, snapshot);
+        },
       },
       logger: this.sessionLogger,
     });
@@ -1432,6 +1439,7 @@ export class Session {
     const promise =
       this.dispatchVoiceAndControlMessage(msg) ??
       this.dispatchAgentRewindMessage(msg) ??
+      this.dispatchAgentPersonalityMessage(msg) ??
       this.dispatchAgentRelationshipMessage(msg) ??
       this.dispatchAgentTimelineMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
@@ -1502,6 +1510,17 @@ export class Session {
     switch (msg.type) {
       case "agent.rewind.request":
         return this.handleAgentRewindRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // Kept out of dispatchAgentConfigMessage only because that switch sits at the
+  // complexity ceiling; the handler itself lives with its config siblings.
+  private dispatchAgentPersonalityMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "agent.personality.set.request":
+        return this.agentConfigSession.handleAgentPersonalitySetRequest(msg);
       default:
         return undefined;
     }
@@ -2883,6 +2902,40 @@ export class Session {
         ? { systemPrompt: snapshot.systemPrompt }
         : {}),
     };
+  }
+
+  /**
+   * Resolve a roster personality against a *running* agent's cwd for a live
+   * switch (agent.personality.set). Unlike the spawn-time soft-skip above, an
+   * unknown or unavailable personality throws — the RPC rejects with the reason
+   * instead of half-applying.
+   */
+  private async resolvePersonalitySnapshotForAgent(
+    agentId: string,
+    personalityId: string,
+  ): Promise<ResolvedPersonalitySnapshot> {
+    const agent = this.agentManager.getAgent(agentId);
+    if (!agent) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+    const roster = this.daemonConfigStore.get().agentPersonalities?.personalities ?? [];
+    const personality = roster.find((entry) => entry.id === personalityId);
+    if (!personality) {
+      throw new Error(`Personality not found: ${personalityId}`);
+    }
+    // Warm only the personality's own provider — a cold workspace snapshot
+    // would otherwise fan out to every registered provider (network probes)
+    // and stall the switch for seconds.
+    const entries = await this.providerSnapshotManager.listProviders({
+      cwd: agent.config.cwd,
+      providers: [personality.provider],
+      wait: true,
+    });
+    const resolution = resolvePersonality(personality, entries);
+    if (resolution.status === "unavailable") {
+      throw new Error(resolution.reason);
+    }
+    return resolution.snapshot;
   }
 
   private async handleCreateAgentRequest(

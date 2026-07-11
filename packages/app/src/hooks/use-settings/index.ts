@@ -38,6 +38,7 @@ import {
   type ServiceUrlBehavior,
   type Settings,
   type SettingsDeps,
+  type ChatTimestampDisplay,
   type PreviewServerCloseBehavior,
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
@@ -63,6 +64,7 @@ export {
 export type {
   AppSettings,
   AppLanguage,
+  ChatTimestampDisplay,
   DesktopSettingsBridge,
   KeyValueStorage,
   ReleaseChannel,

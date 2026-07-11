@@ -32,4 +32,5 @@ This isn't a replacement for CLI-based providers, it's for the case CLI adapters
 - [Supported providers](/docs/supported-providers), the full list with install links.
 - [Local models](/docs/local-models), connect LM Studio or any OpenAI-compatible server directly, no CLI required.
 - [Custom providers](/docs/custom-providers), add your own provider, point an existing one at a different endpoint, run multiple profiles, or override the binary in `~/.otto/config.json`.
+- [Agent personalities](/docs/personalities), save a provider + model + effort + mode as a named template you can pick in one tap.
 - [otto-code.me/agents](/agents), per-agent landing page for each supported provider.

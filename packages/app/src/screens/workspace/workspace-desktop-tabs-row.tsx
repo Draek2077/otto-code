@@ -114,7 +114,7 @@ import {
 const DROPDOWN_WIDTH = 220;
 // Fixed colors for content on the forced-black chat tab (Black tab background
 // setting) — must stay readable on #000 regardless of the active theme.
-const ON_BLACK_FOREGROUND = "#e9e4d8"; // warm eggshell — matches dark themes' foreground ink
+const ON_BLACK_FOREGROUND = "#e4e4e4"; // neutral off-white — matches dark themes' foreground ink
 const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
@@ -1598,6 +1598,7 @@ function TabChip({
               {hovered && !isActive ? (
                 <View style={styles.tabHoverUnderlay} pointerEvents="none" />
               ) : null}
+              {isActive ? <View style={styles.tabActiveInnerAccent} pointerEvents="none" /> : null}
               <TabHandleContent
                 presentation={presentation}
                 isHighlighted={isHighlighted}
@@ -2247,11 +2248,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Active outline is an accent-to-border vertical gradient (accent at the tab
   // top, fading into the plain pane border where the chip meets the content).
-  // The accent stop is at 50% alpha to keep the highlight subtle; the border
-  // stop stays solid so the fade still fuses with the pane border below. On
-  // web the theme color resolves to a CSS var, so alpha must go through
-  // color-mix() — a hex "80" suffix on a var() is invalid CSS and silently
-  // drops the whole declaration (fill layer included).
+  // The accent stop is `borderTabActive` (half-alpha accent, derived in the
+  // theme builders); the border stop stays solid so the fade still fuses with
+  // the pane border below. The alpha must be baked into the token: on web a
+  // theme color read here is a CSS var, so an alpha suffix like `${accent}80`
+  // is invalid CSS and silently drops the whole declaration (fill layer
+  // included).
   // On web this is the two-layer gradient-border technique: the fill layer is
   // clipped to the padding box, the gradient layer to the border box, so the
   // gradient shows only through the transparent 1px border ring. Native can't
@@ -2260,16 +2262,56 @@ const styles = StyleSheet.create((theme) => ({
     ? ({
         backgroundImage:
           `linear-gradient(${theme.colors.surface0}, ${theme.colors.surface0}), ` +
-          `linear-gradient(to bottom, color-mix(in srgb, ${theme.colors.accent} 50%, transparent), ${theme.colors.border})`,
+          `linear-gradient(to bottom, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
         backgroundOrigin: "border-box",
         backgroundClip: "padding-box, border-box",
       } as object)
     : {
         backgroundColor: theme.colors.surface0,
-        borderTopColor: `${theme.colors.accent}80`,
-        borderLeftColor: `${theme.colors.accent}80`,
-        borderRightColor: `${theme.colors.accent}80`,
+        borderTopColor: theme.colors.borderTabActive,
+        borderLeftColor: theme.colors.borderTabActive,
+        borderRightColor: theme.colors.borderTabActive,
       },
+  // Inner highlight sheen on the active tab: an echo of the outline in the
+  // outline's own accent, lightened and at 25% alpha (`borderTabActiveInner`),
+  // fading to transparent toward the bottom. Its cap is a hair thicker (1.5px)
+  // than its thin sides; the top starts at the padding box, i.e. exactly one
+  // normal border-thickness below the tab's top edge, and the left/right
+  // offsets put its thin side lines on the outline's sides.
+  // On web the gradient is painted across the whole overlay and masked down
+  // to the border ring (padding-box knocked out of border-box), which keeps
+  // the rounded corners. Native can't paint gradient borders, so it falls
+  // back to a solid ring, matching the tabActive fallback.
+  tabActiveInnerAccent: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: -theme.borderWidth[1],
+    right: -theme.borderWidth[1],
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    borderTopWidth: 1.5,
+    borderLeftWidth: theme.borderWidth[1],
+    borderRightWidth: theme.borderWidth[1],
+    borderTopColor: "transparent",
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    pointerEvents: "none",
+    ...(isWeb
+      ? ({
+          backgroundImage: `linear-gradient(to bottom, ${theme.colors.borderTabActiveInner}, transparent)`,
+          backgroundOrigin: "border-box",
+          backgroundClip: "border-box",
+          maskImage: "linear-gradient(#fff 0 0), linear-gradient(#fff 0 0)",
+          maskClip: "padding-box, border-box",
+          maskComposite: "exclude",
+        } as object)
+      : {
+          borderTopColor: theme.colors.borderTabActiveInner,
+          borderLeftColor: theme.colors.borderTabActiveInner,
+          borderRightColor: theme.colors.borderTabActiveInner,
+        }),
+  },
   // Black tab background setting: the active chat tab's fill inside the border
   // goes pure black so it fuses with the black chat pane below (see the
   // `black` scoped theme in `panels/agent-panel.tsx`). On web the fill lives
@@ -2280,7 +2322,7 @@ const styles = StyleSheet.create((theme) => ({
       ? ({
           backgroundImage:
             "linear-gradient(#000000, #000000), " +
-            `linear-gradient(to bottom, color-mix(in srgb, ${theme.colors.accent} 50%, transparent), ${theme.colors.border})`,
+            `linear-gradient(to bottom, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
         } as object)
       : {}),
   },

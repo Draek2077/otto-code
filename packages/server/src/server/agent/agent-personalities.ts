@@ -85,9 +85,23 @@ export function resolvePersonality(
     };
   }
 
-  const modeId = personality.modeId ?? entry.defaultModeId ?? undefined;
+  const modeId = personality.modeId ?? resolveFallbackModeId(entry);
   const effort = resolvePersonalityEffort(personality.effortLevel, model.thinkingOptions);
   return { status: "available", snapshot: buildSnapshot(personality, modeId, effort) };
+}
+
+// The provider's defaultModeId can go stale relative to its modes catalog;
+// availability only validates the personality's own modeId, so an unvalidated
+// fallback would pass resolution and then throw inside setMode at apply time.
+function resolveFallbackModeId(entry: ProviderSnapshotEntry): string | undefined {
+  const fallback = entry.defaultModeId ?? undefined;
+  if (!fallback) {
+    return undefined;
+  }
+  if (entry.modes && entry.modes.length > 0 && !entry.modes.some((mode) => mode.id === fallback)) {
+    return undefined;
+  }
+  return fallback;
 }
 
 type ResolvedEffort = ReturnType<typeof resolvePersonalityEffort>;

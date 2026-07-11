@@ -439,6 +439,51 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Message timestamp display (Clock time / Time ago)
+// ---------------------------------------------------------------------------
+
+interface MessageTimestampRowProps {
+  value: AppSettings["chatTimestampDisplay"];
+  onChange: (value: AppSettings["chatTimestampDisplay"]) => void;
+}
+
+function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
+  const { t } = useTranslation();
+  const options = useMemo<SegmentedControlOption<AppSettings["chatTimestampDisplay"]>[]>(
+    () => [
+      {
+        value: "absolute",
+        label: t("settings.appearance.agents.messageTimestamp.options.absolute"),
+      },
+      {
+        value: "relative",
+        label: t("settings.appearance.agents.messageTimestamp.options.relative"),
+      },
+    ],
+    [t],
+  );
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.agents.messageTimestamp.title")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.agents.messageTimestamp.hint")}
+        </Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-chat-timestamp-display"
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Layout: compact sidebar top spacing + workspace tools placement (booleans)
 // ---------------------------------------------------------------------------
 
@@ -552,6 +597,20 @@ export function AppearanceSection() {
   const handleGroupConsecutiveActionsChange = useCallback(
     (groupConsecutiveActions: boolean) => {
       void updateSettings({ groupConsecutiveActions });
+    },
+    [updateSettings],
+  );
+
+  const handleHideChatMessageDetailsChange = useCallback(
+    (hideChatMessageDetails: boolean) => {
+      void updateSettings({ hideChatMessageDetails });
+    },
+    [updateSettings],
+  );
+
+  const handleChatTimestampDisplayChange = useCallback(
+    (chatTimestampDisplay: AppSettings["chatTimestampDisplay"]) => {
+      void updateSettings({ chatTimestampDisplay });
     },
     [updateSettings],
   );
@@ -705,6 +764,21 @@ export function AppearanceSection() {
             withBorder
             onValueChange={handleAutoExpandReasoningChange}
             testID="settings-auto-expand-reasoning-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.hideMessageDetails.title")}
+            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
+            )}
+            value={settings.hideChatMessageDetails}
+            withBorder
+            onValueChange={handleHideChatMessageDetailsChange}
+            testID="settings-hide-message-details-switch"
+          />
+          <MessageTimestampRow
+            value={settings.chatTimestampDisplay}
+            onChange={handleChatTimestampDisplayChange}
           />
         </View>
       </SettingsSection>

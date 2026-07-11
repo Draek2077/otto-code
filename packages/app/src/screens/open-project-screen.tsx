@@ -181,6 +181,9 @@ interface HomeTileProps {
   accent?: boolean;
 }
 
+const TILE_SHADOW_DARK = "0 0 5px rgba(0, 0, 0, 0.2)";
+const TILE_SHADOW_LIGHT = "0 0 5px rgba(0, 0, 0, 0.1)";
+
 function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: HomeTileProps) {
   // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
   const { theme } = useUnistyles();
@@ -190,13 +193,20 @@ function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: H
 
   const iconColor = accent ? theme.colors.accent : theme.colors.foregroundMuted;
 
+  // The shadow must flow through React, not a `theme.colorScheme` ternary in the
+  // StyleSheet factory: on web the factory's non-color values are computed once at
+  // module load against the then-active theme and freeze on the startup scheme
+  // (docs/unistyles.md).
+  const boxShadow = theme.colorScheme === "dark" ? TILE_SHADOW_DARK : TILE_SHADOW_LIGHT;
+
   const pressableStyle = useCallback(
     ({ pressed }: { pressed: boolean }) => [
       styles.tile,
+      { boxShadow },
       hovered && styles.tileHovered,
       pressed && styles.tilePressed,
     ],
-    [hovered],
+    [hovered, boxShadow],
   );
 
   return (

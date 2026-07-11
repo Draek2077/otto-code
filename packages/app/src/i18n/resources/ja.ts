@@ -1996,6 +1996,19 @@ export const ja: TranslationResources = {
           hint: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
           accessibilityLabel: "常に思考プロセスを展開",
         },
+        hideMessageDetails: {
+          title: "ホバーするまでメッセージ詳細を隠す",
+          hint: "タイムスタンプ・統計・操作ボタンをマウスオーバーするまで非表示にします。タッチデバイスでは常に表示されます",
+          accessibilityLabel: "ホバーするまでメッセージ詳細を隠す",
+        },
+        messageTimestamp: {
+          title: "メッセージの時刻表示",
+          hint: "メッセージの時刻を正確な時刻または経過時間で表示します",
+          options: {
+            absolute: "時刻",
+            relative: "経過時間",
+          },
+        },
       },
       layout: {
         title: "Layout",

@@ -16,6 +16,7 @@ export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
 export type ColorSchemeMode = "light" | "dark" | "system";
+export type ChatTimestampDisplay = "absolute" | "relative";
 
 const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
   "daylight",
@@ -44,6 +45,7 @@ const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "workspaceList",
 ]);
 const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
+const VALID_CHAT_TIMESTAMP_DISPLAYS = new Set<ChatTimestampDisplay>(["absolute", "relative"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -88,6 +90,13 @@ export interface AppSettings {
   // is over their toolbar area (web only — hover). When false (default), pinned
   // options are always visible.
   hidePinnedToolbarOptions: boolean;
+  // Keep chat message operational details (timestamp, duration, copy/fork/
+  // rewind actions) hidden until the pointer is over the message. Hover-only:
+  // native and compact layouts always show details, and the running-turn
+  // indicator is never hidden.
+  hideChatMessageDetails: boolean;
+  // Chat message timestamps render as exact clock time or relative "5m ago".
+  chatTimestampDisplay: ChatTimestampDisplay;
 }
 
 export interface Settings extends AppSettings {
@@ -119,6 +128,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   blackTabBackground: false,
   groupConsecutiveActions: true,
   hidePinnedToolbarOptions: false,
+  hideChatMessageDetails: true,
+  chatTimestampDisplay: "absolute",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -343,6 +354,15 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   }
   if (typeof stored.hidePinnedToolbarOptions === "boolean") {
     result.hidePinnedToolbarOptions = stored.hidePinnedToolbarOptions;
+  }
+  if (typeof stored.hideChatMessageDetails === "boolean") {
+    result.hideChatMessageDetails = stored.hideChatMessageDetails;
+  }
+  if (
+    typeof stored.chatTimestampDisplay === "string" &&
+    VALID_CHAT_TIMESTAMP_DISPLAYS.has(stored.chatTimestampDisplay as ChatTimestampDisplay)
+  ) {
+    result.chatTimestampDisplay = stored.chatTimestampDisplay as ChatTimestampDisplay;
   }
   return result;
 }

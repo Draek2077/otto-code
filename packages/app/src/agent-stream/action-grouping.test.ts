@@ -80,13 +80,13 @@ function expectActionGroup(item: StreamItem): Extract<StreamItem, { kind: "actio
 }
 
 describe("groupConsecutiveActionItems", () => {
-  it("returns the input identity when no run reaches three actions", () => {
+  it("returns the input identity when no run has two settled actions", () => {
     const items = [
       toolCall("t1", 1),
-      toolCall("t2", 2),
-      assistantMessage("a1", 3),
-      toolCall("t3", 4),
-      toolCall("t4", 5),
+      assistantMessage("a1", 2),
+      toolCall("t2", 3),
+      toolCall("t3", 4, { status: "running" }),
+      toolCall("t4", 5, { status: "running" }),
     ];
 
     expect(groupConsecutiveActionItems(items)).toBe(items);
@@ -101,6 +101,15 @@ describe("groupConsecutiveActionItems", () => {
     const group = expectActionGroup(result[0]);
     expect(group.items.map((item) => item.id)).toEqual(["t1", "t2", "t3"]);
     expect(group.timestamp).toEqual(createTimestamp(3));
+  });
+
+  it("groups a run of exactly two settled actions", () => {
+    const items = [toolCall("t1", 1), toolCall("t2", 2)];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result).toHaveLength(1);
+    expect(expectActionGroup(result[0]).items.map((item) => item.id)).toEqual(["t1", "t2"]);
   });
 
   it("keeps live actions outside, below the settled group", () => {
@@ -121,9 +130,23 @@ describe("groupConsecutiveActionItems", () => {
   });
 
   it("does not group when fewer than two actions have settled", () => {
-    const items = [toolCall("t1", 1), toolCall("t2", 2, { status: "running" }), toolCall("t3", 3)];
+    const items = [
+      toolCall("t1", 1, { status: "running" }),
+      toolCall("t2", 2),
+      toolCall("t3", 3, { status: "running" }),
+    ];
 
     expect(groupConsecutiveActionItems(items)).toBe(items);
+  });
+
+  it("collapses a settled action into the group even behind a live one", () => {
+    const items = [toolCall("t1", 1), toolCall("t2", 2, { status: "running" }), toolCall("t3", 3)];
+
+    const result = groupConsecutiveActionItems(items);
+
+    expect(result.map((item) => item.kind)).toEqual(["action_group", "tool_call"]);
+    expect(expectActionGroup(result[0]).items.map((item) => item.id)).toEqual(["t1", "t3"]);
+    expect(result[1].id).toBe("t2");
   });
 
   it("keeps the group id stable while a run grows and settles", () => {
@@ -148,6 +171,23 @@ describe("groupConsecutiveActionItems", () => {
     ]);
   });
 
+  it("keeps the group id stable when the run's first action is still live", () => {
+    const whileRunning = groupConsecutiveActionItems([
+      toolCall("t1", 1, { status: "running" }),
+      toolCall("t2", 2),
+      toolCall("t3", 3),
+    ]);
+    const afterSettling = groupConsecutiveActionItems([
+      toolCall("t1", 1),
+      toolCall("t2", 2),
+      toolCall("t3", 3),
+    ]);
+
+    expect(whileRunning.map((item) => item.kind)).toEqual(["action_group", "tool_call"]);
+    expect(expectActionGroup(whileRunning[0]).items.map((item) => item.id)).toEqual(["t2", "t3"]);
+    expect(whileRunning[0].id).toBe(afterSettling[0].id);
+  });
+
   it("groups each run independently around non-action items", () => {
     const items = [
       toolCall("t1", 1),
@@ -163,11 +203,10 @@ describe("groupConsecutiveActionItems", () => {
     expect(result.map((item) => item.kind)).toEqual([
       "action_group",
       "assistant_message",
-      "tool_call",
-      "tool_call",
+      "action_group",
     ]);
-    const group = expectActionGroup(result[0]);
-    expect(group.items.map((item) => item.id)).toEqual(["t1", "th1", "t2"]);
+    expect(expectActionGroup(result[0]).items.map((item) => item.id)).toEqual(["t1", "th1", "t2"]);
+    expect(expectActionGroup(result[2]).items.map((item) => item.id)).toEqual(["t3", "t4"]);
   });
 
   it("treats speak bubbles and plans as run breakers", () => {
@@ -182,7 +221,16 @@ describe("groupConsecutiveActionItems", () => {
 
     const result = groupConsecutiveActionItems(items);
 
-    expect(result).toBe(items);
+    expect(result.map((item) => item.kind)).toEqual([
+      "action_group",
+      "tool_call",
+      "action_group",
+      "tool_call",
+    ]);
+    expect(expectActionGroup(result[0]).items.map((item) => item.id)).toEqual(["t1", "t2"]);
+    expect(result[1].id).toBe("s1");
+    expect(expectActionGroup(result[2]).items.map((item) => item.id)).toEqual(["t3", "t4"]);
+    expect(result[3].id).toBe("t5");
     expect(isGroupableActionItem(items[2])).toBe(false);
     expect(isGroupableActionItem(items[5])).toBe(false);
   });

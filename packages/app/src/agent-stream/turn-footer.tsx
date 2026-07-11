@@ -1,7 +1,11 @@
-import React, { memo, useCallback, type ReactNode } from "react";
-import { View } from "react-native";
+import React, { memo, useCallback, useState, type ReactNode } from "react";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { isNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { useAppSettings } from "@/hooks/use-settings";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
@@ -28,6 +32,7 @@ export type AssistantTurnForkHandler = (input: {
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
+  inFlightEstimatedTokens,
   host,
   strategy,
   onForkAssistantTurn,
@@ -35,6 +40,7 @@ export const TurnFooter = memo(function TurnFooter({
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
+  inFlightEstimatedTokens?: number | null;
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
@@ -43,7 +49,11 @@ export const TurnFooter = memo(function TurnFooter({
   if (isRunning) {
     return (
       <TurnFooterRow>
-        <RunningTurnFooter inFlightTurnStartedAt={inFlightTurnStartedAt} spinner={spinner} />
+        <RunningTurnFooter
+          inFlightTurnStartedAt={inFlightTurnStartedAt}
+          estimatedTokens={inFlightEstimatedTokens ?? null}
+          spinner={spinner}
+        />
       </TurnFooterRow>
     );
   }
@@ -61,41 +71,63 @@ export const TurnFooter = memo(function TurnFooter({
   );
 });
 
+// Completed-turn details honor the hide-until-hover appearance setting. The
+// running-turn footer never hides (see TurnFooter above). `revealed` lets a
+// wider hover scope (the turn's content in the stream) reveal the row; the
+// row additionally tracks hover on its own full-width strip so the bottom
+// auxiliary footer — which has no adjacent stream item — stays reachable.
+// Hidden state uses opacity so the strip keeps its geometry and stays
+// hoverable (docs/hover.md), with pointerEvents off so invisible buttons
+// can't be clicked.
 export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   strategy,
   items,
   timing,
   startIndex,
   onForkAssistantTurn,
+  revealed = false,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  revealed?: boolean;
 }) {
+  const hideDetails = useAppSettings().settings.hideChatMessageDetails;
+  const isCompact = useIsCompactFormFactor();
+  const [selfHovered, setSelfHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setSelfHovered(true), []);
+  const handlePointerLeave = useCallback(() => setSelfHovered(false), []);
+  const visible = !hideDetails || isNative || isCompact || revealed || selfHovered;
+
   return (
     <TurnFooterRow>
-      <CompletedTurnFooter
-        strategy={strategy}
-        items={items}
-        timing={timing}
-        startIndex={startIndex}
-        onForkAssistantTurn={onForkAssistantTurn}
-      />
+      <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+        <View
+          style={visible ? stylesheet.footerReveal : stylesheet.footerRevealHidden}
+          pointerEvents={visible ? "auto" : "none"}
+        >
+          <CompletedTurnFooter
+            strategy={strategy}
+            items={items}
+            timing={timing}
+            startIndex={startIndex}
+            onForkAssistantTurn={onForkAssistantTurn}
+          />
+        </View>
+      </View>
     </TurnFooterRow>
   );
 });
 
-const WorkingIndicator = memo(function WorkingIndicator({
-  inFlightTurnStartedAt = null,
-  spinner,
-}: {
-  inFlightTurnStartedAt?: Date | null;
-  spinner?: PersonalitySpinnerColors;
-}) {
-  return (
-    <View style={stylesheet.turnFooterContent}>
+// The spinner is memo-isolated: BlobLoader recreates reanimated styles and an
+// SVG gradient tree on every render, so it must not re-render when the token
+// estimate ticks or the agent snapshot rebuilds the spinner object — only
+// when the personality's glow colors actually change (hence value equality).
+const TurnSpinner = memo(
+  function TurnSpinner({ spinner }: { spinner?: PersonalitySpinnerColors }) {
+    return (
       <View style={stylesheet.workingLoader}>
         {spinner ? (
           <BlobLoader size={18} glowA={spinner.glowA} glowB={spinner.glowB} />
@@ -103,6 +135,24 @@ const WorkingIndicator = memo(function WorkingIndicator({
           <ThemedBlobLoader size={18} />
         )}
       </View>
+    );
+  },
+  (prev, next) =>
+    prev.spinner?.glowA === next.spinner?.glowA && prev.spinner?.glowB === next.spinner?.glowB,
+);
+
+const WorkingIndicator = memo(function WorkingIndicator({
+  inFlightTurnStartedAt = null,
+  estimatedTokens = null,
+  spinner,
+}: {
+  inFlightTurnStartedAt?: Date | null;
+  estimatedTokens?: number | null;
+  spinner?: PersonalitySpinnerColors;
+}) {
+  return (
+    <View style={stylesheet.turnFooterContent}>
+      <TurnSpinner spinner={spinner} />
       {inFlightTurnStartedAt ? (
         <LiveElapsed
           startedAt={inFlightTurnStartedAt}
@@ -110,20 +160,31 @@ const WorkingIndicator = memo(function WorkingIndicator({
           testID="turn-working-elapsed"
         />
       ) : null}
+      {inFlightTurnStartedAt && estimatedTokens !== null && estimatedTokens > 0 ? (
+        <Text style={stylesheet.workingTokens} testID="turn-working-tokens">
+          {`• ~${formatTokenCount(estimatedTokens)} tokens`}
+        </Text>
+      ) : null}
     </View>
   );
 });
 
 function RunningTurnFooter({
   inFlightTurnStartedAt,
+  estimatedTokens,
   spinner,
 }: {
   inFlightTurnStartedAt: Date | null;
+  estimatedTokens: number | null;
   spinner?: PersonalitySpinnerColors;
 }) {
   return (
     <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
-      <WorkingIndicator inFlightTurnStartedAt={inFlightTurnStartedAt} spinner={spinner} />
+      <WorkingIndicator
+        inFlightTurnStartedAt={inFlightTurnStartedAt}
+        estimatedTokens={estimatedTokens}
+        spinner={spinner}
+      />
     </View>
   );
 }
@@ -160,6 +221,7 @@ function CompletedTurnFooter({
         getContent={getContent}
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
+        usage={timing?.usage}
         forkBoundaryMessageId={boundaryMessageId}
         onFork={onForkAssistantTurn}
       />
@@ -180,12 +242,18 @@ const stylesheet = StyleSheet.create((theme) => ({
   turnFooterRow: {
     marginTop: 0,
   },
+  footerReveal: {
+    opacity: 1,
+  },
+  footerRevealHidden: {
+    opacity: 0,
+  },
   turnFooterSlot: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     minHeight: 24,
-    paddingBottom: theme.spacing[6],
+    paddingBottom: theme.spacing[2],
   },
   turnFooterContent: {
     height: 24,
@@ -195,6 +263,11 @@ const stylesheet = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   workingElapsed: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontVariant: ["tabular-nums"],
+  },
+  workingTokens: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontVariant: ["tabular-nums"],

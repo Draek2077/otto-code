@@ -76,6 +76,10 @@ const DESKTOP_PROVIDER_VIEW_MIN_HEIGHT = 220;
 const DESKTOP_PROVIDER_VIEW_MAX_HEIGHT = 400;
 const DESKTOP_PROVIDER_VIEW_BASE_HEIGHT = 80;
 const DESKTOP_MODEL_ROW_HEIGHT = 40;
+// personalityRow carries minHeight 44 (taller than a model row: name +
+// subtitle); the section renders a heading line above the rows.
+const DESKTOP_PERSONALITY_ROW_HEIGHT = 44;
+const DESKTOP_PERSONALITY_HEADING_HEIGHT = 28;
 
 const ThemedAlertTriangle = withUnistyles(AlertTriangle);
 const ThemedCheck = withUnistyles(Check);
@@ -224,6 +228,15 @@ interface CombinedModelSelectorProps {
   onSelectPersonality?: (id: string) => void;
   onClearPersonality?: () => void;
   /**
+   * Picking a raw model while a personality is selected. When provided, the
+   * picker routes the model pick here INSTEAD of onSelect+onClearPersonality —
+   * the owner confirms once and applies "clear personality + set model" as a
+   * single flow (running agents, RPC-backed). Absent ⇒ legacy behavior:
+   * onSelect fires and onClearPersonality (if any) clears client-side (draft
+   * surfaces).
+   */
+  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
+  /**
    * Render the custom trigger as a full-width form field: the outer Pressable
    * becomes a transparent passthrough that stretches its child edge-to-edge and
    * stops painting its own hover/pressed background and rounded corners. The
@@ -232,6 +245,12 @@ interface CombinedModelSelectorProps {
    * (the composer's layout).
    */
   triggerFill?: boolean;
+  /**
+   * Replace the default trigger's leading glyph with a spinner — a live
+   * personality switch is applying on the daemon. The compact icon-only custom
+   * trigger renders its own spinner (renderTrigger bypasses this).
+   */
+  triggerLoading?: boolean;
 }
 
 interface SelectorContentProps {
@@ -721,41 +740,77 @@ function SelectorContent({
     if (!selectedViewProvider) {
       return emptyState;
     }
+    // Personalities that belong to this family, pinned above the model list so a
+    // family menu (including a locked running chat agent's) lets you pick one of
+    // its personalities as readily as a raw model. The search box filters these by
+    // name alongside the models. Renders nothing when the roster is read-only (no
+    // onSelectPersonality) or has none matching for this family.
+    const familyPersonalities = personalities?.filter(
+      (entry) =>
+        entry.provider === view.providerId &&
+        (!normalizedQuery || entry.name.toLowerCase().includes(normalizedQuery)),
+    );
+    const familyPersonalitiesNode = (
+      <PersonalitiesSection
+        personalities={familyPersonalities}
+        selectedPersonalityId={selectedPersonalityId}
+        onSelectPersonality={onSelectPersonality}
+        onClearPersonality={onClearPersonality}
+      />
+    );
     const drillSelection = selectedViewProvider.modelSelection;
     if (drillSelection.kind === "loading") {
       return (
-        <View style={styles.emptyState}>
-          <View style={styles.rowSpinner}>
-            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+        <View>
+          {familyPersonalitiesNode}
+          <View style={styles.emptyState}>
+            <View style={styles.rowSpinner}>
+              <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+            </View>
+            <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
           </View>
-          <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
         </View>
       );
     }
     if (drillSelection.kind === "error") {
       return (
-        <ProviderErrorEmptyState
-          providerId={view.providerId}
-          message={drillSelection.message}
-          onRetryProvider={onRetryProvider}
-          isRetryingProvider={isRetryingProvider}
-        />
+        <View>
+          {familyPersonalitiesNode}
+          <ProviderErrorEmptyState
+            providerId={view.providerId}
+            message={drillSelection.message}
+            onRetryProvider={onRetryProvider}
+            isRetryingProvider={isRetryingProvider}
+          />
+        </View>
       );
     }
-    if (visibleRows.length === 0) {
-      return emptyState;
-    }
 
+    // Only fall back to "no matches" when nothing — models or personalities —
+    // survived the filter, so a personality-only match doesn't read as empty.
+    const hasFamilyPersonalityMatch =
+      Boolean(onSelectPersonality) && (familyPersonalities?.length ?? 0) > 0;
+    let modelBody: React.ReactNode = null;
+    if (visibleRows.length > 0) {
+      modelBody = (
+        <ProviderModelRows
+          rows={visibleRows}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          favoriteKeys={favoriteKeys}
+          onSelect={onSelect}
+          onToggleFavorite={onToggleFavorite}
+          normalizedQuery={normalizedQuery}
+        />
+      );
+    } else if (!hasFamilyPersonalityMatch) {
+      modelBody = emptyState;
+    }
     return (
-      <ProviderModelRows
-        rows={visibleRows}
-        selectedProvider={selectedProvider}
-        selectedModel={selectedModel}
-        favoriteKeys={favoriteKeys}
-        onSelect={onSelect}
-        onToggleFavorite={onToggleFavorite}
-        normalizedQuery={normalizedQuery}
-      />
+      <View>
+        {familyPersonalitiesNode}
+        {modelBody}
+      </View>
     );
   }
 
@@ -807,7 +862,9 @@ export function CombinedModelSelector({
   selectedPersonalityId = null,
   onSelectPersonality,
   onClearPersonality,
+  onSelectModelOverPersonality,
   triggerFill = false,
+  triggerLoading = false,
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
@@ -827,17 +884,25 @@ export function CombinedModelSelector({
   // label the trigger — must not suppress the single-provider bypass.
   const hasPersonalities = (personalities?.length ?? 0) > 0 && Boolean(onSelectPersonality);
 
-  // Single-provider mode: only one provider → skip Level 1 entirely. But when a
-  // personality roster is present it lives in the "all" view, so keep that view.
+  // Single-provider mode: only one provider → skip Level 1 entirely and open
+  // straight into that family. The family view carries its own personalities
+  // section (see SelectorContent), so a locked-in roster no longer forces the
+  // "all" view — a running chat agent lands directly on its family's models +
+  // same-family personalities.
   const singleProviderView = useMemo<SelectorView | null>(() => {
-    if (providers.length !== 1 || hasPersonalities) return null;
+    if (providers.length !== 1) return null;
     const provider = providers[0];
     if (!provider) return null;
     return { kind: "provider", providerId: provider.id, providerLabel: provider.label };
-  }, [providers, hasPersonalities]);
+  }, [providers]);
 
   const computeInitialView = useCallback((): SelectorView => {
     if (singleProviderView) return singleProviderView;
+
+    // A selected personality lives in the "all" view — open there so it (and the
+    // rest of the roster) shows up front, rather than drilling into the model
+    // family of the personality's underlying provider/model.
+    if (hasPersonalities && selectedPersonalityId) return { kind: "all" };
 
     const selectedFavoriteKey = `${selectedProvider}:${selectedModel}`;
     if (selectedProvider && selectedModel && !favoriteKeys.has(selectedFavoriteKey)) {
@@ -847,7 +912,15 @@ export function CombinedModelSelector({
     }
 
     return { kind: "all" };
-  }, [singleProviderView, selectedProvider, selectedModel, favoriteKeys, providers]);
+  }, [
+    singleProviderView,
+    hasPersonalities,
+    selectedPersonalityId,
+    selectedProvider,
+    selectedModel,
+    favoriteKeys,
+    providers,
+  ]);
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -866,30 +939,56 @@ export function CombinedModelSelector({
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
-      onSelect(provider, modelId);
+      // Explicitly picking a model switches away from a bound personality — the
+      // raw model becomes the identity. (Deviating effort/mode elsewhere keeps
+      // the personality; only a direct model pick here clears it.) Running
+      // agents pass onSelectModelOverPersonality so both halves ride one
+      // confirmed RPC flow; draft surfaces fall back to onSelect + client-side
+      // clear. A read-only identity roster (old daemons) passes neither
+      // handler, so the pick is a plain model change.
+      if (selectedPersonalityId && onSelectModelOverPersonality) {
+        onSelectModelOverPersonality(provider, modelId);
+      } else {
+        onSelect(provider, modelId);
+        if (selectedPersonalityId) {
+          onClearPersonality?.();
+        }
+      }
       setIsOpen(false);
       setSearchQuery("");
       bumpSearchResetKey();
     },
-    [onSelect],
+    [onSelect, onClearPersonality, onSelectModelOverPersonality, selectedPersonalityId],
   );
 
-  const handlePersonalitySelect = useCallback(
-    (id: string) => {
-      onSelectPersonality?.(id);
-      setIsOpen(false);
-      setSearchQuery("");
-      bumpSearchResetKey();
-    },
+  // Undefined when the caller passed no handler (read-only identity roster) so
+  // PersonalitiesSection's !onSelectPersonality guard actually fires and the
+  // roster rows stay hidden — the entries then only label the trigger.
+  const handlePersonalitySelect = useMemo(
+    () =>
+      onSelectPersonality
+        ? (id: string) => {
+            onSelectPersonality(id);
+            setIsOpen(false);
+            setSearchQuery("");
+            bumpSearchResetKey();
+          }
+        : undefined,
     [onSelectPersonality],
   );
 
-  const handlePersonalityClear = useCallback(() => {
-    onClearPersonality?.();
-    setIsOpen(false);
-    setSearchQuery("");
-    bumpSearchResetKey();
-  }, [onClearPersonality]);
+  const handlePersonalityClear = useMemo(
+    () =>
+      onClearPersonality
+        ? () => {
+            onClearPersonality();
+            setIsOpen(false);
+            setSearchQuery("");
+            bumpSearchResetKey();
+          }
+        : undefined,
+    [onClearPersonality],
+  );
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
 
@@ -918,6 +1017,14 @@ export function CombinedModelSelector({
     if (view.kind !== "provider") {
       return undefined;
     }
+    const familyPersonalityCount = onSelectPersonality
+      ? (personalities?.filter((entry) => entry.provider === view.providerId).length ?? 0)
+      : 0;
+    const personalityHeight =
+      familyPersonalityCount > 0
+        ? DESKTOP_PERSONALITY_HEADING_HEIGHT +
+          familyPersonalityCount * DESKTOP_PERSONALITY_ROW_HEIGHT
+        : 0;
     const provider = providers.find((entry) => entry.id === view.providerId);
     if (!provider || provider.modelSelection.kind !== "models") {
       return DESKTOP_PROVIDER_VIEW_MIN_HEIGHT;
@@ -926,11 +1033,13 @@ export function CombinedModelSelector({
     return Math.min(
       Math.max(
         DESKTOP_PROVIDER_VIEW_MIN_HEIGHT,
-        DESKTOP_PROVIDER_VIEW_BASE_HEIGHT + modelCount * DESKTOP_MODEL_ROW_HEIGHT,
+        DESKTOP_PROVIDER_VIEW_BASE_HEIGHT +
+          modelCount * DESKTOP_MODEL_ROW_HEIGHT +
+          personalityHeight,
       ),
       DESKTOP_PROVIDER_VIEW_MAX_HEIGHT,
     );
-  }, [providers, view]);
+  }, [providers, view, personalities, onSelectPersonality]);
 
   const triggerLabel = useMemo(() => {
     if (selectedPersonality) {
@@ -1088,11 +1197,15 @@ export function CombinedModelSelector({
           accessibilityLabel={t("modelSelector.selectedModel", { model: selectedModelLabel })}
           testID="combined-model-selector"
         >
-          <TriggerLeadingIcon
-            personality={selectedPersonality}
-            provider={hasSelectedProvider ? selectedProvider : null}
-            size={iconSize.md}
-          />
+          {triggerLoading ? (
+            <ThemedLoadingSpinner size={iconSize.md} uniProps={foregroundMutedMapping} />
+          ) : (
+            <TriggerLeadingIcon
+              personality={selectedPersonality}
+              provider={hasSelectedProvider ? selectedProvider : null}
+              size={iconSize.md}
+            />
+          )}
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
           </Text>

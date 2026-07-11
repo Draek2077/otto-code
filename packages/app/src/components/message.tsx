@@ -59,11 +59,12 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import { MarkdownRenderer, type MarkdownStyles } from "@/components/markdown/renderer";
 import { applyTaskListMarkers } from "@/components/markdown/task-lists";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
-import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
+import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
@@ -71,7 +72,11 @@ import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
-import { formatDuration, formatMessageTimestamp } from "@/utils/time";
+import { formatDuration } from "@/utils/time";
+import { formatTokenCount } from "@/components/context-window-meter.utils";
+import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
+import { useAppSettings } from "@/hooks/use-settings";
+import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import {
@@ -340,16 +345,20 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[4],
   },
   containerLastInGroup: {
-    marginBottom: theme.spacing[4],
+    marginBottom: theme.spacing[2],
   },
   bubble: {
-    backgroundColor: theme.colors.surface3,
+    // 75%-alpha surface3, derived in the theme builders (web CSSVars mode
+    // forbids string math on theme color reads here — it emits var(--...)).
+    backgroundColor: theme.colors.surfaceUserBubble,
     borderRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius.sm,
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[4],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
     minWidth: 0,
     flexShrink: 1,
+    // Clips the BubbleCornerSheen square to the rounded corners.
+    overflow: "hidden",
   },
   text: {
     color: theme.colors.foreground,
@@ -435,11 +444,12 @@ export const UserMessage = memo(function UserMessage({
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
   const hasAttachments = attachments.length > 0;
-  const showTrailingRow = hasText && (isCompact || isNative || isHovered);
-  const formattedTimestamp = useMemo(
-    () => formatMessageTimestamp(new Date(timestamp)),
-    [timestamp],
-  );
+  // Hover-to-reveal is an appearance preference; with it off, details are
+  // always visible. Hover doesn't exist on native/compact, so those always
+  // show the row either way.
+  const hideMessageDetails = useAppSettings().settings.hideChatMessageDetails;
+  const showTrailingRow = hasText && (!hideMessageDetails || isCompact || isNative || isHovered);
+  const formattedTimestamp = useChatTimestampLabel(timestamp);
   const rewindMutation = useRewindAgentMutation({ serverId, agentId, client, messageId });
 
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
@@ -495,6 +505,7 @@ export const UserMessage = memo(function UserMessage({
         onPointerLeave={handlePointerLeave}
       >
         <View style={userMessageStylesheet.bubble}>
+          <BubbleCornerSheen corner="right" />
           {hasImages ? (
             <View style={imagePreviewContainerStyle}>
               {images.map((image) => (
@@ -559,11 +570,29 @@ interface AssistantTurnFooterProps {
   getContent: () => string;
   completedAt?: Date;
   durationMs?: number;
+  usage?: AgentUsage;
   forkBoundaryMessageId?: string;
   onFork?: (input: {
     target: AssistantForkTarget;
     boundaryMessageId?: string;
   }) => Promise<void> | void;
+}
+
+/**
+ * Total tokens the turn consumed (fresh input + cache reads + output).
+ * Empty when the turn has no usage snapshot — only turns whose completion
+ * was observed live carry one; timeline backfill can't recover it.
+ */
+function formatTurnTokensLabel(usage: AgentUsage | undefined): string {
+  if (!usage) {
+    return "";
+  }
+  const total =
+    (usage.inputTokens ?? 0) + (usage.cachedInputTokens ?? 0) + (usage.outputTokens ?? 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    return "";
+  }
+  return `${formatTokenCount(total)} tokens`;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -579,76 +608,33 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     marginTop: 0,
     marginLeft: -theme.spacing[1],
   },
-  labelWrapper: {
-    position: "relative",
-  },
-  labelSizer: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    opacity: 0,
-  },
-  labelOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
+  detailsLabel: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
 }));
 
-const TIMESTAMP_REVEAL_MS = 3000;
-
 /**
  * Footer rendered next to the copy button at the end of an assistant turn.
- * Always shows the turn duration; swaps to the end timestamp on hover (web)
- * or tap (native). The hidden sizer keeps the label width stable while the
- * visible text swaps.
+ * Shows every detail at once — end time, turn duration, and token usage,
+ * bullet-separated — instead of swapping content on hover. Whether the whole footer is hidden
+ * until hover is decided by its container (see CompletedTurnFooterRow).
  */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   getContent,
   completedAt,
   durationMs,
+  usage,
   forkBoundaryMessageId,
   onFork,
 }: AssistantTurnFooterProps) {
-  const [hovered, setHovered] = useState(false);
-  const [pressedReveal, setPressedReveal] = useState(false);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (revealTimerRef.current) {
-        clearTimeout(revealTimerRef.current);
-        revealTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const durationLabel = useMemo(
-    () => (durationMs !== undefined ? `Worked for ${formatDuration(durationMs)}` : ""),
-    [durationMs],
-  );
-  const timestampLabel = useMemo(
-    () => (completedAt ? formatMessageTimestamp(completedAt) : ""),
-    [completedAt],
-  );
-
-  const canSwap = Boolean(timestampLabel);
-  const showTimestamp = canSwap && (isWeb ? hovered : pressedReveal);
-
-  const handleHoverIn = useCallback(() => setHovered(true), []);
-  const handleHoverOut = useCallback(() => setHovered(false), []);
-  const handlePress = useCallback(() => {
-    if (isWeb || !canSwap) return;
-    if (revealTimerRef.current) {
-      clearTimeout(revealTimerRef.current);
-    }
-    setPressedReveal((prev) => !prev);
-    revealTimerRef.current = setTimeout(() => {
-      setPressedReveal(false);
-      revealTimerRef.current = null;
-    }, TIMESTAMP_REVEAL_MS);
-  }, [canSwap]);
+  const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
+  const detailsLabel = useMemo(() => {
+    const durationLabel = durationMs !== undefined ? formatDuration(durationMs) : "";
+    return [timestampLabel, durationLabel, formatTurnTokensLabel(usage)]
+      .filter(Boolean)
+      .join(" • ");
+  }, [durationMs, timestampLabel, usage]);
   const handleFork = useCallback(
     (target: AssistantForkTarget) => {
       return onFork?.({ target, boundaryMessageId: forkBoundaryMessageId });
@@ -664,25 +650,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
-      {durationLabel ? (
-        <Pressable
-          onPress={handlePress}
-          onHoverIn={handleHoverIn}
-          onHoverOut={handleHoverOut}
-          accessibilityRole={canSwap ? "button" : undefined}
-          accessibilityLabel={canSwap ? `${durationLabel}, ended ${timestampLabel}` : durationLabel}
-        >
-          <View style={assistantTurnFooterStylesheet.labelWrapper}>
-            {/* Sizer reserves space for whichever label is longer so the
-                container width is stable across hover transitions. */}
-            <Text style={assistantTurnFooterStylesheet.labelSizer} aria-hidden>
-              {durationLabel.length >= timestampLabel.length ? durationLabel : timestampLabel}
-            </Text>
-            <Text style={assistantTurnFooterStylesheet.labelOverlay}>
-              {showTimestamp ? timestampLabel : durationLabel}
-            </Text>
-          </View>
-        </Pressable>
+      {detailsLabel ? (
+        <Text style={assistantTurnFooterStylesheet.detailsLabel}>{detailsLabel}</Text>
       ) : null}
     </View>
   );
@@ -728,6 +697,14 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
+  /**
+   * How many characters of the message the live-turn typewriter reveal has
+   * reached (see agent-stream/turn-reveal.ts). Undefined (or >= length)
+   * renders the full text; 0 renders nothing — the item appears once the
+   * reveal reaches it. Display-only: store text, copy content, and turn
+   * timing stay full-fidelity.
+   */
+  revealBudget?: number;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -740,6 +717,45 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
+  },
+  // Mirror of the user bubble (surface3, top-right corner): assistant prose
+  // gets a flat surface2 bubble one elevation step below, corner pointing
+  // left, so the two sides of the conversation read distinctly in every theme.
+  // alignSelf flex-start + maxWidth lets a short reply hug its content; long
+  // prose hits the chat column width and grows in height from there.
+  bubble: {
+    // 75%-alpha surface2 — same derived-token treatment as the user bubble so
+    // both sides sit softly on the chat background (and the black chat scope).
+    backgroundColor: theme.colors.surfaceAssistantBubble,
+    borderRadius: theme.borderRadius["2xl"],
+    borderTopLeftRadius: theme.borderRadius.sm,
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[2],
+    // No paddingBottom: the last markdown block's own marginBottom already
+    // leaves the bottom inset (see markdown-styles vertical rhythm).
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    minWidth: 0,
+    // Clips the BubbleCornerSheen square to the rounded corners.
+    overflow: "hidden",
+  },
+  // A streamed reply is split into several assistant_message items sharing a
+  // blockGroupId. Continuation segments square off their joining corners and
+  // stretch to the full column so the group paints as one continuous bubble
+  // (segments sizing independently would give the "one" bubble ragged edges).
+  bubbleCompactTop: {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: 0,
+    alignSelf: "stretch",
+  },
+  bubbleCompactBottom: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    // The inter-segment stream gap (see getGapBetweenStreamItems) is painted
+    // here, inside the bubble, instead of as transparent margin between items.
+    paddingBottom: theme.spacing[3],
+    alignSelf: "stretch",
   },
   imageFrame: {
     width: "100%",
@@ -1571,7 +1587,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   serverId,
   client,
   spacing = "default",
+  revealBudget,
 }: AssistantMessageProps) {
+  const displayMessage =
+    revealBudget === undefined || revealBudget >= message.length
+      ? message
+      : sliceAtSafeBoundary(message, revealBudget);
   const markdownParser = useMemo(() => {
     const parser = applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }));
     const defaultValidateLink = parser.validateLink.bind(parser);
@@ -1881,7 +1902,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     };
   }, [client, fileLinkActions, markdownParser, serverId, workspaceRoot]);
 
-  const blocks = useMemo(() => splitMarkdownBlocks(message), [message]);
+  const blocks = useMemo(() => splitMarkdownBlocks(displayMessage), [displayMessage]);
   // Index-only keys: block boundaries are append-only while a message streams
   // (splitMarkdownBlocks is a forward scan, so appended text never reshapes
   // earlier blocks). A content-derived key churns on every flush while the
@@ -1901,19 +1922,44 @@ export const AssistantMessage = memo(function AssistantMessage({
     ],
     [spacing],
   );
+  const bubbleStyle = useMemo(
+    () => [
+      assistantMessageStylesheet.bubble,
+      (spacing === "compactTop" || spacing === "compactBoth") &&
+        assistantMessageStylesheet.bubbleCompactTop,
+      (spacing === "compactBottom" || spacing === "compactBoth") &&
+        assistantMessageStylesheet.bubbleCompactBottom,
+    ],
+    [spacing],
+  );
+
+  // Not yet reached by the live-turn reveal: take no space (not even the
+  // container padding) until the typewriter arrives at this item.
+  if (message.length > 0 && displayMessage.length === 0) {
+    return null;
+  }
 
   return (
     <View testID="assistant-message" style={assistantContainerStyle}>
-      {keyedBlocks.map(({ key, block }) => (
-        <AssistantMessageBlockContainer key={key} block={block}>
-          <MemoizedMarkdownBlock
-            text={block}
-            rules={markdownRules}
-            parser={markdownParser}
-            onLinkPress={handleMarkdownLinkPress}
-          />
-        </AssistantMessageBlockContainer>
-      ))}
+      {keyedBlocks.length > 0 ? (
+        <View style={bubbleStyle}>
+          {/* Only the segment that owns the group's top edge carries the sheen;
+              continuation segments joining mid-bubble would restart it. */}
+          {spacing === "compactTop" || spacing === "compactBoth" ? null : (
+            <BubbleCornerSheen corner="left" />
+          )}
+          {keyedBlocks.map(({ key, block }) => (
+            <AssistantMessageBlockContainer key={key} block={block}>
+              <MemoizedMarkdownBlock
+                text={block}
+                rules={markdownRules}
+                parser={markdownParser}
+                onLinkPress={handleMarkdownLinkPress}
+              />
+            </AssistantMessageBlockContainer>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 });

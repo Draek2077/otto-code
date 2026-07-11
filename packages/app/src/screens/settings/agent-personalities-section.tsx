@@ -48,7 +48,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 
 /**
  * The single detection point for the agent personalities capability.
- * COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
+ * COMPAT(agentPersonalities): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
  */
 export function useAgentPersonalitiesFeature(serverId: string): boolean {
   return useSessionStore(
@@ -75,6 +75,15 @@ function sanitizePersonalityName(value: string): string {
   // Keep only the handle charset (drops whitespace and every special char), then
   // cap the length.
   return value.replace(/[^A-Za-z0-9_-]/g, "").slice(0, MAX_PERSONALITY_NAME_LENGTH);
+}
+
+// Spinner glow colors flow into daemon config, SVG gradients, and the
+// BlobLoader, so hand-typed text must be a real hex color before it can be
+// saved. The color wheel always emits valid values; this only guards free text.
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+function isHexColor(value: string): boolean {
+  return HEX_COLOR_PATTERN.test(value.trim());
 }
 
 const ROLE_LABELS: Record<PersonalityRole, string> = {
@@ -409,11 +418,15 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     async (draft: PersonalityDraft) => {
       if (!editing) return;
       const id = editing.id ?? generatePersonalityId();
-      const next = editing.id
-        ? personalities.map((entry) =>
-            entry.id === editing.id ? draftToPersonality(draft, id) : entry,
-          )
-        : [...personalities, draftToPersonality(draft, id)];
+      const personality = draftToPersonality(draft, id);
+      // An edited personality can vanish from the roster mid-edit (deleted from
+      // another client); mapping by id would silently drop the save, so append
+      // (recreate) it instead.
+      const stillExists =
+        editing.id !== null && personalities.some((entry) => entry.id === editing.id);
+      const next = stillExists
+        ? personalities.map((entry) => (entry.id === editing.id ? personality : entry))
+        : [...personalities, personality];
       try {
         await savePersonalities(next);
         setEditing(null);
@@ -422,6 +435,16 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
       }
     },
     [editing, personalities, savePersonalities],
+  );
+
+  // Names are load-bearing keys (spawn-by-name, running-agent selection), so
+  // the editor blocks a case-insensitive collision with any other personality.
+  const takenNames = useMemo(
+    () =>
+      personalities
+        .filter((entry) => entry.id !== editing?.id)
+        .map((entry) => entry.name.trim().toLowerCase()),
+    [personalities, editing],
   );
 
   const handleRemove = useCallback(
@@ -544,6 +567,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
           serverId={serverId}
           initialDraft={editing.draft}
           entries={providerEntries}
+          takenNames={takenNames}
           speechOptions={speechOptions}
           onClose={handleClose}
           onSave={handleSave}
@@ -659,9 +683,12 @@ interface PersonalityEditModalProps {
   serverId: string;
   initialDraft: PersonalityDraft;
   entries: readonly ProviderSnapshotEntry[];
+  // Lowercased trimmed names of every other personality in the roster; the
+  // draft name must not collide with any of them.
+  takenNames: readonly string[];
   speechOptions: SpeechSettingsOptions | null;
   onClose: () => void;
-  onSave: (draft: PersonalityDraft) => void;
+  onSave: (draft: PersonalityDraft) => Promise<void>;
 }
 
 function PersonalityEditModal({
@@ -669,6 +696,7 @@ function PersonalityEditModal({
   serverId,
   initialDraft,
   entries,
+  takenNames,
   speechOptions,
   onClose,
   onSave,
@@ -787,22 +815,55 @@ function PersonalityEditModal({
     setDraft((current) => ({ ...current, roles: all ? [...PERSONALITY_ROLES] : [] }));
   }, []);
 
-  const canSave = draft.name.trim().length > 0 && Boolean(draft.provider) && Boolean(draft.model);
+  const nameCollides = takenNames.includes(draft.name.trim().toLowerCase());
+  const glowsValid = isHexColor(draft.glowA) && isHexColor(draft.glowB);
+  const canSave =
+    draft.name.trim().length > 0 &&
+    !nameCollides &&
+    Boolean(draft.provider) &&
+    Boolean(draft.model) &&
+    glowsValid;
 
   const handleSave = useCallback(() => {
     if (!canSave || isSaving) return;
     setIsSaving(true);
-    onSave(draft);
-    // The parent unmounts this modal on success; reset defensively if a save
-    // error keeps it mounted.
-    setIsSaving(false);
+    // The parent unmounts this modal on success and surfaces save errors itself
+    // (Alert in its handleSave); the lock holds until the round-trip settles so
+    // a double-click cannot mint a duplicate personality.
+    void (async () => {
+      try {
+        await onSave(draft);
+      } finally {
+        setIsSaving(false);
+      }
+    })();
   }, [canSave, draft, isSaving, onSave]);
+
+  // Cancel/backdrop-close confirms before discarding a dirty draft. The draft
+  // is plain JSON-safe data seeded from initialDraft, so a stringify comparison
+  // is an exact dirty check.
+  const handleClose = useCallback(() => {
+    if (JSON.stringify(draft) === JSON.stringify(initialDraft)) {
+      onClose();
+      return;
+    }
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: "Discard changes?",
+        message: "This personality has unsaved changes.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      });
+      if (confirmed) onClose();
+    })();
+  }, [draft, initialDraft, onClose]);
 
   return (
     <AdaptiveModalSheet
       header={header}
       visible
-      onClose={onClose}
+      onClose={handleClose}
       webScrollbar
       testID="agent-personality-edit-modal"
     >
@@ -822,6 +883,11 @@ function PersonalityEditModal({
         <Text style={styles.fieldHint}>
           One word — letters, numbers, - or _ — up to {MAX_PERSONALITY_NAME_LENGTH} characters.
         </Text>
+        {nameCollides ? (
+          <Text style={styles.fieldError} testID="agent-personality-name-collision">
+            Another personality already uses this name.
+          </Text>
+        ) : null}
 
         <PickerRow
           label="Provider"
@@ -894,7 +960,7 @@ function PersonalityEditModal({
         ) : null}
 
         <View style={styles.editorActions}>
-          <Button variant="secondary" size="sm" style={FLEX_1} onPress={onClose}>
+          <Button variant="secondary" size="sm" style={FLEX_1} onPress={handleClose}>
             Cancel
           </Button>
           <Button
@@ -1111,7 +1177,17 @@ interface ColorInputProps {
 }
 
 function ColorInput({ label, value, onChange, testID }: ColorInputProps): ReactElement {
-  const swatchStyle = useMemo(() => [styles.swatch, { backgroundColor: value }], [value]);
+  const valid = isHexColor(value);
+  // An invalid color never reaches the swatch style; it shows as the empty
+  // swatch with the input in error styling until the text parses again.
+  const swatchStyle = useMemo(
+    () => [styles.swatch, valid && { backgroundColor: value }],
+    [valid, value],
+  );
+  const inputStyle = useMemo(
+    () => [styles.colorTextInput, !valid && styles.colorTextInputInvalid],
+    [valid],
+  );
   return (
     <View style={styles.colorInputColumn}>
       <Text style={styles.colorInputLabel}>{label}</Text>
@@ -1131,7 +1207,7 @@ function ColorInput({ label, value, onChange, testID }: ColorInputProps): ReactE
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
-          style={styles.colorTextInput}
+          style={inputStyle}
           accessibilityLabel={label}
           testID={testID}
         />
@@ -1210,6 +1286,11 @@ const styles = StyleSheet.create((theme) => ({
   fieldHint: {
     marginTop: -theme.spacing[1],
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  fieldError: {
+    marginTop: -theme.spacing[1],
+    color: theme.colors.destructive,
     fontSize: theme.fontSize.xs,
   },
   textInput: {
@@ -1363,6 +1444,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     textAlign: "center",
+  },
+  colorTextInputInvalid: {
+    borderColor: theme.colors.destructive,
   },
   editorActions: {
     flexDirection: "row",

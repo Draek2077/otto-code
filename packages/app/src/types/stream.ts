@@ -1,4 +1,4 @@
-import type { AgentProvider, ToolCallDetail } from "@otto-code/protocol/agent-types";
+import type { AgentProvider, AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
@@ -83,6 +83,13 @@ export interface AssistantMessageItem {
   timestamp: Date;
   blockGroupId?: string;
   blockIndex?: number;
+  /**
+   * Per-turn token usage stamped onto the turn's last assistant message when a
+   * live turn_completed event carries usage. Canonical timeline backfill has no
+   * usage, so turns hydrated from history (and tails rebuilt by a canonical
+   * replace) simply lack this field — the footer omits the token segment then.
+   */
+  turnUsage?: AgentUsage;
 }
 
 export type ThoughtStatus = "loading" | "ready";
@@ -808,6 +815,29 @@ function reduceTimelineEvent(
 }
 
 /**
+ * Stamp the completed turn's usage onto its last assistant message so the
+ * turn footer can render token counts. Walks back from the end of the turn,
+ * skipping optimistic user messages queued for the next turn.
+ */
+function stampTurnUsageOnLastAssistant(state: StreamItem[], usage: AgentUsage): StreamItem[] {
+  for (let index = state.length - 1; index >= 0; index -= 1) {
+    const item = state[index];
+    if (!item) {
+      continue;
+    }
+    if (item.kind === "user_message" && !item.optimistic) {
+      return state;
+    }
+    if (item.kind === "assistant_message") {
+      const next = [...state];
+      next[index] = { ...item, turnUsage: usage };
+      return next;
+    }
+  }
+  return state;
+}
+
+/**
  * Reduce a single AgentManager stream event into the UI timeline
  */
 export function reduceStreamUpdate(
@@ -820,9 +850,12 @@ export function reduceStreamUpdate(
   switch (event.type) {
     case "timeline":
       return reduceTimelineEvent(state, event, timestamp, source);
+    case "turn_completed": {
+      const finalized = finalizeActiveThoughts(state);
+      return event.usage ? stampTurnUsageOnLastAssistant(finalized, event.usage) : finalized;
+    }
     case "thread_started":
     case "turn_started":
-    case "turn_completed":
     case "turn_failed":
     case "turn_canceled":
     case "permission_requested":

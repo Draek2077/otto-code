@@ -26,6 +26,7 @@ const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1;
 const HISTORY_START_THRESHOLD_PX = 96;
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
+import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 
 const historyStartSlotStyle: CSSProperties = {
   display: "flex",
@@ -131,7 +132,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const pendingAutoScrollTimeoutRef = useRef<number | null>(null);
   const pendingVirtualRowMeasureFramesRef = useRef(new Map<Element, number>());
   const historyStartReadyRef = useRef(false);
-  const showDesktopWebScrollbar = !isMobileBreakpoint;
+  // Overlay scrollbar follows the pointer capability, not the breakpoint: a
+  // narrow desktop window still has a mouse, a full-width phone browser doesn't.
+  const showDesktopWebScrollbar = useHasFinePointer();
   const scrollbarOverlay = useWebElementScrollbar(scrollContainerRef, {
     enabled: showDesktopWebScrollbar,
     contentRef,

@@ -323,12 +323,15 @@ interface AgentModeControlProps {
   serverId: string;
   agentId: string;
   isCompactLayout?: boolean;
+  /** Extra lock from the host (e.g. a personality switch in flight). */
+  disabled?: boolean;
 }
 
 export const AgentModeControl = memo(function AgentModeControl({
   serverId,
   agentId,
   isCompactLayout,
+  disabled = false,
 }: AgentModeControlProps) {
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
@@ -393,7 +396,7 @@ export const AgentModeControl = memo(function AgentModeControl({
       modeOptions={availableModes}
       selectedModeId={slice.currentModeId}
       onSelectMode={handleSelectMode}
-      disabled={!client}
+      disabled={!client || disabled}
       iconOnly={isCompact}
     />
   );

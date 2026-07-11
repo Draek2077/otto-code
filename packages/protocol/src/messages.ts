@@ -911,6 +911,11 @@ export const AgentSnapshotPayloadSchema = z.object({
   // effort hidden) instead of reverting to the raw model. Absent ⇒ no bound
   // personality. Purely additive. See projects/agent-personalities/.
   personalityName: z.string().optional(),
+  // Stable id of the bound Agent Personality. The client keys roster selection
+  // on this (names can be renamed/duplicated); personalityName remains for
+  // display and as the selection fallback against daemons that predate this
+  // field. Purely additive. See projects/agent-personalities/.
+  personalityId: z.string().optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -1653,6 +1658,25 @@ export const AgentSubagentStopRequestMessageSchema = z.object({
 
 export const AgentSubagentStopResponseMessageSchema = z.object({
   type: z.literal("agent.subagent.stop.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+// Switch a running agent to an Agent Personality (or clear with null). The
+// daemon re-resolves the id against the roster + the agent's cwd provider
+// snapshot and applies the full personality live — system prompt, identity
+// (name/spinner), and brain (model/mode/effort) — restarting the provider query
+// so the new prompt takes effect on the next turn. Providers that cannot apply
+// a prompt mid-session reject. COMPAT(setAgentPersonality): added in v0.5.0;
+// gate lives in features.setAgentPersonality.
+export const AgentPersonalitySetRequestMessageSchema = z.object({
+  type: z.literal("agent.personality.set.request"),
+  agentId: z.string(),
+  personalityId: z.string().nullable(),
+  requestId: z.string(),
+});
+
+export const AgentPersonalitySetResponseMessageSchema = z.object({
+  type: z.literal("agent.personality.set.response"),
   payload: AgentActionResponsePayloadSchema,
 });
 
@@ -2551,6 +2575,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureRequestMessageSchema,
   AgentDetachRequestMessageSchema,
   AgentSubagentStopRequestMessageSchema,
+  AgentPersonalitySetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -2866,10 +2891,12 @@ export const ServerInfoStatusPayloadSchema = z
         speechSettings: z.boolean().optional(),
         // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         gitHostingProviders: z.boolean().optional(),
-        // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
+        // COMPAT(agentPersonalities): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         agentPersonalities: z.boolean().optional(),
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: z.boolean().optional(),
+        // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
+        setAgentPersonality: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5151,6 +5178,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
   AgentSubagentStopResponseMessageSchema,
+  AgentPersonalitySetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -5333,6 +5361,9 @@ export type SetAgentModelResponseMessage = z.infer<typeof SetAgentModelResponseM
 export type SetAgentThinkingResponseMessage = z.infer<typeof SetAgentThinkingResponseMessageSchema>;
 export type SetAgentFeatureResponseMessage = z.infer<typeof SetAgentFeatureResponseMessageSchema>;
 export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessageSchema>;
+export type AgentPersonalitySetResponseMessage = z.infer<
+  typeof AgentPersonalitySetResponseMessageSchema
+>;
 export type AgentSubagentStopResponseMessage = z.infer<
   typeof AgentSubagentStopResponseMessageSchema
 >;
@@ -5487,6 +5518,9 @@ export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequ
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
 export type AgentSubagentStopRequestMessage = z.infer<typeof AgentSubagentStopRequestMessageSchema>;
+export type AgentPersonalitySetRequestMessage = z.infer<
+  typeof AgentPersonalitySetRequestMessageSchema
+>;
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;

@@ -1,6 +1,6 @@
 ---
 title: Claude Code
-description: How Otto runs Claude Code and how Anthropic's usage policy applies.
+description: How Otto runs Claude Code and how usage counts against your Claude plan.
 nav: Claude Code
 order: 23
 category: Providers
@@ -8,54 +8,20 @@ category: Providers
 
 # Claude Code
 
-Otto runs Claude Code through the official `claude` CLI using the same Claude Agent SDK that Claude Desktop uses internally.
+Otto runs Claude Code through the official `claude` CLI, using the Claude Agent SDK — the same mechanism Claude Desktop uses internally. Install and authenticate the `claude` CLI on the machine running the Otto daemon, and Claude Code shows up as a provider like any other.
 
-## Anthropic's June 15, 2026 policy change
+## Usage and limits
 
-Starting June 15, 2026, Anthropic splits Claude Code usage into two buckets. This is documented in their official support article: ["Use the Claude Agent SDK with your Claude plan"](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan).
+Claude Code sessions started from Otto authenticate through your existing `claude` CLI login and draw from your Claude subscription's usage limits — the same pool as running `claude` in a terminal.
 
-**Interactive usage** — draws from your main subscription limits:
+In June 2026, Anthropic announced a change that would have moved Claude Agent SDK usage — including third-party apps like Otto — onto a separate monthly credit pool. Anthropic has since paused that change before it took effect. Per their support article, nothing has changed: Agent SDK, `claude -p`, and third-party app usage all continue to draw from your subscription's usage limits. See ["Use the Claude Agent SDK with your Claude plan"](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan) for the current state. If the policy changes again, this page will be updated.
 
-- Claude Code in your terminal
-- Claude Code in VS Code, JetBrains, and other IDEs
-- Claude Desktop (Anthropic's own app)
-- Claude chat on web, mobile, and desktop
+## Terminal sessions
 
-**Programmatic usage** — draws from a separate monthly credit pool:
-
-- `claude -p` (non-interactive/scripting mode)
-- Claude Agent SDK usage in your own projects
-- Claude Code GitHub Actions integration
-- Third-party apps that authenticate through the Agent SDK
-
-Credit amounts per month: Pro ($20), Max 5x ($100), Max 20x ($200), Team Standard ($20/seat), Team Premium ($100/seat). Credits don't roll over. After they run out, additional usage flows to pay-as-you-go API rates (if you have usage credits enabled).
-
-## Where Otto fits
-
-Otto uses the **Claude Agent SDK** to run Claude Code — the exact same mechanism Claude Desktop uses under the hood. Claude Desktop is whitelisted by Anthropic and counts as interactive usage. Otto is not.
-
-Even though the usage is practically interactive — you type prompts, review output, and approve tool calls in real time — Anthropic classifies Otto as "programmatic usage" because it is a third-party app that authenticates through the Agent SDK.
-
-## What this means for you
-
-- Your **interactive** Claude Code usage (terminal, IDE, Claude Desktop) continues to draw from your main subscription limits, unchanged.
-- Your **Otto chat** usage draws from the separate Agent SDK monthly credits.
-- Using Claude Code inside a Otto terminal draws from your main subscription limits, same as any terminal.
-
-## You can still use the terminal
-
-Otto has first-class terminal support. You can run Claude Code in your terminal exactly as you always have, and Otto will still give you:
-
-- **Worktree management** — create and switch git worktrees from the app
-- **Remote access** — connect to your daemon from mobile or web while your terminal session runs locally
-- **Git diffs** — review changes in a visual diff viewer
-- **GitHub integration** — commit, push, open PRs, watch checks, and merge from the app
-- **Agent supervision** — see all running agents, send follow-up prompts, and review output history
-- **Relay** — access your terminal session from anywhere without exposing your machine
+Otto also has first-class terminal support, so you can run Claude Code interactively in an Otto terminal instead of (or alongside) chat sessions. Terminal usage works exactly like any other terminal.
 
 ## See also
 
 - [Anthropic: Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
 - [Custom providers](/docs/custom-providers), for custom binaries, third-party endpoints, or multiple Claude profiles.
 - [Supported providers](/docs/supported-providers), for other agents you can run alongside Claude Code.
-- [Otto vs Claude Desktop](/alternatives/claude-desktop), for a feature comparison.

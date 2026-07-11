@@ -65,6 +65,16 @@ interface RolePalette {
   diffRemoved: string; // removed diff row background (semi-transparent red)
 }
 
+// Re-derives an rgba() string at a different alpha. Boosts each theme's diff
+// row tints into their intraline emphasis pair without every theme authoring
+// a second color for the same hue.
+function withAlpha(rgbaColor: string, alpha: number): string {
+  const match = rgbaColor.match(/^rgba\((\d+),\s*(\d+),\s*(\d+),/);
+  if (!match) return rgbaColor;
+  const [, r, g, b] = match;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function expandRolePalette(r: RolePalette): SyntaxColors {
   return {
     keyword: r.keyword,
@@ -89,6 +99,8 @@ function expandRolePalette(r: RolePalette): SyntaxColors {
     link: r.string,
     diffAdded: r.diffAdded,
     diffRemoved: r.diffRemoved,
+    diffAddedEmphasis: withAlpha(r.diffAdded, 0.4),
+    diffRemovedEmphasis: withAlpha(r.diffRemoved, 0.35),
   };
 }
 

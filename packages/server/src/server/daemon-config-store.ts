@@ -610,9 +610,15 @@ function withAgentPersonalities(params: {
   if (personalities.length === 0 && !hadPersonalities) {
     return nextAgents;
   }
+  // Spread the existing section so sibling keys written by a newer daemon
+  // round-trip instead of being dropped on every config write.
+  const baseAgents = nextAgents ?? persistedAgents;
+  const existingSection = isRecord(baseAgents?.["agentPersonalities"])
+    ? (baseAgents["agentPersonalities"] as Record<string, unknown>)
+    : {};
   return {
-    ...(nextAgents ?? persistedAgents),
-    agentPersonalities: { personalities },
+    ...baseAgents,
+    agentPersonalities: { ...existingSection, personalities },
   } as PersistedConfig["agents"];
 }
 

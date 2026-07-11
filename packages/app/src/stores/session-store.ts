@@ -137,6 +137,12 @@ export interface Agent {
    * the name, effort chip hidden). Absent/null ⇒ plain provider/model controls.
    */
   personalityName?: string | null;
+  /**
+   * Stable id of the bound Agent Personality. Roster selection keys on this
+   * (names can be renamed); personalityName is display + the fallback against
+   * daemons that predate the field.
+   */
+  personalityId?: string | null;
 }
 
 export interface WorkspaceDescriptor {

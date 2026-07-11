@@ -1288,10 +1288,12 @@ export class VoiceAssistantWebSocketServer {
         speechSettings: this.speech !== null,
         // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         gitHostingProviders: this.gitHostingResolver !== null,
-        // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
+        // COMPAT(agentPersonalities): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         agentPersonalities: true,
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: this.speech !== null,
+        // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
+        setAgentPersonality: true,
       },
     };
   }
