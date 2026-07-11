@@ -192,6 +192,7 @@ import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
+import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import {
   summarizeFetchWorkspacesEntries,
@@ -428,6 +429,7 @@ export interface SessionOptions {
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
+  gitHostingResolver?: GitHostingResolver;
   createAgentMcpTransport?: AgentMcpTransportFactory;
   // Injected so tests can substitute the git branch rename without module mocks;
   // defaults to the real checkout-git implementation.
@@ -553,6 +555,7 @@ export class Session {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
+  private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
@@ -624,6 +627,7 @@ export class Session {
       loopService,
       checkoutDiffManager,
       github,
+      gitHostingResolver,
       renameCurrentBranch,
       workspaceGitService,
       workspaceAutoName,
@@ -685,6 +689,7 @@ export class Session {
     this.workspaceRegistry = workspaceRegistry;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
+    this.gitHostingResolver = gitHostingResolver ?? null;
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
     this.workspaceGitService = workspaceGitService;
     this.gitMutation = createGitMutationService({
@@ -709,6 +714,7 @@ export class Session {
       gitMutation: this.gitMutation,
       workspaceGitService: this.workspaceGitService,
       github: this.github,
+      ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
       checkoutDiffManager,
       gitMetadataGenerator: createGitMetadataGenerator({
         workspaceGitService: this.workspaceGitService,
@@ -1672,6 +1678,10 @@ export class Session {
         return this.checkoutSession.handlePullRequestTimelineRequest(msg);
       case "github_search_request":
         return this.checkoutSession.handleGitHubSearchRequest(msg);
+      case "hosting.search.request":
+        return this.checkoutSession.handleHostingSearchRequest(msg);
+      case "hosting.auth_status.request":
+        return this.handleHostingAuthStatusRequest(msg);
       case "stash_save_request":
         return this.checkoutSession.handleStashSaveRequest(msg);
       case "stash_pop_request":
@@ -1680,6 +1690,47 @@ export class Session {
         return this.checkoutSession.handleStashListRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  // Connection check for the host Git providers settings section: resolves a
+  // provider's host-level credentials and performs a single forced auth probe.
+  // User-initiated only — never called from polling or reconciliation paths.
+  private async handleHostingAuthStatusRequest(
+    msg: Extract<SessionInboundMessage, { type: "hosting.auth_status.request" }>,
+  ): Promise<void> {
+    const { provider, requestId } = msg;
+    const emitResult = (payload: { authenticated: boolean; error: string | null }) => {
+      this.emit({
+        type: "hosting.auth_status.response",
+        payload: { provider, requestId, ...payload },
+      });
+    };
+
+    if (!this.gitHostingResolver) {
+      emitResult({ authenticated: false, error: "Hosting is unavailable" });
+      return;
+    }
+
+    try {
+      const resolved = this.gitHostingResolver.resolveForProvider(provider);
+      if (!resolved.service) {
+        emitResult({ authenticated: false, error: null });
+        return;
+      }
+      // gh reads global config; Bitbucket ignores cwd. ottoHome is a stable
+      // directory for a provider-level (non-workspace) auth check.
+      const authenticated = await resolved.service.isAuthenticated({
+        cwd: this.ottoHome,
+        force: true,
+        reason: "hosting-auth-status",
+      });
+      emitResult({ authenticated, error: null });
+    } catch (error) {
+      emitResult({
+        authenticated: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

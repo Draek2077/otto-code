@@ -54,6 +54,7 @@ import {
   findLatestPermissionRequest,
 } from "@otto-code/protocol/agent-attention-notification";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
+import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import {
   extractWsBearerProtocol,
   extractWsBearerToken,
@@ -425,6 +426,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly scheduleService: ScheduleService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
+  private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
   private readonly downloadTokenStore: DownloadTokenStore;
@@ -521,6 +523,7 @@ export class VoiceAssistantWebSocketServer {
     serviceProxyPublicBaseUrl?: string | null,
     browserToolsBroker?: BrowserToolsBroker | null,
     previewDevServers?: DevServerManager | null,
+    gitHostingResolver?: GitHostingResolver | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -546,6 +549,7 @@ export class VoiceAssistantWebSocketServer {
     this.scheduleService = requiredServices.scheduleService;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
+    this.gitHostingResolver = gitHostingResolver ?? null;
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.workspaceAutoName = workspaceAutoName;
     this.downloadTokenStore = downloadTokenStore;
@@ -1027,6 +1031,7 @@ export class VoiceAssistantWebSocketServer {
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
+      ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
       workspaceGitService: this.workspaceGitService,
       workspaceAutoName: this.workspaceAutoName,
       daemonConfigStore: this.daemonConfigStore,
@@ -1263,6 +1268,8 @@ export class VoiceAssistantWebSocketServer {
         artifactsToolGroup: true,
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         speechSettings: this.speech !== null,
+        // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        gitHostingProviders: this.gitHostingResolver !== null,
       },
     };
   }

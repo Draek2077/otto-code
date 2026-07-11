@@ -325,6 +325,26 @@ export const PersistedConfigSchema = z
       .strict()
       .optional(),
 
+    // Host-level git hosting credentials, one set per provider. This is the
+    // ONLY place hosting tokens persist — never in a repo's otto.json.
+    gitHosting: z
+      .object({
+        providers: z
+          .object({
+            bitbucketCloud: z
+              .object({
+                email: z.string().optional(),
+                apiToken: z.string().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+
     log: LogConfigSchema.optional(),
   })
   .strict();

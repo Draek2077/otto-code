@@ -1,5 +1,6 @@
 import type {
   AgentAttachment,
+  GitHostingProviderId,
   GitHubSearchItem,
   UploadedFileAttachment,
 } from "@otto-code/protocol/messages";
@@ -86,8 +87,10 @@ export interface ChatHistoryContextAttachment {
 export type UserComposerAttachment =
   | { kind: "image"; metadata: AttachmentMetadata }
   | { kind: "file"; attachment: UploadedFileAttachment }
-  | { kind: "github_issue"; item: GitHubSearchItem }
-  | { kind: "github_pr"; item: GitHubSearchItem };
+  // `provider` records which hosting provider served the search item; absent
+  // means GitHub (legacy drafts and GitHub-project searches).
+  | { kind: "github_issue"; item: GitHubSearchItem; provider?: GitHostingProviderId }
+  | { kind: "github_pr"; item: GitHubSearchItem; provider?: GitHostingProviderId };
 
 /**
  * A workspace file, folder, or specific line the user attached (from the file

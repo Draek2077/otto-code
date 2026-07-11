@@ -1730,6 +1730,7 @@ export const zhCN: TranslationResources = {
       connections: "连接",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "Git 提供商",
       providers: "Providers",
       usage: "使用情况",
       terminals: "Terminals",
@@ -2092,6 +2093,30 @@ export const zhCN: TranslationResources = {
       },
       agents: {
         unavailable: "连接到这个 Host 以管理 Agent",
+      },
+      gitProviders: {
+        info: "连接托管你仓库的服务。每个项目使用其 git 远程所指向的提供商。",
+        updateHost: "更新 Host 以配置 Git 提供商。",
+        checkConnection: "检查连接",
+        checking: "正在检查连接…",
+        connected: "已连接",
+        connectionFailed: "连接失败",
+        github: {
+          name: "GitHub",
+          hint: "通过 GitHub CLI（gh）进行身份验证",
+          idle: "使用 Host 的 GitHub CLI 登录",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "使用 Atlassian 邮箱和 API 令牌进行身份验证",
+          email: "Atlassian 邮箱",
+          apiToken: "API 令牌",
+          apiTokenHint: "私密保存在 Host 上 — 绝不会存入仓库",
+          apiTokenPlaceholder: "粘贴 API 令牌",
+          saveError: "保存凭据失败",
+          readyToCheck: "凭据已保存",
+          missingCredentials: "请输入邮箱和 API 令牌",
+        },
       },
       speech: {
         sectionTitle: "语音与听写",

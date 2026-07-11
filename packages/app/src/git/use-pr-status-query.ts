@@ -44,9 +44,17 @@ export function useCheckoutPrStatusQuery({
     refetchOnWindowFocus: false,
   });
 
+  const hosting = query.data?.hosting ?? null;
   return {
     status: query.data?.status ?? null,
-    githubFeaturesEnabled: query.data?.githubFeaturesEnabled ?? true,
+    // Historically "are GitHub features on"; now "are hosting features on for
+    // this workspace's provider". New daemons describe the provider in the
+    // `hosting` block; old daemons only send the legacy GitHub flag. This is
+    // the single normalization point — downstream policy/panel code stays
+    // provider-agnostic.
+    githubFeaturesEnabled: hosting?.featuresEnabled ?? query.data?.githubFeaturesEnabled ?? true,
+    hostingProvider: hosting?.provider ?? "github",
+    hostingCapabilities: hosting?.capabilities ?? null,
     payloadError: query.data?.error ?? null,
     isLoading: query.isLoading,
     isFetching: query.isFetching,

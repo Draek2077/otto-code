@@ -1746,6 +1746,7 @@ export const ar: TranslationResources = {
       connections: "اتصالات",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "موفّرو Git",
       providers: "مقدمي الخدمات",
       usage: "الاستخدام",
       terminals: "Terminals",
@@ -2110,6 +2111,30 @@ export const ar: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      gitProviders: {
+        info: "اربط الخدمات التي تستضيف مستودعاتك. يستخدم كل مشروع الموفّر الذي يشير إليه مصدر git الخاص به.",
+        updateHost: "حدِّث المضيف لضبط موفّري Git.",
+        checkConnection: "التحقق من الاتصال",
+        checking: "جارٍ التحقق من الاتصال…",
+        connected: "متصل",
+        connectionFailed: "فشل الاتصال",
+        github: {
+          name: "GitHub",
+          hint: "تمت المصادقة عبر واجهة سطر أوامر GitHub (gh)",
+          idle: "يستخدم تسجيل دخول واجهة سطر أوامر GitHub الخاصة بالمضيف",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "تمت المصادقة ببريد Atlassian الإلكتروني ورمز API",
+          email: "بريد Atlassian الإلكتروني",
+          apiToken: "رمز API",
+          apiTokenHint: "يُخزَّن بشكل خاص على المضيف — وليس في المستودع أبدًا",
+          apiTokenPlaceholder: "الصق رمز API",
+          saveError: "فشل حفظ بيانات الاعتماد",
+          readyToCheck: "تم حفظ بيانات الاعتماد",
+          missingCredentials: "أدخل بريدك الإلكتروني ورمز API",
+        },
       },
       speech: {
         sectionTitle: "الصوت والإملاء",

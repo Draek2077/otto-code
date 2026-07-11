@@ -97,6 +97,14 @@ import {
   type OttoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./otto-config-schema.js";
+import { GitHostingCapabilitiesSchema, GitHostingProviderIdSchema } from "./git-hosting.js";
+
+export {
+  GitHostingCapabilitiesSchema,
+  GitHostingProviderIdSchema,
+  isGitHostingProviderId,
+  GIT_HOSTING_PROVIDER_IDS,
+} from "./git-hosting.js";
 export {
   OttoConfigRawSchema,
   OttoLifecycleCommandRawSchema,
@@ -220,6 +228,33 @@ export const MutableSpeechConfigSchema = z
 
 export type MutableSpeechConfig = z.infer<typeof MutableSpeechConfigSchema>;
 
+// Host-level git hosting credentials, one set per provider. A workspace's
+// provider is derived from its git remote (bitbucket.org → Bitbucket,
+// github.com → GitHub), so credentials are configured once per host, not per
+// project. Keys persist to $OTTO_HOME/config.json and are echoed in
+// get_daemon_config_response the same way provider connection keys are.
+const MutableGitHostingBitbucketCloudConfigSchema = z
+  .object({
+    // Atlassian account email + API token, sent as HTTP Basic auth.
+    email: z.string().optional(),
+    apiToken: z.string().optional(),
+  })
+  .passthrough();
+
+const MutableGitHostingProvidersConfigSchema = z
+  .object({
+    bitbucketCloud: MutableGitHostingBitbucketCloudConfigSchema.optional(),
+  })
+  .passthrough();
+
+export const MutableGitHostingConfigSchema = z
+  .object({
+    providers: MutableGitHostingProvidersConfigSchema.optional(),
+  })
+  .passthrough();
+
+export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSchema>;
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -236,6 +271,8 @@ export const MutableDaemonConfigSchema = z
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
     // Absent on daemons without the speechSettings feature.
     speech: MutableSpeechConfigSchema.optional(),
+    // Absent on daemons without the gitHostingProviders feature.
+    gitHosting: MutableGitHostingConfigSchema.optional(),
   })
   .passthrough();
 
@@ -257,6 +294,8 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.speechSettings; every field is optional so
     // patches deep-merge into the daemon's current speech config.
     speech: MutableSpeechConfigSchema.optional(),
+    // Gated by server_info features.gitHostingProviders; patches deep-merge.
+    gitHosting: MutableGitHostingConfigSchema.optional(),
   })
   .partial()
   .passthrough();
@@ -929,6 +968,32 @@ export const GitHubIssueAttachmentSchema = z.object({
   body: z.string().nullable().optional(),
 });
 
+// Provider-neutral successors to github_pr/github_issue. New clients send
+// these when server_info features.gitHostingProviders is set; the github_*
+// kinds remain accepted forever (protocol contract) and are still what a new
+// client sends to an old daemon for GitHub projects.
+export const HostingPrAttachmentSchema = z.object({
+  type: z.literal("hosting_pr"),
+  mimeType: z.literal("application/otto-hosting-pr"),
+  provider: GitHostingProviderIdSchema,
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+  baseRefName: z.string().nullable().optional(),
+  headRefName: z.string().nullable().optional(),
+});
+
+export const HostingIssueAttachmentSchema = z.object({
+  type: z.literal("hosting_issue"),
+  mimeType: z.literal("application/otto-hosting-issue"),
+  provider: GitHostingProviderIdSchema,
+  number: z.number().int().positive(),
+  title: z.string(),
+  url: z.string(),
+  body: z.string().nullable().optional(),
+});
+
 export const TextAttachmentSchema = z
   .object({
     type: z.literal("text"),
@@ -982,6 +1047,8 @@ export const UploadedFileAttachmentSchema = z.object({
 export const AgentAttachmentSchema = z.discriminatedUnion("type", [
   GitHubPrAttachmentSchema,
   GitHubIssueAttachmentSchema,
+  HostingPrAttachmentSchema,
+  HostingIssueAttachmentSchema,
   TextAttachmentSchema,
   ReviewAttachmentSchema,
   UploadedFileAttachmentSchema,
@@ -1791,6 +1858,28 @@ export const GitHubSearchRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Provider-neutral successor to github_search_request. Resolves the project's
+// configured hosting provider from cwd. Gated by server_info
+// features.gitHostingProviders.
+export const HostingSearchKindSchema = z.enum(["issue", "pr"]);
+
+export const HostingSearchRequestSchema = z.object({
+  type: z.literal("hosting.search.request"),
+  cwd: z.string(),
+  query: z.string(),
+  limit: z.number().int().min(1).max(50).optional(),
+  kinds: z.array(HostingSearchKindSchema).optional(),
+  requestId: z.string(),
+});
+
+// Reports whether a host-level provider's credentials are valid — drives the
+// connection-status row in the host Git providers settings section.
+export const HostingAuthStatusRequestSchema = z.object({
+  type: z.literal("hosting.auth_status.request"),
+  provider: GitHostingProviderIdSchema,
+  requestId: z.string(),
+});
+
 export const DirectorySuggestionsRequestSchema = z.object({
   type: z.literal("directory_suggestions_request"),
   query: z.string(),
@@ -2367,6 +2456,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
   GitHubSearchRequestSchema,
+  HostingSearchRequestSchema,
+  HostingAuthStatusRequestSchema,
   DirectorySuggestionsRequestSchema,
   OttoWorktreeListRequestSchema,
   OttoWorktreeArchiveRequestSchema,
@@ -2649,6 +2740,8 @@ export const ServerInfoStatusPayloadSchema = z
         artifactsToolGroup: z.boolean().optional(),
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         speechSettings: z.boolean().optional(),
+        // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
+        gitHostingProviders: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3684,12 +3777,39 @@ export const CheckoutPrStatusSchema = z.object({
   repoOwner: z.string().optional(),
   repoName: z.string().optional(),
   github: CheckoutPrGithubStatusSchema,
+  // Provider-neutral per-PR hosting facts. Absent from old daemons; for
+  // GitHub projects both this and the legacy `github` field are populated.
+  hosting: z
+    .object({
+      provider: GitHostingProviderIdSchema,
+      bitbucket: z
+        .object({
+          mergeStrategiesAllowed: z.array(z.string()).optional().default([]),
+          defaultMergeStrategy: z.string().nullable().optional().default(null),
+          approvalCount: z.number().optional().default(0),
+          changesRequestedCount: z.number().optional().default(0),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 const CheckoutPrStatusPayloadSchema = z.object({
   cwd: z.string(),
   status: CheckoutPrStatusSchema.nullable(),
+  // Legacy GitHub-only flag. For non-GitHub providers new daemons send false
+  // here (old clients then correctly show no GitHub features) and describe
+  // the real provider in `hosting` below.
   githubFeaturesEnabled: z.boolean(),
+  // Provider-neutral enablement. Present even when status is null so clients
+  // can drive search/create-PR affordances for the workspace's provider.
+  hosting: z
+    .object({
+      provider: GitHostingProviderIdSchema,
+      featuresEnabled: z.boolean(),
+      capabilities: GitHostingCapabilitiesSchema.optional(),
+    })
+    .optional(),
   error: CheckoutErrorSchema.nullable(),
   requestId: z.string(),
 });
@@ -4147,6 +4267,27 @@ export const GitHubSearchResponseSchema = z.object({
   payload: z.object({
     items: z.array(GitHubSearchItemSchema),
     githubFeaturesEnabled: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const HostingSearchResponseSchema = z.object({
+  type: z.literal("hosting.search.response"),
+  payload: z.object({
+    items: z.array(GitHubSearchItemSchema),
+    provider: GitHostingProviderIdSchema,
+    featuresEnabled: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const HostingAuthStatusResponseSchema = z.object({
+  type: z.literal("hosting.auth_status.response"),
+  payload: z.object({
+    provider: GitHostingProviderIdSchema,
+    authenticated: z.boolean(),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -4890,6 +5031,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
   GitHubSearchResponseSchema,
+  HostingSearchResponseSchema,
+  HostingAuthStatusResponseSchema,
   DirectorySuggestionsResponseSchema,
   OttoWorktreeListResponseSchema,
   OttoWorktreeArchiveResponseSchema,
@@ -5260,6 +5403,14 @@ export type GitHubSearchItem = z.infer<typeof GitHubSearchItemSchema>;
 export type GitHubSearchKind = z.infer<typeof GitHubSearchKindSchema>;
 export type GitHubSearchRequest = z.infer<typeof GitHubSearchRequestSchema>;
 export type GitHubSearchResponse = z.infer<typeof GitHubSearchResponseSchema>;
+export type { GitHostingProviderId, GitHostingCapabilities } from "./git-hosting.js";
+export type HostingSearchKind = z.infer<typeof HostingSearchKindSchema>;
+export type HostingSearchRequest = z.infer<typeof HostingSearchRequestSchema>;
+export type HostingSearchResponse = z.infer<typeof HostingSearchResponseSchema>;
+export type HostingAuthStatusRequest = z.infer<typeof HostingAuthStatusRequestSchema>;
+export type HostingAuthStatusResponse = z.infer<typeof HostingAuthStatusResponseSchema>;
+export type HostingPrAttachment = z.infer<typeof HostingPrAttachmentSchema>;
+export type HostingIssueAttachment = z.infer<typeof HostingIssueAttachmentSchema>;
 export type CreateOttoWorktreeRequest = z.infer<typeof CreateOttoWorktreeRequestSchema>;
 export type DirectorySuggestionsRequest = z.infer<typeof DirectorySuggestionsRequestSchema>;
 export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsResponseSchema>;

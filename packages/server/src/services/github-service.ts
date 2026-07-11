@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { parseBitbucketCloudRemoteUrl } from "@otto-code/protocol/git-remote";
 import type { GitHubSearchKind } from "@otto-code/protocol/messages";
+import type { BitbucketPullRequestStatusFacts } from "./git-hosting/types.js";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { resolveGitHubRemote } from "../utils/github-remote.js";
 import { runGitCommand } from "../utils/run-git-command.js";
@@ -595,6 +597,7 @@ export interface GitHubCurrentPullRequestStatus {
   checksStatus: PullRequestChecksStatus;
   reviewDecision: PullRequestReviewDecision;
   github?: GitHubPullRequestStatusFacts;
+  bitbucket?: BitbucketPullRequestStatusFacts;
 }
 
 export type PullRequestTimelineReviewState = "approved" | "changes_requested" | "commented";
@@ -2836,14 +2839,21 @@ function mapReviewDecision(value: unknown): PullRequestReviewDecision {
   return null;
 }
 
+// Resolves the "owner/name" identity of the origin remote for any supported
+// hosting provider (GitHub incl. SSH aliases, Bitbucket Cloud). The name
+// predates multi-provider support.
 export async function resolveGitHubRepo(cwd: string): Promise<string | null> {
   try {
     const { stdout } = await runGitCommand(["config", "--get", "remote.origin.url"], {
       cwd,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     });
-    const remote = await resolveGitHubRemote({ remoteUrl: stdout.trim() });
-    return remote?.repo ?? null;
+    const remoteUrl = stdout.trim();
+    const github = await resolveGitHubRemote({ remoteUrl });
+    if (github) {
+      return github.repo;
+    }
+    return parseBitbucketCloudRemoteUrl(remoteUrl)?.repo ?? null;
   } catch {
     return null;
   }

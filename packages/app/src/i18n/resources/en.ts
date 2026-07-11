@@ -1756,6 +1756,7 @@ export const en = {
       connections: "Connections",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "Git providers",
       providers: "Providers",
       usage: "Usage",
       terminals: "Terminals",
@@ -2120,6 +2121,30 @@ export const en = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      gitProviders: {
+        info: "Connect the services that host your repositories. Each project uses whichever provider its git remote points at.",
+        updateHost: "Update the host to configure git providers.",
+        checkConnection: "Check connection",
+        checking: "Checking connection…",
+        connected: "Connected",
+        connectionFailed: "Connection failed",
+        github: {
+          name: "GitHub",
+          hint: "Authenticated through the GitHub CLI (gh)",
+          idle: "Uses the host's GitHub CLI login",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "Authenticated with an Atlassian email and API token",
+          email: "Atlassian email",
+          apiToken: "API token",
+          apiTokenHint: "Stored privately on the host — never in a repository",
+          apiTokenPlaceholder: "Paste an API token",
+          saveError: "Failed to save credentials",
+          readyToCheck: "Credentials saved",
+          missingCredentials: "Enter your email and API token",
+        },
       },
       speech: {
         sectionTitle: "Voice & dictation",

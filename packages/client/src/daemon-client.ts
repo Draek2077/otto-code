@@ -64,6 +64,10 @@ import type {
   BranchSuggestionsResponse,
   GitHubSearchResponse,
   GitHubSearchRequest,
+  GitHostingProviderId,
+  HostingSearchRequest,
+  HostingSearchResponse,
+  HostingAuthStatusResponse,
   DirectorySuggestionsResponse,
   OttoWorktreeListResponse,
   OttoWorktreeArchiveResponse,
@@ -347,6 +351,8 @@ type StashListPayload = StashListResponse["payload"];
 type ValidateBranchPayload = ValidateBranchResponse["payload"];
 type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
 type GitHubSearchPayload = GitHubSearchResponse["payload"];
+export type HostingSearchPayload = HostingSearchResponse["payload"];
+export type HostingAuthStatusPayload = HostingAuthStatusResponse["payload"];
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
 type OttoWorktreeListPayload = OttoWorktreeListResponse["payload"];
 type OttoWorktreeArchivePayload = OttoWorktreeArchiveResponse["payload"];
@@ -3740,6 +3746,42 @@ export class DaemonClient {
         kinds: options.kinds,
       },
       responseType: "github_search_response",
+    });
+  }
+
+  // Provider-neutral issue/PR search: the daemon resolves the project's git
+  // hosting provider from cwd. Requires server_info features.gitHostingProviders.
+  async searchHosting(
+    options: { cwd: string; query: string; limit?: number; kinds?: HostingSearchRequest["kinds"] },
+    requestId?: string,
+  ): Promise<HostingSearchPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "hosting.search.request",
+        cwd: options.cwd,
+        query: options.query,
+        limit: options.limit,
+        kinds: options.kinds,
+      },
+      responseType: "hosting.search.response",
+    });
+  }
+
+  // One-shot connection probe for a host-level provider's credentials, used by
+  // the host Git providers settings section. Requires
+  // server_info features.gitHostingProviders.
+  async getHostingAuthStatus(
+    options: { provider: GitHostingProviderId },
+    requestId?: string,
+  ): Promise<HostingAuthStatusPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "hosting.auth_status.request",
+        provider: options.provider,
+      },
+      responseType: "hosting.auth_status.response",
     });
   }
 

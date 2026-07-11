@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GitHostingProviderIdSchema } from "./git-hosting.js";
 
 export function normalizeLifecycleCommands(commands: unknown): string[] {
   if (typeof commands === "string") {
@@ -49,11 +50,28 @@ export const OttoMetadataGenerationSchema = z
   .passthrough()
   .catch({});
 
+// Which git hosting provider this project's PR/issue features use. Committed
+// with the repo (team-shared); credentials never live here — they belong to
+// the daemon's private config, keyed by project.
+export const OttoGitHostingConfigRawSchema = z
+  .object({
+    provider: z.unknown().optional(),
+  })
+  .passthrough();
+
+export const OttoGitHostingConfigSchema = z
+  .object({
+    provider: GitHostingProviderIdSchema.optional().catch(undefined),
+  })
+  .passthrough()
+  .catch({});
+
 export const OttoConfigRawSchema = z
   .object({
     worktree: OttoWorktreeConfigRawSchema.optional(),
     scripts: z.record(z.string(), OttoScriptEntryRawSchema).optional(),
     metadataGeneration: OttoMetadataGenerationSchema.optional(),
+    gitHosting: OttoGitHostingConfigRawSchema.optional(),
   })
   .passthrough();
 
@@ -70,6 +88,7 @@ export const OttoConfigSchema = OttoConfigRawSchema.extend({
   worktree: WorktreeConfigSchema.optional(),
   scripts: z.record(z.string(), ScriptEntrySchema).optional().catch({}),
   metadataGeneration: OttoMetadataGenerationSchema.optional(),
+  gitHosting: OttoGitHostingConfigSchema.optional(),
 })
   .passthrough()
   .catch({});
@@ -92,6 +111,7 @@ export const ProjectConfigRpcErrorSchema = z.discriminatedUnion("code", [
 export type OttoScriptEntryRaw = z.infer<typeof OttoScriptEntryRawSchema>;
 export type OttoMetadataGenerationEntry = z.infer<typeof OttoMetadataGenerationEntrySchema>;
 export type OttoMetadataGeneration = z.infer<typeof OttoMetadataGenerationSchema>;
+export type OttoGitHostingConfig = z.infer<typeof OttoGitHostingConfigSchema>;
 export type OttoConfigRaw = z.infer<typeof OttoConfigRawSchema>;
 export type OttoConfig = z.infer<typeof OttoConfigSchema>;
 export type OttoConfigRevision = z.infer<typeof OttoConfigRevisionSchema>;

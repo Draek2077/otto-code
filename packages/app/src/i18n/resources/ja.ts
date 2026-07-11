@@ -1764,6 +1764,7 @@ export const ja: TranslationResources = {
       connections: "接続",
       agents: "エージェント",
       workspaces: "ワークスペース",
+      gitProviders: "Git プロバイダー",
       providers: "プロバイダー",
       usage: "使用状況",
       terminals: "ターミナル",
@@ -2130,6 +2131,30 @@ export const ja: TranslationResources = {
       },
       agents: {
         unavailable: "エージェントを管理するにはこのホストに接続してください",
+      },
+      gitProviders: {
+        info: "リポジトリをホストするサービスを接続します。各プロジェクトは、その git リモートが指すプロバイダーを使用します。",
+        updateHost: "Git プロバイダーを設定するにはホストを更新してください。",
+        checkConnection: "接続を確認",
+        checking: "接続を確認しています…",
+        connected: "接続済み",
+        connectionFailed: "接続に失敗しました",
+        github: {
+          name: "GitHub",
+          hint: "GitHub CLI（gh）を通じて認証されます",
+          idle: "ホストの GitHub CLI ログインを使用します",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "Atlassian メールアドレスと API トークンで認証されます",
+          email: "Atlassian メールアドレス",
+          apiToken: "API トークン",
+          apiTokenHint: "ホスト上に非公開で保存され、リポジトリには保存されません",
+          apiTokenPlaceholder: "API トークンを貼り付け",
+          saveError: "認証情報の保存に失敗しました",
+          readyToCheck: "認証情報を保存しました",
+          missingCredentials: "メールアドレスと API トークンを入力してください",
+        },
       },
       speech: {
         sectionTitle: "音声と音声入力",

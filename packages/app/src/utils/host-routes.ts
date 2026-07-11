@@ -505,6 +505,7 @@ export const HOST_SECTION_SLUGS = [
   "agents",
   "workspaces",
   "providers",
+  "git-providers",
   "usage",
   "terminals",
   "host",

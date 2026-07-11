@@ -1787,6 +1787,7 @@ export const es: TranslationResources = {
       connections: "Conexiones",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "Proveedores de Git",
       providers: "Proveedores",
       usage: "Uso",
       terminals: "Terminals",
@@ -2155,6 +2156,30 @@ export const es: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      gitProviders: {
+        info: "Conecta los servicios que alojan tus repositorios. Cada proyecto usa el proveedor al que apunta su remoto de git.",
+        updateHost: "Actualiza el host para configurar los proveedores de Git.",
+        checkConnection: "Comprobar conexión",
+        checking: "Comprobando la conexión…",
+        connected: "Conectado",
+        connectionFailed: "Falló la conexión",
+        github: {
+          name: "GitHub",
+          hint: "Autenticado mediante la CLI de GitHub (gh)",
+          idle: "Usa el inicio de sesión de la CLI de GitHub del host",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "Autenticado con un correo de Atlassian y un token de API",
+          email: "Correo de Atlassian",
+          apiToken: "Token de API",
+          apiTokenHint: "Se guarda de forma privada en el host, nunca en un repositorio",
+          apiTokenPlaceholder: "Pega un token de API",
+          saveError: "No se pudieron guardar las credenciales",
+          readyToCheck: "Credenciales guardadas",
+          missingCredentials: "Introduce tu correo y tu token de API",
+        },
       },
       speech: {
         sectionTitle: "Voz y dictado",

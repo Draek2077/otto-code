@@ -54,6 +54,7 @@ import {
 } from "@/runtime/host-runtime";
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
+import { GitProvidersSettingsCards } from "@/screens/settings/git-providers-settings-cards";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -289,6 +290,30 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
             <SpeechSettingsCards serverId={serverId} />
           </SettingsSection>
         </>
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function HostGitProvidersPage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <SettingsSection title={t("settings.hostSections.gitProviders")}>
+          <GitProvidersSettingsCards serverId={serverId} />
+        </SettingsSection>
       ) : (
         <View style={EMPTY_CARD_STYLE}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>

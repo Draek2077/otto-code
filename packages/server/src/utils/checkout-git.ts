@@ -17,6 +17,7 @@ import {
   type GitHubService,
   type PullRequestMergeable,
 } from "../services/github-service.js";
+import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand } from "./run-git-command.js";
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
@@ -3109,7 +3110,11 @@ async function getPullRequestStatusUncached(
       githubFeaturesEnabled: true,
     };
   } catch (error) {
-    if (error instanceof GitHubCliMissingError || error instanceof GitHubAuthenticationError) {
+    if (
+      error instanceof GitHubCliMissingError ||
+      error instanceof GitHubAuthenticationError ||
+      isGitHostingFeatureDisabledError(error)
+    ) {
       return { status: null, githubFeaturesEnabled: false };
     }
     throw error;
