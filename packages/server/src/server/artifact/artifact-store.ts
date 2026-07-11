@@ -1,10 +1,23 @@
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { ArtifactMetadataSchema } from "@otto-code/protocol/artifacts/types";
-import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
+import { MAX_ARTIFACT_RUNS, StoredArtifactSchema } from "@otto-code/protocol/artifacts/types";
+import type {
+  ArtifactMetadata,
+  ArtifactRun,
+  StoredArtifact,
+} from "@otto-code/protocol/artifacts/types";
 
 export type { ArtifactMetadata };
 import { writeJsonFileAtomic } from "../atomic-file.js";
+
+// Drop the run history off a stored record to get the lean metadata that
+// list/get callers (and every broadcast/notification) work with. Keeping runs
+// out of that shape means they never ride the wire on routine updates — only
+// inspect() surfaces them.
+function toMetadata(stored: StoredArtifact): ArtifactMetadata {
+  const { runs: _runs, ...metadata } = stored;
+  return metadata;
+}
 
 export class ArtifactStore {
   constructor(private readonly projectCwd: string) {}
@@ -25,17 +38,30 @@ export class ArtifactStore {
     await mkdir(this.artifactsDir(), { recursive: true });
   }
 
-  async get(artifactId: string): Promise<ArtifactMetadata | null> {
+  // Read the full on-disk record, run history included. Everything else in the
+  // store layers on top of this: get()/list() strip runs, inspect() keeps them.
+  private async readStored(artifactId: string): Promise<StoredArtifact | null> {
     await this.ensureDir();
     try {
       const content = await readFile(this.metadataPath(artifactId), "utf-8");
-      return ArtifactMetadataSchema.parse(JSON.parse(content));
+      return StoredArtifactSchema.parse(JSON.parse(content));
     } catch (error) {
       if (isEnoent(error)) {
         return null;
       }
       throw error;
     }
+  }
+
+  async get(artifactId: string): Promise<ArtifactMetadata | null> {
+    const stored = await this.readStored(artifactId);
+    return stored ? toMetadata(stored) : null;
+  }
+
+  // Full record with run history, for inspect_artifact. Returns null when the
+  // artifact doesn't exist so callers can raise their own not-found error.
+  async inspect(artifactId: string): Promise<StoredArtifact | null> {
+    return this.readStored(artifactId);
   }
 
   async list(options?: { projectId?: string }): Promise<ArtifactMetadata[]> {
@@ -47,7 +73,7 @@ export class ArtifactStore {
         .map(async (entry) => {
           try {
             const content = await readFile(join(this.artifactsDir(), entry.name), "utf-8");
-            return ArtifactMetadataSchema.parse(JSON.parse(content));
+            return toMetadata(StoredArtifactSchema.parse(JSON.parse(content)));
           } catch {
             return null;
           }
@@ -65,20 +91,53 @@ export class ArtifactStore {
 
   async create(metadata: ArtifactMetadata): Promise<void> {
     await this.ensureDir();
-    await writeJsonFileAtomic(this.metadataPath(metadata.id), metadata);
+    const stored: StoredArtifact = { ...metadata, runs: [] };
+    await writeJsonFileAtomic(this.metadataPath(metadata.id), stored);
   }
 
   async update(artifactId: string, changes: Partial<ArtifactMetadata>): Promise<void> {
     await this.ensureDir();
-    const existing = await this.get(artifactId);
+    const existing = await this.readStored(artifactId);
     if (!existing) {
       throw new Error(`Artifact "${artifactId}" not found`);
     }
-    const updated: ArtifactMetadata = {
+    const updated: StoredArtifact = {
       ...existing,
       ...changes,
       updatedAt: new Date().toISOString(),
     };
+    await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
+  }
+
+  // Append a generation attempt to the run history, oldest entries pruned so the
+  // on-disk log stays bounded. Does not touch updatedAt — the run's own
+  // timestamps carry that, and the accompanying status update bumps it.
+  async appendRun(artifactId: string, run: ArtifactRun): Promise<void> {
+    await this.ensureDir();
+    const existing = await this.readStored(artifactId);
+    if (!existing) {
+      throw new Error(`Artifact "${artifactId}" not found`);
+    }
+    const runs = [...existing.runs, run].slice(-MAX_ARTIFACT_RUNS);
+    const updated: StoredArtifact = { ...existing, runs };
+    await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
+  }
+
+  // Patch the current (most recent still-"running") run — to stamp its agent id
+  // once known, or to close it out as succeeded/failed. No-ops when there's no
+  // running run, so completion handlers can fire unconditionally.
+  async patchCurrentRun(artifactId: string, patch: Partial<ArtifactRun>): Promise<void> {
+    await this.ensureDir();
+    const existing = await this.readStored(artifactId);
+    if (!existing) {
+      return;
+    }
+    const index = findLastRunningIndex(existing.runs);
+    if (index === -1) {
+      return;
+    }
+    const runs = existing.runs.map((run, i) => (i === index ? { ...run, ...patch } : run));
+    const updated: StoredArtifact = { ...existing, runs };
     await writeJsonFileAtomic(this.metadataPath(artifactId), updated);
   }
 
@@ -107,4 +166,15 @@ export class ArtifactStore {
 
 function isEnoent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+// Index of the last run still in flight — the one a success/failure handler
+// should close out. Returns -1 when nothing is running.
+function findLastRunningIndex(runs: ArtifactRun[]): number {
+  for (let i = runs.length - 1; i >= 0; i--) {
+    if (runs[i]!.status === "running") {
+      return i;
+    }
+  }
+  return -1;
 }
