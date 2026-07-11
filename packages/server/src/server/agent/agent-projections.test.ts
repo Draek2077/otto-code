@@ -7,6 +7,8 @@ import {
   toStoredAgentRecord,
   type ManagedAgent,
 } from "./agent-projections.js";
+import { parseStoredAgentRecord } from "./agent-storage.js";
+import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type { AgentSession } from "./agent-sdk-types.js";
 import type {
   AgentFeature,
@@ -179,6 +181,33 @@ describe("toStoredAgentRecord", () => {
     expect(agent.config.extra!.claude!.tone).toBe("friendly");
     record.persistence!.sessionId = "mutated";
     expect(agent.persistence!.sessionId).toBe("persist-2");
+  });
+
+  it("round-trips a personality snapshot through storage", () => {
+    const snapshot: ResolvedPersonalitySnapshot = {
+      personalityId: "p1",
+      name: "Aria",
+      provider: "codex",
+      model: "gpt-5.4",
+      modeId: "auto",
+      thinkingOptionId: "high",
+      effortLevel: "high",
+      effortMatch: "level",
+      effortDegraded: false,
+      systemPrompt: "You are Aria.",
+      respectGlobalAppendPrompt: false,
+      spinner: { glowA: "#111111", glowB: "#222222" },
+      voice: { provider: "kokoro", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
+      roles: ["chatter", "orchestrator"],
+    };
+    const agent = createManagedAgent({ config: { personalitySnapshot: snapshot } });
+
+    const record = toStoredAgentRecord(agent, { title: "Aria" });
+    expect(record.config?.personalitySnapshot).toEqual(snapshot);
+
+    // Survives the storage zod parse (the on-disk read path).
+    const parsed = parseStoredAgentRecord(record);
+    expect(parsed.config?.personalitySnapshot).toEqual(snapshot);
   });
 
   it("falls back to config mode when current mode is null and handles null title", () => {

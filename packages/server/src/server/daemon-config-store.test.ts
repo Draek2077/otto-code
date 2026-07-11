@@ -264,6 +264,70 @@ describe("DaemonConfigStore", () => {
     expect(persisted.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
   });
 
+  test("patch persists agent personalities into config.json and reloads them", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [] },
+      },
+      undefined,
+    );
+
+    store.patch({
+      agentPersonalities: {
+        personalities: [
+          {
+            id: "p-sparky",
+            name: "Sparky",
+            provider: "openai-compat",
+            model: "qwen3-coder",
+            effortLevel: "high",
+            modeId: "yolo",
+            personalityPrompt: "Be bold and fast.",
+            respectGlobalAppendPrompt: false,
+            roles: ["chatter", "worker"],
+            spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
+            voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
+          },
+        ],
+      },
+    });
+
+    // Survives a full reload from disk — the merge whitelist must persist the
+    // section, not just hold it in memory.
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.agents?.agentPersonalities?.personalities).toEqual([
+      {
+        id: "p-sparky",
+        name: "Sparky",
+        provider: "openai-compat",
+        model: "qwen3-coder",
+        effortLevel: "high",
+        modeId: "yolo",
+        personalityPrompt: "Be bold and fast.",
+        respectGlobalAppendPrompt: false,
+        roles: ["chatter", "worker"],
+        spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
+        voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
+      },
+    ]);
+
+    // Deleting the last personality clears the roster on disk rather than
+    // leaving the stale entry behind.
+    store.patch({ agentPersonalities: { personalities: [] } });
+    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+  });
+
   test("patch persists browser tools opt-in into config.json", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);

@@ -19,6 +19,8 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
+import { usePersonalitySelection } from "@/hooks/use-personality-selection";
+import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
@@ -608,6 +610,35 @@ function ScheduleTargetFields({
     },
     [model],
   );
+  // Schedule runs are unattended, so a personality's mode is ignored; only its
+  // provider/model/effort auto-fill here.
+  const applyPersonality = useCallback(
+    (values: PersonalityFormValues) => {
+      model.setModel(values.provider as AgentProvider, values.model);
+      model.setThinking(values.thinkingOptionId);
+    },
+    [model],
+  );
+  const personalityCurrentSelection = useMemo(
+    () => ({
+      provider: state.selectedProvider,
+      model: state.selectedModel,
+      thinkingOptionId: state.selectedThinkingOptionId,
+    }),
+    [state.selectedProvider, state.selectedModel, state.selectedThinkingOptionId],
+  );
+  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
+    usePersonalitySelection({
+      serverId: mutationServerId || null,
+      role: "scheduler",
+      entries: providerSnapshot.entries ?? [],
+      onApply: applyPersonality,
+      currentSelection: personalityCurrentSelection,
+    });
+  const selectedPersonalityName = useMemo(
+    () => personalities.find((entry) => entry.id === selectedPersonalityId)?.name ?? null,
+    [personalities, selectedPersonalityId],
+  );
   const handleModelOpen = useCallback(() => {
     providerSnapshot.refetchIfStale(state.selectedProvider);
   }, [providerSnapshot, state.selectedProvider]);
@@ -648,11 +679,12 @@ function ScheduleTargetFields({
       hovered: boolean;
       pressed: boolean;
     }): ReactNode => {
-      const displayLabel = state.selectedModelDisplay?.label ?? selectedModelLabel;
+      const displayLabel =
+        selectedPersonalityName ?? state.selectedModelDisplay?.label ?? selectedModelLabel;
       return (
         <SelectFieldTrigger
           label={displayLabel}
-          isPlaceholder={!state.selectedModel}
+          isPlaceholder={!state.selectedModel && !selectedPersonalityName}
           placeholder={displayLabel}
           leading={modelTriggerLeading}
           disabled={disabled}
@@ -662,7 +694,13 @@ function ScheduleTargetFields({
         />
       );
     },
-    [controlSize, modelTriggerLeading, state.selectedModel, state.selectedModelDisplay],
+    [
+      controlSize,
+      modelTriggerLeading,
+      selectedPersonalityName,
+      state.selectedModel,
+      state.selectedModelDisplay,
+    ],
   );
 
   if (state.targetKind === "agent") {
@@ -724,6 +762,10 @@ function ScheduleTargetFields({
             onOpen={handleModelOpen}
             onRetryProvider={handleRetryProvider}
             isRetryingProvider={providerSnapshot.isRefreshing}
+            personalities={personalities}
+            selectedPersonalityId={selectedPersonalityId}
+            onSelectPersonality={selectPersonality}
+            onClearPersonality={clearPersonality}
           />
         </Field>
       ) : null}

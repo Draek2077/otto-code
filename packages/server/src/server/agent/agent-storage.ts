@@ -9,6 +9,30 @@ import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 
+// Frozen personality snapshot as stored on disk. Roles are kept as a loose
+// string array here (not the PersonalityRole enum) so an old record whose role
+// vocabulary drifted never fails to load — buildStoredAgentConfig re-normalizes
+// them to the known set on read. Mirrors ResolvedPersonalitySnapshot.
+const PERSONALITY_SNAPSHOT_STORAGE_SCHEMA = z
+  .object({
+    personalityId: z.string(),
+    name: z.string(),
+    provider: z.string(),
+    model: z.string(),
+    modeId: z.string().optional(),
+    thinkingOptionId: z.string().optional(),
+    effortLevel: z.string().optional(),
+    effortMatch: z.enum(["exact-id", "level", "nearest"]).optional(),
+    effortDegraded: z.boolean(),
+    systemPrompt: z.string().optional(),
+    respectGlobalAppendPrompt: z.boolean(),
+    spinner: z.object({ glowA: z.string(), glowB: z.string() }).optional(),
+    voice: z.object({ provider: z.string(), model: z.string(), name: z.string() }).optional(),
+    roles: z.array(z.string()),
+  })
+  .nullable()
+  .optional();
+
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
     modeId: z.string().nullable().optional(),
@@ -18,6 +42,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     extra: z.record(z.string(), z.any()).nullable().optional(),
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
+    personalitySnapshot: PERSONALITY_SNAPSHOT_STORAGE_SCHEMA,
   })
   .nullable()
   .optional();
@@ -75,6 +100,7 @@ export type SerializableAgentConfig = Pick<
   | "extra"
   | "systemPrompt"
   | "mcpServers"
+  | "personalitySnapshot"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;

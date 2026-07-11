@@ -35,7 +35,7 @@ function speechSettingsOptionsQueryKey(serverId: string): [string, string] {
   return ["speech-settings-options", serverId];
 }
 
-function useSpeechSettingsOptions(serverId: string, enabled: boolean) {
+export function useSpeechSettingsOptions(serverId: string, enabled: boolean) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);

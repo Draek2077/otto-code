@@ -22,7 +22,7 @@ In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName`
 
 ## Agents
 
-**`create_agent`** — required: `relationship`, `workspace`, `title`, `provider` (`claude/opus`, `codex/gpt-5.4`, …), `initialPrompt`. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
+**`create_agent`** — required: `relationship`, `workspace`, `title`, `initialPrompt`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name — see [Personalities](#personalities)). Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
@@ -64,6 +64,18 @@ Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false`
 
 Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look for `fast_mode` and pass `settings: { features: { "fast_mode": true } }` to `create_agent` or `update_agent`.
 
+## Personalities
+
+Agent Personalities are named, host-configured templates that bind a provider→model, effort, permission mode, a personality prompt, one or more **roles**, and a visual/audio identity (spinner colors + a TTS voice). When the host has them, prefer them over hand-picking a raw provider/model — the user curated them for exactly this.
+
+**`list_personalities`** — enumerate the host's personalities: `{ id, name, roles, provider, model, available, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. This tool is **Orchestrator-gated**: it works for you when you are driving orchestration (a top-level session, or an agent spawned from an Orchestrator personality). If it isn't available, fall back to provider strings from orchestration preferences.
+
+The seven roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `worker` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). Worker/Judger/Advisor are the ones you spawn.
+
+**Spawning by personality** — pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** — there is no silent fallback, so surface the error rather than guessing a provider.
+
+Prefer a personality whose role matches the work (a `worker` for implementation, a `judger` for review, an `advisor` for a read-only opinion). Only when no suitable personality exists (or `list_personalities` is unavailable) resolve a raw provider from orchestration preferences below.
+
 ## Schedules and heartbeats
 
 **`create_schedule`** — starts a new agent on a cron cadence. Required: `prompt`, `cron`, `provider`. Optional: `timezone`, `name`, `cwd`, `maxRuns`, `expiresIn`. Use when the recurring work should live in fresh agents.
@@ -76,7 +88,7 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 
 ## Orchestration preferences
 
-User-specific configuration at `~/.otto/orchestration-preferences.json`. **Before any Otto skill chooses a provider or creates an agent, it must read this file.** Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill — resolve through this file.
+User-specific configuration at `~/.otto/orchestration-preferences.json`. **Before any Otto skill chooses a provider or creates an agent, it must read this file** (unless it is spawning by [personality](#personalities), which supersedes provider categories — a personality already carries its own provider/model). Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill — resolve through this file.
 
 Two parts:
 
