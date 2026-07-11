@@ -39,6 +39,7 @@ import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
+import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { ProjectSearchPane } from "./project-search-pane";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -403,6 +404,8 @@ export function ExplorerSidebar({
           isOpen={isOpen}
           onOpenFile={onOpenFile}
         />
+
+        <SidebarSeamShadow seam="left" />
       </View>
     </Animated.View>
   );

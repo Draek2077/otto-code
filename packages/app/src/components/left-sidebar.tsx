@@ -85,6 +85,7 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { compactUp, ICON_SIZE } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
+import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
 
@@ -1104,6 +1105,8 @@ function DesktopSidebar({
         <GestureDetector gesture={resizeGesture}>
           <View style={resizeHandleStyle} />
         </GestureDetector>
+
+        <SidebarSeamShadow seam="right" />
       </View>
     </Animated.View>
   );
