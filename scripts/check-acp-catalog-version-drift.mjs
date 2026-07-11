@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 
-import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 const CATALOG_PATH = new URL("../packages/app/src/data/acp-provider-catalog.ts", import.meta.url);
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
@@ -251,12 +247,23 @@ function getPinnedVersion(selector) {
 }
 
 async function getLatestNpmVersion(packageName) {
-  const { stdout } = await execFileAsync("npm", ["view", packageName, "version"], {
-    encoding: "utf8",
-    timeout: 30_000,
-    maxBuffer: 1024 * 1024,
+  // Query the npm registry over HTTP instead of shelling out to `npm view`:
+  // execFile("npm", ...) can't spawn npm on Windows (it resolves to npm.cmd and
+  // execFile does no shell/PATHEXT lookup), so every lookup failed with ENOENT.
+  // fetch is platform-independent and mirrors getLatestPypiVersion below.
+  const encodedName = packageName.replace(/\//g, "%2F");
+  const response = await fetch(`https://registry.npmjs.org/${encodedName}`, {
+    signal: AbortSignal.timeout(30_000),
   });
-  return stdout.trim();
+  if (!response.ok) {
+    throw new Error(`npm registry responded ${response.status}`);
+  }
+  const metadata = await response.json();
+  const latestVersion = metadata?.["dist-tags"]?.latest;
+  if (!latestVersion || typeof latestVersion !== "string") {
+    throw new Error("npm registry response did not include dist-tags.latest");
+  }
+  return latestVersion;
 }
 
 async function getLatestPypiVersion(packageName) {
