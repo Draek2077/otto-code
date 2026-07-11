@@ -1,9 +1,30 @@
 import type pino from "pino";
 import { OpenAI } from "openai";
 import { Readable } from "node:stream";
-import type { SpeechStreamResult, TextToSpeechProvider } from "../../speech-provider.js";
+import type {
+  SpeechStreamResult,
+  SpeechVoiceOverride,
+  TextToSpeechProvider,
+} from "../../speech-provider.js";
 
 export type { SpeechStreamResult };
+
+// The voices the OpenAI speech API accepts. A personality voice naming one of
+// these is honored; any other name (e.g. a local Kokoro voice) falls back to the
+// provider's configured voice — the binding is soft, never a hard error.
+const OPENAI_TTS_VOICES: ReadonlySet<string> = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 
 export interface TTSConfig {
   apiKey: string;
@@ -53,7 +74,17 @@ export class OpenAITTS implements TextToSpeechProvider {
     return this.config;
   }
 
-  public async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
+  private resolveVoice(voice?: SpeechVoiceOverride): string {
+    if (voice && OPENAI_TTS_VOICES.has(voice.name)) {
+      return voice.name;
+    }
+    return this.config.voice!;
+  }
+
+  public async synthesizeSpeech(
+    text: string,
+    voice?: SpeechVoiceOverride,
+  ): Promise<SpeechStreamResult> {
     if (!text || text.trim().length === 0) {
       throw new Error("Cannot synthesize empty text");
     }
@@ -68,7 +99,7 @@ export class OpenAITTS implements TextToSpeechProvider {
 
       const response = await this.openaiClient.audio.speech.create({
         model: this.config.model!,
-        voice: this.config.voice!,
+        voice: this.resolveVoice(voice),
         input: text,
         response_format: this.config.responseFormat as
           | "mp3"

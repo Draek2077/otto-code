@@ -473,6 +473,7 @@ export interface SessionOptions {
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
   getSpeechSettingsOptions?: () => SpeechSettingsOptions;
+  getPersonalityStats?: () => Record<string, number> | Promise<Record<string, number>>;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -563,6 +564,9 @@ export class Session {
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
+  private readonly getPersonalityStats:
+    | (() => Record<string, number> | Promise<Record<string, number>>)
+    | null;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -651,6 +655,7 @@ export class Session {
       voiceBridge,
       dictation,
       getSpeechSettingsOptions,
+      getPersonalityStats,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
@@ -658,6 +663,7 @@ export class Session {
     } = options;
     this.clientId = clientId;
     this.getSpeechSettingsOptions = getSpeechSettingsOptions ?? null;
+    this.getPersonalityStats = getPersonalityStats ?? null;
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
@@ -1623,6 +1629,18 @@ export class Session {
           },
         });
         return undefined;
+      case "agentPersonalities.get_stats.request": {
+        const statsRequestId = msg.requestId;
+        // The stats store is async (file-backed); resolve then emit.
+        void Promise.resolve(this.getPersonalityStats?.() ?? {}).then((stats) => {
+          this.emit({
+            type: "agentPersonalities.get_stats.response",
+            payload: { requestId: statsRequestId, stats },
+          });
+          return undefined;
+        });
+        return undefined;
+      }
       case "read_project_config_request":
         return this.projectConfigSession.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":

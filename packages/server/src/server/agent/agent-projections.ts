@@ -147,6 +147,11 @@ export function toAgentPayload(
     payload.lastError = agent.lastError;
   }
 
+  const personalitySpinner = agent.config.personalitySnapshot?.spinner;
+  if (personalitySpinner !== undefined) {
+    payload.personalitySpinner = personalitySpinner;
+  }
+
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
   if (agent.attention.requiresAttention) {
@@ -244,8 +249,25 @@ export function buildStoredAgentPayload(
     archivedAt: record.archivedAt ?? null,
     labels: normalizeLabels(record.labels),
     attend: "attended",
-    ...(providerAvailable ? {} : { providerUnavailable: true }),
+    ...buildStoredAgentPayloadTail(record, providerAvailable),
   };
+}
+
+// Optional payload fields for a stored agent, factored out to keep
+// buildStoredAgentPayload under the complexity budget.
+function buildStoredAgentPayloadTail(
+  record: StoredAgentRecord,
+  providerAvailable: boolean,
+): Partial<AgentSnapshotPayload> {
+  const tail: Partial<AgentSnapshotPayload> = {};
+  const spinner = record.config?.personalitySnapshot?.spinner;
+  if (spinner) {
+    tail.personalitySpinner = spinner;
+  }
+  if (!providerAvailable) {
+    tail.providerUnavailable = true;
+  }
+  return tail;
 }
 
 // Observed subagents have no Otto runtime — all interactive capabilities are
@@ -398,6 +420,9 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
   }
   if (config.mcpServers) {
     serializable.mcpServers = config.mcpServers;
+  }
+  if (config.personalitySnapshot) {
+    serializable.personalitySnapshot = config.personalitySnapshot;
   }
   return Object.keys(serializable).length ? serializable : null;
 }

@@ -53,6 +53,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { ProvidersSection } from "@/screens/settings/providers-section";
+import { AgentPersonalitiesSection } from "@/screens/settings/agent-personalities-section";
 import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
 import { GitProvidersSettingsCards } from "@/screens/settings/git-providers-settings-cards";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
@@ -286,6 +287,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
             <BrowserToolsOptInCard serverId={serverId} />
             <AppendSystemPromptCard serverId={serverId} />
           </SettingsSection>
+          <AgentPersonalitiesSection serverId={serverId} />
           <SettingsSection title={t("settings.host.speech.sectionTitle")}>
             <SpeechSettingsCards serverId={serverId} />
           </SettingsSection>
