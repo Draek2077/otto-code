@@ -1427,6 +1427,30 @@ describe("workspace-layout-store actions", () => {
     expect(workspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey)).toEqual([]);
   });
 
+  it("reconcileTabs materializes a default layout on first call for an empty workspace", () => {
+    const workspaceKey = createWorkspaceKey();
+
+    // No persisted layout yet, and nothing to open — this mirrors a cold
+    // deep-link to a freshly-seeded workspace. The entry must still be created
+    // so the desktop pane-splits render gate (keyed off a non-null layout) can
+    // mount the tabs row without waiting on the draft-seed effect.
+    expect(workspaceKey in workspaceLayoutStore.getState().layoutByWorkspace).toBe(false);
+
+    workspaceLayoutStore.getState().reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: [],
+      autoOpenAgentIds: [],
+      knownAgentIds: [],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(layout).toBeDefined();
+    expect(workspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey)).toEqual([]);
+  });
+
   it("reconcileTabs does not auto-open subagents omitted from autoOpenAgentIds", () => {
     const workspaceKey = createWorkspaceKey();
 
