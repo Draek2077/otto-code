@@ -3,6 +3,7 @@ import { gotoAppShell } from "./helpers/app";
 import {
   addFakeScheduleHostAndReload,
   buildFakeScheduleHostWorkspace,
+  FAKE_HOST_MODEL_LABEL,
   installFakeScheduleHost,
 } from "./helpers/schedule-fake-host";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
@@ -197,8 +198,11 @@ test.describe("Schedules project target", () => {
     await expect(page.getByTestId("schedule-host-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-project-trigger")).toBeVisible();
     // No stepped disclosure: the model field is offered before a project is
-    // picked (models are host-scoped, not project-scoped).
-    await expect(page.getByTestId("schedule-model-trigger")).toContainText(/select model/i);
+    // picked (models are host-scoped) and preselects the last-used model from
+    // device form preferences.
+    await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
@@ -314,7 +318,8 @@ test.describe("Schedules project target", () => {
     await hostTrigger.click();
     await page.getByTestId(`schedule-host-option-${serverId}`).click();
     await expect(projectTrigger).toBeVisible();
-    await expect(modelTrigger).toContainText(/select model/i);
+    // Choosing a host preselects the last-used model (valid on this host).
+    await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -334,7 +339,9 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
     await expect(hostTrigger).toContainText("Fake host");
     await expect(projectTrigger).toContainText(/select project/i);
-    await expect(modelTrigger).toContainText(/select model/i);
+    // The prior model isn't valid on the fake host, so the field re-preselects
+    // that host's default model rather than clearing.
+    await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -345,14 +352,16 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-project-option-${fakeHost.projectId}`).click();
     await expect(projectTrigger).toContainText(fakeHost.projectDisplayName);
     await expectSettled(projectTrigger);
-    await expect(modelTrigger).toContainText(/select model/i);
+    await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
     await expectSettled(modelTrigger);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
 
     await page.getByLabel("Schedule name").fill(`Cross host model ${Date.now()}`);
     await page.getByLabel("Prompt").fill("Run on the fake host project.");
-    await expect(page.getByRole("button", { name: "Create schedule" })).toBeDisabled();
+    // Host+project+name+prompt are set and the model auto-preselected to the
+    // fake host's default, so the form is now submittable.
+    await expect(page.getByRole("button", { name: "Create schedule" })).toBeEnabled();
   });
 
   test("creates and edits schedule isolation and archive cleanup knobs", async ({ page }) => {
