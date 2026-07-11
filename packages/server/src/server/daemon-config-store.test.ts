@@ -3,8 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { DaemonConfigStore, applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
+import {
+  DaemonConfigStore,
+  DAEMON_CONFIG_SECRET_SENTINEL,
+  applyMutableProviderConfigToOverrides,
+  redactDaemonConfigForClient,
+} from "./daemon-config-store.js";
 import { loadPersistedConfig } from "./persisted-config.js";
+import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
 
 describe("applyMutableProviderConfigToOverrides", () => {
   test("merges mutable provider fields onto provider overrides", () => {
@@ -325,6 +331,99 @@ describe("DaemonConfigStore", () => {
     // Deleting the last personality clears the roster on disk rather than
     // leaving the stale entry behind.
     store.patch({ agentPersonalities: { personalities: [] } });
+    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+  });
+
+  test("seeds the shipped starter team onto a fresh host", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [] },
+      },
+      undefined,
+    );
+
+    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+
+    const persisted = loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities;
+    expect(persisted).toHaveLength(DEFAULT_AGENT_PERSONALITIES.length);
+    expect(persisted?.map((entry) => entry.id)).toEqual(
+      DEFAULT_AGENT_PERSONALITIES.map((entry) => entry.id),
+    );
+  });
+
+  test("never re-seeds when the section already exists, even when empty", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    // A user who cleared the whole team leaves an explicit empty section on disk.
+    const initial = loadPersistedConfig(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify(
+        { ...initial, agents: { agentPersonalities: { personalities: [] } } },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [] },
+      },
+      undefined,
+    );
+
+    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+
+    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+  });
+
+  test("a cleared roster stays cleared across a simulated restart", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    // Mirror bootstrap: a fresh host seeds the roster BOTH in memory (here) and
+    // on disk (the seed call below), so the two never diverge.
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [...DEFAULT_AGENT_PERSONALITIES] },
+      },
+      undefined,
+    );
+
+    // First boot records the seed on disk; the user then deletes all of it.
+    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+    store.patch({ agentPersonalities: { personalities: [] } });
+
+    // Next boot must NOT resurrect the deleted team.
+    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
     expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
   });
 
@@ -674,5 +773,88 @@ describe("DaemonConfigStore", () => {
 
     const persisted = loadPersistedConfig(ottoHome);
     expect(persisted.agents?.providers).toBeUndefined();
+  });
+
+  test("masks host-provider secrets on the client view and restores an unchanged sentinel patch", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        speech: { openai: { apiKey: "sk-real-speech-key" } },
+        gitHosting: {
+          providers: { bitbucketCloud: { email: "dev@example.com", apiToken: "real-bb-token" } },
+        },
+      },
+      undefined,
+    );
+
+    // The client view masks both secrets but keeps the non-secret email.
+    const clientView = redactDaemonConfigForClient(store.get());
+    expect(clientView.speech?.openai?.apiKey).toBe(DAEMON_CONFIG_SECRET_SENTINEL);
+    expect(clientView.gitHosting?.providers?.bitbucketCloud?.apiToken).toBe(
+      DAEMON_CONFIG_SECRET_SENTINEL,
+    );
+    expect(clientView.gitHosting?.providers?.bitbucketCloud?.email).toBe("dev@example.com");
+    // get() itself is untouched — internal consumers still see the real secret.
+    expect(store.get().gitHosting?.providers?.bitbucketCloud?.apiToken).toBe("real-bb-token");
+
+    // Saving the config unchanged sends the sentinel back; the stored secret must
+    // survive, while a sibling field (email) still changes.
+    store.patch({
+      gitHosting: {
+        providers: {
+          bitbucketCloud: { email: "new@example.com", apiToken: DAEMON_CONFIG_SECRET_SENTINEL },
+        },
+      },
+      speech: { openai: { apiKey: DAEMON_CONFIG_SECRET_SENTINEL } },
+    });
+
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.gitHosting?.providers?.bitbucketCloud?.apiToken).toBe("real-bb-token");
+    expect(persisted.gitHosting?.providers?.bitbucketCloud?.email).toBe("new@example.com");
+    expect(persisted.providers?.openai?.apiKey).toBe("sk-real-speech-key");
+  });
+
+  test("applies a genuinely new secret and clears it on empty", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        gitHosting: {
+          providers: { bitbucketCloud: { email: "dev@example.com", apiToken: "old-token" } },
+        },
+      },
+      undefined,
+    );
+
+    store.patch({
+      gitHosting: { providers: { bitbucketCloud: { apiToken: "brand-new-token" } } },
+    });
+    expect(loadPersistedConfig(ottoHome).gitHosting?.providers?.bitbucketCloud?.apiToken).toBe(
+      "brand-new-token",
+    );
+
+    store.patch({ gitHosting: { providers: { bitbucketCloud: { apiToken: "" } } } });
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.gitHosting?.providers?.bitbucketCloud?.apiToken).toBeUndefined();
+    expect(persisted.gitHosting?.providers?.bitbucketCloud?.email).toBe("dev@example.com");
   });
 });

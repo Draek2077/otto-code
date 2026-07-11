@@ -145,6 +145,7 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@otto-code/protocol/messages";
+import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -613,7 +614,15 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     speech: createInitialMutableSpeechConfig(config),
     ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
     agentPersonalities: {
-      personalities: config.agentPersonalities?.personalities ?? [],
+      // A host that has never carried a personalities section (undefined, not an
+      // empty roster the user cleared) is seeded with the shipped starter team so
+      // a fresh install opens with a working, role-complete roster. The one-time
+      // seed is also recorded on disk right after the store is built (see
+      // seedDefaultPersonalitiesIfAbsent) so clearing the whole team sticks.
+      personalities:
+        config.agentPersonalities === undefined
+          ? [...DEFAULT_AGENT_PERSONALITIES]
+          : (config.agentPersonalities.personalities ?? []),
     },
   };
 
@@ -637,6 +646,9 @@ export async function createOttoDaemon(
     createInitialMutableDaemonConfig(config),
     logger,
   );
+  // Record the first-run seed on disk so the shipped starter team survives a
+  // restart AND a subsequent "delete every personality" stays deleted.
+  daemonConfigStore.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
   const previewDevServers = new DevServerManager({ logger });

@@ -136,3 +136,38 @@ describe("ArtifactStore run history", () => {
     expect(raw.runs).toHaveLength(1);
   });
 });
+
+describe("ArtifactStore id validation", () => {
+  let cwd: string;
+  let store: ArtifactStore;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(join(tmpdir(), "artifact-store-"));
+    store = new ArtifactStore(cwd);
+  });
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("rejects path-traversal ids before touching the filesystem", async () => {
+    // A traversal id must never let delete()/inspect()/get() escape the
+    // artifacts dir and read or unlink an unrelated file.
+    const outside = join(cwd, "outside-secret.json");
+    await writeFile(outside, JSON.stringify({ secret: true }), "utf-8");
+
+    for (const badId of ["../../outside-secret", "..\\..\\outside-secret", "a/b", "a\0b"]) {
+      await expect(store.delete(badId)).rejects.toThrow(/Invalid artifact id/);
+      await expect(store.inspect(badId)).rejects.toThrow(/Invalid artifact id/);
+      await expect(store.get(badId)).rejects.toThrow(/Invalid artifact id/);
+    }
+
+    // The file outside the artifacts dir is untouched.
+    expect(JSON.parse(await readFile(outside, "utf-8"))).toEqual({ secret: true });
+  });
+
+  it("accepts the generator's hex id shape", async () => {
+    await store.create(metadataFixture({ id: "a1b2c3d4" }));
+    expect(await store.get("a1b2c3d4")).toMatchObject({ id: "a1b2c3d4" });
+  });
+});

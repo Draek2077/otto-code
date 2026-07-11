@@ -1,4 +1,5 @@
 import type { AgentAttachment, GitHostingProviderId } from "@otto-code/protocol/messages";
+import { normalizeGitHostingProviderId } from "@otto-code/protocol/messages";
 
 const REVIEW_LINE_MARKERS = { add: "+", remove: "-", context: " " } as const;
 
@@ -6,6 +7,13 @@ const HOSTING_PROVIDER_LABELS: Record<GitHostingProviderId, string> = {
   github: "GitHub",
   "bitbucket-cloud": "Bitbucket",
 };
+
+// The wire provider id is an open string (forward-compat), so degrade to a
+// neutral label for a provider this build doesn't recognize.
+function hostingProviderLabel(provider: string): string {
+  const known = normalizeGitHostingProviderId(provider);
+  return known ? HOSTING_PROVIDER_LABELS[known] : "Git";
+}
 
 export function renderPromptAttachmentAsText(attachment: AgentAttachment): string {
   switch (attachment.type) {
@@ -30,7 +38,7 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
       return lines.join("\n");
     }
     case "hosting_pr": {
-      const label = HOSTING_PROVIDER_LABELS[attachment.provider];
+      const label = hostingProviderLabel(attachment.provider);
       const lines = [`${label} PR #${attachment.number}: ${attachment.title}`, attachment.url];
       if (attachment.baseRefName) {
         lines.push(`Base: ${attachment.baseRefName}`);
@@ -44,7 +52,7 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
       return lines.join("\n");
     }
     case "hosting_issue": {
-      const label = HOSTING_PROVIDER_LABELS[attachment.provider];
+      const label = hostingProviderLabel(attachment.provider);
       const lines = [`${label} Issue #${attachment.number}: ${attachment.title}`, attachment.url];
       if (attachment.body) {
         lines.push("", attachment.body);

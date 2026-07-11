@@ -12,7 +12,7 @@ import {
   resolveGitHubRepo,
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
-  type GitHubCurrentPullRequestStatus,
+  type HostingCurrentPullRequestStatus,
 } from "./github-service.js";
 import { CheckoutPrStatusResponseSchema } from "@otto-code/protocol/messages";
 
@@ -140,8 +140,8 @@ function currentPullRequestGithubFactsJson(overrides: Record<string, unknown> = 
 }
 
 function createCurrentPullRequestStatus(
-  overrides: Partial<GitHubCurrentPullRequestStatus> = {},
-): GitHubCurrentPullRequestStatus {
+  overrides: Partial<HostingCurrentPullRequestStatus> = {},
+): HostingCurrentPullRequestStatus {
   return {
     number: 42,
     repoOwner: "acme",
@@ -162,8 +162,8 @@ function createCurrentPullRequestStatus(
 }
 
 function githubStatusFacts(
-  overrides: Partial<NonNullable<GitHubCurrentPullRequestStatus["github"]>> = {},
-): NonNullable<GitHubCurrentPullRequestStatus["github"]> {
+  overrides: Partial<NonNullable<HostingCurrentPullRequestStatus["github"]>> = {},
+): NonNullable<HostingCurrentPullRequestStatus["github"]> {
   return {
     mergeStateStatus: "CLEAN",
     autoMergeRequest: null,

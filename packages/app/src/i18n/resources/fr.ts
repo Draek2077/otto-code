@@ -2163,7 +2163,7 @@ export const fr: TranslationResources = {
         unavailable: "Connect to this host to manage agents",
       },
       gitProviders: {
-        info: "Connectez les services qui hébergent vos dépôts. Chaque projet utilise le fournisseur vers lequel pointe son dépôt distant git.",
+        sectionTitle: "Fournisseurs",
         updateHost: "Mettez à jour l'hôte pour configurer les fournisseurs Git.",
         checkConnection: "Vérifier la connexion",
         checking: "Vérification de la connexion…",

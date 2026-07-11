@@ -188,6 +188,58 @@ describe("window-manager", () => {
         trafficLightPosition: { x: 16, y: 14 },
       });
     });
+
+    it("seeds the initial overlay from restored colors so launch does not flash", () => {
+      expect(
+        getMainWindowChromeOptions({
+          platform: "win32",
+          theme: "dark",
+          restoredOverlay: { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" },
+        }),
+      ).toEqual({
+        titleBarStyle: "hidden",
+        frame: false,
+        autoHideMenuBar: true,
+        titleBarOverlay: {
+          color: "#161b1a",
+          symbolColor: "#d4d4d8",
+          height: 29,
+        },
+      });
+    });
+
+    it("falls back per-color to the theme default when a restored color is missing", () => {
+      expect(
+        getMainWindowChromeOptions({
+          platform: "win32",
+          theme: "dark",
+          restoredOverlay: { backgroundColor: "#161b1a" },
+        }),
+      ).toEqual({
+        titleBarStyle: "hidden",
+        frame: false,
+        autoHideMenuBar: true,
+        titleBarOverlay: {
+          color: "#161b1a",
+          symbolColor: "#e4e4e7",
+          height: 29,
+        },
+      });
+    });
+
+    it("ignores restored overlay on mac (traffic lights, no overlay colors)", () => {
+      expect(
+        getMainWindowChromeOptions({
+          platform: "darwin",
+          theme: "dark",
+          restoredOverlay: { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" },
+        }),
+      ).toEqual({
+        titleBarStyle: "hidden",
+        titleBarOverlay: true,
+        trafficLightPosition: { x: 16, y: 14 },
+      });
+    });
   });
 
   describe("resolveWindowBounds", () => {

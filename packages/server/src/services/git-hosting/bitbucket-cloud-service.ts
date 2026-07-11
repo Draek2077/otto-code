@@ -6,16 +6,16 @@ import type {
   GetGitHubPullRequestOptions,
   GetGitHubPullRequestTimelineOptions,
   GitHubCheckDetails,
-  GitHubCurrentPullRequestStatus,
+  HostingCurrentPullRequestStatus,
   GitHubIssueSummary,
   GitHubPullRequestCheckoutTarget,
   GitHubPullRequestCreateResult,
-  GitHubPullRequestSummary,
+  HostingPullRequestSummary,
   GitHubPullRequestTimeline,
   GitHubPullRequestTimelineError,
   GitHubSearchResult,
   ListGitHubIssuesOptions,
-  ListGitHubPullRequestsOptions,
+  ListHostingPullRequestsOptions,
   PullRequestCheck,
   PullRequestChecksStatus,
   PullRequestCheckStatus,
@@ -29,9 +29,12 @@ import { createPullRequestStatusPoller, type PullRequestStatusPoller } from "./s
 import {
   BITBUCKET_CLOUD_CAPABILITIES,
   GitHostingRequestError,
+  GitHostingUnsupportedCapabilityError,
   type BitbucketPullRequestStatusFacts,
   type GitHostingService,
 } from "./types.js";
+
+const BITBUCKET_CLOUD_PROVIDER_ID = "bitbucket-cloud" as const;
 
 const BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0";
 const DEFAULT_TTL_MS = 30_000;
@@ -267,7 +270,7 @@ export function sanitizeBitbucketQueryTerm(term: string): string {
   return term.replace(/["\\]/gu, " ").trim();
 }
 
-function pullRequestSummaryFrom(pr: BitbucketPullRequest): GitHubPullRequestSummary {
+function pullRequestSummaryFrom(pr: BitbucketPullRequest): HostingPullRequestSummary {
   const mapped = mapPullRequestState(pr.state);
   return {
     number: pr.id,
@@ -551,7 +554,7 @@ export function createBitbucketCloudService(
   async function buildCurrentStatus(params: {
     identity: BitbucketRepoIdentity;
     pr: BitbucketPullRequest;
-  }): Promise<GitHubCurrentPullRequestStatus> {
+  }): Promise<HostingCurrentPullRequestStatus> {
     const { identity, pr } = params;
     const mapped = mapPullRequestState(pr.state);
     const checks = await fetchChecksForCommit({
@@ -593,7 +596,7 @@ export function createBitbucketCloudService(
     providerId: "bitbucket-cloud",
     capabilities,
 
-    listPullRequests(input: ListGitHubPullRequestsOptions): Promise<GitHubPullRequestSummary[]> {
+    listPullRequests(input: ListHostingPullRequestsOptions): Promise<HostingPullRequestSummary[]> {
       return cache.cached({
         cwd: input.cwd,
         method: "listPullRequests",
@@ -617,7 +620,7 @@ export function createBitbucketCloudService(
       return Promise.resolve([]);
     },
 
-    getPullRequest(input: GetGitHubPullRequestOptions): Promise<GitHubPullRequestSummary> {
+    getPullRequest(input: GetGitHubPullRequestOptions): Promise<HostingPullRequestSummary> {
       return cache.cached({
         cwd: input.cwd,
         method: "getPullRequest",
@@ -667,7 +670,7 @@ export function createBitbucketCloudService(
 
     getCurrentPullRequestStatus(input) {
       return cache
-        .cached<GitHubCurrentPullRequestStatus | null>({
+        .cached<HostingCurrentPullRequestStatus | null>({
           cwd: input.cwd,
           method: "getCurrentPullRequestStatus",
           args: { headRef: input.headRef, headRepositoryOwner: input.headRepositoryOwner },
@@ -827,7 +830,10 @@ export function createBitbucketCloudService(
 
     async mergePullRequest(input) {
       if (input.mergeMethod === "rebase") {
-        throw new Error("Rebase merges are not supported by Bitbucket Cloud");
+        throw new GitHostingUnsupportedCapabilityError({
+          providerId: BITBUCKET_CLOUD_PROVIDER_ID,
+          capability: "rebase merges",
+        });
       }
       const identity = await requireIdentity(input.cwd);
       // Fresh precondition read — a merge is a user-initiated, single-shot
@@ -847,11 +853,21 @@ export function createBitbucketCloudService(
     },
 
     enablePullRequestAutoMerge() {
-      return Promise.reject(new Error("Auto-merge is not supported by Bitbucket Cloud"));
+      return Promise.reject(
+        new GitHostingUnsupportedCapabilityError({
+          providerId: BITBUCKET_CLOUD_PROVIDER_ID,
+          capability: "auto-merge",
+        }),
+      );
     },
 
     disablePullRequestAutoMerge() {
-      return Promise.reject(new Error("Auto-merge is not supported by Bitbucket Cloud"));
+      return Promise.reject(
+        new GitHostingUnsupportedCapabilityError({
+          providerId: BITBUCKET_CLOUD_PROVIDER_ID,
+          capability: "auto-merge",
+        }),
+      );
     },
 
     isAuthenticated(input) {

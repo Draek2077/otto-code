@@ -45,7 +45,7 @@ import { startGitCommandMetrics, stopGitCommandMetrics } from "./run-git-command
 import {
   GitHubCommandError,
   GitHubCliMissingError,
-  type GitHubCurrentPullRequestStatus,
+  type HostingCurrentPullRequestStatus,
   type GitHubService,
 } from "../services/github-service.js";
 import {
@@ -102,7 +102,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function createGitHubServiceForStatus(
-  status: GitHubCurrentPullRequestStatus | null,
+  status: HostingCurrentPullRequestStatus | null,
   options?: { onStatus?: () => void },
 ): GitHubService {
   return {
@@ -134,7 +134,7 @@ function createGitHubServiceForStatus(
   };
 }
 
-function createPullRequestStatus(overrides?: Partial<GitHubCurrentPullRequestStatus>) {
+function createPullRequestStatus(overrides?: Partial<HostingCurrentPullRequestStatus>) {
   return {
     url: "https://github.com/otto-code-ai/otto-code/pull/123",
     title: "Ship feature",
@@ -156,7 +156,7 @@ interface RequestedPullRequestTarget {
 
 interface RecordingPullRequestTargetsOptions {
   requestedTargets: RequestedPullRequestTarget[];
-  statusOverrides?: Partial<GitHubCurrentPullRequestStatus>;
+  statusOverrides?: Partial<HostingCurrentPullRequestStatus>;
 }
 
 function createGitHubServiceRecordingPullRequestTargets(

@@ -35,7 +35,7 @@ const GitHubIssueSummarySchema = z.object({
   updatedAt: z.string().catch(""),
 });
 
-const GitHubPullRequestSummarySchema = z.object({
+const HostingPullRequestSummarySchema = z.object({
   number: z.number(),
   title: z.string().catch(""),
   url: z.string().catch(""),
@@ -511,7 +511,7 @@ export type GitHubCommandRunner = (
   options: GitHubCommandRunnerOptions,
 ) => Promise<GitHubCommandResult>;
 
-export interface GitHubPullRequestSummary {
+export interface HostingPullRequestSummary {
   number: number;
   title: string;
   url: string;
@@ -581,7 +581,7 @@ export interface GitHubPullRequestStatusFacts {
   isInMergeQueue: boolean;
 }
 
-export interface GitHubCurrentPullRequestStatus {
+export interface HostingCurrentPullRequestStatus {
   number?: number;
   repoOwner?: string;
   repoName?: string;
@@ -699,7 +699,7 @@ export type GitHubReadOptions =
       reason: string;
     };
 
-export type ListGitHubPullRequestsOptions = {
+export type ListHostingPullRequestsOptions = {
   cwd: string;
   query?: string;
   limit?: number;
@@ -803,9 +803,9 @@ export interface CreateGitHubPullRequestOptions {
 }
 
 export interface GitHubService {
-  listPullRequests(options: ListGitHubPullRequestsOptions): Promise<GitHubPullRequestSummary[]>;
+  listPullRequests(options: ListHostingPullRequestsOptions): Promise<HostingPullRequestSummary[]>;
   listIssues(options: ListGitHubIssuesOptions): Promise<GitHubIssueSummary[]>;
-  getPullRequest(options: GetGitHubPullRequestOptions): Promise<GitHubPullRequestSummary>;
+  getPullRequest(options: GetGitHubPullRequestOptions): Promise<HostingPullRequestSummary>;
   getPullRequestHeadRef(options: GetGitHubPullRequestOptions): Promise<string>;
   getPullRequestCheckoutTarget?(
     options: GetGitHubPullRequestOptions,
@@ -816,7 +816,7 @@ export interface GitHubService {
       headRef: string;
       headRepositoryOwner?: string;
     } & GitHubReadOptions,
-  ): Promise<GitHubCurrentPullRequestStatus | null>;
+  ): Promise<HostingCurrentPullRequestStatus | null>;
   getPullRequestTimeline(
     options: GetGitHubPullRequestTimelineOptions,
   ): Promise<GitHubPullRequestTimeline>;
@@ -837,7 +837,7 @@ export interface GitHubService {
     cwd: string;
     headRef: string;
     headRepositoryOwner?: string;
-    onStatus?: (status: GitHubCurrentPullRequestStatus | null) => void;
+    onStatus?: (status: HostingCurrentPullRequestStatus | null) => void;
     onError?: (error: unknown) => void;
   }): { unsubscribe: () => void };
   invalidate(options: { cwd: string }): void;
@@ -918,14 +918,14 @@ interface GitHubPollTarget {
   headRepositoryOwner?: string;
   retainCount: number;
   timer: NodeJS.Timeout | null;
-  latestStatus: GitHubCurrentPullRequestStatus | null;
+  latestStatus: HostingCurrentPullRequestStatus | null;
   consecutiveErrors: number;
-  callbacks: Set<(status: GitHubCurrentPullRequestStatus | null) => void>;
+  callbacks: Set<(status: HostingCurrentPullRequestStatus | null) => void>;
   errorCallbacks: Set<(error: unknown) => void>;
 }
 
 interface ResolvedPullRequestCandidate {
-  status: GitHubCurrentPullRequestStatus;
+  status: HostingCurrentPullRequestStatus;
   headRepositoryOwner?: string;
 }
 
@@ -1029,7 +1029,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     cwd: string;
     headRef: string;
     headRepositoryOwner?: string;
-    status: GitHubCurrentPullRequestStatus | null;
+    status: HostingCurrentPullRequestStatus | null;
     notify: boolean;
   }): void {
     const target = pollTargets.get(getPollTargetKey(update));
@@ -1694,7 +1694,7 @@ export function isPullRequestMergeMethodAllowed(
 }
 
 export function computeGithubNextInterval(
-  status: GitHubCurrentPullRequestStatus | null,
+  status: HostingCurrentPullRequestStatus | null,
   consecutiveErrors: number,
 ): number {
   const baseInterval = isGitHubStatusPending(status)
@@ -1707,7 +1707,7 @@ export function computeGithubNextInterval(
   return Math.min(baseInterval * 2 ** (consecutiveErrors - 1), GITHUB_POLL_ERROR_BACKOFF_CAP_MS);
 }
 
-function isGitHubStatusPending(status: GitHubCurrentPullRequestStatus | null): boolean {
+function isGitHubStatusPending(status: HostingCurrentPullRequestStatus | null): boolean {
   if (!status) {
     return false;
   }
@@ -1859,7 +1859,7 @@ async function resolveCurrentPullRequestView(options: {
   headRef: string;
   headRepositoryOwner?: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-}): Promise<GitHubCurrentPullRequestStatus | null> {
+}): Promise<HostingCurrentPullRequestStatus | null> {
   const viewCandidate = await tryCurrentPullRequestView(options);
   const viewMatch = viewCandidate
     ? pickPullRequestCandidate({
@@ -1906,9 +1906,9 @@ async function resolveCurrentPullRequestView(options: {
 
 async function addCurrentPullRequestGithubFacts(options: {
   cwd: string;
-  status: GitHubCurrentPullRequestStatus | null;
+  status: HostingCurrentPullRequestStatus | null;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-}): Promise<GitHubCurrentPullRequestStatus | null> {
+}): Promise<HostingCurrentPullRequestStatus | null> {
   const { status } = options;
   if (!status?.repoOwner || !status.repoName || typeof status.number !== "number") {
     return status;
@@ -2128,7 +2128,7 @@ function isCandidateForHeadRef(candidate: ResolvedPullRequestCandidate, headRef:
   return candidate.status.headRefName === headRef && hasResolvedRepoIdentity(candidate.status);
 }
 
-function hasResolvedRepoIdentity(status: GitHubCurrentPullRequestStatus): boolean {
+function hasResolvedRepoIdentity(status: HostingCurrentPullRequestStatus): boolean {
   return Boolean(status.repoOwner && status.repoName);
 }
 
@@ -2157,7 +2157,7 @@ function comparePullRequestCandidatePreference(
   return getPullRequestStateRank(left.status) - getPullRequestStateRank(right.status);
 }
 
-function getPullRequestStateRank(status: GitHubCurrentPullRequestStatus): number {
+function getPullRequestStateRank(status: HostingCurrentPullRequestStatus): number {
   if (status.state === "open" || status.isDraft) {
     return 0;
   }
@@ -2167,13 +2167,13 @@ function getPullRequestStateRank(status: GitHubCurrentPullRequestStatus): number
   return 2;
 }
 
-function parsePullRequestSummaries(stdout: string): GitHubPullRequestSummary[] {
-  const parsed = z.array(GitHubPullRequestSummarySchema).parse(JSON.parse(stdout || "[]"));
+function parsePullRequestSummaries(stdout: string): HostingPullRequestSummary[] {
+  const parsed = z.array(HostingPullRequestSummarySchema).parse(JSON.parse(stdout || "[]"));
   return parsed.map(toPullRequestSummary);
 }
 
-function parsePullRequestSummary(stdout: string): GitHubPullRequestSummary {
-  return toPullRequestSummary(GitHubPullRequestSummarySchema.parse(JSON.parse(stdout || "{}")));
+function parsePullRequestSummary(stdout: string): HostingPullRequestSummary {
+  return toPullRequestSummary(HostingPullRequestSummarySchema.parse(JSON.parse(stdout || "{}")));
 }
 
 function parsePullRequestCheckoutTarget(stdout: string): GitHubPullRequestCheckoutTarget {
@@ -2194,8 +2194,8 @@ function parsePullRequestCheckoutTarget(stdout: string): GitHubPullRequestChecko
 }
 
 function toPullRequestSummary(
-  item: z.infer<typeof GitHubPullRequestSummarySchema>,
-): GitHubPullRequestSummary {
+  item: z.infer<typeof HostingPullRequestSummarySchema>,
+): HostingPullRequestSummary {
   return {
     number: item.number,
     title: item.title,
@@ -2621,7 +2621,7 @@ function classifyPullRequestTimelineError(stderr: string): GitHubPullRequestTime
 function toCurrentPullRequestStatus(
   item: CurrentPullRequestStatusItem,
   fallbackHeadRefName: string,
-): GitHubCurrentPullRequestStatus | null {
+): HostingCurrentPullRequestStatus | null {
   if (!item.url || !item.title) {
     return null;
   }

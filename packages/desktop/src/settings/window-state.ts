@@ -11,12 +11,25 @@ export const MIN_WINDOW_HEIGHT = 300;
 const MIN_VISIBLE_WIDTH = 100;
 const MIN_VISIBLE_HEIGHT = 80;
 
+/**
+ * The last-applied window-controls-overlay colors, persisted so the next launch
+ * can seed the native caption-button strip with the color the renderer will
+ * settle on. Without this, the window is constructed with a static theme default
+ * and only repaints to the real color (e.g. the sidebar surface) once React
+ * mounts — a visible flash on every sidebar-open launch.
+ */
+export interface WindowControlsOverlayColors {
+  backgroundColor?: string;
+  foregroundColor?: string;
+}
+
 export interface WindowState {
   x?: number;
   y?: number;
   width: number;
   height: number;
   isMaximized: boolean;
+  overlay?: WindowControlsOverlayColors;
 }
 
 /** A display's usable area (excludes the menu bar / taskbar), in DIP coordinates. */
@@ -85,7 +98,29 @@ export function coerceWindowState(input: unknown): WindowState | null {
     state.y = y;
   }
 
+  const overlay = coerceOverlayColors(input.overlay);
+  if (overlay) {
+    state.overlay = overlay;
+  }
+
   return state;
+}
+
+function coerceOverlayColors(input: unknown): WindowControlsOverlayColors | null {
+  if (!isRecord(input)) {
+    return null;
+  }
+  const overlay: WindowControlsOverlayColors = {};
+  if (typeof input.backgroundColor === "string") {
+    overlay.backgroundColor = input.backgroundColor;
+  }
+  if (typeof input.foregroundColor === "string") {
+    overlay.foregroundColor = input.foregroundColor;
+  }
+  if (overlay.backgroundColor === undefined && overlay.foregroundColor === undefined) {
+    return null;
+  }
+  return overlay;
 }
 
 function serializeDocument(state: WindowState): string {
@@ -103,10 +138,11 @@ export function clampWindowStateToWorkAreas(
   state: WindowState,
   workAreas: WorkArea[],
 ): WindowState {
+  const overlay = state.overlay ? { overlay: state.overlay } : {};
   const primary = workAreas[0];
   if (!primary) {
     // No display info — keep the size, let the OS place the window.
-    return { width: state.width, height: state.height, isMaximized: state.isMaximized };
+    return { width: state.width, height: state.height, isMaximized: state.isMaximized, ...overlay };
   }
 
   let target: WorkArea = primary;
@@ -145,9 +181,9 @@ export function clampWindowStateToWorkAreas(
     // oversized saved state cannot end up mostly off-screen.
     const clampedX = Math.min(Math.max(x, target.x), target.x + target.width - width);
     const clampedY = Math.min(Math.max(y, target.y), target.y + target.height - height);
-    return { x: clampedX, y: clampedY, width, height, isMaximized: state.isMaximized };
+    return { x: clampedX, y: clampedY, width, height, isMaximized: state.isMaximized, ...overlay };
   }
-  return { width, height, isMaximized: state.isMaximized };
+  return { width, height, isMaximized: state.isMaximized, ...overlay };
 }
 
 export function createWindowStateStore({

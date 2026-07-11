@@ -1,5 +1,5 @@
 import type { GitHostingCapabilities, GitHostingProviderId } from "@otto-code/protocol/messages";
-import type { GitHubCurrentPullRequestStatus, GitHubService } from "../github-service.js";
+import type { HostingCurrentPullRequestStatus, GitHubService } from "../github-service.js";
 
 // A git hosting service is the existing GitHubService shape (every method
 // already takes a cwd) tagged with which provider it is and what it can do.
@@ -11,10 +11,9 @@ export interface GitHostingService extends GitHubService {
   readonly capabilities: GitHostingCapabilities;
 }
 
-// Neutral vocabulary for provider-agnostic code. The underlying types were
-// born GitHub-branded in github-service.ts; renaming their definitions is a
-// follow-up cleanup, the shapes themselves are provider-neutral.
-export type CurrentPullRequestStatus = GitHubCurrentPullRequestStatus;
+// Short neutral synonym for the provider-agnostic PR status shape (defined as
+// HostingCurrentPullRequestStatus in github-service.ts).
+export type CurrentPullRequestStatus = HostingCurrentPullRequestStatus;
 
 export interface BitbucketPullRequestStatusFacts {
   mergeStrategiesAllowed: string[];
@@ -75,6 +74,20 @@ export class GitHostingRateLimitError extends Error {
     super(`Git hosting provider ${params.providerId} rate limited the request`);
     this.name = "GitHostingRateLimitError";
     this.retryAfterMs = params.retryAfterMs;
+  }
+}
+
+// A capability the provider doesn't implement was invoked (e.g. auto-merge or
+// server-side rebase on Bitbucket Cloud). Typed so callers can discriminate on
+// `kind` like every other hosting error, instead of matching a bare message.
+export class GitHostingUnsupportedCapabilityError extends Error {
+  readonly kind = "unsupported-capability";
+  readonly capability: string;
+
+  constructor(params: { providerId: GitHostingProviderId; capability: string }) {
+    super(`Git hosting provider ${params.providerId} does not support ${params.capability}`);
+    this.name = "GitHostingUnsupportedCapabilityError";
+    this.capability = params.capability;
   }
 }
 

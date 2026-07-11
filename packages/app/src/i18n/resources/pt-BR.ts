@@ -2143,7 +2143,7 @@ export const ptBR: TranslationResources = {
         unavailable: "Conecte-se a este host para gerenciar agentes",
       },
       gitProviders: {
-        info: "Conecte os serviços que hospedam seus repositórios. Cada projeto usa o provedor para o qual seu remoto git aponta.",
+        sectionTitle: "Provedores",
         updateHost: "Atualize o host para configurar provedores de Git.",
         checkConnection: "Verificar conexão",
         checking: "Verificando a conexão…",

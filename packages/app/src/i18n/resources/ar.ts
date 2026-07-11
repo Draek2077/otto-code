@@ -2113,7 +2113,7 @@ export const ar: TranslationResources = {
         unavailable: "Connect to this host to manage agents",
       },
       gitProviders: {
-        info: "اربط الخدمات التي تستضيف مستودعاتك. يستخدم كل مشروع الموفّر الذي يشير إليه مصدر git الخاص به.",
+        sectionTitle: "مقدمي الخدمات",
         updateHost: "حدِّث المضيف لضبط موفّري Git.",
         checkConnection: "التحقق من الاتصال",
         checking: "جارٍ التحقق من الاتصال…",

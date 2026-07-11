@@ -10,7 +10,7 @@ import type {
   ArtifactRunTrigger,
   StoredArtifact,
 } from "@otto-code/protocol/artifacts/types";
-import { ArtifactStore } from "./artifact-store.js";
+import { ArtifactStore, assertValidArtifactId } from "./artifact-store.js";
 import { ArtifactWatcher } from "./artifact-watcher.js";
 import { ARTIFACT_SYSTEM_PROMPT } from "./artifact-prompt.js";
 import type { CreateArtifactInput } from "@otto-code/protocol/artifacts/types";
@@ -506,6 +506,7 @@ export class ArtifactService {
   }
 
   private resolveHtmlPath(artifactId: string): string {
+    assertValidArtifactId(artifactId);
     return join(this.projectCwd, ".otto", "artifacts", `${artifactId}.html`);
   }
 }

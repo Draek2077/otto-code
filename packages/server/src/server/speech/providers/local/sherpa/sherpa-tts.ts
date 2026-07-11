@@ -9,10 +9,38 @@ import type {
 } from "../../../speech-provider.js";
 import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
 import { getSherpaOnnxTtsLayout, type LocalTtsModelId } from "./model-catalog.js";
-import { resolveLocalTtsSpeakerId } from "./tts-voices.js";
+import { listLocalTtsVoices, resolveLocalTtsSpeakerId } from "./tts-voices.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
 
 export type SherpaTtsPreset = LocalTtsModelId;
+
+// sherpa-onnx will crash the native worker on a nonsensical speed or an
+// out-of-range speaker id. These bounds fence off bad persisted/env config
+// (e.g. speed=0 or speakerId=999) before it reaches generate().
+const MIN_TTS_SPEED = 0.5;
+const MAX_TTS_SPEED = 2.0;
+
+function clampTtsSpeed(speed: number | undefined): number {
+  if (speed === undefined || !Number.isFinite(speed)) {
+    return 1.0;
+  }
+  return Math.min(MAX_TTS_SPEED, Math.max(MIN_TTS_SPEED, speed));
+}
+
+function resolveValidSpeakerId(
+  preset: LocalTtsModelId,
+  requested: number | undefined,
+  fallback: number,
+): number {
+  if (requested === undefined) {
+    return fallback;
+  }
+  const voiceCount = listLocalTtsVoices(preset).length;
+  if (Number.isInteger(requested) && requested >= 0 && requested < voiceCount) {
+    return requested;
+  }
+  return fallback;
+}
 
 export interface SherpaTtsConfig {
   preset: SherpaTtsPreset;
@@ -51,8 +79,18 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     this.logger = logger.child({ module: "speech", provider: "local", component: "tts" });
     const layout = getSherpaOnnxTtsLayout(config.preset);
     this.preset = config.preset;
-    this.speakerId = config.speakerId ?? layout.defaultSpeakerId;
-    this.speed = config.speed ?? 1.0;
+    this.speakerId = resolveValidSpeakerId(
+      config.preset,
+      config.speakerId,
+      layout.defaultSpeakerId,
+    );
+    if (config.speakerId !== undefined && config.speakerId !== this.speakerId) {
+      this.logger.warn(
+        { requested: config.speakerId, fallback: this.speakerId, preset: config.preset },
+        "Configured TTS speaker id is out of range; falling back to the model default",
+      );
+    }
+    this.speed = clampTtsSpeed(config.speed);
 
     const sherpa = loadSherpaOnnxNode();
     if (typeof sherpa.OfflineTts !== "function") {

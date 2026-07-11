@@ -52,6 +52,7 @@ const READ_ONLY_TOOLS = new Set([
   "list_providers",
   "list_models",
   "inspect_provider",
+  "list_personalities",
   "list_worktrees",
   "list_pending_permissions",
   "list_artifacts",

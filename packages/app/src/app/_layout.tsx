@@ -117,7 +117,7 @@ import {
   parseServerIdFromPathname,
   parseWorkspaceOpenIntent,
 } from "@/utils/host-routes";
-import { isExplorerUnderWindowControls } from "@/utils/desktop-window";
+import { isExplorerUnderWindowControls, startDesktopResizeReflow } from "@/utils/desktop-window";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
@@ -751,6 +751,15 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     settings.syntaxTheme,
     isCompactLayout,
   ]);
+
+  // Desktop only: maximize/unmaximize doesn't deliver a settled resize to the
+  // web layout systems, so breakpoints, the sidebar, and tab sizing freeze at
+  // the pre-maximize width until a manual resize. Subscribe once to the main
+  // process's resize signal and replay a settled synthetic resize. Self-guards
+  // to Electron and no-ops elsewhere.
+  useEffect(() => {
+    startDesktopResizeReflow();
+  }, []);
 
   return (
     <VoiceProvider>

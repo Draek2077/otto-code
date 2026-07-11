@@ -1756,7 +1756,7 @@ export const en = {
       connections: "Connections",
       agents: "Agents",
       workspaces: "Workspaces",
-      gitProviders: "Git providers",
+      gitProviders: "Git",
       providers: "Providers",
       usage: "Usage",
       terminals: "Terminals",
@@ -2123,7 +2123,7 @@ export const en = {
         unavailable: "Connect to this host to manage agents",
       },
       gitProviders: {
-        info: "Connect the services that host your repositories. Each project uses whichever provider its git remote points at.",
+        sectionTitle: "Providers",
         updateHost: "Update the host to configure git providers.",
         checkConnection: "Check connection",
         checking: "Checking connection…",

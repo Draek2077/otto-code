@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,11 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  useTtsPreviewFeature,
+  VOICE_PREVIEW_SAMPLE_TEXT,
+  VoicePreviewButton,
+} from "@/screens/settings/voice-preview-button";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 
@@ -246,9 +251,12 @@ interface PickerRowProps {
   options: ComboboxOption[];
   onChange: (next: string) => void;
   testID: string;
+  // Optional control rendered just left of the dropdown trigger (e.g. a voice
+  // preview button).
+  trailing?: ReactNode;
 }
 
-function PickerRow({ label, value, options, onChange, testID }: PickerRowProps) {
+function PickerRow({ label, value, options, onChange, testID, trailing }: PickerRowProps) {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
 
@@ -277,6 +285,7 @@ function PickerRow({ label, value, options, onChange, testID }: PickerRowProps) 
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{label}</Text>
       </View>
+      {trailing}
       <View ref={anchorRef} collapsable={false} style={styles.triggerAnchor}>
         <Pressable
           onPress={handlePress}
@@ -408,14 +417,17 @@ function DictationCard({ speech, options, apply }: SpeechCardProps) {
 }
 
 function VoiceModeCard({
+  serverId,
   speech,
   options,
   apply,
   showError,
 }: SpeechCardProps & {
+  serverId: string;
   showError: boolean;
 }) {
   const { t } = useTranslation();
+  const canPreviewVoice = useTtsPreviewFeature(serverId);
   const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings();
   const enabled = speech?.voiceMode?.enabled !== false;
   const stt = readSttSelection(speech?.voiceMode?.stt);
@@ -432,6 +444,21 @@ function VoiceModeCard({
     const model = options.local.ttsModels.find((entry) => entry.id === tts.model);
     return toVoiceOptions(model?.voices ?? []);
   }, [options, tts.engine, tts.model]);
+
+  const voicePreview = useMemo(
+    () =>
+      canPreviewVoice && tts.voice ? (
+        <VoicePreviewButton
+          serverId={serverId}
+          text={VOICE_PREVIEW_SAMPLE_TEXT}
+          voiceName={tts.voice}
+          voiceModel={tts.model}
+          voiceProvider={tts.engine}
+          testID="host-speech-voice-tts-preview"
+        />
+      ) : undefined,
+    [canPreviewVoice, serverId, tts.engine, tts.model, tts.voice],
+  );
 
   const onEnabled = useCallback(
     (next: boolean) => apply({ speech: { voiceMode: { enabled: next } } }),
@@ -532,6 +559,7 @@ function VoiceModeCard({
         options={voiceOptions}
         onChange={onVoice}
         testID="host-speech-voice-tts-voice"
+        trailing={voicePreview}
       />
       <SpeedRow
         label={t("settings.host.speech.voiceMode.speed")}
@@ -683,6 +711,7 @@ export function SpeechSettingsCards({ serverId }: { serverId: string }) {
     <>
       <DictationCard speech={speech} options={options} apply={apply} />
       <VoiceModeCard
+        serverId={serverId}
         speech={speech}
         options={options}
         apply={apply}

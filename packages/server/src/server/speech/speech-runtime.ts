@@ -15,7 +15,15 @@ import {
   initializeOpenAiSpeechServices,
   validateOpenAiCredentialRequirements,
 } from "./providers/openai/runtime.js";
-import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
+import type {
+  SpeechToTextProvider,
+  SpeechVoiceOverride,
+  TextToSpeechProvider,
+} from "./speech-provider.js";
+
+// Upper bound on preview text so a runaway prompt can't tie up the TTS engine.
+// Voice previews are a single short sentence; real playback splits at ~260.
+const TTS_PREVIEW_MAX_CHARS = 400;
 import {
   buildSpeechSettingsOptions,
   type SpeechSettingsOptions,
@@ -359,6 +367,17 @@ export interface SpeechService {
   getReadiness: () => SpeechReadinessSnapshot;
   onReadinessChange: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
   getSettingsOptions: () => SpeechSettingsOptions;
+  /**
+   * One-shot synthesis for the voice-preview button. Runs the host's active TTS
+   * provider on `text` with the (soft) voice override, drains the stream, and
+   * returns base64 audio plus its media format. Returns null when no TTS
+   * provider is configured or the provider yields no audio; the caller surfaces
+   * that as a preview error rather than throwing.
+   */
+  synthesizePreview: (params: {
+    text: string;
+    voice?: SpeechVoiceOverride;
+  }) => Promise<{ audio: string; format: string } | null>;
   /** Apply a new resolved config without restarting the daemon. No-op when unchanged. */
   reconfigure: (next: SpeechServiceConfigUpdate) => Promise<void>;
   start: () => void;
@@ -772,6 +791,19 @@ export function createSpeechService(params: {
       buildSpeechSettingsOptions({
         openaiAvailability: getOpenAiSpeechAvailability(openaiConfig),
       }),
+    synthesizePreview: async ({ text, voice }) => {
+      const provider = ttsService;
+      if (!provider) return null;
+      const trimmed = text.trim().slice(0, TTS_PREVIEW_MAX_CHARS);
+      if (trimmed.length === 0) return null;
+      const { stream, format } = await provider.synthesizeSpeech(trimmed, voice);
+      const buffers: Buffer[] = [];
+      for await (const chunk of stream) {
+        buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      if (buffers.length === 0) return null;
+      return { audio: Buffer.concat(buffers).toString("base64"), format };
+    },
     reconfigure,
     start,
     stop,

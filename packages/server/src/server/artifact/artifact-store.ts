@@ -10,6 +10,19 @@ import type {
 export type { ArtifactMetadata };
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
+// Artifact ids are server-generated hex (randomBytes). Anything that reaches a
+// filesystem path must be a single safe segment: reject separators, dots, and
+// null bytes so a client- or agent-supplied id can never traverse out of the
+// artifacts dir (e.g. "../../../../Users/x/secret" would otherwise let delete()
+// unlink arbitrary paired *.json/*.html files, or inspect() read them).
+const ARTIFACT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function assertValidArtifactId(artifactId: string): void {
+  if (!ARTIFACT_ID_PATTERN.test(artifactId)) {
+    throw new Error(`Invalid artifact id: ${JSON.stringify(artifactId)}`);
+  }
+}
+
 // Drop the run history off a stored record to get the lean metadata that
 // list/get callers (and every broadcast/notification) work with. Keeping runs
 // out of that shape means they never ride the wire on routine updates — only
@@ -27,10 +40,12 @@ export class ArtifactStore {
   }
 
   private metadataPath(artifactId: string): string {
+    assertValidArtifactId(artifactId);
     return join(this.artifactsDir(), `${artifactId}.json`);
   }
 
   private htmlPath(artifactId: string): string {
+    assertValidArtifactId(artifactId);
     return join(this.artifactsDir(), `${artifactId}.html`);
   }
 

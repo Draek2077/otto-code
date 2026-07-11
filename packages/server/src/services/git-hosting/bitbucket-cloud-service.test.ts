@@ -250,7 +250,7 @@ describe("bitbucket cloud service", () => {
 
     await expect(
       service.mergePullRequest({ cwd: "C:/repo", prNumber: 7, mergeMethod: "rebase" }),
-    ).rejects.toThrow(/Rebase merges are not supported/u);
+    ).rejects.toMatchObject({ kind: "unsupported-capability", capability: "rebase merges" });
     expect(requests).toHaveLength(0);
   });
 
@@ -258,10 +258,10 @@ describe("bitbucket cloud service", () => {
     const { service } = createService({ handler: () => jsonResponse({}) });
     await expect(
       service.enablePullRequestAutoMerge({ cwd: "C:/repo", prNumber: 7, mergeMethod: "merge" }),
-    ).rejects.toThrow(/not supported/u);
+    ).rejects.toMatchObject({ kind: "unsupported-capability", capability: "auto-merge" });
     await expect(
       service.disablePullRequestAutoMerge({ cwd: "C:/repo", prNumber: 7 }),
-    ).rejects.toThrow(/not supported/u);
+    ).rejects.toMatchObject({ kind: "unsupported-capability", capability: "auto-merge" });
   });
 
   it("searches pull requests only and never requests issues", async () => {

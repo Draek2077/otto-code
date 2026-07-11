@@ -2095,7 +2095,7 @@ export const zhCN: TranslationResources = {
         unavailable: "连接到这个 Host 以管理 Agent",
       },
       gitProviders: {
-        info: "连接托管你仓库的服务。每个项目使用其 git 远程所指向的提供商。",
+        sectionTitle: "Providers",
         updateHost: "更新 Host 以配置 Git 提供商。",
         checkConnection: "检查连接",
         checking: "正在检查连接…",
