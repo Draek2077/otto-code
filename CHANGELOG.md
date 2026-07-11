@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.0 - 2026-07-11
+
+### Added
+
+- Agent personalities: named, reusable agent templates you set up once per host. Each binds a provider and model, an effort level, a permission mode, a custom prompt, one or more roles, two spinner glow colors, and a speaking voice — so a personality on a local model is just as capable as one on a frontier API. Pick one atop any model picker (composer, schedules, artifacts), and your agents can spawn them by name.
+- A starter team of six personalities (Atlas, Sage, Vera, Pixel, Dash, Sprocket) ships on every new host, covering all seven roles; a "Restore starter team" button brings them back and deleting them all sticks across restarts.
+- A running agent now shows its personality's identity — provider icon, name, and a spinner glow in the personality's colors — instead of raw provider/model/effort.
+- Switch or clear a running chat agent's personality straight from its model picker: prompt, model, mode, and effort apply together, behind a warning dialog you can suppress. On Claude the change takes effect from your next message.
+- Bitbucket Cloud support: PR and issue features now work against Bitbucket Cloud as well as GitHub. Configure providers once in the new "Git providers" host settings section; each workspace picks its provider automatically from the git remote.
+- Voice & dictation host settings: choose the engine, speech-to-text and text-to-speech models, voice, and speaking speed for dictation and voice mode right from Host settings, instead of hand-editing config. Includes new Kokoro v1.0 local voices and an OpenAI speech key card.
+- Live turn stats: while an agent works, its status shows a running elapsed timer and a ticking token estimate, and each finished turn reports how long it took and the tokens it used.
+- Chat message timestamps you can switch between exact clock time and relative ("5m ago"), with an Appearance toggle to reveal per-message details — timestamp, duration, and copy and fork controls.
+- Pinnable Changes toolbar: split, tree, expand-all, whitespace, wrap, and refresh controls that you can pin into the strip or tuck away in a menu — your pins are remembered.
+- Right-click context menus on workspace and project rows in the sidebar (desktop).
+- The settings sidebar can now be dragged to resize, staying in sync with the workspace sidebar width.
+- Agents can inspect an artifact's full generation history and manage artifacts on their own — list, retune, and re-run them without the client.
+
+### Improved
+
+- Assistant replies now stream in with a smooth typewriter reveal instead of arriving in sudden bursts.
+- Reasoning effort is now one consistent "Effort" control everywhere, mapped to whatever each model actually supports. OpenAI Compatible providers drop their separate reasoning-effort setting and use the standard control like every other provider.
+- The agent mode picker is color-coded by risk — green for safe, yellow for moderate, red for dangerous, blue for planning — and the active mode tints the composer chip so you can read the permission level at a glance.
+- The schedule form is flatter: project and model are offered from the start, the model survives switching projects on the same host, and the mode picker is gone (scheduled runs are always unattended). "Thinking" is now labeled "Effort".
+- Dark themes are a touch lighter across the board (backgrounds lifted so surfaces read more distinctly), and Neotokyo now opens on a visible violet instead of near-black.
+- Pinned desktop sidebars get a subtle seam shadow so the main pane reads as sitting above them.
+- Explorer header tabs show their labels whenever there's room, instead of always collapsing to icons.
+- Regenerating an artifact keeps the last successful version if the new run fails, is canceled, or times out, and shows a banner instead of losing your output.
+- Daylight-on-black and Twilight-on-black themes get their real accent colors and matching spinners back.
+- Native text-to-speech playback no longer sounds metallic — downsampling is now anti-aliased.
+- A polish pass across the sidebar, file explorer, headers, chat, and the Schedules and Artifacts screens.
+
+### Fixed
+
+- Opening a workspace directly by link no longer occasionally leaves the desktop tabs row missing until you reload.
+- On Windows/Linux desktop, the window-control buttons now sit on correctly sized, correctly tinted chrome that matches the explorer sidebar beneath them.
+- Bottom sheets and popovers that float over the desktop title bar are no longer click-dead where they overlap the drag region.
+- Mobile bottom sheets size themselves to their content, so footers no longer sit below the fold out of reach.
+- Home page content is now optically centered instead of sitting slightly too low.
+
+### Security
+
+- Bitbucket authentication is built per request and never logged, and merge preconditions are re-checked on the daemon before a merge proceeds.
+
 ## 0.4.4 - 2026-07-10
 
 ### Added
