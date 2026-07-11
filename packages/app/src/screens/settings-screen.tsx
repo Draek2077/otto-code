@@ -4,11 +4,15 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  StyleSheet as RNStyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type PressableStateCallbackType,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,6 +42,7 @@ import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
@@ -57,7 +62,7 @@ import {
 } from "@/hooks/use-settings";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
-import { usePanelStore } from "@/stores/panel-store";
+import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, usePanelStore } from "@/stores/panel-store";
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
@@ -118,6 +123,10 @@ import {
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
+
+// Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
+// panel-store width identically.
+const MIN_SETTINGS_CONTENT_WIDTH = 400;
 
 // ---------------------------------------------------------------------------
 // View model
@@ -1078,17 +1087,56 @@ function SettingsSidebar({
   const { settings } = useAppSettings();
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
+  // Shared with the workspace left sidebar: both read/write the same
+  // panel-store width, so resizing here resizes there and vice versa.
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const outerContainerStyle = useMemo(
-    () => [
-      isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer,
-      isDesktop ? { width: sidebarWidth } : null,
-    ],
-    [isDesktop, sidebarWidth],
+  const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
+  const { width: viewportWidth } = useWindowDimensions();
+  const startWidthRef = useRef(sidebarWidth);
+  const resizeWidth = useSharedValue(sidebarWidth);
+
+  useEffect(() => {
+    resizeWidth.value = sidebarWidth;
+  }, [sidebarWidth, resizeWidth]);
+
+  const resizeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onStart(() => {
+          startWidthRef.current = sidebarWidth;
+          resizeWidth.value = sidebarWidth;
+        })
+        .onUpdate((event) => {
+          // Dragging right (positive translationX) increases width
+          const newWidth = startWidthRef.current + event.translationX;
+          const maxWidth = Math.max(
+            MIN_SIDEBAR_WIDTH,
+            Math.min(MAX_SIDEBAR_WIDTH, viewportWidth - MIN_SETTINGS_CONTENT_WIDTH),
+          );
+          const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
+          resizeWidth.value = clampedWidth;
+        })
+        .onEnd(() => {
+          runOnJS(setSidebarWidth)(resizeWidth.value);
+        }),
+    [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
   );
-  const innerContainerStyle = useMemo(
-    () => [{ flex: 1 }, isDesktop ? { paddingTop: insets.top } : null],
-    [insets.top, isDesktop],
+
+  const resizeAnimatedStyle = useAnimatedStyle(() => ({
+    width: resizeWidth.value,
+  }));
+  const desktopSidebarStyle = useMemo(
+    () => [staticSidebarStyles.desktopSidebar, resizeAnimatedStyle],
+    [resizeAnimatedStyle],
+  );
+  const desktopBorderStyle = useMemo(
+    () => [sidebarStyles.desktopContainer, { flex: 1, paddingTop: insets.top }],
+    [insets.top],
+  );
+  const resizeHandleStyle = useMemo(
+    () => [sidebarStyles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
+    [],
   );
   const selectedSectionId = view.kind === "section" ? view.section : null;
   const selectedHostSection = view.kind === "host" ? view.section : null;
@@ -1169,28 +1217,39 @@ function SettingsSidebar({
     </>
   );
 
+  if (!isDesktop) {
+    return (
+      <View style={sidebarStyles.mobileContainer} testID="settings-sidebar">
+        {sidebarBody}
+      </View>
+    );
+  }
+
   return (
-    <View style={outerContainerStyle} testID="settings-sidebar">
-      {isDesktop ? (
-        <View style={innerContainerStyle}>
-          <View style={sidebarStyles.sidebarDragArea}>
-            <TitlebarDragRegion />
-            {showTopSpacer ? <View style={paddingTopStyle} /> : null}
-            <SidebarHeaderRow
-              icon={ArrowLeft}
-              label={t("settings.backToWorkspace")}
-              onPress={onBackToWorkspace}
-              testID="settings-back-to-workspace"
-            />
-          </View>
-          <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
-            {sidebarBody}
-          </ScrollView>
+    <Animated.View style={desktopSidebarStyle} testID="settings-sidebar">
+      <View style={desktopBorderStyle}>
+        <View style={sidebarStyles.sidebarDragArea}>
+          <TitlebarDragRegion />
+          {showTopSpacer ? <View style={paddingTopStyle} /> : null}
+          <SidebarHeaderRow
+            icon={ArrowLeft}
+            label={t("settings.backToWorkspace")}
+            onPress={onBackToWorkspace}
+            testID="settings-back-to-workspace"
+          />
         </View>
-      ) : (
-        sidebarBody
-      )}
-    </View>
+        <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
+          {sidebarBody}
+        </ScrollView>
+
+        {/* Resize handle - absolutely positioned over right border */}
+        <GestureDetector gesture={resizeGesture}>
+          <View style={resizeHandleStyle} />
+        </GestureDetector>
+
+        <SidebarSeamShadow seam="right" />
+      </View>
+    </Animated.View>
   );
 }
 
@@ -1782,11 +1841,28 @@ const desktopStyles = StyleSheet.create((theme) => ({
   },
 }));
 
+// Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
+// avoid the "Unable to find node on an unmounted component" crash when Unistyles
+// tries to patch the native node that Reanimated also manages.
+const staticSidebarStyles = RNStyleSheet.create({
+  desktopSidebar: {
+    position: "relative" as const,
+  },
+});
+
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
+  },
+  resizeHandle: {
+    position: "absolute",
+    right: -5,
+    top: 0,
+    bottom: 0,
+    width: 10,
+    zIndex: 10,
   },
   scrollBody: {
     flex: 1,
