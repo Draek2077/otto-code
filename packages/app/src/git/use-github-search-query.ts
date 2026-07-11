@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { normalizeGitHostingProviderId } from "@otto-code/protocol/messages";
 import type {
   GitHostingProviderId,
   GitHubSearchRequest,
@@ -76,7 +77,7 @@ function normalizeHostingSearchPayload(payload: HostingSearchPayload): GitHubSea
   return {
     items: payload.items,
     githubFeaturesEnabled: payload.featuresEnabled,
-    provider: payload.provider,
+    provider: normalizeGitHostingProviderId(payload.provider) ?? undefined,
     error: payload.error,
     requestId: payload.requestId,
   };

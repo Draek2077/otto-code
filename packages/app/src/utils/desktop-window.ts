@@ -155,6 +155,41 @@ function startOverlayInsetsSubscription() {
   overlay.addEventListener?.("geometrychange", refreshOverlayInsets);
 }
 
+// Started once at the desktop app root. Maximize/unmaximize is the problem
+// transition: unlike a manual drag it does NOT deliver a settled resize to the
+// renderer's web layout systems (Unistyles breakpoints, RN-Web Dimensions, and
+// the ResizeObserver-backed onLayout the tab strip measures with), so
+// breakpoints, sidebar sizing, and tab thresholds all stay frozen at the
+// pre-maximize width until the next real resize. The main process emits a
+// resized signal on maximize/unmaximize (see setupWindowResizeEvents); on it we
+// dispatch a single synthetic window resize — the event every web layout
+// consumer already listens to — plus refresh our own overlay insets, deferred a
+// frame so window.innerWidth and the native overlay rect have both settled.
+let resizeReflowSubscriptionStarted = false;
+
+export function startDesktopResizeReflow(): void {
+  if (resizeReflowSubscriptionStarted) return;
+  if (isNative || !getIsElectronRuntime()) return;
+  const win = getDesktopWindow();
+  if (!win?.onResized) return;
+  resizeReflowSubscriptionStarted = true;
+
+  const reflow = () => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("resize"));
+    }
+    refreshOverlayInsets();
+  };
+
+  void win.onResized(() => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(reflow);
+    } else {
+      reflow();
+    }
+  });
+}
+
 function useWindowControlsOverlayInsets(): WindowControlsOverlayInsets | null {
   const [insets, setInsets] = useState(cachedOverlayInsets);
 

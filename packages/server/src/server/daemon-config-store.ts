@@ -1,6 +1,7 @@
 import {
   loadPersistedConfig,
   savePersistedConfig,
+  AgentPersonalityConfigSchema,
   type PersistedConfig,
   type PersistedAgentPersonality,
 } from "./persisted-config.js";
@@ -19,6 +20,7 @@ export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 
 type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonConfig;
 type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
+type AgentPersonality = import("@otto-code/protocol/messages").AgentPersonality;
 type MutableSpeechConfig = import("@otto-code/protocol/messages").MutableSpeechConfig;
 type MutableGitHostingConfig = import("@otto-code/protocol/messages").MutableGitHostingConfig;
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
@@ -75,6 +77,69 @@ function isEqualValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+// A stand-in the daemon sends to clients in place of a stored host-provider
+// secret, so the real value never rides the wire (the settings UI already hides
+// it behind a secure field, but the plaintext was still echoed in the config
+// payload). A client saving the config unchanged sends the sentinel straight
+// back and patch() restores the stored value instead of overwriting it with the
+// placeholder. The settings UI's change-detection usually means an untouched
+// secret isn't re-sent at all, but a full-object patch would carry it — so the
+// restore is handled defensively rather than relying on the client.
+export const DAEMON_CONFIG_SECRET_SENTINEL = "__otto_secret_present__";
+
+// Wire paths (within the mutable config) of the secrets masked on the way to
+// clients. Deliberately narrow — only host-provider credentials.
+const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
+  ["speech", "openai", "apiKey"],
+  ["gitHosting", "providers", "bitbucketCloud", "apiToken"],
+];
+
+function setValueAtPath(
+  config: Record<string, unknown>,
+  path: readonly string[],
+  value: unknown,
+): Record<string, unknown> {
+  const [head, ...rest] = path;
+  const clone: Record<string, unknown> = { ...config };
+  if (rest.length === 0) {
+    clone[head] = value;
+  } else if (isRecord(clone[head])) {
+    clone[head] = setValueAtPath(clone[head] as Record<string, unknown>, rest, value);
+  }
+  return clone;
+}
+
+// Return a copy of the config with every stored secret replaced by the sentinel.
+// Structurally shares everything off the secret paths; only clones the branches
+// it rewrites, so this.current is never mutated. Empty/absent secrets are left
+// untouched so "not configured" still reads as empty on the client.
+export function redactDaemonConfigForClient(config: MutableDaemonConfig): MutableDaemonConfig {
+  let next = config as Record<string, unknown>;
+  for (const path of SECRET_WIRE_PATHS) {
+    const value = getValueAtPath(next as MutableDaemonConfig, path.join("."));
+    if (typeof value === "string" && value.length > 0) {
+      next = setValueAtPath(next, path, DAEMON_CONFIG_SECRET_SENTINEL);
+    }
+  }
+  return next as MutableDaemonConfig;
+}
+
+// Drop any secret leaf whose value is the sentinel from an incoming patch, so
+// deepMerge preserves the stored secret (it skips undefined/absent keys) instead
+// of persisting the placeholder. Mutates the already-parsed patch in place.
+function stripRedactedSecretsFromPatch(patch: MutableDaemonConfigPatch): void {
+  for (const path of SECRET_WIRE_PATHS) {
+    let container: unknown = patch;
+    for (let i = 0; i < path.length - 1; i += 1) {
+      container = isRecord(container) ? container[path[i]] : undefined;
+    }
+    const leafKey = path[path.length - 1];
+    if (isRecord(container) && container[leafKey] === DAEMON_CONFIG_SECRET_SENTINEL) {
+      delete container[leafKey];
+    }
+  }
+}
+
 export function applyMutableProviderConfigToOverrides(
   baseOverrides: Record<string, ProviderOverride> | undefined,
   mutableProviders: MutableDaemonConfig["providers"] | undefined,
@@ -111,8 +176,43 @@ export class DaemonConfigStore {
     return this.current;
   }
 
+  /**
+   * Seed the shipped default Agent Personalities onto disk the first time this
+   * host runs the feature — but ONLY when the persisted config has never carried
+   * an agentPersonalities section. Once the section exists on disk (even as an
+   * empty roster the user cleared), this is a no-op, so deleting the whole team
+   * sticks across restarts instead of silently re-seeding. The in-memory config
+   * is seeded separately at construction (see bootstrap); this only records the
+   * one-time initialization on disk, writing just the personalities branch so
+   * unrelated defaults (speech, etc.) are never frozen onto disk as a side
+   * effect.
+   */
+  public seedDefaultPersonalitiesIfAbsent(defaults: readonly AgentPersonality[]): void {
+    const persisted = loadPersistedConfig(this.ottoHome, this.logger);
+    if (persisted.agents?.agentPersonalities !== undefined) {
+      return;
+    }
+    savePersistedConfig(
+      this.ottoHome,
+      {
+        ...persisted,
+        agents: {
+          ...persisted.agents,
+          agentPersonalities: {
+            personalities: [...defaults],
+          },
+        },
+      },
+      this.logger,
+    );
+    this.logger?.info(`Seeded ${defaults.length} default agent personalities`);
+  }
+
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
+    // A masked secret that comes back unchanged must not overwrite the stored
+    // value with the sentinel placeholder.
+    stripRedactedSecretsFromPatch(parsedPatch);
     const { patch: prunedPatch, removedProviderIds } = extractProviderRemovals(parsedPatch);
     const base = removedProviderIds.length
       ? removeProviders(this.current, removedProviderIds)
@@ -552,9 +652,12 @@ function readMetadataGenerationProviders(
 }
 
 // Read the agent personality roster out of the mutable config, dropping entries
-// that lack the required identity fields (id/name/provider/model). Everything
-// else is carried through as-is; effort/role validation happens at use time
-// against the daemon's live catalog, not here.
+// that lack the required identity fields (id/name/provider/model). Parsing each
+// entry through the persisted schema (which is .passthrough() at every level)
+// re-validates the known fields AND carries unknown fields through untouched —
+// so a personality field written by a newer daemon round-trips instead of being
+// silently stripped on the next patch. Effort/role validation happens at use
+// time against the daemon's live catalog, not here.
 function readAgentPersonalities(mutable: MutableDaemonConfig): PersistedAgentPersonality[] {
   const section = mutable.agentPersonalities;
   if (!isRecord(section)) {
@@ -565,53 +668,7 @@ function readAgentPersonalities(mutable: MutableDaemonConfig): PersistedAgentPer
     return [];
   }
   return personalities.flatMap((entry) => {
-    if (
-      !isRecord(entry) ||
-      typeof entry["id"] !== "string" ||
-      typeof entry["name"] !== "string" ||
-      typeof entry["provider"] !== "string" ||
-      typeof entry["model"] !== "string"
-    ) {
-      return [];
-    }
-    const out: PersistedAgentPersonality = {
-      id: entry["id"],
-      name: entry["name"],
-      provider: entry["provider"],
-      model: entry["model"],
-    };
-    if (typeof entry["effortLevel"] === "string") {
-      out.effortLevel = entry["effortLevel"];
-    }
-    if (typeof entry["modeId"] === "string") {
-      out.modeId = entry["modeId"];
-    }
-    if (typeof entry["personalityPrompt"] === "string") {
-      out.personalityPrompt = entry["personalityPrompt"];
-    }
-    if (typeof entry["respectGlobalAppendPrompt"] === "boolean") {
-      out.respectGlobalAppendPrompt = entry["respectGlobalAppendPrompt"];
-    }
-    if (Array.isArray(entry["roles"])) {
-      out.roles = entry["roles"].filter((role): role is string => typeof role === "string");
-    }
-    const spinner = entry["spinner"];
-    if (
-      isRecord(spinner) &&
-      typeof spinner["glowA"] === "string" &&
-      typeof spinner["glowB"] === "string"
-    ) {
-      out.spinner = { glowA: spinner["glowA"], glowB: spinner["glowB"] };
-    }
-    const voice = entry["voice"];
-    if (
-      isRecord(voice) &&
-      typeof voice["provider"] === "string" &&
-      typeof voice["model"] === "string" &&
-      typeof voice["name"] === "string"
-    ) {
-      out.voice = { provider: voice["provider"], model: voice["model"], name: voice["name"] };
-    }
-    return [out];
+    const parsed = AgentPersonalityConfigSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
   });
 }

@@ -1,11 +1,16 @@
-import { createWriteStream, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream, existsSync } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type pino from "pino";
 
-import { getSherpaOnnxModelSpec, type SherpaOnnxModelId } from "./model-catalog.js";
+import {
+  getSherpaOnnxModelSpec,
+  type SherpaOnnxModelId,
+  type SherpaOnnxModelSpec,
+} from "./model-catalog.js";
 import { spawnProcess } from "../../../../../utils/spawn.js";
 
 export interface EnsureSherpaOnnxModelOptions {
@@ -114,6 +119,39 @@ async function isNonEmptyFile(filePath: string): Promise<boolean> {
   }
 }
 
+async function computeFileSha256(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(filePath), hash);
+  return hash.digest("hex");
+}
+
+// Refuse to extract an archive whose bytes don't match the pinned digest — the
+// guard against a compromised release asset or a MITM'd download. Throws on
+// mismatch (the caller deletes the bad archive); warns loudly when no digest is
+// pinned yet rather than silently trusting the download.
+async function verifyArchiveIntegrity(params: {
+  spec: SherpaOnnxModelSpec;
+  archivePath: string;
+  logger: pino.Logger;
+}): Promise<void> {
+  const { spec, archivePath, logger } = params;
+  if (!spec.sha256) {
+    logger.warn(
+      { modelId: spec.id },
+      "No pinned sha256 for this model; extracting without archive integrity verification",
+    );
+    return;
+  }
+  const actual = await computeFileSha256(archivePath);
+  if (actual.toLowerCase() !== spec.sha256.toLowerCase()) {
+    throw new Error(
+      `Model archive ${path.basename(archivePath)} failed integrity verification ` +
+        `(expected sha256 ${spec.sha256.toLowerCase()}, got ${actual}).`,
+    );
+  }
+  logger.info({ modelId: spec.id }, "Model archive integrity verified");
+}
+
 export async function ensureSherpaOnnxModel(
   options: EnsureSherpaOnnxModelOptions,
 ): Promise<string> {
@@ -144,27 +182,37 @@ export async function ensureSherpaOnnxModel(
       });
     }
 
-    logger.info(
-      {
-        modelId: options.modelId,
-        archivePath,
-        modelDir,
-      },
-      "Extracting model archive",
-    );
-    await extractTarArchive(archivePath, options.modelsDir);
+    try {
+      await verifyArchiveIntegrity({ spec, archivePath, logger });
 
-    logger.info(
-      {
-        modelId: options.modelId,
-        modelDir,
-      },
-      "Verifying downloaded model files",
-    );
-    if (!(await hasRequiredFiles(modelDir, spec.requiredFiles))) {
-      throw new Error(
-        `Downloaded and extracted ${archiveFilename}, but required files are still missing in ${modelDir}.`,
+      logger.info(
+        {
+          modelId: options.modelId,
+          archivePath,
+          modelDir,
+        },
+        "Extracting model archive",
       );
+      await extractTarArchive(archivePath, options.modelsDir);
+
+      logger.info(
+        {
+          modelId: options.modelId,
+          modelDir,
+        },
+        "Verifying downloaded model files",
+      );
+      if (!(await hasRequiredFiles(modelDir, spec.requiredFiles))) {
+        throw new Error(
+          `Downloaded and extracted ${archiveFilename}, but required files are still missing in ${modelDir}.`,
+        );
+      }
+    } catch (error) {
+      // A corrupt, tampered, or incompletely-extracted archive must not wedge the
+      // model forever. Drop it so the next attempt re-downloads a fresh copy
+      // instead of re-verifying/re-extracting the same bad file.
+      await rm(archivePath, { force: true }).catch(() => undefined);
+      throw error;
     }
 
     logger.info(

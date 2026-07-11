@@ -2158,7 +2158,7 @@ export const es: TranslationResources = {
         unavailable: "Connect to this host to manage agents",
       },
       gitProviders: {
-        info: "Conecta los servicios que alojan tus repositorios. Cada proyecto usa el proveedor al que apunta su remoto de git.",
+        sectionTitle: "Proveedores",
         updateHost: "Actualiza el host para configurar los proveedores de Git.",
         checkConnection: "Comprobar conexión",
         checking: "Comprobando la conexión…",

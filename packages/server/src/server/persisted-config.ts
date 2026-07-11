@@ -202,7 +202,7 @@ const AgentPersonalityVoiceConfigSchema = z
   })
   .passthrough();
 
-const AgentPersonalityConfigSchema = z
+export const AgentPersonalityConfigSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),

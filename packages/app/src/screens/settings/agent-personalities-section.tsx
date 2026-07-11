@@ -4,7 +4,7 @@
 //
 // i18n: copy here is English-only pending a translation pass (build-first,
 // translate-last). Do not add keys to the locale resources for this surface yet.
-import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -16,6 +16,7 @@ import type {
   SpeechSettingsOptions,
 } from "@otto-code/protocol/messages";
 import { PERSONALITY_ROLES } from "@otto-code/protocol/messages";
+import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
 import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
@@ -25,8 +26,10 @@ import { ChevronDown, Pencil, Plus, Trash2 } from "@/components/icons/material-i
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { BlobLoader } from "@/components/blob-loader";
 import { Button } from "@/components/ui/button";
+import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useFetchQuery } from "@/data/query";
@@ -37,6 +40,7 @@ import {
   useSpeechSettingsFeature,
   useSpeechSettingsOptions,
 } from "@/screens/settings/speech-settings-cards";
+import { useTtsPreviewFeature, VoicePreviewButton } from "@/screens/settings/voice-preview-button";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -53,6 +57,24 @@ export function useAgentPersonalitiesFeature(serverId: string): boolean {
 
 const DEFAULT_GLOW_A = "#4ec4ff";
 const DEFAULT_GLOW_B = "#e14fe8";
+
+// Personality names are single-word "handles" — short, and restricted to
+// letters, digits, hyphen, and underscore — so an agent is trivially
+// recognizable at a glance (in the roster, spinner tooltips, and spawn-by-name
+// tooling) and safe to round-trip through it. Blocking whitespace and structural
+// characters (delimiters like | / :, quotes, emoji, control chars) keeps a name
+// from breaking a delimited encoding or a token-boundary reference, while still
+// allowing readable names like `code-reviewer` or `fire_storm`. We enforce this
+// at the authoring surface (the wire schema stays a permissive `string` for
+// protocol back-compat), sanitizing as the user types so an out-of-limit name
+// can never be entered in the first place.
+const MAX_PERSONALITY_NAME_LENGTH = 20;
+
+function sanitizePersonalityName(value: string): string {
+  // Keep only the handle charset (drops whitespace and every special char), then
+  // cap the length.
+  return value.replace(/[^A-Za-z0-9_-]/g, "").slice(0, MAX_PERSONALITY_NAME_LENGTH);
+}
 
 const ROLE_LABELS: Record<PersonalityRole, string> = {
   chatter: "Chatter",
@@ -94,6 +116,21 @@ const VOICE_NONE = "";
 
 function encodeVoice(voice: AgentPersonalityVoice | null): string {
   return voice ? `${voice.provider}|${voice.model}|${voice.name}` : VOICE_NONE;
+}
+
+// Builds a short spoken introduction for the voice-preview button from the
+// personality's name and prompt — plain string templating, no model call. The
+// prompt's first sentence (capped) supplies personality flavor when present.
+function buildPersonalityIntro(name: string, personalityPrompt: string): string {
+  const cleanName = name.trim() || "your agent";
+  const prompt = personalityPrompt.trim();
+  if (!prompt) {
+    return `Hi, I'm ${cleanName}. Ready when you are.`;
+  }
+  const firstSentence = prompt.split(/(?<=[.!?])\s+/)[0] ?? prompt;
+  const flavor =
+    firstSentence.length > 140 ? `${firstSentence.slice(0, 137).trimEnd()}…` : firstSentence;
+  return `Hi, I'm ${cleanName}. ${flavor}`;
 }
 
 function decodeVoice(id: string): AgentPersonalityVoice | null {
@@ -223,17 +260,82 @@ const iconMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.sm,
 });
+const iconForegroundMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+  size: theme.iconSize.sm,
+});
 const iconDestructiveMapping = (theme: Theme) => ({
   color: theme.colors.destructive,
   size: theme.iconSize.sm,
 });
 
-const PLUS_ICON = <ThemedPlus uniProps={iconMutedMapping} />;
-const PENCIL_ICON = <ThemedPencil uniProps={iconMutedMapping} />;
-const TRASH_ICON = <ThemedTrash uniProps={iconDestructiveMapping} />;
 const CHEVRON_ICON = <ThemedChevronDown uniProps={chevronMapping} />;
 
 const FLEX_1 = { flex: 1 } as const;
+
+// ---------------------------------------------------------------------------
+// Icon button — hover chrome + tooltip, the app's canonical icon-only affordance
+// (mirrors file-view-mode-bar). The ghost Button variant only recolors its icon,
+// so icon-only actions use this instead to get a real hover surface.
+// ---------------------------------------------------------------------------
+
+type ThemedIcon = typeof ThemedPlus;
+
+interface IconButtonProps {
+  Icon: ThemedIcon;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+  testID?: string;
+}
+
+function IconButton({
+  Icon,
+  label,
+  onPress,
+  disabled = false,
+  destructive = false,
+  testID,
+}: IconButtonProps): ReactElement {
+  const [hovered, setHovered] = useState(false);
+  const handleHoverIn = useCallback(() => setHovered(true), []);
+  const handleHoverOut = useCallback(() => setHovered(false), []);
+  const active = hovered && !disabled;
+  const triggerStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.iconButton,
+      (active || pressed) && styles.iconButtonHovered,
+      disabled && styles.iconButtonDisabled,
+    ],
+    [active, disabled],
+  );
+  let mapping = iconMutedMapping;
+  if (destructive) {
+    mapping = iconDestructiveMapping;
+  } else if (active) {
+    mapping = iconForegroundMapping;
+  }
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        disabled={disabled}
+        onPress={onPress}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+        style={triggerStyle}
+        testID={testID}
+      >
+        <Icon uniProps={mapping} />
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Section
@@ -350,15 +452,35 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     [personalities, savePersonalities],
   );
 
+  // The shipped starter team is seeded automatically on a fresh host; this
+  // button re-adds any builtin the user has since deleted (matched by stable id,
+  // so kept/renamed ones are never duplicated). Missing count drives the label
+  // and the disabled state.
+  const missingDefaultsCount = useMemo(() => {
+    const existingIds = new Set(personalities.map((entry) => entry.id));
+    return DEFAULT_AGENT_PERSONALITIES.filter((entry) => !existingIds.has(entry.id)).length;
+  }, [personalities]);
+
+  const handleRestoreDefaults = useCallback(async () => {
+    const existingIds = new Set(personalities.map((entry) => entry.id));
+    const missing = DEFAULT_AGENT_PERSONALITIES.filter((entry) => !existingIds.has(entry.id));
+    if (missing.length === 0) return;
+    try {
+      await savePersonalities([...personalities, ...missing]);
+    } catch (error) {
+      Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+    }
+  }, [personalities, savePersonalities]);
+
+  const restoreDisabled = !isConnected || !config || missingDefaultsCount === 0;
+
   const addButton = useMemo(
     () => (
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={PLUS_ICON}
+      <IconButton
+        Icon={ThemedPlus}
+        label="Add personality"
         onPress={handleAdd}
         disabled={!isConnected || !config}
-        accessibilityLabel="Add personality"
         testID="agent-personalities-add-button"
       />
     ),
@@ -393,16 +515,38 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
                 No personalities yet. Add one to spawn agents by name with a fixed provider, model,
-                effort, and prompt.
+                effort, and prompt — or bring back the starter team.
               </Text>
+              <Button
+                variant="secondary"
+                onPress={handleRestoreDefaults}
+                disabled={restoreDisabled}
+                style={styles.restoreButton}
+                testID="agent-personalities-restore-button"
+              >
+                {`Add starter team (${DEFAULT_AGENT_PERSONALITIES.length})`}
+              </Button>
             </View>
           )}
         </View>
+        {personalities.length > 0 && missingDefaultsCount > 0 ? (
+          <View style={styles.restoreFooter}>
+            <Button
+              variant="ghost"
+              onPress={handleRestoreDefaults}
+              disabled={restoreDisabled}
+              testID="agent-personalities-restore-button"
+            >
+              {`Restore starter team (${missingDefaultsCount} missing)`}
+            </Button>
+          </View>
+        ) : null}
       </SettingsSection>
 
       {editing ? (
         <PersonalityEditModal
           title={editing.id ? "Edit personality" : "Add personality"}
+          serverId={serverId}
           initialDraft={editing.draft}
           entries={providerEntries}
           speechOptions={speechOptions}
@@ -453,6 +597,12 @@ function PersonalityRow({
     modeIds: entry?.modes?.map((mode) => mode.id),
   });
 
+  // Show the display labels the dropdowns use, not the raw ids. Fall back to the
+  // stored id when the provider/model is no longer available to resolve a label.
+  const providerLabel = entry?.label ?? personality.provider;
+  const modelLabel =
+    entry?.models?.find((model) => model.id === personality.model)?.label ?? personality.model;
+
   const roles = normalizePersonalityRoles(personality.roles);
   const rolesSummary = formatRolesSummary(roles);
 
@@ -467,14 +617,13 @@ function PersonalityRow({
 
   return (
     <View style={rowStyle} testID={`agent-personality-row-${personality.id}`}>
-      <BlobLoader size={26} glowA={personality.spinner?.glowA} glowB={personality.spinner?.glowB} />
+      <BlobLoader size={18} glowA={personality.spinner?.glowA} glowB={personality.spinner?.glowB} />
       <View style={contentStyle}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {personality.name}
         </Text>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
-          {personality.provider} · {personality.model} · {rolesSummary} ·{" "}
-          {formatUsageCount(usageCount)}
+          {providerLabel} · {modelLabel} · {rolesSummary} · {formatUsageCount(usageCount)}
         </Text>
         {!availability.available ? (
           <Text style={styles.unavailableText} numberOfLines={2}>
@@ -483,20 +632,17 @@ function PersonalityRow({
         ) : null}
       </View>
       <View style={styles.rowActions}>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={PENCIL_ICON}
+        <IconButton
+          Icon={ThemedPencil}
+          label="Edit personality"
           onPress={handleEdit}
-          accessibilityLabel="Edit personality"
           testID={`agent-personality-edit-${personality.id}`}
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={TRASH_ICON}
+        <IconButton
+          Icon={ThemedTrash}
+          label="Delete personality"
+          destructive
           onPress={handleRemove}
-          accessibilityLabel="Delete personality"
           testID={`agent-personality-remove-${personality.id}`}
         />
       </View>
@@ -510,6 +656,7 @@ function PersonalityRow({
 
 interface PersonalityEditModalProps {
   title: string;
+  serverId: string;
   initialDraft: PersonalityDraft;
   entries: readonly ProviderSnapshotEntry[];
   speechOptions: SpeechSettingsOptions | null;
@@ -519,12 +666,14 @@ interface PersonalityEditModalProps {
 
 function PersonalityEditModal({
   title,
+  serverId,
   initialDraft,
   entries,
   speechOptions,
   onClose,
   onSave,
 }: PersonalityEditModalProps): ReactElement {
+  const canPreviewVoice = useTtsPreviewFeature(serverId);
   const [draft, setDraft] = useState<PersonalityDraft>(initialDraft);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -566,6 +715,20 @@ function PersonalityEditModal({
   const voiceOptions = useMemo(() => buildVoiceOptions(speechOptions), [speechOptions]);
   // Only offer a voice when the host actually exposes TTS voices beyond "None".
   const showVoice = voiceOptions.length > 1;
+  const voicePreview = useMemo(
+    () =>
+      canPreviewVoice ? (
+        <VoicePreviewButton
+          serverId={serverId}
+          text={buildPersonalityIntro(draft.name, draft.personalityPrompt)}
+          voiceName={draft.voice?.name}
+          voiceModel={draft.voice?.model}
+          voiceProvider={draft.voice?.provider}
+          testID="agent-personality-voice-preview"
+        />
+      ) : undefined,
+    [canPreviewVoice, serverId, draft.name, draft.personalityPrompt, draft.voice],
+  );
 
   const header = useMemo(() => ({ title }), [title]);
 
@@ -583,7 +746,7 @@ function PersonalityEditModal({
   );
 
   const setName = useCallback((value: string) => {
-    setDraft((current) => ({ ...current, name: value }));
+    setDraft((current) => ({ ...current, name: sanitizePersonalityName(value) }));
   }, []);
   const setModel = useCallback((value: string) => {
     setDraft((current) => ({ ...current, model: value }));
@@ -640,6 +803,7 @@ function PersonalityEditModal({
       header={header}
       visible
       onClose={onClose}
+      webScrollbar
       testID="agent-personality-edit-modal"
     >
       <View style={styles.editorBody}>
@@ -651,9 +815,13 @@ function PersonalityEditModal({
           placeholderTextColor={styles.placeholder.color}
           autoCapitalize="none"
           autoCorrect={false}
+          maxLength={MAX_PERSONALITY_NAME_LENGTH}
           style={styles.textInput}
           testID="agent-personality-name-input"
         />
+        <Text style={styles.fieldHint}>
+          One word — letters, numbers, - or _ — up to {MAX_PERSONALITY_NAME_LENGTH} characters.
+        </Text>
 
         <PickerRow
           label="Provider"
@@ -721,6 +889,7 @@ function PersonalityEditModal({
             options={voiceOptions}
             onChange={setVoice}
             testID="agent-personality-voice-picker"
+            trailing={voicePreview}
           />
         ) : null}
 
@@ -758,9 +927,18 @@ interface PickerRowProps {
   options: ComboboxOption[];
   onChange: (next: string) => void;
   testID: string;
+  // Optional control rendered just left of the dropdown (e.g. a preview button).
+  trailing?: ReactNode;
 }
 
-function PickerRow({ label, value, options, onChange, testID }: PickerRowProps): ReactElement {
+function PickerRow({
+  label,
+  value,
+  options,
+  onChange,
+  testID,
+  trailing,
+}: PickerRowProps): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
 
@@ -789,6 +967,7 @@ function PickerRow({ label, value, options, onChange, testID }: PickerRowProps):
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{label}</Text>
       </View>
+      {trailing}
       <View ref={anchorRef} collapsable={false} style={styles.triggerAnchor}>
         <Pressable
           onPress={handlePress}
@@ -890,6 +1069,10 @@ interface SpinnerFieldProps {
   onGlowBChange: (next: string) => void;
 }
 
+// Small, always-visible wheels sit side by side; keep them compact so both fit
+// on a phone-width modal without scrolling the editor.
+const SPINNER_WHEEL_SIZE = 120;
+
 function SpinnerField({
   glowA,
   glowB,
@@ -898,23 +1081,23 @@ function SpinnerField({
 }: SpinnerFieldProps): ReactElement {
   return (
     <View style={styles.spinnerField}>
-      <FieldLabel label="Spinner colors" />
-      <View style={styles.spinnerRow}>
-        <BlobLoader size={44} glowA={glowA} glowB={glowB} />
-        <View style={styles.spinnerInputs}>
-          <ColorInput
-            label="Glow A"
-            value={glowA}
-            onChange={onGlowAChange}
-            testID="agent-personality-glow-a-input"
-          />
-          <ColorInput
-            label="Glow B"
-            value={glowB}
-            onChange={onGlowBChange}
-            testID="agent-personality-glow-b-input"
-          />
-        </View>
+      <View style={styles.spinnerHeader}>
+        <FieldLabel label="Spinner colors" />
+        <BlobLoader size={20} glowA={glowA} glowB={glowB} />
+      </View>
+      <View style={styles.spinnerWheels}>
+        <ColorInput
+          label="Glow A"
+          value={glowA}
+          onChange={onGlowAChange}
+          testID="agent-personality-glow-a-input"
+        />
+        <ColorInput
+          label="Glow B"
+          value={glowB}
+          onChange={onGlowBChange}
+          testID="agent-personality-glow-b-input"
+        />
       </View>
     </View>
   );
@@ -930,20 +1113,29 @@ interface ColorInputProps {
 function ColorInput({ label, value, onChange, testID }: ColorInputProps): ReactElement {
   const swatchStyle = useMemo(() => [styles.swatch, { backgroundColor: value }], [value]);
   return (
-    <View style={styles.colorInput}>
-      <View style={swatchStyle} />
-      <TextInput
+    <View style={styles.colorInputColumn}>
+      <Text style={styles.colorInputLabel}>{label}</Text>
+      <ColorWheelPicker
         value={value}
-        onChangeText={onChange}
-        placeholder="#4ec4ff"
-        placeholderTextColor={styles.placeholder.color}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        style={styles.colorTextInput}
-        accessibilityLabel={label}
-        testID={testID}
+        onChange={onChange}
+        size={SPINNER_WHEEL_SIZE}
+        testID={`${testID}-wheel`}
       />
+      <View style={styles.colorInput}>
+        <View style={swatchStyle} />
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="#4ec4ff"
+          placeholderTextColor={styles.placeholder.color}
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          style={styles.colorTextInput}
+          accessibilityLabel={label}
+          testID={testID}
+        />
+      </View>
     </View>
   );
 }
@@ -966,6 +1158,20 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
   },
+  iconButton: {
+    padding: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  iconButtonHovered: {
+    backgroundColor: theme.colors.surfaceHover,
+  },
+  iconButtonDisabled: {
+    opacity: theme.opacity[50],
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
   dimmed: {
     opacity: 0.55,
   },
@@ -977,6 +1183,14 @@ const styles = StyleSheet.create((theme) => ({
   emptyCard: {
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[3],
+  },
+  restoreButton: {
+    marginTop: theme.spacing[3],
+    alignSelf: "flex-start",
+  },
+  restoreFooter: {
+    marginTop: theme.spacing[2],
+    alignItems: "flex-start",
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
@@ -992,6 +1206,11 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  fieldHint: {
+    marginTop: -theme.spacing[1],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   textInput: {
     minHeight: 40,
@@ -1034,9 +1253,11 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
   },
   triggerActive: {
     borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surfaceHover,
   },
   triggerText: {
     flexShrink: 1,
@@ -1094,38 +1315,54 @@ const styles = StyleSheet.create((theme) => ({
   spinnerField: {
     gap: theme.spacing[2],
   },
-  spinnerRow: {
+  spinnerHeader: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+  spinnerWheels: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: theme.spacing[3],
   },
-  spinnerInputs: {
+  colorInputColumn: {
     flex: 1,
     gap: theme.spacing[2],
+    alignItems: "center",
+  },
+  colorInputLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   colorInput: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "stretch",
+    justifyContent: "center",
     gap: theme.spacing[2],
   },
   swatch: {
-    width: 24,
-    height: 24,
+    width: 20,
+    height: 20,
     borderRadius: theme.borderRadius.sm,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
   },
   colorTextInput: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 34,
     paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[3],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    textAlign: "center",
   },
   editorActions: {
     flexDirection: "row",

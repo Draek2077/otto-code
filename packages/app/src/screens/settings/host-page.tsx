@@ -313,7 +313,7 @@ export function HostGitProvidersPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <SettingsSection title={t("settings.hostSections.gitProviders")}>
+        <SettingsSection title={t("settings.host.gitProviders.sectionTitle")}>
           <GitProvidersSettingsCards serverId={serverId} />
         </SettingsSection>
       ) : (

@@ -97,12 +97,14 @@ import {
   type OttoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./otto-config-schema.js";
-import { GitHostingCapabilitiesSchema, GitHostingProviderIdSchema } from "./git-hosting.js";
+import { GitHostingCapabilitiesSchema, GitHostingProviderIdWireSchema } from "./git-hosting.js";
 
 export {
   GitHostingCapabilitiesSchema,
   GitHostingProviderIdSchema,
+  GitHostingProviderIdWireSchema,
   isGitHostingProviderId,
+  normalizeGitHostingProviderId,
   GIT_HOSTING_PROVIDER_IDS,
 } from "./git-hosting.js";
 export {
@@ -1060,7 +1062,7 @@ export const GitHubIssueAttachmentSchema = z.object({
 export const HostingPrAttachmentSchema = z.object({
   type: z.literal("hosting_pr"),
   mimeType: z.literal("application/otto-hosting-pr"),
-  provider: GitHostingProviderIdSchema,
+  provider: GitHostingProviderIdWireSchema,
   number: z.number().int().positive(),
   title: z.string(),
   url: z.string(),
@@ -1072,7 +1074,7 @@ export const HostingPrAttachmentSchema = z.object({
 export const HostingIssueAttachmentSchema = z.object({
   type: z.literal("hosting_issue"),
   mimeType: z.literal("application/otto-hosting-issue"),
-  provider: GitHostingProviderIdSchema,
+  provider: GitHostingProviderIdWireSchema,
   number: z.number().int().positive(),
   title: z.string(),
   url: z.string(),
@@ -1323,6 +1325,25 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
   requestId: z.string(),
+});
+
+// One-shot "read this text aloud with this voice" for the voice-preview button.
+// The voice binding is soft, matching personality-voice semantics: an
+// unavailable voice degrades to the host default at synthesis time, and an
+// absent voice uses the host default. Synthesis runs on the host's active TTS
+// provider (there is no per-request provider switch); model/provider are hints.
+export const SpeechTtsPreviewRequestSchema = z.object({
+  type: z.literal("speech.tts.preview.request"),
+  requestId: z.string(),
+  text: z.string(),
+  voice: z
+    .object({
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      name: z.string(),
+    })
+    .passthrough()
+    .optional(),
 });
 
 export const AgentPersonalitiesGetStatsRequestSchema = z.object({
@@ -1966,7 +1987,7 @@ export const HostingSearchRequestSchema = z.object({
 // connection-status row in the host Git providers settings section.
 export const HostingAuthStatusRequestSchema = z.object({
   type: z.literal("hosting.auth_status.request"),
-  provider: GitHostingProviderIdSchema,
+  provider: GitHostingProviderIdWireSchema,
   requestId: z.string(),
 });
 
@@ -2486,6 +2507,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
   SpeechSettingsGetOptionsRequestSchema,
+  SpeechTtsPreviewRequestSchema,
   AgentPersonalitiesGetStatsRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
@@ -2835,6 +2857,8 @@ export const ServerInfoStatusPayloadSchema = z
         gitHostingProviders: z.boolean().optional(),
         // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
         agentPersonalities: z.boolean().optional(),
+        // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
+        ttsPreview: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3573,6 +3597,24 @@ export type SpeechSettingsOptions = z.infer<
   typeof SpeechSettingsGetOptionsResponseSchema
 >["payload"]["options"];
 
+export const SpeechTtsPreviewResponseSchema = z.object({
+  type: z.literal("speech.tts.preview.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      // base64-encoded audio bytes; absent when synthesis failed (see error).
+      audio: z.string().optional(),
+      // Media type carrying the sample rate, e.g. "audio/pcm;rate=24000",
+      // so the client audio engine plays it back at the correct pitch.
+      format: z.string().optional(),
+      // Human-readable failure reason when audio could not be produced.
+      error: z.string().optional(),
+    })
+    .passthrough(),
+});
+
+export type SpeechTtsPreviewResult = z.infer<typeof SpeechTtsPreviewResponseSchema>["payload"];
+
 export const AgentPersonalitiesGetStatsResponseSchema = z.object({
   type: z.literal("agentPersonalities.get_stats.response"),
   payload: z
@@ -3885,7 +3927,7 @@ export const CheckoutPrStatusSchema = z.object({
   // GitHub projects both this and the legacy `github` field are populated.
   hosting: z
     .object({
-      provider: GitHostingProviderIdSchema,
+      provider: GitHostingProviderIdWireSchema,
       bitbucket: z
         .object({
           mergeStrategiesAllowed: z.array(z.string()).optional().default([]),
@@ -3909,7 +3951,7 @@ const CheckoutPrStatusPayloadSchema = z.object({
   // can drive search/create-PR affordances for the workspace's provider.
   hosting: z
     .object({
-      provider: GitHostingProviderIdSchema,
+      provider: GitHostingProviderIdWireSchema,
       featuresEnabled: z.boolean(),
       capabilities: GitHostingCapabilitiesSchema.optional(),
     })
@@ -4380,7 +4422,7 @@ export const HostingSearchResponseSchema = z.object({
   type: z.literal("hosting.search.response"),
   payload: z.object({
     items: z.array(GitHubSearchItemSchema),
-    provider: GitHostingProviderIdSchema,
+    provider: GitHostingProviderIdWireSchema,
     featuresEnabled: z.boolean(),
     error: z.string().nullable(),
     requestId: z.string(),
@@ -4390,7 +4432,7 @@ export const HostingSearchResponseSchema = z.object({
 export const HostingAuthStatusResponseSchema = z.object({
   type: z.literal("hosting.auth_status.response"),
   payload: z.object({
-    provider: GitHostingProviderIdSchema,
+    provider: GitHostingProviderIdWireSchema,
     authenticated: z.boolean(),
     error: z.string().nullable(),
     requestId: z.string(),
@@ -5088,6 +5130,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
   SpeechSettingsGetOptionsResponseSchema,
+  SpeechTtsPreviewResponseSchema,
   AgentPersonalitiesGetStatsResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,

@@ -11,7 +11,11 @@ import {
   shell,
 } from "electron";
 
-import type { WindowState, WindowStateStore } from "../settings/window-state.js";
+import type {
+  WindowControlsOverlayColors,
+  WindowState,
+  WindowStateStore,
+} from "../settings/window-state.js";
 import { setTrayAttention } from "../features/tray.js";
 
 const WINDOW_STATE_SAVE_DEBOUNCE_MS = 400;
@@ -78,9 +82,30 @@ export function getTitleBarOverlayOptions(theme: WindowTheme): Electron.TitleBar
   return { color: "#ffffff", symbolColor: "#09090b", height: 29 };
 }
 
+/**
+ * The overlay options to construct the window with. Prefers the colors persisted
+ * from the last session (the ones the renderer settled on for the restored
+ * sidebar/theme) over the static theme default, so the native caption strip is
+ * born the right color instead of flashing from the default to the real one once
+ * React mounts. Falls back per-color to the theme default so a partial or absent
+ * persisted value is still safe.
+ */
+export function resolveInitialTitleBarOverlayOptions(
+  theme: WindowTheme,
+  restored: WindowControlsOverlayColors | null | undefined,
+): Electron.TitleBarOverlayOptions {
+  const base = getTitleBarOverlayOptions(theme);
+  return {
+    color: restored?.backgroundColor ?? base.color,
+    symbolColor: restored?.foregroundColor ?? base.symbolColor,
+    height: base.height,
+  };
+}
+
 export function getMainWindowChromeOptions(input: {
   platform: NodeJS.Platform;
   theme: WindowTheme;
+  restoredOverlay?: WindowControlsOverlayColors | null;
 }): Pick<
   Electron.BrowserWindowConstructorOptions,
   "titleBarStyle" | "trafficLightPosition" | "frame" | "titleBarOverlay" | "autoHideMenuBar"
@@ -96,7 +121,7 @@ export function getMainWindowChromeOptions(input: {
   return {
     titleBarStyle: "hidden",
     frame: false,
-    titleBarOverlay: getTitleBarOverlayOptions(input.theme),
+    titleBarOverlay: resolveInitialTitleBarOverlayOptions(input.theme, input.restoredOverlay),
     autoHideMenuBar: true,
   };
 }
@@ -186,9 +211,36 @@ export function applyWindowControlsOverlayUpdate(input: {
   return next;
 }
 
-export function registerWindowManager(): void {
-  const overlayStateByWindow = new WeakMap<BrowserWindow, WindowControlsOverlayState>();
+// Tracks the last overlay state applied per window so the state-persistence
+// path can snapshot the current caption-strip colors on close/quit.
+const overlayStateByWindow = new WeakMap<BrowserWindow, WindowControlsOverlayState>();
 
+/**
+ * The overlay colors currently applied to `win`, in the persisted shape, or null
+ * when the renderer hasn't pushed any yet this session. Used to seed the next
+ * launch's initial `titleBarOverlay`.
+ */
+export function getWindowControlsOverlayColors(
+  win: BrowserWindow,
+): WindowControlsOverlayColors | null {
+  const state = overlayStateByWindow.get(win);
+  if (!state) {
+    return null;
+  }
+  const colors: WindowControlsOverlayColors = {};
+  if (state.backgroundColor !== undefined) {
+    colors.backgroundColor = state.backgroundColor;
+  }
+  if (state.foregroundColor !== undefined) {
+    colors.foregroundColor = state.foregroundColor;
+  }
+  if (colors.backgroundColor === undefined && colors.foregroundColor === undefined) {
+    return null;
+  }
+  return colors;
+}
+
+export function registerWindowManager(): void {
   ipcMain.handle("otto:window:toggleMaximize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
@@ -267,6 +319,14 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
   win.on("resize", notifyResized);
   win.on("enter-full-screen", notifyResized);
   win.on("leave-full-screen", notifyResized);
+  // Maximize/unmaximize doesn't reliably deliver a settled `geometrychange` to
+  // the renderer's window-controls overlay: it can fire while innerWidth still
+  // reflects the previous size, leaving the header's right-pinned controls
+  // padded off a stale width until the next manual resize. Emit an explicit
+  // resized signal on these transitions so the renderer recomputes overlay
+  // insets once the new size has settled.
+  win.on("maximize", notifyResized);
+  win.on("unmaximize", notifyResized);
 }
 
 // Pixels under -webkit-app-region: drag (the titlebar strips and pane tab-bar
@@ -384,12 +444,14 @@ export function setupWindowStatePersistence(win: BrowserWindow, store: WindowSta
       return;
     }
     const bounds = win.getNormalBounds();
+    const overlay = getWindowControlsOverlayColors(win);
     latestState = {
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
       isMaximized: win.isMaximized(),
+      ...(overlay ? { overlay } : {}),
     };
   }
 

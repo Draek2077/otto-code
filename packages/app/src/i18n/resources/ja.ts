@@ -2133,7 +2133,7 @@ export const ja: TranslationResources = {
         unavailable: "エージェントを管理するにはこのホストに接続してください",
       },
       gitProviders: {
-        info: "リポジトリをホストするサービスを接続します。各プロジェクトは、その git リモートが指すプロバイダーを使用します。",
+        sectionTitle: "プロバイダー",
         updateHost: "Git プロバイダーを設定するにはホストを更新してください。",
         checkConnection: "接続を確認",
         checking: "接続を確認しています…",

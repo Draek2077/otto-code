@@ -679,6 +679,7 @@ async function createWindow(
     ...getMainWindowChromeOptions({
       platform: process.platform,
       theme: systemTheme,
+      restoredOverlay: restoredWindowState?.overlay ?? null,
     }),
     webPreferences: {
       preload: getPreloadPath(),

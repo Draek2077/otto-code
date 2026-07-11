@@ -2,6 +2,10 @@ npmRebuild: false
 appId: ai.ottocode.desktop
 productName: Otto
 executableName: Otto
+# LegalCopyright in the Windows exe/installer version block and the copyright
+# line on macOS. Left blank, this field falls back to an empty/Electron-default
+# value, which reads as "unknown origin" in the file's Properties > Details tab.
+copyright: "Copyright © 2026 Draekz. Licensed under AGPL-3.0-or-later."
 afterPack: ./scripts/after-pack.js
 afterSign: ./scripts/after-sign.js
 directories:

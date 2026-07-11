@@ -117,6 +117,7 @@ import type {
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
   SpeechSettingsOptions,
+  SpeechTtsPreviewResult,
 } from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
@@ -4301,6 +4302,23 @@ export class DaemonClient {
       requestId,
       message: {
         type: "speech.settings.get_options.request",
+      },
+    });
+  }
+
+  // Synthesize a short sample with the given voice for the preview button. The
+  // voice binding is soft (host default when unavailable); an empty/failed
+  // synthesis comes back as `error` in the payload rather than rejecting.
+  async previewTtsVoice(
+    params: { text: string; voice?: { provider?: string; model?: string; name: string } },
+    requestId?: string,
+  ): Promise<SpeechTtsPreviewResult> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "speech.tts.preview.request",
+        text: params.text,
+        ...(params.voice ? { voice: params.voice } : {}),
       },
     });
   }

@@ -44,7 +44,6 @@ export function GitProvidersSettingsCards({ serverId }: { serverId: string }) {
 
   return (
     <>
-      <Text style={styles.introHint}>{t("settings.host.gitProviders.info")}</Text>
       <GitHubProviderCard serverId={serverId} />
       <BitbucketCloudProviderCard serverId={serverId} />
     </>
@@ -287,12 +286,6 @@ function renderAuthStatus(params: {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  introHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    marginBottom: theme.spacing[3],
-    paddingHorizontal: theme.spacing[1],
-  },
   providerHeading: {
     flex: 1,
     flexDirection: "row",

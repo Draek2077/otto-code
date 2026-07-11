@@ -2149,7 +2149,7 @@ export const ru: TranslationResources = {
         unavailable: "Connect to this host to manage agents",
       },
       gitProviders: {
-        info: "Подключите сервисы, которые размещают ваши репозитории. Каждый проект использует того провайдера, на которого указывает его git-удалёнка.",
+        sectionTitle: "Провайдеры",
         updateHost: "Обновите хост, чтобы настроить провайдеров Git.",
         checkConnection: "Проверить подключение",
         checking: "Проверка подключения…",

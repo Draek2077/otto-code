@@ -14,6 +14,7 @@ import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
+import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
@@ -1091,6 +1092,9 @@ export class VoiceAssistantWebSocketServer {
             }
           : undefined,
       getSpeechSettingsOptions: this.speech ? () => this.speech!.getSettingsOptions() : undefined,
+      previewTts: this.speech
+        ? (previewParams) => this.speech!.synthesizePreview(previewParams)
+        : undefined,
       getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
@@ -1286,6 +1290,8 @@ export class VoiceAssistantWebSocketServer {
         gitHostingProviders: this.gitHostingResolver !== null,
         // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
         agentPersonalities: true,
+        // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
+        ttsPreview: this.speech !== null,
       },
     };
   }
@@ -1315,7 +1321,8 @@ export class VoiceAssistantWebSocketServer {
   }
 
   private broadcastDaemonConfigChanged(config: MutableDaemonConfig): void {
-    this.broadcast(this.createDaemonConfigChangedMessage(config));
+    // Mask stored secrets before this config fans out to every connected client.
+    this.broadcast(this.createDaemonConfigChangedMessage(redactDaemonConfigForClient(config)));
   }
 
   private bindSocketHandlers(ws: WebSocketLike): void {

@@ -60,10 +60,12 @@ import {
   createWorkspaceScriptsService,
   type WorkspaceScriptsService,
 } from "./session/workspace-scripts/workspace-scripts-service.js";
+import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
+import { normalizeGitHostingProviderId } from "@otto-code/protocol/messages";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -473,6 +475,10 @@ export interface SessionOptions {
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
   getSpeechSettingsOptions?: () => SpeechSettingsOptions;
+  previewTts?: (params: {
+    text: string;
+    voice?: { name: string; model?: string };
+  }) => Promise<{ audio: string; format: string } | null>;
   getPersonalityStats?: () => Record<string, number> | Promise<Record<string, number>>;
   serverId?: string;
   daemonVersion?: string;
@@ -564,6 +570,12 @@ export class Session {
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
+  private readonly previewTts:
+    | ((params: {
+        text: string;
+        voice?: { name: string; model?: string };
+      }) => Promise<{ audio: string; format: string } | null>)
+    | undefined;
   private readonly getPersonalityStats:
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null;
@@ -655,6 +667,7 @@ export class Session {
       voiceBridge,
       dictation,
       getSpeechSettingsOptions,
+      previewTts,
       getPersonalityStats,
       serverId,
       daemonVersion,
@@ -663,6 +676,7 @@ export class Session {
     } = options;
     this.clientId = clientId;
     this.getSpeechSettingsOptions = getSpeechSettingsOptions ?? null;
+    this.previewTts = previewTts;
     this.getPersonalityStats = getPersonalityStats ?? null;
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
@@ -1600,7 +1614,10 @@ export class Session {
       case "get_daemon_config_request":
         this.emit({
           type: "get_daemon_config_response",
-          payload: { requestId: msg.requestId, config: this.daemonConfigStore.get() },
+          payload: {
+            requestId: msg.requestId,
+            config: redactDaemonConfigForClient(this.daemonConfigStore.get()),
+          },
         });
         return undefined;
       case "daemon.get_status.request":
@@ -1616,7 +1633,7 @@ export class Session {
           type: "set_daemon_config_response",
           payload: {
             requestId: msg.requestId,
-            config: this.daemonConfigStore.patch(msg.config),
+            config: redactDaemonConfigForClient(this.daemonConfigStore.patch(msg.config)),
           },
         });
         return undefined;
@@ -1628,6 +1645,9 @@ export class Session {
             options: this.getSpeechSettingsOptions?.() ?? EMPTY_SPEECH_SETTINGS_OPTIONS,
           },
         });
+        return undefined;
+      case "speech.tts.preview.request":
+        this.handleTtsPreviewRequest(msg.requestId, msg.text, msg.voice);
         return undefined;
       case "agentPersonalities.get_stats.request": {
         const statsRequestId = msg.requestId;
@@ -1648,6 +1668,43 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  // Synthesize a short preview sample and reply once (or with an error). Async
+  // work is fire-and-forget: the correlated response is emitted from the
+  // promise, mirroring how the get_stats request replies.
+  private handleTtsPreviewRequest(
+    requestId: string,
+    text: string,
+    voice: { name: string; model?: string } | undefined,
+  ): void {
+    const preview = this.previewTts;
+    if (!preview) {
+      this.emit({
+        type: "speech.tts.preview.response",
+        payload: { requestId, error: "TTS is not configured on this host." },
+      });
+      return;
+    }
+    void preview({ text, voice })
+      .then((result) => {
+        this.emit({
+          type: "speech.tts.preview.response",
+          payload: result
+            ? { requestId, audio: result.audio, format: result.format }
+            : { requestId, error: "No audio was produced for this voice." },
+        });
+        return undefined;
+      })
+      .catch((error: unknown) => {
+        this.emit({
+          type: "speech.tts.preview.response",
+          payload: {
+            requestId,
+            error: error instanceof Error ? error.message : "Voice preview failed.",
+          },
+        });
+      });
   }
 
   // eslint-disable-next-line complexity
@@ -1730,8 +1787,16 @@ export class Session {
       return;
     }
 
+    // The wire provider id is an open string; a request naming a provider this
+    // build doesn't support resolves to no service rather than throwing.
+    const providerId = normalizeGitHostingProviderId(provider);
+    if (!providerId) {
+      emitResult({ authenticated: false, error: null });
+      return;
+    }
+
     try {
-      const resolved = this.gitHostingResolver.resolveForProvider(provider);
+      const resolved = this.gitHostingResolver.resolveForProvider(providerId);
       if (!resolved.service) {
         emitResult({ authenticated: false, error: null });
         return;
