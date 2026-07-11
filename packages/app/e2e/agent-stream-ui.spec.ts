@@ -39,6 +39,11 @@ async function disableActionGrouping(page: Page): Promise<void> {
 test.describe("Agent stream UI", () => {
   test("auto-scroll sticks to bottom across token bursts", async ({ page }) => {
     test.setTimeout(120_000);
+    // The mock stream emits tool calls; with action grouping on (default) the
+    // completed rows collapse and the transcript height plateaus, so growth can
+    // stall inside the poll window. Render every action as its own row, matching
+    // the scroll-away anchor tests below.
+    await disableActionGrouping(page);
     const agent = await startRunningMockAgent(page, {
       prefix: "stream-scroll-",
       model: "one-minute-stream",

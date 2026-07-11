@@ -16,7 +16,11 @@ export default defineConfig({
   // Running tests concurrently causes cross-test contention and non-deterministic failures.
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // Two retries in CI: the shared metro/daemon/relay stack occasionally drops a
+  // browser at startup ("Target page/context or browser has been closed"), which
+  // is pure environmental flake a retry clears. Deterministic failures still fail
+  // every attempt, so this doesn't mask real regressions.
+  retries: process.env.CI ? 2 : 0,
   reporter: [["list"]],
   use: {
     baseURL,
