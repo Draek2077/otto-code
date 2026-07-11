@@ -1,0 +1,64 @@
+# .easignore — controls what EAS Build uploads in the project archive.
+#
+# Why this file exists:
+#   Without it, EAS falls back to .gitignore, but it only applies the ROOT
+#   .gitignore — it does NOT honor nested per-package .gitignore files. The
+#   generated native project is ignored in packages/app/.gitignore (`/android`,
+#   `/ios`), so EAS never excludes it and sweeps the ~1.3 GB Gradle + CMake
+#   build tree (packages/app/android/app/{build,.cxx}) into the archive,
+#   inflating it to ~1.8 GB. EAS regenerates the native project with
+#   `expo prebuild` on the build server, so none of it needs uploading.
+#
+# When this file is present, EAS uses ONLY these patterns and ignores
+# .gitignore entirely — so everything git normally excludes (node_modules,
+# build output) must be re-listed here.
+#
+# IMPORTANT: native-folder excludes are ANCHORED to the generated app project
+# only. Do NOT use a bare `android/` or `ios/` pattern — real native module
+# sources live in packages/expo-two-way-audio/{android,ios} and
+# packages/app/modules/otto-hardware-keyboard/ios and must be uploaded.
+
+# Dependencies — reinstalled on the build server from the lockfile
+node_modules/
+
+# Generated native projects — EAS runs `expo prebuild` itself
+/packages/app/android/
+/packages/app/ios/
+
+# Build outputs, caches, generated declarations
+dist/
+build/
+out/
+.next/
+.expo/
+.gradle/
+.cxx/
+.kotlin/
+*.tsbuildinfo
+coverage/
+test-results/
+**/test-results/
+.vitest-screenshots/
+
+# Otto dev home + local tooling / editor state (not part of the app)
+.dev/
+.git/
+.github/
+.claude/
+.agents/
+.idea/
+.vscode/
+graphify-out/
+
+# Packages the mobile app does not depend on
+packages/desktop/
+packages/website/
+
+# Logs and local env
+*.log
+.env
+**/.env.local
+**/.env.test.local
+
+# OS cruft
+.DS_Store
