@@ -39,6 +39,7 @@ import { canCloseRightSidebarGesture } from "@/utils/sidebar-animation-state";
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "@/git/diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
+import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { ProjectSearchPane } from "./project-search-pane";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -403,17 +404,42 @@ export function ExplorerSidebar({
           isOpen={isOpen}
           onOpenFile={onOpenFile}
         />
+
+        <SidebarSeamShadow seam="left" />
       </View>
     </Animated.View>
   );
 }
 
+/** How a tab renders: icon+label when roomy, label alone mid-width, icon alone when tight. */
+type ExplorerTabDisplay = "icon-label" | "label" | "icon";
+
+/**
+ * Pick the widest display tier whose measured row fits. Zero measurements
+ * (layout not reported yet) fall through to icon-only.
+ */
+export function resolveExplorerTabDisplay(input: {
+  headerWidth: number;
+  availableTabsWidth: number;
+  labeledTabsWidth: number;
+  textTabsWidth: number;
+}): ExplorerTabDisplay {
+  if (input.headerWidth <= 0) return "icon";
+  if (input.labeledTabsWidth > 0 && input.labeledTabsWidth <= input.availableTabsWidth) {
+    return "icon-label";
+  }
+  if (input.textTabsWidth > 0 && input.textTabsWidth <= input.availableTabsWidth) {
+    return "label";
+  }
+  return "icon";
+}
+
 interface ExplorerTabButtonProps {
   tab: ExplorerTab;
   active: boolean;
-  /** Accessible name; rendered as text unless `iconOnly`, then shown as a tooltip below. */
+  /** Accessible name; rendered as text unless `display` is "icon", then shown as a tooltip below. */
   label: string;
-  iconOnly?: boolean;
+  display?: ExplorerTabDisplay;
   onTabPress: (tab: ExplorerTab) => void;
   testID: string;
   children?: React.ReactNode;
@@ -423,7 +449,7 @@ function ExplorerTabButton({
   tab,
   active,
   label,
-  iconOnly = false,
+  display = "icon-label",
   onTabPress,
   testID,
   children,
@@ -441,11 +467,11 @@ function ExplorerTabButton({
       accessibilityLabel={label}
       accessibilityState={accessibilityState}
     >
-      {children}
-      {iconOnly ? null : <Text style={tabTextStyle}>{label}</Text>}
+      {display === "label" ? null : children}
+      {display === "icon" ? null : <Text style={tabTextStyle}>{label}</Text>}
     </Pressable>
   );
-  if (!iconOnly) {
+  if (display !== "icon") {
     return button;
   }
   return (
@@ -477,7 +503,7 @@ interface ExplorerTabDef {
   tab: ExplorerTab;
   label: string;
   testID: string;
-  /** The PR tab keeps its label (it carries the PR number); others collapse to icons. */
+  /** The PR tab keeps icon+label (it carries the PR number); others collapse by tier. */
   alwaysLabeled?: boolean;
   renderIcon: (color: string) => React.ReactNode;
 }
@@ -543,6 +569,7 @@ function ExplorerSidebarContent({
   const [headerWidth, setHeaderWidth] = useState(0);
   const [rightSectionWidth, setRightSectionWidth] = useState(0);
   const [labeledTabsWidth, setLabeledTabsWidth] = useState(0);
+  const [textTabsWidth, setTextTabsWidth] = useState(0);
   const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
     setHeaderWidth(event.nativeEvent.layout.width);
   }, []);
@@ -551,6 +578,9 @@ function ExplorerSidebarContent({
   }, []);
   const handleLabeledTabsLayout = useCallback((event: LayoutChangeEvent) => {
     setLabeledTabsWidth(event.nativeEvent.layout.width);
+  }, []);
+  const handleTextTabsLayout = useCallback((event: LayoutChangeEvent) => {
+    setTextTabsWidth(event.nativeEvent.layout.width);
   }, []);
 
   const tabDefs: ExplorerTabDef[] = [];
@@ -590,8 +620,16 @@ function ExplorerSidebarContent({
   // padding.right (window-controls chrome) on the right. Keep one more
   // spacing[2] of breathing room before the right section.
   const availableTabsWidth = headerWidth - theme.spacing[2] * 2 - padding.right - rightSectionWidth;
-  const showTabLabels =
-    headerWidth > 0 && labeledTabsWidth > 0 && labeledTabsWidth <= availableTabsWidth;
+  // Three tiers: icon+label when the fully-labeled row fits, label-only when
+  // dropping the icons is enough (on the desktop app the window-controls
+  // reservation makes the icon+label row miss by roughly the icons' width at
+  // common sidebar sizes), icon-only otherwise.
+  const tabDisplay = resolveExplorerTabDisplay({
+    headerWidth,
+    availableTabsWidth,
+    labeledTabsWidth,
+    textTabsWidth,
+  });
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
@@ -607,7 +645,7 @@ function ExplorerSidebarContent({
                 tab={def.tab}
                 active={active}
                 label={def.label}
-                iconOnly={!def.alwaysLabeled && !showTabLabels}
+                display={def.alwaysLabeled ? "icon-label" : tabDisplay}
                 onTabPress={onTabPress}
                 testID={def.testID}
               >
@@ -623,10 +661,10 @@ function ExplorerSidebarContent({
             </Pressable>
           )}
         </View>
-        {/* Invisible clone of the fully-labeled tab row: its natural width
-            decides whether the real tabs can afford labels. Absolute with
-            pointerEvents none so it affects neither layout, clicks, nor the
-            titlebar drag region. */}
+        {/* Invisible clones of the tab row — one icon+label, one label-only —
+            whose natural widths decide which display tier the real tabs can
+            afford. Absolute with pointerEvents none so they affect neither
+            layout, clicks, nor the titlebar drag region. */}
         <View
           style={styles.tabsMeasureRow}
           pointerEvents="none"
@@ -636,6 +674,21 @@ function ExplorerSidebarContent({
           {tabDefs.map((def) => (
             <View key={def.tab} style={styles.tab}>
               {def.renderIcon(theme.colors.foregroundMuted)}
+              <Text style={styles.tabText} numberOfLines={1}>
+                {def.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View
+          style={styles.tabsMeasureRow}
+          pointerEvents="none"
+          aria-hidden
+          onLayout={handleTextTabsLayout}
+        >
+          {tabDefs.map((def) => (
+            <View key={def.tab} style={styles.tab}>
+              {def.alwaysLabeled ? def.renderIcon(theme.colors.foregroundMuted) : null}
               <Text style={styles.tabText} numberOfLines={1}>
                 {def.label}
               </Text>

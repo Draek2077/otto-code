@@ -563,14 +563,14 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 // dark half of the System (auto) pair. Distinct from Graphite, which deepens
 // the base and goes monochrome (near-white accent).
 const neutralDarkColors = buildDarkSemanticColors({
-  surface0: "#18181b",
-  surface1: "#1f1f22",
-  surface2: "#27272a",
-  surface3: "#3f3f46",
-  surface4: "#52525b",
-  surfaceDiffEmpty: "#242427",
-  surfaceSidebar: "#131316",
-  surfaceSidebarHover: "#1b1b1e",
+  surface0: "#1e1e22", // was #18181b — all dark surfaces lifted +2.5 L pts
+  surface1: "#252529",
+  surface2: "#2d2d31",
+  surface3: "#45454d",
+  surface4: "#585862",
+  surfaceDiffEmpty: "#2a2a2e",
+  surfaceSidebar: "#19191d",
+  surfaceSidebarHover: "#212125",
   foregroundMuted: "#a9a9b2",
   scrollbarHandle: "#7b7b84",
   border: "#2b2b30",
@@ -586,14 +586,14 @@ const neutralDarkColors = buildDarkSemanticColors({
 // accent all lifted a step so panels separate and secondary text clears WCAG
 // AA against the elevated surface.
 const evergreenDarkColors = buildDarkSemanticColors({
-  surface0: "#181B1A",
-  surface1: "#1E2120",
-  surface2: "#272A29",
-  surface3: "#434645",
-  surface4: "#595B5B",
-  surfaceDiffEmpty: "#252827",
-  surfaceSidebar: "#141716",
-  surfaceSidebarHover: "#1c1f1e",
+  surface0: "#1e2221", // was #181B1A — all dark surfaces lifted +2.5 L pts
+  surface1: "#242826",
+  surface2: "#2d312f",
+  surface3: "#494d4b",
+  surface4: "#5f6161",
+  surfaceDiffEmpty: "#2b2f2d",
+  surfaceSidebar: "#1a1e1d",
+  surfaceSidebarHover: "#222624",
   foregroundMuted: "#aab0ae", // was #A1A5A4
   scrollbarHandle: "#7d8280",
   border: "#2c3331", // was #252B2A — clearer panel separation
@@ -608,14 +608,14 @@ const evergreenDarkColors = buildDarkSemanticColors({
 // Graphite — monochrome. Surfaces deepened toward true black and borders
 // lifted so the near-white accent lands on real contrast instead of gray soup.
 const graphiteDarkColors = buildDarkSemanticColors({
-  surface0: "#141417", // was #18181b — deeper base
-  surface1: "#1c1c1f",
-  surface2: "#27272a",
-  surface3: "#3f3f46",
-  surface4: "#52525b",
-  surfaceDiffEmpty: "#212124",
-  surfaceSidebar: "#0f0f11",
-  surfaceSidebarHover: "#17171a",
+  surface0: "#1a1a1e", // was #141417 — all dark surfaces lifted +2.5 L pts
+  surface1: "#222226",
+  surface2: "#2d2d31",
+  surface3: "#45454d",
+  surface4: "#585862",
+  surfaceDiffEmpty: "#27272b",
+  surfaceSidebar: "#151518",
+  surfaceSidebarHover: "#1d1d21",
   foregroundMuted: "#b0b0b8", // was #a1a1aa
   scrollbarHandle: "#83838d",
   border: "#2e2e33", // was #27272a — no longer identical to surface2
@@ -631,14 +631,14 @@ const graphiteDarkColors = buildDarkSemanticColors({
 // Nightfall — deep blue night. Base surfaces deepened and the accent blue
 // brightened so the blue tint reads as intentional, not haze.
 const nightfallDarkColors = buildDarkSemanticColors({
-  surface0: "#12141d", // was #161820 — deeper base
-  surface1: "#181a24",
-  surface2: "#252731",
-  surface3: "#3c3e4c",
-  surface4: "#535564",
-  surfaceDiffEmpty: "#20222d",
-  surfaceSidebar: "#0e101a",
-  surfaceSidebarHover: "#161826",
+  surface0: "#171925", // was #12141d — all dark surfaces lifted +2.5 L pts
+  surface1: "#1d202c",
+  surface2: "#2a2d38",
+  surface3: "#424453",
+  surface4: "#595b6b",
+  surfaceDiffEmpty: "#252834",
+  surfaceSidebar: "#121522",
+  surfaceSidebarHover: "#1b1d2e",
   foregroundMuted: "#a6aabf", // was #9a9db0
   scrollbarHandle: "#787c94",
   border: "#2a2c3f", // was #242636
@@ -653,14 +653,14 @@ const nightfallDarkColors = buildDarkSemanticColors({
 // Ember — warm charcoal with a saturated orange-red accent. Saturation and
 // muted-text brightness boosted over the old washed-tan look.
 const emberDarkColors = buildDarkSemanticColors({
-  surface0: "#1c1b1a", // was #1f1f1e
-  surface1: "#242220",
-  surface2: "#2f2d2b",
-  surface3: "#4a4745",
-  surface4: "#605d5b",
-  surfaceDiffEmpty: "#2a2826",
-  surfaceSidebar: "#161514",
-  surfaceSidebarHover: "#1e1d1c",
+  surface0: "#232120", // was #1c1b1a — all dark surfaces lifted +2.5 L pts
+  surface1: "#2b2826",
+  surface2: "#363331",
+  surface3: "#514d4b",
+  surface4: "#676361",
+  surfaceDiffEmpty: "#312e2c",
+  surfaceSidebar: "#1d1b1a",
+  surfaceSidebarHover: "#252322",
   foregroundMuted: "#b8b3ae", // was #ada9a5
   scrollbarHandle: "#847f7a",
   border: "#35322e", // was #2c2a27
@@ -676,14 +676,14 @@ const emberDarkColors = buildDarkSemanticColors({
 // deepened and borders lifted so the panes actually separate; the light blue
 // accent gets dark text instead of unreadable white.
 const slateDarkColors = buildDarkSemanticColors({
-  surface0: "#282c34",
-  surface1: "#2f333d",
-  surface2: "#383c48",
-  surface3: "#4a4f5e",
-  surface4: "#5b6175",
-  surfaceDiffEmpty: "#323643",
-  surfaceSidebar: "#1e222a", // was #21252d
-  surfaceSidebarHover: "#262a33",
+  surface0: "#2e323b", // was #282c34 — all dark surfaces lifted +2.5 L pts
+  surface1: "#353944",
+  surface2: "#3e424f",
+  surface3: "#505565",
+  surface4: "#61677c",
+  surfaceDiffEmpty: "#373c4a",
+  surfaceSidebar: "#232831", // was #1e222a
+  surfaceSidebarHover: "#2b303a",
   foregroundMuted: "#c8ccd8",
   scrollbarHandle: "#a0a4b2",
   border: "#3d4352", // was #353a47
@@ -696,18 +696,19 @@ const slateDarkColors = buildDarkSemanticColors({
   spinnerSecondary: "#cba6f7", // soft mauve
 });
 
-// Neotokyo — near-black surfaces with neon magenta accents. Built for maximum
-// contrast: base sits close to black, borders are visibly violet, and the
-// accent pair is a deep magenta (white text ≈5.5:1) with a neon bright.
+// Neotokyo — deep violet surfaces with neon magenta accents. The base keeps a
+// visible violet cast (lifted off the old near-black), borders are visibly
+// violet, and the accent pair is a deep magenta (white text ≈5.5:1) with a
+// neon bright.
 const neotokyoDarkColors = buildDarkSemanticColors({
-  surface0: "#0b0b12",
-  surface1: "#12121b",
-  surface2: "#1a1a26",
-  surface3: "#2d2d40",
-  surface4: "#3f3f58",
-  surfaceDiffEmpty: "#16161f",
-  surfaceSidebar: "#07070c",
-  surfaceSidebarHover: "#10101a",
+  surface0: "#151522", // was #0b0b12 — lifted +5 L pts, off the near-black base
+  surface1: "#1c1c2a",
+  surface2: "#242435",
+  surface3: "#38384f",
+  surface4: "#4a4a67",
+  surfaceDiffEmpty: "#21212e",
+  surfaceSidebar: "#10101c",
+  surfaceSidebarHover: "#1a1a2a",
   foregroundMuted: "#a2a6c8",
   scrollbarHandle: "#7478a2",
   border: "#23233a",
@@ -1082,7 +1083,7 @@ export const BLACK_VARIANT_OVERRIDES: Record<
     foregroundMuted: "#c6c0b9",
     scrollbarHandle: "#958f88",
   }),
-  // Slate — blue-grey; steps re-anchored from its lighter #282c34 base.
+  // Slate — blue-grey; steps re-anchored from its lighter #2e323b base.
   ghostty: buildBlackVariantColors({
     surface1: "#14171e",
     surface2: "#20242d",

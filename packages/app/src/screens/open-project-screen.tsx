@@ -114,8 +114,9 @@ export function OpenProjectScreen() {
             <OttoLogoWink size={104} />
           </View>
           <View style={styles.quote}>
-            <Text style={styles.quoteText}>“{quote.text}”</Text>
-            <Text style={styles.quoteAttribution}>{quote.attribution}</Text>
+            <Text style={styles.quoteText}>
+              “{quote.text}” {quote.attribution}
+            </Text>
           </View>
           <View style={styles.tiles}>
             <HomeTile
@@ -235,7 +236,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: 0,
     padding: theme.spacing[6],
     paddingTop: { xs: theme.spacing[12], md: theme.spacing[6] },
-    paddingBottom: theme.spacing[4],
+    // The header sits above this centering region, so reserve the same height
+    // at the bottom — otherwise the block centers in the below-header space
+    // and reads as sitting too low on the page.
+    paddingBottom: { xs: theme.spacing[4], md: theme.spacing[4] + HEADER_INNER_HEIGHT },
   },
   logo: {
     marginBottom: theme.spacing[4],
@@ -252,12 +256,6 @@ const styles = StyleSheet.create((theme) => ({
     fontStyle: "italic",
     textAlign: "center",
     lineHeight: 20,
-  },
-  quoteAttribution: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    textAlign: "center",
-    marginTop: theme.spacing[1],
   },
   tiles: {
     marginTop: { xs: theme.spacing[4], md: theme.spacing[6] },
