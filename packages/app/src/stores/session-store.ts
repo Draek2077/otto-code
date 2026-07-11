@@ -125,6 +125,12 @@ export interface Agent {
    * projects/observed-subagents/observed-subagents.md.
    */
   attend?: "attended" | "observed";
+  /**
+   * Spinner colors from the Agent Personality this agent was spawned from, so
+   * its live thinking indicator shows the personality's identity. Absent/null ⇒
+   * the theme's default spinner colors. See projects/agent-personalities/.
+   */
+  personalitySpinner?: { glowA: string; glowB: string } | null;
 }
 
 export interface WorkspaceDescriptor {

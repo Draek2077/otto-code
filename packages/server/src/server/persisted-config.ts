@@ -183,6 +183,49 @@ const AgentMetadataGenerationSchema = z
   })
   .strict();
 
+// Persisted shape of an agent personality. Mirrors AgentPersonalitySchema on the
+// wire; effort/roles stay plain strings (validated against the daemon catalog at
+// use time). Passthrough so a config written by a newer daemon round-trips
+// unknown fields instead of dropping them.
+const AgentPersonalitySpinnerConfigSchema = z
+  .object({
+    glowA: z.string().min(1),
+    glowB: z.string().min(1),
+  })
+  .passthrough();
+
+const AgentPersonalityVoiceConfigSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .passthrough();
+
+const AgentPersonalityConfigSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    effortLevel: z.string().min(1).optional(),
+    modeId: z.string().min(1).optional(),
+    personalityPrompt: z.string().optional(),
+    respectGlobalAppendPrompt: z.boolean().optional(),
+    roles: z.array(z.string().min(1)).optional(),
+    spinner: AgentPersonalitySpinnerConfigSchema.optional(),
+    voice: AgentPersonalityVoiceConfigSchema.optional(),
+  })
+  .passthrough();
+
+export type PersistedAgentPersonality = z.infer<typeof AgentPersonalityConfigSchema>;
+
+const AgentPersonalitiesSchema = z
+  .object({
+    personalities: z.array(AgentPersonalityConfigSchema).optional(),
+  })
+  .strict();
+
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 
 function isLegacyProviderEntry(value: unknown): boolean {
@@ -313,6 +356,7 @@ export const PersistedConfigSchema = z
       .object({
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
+        agentPersonalities: AgentPersonalitiesSchema.optional(),
       })
       .strict()
       .optional(),

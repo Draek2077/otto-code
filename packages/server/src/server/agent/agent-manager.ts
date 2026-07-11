@@ -10,6 +10,7 @@ import {
   isDelegatedAgent,
   PARENT_AGENT_ID_LABEL,
 } from "@otto-code/protocol/agent-labels";
+import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -126,6 +127,14 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     config.systemPrompt = record.config.systemPrompt;
   }
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
+  if (record.config.personalitySnapshot != null) {
+    // Storage keeps roles as a loose string array; normalize back to the known
+    // PersonalityRole set on the way in.
+    config.personalitySnapshot = {
+      ...record.config.personalitySnapshot,
+      roles: normalizePersonalityRoles(record.config.personalitySnapshot.roles),
+    };
+  }
   return stripInternalOttoMcpServer(config);
 }
 
@@ -3912,7 +3921,11 @@ export class AgentManager {
     const next = { ...config };
     delete next.daemonAppendSystemPrompt;
 
-    return daemonAppendSystemPrompt
+    // A personality with respectGlobalAppendPrompt === false owns its whole
+    // system prompt — the daemon-global append must not stack on top of it.
+    const suppressGlobalAppend = config.personalitySnapshot?.respectGlobalAppendPrompt === false;
+
+    return daemonAppendSystemPrompt && !suppressGlobalAppend
       ? {
           ...next,
           daemonAppendSystemPrompt,

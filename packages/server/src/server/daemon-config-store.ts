@@ -2,6 +2,7 @@ import {
   loadPersistedConfig,
   savePersistedConfig,
   type PersistedConfig,
+  type PersistedAgentPersonality,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import {
@@ -229,6 +230,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
   const { persisted, mutable, removedProviderIds } = params;
   const browserToolsEnabled = readBrowserToolsEnabled(mutable);
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
+  const agentPersonalities = readAgentPersonalities(mutable);
   const removedProviders = new Set(removedProviderIds);
   const persistedOverrides = persisted.agents?.providers as
     | Record<string, ProviderOverride>
@@ -277,6 +279,14 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       metadataGeneration: persistedMetadataGeneration,
     } as PersistedConfig["agents"];
   }
+
+  // Fold the personality roster into agents.agentPersonalities.
+  nextAgents = withAgentPersonalities({
+    nextAgents,
+    persistedAgents,
+    hadPersonalities: persisted.agents?.agentPersonalities !== undefined,
+    personalities: agentPersonalities,
+  });
 
   return {
     ...persisted,
@@ -462,6 +472,25 @@ function mergeSpeechIntoPersistedFeatures(
   } as PersistedConfig["features"];
 }
 
+// Attach the personality roster to the persisted agents section. Writes when
+// there is a roster to persist, or when a previously-written roster must be
+// cleared to empty (so deleting the last personality survives a restart).
+function withAgentPersonalities(params: {
+  nextAgents: PersistedConfig["agents"];
+  persistedAgents: Record<string, unknown> | undefined;
+  hadPersonalities: boolean;
+  personalities: PersistedAgentPersonality[];
+}): PersistedConfig["agents"] {
+  const { nextAgents, persistedAgents, hadPersonalities, personalities } = params;
+  if (personalities.length === 0 && !hadPersonalities) {
+    return nextAgents;
+  }
+  return {
+    ...(nextAgents ?? persistedAgents),
+    agentPersonalities: { personalities },
+  } as PersistedConfig["agents"];
+}
+
 function readBrowserToolsEnabled(mutable: MutableDaemonConfig): boolean {
   const browserTools = mutable.browserTools;
   if (!isRecord(browserTools)) {
@@ -494,5 +523,70 @@ function readMetadataGenerationProviders(
           : {}),
       },
     ];
+  });
+}
+
+// Read the agent personality roster out of the mutable config, dropping entries
+// that lack the required identity fields (id/name/provider/model). Everything
+// else is carried through as-is; effort/role validation happens at use time
+// against the daemon's live catalog, not here.
+function readAgentPersonalities(mutable: MutableDaemonConfig): PersistedAgentPersonality[] {
+  const section = mutable.agentPersonalities;
+  if (!isRecord(section)) {
+    return [];
+  }
+  const personalities = section["personalities"];
+  if (!Array.isArray(personalities)) {
+    return [];
+  }
+  return personalities.flatMap((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry["id"] !== "string" ||
+      typeof entry["name"] !== "string" ||
+      typeof entry["provider"] !== "string" ||
+      typeof entry["model"] !== "string"
+    ) {
+      return [];
+    }
+    const out: PersistedAgentPersonality = {
+      id: entry["id"],
+      name: entry["name"],
+      provider: entry["provider"],
+      model: entry["model"],
+    };
+    if (typeof entry["effortLevel"] === "string") {
+      out.effortLevel = entry["effortLevel"];
+    }
+    if (typeof entry["modeId"] === "string") {
+      out.modeId = entry["modeId"];
+    }
+    if (typeof entry["personalityPrompt"] === "string") {
+      out.personalityPrompt = entry["personalityPrompt"];
+    }
+    if (typeof entry["respectGlobalAppendPrompt"] === "boolean") {
+      out.respectGlobalAppendPrompt = entry["respectGlobalAppendPrompt"];
+    }
+    if (Array.isArray(entry["roles"])) {
+      out.roles = entry["roles"].filter((role): role is string => typeof role === "string");
+    }
+    const spinner = entry["spinner"];
+    if (
+      isRecord(spinner) &&
+      typeof spinner["glowA"] === "string" &&
+      typeof spinner["glowB"] === "string"
+    ) {
+      out.spinner = { glowA: spinner["glowA"], glowB: spinner["glowB"] };
+    }
+    const voice = entry["voice"];
+    if (
+      isRecord(voice) &&
+      typeof voice["provider"] === "string" &&
+      typeof voice["model"] === "string" &&
+      typeof voice["name"] === "string"
+    ) {
+      out.voice = { provider: voice["provider"], model: voice["model"], name: voice["name"] };
+    }
+    return [out];
   });
 }

@@ -18,13 +18,21 @@ export function resolveDraftKey(input: {
   return input.draftKey;
 }
 
+export interface DraftPersonalityControls {
+  personalities: DraftAgentControlsProps["personalities"];
+  selectedPersonalityId: DraftAgentControlsProps["selectedPersonalityId"];
+  onSelectPersonality: DraftAgentControlsProps["onSelectPersonality"];
+  onClearPersonality: DraftAgentControlsProps["onClearPersonality"];
+}
+
 export function buildDraftAgentControls(input: {
   formState: UseAgentFormStateResult;
   features?: DraftAgentControlsProps["features"];
   onSetFeature?: DraftAgentControlsProps["onSetFeature"];
   onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
+  personality?: DraftPersonalityControls;
 }): DraftAgentControlsProps {
-  const { formState, features, onSetFeature, onDropdownClose } = input;
+  const { formState, features, onSetFeature, onDropdownClose, personality } = input;
   return {
     providerDefinitions: formState.providerDefinitions,
     selectedProvider: formState.selectedProvider,
@@ -49,6 +57,10 @@ export function buildDraftAgentControls(input: {
     onRetryModelProvider: formState.refreshProviderModels,
     isRetryingModelProvider: formState.isProviderModelsRefreshing,
     modelSelectorServerId: formState.selectedServerId,
+    personalities: personality?.personalities,
+    selectedPersonalityId: personality?.selectedPersonalityId,
+    onSelectPersonality: personality?.onSelectPersonality,
+    onClearPersonality: personality?.onClearPersonality,
   };
 }
 
