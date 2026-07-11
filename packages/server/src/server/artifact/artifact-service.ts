@@ -5,7 +5,11 @@ import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import type { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
-import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
+import type {
+  ArtifactMetadata,
+  ArtifactRunTrigger,
+  StoredArtifact,
+} from "@otto-code/protocol/artifacts/types";
 import { ArtifactStore } from "./artifact-store.js";
 import { ArtifactWatcher } from "./artifact-watcher.js";
 import { ARTIFACT_SYSTEM_PROMPT } from "./artifact-prompt.js";
@@ -100,6 +104,55 @@ export class ArtifactService {
     return this.store.list(projectId ? { projectId } : undefined);
   }
 
+  /** Full record with generation run history, for inspect_artifact. */
+  async inspect(artifactId: string): Promise<StoredArtifact> {
+    const record = await this.store.inspect(artifactId);
+    if (!record) {
+      throw new ArtifactNotFoundError(artifactId);
+    }
+    return record;
+  }
+
+  /** Open a new generation run in "running" state. */
+  private async startRun(
+    artifactId: string,
+    trigger: ArtifactRunTrigger,
+    provider: string | null,
+    model: string | null,
+  ): Promise<void> {
+    await this.store.appendRun(artifactId, {
+      id: generateArtifactId(),
+      trigger,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      agentId: null,
+      provider,
+      model,
+      error: null,
+    });
+  }
+
+  /** Close out the artifact's in-flight run. No-op if none is running. */
+  private async completeRun(
+    artifactId: string,
+    status: "succeeded" | "failed",
+    error?: string,
+  ): Promise<void> {
+    await this.store.patchCurrentRun(artifactId, {
+      status,
+      endedAt: new Date().toISOString(),
+      error: status === "failed" ? (error ?? null) : null,
+    });
+  }
+
+  /** Watcher success hook, shared by create and regenerate: mark the run
+   * succeeded and drop any regeneration backup (a no-op for first generations). */
+  private handleGenerationReady(artifactId: string): void {
+    void this.completeRun(artifactId, "succeeded");
+    void this.discardBackup(artifactId);
+  }
+
   async delete(artifactId: string): Promise<void> {
     this.watcher.unwatch(artifactId);
     await this.discardBackup(artifactId);
@@ -162,10 +215,17 @@ export class ArtifactService {
     };
 
     await this.store.create(metadata);
-    this.watcher.watch(artifactId, filePath);
+    await this.startRun(
+      artifactId,
+      "create",
+      metadata.generationProvider,
+      metadata.generationModel,
+    );
+    this.watcher.watch(artifactId, filePath, () => this.handleGenerationReady(artifactId));
     void this.spawnArtifactAgent(artifactId, metadata, input).catch((error) => {
       this.logger.error({ err: error, artifactId }, "Failed to spawn artifact agent");
       void this.store.update(artifactId, { status: "error", errorMessage: String(error) });
+      void this.completeRun(artifactId, "failed", String(error));
     });
 
     return metadata;
@@ -232,10 +292,9 @@ export class ArtifactService {
     // before the new agent writes anything. Keeping it as a backup lets a
     // failed regeneration restore the last successful version instead of
     // losing it outright.
+    await this.startRun(artifactId, "regenerate", provider, model ?? null);
     await this.backupBeforeRegenerate(artifactId, updated.filePath);
-    this.watcher.watch(artifactId, updated.filePath, () => {
-      void this.discardBackup(artifactId);
-    });
+    this.watcher.watch(artifactId, updated.filePath, () => this.handleGenerationReady(artifactId));
     void this.spawnArtifactAgent(artifactId, updated, {
       name: updated.name,
       description: updated.description,
@@ -250,6 +309,7 @@ export class ArtifactService {
       this.logger.error({ err: error, artifactId }, "Failed to regenerate artifact");
       await this.restoreBackup(artifactId);
       void this.store.update(artifactId, { status: "error", errorMessage: String(error) });
+      void this.completeRun(artifactId, "failed", String(error));
     });
 
     return updated;
@@ -310,6 +370,7 @@ export class ArtifactService {
       errorMessage,
       generationAgentId: null,
     });
+    await this.completeRun(artifactId, "failed", errorMessage);
     return this.store.get(artifactId);
   }
 
@@ -425,6 +486,7 @@ export class ArtifactService {
     // Register before running so cancel() can interrupt this run immediately.
     this.runningGenerations.set(artifactId, agent.id);
     await this.store.update(artifactId, { generationAgentId: agent.id });
+    await this.store.patchCurrentRun(artifactId, { agentId: agent.id });
 
     // Creating the agent only spins up the session; the prompt must be run to
     // actually generate the file. The watcher flips the artifact to "ready"

@@ -87,6 +87,7 @@ import { registerPreviewTools } from "../../preview/preview-tools.js";
 import type { DevServerManager } from "../../preview/dev-server-manager.js";
 import type { ArtifactService } from "../../artifact/artifact-service.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
+import { StoredArtifactSchema } from "@otto-code/protocol/artifacts/types";
 import type {
   OttoToolCatalog,
   OttoToolConfig,
@@ -2579,6 +2580,33 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return {
         content: [],
         structuredContent: ensureValidJson({ artifacts }),
+      };
+    },
+  );
+
+  registerTool(
+    "inspect_artifact",
+    {
+      title: "Inspect artifact",
+      description: "Inspect an artifact and its generation run history.",
+      inputSchema: {
+        artifactId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Artifact to inspect; call list_artifacts for ids."),
+      },
+      outputSchema: StoredArtifactSchema.shape,
+    },
+    async ({ artifactId }) => {
+      const artifactService = options.artifactService;
+      if (!artifactService) {
+        throw new Error("Artifact service is not available on this daemon");
+      }
+      const record = await artifactService.inspect(artifactId);
+      return {
+        content: [],
+        structuredContent: ensureValidJson(record),
       };
     },
   );

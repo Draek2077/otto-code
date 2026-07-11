@@ -5746,6 +5746,36 @@ describe("artifact record MCP tools (list/update/generate)", () => {
     });
   });
 
+  it("inspect_artifact returns the full record with its run history", async () => {
+    const inspect = vi.fn().mockResolvedValue({
+      ...artifactFixture(),
+      runs: [
+        {
+          id: "run-1",
+          trigger: "create",
+          status: "succeeded",
+          startedAt: "2026-07-08T00:00:00.000Z",
+          endedAt: "2026-07-08T00:01:00.000Z",
+          agentId: "agent-1",
+          provider: "opencode",
+          model: "base-model",
+          error: null,
+        },
+      ],
+    });
+    const server = await createServer({ inspect });
+    const tool = registeredTool(server, "inspect_artifact");
+
+    const response = await invokeToolWithParsedInput(tool, { artifactId: "art-1" });
+
+    expect(inspect).toHaveBeenCalledWith("art-1");
+    expect(response.structuredContent).toMatchObject({
+      id: "art-1",
+      status: "ready",
+      runs: [{ id: "run-1", trigger: "create", status: "succeeded", agentId: "agent-1" }],
+    });
+  });
+
   it("update_artifact resolves a canonical effort level and broadcasts the update", async () => {
     const list = vi.fn().mockResolvedValue([artifactFixture()]);
     const update = vi
