@@ -2,9 +2,14 @@ import type pino from "pino";
 import { Readable } from "node:stream";
 import { existsSync } from "node:fs";
 
-import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
+import type {
+  SpeechStreamResult,
+  SpeechVoiceOverride,
+  TextToSpeechProvider,
+} from "../../../speech-provider.js";
 import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
 import { getSherpaOnnxTtsLayout, type LocalTtsModelId } from "./model-catalog.js";
+import { resolveLocalTtsSpeakerId } from "./tts-voices.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
 
 export type SherpaTtsPreset = LocalTtsModelId;
@@ -37,6 +42,7 @@ interface SherpaOfflineTtsNative {
 
 export class SherpaOnnxTTS implements TextToSpeechProvider {
   private readonly tts: SherpaOfflineTtsNative;
+  private readonly preset: LocalTtsModelId;
   private readonly speakerId: number;
   private readonly speed: number;
   private readonly logger: pino.Logger;
@@ -44,6 +50,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
   constructor(config: SherpaTtsConfig, logger: pino.Logger) {
     this.logger = logger.child({ module: "speech", provider: "local", component: "tts" });
     const layout = getSherpaOnnxTtsLayout(config.preset);
+    this.preset = config.preset;
     this.speakerId = config.speakerId ?? layout.defaultSpeakerId;
     this.speed = config.speed ?? 1.0;
 
@@ -95,7 +102,17 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     );
   }
 
-  async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
+  // A personality voice only resolves to a speaker on THIS model. A voice bound
+  // to a different model (or an unknown name) silently falls back to the host
+  // default — the personality voice is a soft binding, never a hard failure.
+  private resolveSpeakerId(voice?: SpeechVoiceOverride): number {
+    if (!voice || (voice.model && voice.model !== this.preset)) {
+      return this.speakerId;
+    }
+    return resolveLocalTtsSpeakerId(this.preset, voice.name) ?? this.speakerId;
+  }
+
+  async synthesizeSpeech(text: string, voice?: SpeechVoiceOverride): Promise<SpeechStreamResult> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Cannot synthesize empty text");
@@ -103,7 +120,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
 
     const audio = this.tts.generate({
       text: trimmed,
-      sid: this.speakerId,
+      sid: this.resolveSpeakerId(voice),
       speed: this.speed,
       // Electron rejects native external-backed typed arrays. Request a copied buffer
       // from sherpa itself instead of trying to clone after generate() returns.

@@ -3,8 +3,12 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
-import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
+import type { AgentSessionConfig, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
+import {
+  resolvePersonality,
+  type ResolvedPersonalitySnapshot,
+} from "../agent/agent-personalities.js";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
 import { formatSystemNotificationPrompt } from "../agent/agent-prompt.js";
@@ -23,7 +27,7 @@ import type {
   UpdateScheduleInput,
   UpdateScheduleNewAgentConfig,
 } from "@otto-code/protocol/schedule/types";
-import type { FirstAgentContext } from "@otto-code/protocol/messages";
+import type { AgentPersonality, FirstAgentContext } from "@otto-code/protocol/messages";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
 
@@ -212,12 +216,24 @@ interface ScheduleWorkspaceCreateInput {
   firstAgentContext: FirstAgentContext;
 }
 
+/** Narrow provider-snapshot surface the run path needs for personality resolution. */
+export interface ScheduleProviderLister {
+  listProviders(input: {
+    cwd?: string | null;
+    wait?: boolean;
+  }): Promise<readonly ProviderSnapshotEntry[]>;
+}
+
 export interface ScheduleServiceOptions {
   ottoHome: string;
   logger: Logger;
   agentManager: ScheduleAgentManager;
   agentStorage: AgentStorage;
   createAgent: BoundCreateAgentCommand;
+  /** Optional — enables personality-bound schedules (run-time resolution). */
+  providerSnapshotManager?: ScheduleProviderLister;
+  /** Optional — reads the live personality roster for personality-bound schedules. */
+  readAgentPersonalities?: () => AgentPersonality[];
   createLocalCheckoutWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<PersistedWorkspaceRecord>;
@@ -242,6 +258,8 @@ export class ScheduleService {
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreateOttoWorktreeWorkflowResult>;
   private readonly archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
+  private readonly providerSnapshotManager: ScheduleProviderLister | null;
+  private readonly readAgentPersonalities: (() => AgentPersonality[]) | null;
   private readonly now: () => Date;
   private readonly runner: (
     schedule: StoredSchedule,
@@ -259,6 +277,8 @@ export class ScheduleService {
     this.createLocalCheckoutWorkspace = options.createLocalCheckoutWorkspace;
     this.createOttoWorktreeWorkspace = options.createOttoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
+    this.providerSnapshotManager = options.providerSnapshotManager ?? null;
+    this.readAgentPersonalities = options.readAgentPersonalities ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -876,10 +896,21 @@ export class ScheduleService {
         agentId: null,
       });
       const runConfig = { ...config, cwd: workspace.cwd };
+      // A personality-bound schedule re-resolves its personality against THIS
+      // run's cwd and hard-fails the run if it's unavailable (surfaced via the
+      // run's failure path) — no silent fallback.
+      const brain = await this.resolveSchedulePersonalityBrain(runConfig);
+      const spawn = applyScheduleBrain({
+        brain,
+        baseAgentConfig: buildScheduleAgentConfig(runConfig),
+        fallbackProviderModel: formatScheduleProviderModel(runConfig),
+        configModeId: config.modeId,
+        configThinkingOptionId: config.thinkingOptionId,
+      });
       const created = await this.createAgent({
         kind: "mcp",
-        provider: formatScheduleProviderModel(runConfig),
-        config: buildScheduleAgentConfig(runConfig),
+        provider: spawn.provider,
+        config: spawn.config,
         cwd: workspace.cwd,
         workspaceId: workspace.workspaceId,
         title: resolveScheduleAgentTitle(config, schedule.prompt),
@@ -887,8 +918,8 @@ export class ScheduleService {
           "otto.schedule-id": schedule.id,
           "otto.schedule-run": runId,
         },
-        mode: config.modeId,
-        thinking: config.thinkingOptionId,
+        mode: spawn.mode,
+        thinking: spawn.thinking,
         features: config.featureValues,
         unattended: true,
         promptFailure: "return-error",
@@ -978,6 +1009,94 @@ export class ScheduleService {
       throw error;
     }
   }
+
+  // Resolve a schedule's optional personality binding against the run cwd, or
+  // undefined when unbound. Throws (failing the run) when the personality is
+  // named but missing/unavailable, or when personality resolution isn't wired.
+  private async resolveSchedulePersonalityBrain(config: {
+    personality?: string;
+    cwd: string;
+  }): Promise<ScheduleBrain | undefined> {
+    const name = config.personality?.trim();
+    if (!name) {
+      return undefined;
+    }
+    if (!this.providerSnapshotManager || !this.readAgentPersonalities) {
+      throw new Error(
+        `Schedule binds personality "${name}", but personality resolution is not configured on this host.`,
+      );
+    }
+    const roster = this.readAgentPersonalities();
+    const personality =
+      roster.find((entry) => entry.name === name) ??
+      roster.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    if (!personality) {
+      throw new Error(`Personality "${name}" not found; the scheduled run cannot proceed.`);
+    }
+    const entries = await this.providerSnapshotManager.listProviders({
+      cwd: config.cwd,
+      wait: true,
+    });
+    const resolution = resolvePersonality(personality, entries);
+    if (resolution.status === "unavailable") {
+      throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
+    }
+    const snapshot = resolution.snapshot;
+    return {
+      providerModel: snapshot.model ? `${snapshot.provider}/${snapshot.model}` : snapshot.provider,
+      ...(snapshot.modeId !== undefined ? { modeId: snapshot.modeId } : {}),
+      ...(snapshot.thinkingOptionId !== undefined
+        ? { thinkingOptionId: snapshot.thinkingOptionId }
+        : {}),
+      ...(snapshot.systemPrompt !== undefined ? { systemPrompt: snapshot.systemPrompt } : {}),
+      snapshot,
+    };
+  }
+}
+
+interface ScheduleBrain {
+  providerModel: string;
+  modeId?: string;
+  thinkingOptionId?: string;
+  systemPrompt?: string;
+  snapshot: ResolvedPersonalitySnapshot;
+}
+
+// Fold a resolved personality brain (or its absence) into the createAgent
+// provider/config/mode/thinking. Extracted so executeSchedule stays under the
+// complexity budget.
+function applyScheduleBrain(input: {
+  brain: ScheduleBrain | undefined;
+  baseAgentConfig: AgentSessionConfig;
+  fallbackProviderModel: string;
+  configModeId?: string;
+  configThinkingOptionId?: string;
+}): {
+  provider: string;
+  config: AgentSessionConfig;
+  mode: string | undefined;
+  thinking: string | undefined;
+} {
+  const { brain, baseAgentConfig, fallbackProviderModel, configModeId, configThinkingOptionId } =
+    input;
+  if (!brain) {
+    return {
+      provider: fallbackProviderModel,
+      config: baseAgentConfig,
+      mode: configModeId,
+      thinking: configThinkingOptionId,
+    };
+  }
+  const config: AgentSessionConfig = { ...baseAgentConfig, personalitySnapshot: brain.snapshot };
+  if (brain.systemPrompt !== undefined) {
+    config.systemPrompt = brain.systemPrompt;
+  }
+  return {
+    provider: brain.providerModel,
+    config,
+    mode: brain.modeId ?? configModeId,
+    thinking: brain.thinkingOptionId ?? configThinkingOptionId,
+  };
 }
 
 function buildScheduleAgentConfig(

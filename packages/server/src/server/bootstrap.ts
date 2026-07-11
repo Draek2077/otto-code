@@ -106,6 +106,7 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
@@ -148,7 +149,11 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+import {
+  loadPersistedConfig,
+  type PersistedConfig,
+  type PersistedAgentPersonality,
+} from "./persisted-config.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
@@ -391,6 +396,9 @@ export interface OttoDaemonConfig {
       thinkingOptionId?: string;
     }>;
   };
+  agentPersonalities?: {
+    personalities?: PersistedAgentPersonality[];
+  };
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -604,6 +612,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
     ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
+    agentPersonalities: {
+      personalities: config.agentPersonalities?.personalities ?? [],
+    },
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -859,6 +870,10 @@ export async function createOttoDaemon(
   }
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
+  const personalityStatsStore = new PersonalityStatsStore(
+    path.join(config.ottoHome, "stats", "personality-usage.json"),
+    logger,
+  );
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.ottoHome, "projects", "projects.json"),
     logger,
@@ -1244,6 +1259,8 @@ export async function createOttoDaemon(
     createLocalCheckoutWorkspace: createScheduleLocalWorkspaceExternal,
     createOttoWorktreeWorkspace: createScheduleOttoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    providerSnapshotManager,
+    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
@@ -1274,6 +1291,10 @@ export async function createOttoDaemon(
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
     providerSnapshotManager,
+    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    recordPersonalitySpawn: (personalityId) => {
+      void personalityStatsStore.increment(personalityId);
+    },
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -1598,6 +1619,8 @@ export async function createOttoDaemon(
               previewDevServers,
               gitHostingResolver,
             );
+
+            wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
 
             // Sanity guard: never let preview "stop external server" tree-kill
             // Otto's own runtime — the daemon's listen port or a loopback dev

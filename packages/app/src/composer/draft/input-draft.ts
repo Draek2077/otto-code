@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -7,6 +8,8 @@ import {
   type CreateAgentInitialValues,
   type UseAgentFormStateResult,
 } from "@/hooks/use-agent-form-state";
+import { usePersonalitySelection } from "@/hooks/use-personality-selection";
+import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
   areAttachmentsEqual,
@@ -77,6 +80,40 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }),
     [formState.selectedServerId, input.draftKey],
   );
+
+  // New-chat (Chatter) personality picker. Applies a personality's
+  // provider/model/mode/effort to the draft form; mode matters here because
+  // chat is attended (unlike artifacts/schedules).
+  const { setProviderAndModelFromUser, setModeFromUser, setThinkingOptionFromUser } = formState;
+  const applyPersonality = useCallback(
+    (values: PersonalityFormValues) => {
+      setProviderAndModelFromUser(values.provider as AgentProvider, values.model);
+      setModeFromUser(values.modeId);
+      setThinkingOptionFromUser(values.thinkingOptionId);
+    },
+    [setProviderAndModelFromUser, setModeFromUser, setThinkingOptionFromUser],
+  );
+  const personalityCurrentSelection = useMemo(
+    () => ({
+      provider: formState.selectedProvider,
+      model: formState.selectedModel,
+      modeId: formState.selectedMode,
+      thinkingOptionId: formState.selectedThinkingOptionId,
+    }),
+    [
+      formState.selectedProvider,
+      formState.selectedModel,
+      formState.selectedMode,
+      formState.selectedThinkingOptionId,
+    ],
+  );
+  const personalitySelection = usePersonalitySelection({
+    serverId: formState.selectedServerId,
+    role: "chatter",
+    entries: formState.allProviderEntries ?? [],
+    onApply: applyPersonality,
+    currentSelection: personalityCurrentSelection,
+  });
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -282,6 +319,12 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         formState,
         features: draftFeatures,
         onSetFeature: setDraftFeatureValue,
+        personality: {
+          personalities: personalitySelection.personalities,
+          selectedPersonalityId: personalitySelection.selectedPersonalityId,
+          onSelectPersonality: personalitySelection.selectPersonality,
+          onClearPersonality: personalitySelection.clearPersonality,
+        },
       }),
       commandDraftConfig,
     };
@@ -293,6 +336,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     draftFeatures,
     draftFeatureValues,
     formState,
+    personalitySelection,
     setDraftFeatureValue,
     workingDir,
   ]);
