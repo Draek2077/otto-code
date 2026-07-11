@@ -801,6 +801,7 @@ export const ja: TranslationResources = {
         wrapLongLines: "長い行を折り返す",
         collapseAll: "すべて折りたたむ",
         expandAll: "すべて展開",
+        expandAllTooManyFiles: "ファイルが多すぎてすべて展開できません",
         collapseAllFolders: "すべてのフォルダを折りたたむ",
         expandAllFolders: "すべてのフォルダを展開",
         refreshing: "更新中",
@@ -1944,6 +1945,11 @@ export const ja: TranslationResources = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

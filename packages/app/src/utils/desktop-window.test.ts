@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isExplorerUnderWindowControls,
   resolveOverlayInsets,
   resolveRawWindowControlsPadding,
   resolveWindowControlsPadding,
@@ -186,62 +185,5 @@ describe("resolveOverlayInsets", () => {
       right: 140,
       top: 0,
     });
-  });
-});
-
-describe("isExplorerUnderWindowControls", () => {
-  it("reports the explorer surface when it is open on a non-compact workspace route", () => {
-    expect(
-      isExplorerUnderWindowControls({
-        isCompact: false,
-        explorerOpen: true,
-        focusModeEnabled: false,
-        isWorkspaceRoute: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("falls back to the app surface when the explorer is closed", () => {
-    expect(
-      isExplorerUnderWindowControls({
-        isCompact: false,
-        explorerOpen: false,
-        focusModeEnabled: false,
-        isWorkspaceRoute: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("falls back to the app surface in focus mode, which hides the explorer", () => {
-    expect(
-      isExplorerUnderWindowControls({
-        isCompact: false,
-        explorerOpen: true,
-        focusModeEnabled: true,
-        isWorkspaceRoute: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("falls back to the app surface off workspace routes where no explorer renders", () => {
-    expect(
-      isExplorerUnderWindowControls({
-        isCompact: false,
-        explorerOpen: true,
-        focusModeEnabled: false,
-        isWorkspaceRoute: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("falls back to the app surface on compact layouts where the explorer is an overlay sheet", () => {
-    expect(
-      isExplorerUnderWindowControls({
-        isCompact: true,
-        explorerOpen: true,
-        focusModeEnabled: false,
-        isWorkspaceRoute: true,
-      }),
-    ).toBe(false);
   });
 });

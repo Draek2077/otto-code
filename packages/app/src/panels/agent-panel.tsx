@@ -296,6 +296,18 @@ function storeFetchedAgentDetail(input: {
   return hydrated;
 }
 
+function buildAgentDescriptorState(agent: Agent | null) {
+  return {
+    provider: agent?.provider ?? "codex",
+    title: agent?.title ?? null,
+    status: agent?.status ?? null,
+    pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
+    requiresAttention: agent?.requiresAttention ?? false,
+    attentionReason: agent?.attentionReason ?? null,
+    personalitySpinner: agent?.personalitySpinner ?? null,
+  };
+}
+
 function useAgentPanelDescriptor(
   target: { kind: "agent"; agentId: string },
   context: { serverId: string },
@@ -305,14 +317,7 @@ function useAgentPanelDescriptor(
       const session = state.sessions[context.serverId];
       const agent =
         session?.agents?.get(target.agentId) ?? session?.agentDetails?.get(target.agentId) ?? null;
-      return {
-        provider: agent?.provider ?? "codex",
-        title: agent?.title ?? null,
-        status: agent?.status ?? null,
-        pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
-        requiresAttention: agent?.requiresAttention ?? false,
-        attentionReason: agent?.attentionReason ?? null,
-      };
+      return buildAgentDescriptorState(agent);
     }),
   );
   const provider = descriptorState.provider;
@@ -332,6 +337,8 @@ function useAgentPanelDescriptor(
           attentionReason: descriptorState.attentionReason,
         })
       : null,
+    personalitySpinner: descriptorState.personalitySpinner,
+    provider,
   };
 }
 

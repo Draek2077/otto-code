@@ -11,6 +11,7 @@
 // with the agent-personality editor, which is itself English-only pending a
 // translation pass (build-first, translate-last), so we keep one source of
 // truth here instead of splitting copy across locale-gated and un-gated callers.
+import { Buffer } from "buffer";
 import { useCallback, useRef, useState, type ReactElement } from "react";
 import { ActivityIndicator, Text, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -107,6 +108,16 @@ export function VoicePreviewButton({
 
     const token = (requestRef.current += 1);
     setStatus("loading");
+
+    // Unlock the playback AudioContext *inside* this click gesture, before the
+    // multi-second synthesis round-trip. Browsers only resume an AudioContext in
+    // response to a live user activation; if we defer initialization until after
+    // the `await` below, the gesture has expired and the context stays suspended
+    // — the sample decodes but never reaches the speakers ("I hear nothing").
+    // Kicking off initialize() here (not awaiting) keeps the resume() call within
+    // the gesture; playback still awaits readiness via play().
+    void audioEngine.initialize().catch(() => undefined);
+
     try {
       const voice = voiceName
         ? { provider: voiceProvider, model: voiceModel, name: voiceName }
@@ -114,6 +125,9 @@ export function VoicePreviewButton({
       const result = await client.previewTtsVoice({ text, voice });
       if (token !== requestRef.current) return;
       if (result.error || !result.audio) {
+        if (result.error) {
+          console.warn("[VoicePreview] host returned no audio:", result.error);
+        }
         setStatus("idle");
         return;
       }
@@ -130,12 +144,19 @@ export function VoicePreviewButton({
             return Uint8Array.from(bytes).buffer;
           },
         });
-      } catch {
-        // stop() rejects the in-flight playback; treat as a normal end.
+      } catch (error) {
+        // A superseding press rejects the in-flight playback (normal). Anything
+        // else is a real failure worth surfacing rather than swallowing silently.
+        if (token === requestRef.current) {
+          console.error("[VoicePreview] playback failed:", error);
+        }
       }
       if (token === requestRef.current) setStatus("idle");
-    } catch {
-      if (token === requestRef.current) setStatus("idle");
+    } catch (error) {
+      if (token === requestRef.current) {
+        console.error("[VoicePreview] preview request failed:", error);
+        setStatus("idle");
+      }
     }
   }, [audioEngine, client, status, text, voiceName, voiceModel, voiceProvider]);
 

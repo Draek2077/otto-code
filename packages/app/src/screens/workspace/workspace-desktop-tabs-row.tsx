@@ -114,7 +114,7 @@ import {
 const DROPDOWN_WIDTH = 220;
 // Fixed colors for content on the forced-black chat tab (Black tab background
 // setting) — must stay readable on #000 regardless of the active theme.
-const ON_BLACK_FOREGROUND = "#fafafa";
+const ON_BLACK_FOREGROUND = "#e9e4d8"; // warm eggshell — matches dark themes' foreground ink
 const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
@@ -1060,6 +1060,7 @@ function WorkspaceTabRowExtras({
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
   const { config } = useDaemonConfig(normalizedServerId);
+  const { settings } = useAppSettings();
   const isCompact = useIsCompactFormFactor();
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
@@ -1135,9 +1136,15 @@ function WorkspaceTabRowExtras({
 
   // Keep the tools revealed while one of their menus is open — the pointer is
   // inside the portaled menu then, which reads as "left the strip" to the
-  // hover tracker.
+  // hover tracker. With hide-until-hover off (the default), the pinned tools
+  // are always revealed.
   const toolsRevealed =
-    rowHovered || isNative || isCompact || previewController.pickerOpen || artifactsOpen;
+    !settings.hidePinnedToolbarOptions ||
+    rowHovered ||
+    isNative ||
+    isCompact ||
+    previewController.pickerOpen ||
+    artifactsOpen;
 
   const handlePreviewFromMenu = useCallback(() => {
     void previewController.runPreviewFlow();

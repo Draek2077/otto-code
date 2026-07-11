@@ -308,7 +308,7 @@ const daylightColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#f6f6f6",
   surfaceSidebar: "#f4f4f5",
   surfaceSidebarHover: "#e9e9ec",
-  foreground: "#1a1a1e",
+  foreground: "#37373c", // charcoal, lifted from near-black #1a1a1e — softer than pure black, ~11:1 on white
   foregroundMuted: "#62626b", // was #71717a — stronger secondary text
   scrollbarHandle: "#3f3f46",
   border: "#dcdce0", // was #e4e4e7 — clearer panel separation
@@ -333,7 +333,7 @@ const sherbetColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#f6ebe2",
   surfaceSidebar: "#f7ebe2",
   surfaceSidebarHover: "#f0e0d3",
-  foreground: "#2b2233",
+  foreground: "#453a4d", // plum charcoal, lifted from near-black #2b2233
   foregroundMuted: "#6b5f6e",
   scrollbarHandle: "#55495a",
   border: "#e8d5ca",
@@ -357,7 +357,7 @@ const meadowColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#eef5f0",
   surfaceSidebar: "#eef6f1",
   surfaceSidebarHover: "#e3eee7",
-  foreground: "#16261d",
+  foreground: "#334339", // green charcoal, lifted from near-black #16261d
   foregroundMuted: "#5c6f64",
   scrollbarHandle: "#3f4a44",
   border: "#dbe8e0",
@@ -380,7 +380,7 @@ const terracottaColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#f7ede4",
   surfaceSidebar: "#f8efe8",
   surfaceSidebarHover: "#f1e2d5",
-  foreground: "#2e2019",
+  foreground: "#473b31", // warm clay charcoal, lifted from near-black #2e2019
   foregroundMuted: "#75655a",
   scrollbarHandle: "#5c4c40",
   border: "#ecdccd",
@@ -403,7 +403,7 @@ const horizonColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#eef3fa",
   surfaceSidebar: "#eef4fb",
   surfaceSidebarHover: "#e1ebf7",
-  foreground: "#161e2e",
+  foreground: "#343d4e", // blue charcoal, lifted from near-black #161e2e
   foregroundMuted: "#5a6b85",
   scrollbarHandle: "#3f4d63",
   border: "#d7e4f3",
@@ -427,7 +427,7 @@ const powderColors = buildLightSemanticColors({
   surfaceDiffEmpty: "#eef1f5",
   surfaceSidebar: "#eef0f4",
   surfaceSidebarHover: "#e3e7ee",
-  foreground: "#1e222b",
+  foreground: "#3a3f4a", // slate charcoal, lifted from near-black #1e222b
   foregroundMuted: "#636c7d",
   scrollbarHandle: "#454e5f",
   border: "#dde1e9",
@@ -464,6 +464,12 @@ interface DarkThemeConfig {
   spinnerSecondary: string;
 }
 
+// Primary text ink for every dark variant. A warm eggshell rather than pure
+// #fafafa — a few points darker and gently warmed so long reading sessions on
+// dark surfaces don't glare. Shared across foreground, its legacy aliases, and
+// the terminal so all dark "white" text moves together.
+const darkForeground = "#e9e4d8";
+
 const darkTerminalAnsi = {
   red: "#e07070",
   green: "#5dba80",
@@ -496,7 +502,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(255, 255, 255, 0.07)",
 
-    foreground: "#fafafa",
+    foreground: darkForeground,
     foregroundMuted: tint.foregroundMuted,
 
     scrollbarHandle: tint.scrollbarHandle,
@@ -525,11 +531,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     // Legacy aliases (for gradual migration)
     background: tint.surface0,
     popover: tint.surface2,
-    popoverForeground: "#fafafa",
-    primary: "#fafafa",
+    popoverForeground: darkForeground,
+    primary: darkForeground,
     primaryForeground: tint.surface0,
     secondary: tint.surface2,
-    secondaryForeground: "#fafafa",
+    secondaryForeground: darkForeground,
     muted: tint.surface2,
     mutedForeground: tint.foregroundMuted,
     accentBorder: tint.borderAccent,
@@ -541,11 +547,11 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     terminal: {
       background: tint.surface0,
-      foreground: "#fafafa",
-      cursor: "#fafafa",
+      foreground: darkForeground,
+      cursor: darkForeground,
       cursorAccent: tint.surface0,
       selectionBackground: "rgba(255, 255, 255, 0.2)",
-      selectionForeground: "#fafafa",
+      selectionForeground: darkForeground,
       black: tint.surfaceSidebar,
       ...darkTerminalAnsi,
       brightBlack: tint.surface3,

@@ -27,7 +27,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { BORDER_WIDTH, ICON_SIZE, SPACING, type Theme } from "@/styles/theme";
+import { BORDER_WIDTH, SPACING, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import {
   AlignJustify,
@@ -99,6 +99,8 @@ import { GitHubIcon } from "@/components/icons/github-icon";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { GitActionsSplitButton } from "@/git/actions-split-button";
+import { ChangesToolbar, type ChangesToolbarItem } from "@/git/changes-toolbar/toolbar";
+import { toggleChangesToolbarItem, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import { BranchSwitcher } from "@/components/branch-switcher";
 import { useGitActions } from "@/git/use-actions";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
@@ -1109,6 +1111,33 @@ const DiffFileHeader = memo(function DiffFileHeader({
   );
 });
 
+// A single expanded diff body renders every line as its own view stack — the
+// body is NOT internally virtualized (only the outer file list is). One
+// enormous file therefore mounts tens of thousands of views and stalls/crashes
+// the app (e.g. via "expand all"). The server already caps a file's diff at 1MB
+// of bytes; this additionally caps the rendered *line* count, past which the
+// body collapses to the same "too large" placeholder used for over-size and
+// binary files. Tune if large-but-reviewable diffs get cut off unexpectedly.
+const MAX_RENDERED_DIFF_LINES = 2000;
+
+/** Cheap, short-circuiting check: would this file's diff exceed the render cap? */
+function isDiffBodyTooLargeToRender(file: ParsedDiffFile): boolean {
+  let lineCount = 0;
+  for (const hunk of file.hunks) {
+    lineCount += hunk.lines.length;
+    if (lineCount > MAX_RENDERED_DIFF_LINES) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Expanding thousands of files at once mounts thousands of diff bodies and blows
+// up the list's layout math (getItemLayout is superlinear over the item list).
+// Past this many changed files, "expand all" is disabled — files can still be
+// expanded individually, and each over-cap file is itself placeholdered above.
+const MAX_EXPAND_ALL_FILE_COUNT = 500;
+
 function DiffFileBody({
   file,
   layout,
@@ -1155,13 +1184,14 @@ function DiffFileBody({
   return (
     <View style={FILE_SECTION_BODY_STYLE} onLayout={handleLayout} testID={testID}>
       {(() => {
-        if (file.status === "too_large" || file.status === "binary") {
+        const isBinary = file.status === "binary";
+        // Treat an over-cap "ok" file exactly like a server-flagged too_large one.
+        const isTooLarge = file.status === "too_large" || isDiffBodyTooLargeToRender(file);
+        if (isBinary || isTooLarge) {
           return (
             <View style={styles.statusMessageContainer}>
               <Text style={styles.statusMessageText}>
-                {file.status === "binary"
-                  ? t("workspace.git.diff.binaryFile")
-                  : t("workspace.git.diff.tooLarge")}
+                {isBinary ? t("workspace.git.diff.binaryFile") : t("workspace.git.diff.tooLarge")}
               </Text>
             </View>
           );
@@ -1332,13 +1362,6 @@ const ThemedRefreshCcw = withUnistyles(RefreshCcw);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
-const DIFF_OPTIONS_WHITESPACE_ICON = (
-  <ThemedPilcrow size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-const DIFF_OPTIONS_WRAP_ICON = (
-  <ThemedWrapText size={14} uniProps={foregroundMutedIconColorMapping} />
-);
-
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedPaperclip = withUnistyles(Paperclip);
@@ -1354,235 +1377,6 @@ const DIFF_CONTEXT_FIND_IN_FILES_ICON = (
 const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
   <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />
 );
-
-interface DiffLayoutToggleProps {
-  layout: "unified" | "split";
-  isMobile: boolean;
-  toggleStyle: PressableStyleFn;
-  onToggle: () => void;
-}
-
-function DiffLayoutToggle({ layout, isMobile, toggleStyle, onToggle }: DiffLayoutToggleProps) {
-  const { t } = useTranslation();
-  const label =
-    layout === "unified"
-      ? t("workspace.git.diff.switchToSplit")
-      : t("workspace.git.diff.switchToUnified");
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          testID="changes-toggle-layout"
-          onPress={onToggle}
-          style={toggleStyle}
-        >
-          {layout === "unified" ? (
-            <ThemedColumns2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
-          ) : (
-            <ThemedAlignJustify
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
-          )}
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-interface DiffViewModeToggleProps {
-  viewMode: "flat" | "tree";
-  isMobile: boolean;
-  toggleStyle: PressableStyleFn;
-  onToggle: () => void;
-}
-
-function DiffViewModeToggle({
-  viewMode,
-  isMobile,
-  toggleStyle,
-  onToggle,
-}: DiffViewModeToggleProps) {
-  const { t } = useTranslation();
-  const label =
-    viewMode === "flat"
-      ? t("workspace.git.diff.showTreeView")
-      : t("workspace.git.diff.showFlatView");
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          testID="changes-toggle-view-mode"
-          style={toggleStyle}
-          onPress={onToggle}
-        >
-          {viewMode === "flat" ? (
-            <ThemedFolderTree
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
-          ) : (
-            <ThemedList size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
-          )}
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-interface DiffFilesToolbarProps {
-  allFileDiffsExpanded: boolean;
-  isMobile: boolean;
-  expandAllToggleStyle: PressableStyleFn;
-  onToggleExpandAll: () => void;
-}
-
-function DiffFilesToolbar({
-  allFileDiffsExpanded,
-  isMobile,
-  expandAllToggleStyle,
-  onToggleExpandAll,
-}: DiffFilesToolbarProps) {
-  const { t } = useTranslation();
-  const expandAllLabel = allFileDiffsExpanded
-    ? t("workspace.git.diff.collapseAll")
-    : t("workspace.git.diff.expandAll");
-  return (
-    <View style={styles.diffStatusButtons}>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={expandAllLabel}
-            style={expandAllToggleStyle}
-            onPress={onToggleExpandAll}
-          >
-            {allFileDiffsExpanded ? (
-              <ThemedListChevronsDownUp
-                size={isMobile ? 18 : 14}
-                uniProps={foregroundMutedIconColorMapping}
-              />
-            ) : (
-              <ThemedListChevronsUpDown
-                size={isMobile ? 18 : 14}
-                uniProps={foregroundMutedIconColorMapping}
-              />
-            )}
-          </Pressable>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <Text style={styles.tooltipText}>{expandAllLabel}</Text>
-        </TooltipContent>
-      </Tooltip>
-    </View>
-  );
-}
-
-interface DiffOptionsMenuProps {
-  hideWhitespace: boolean;
-  isMobile: boolean;
-  isRefreshing: boolean;
-  overflowToggleStyle: PressableStyleFn;
-  refreshSupported: boolean;
-  wrapLines: boolean;
-  onRefresh: () => void;
-  onToggleHideWhitespace: () => void;
-  onToggleWrapLines: () => void;
-}
-
-function DiffOptionsMenu({
-  hideWhitespace,
-  isMobile,
-  isRefreshing,
-  overflowToggleStyle,
-  refreshSupported,
-  wrapLines,
-  onRefresh,
-  onToggleHideWhitespace,
-  onToggleWrapLines,
-}: DiffOptionsMenuProps) {
-  const { t } = useTranslation();
-  const whitespaceLabel = hideWhitespace
-    ? t("workspace.git.diff.showWhitespace")
-    : t("workspace.git.diff.hideWhitespace");
-  const wrapLinesLabel = wrapLines
-    ? t("workspace.git.diff.scrollLongLines")
-    : t("workspace.git.diff.wrapLongLines");
-  const optionsLabel = t("workspace.git.diff.options");
-  const refreshIcon = useMemo(
-    () =>
-      isRefreshing ? (
-        <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedIconColorMapping} />
-      ) : (
-        <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedIconColorMapping} />
-      ),
-    [isRefreshing],
-  );
-
-  return (
-    <DropdownMenu>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger
-            accessibilityRole="button"
-            accessibilityLabel={optionsLabel}
-            testID="changes-options-menu"
-            style={overflowToggleStyle}
-          >
-            <ThemedChevronDown
-              size={isMobile ? 18 : 14}
-              uniProps={foregroundMutedIconColorMapping}
-            />
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <Text style={styles.tooltipText}>{optionsLabel}</Text>
-        </TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" width={240} testID="changes-options-menu-content">
-        <DropdownMenuItem
-          leading={DIFF_OPTIONS_WHITESPACE_ICON}
-          selected={hideWhitespace}
-          testID="changes-toggle-whitespace"
-          onSelect={onToggleHideWhitespace}
-        >
-          {whitespaceLabel}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          leading={DIFF_OPTIONS_WRAP_ICON}
-          selected={wrapLines}
-          testID="changes-toggle-wrap-lines"
-          onSelect={onToggleWrapLines}
-        >
-          {wrapLinesLabel}
-        </DropdownMenuItem>
-        {refreshSupported ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              leading={refreshIcon}
-              disabled={isRefreshing}
-              testID="changes-refresh"
-              onSelect={onRefresh}
-            >
-              {isRefreshing ? t("workspace.git.diff.refreshing") : t("workspace.git.diff.refresh")}
-            </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
@@ -1819,23 +1613,6 @@ function buildDiffModeTriggerStyle(): PressableStyleFn {
   ];
 }
 
-function buildExpandAllButtonStyle(): PressableStyleFn {
-  return ({ hovered, pressed }) => [
-    styles.expandAllButton,
-    (Boolean(hovered) || pressed) && styles.toggleButtonSelected,
-  ];
-}
-
-function buildToggleButtonStyle(
-  selected: boolean,
-  baseStyles: StyleProp<ViewStyle> | StyleProp<ViewStyle>[],
-): PressableStyleFn {
-  return ({ hovered, pressed }) => [
-    baseStyles,
-    (selected || Boolean(hovered) || pressed) && styles.toggleButtonSelected,
-  ];
-}
-
 function shouldEnableCheckoutDiff(input: { paneEnabled: boolean; isGit: boolean }): boolean {
   return input.paneEnabled && input.isGit;
 }
@@ -1984,19 +1761,21 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   }, [appSettings.monoFontFamily, codeFontSize, diffBodyLineHeight]);
   const diffModeTriggerStyle = useMemo(() => buildDiffModeTriggerStyle(), []);
 
-  const layoutToggleStyle = useMemo(
-    () => buildToggleButtonStyle(false, styles.expandAllButton),
-    [],
+  const pinnedToolbarItems = changesPreferences.pinnedToolbarItems;
+  const handleToggleToolbarPin = useCallback(
+    (id: ChangesToolbarItemId) => {
+      void updateChangesPreferences({
+        pinnedToolbarItems: toggleChangesToolbarItem(changesPreferences.pinnedToolbarItems, id),
+      });
+    },
+    [changesPreferences.pinnedToolbarItems, updateChangesPreferences],
   );
-
-  const viewModeToggleStyle = useMemo(
-    () => buildToggleButtonStyle(viewMode === "tree", styles.expandAllButton),
-    [viewMode],
-  );
-
-  const expandAllToggleStyle = useMemo(() => buildExpandAllButtonStyle(), []);
-
-  const overflowToggleStyle = useMemo(() => buildExpandAllButtonStyle(), []);
+  // Hover reveal for the toolbar strip: tracked on the plain status-row View
+  // below (see docs/hover.md). Pinned icons are opacity-gated until the pointer
+  // enters the row; always visible on native/compact.
+  const [toolbarHovered, setToolbarHovered] = useState(false);
+  const handleToolbarPointerEnter = useCallback(() => setToolbarHovered(true), []);
+  const handleToolbarPointerLeave = useCallback(() => setToolbarHovered(false), []);
 
   const toast = useToast();
   const refreshSupported = useSessionStore(
@@ -2195,8 +1974,16 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   const getBodyHeightKey = useCallback(
     (file: ParsedDiffFile): string => {
-      if (file.status === "too_large" || file.status === "binary") {
-        return `${effectiveLayout}:${wrapLines ? "wrap" : "scroll"}:${diffBodyTypographyKey}:${file.path}:${file.status}`;
+      // Over-cap files render the "too large" placeholder, so key them like the
+      // server-flagged statuses (cheap + stable) rather than by line/content.
+      let placeholderStatus: "binary" | "too_large" | null = null;
+      if (file.status === "binary") {
+        placeholderStatus = "binary";
+      } else if (file.status === "too_large" || isDiffBodyTooLargeToRender(file)) {
+        placeholderStatus = "too_large";
+      }
+      if (placeholderStatus) {
+        return `${effectiveLayout}:${wrapLines ? "wrap" : "scroll"}:${diffBodyTypographyKey}:${file.path}:${placeholderStatus}`;
       }
 
       return [
@@ -2217,7 +2004,11 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
   const estimateBodyHeight = useCallback(
     (file: ParsedDiffFile): number => {
-      if (file.status === "too_large" || file.status === "binary") {
+      if (
+        file.status === "too_large" ||
+        file.status === "binary" ||
+        isDiffBodyTooLargeToRender(file)
+      ) {
         return statusBodyHeightEstimate;
       }
 
@@ -2414,13 +2205,147 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     }
     if (allFileDiffsExpanded) {
       setDiffExpandedPathsForWorkspace(workspaceStateKey, []);
-    } else {
-      setDiffExpandedPathsForWorkspace(
-        workspaceStateKey,
-        files.map((file) => file.path),
-      );
+      return;
     }
+    // Never expand thousands of bodies at once — that's the crash path. Collapse
+    // (the branch above) always stays available.
+    if (files.length > MAX_EXPAND_ALL_FILE_COUNT) {
+      return;
+    }
+    setDiffExpandedPathsForWorkspace(
+      workspaceStateKey,
+      files.map((file) => file.path),
+    );
   }, [allFileDiffsExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
+
+  const hasFiles = files.length > 0;
+  // The full toolbar catalog in fixed order. Each entry's icon/label reflect
+  // the current state (the action it performs), shared verbatim by the pinned
+  // strip button and its ▾-menu row. Unavailable options (split off the split
+  // layout, tree/expand with no files, refresh unsupported) are simply omitted.
+  const toolbarItems = useMemo<ChangesToolbarItem[]>(() => {
+    const list: ChangesToolbarItem[] = [];
+
+    if (canUseSplitLayout) {
+      const isSplit = changesPreferences.layout === "split";
+      list.push({
+        id: "split",
+        label: isSplit
+          ? t("workspace.git.diff.switchToUnified")
+          : t("workspace.git.diff.switchToSplit"),
+        renderIcon: (size) =>
+          isSplit ? (
+            <ThemedAlignJustify size={size} uniProps={foregroundMutedIconColorMapping} />
+          ) : (
+            <ThemedColumns2 size={size} uniProps={foregroundMutedIconColorMapping} />
+          ),
+        onPress: handleToggleLayout,
+        testID: "changes-toggle-layout",
+      });
+    }
+
+    if (hasFiles) {
+      const isTree = viewMode === "tree";
+      list.push({
+        id: "tree",
+        label: isTree ? t("workspace.git.diff.showFlatView") : t("workspace.git.diff.showTreeView"),
+        renderIcon: (size) =>
+          isTree ? (
+            <ThemedList size={size} uniProps={foregroundMutedIconColorMapping} />
+          ) : (
+            <ThemedFolderTree size={size} uniProps={foregroundMutedIconColorMapping} />
+          ),
+        onPress: handleToggleViewMode,
+        testID: "changes-toggle-view-mode",
+      });
+
+      // Disable the expand direction (not collapse) once the changeset is too
+      // large to expand safely; the label doubles as the tooltip explaining why.
+      const expandAllDisabled = !allFileDiffsExpanded && files.length > MAX_EXPAND_ALL_FILE_COUNT;
+      let expandLabel: string;
+      if (allFileDiffsExpanded) {
+        expandLabel = t("workspace.git.diff.collapseAll");
+      } else if (expandAllDisabled) {
+        expandLabel = t("workspace.git.diff.expandAllTooManyFiles");
+      } else {
+        expandLabel = t("workspace.git.diff.expandAll");
+      }
+      list.push({
+        id: "expand",
+        label: expandLabel,
+        renderIcon: (size) =>
+          allFileDiffsExpanded ? (
+            <ThemedListChevronsDownUp size={size} uniProps={foregroundMutedIconColorMapping} />
+          ) : (
+            <ThemedListChevronsUpDown size={size} uniProps={foregroundMutedIconColorMapping} />
+          ),
+        onPress: handleToggleExpandAll,
+        disabled: expandAllDisabled,
+        testID: "changes-toggle-expand-all",
+      });
+    }
+
+    list.push({
+      id: "whitespace",
+      label: changesPreferences.hideWhitespace
+        ? t("workspace.git.diff.showWhitespace")
+        : t("workspace.git.diff.hideWhitespace"),
+      renderIcon: (size) => (
+        <ThemedPilcrow size={size} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      onPress: handleToggleHideWhitespace,
+      testID: "changes-toggle-whitespace",
+    });
+
+    list.push({
+      id: "wrap",
+      label: wrapLines
+        ? t("workspace.git.diff.scrollLongLines")
+        : t("workspace.git.diff.wrapLongLines"),
+      renderIcon: (size) => (
+        <ThemedWrapText size={size} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      onPress: handleToggleWrapLines,
+      testID: "changes-toggle-wrap-lines",
+    });
+
+    if (refreshSupported) {
+      list.push({
+        id: "refresh",
+        label: isRefreshing ? t("workspace.git.diff.refreshing") : t("workspace.git.diff.refresh"),
+        renderIcon: (size) =>
+          isRefreshing ? (
+            <ThemedLoadingSpinner size={size} uniProps={foregroundMutedIconColorMapping} />
+          ) : (
+            <ThemedRotateCw size={size} uniProps={foregroundMutedIconColorMapping} />
+          ),
+        onPress: handleRefresh,
+        disabled: isRefreshing,
+        separatorBefore: true,
+        testID: "changes-refresh",
+      });
+    }
+
+    return list;
+  }, [
+    canUseSplitLayout,
+    changesPreferences.layout,
+    changesPreferences.hideWhitespace,
+    hasFiles,
+    files,
+    viewMode,
+    allFileDiffsExpanded,
+    wrapLines,
+    refreshSupported,
+    isRefreshing,
+    handleToggleLayout,
+    handleToggleViewMode,
+    handleToggleExpandAll,
+    handleToggleHideWhitespace,
+    handleToggleWrapLines,
+    handleRefresh,
+    t,
+  ]);
 
   // One pane-level context menu serves every file header and diff line
   // (web right-click); per-line menus would be too heavy for large diffs.
@@ -2677,7 +2602,11 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
 
       {isGit ? (
         <View style={styles.diffStatusContainer}>
-          <View style={styles.diffStatusInner}>
+          <View
+            style={styles.diffStatusInner}
+            onPointerEnter={handleToolbarPointerEnter}
+            onPointerLeave={handleToolbarPointerLeave}
+          >
             <DropdownMenu>
               <DropdownMenuTrigger
                 style={diffModeTriggerStyle}
@@ -2709,43 +2638,15 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <View style={styles.diffStatusButtons}>
-              {canUseSplitLayout ? (
-                <DiffLayoutToggle
-                  layout={changesPreferences.layout}
-                  isMobile={isMobile}
-                  toggleStyle={layoutToggleStyle}
-                  onToggle={handleToggleLayout}
-                />
-              ) : null}
-              {files.length > 0 ? (
-                <DiffViewModeToggle
-                  viewMode={viewMode}
-                  isMobile={isMobile}
-                  toggleStyle={viewModeToggleStyle}
-                  onToggle={handleToggleViewMode}
-                />
-              ) : null}
-              {files.length > 0 ? (
-                <DiffFilesToolbar
-                  allFileDiffsExpanded={allFileDiffsExpanded}
-                  isMobile={isMobile}
-                  expandAllToggleStyle={expandAllToggleStyle}
-                  onToggleExpandAll={handleToggleExpandAll}
-                />
-              ) : null}
-              <DiffOptionsMenu
-                hideWhitespace={changesPreferences.hideWhitespace}
-                isMobile={isMobile}
-                isRefreshing={isRefreshing}
-                overflowToggleStyle={overflowToggleStyle}
-                refreshSupported={refreshSupported}
-                wrapLines={wrapLines}
-                onRefresh={handleRefresh}
-                onToggleHideWhitespace={handleToggleHideWhitespace}
-                onToggleWrapLines={handleToggleWrapLines}
-              />
-            </View>
+            <ChangesToolbar
+              items={toolbarItems}
+              pinnedItems={pinnedToolbarItems}
+              onTogglePin={handleToggleToolbarPin}
+              hovered={toolbarHovered}
+              isMobile={isMobile}
+              hideUntilHover={appSettings.hidePinnedToolbarOptions}
+              optionsLabel={t("workspace.git.diff.options")}
+            />
           </View>
         </View>
       ) : null}
@@ -2857,38 +2758,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   diffStatusIconHidden: {
     opacity: 0,
-  },
-  diffStatusButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    flexWrap: "wrap",
-  },
-  toggleButtonSelected: {
-    backgroundColor: theme.colors.surface2,
-  },
-  expandAllButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[1],
-    minWidth: {
-      xs: 32,
-      sm: 32,
-      md: 24,
-    },
-    height: {
-      xs: 32,
-      sm: 32,
-      md: 24,
-    },
-    paddingHorizontal: {
-      xs: theme.spacing[2],
-      sm: theme.spacing[2],
-      md: theme.spacing[1],
-    },
-    borderRadius: theme.borderRadius.base,
-    flexShrink: 0,
   },
   actionErrorText: {
     paddingHorizontal: theme.spacing[3],

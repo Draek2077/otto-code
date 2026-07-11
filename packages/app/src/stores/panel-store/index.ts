@@ -89,6 +89,13 @@ export interface PanelState {
   // wants a file revealed in the Files tree; the file explorer consumes it
   // back to null. The token disambiguates repeat reveals of the same path.
   filesRevealRequest: { path: string; token: number } | null;
+  // Ephemeral (not persisted): true only while the workspace explorer sidebar is
+  // actually painted under the window controls. The window-controls overlay
+  // background follows this so it stays surface0 during the workspace load pause
+  // (route + open flag are set, but the sidebar hasn't rendered yet) and flips to
+  // the sidebar surface exactly when the sidebar appears. Owned by the workspace
+  // screen; false everywhere else.
+  explorerSidebarVisible: boolean;
 
   // Actions
   toggleFocusMode: () => void;
@@ -121,6 +128,7 @@ export interface PanelState {
   clearProjectSearchFocusRequest: () => void;
   requestFilesReveal: (path: string) => void;
   clearFilesRevealRequest: () => void;
+  setExplorerSidebarVisible: (visible: boolean) => void;
 }
 
 const DEFAULT_DESKTOP_OPEN = isWeb;
@@ -151,6 +159,7 @@ export const usePanelStore = create<PanelState>()(
       explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
       projectSearchFocusToken: 0,
       filesRevealRequest: null,
+      explorerSidebarVisible: false,
 
       toggleFocusMode: () =>
         set((state) => ({
@@ -308,6 +317,10 @@ export const usePanelStore = create<PanelState>()(
           filesRevealRequest: { path, token: (state.filesRevealRequest?.token ?? 0) + 1 },
         })),
       clearFilesRevealRequest: () => set({ filesRevealRequest: null }),
+      setExplorerSidebarVisible: (visible) =>
+        set((state) =>
+          state.explorerSidebarVisible === visible ? state : { explorerSidebarVisible: visible },
+        ),
     }),
     {
       name: "panel-state",

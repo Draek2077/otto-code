@@ -433,6 +433,26 @@ describe("appearance settings", () => {
     expect(result.syntaxTheme).toBe("default");
   });
 
+  it("defaults hide-pinned-toolbar-options to false when omitted", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hidePinnedToolbarOptions).toBe(false);
+  });
+
+  it("loads a persisted hide-pinned-toolbar-options preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ hidePinnedToolbarOptions: true }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hidePinnedToolbarOptions).toBe(true);
+  });
+
   it("clamps the UI font size into range and rejects non-numeric values", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

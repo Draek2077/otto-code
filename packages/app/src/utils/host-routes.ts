@@ -505,7 +505,6 @@ export const HOST_SECTION_SLUGS = [
   "agents",
   "workspaces",
   "providers",
-  "git-providers",
   "usage",
   "terminals",
   "host",
@@ -516,6 +515,8 @@ export type HostSectionSlug = (typeof HOST_SECTION_SLUGS)[number];
 const LEGACY_HOST_SECTION_SLUGS: Record<string, HostSectionSlug> = {
   orchestration: "agents",
   daemon: "host",
+  // Git providers merged into the workspaces-backed "Git" section.
+  "git-providers": "workspaces",
 };
 
 export function isHostSectionSlug(value: string): value is HostSectionSlug {

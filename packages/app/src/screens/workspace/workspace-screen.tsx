@@ -73,6 +73,7 @@ import { MountedTabActiveContext, SplitContainer } from "@/components/split-cont
 import { WorkspaceGitActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
+import { usePublishExplorerSidebarVisibility } from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -3728,6 +3729,17 @@ function WorkspaceScreenContent({
     () => shouldShowWorkspaceExplorerSidebar({ isRouteFocused, isFocusModeEnabled, isMobile }),
     [isRouteFocused, isFocusModeEnabled, isMobile],
   );
+
+  // Drive the window-controls overlay color from the explorer sidebar's actual
+  // painted state (same gate as its render below) instead of predicting from
+  // route + open flag, so the chrome stays on the default surface through the
+  // workspace load pause and flips to the sidebar surface only when the sidebar
+  // appears.
+  usePublishExplorerSidebarVisibility({
+    showExplorerSidebar,
+    workspaceDirectory,
+    explorerOpen: isExplorerOpen,
+  });
   const createTerminalDisabled = useMemo(
     () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
     [createTerminalMutation.isPending, pendingTerminalCreateInput],

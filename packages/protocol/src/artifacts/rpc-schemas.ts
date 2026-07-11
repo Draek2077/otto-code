@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ArtifactMetadataSchema } from "./types.js";
+import { ArtifactMetadataSchema, ArtifactSpinnerSchema } from "./types.js";
 import type { CreateArtifactInput } from "./types.js";
 
 // ============================================================================
@@ -22,6 +22,8 @@ export const ArtifactCreateRequestSchema = z.object({
   modeId: z.string().optional(),
   thinkingOptionId: z.string().optional(),
   systemPrompt: z.string().optional(),
+  // Snapshotted spinner colors of the chosen Agent Personality (optional).
+  spinner: ArtifactSpinnerSchema.optional(),
   requestId: z.string(),
 });
 

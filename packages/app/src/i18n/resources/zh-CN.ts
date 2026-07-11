@@ -783,6 +783,7 @@ export const zhCN: TranslationResources = {
         wrapLongLines: "自动换行长行",
         collapseAll: "折叠所有文件",
         expandAll: "展开所有文件",
+        expandAllTooManyFiles: "文件过多，无法全部展开",
         collapseAllFolders: "折叠所有文件夹",
         expandAllFolders: "展开所有文件夹",
         refreshing: "正在刷新",
@@ -1910,6 +1911,11 @@ export const zhCN: TranslationResources = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

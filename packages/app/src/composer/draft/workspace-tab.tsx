@@ -17,6 +17,7 @@ import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
+import type { SelectorPersonality } from "@/components/combined-model-selector";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -113,6 +114,35 @@ function resolveDraftModeId(input: {
   return null;
 }
 
+/**
+ * Personality identity carried through the draft send. Only the composer
+ * (non-auto-submit) path selects a personality; the daemon re-resolves the id
+ * to the authoritative snapshot, but we also read the picker's spinner colors
+ * here so the optimistic draft agent shows the personality's spinner instantly,
+ * before the created-agent payload arrives.
+ */
+function resolveDraftPersonality(input: {
+  autoSubmitConfig: AutoSubmitConfig | null;
+  agentControls: {
+    selectedPersonalityId?: string | null;
+    personalities?: SelectorPersonality[];
+  };
+}): { id: string; spinner: { glowA: string; glowB: string } | null } | null {
+  if (input.autoSubmitConfig) {
+    return null;
+  }
+  const id = input.agentControls.selectedPersonalityId;
+  if (!id) {
+    return null;
+  }
+  const personality = input.agentControls.personalities?.find((entry) => entry.id === id);
+  const spinner =
+    personality?.glowA && personality.glowB
+      ? { glowA: personality.glowA, glowB: personality.glowB }
+      : null;
+  return { id, spinner };
+}
+
 async function submitDraftCreateRequest(input: {
   attempt: { clientMessageId: string };
   text: string;
@@ -130,6 +160,10 @@ async function submitDraftCreateRequest(input: {
     effectiveModelId: string | null;
     effectiveThinkingOptionId: string | null;
     featureValues: Record<string, unknown> | undefined;
+    agentControls: {
+      selectedPersonalityId?: string | null;
+      personalities?: SelectorPersonality[];
+    };
   };
   hostDisconnectedMessage: string;
   selectModelMessage: string;
@@ -174,9 +208,14 @@ async function submitDraftCreateRequest(input: {
 
   const imagesData = await encodeImages(images);
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
+  const draftPersonality = resolveDraftPersonality({
+    autoSubmitConfig,
+    agentControls: composerState.agentControls,
+  });
   const result = await client.createAgent({
     config,
     workspaceId,
+    ...(draftPersonality ? { personality: draftPersonality.id } : {}),
     ...(text ? { initialPrompt: text } : {}),
     clientMessageId: attempt.clientMessageId,
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
@@ -201,7 +240,11 @@ function buildDraftAgentSnapshot(input: {
     modeOptions: unknown[];
     selectedMode: string;
     selectedProvider: string | null;
-    agentControls: { features?: Agent["features"] };
+    agentControls: {
+      features?: Agent["features"];
+      selectedPersonalityId?: string | null;
+      personalities?: SelectorPersonality[];
+    };
   };
   selectModelMessage: string;
 }): Agent {
@@ -220,10 +263,15 @@ function buildDraftAgentSnapshot(input: {
   if (!provider) {
     throw new Error(input.selectModelMessage);
   }
+  const draftPersonality = resolveDraftPersonality({
+    autoSubmitConfig,
+    agentControls: composerState.agentControls,
+  });
   return {
     serverId,
     id: tabId,
     provider,
+    personalitySpinner: draftPersonality?.spinner ?? null,
     status: "running",
     createdAt: now,
     updatedAt: now,

@@ -255,25 +255,6 @@ export function resolveRawWindowControlsPadding(input: {
   };
 }
 
-/**
- * True when the explorer sidebar surface sits under the window-controls
- * overlay (Windows/Linux chrome buttons live top-right, where the explorer
- * docks). The overlay background must then match `surfaceSidebar` instead of
- * `surface0`, or the buttons render on a mismatched color patch. The explorer
- * only renders on workspace routes, on non-compact layouts, outside focus
- * mode — mirroring `shouldShowWorkspaceExplorerSidebar` plus the store flag.
- */
-export function isExplorerUnderWindowControls(input: {
-  isCompact: boolean;
-  explorerOpen: boolean;
-  focusModeEnabled: boolean;
-  isWorkspaceRoute: boolean;
-}): boolean {
-  return (
-    !input.isCompact && input.explorerOpen && !input.focusModeEnabled && input.isWorkspaceRoute
-  );
-}
-
 export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
   left: number;
   right: number;

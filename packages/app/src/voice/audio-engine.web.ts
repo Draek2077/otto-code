@@ -121,12 +121,16 @@ export function createAudioEngine(
   };
 
   async function ensurePlaybackContext(): Promise<AudioContext> {
-    if (refs.playbackContext) {
+    // A closed context (e.g. after a prior voice session was torn down) can never
+    // produce sound again — resume() is a no-op on it and source.start() throws.
+    // Drop it and build a fresh one instead of silently returning the dead one.
+    if (refs.playbackContext && refs.playbackContext.state !== "closed") {
       if (refs.playbackContext.state === "suspended") {
         await refs.playbackContext.resume().catch(() => undefined);
       }
       return refs.playbackContext;
     }
+    refs.playbackContext = null;
 
     const AudioContextCtor = getAudioContextCtor();
     if (!AudioContextCtor) {

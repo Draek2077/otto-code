@@ -816,6 +816,7 @@ export const es: TranslationResources = {
         wrapLongLines: "Envolver largas filas",
         collapseAll: "Contraer todos los archivos",
         expandAll: "Expandir todos los archivos",
+        expandAllTooManyFiles: "Demasiados archivos para expandir todo",
         collapseAllFolders: "Contraer todas las carpetas",
         expandAllFolders: "Expandir todas las carpetas",
         refreshing: "Refrescante",
@@ -1970,6 +1971,11 @@ export const es: TranslationResources = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

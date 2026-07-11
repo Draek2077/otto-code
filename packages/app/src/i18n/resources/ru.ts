@@ -808,6 +808,7 @@ export const ru: TranslationResources = {
         wrapLongLines: "Перенос длинных строк",
         collapseAll: "Свернуть все файлы",
         expandAll: "Развернуть все файлы",
+        expandAllTooManyFiles: "Слишком много файлов для разворачивания всех",
         collapseAllFolders: "Свернуть все папки",
         expandAllFolders: "Развернуть все папки",
         refreshing: "Освежающий",
@@ -1960,6 +1961,11 @@ export const ru: TranslationResources = {
             wide: "Wide",
             full: "Full",
           },
+        },
+        hidePinnedToolbarOptions: {
+          title: "Hide pinned toolbar options",
+          hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
+          accessibilityLabel: "Hide pinned toolbar options",
         },
       },
       fonts: {

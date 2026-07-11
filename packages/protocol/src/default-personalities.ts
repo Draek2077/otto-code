@@ -38,7 +38,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     provider: "claude",
     model: "claude-opus-4-8",
     effortLevel: "high",
-    modeId: "default",
+    modeId: "auto",
     respectGlobalAppendPrompt: true,
     roles: ["orchestrator", "chatter"],
     personalityPrompt:
@@ -47,7 +47,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
       "every thread tied back to the original objective. Decide with conviction, state your " +
       "plan before you act, and never lose the through-line.",
     spinner: { glowA: "#4F46E5", glowB: "#F59E0B" },
-    voice: kokoroVoice("am_onyx"),
+    voice: kokoroVoice("pm_santa"),
   },
   {
     id: "personality_builtin_sage",

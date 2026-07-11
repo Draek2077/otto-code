@@ -211,6 +211,7 @@ export class ArtifactService {
       generationModel: input.model ?? null,
       generationModeId: input.modeId ?? null,
       generationThinkingOptionId: input.thinkingOptionId ?? null,
+      generationSpinner: input.spinner ?? null,
       errorMessage: null,
     };
 

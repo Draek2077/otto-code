@@ -264,6 +264,7 @@ describe("host settings section slugs", () => {
   it("maps old host settings sections to their new names", () => {
     expect(normalizeHostSectionSlug("orchestration")).toBe("agents");
     expect(normalizeHostSectionSlug("daemon")).toBe("host");
+    expect(normalizeHostSectionSlug("git-providers")).toBe("workspaces");
   });
 });
 

@@ -25,6 +25,7 @@ import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { ChevronDown, Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { BlobLoader } from "@/components/blob-loader";
+import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { Button } from "@/components/ui/button";
 import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -119,18 +120,12 @@ function encodeVoice(voice: AgentPersonalityVoice | null): string {
 }
 
 // Builds a short spoken introduction for the voice-preview button from the
-// personality's name and prompt — plain string templating, no model call. The
-// prompt's first sentence (capped) supplies personality flavor when present.
-function buildPersonalityIntro(name: string, personalityPrompt: string): string {
+// personality's name and first role — plain string templating, no model call.
+function buildPersonalityIntro(name: string, roles: readonly PersonalityRole[]): string {
   const cleanName = name.trim() || "your agent";
-  const prompt = personalityPrompt.trim();
-  if (!prompt) {
-    return `Hi, I'm ${cleanName}. Ready when you are.`;
-  }
-  const firstSentence = prompt.split(/(?<=[.!?])\s+/)[0] ?? prompt;
-  const flavor =
-    firstSentence.length > 140 ? `${firstSentence.slice(0, 137).trimEnd()}…` : firstSentence;
-  return `Hi, I'm ${cleanName}. ${flavor}`;
+  const firstRole = roles[0];
+  const roleLabel = firstRole ? ROLE_LABELS[firstRole].toLowerCase() : "agent";
+  return `Hi, I'm ${cleanName}. I am excited to be your ${roleLabel}.`;
 }
 
 function decodeVoice(id: string): AgentPersonalityVoice | null {
@@ -617,7 +612,12 @@ function PersonalityRow({
 
   return (
     <View style={rowStyle} testID={`agent-personality-row-${personality.id}`}>
-      <BlobLoader size={18} glowA={personality.spinner?.glowA} glowB={personality.spinner?.glowB} />
+      <PersonalityProviderIcon
+        provider={personality.provider}
+        size={18}
+        glowA={personality.spinner?.glowA}
+        glowB={personality.spinner?.glowB}
+      />
       <View style={contentStyle}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {personality.name}
@@ -720,14 +720,14 @@ function PersonalityEditModal({
       canPreviewVoice ? (
         <VoicePreviewButton
           serverId={serverId}
-          text={buildPersonalityIntro(draft.name, draft.personalityPrompt)}
+          text={buildPersonalityIntro(draft.name, draft.roles)}
           voiceName={draft.voice?.name}
           voiceModel={draft.voice?.model}
           voiceProvider={draft.voice?.provider}
           testID="agent-personality-voice-preview"
         />
       ) : undefined,
-    [canPreviewVoice, serverId, draft.name, draft.personalityPrompt, draft.voice],
+    [canPreviewVoice, serverId, draft.name, draft.roles, draft.voice],
   );
 
   const header = useMemo(() => ({ title }), [title]);

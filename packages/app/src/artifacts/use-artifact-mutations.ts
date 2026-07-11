@@ -83,6 +83,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
         ...(input.modeId ? { modeId: input.modeId } : {}),
         ...(input.thinkingOptionId ? { thinkingOptionId: input.thinkingOptionId } : {}),
         ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
+        ...(input.spinner ? { spinner: input.spinner } : {}),
       });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to create artifact");
