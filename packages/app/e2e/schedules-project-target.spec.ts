@@ -3,7 +3,6 @@ import { gotoAppShell } from "./helpers/app";
 import {
   addFakeScheduleHostAndReload,
   buildFakeScheduleHostWorkspace,
-  FAKE_HOST_MODEL_LABEL,
   installFakeScheduleHost,
 } from "./helpers/schedule-fake-host";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
@@ -339,9 +338,10 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
     await expect(hostTrigger).toContainText("Fake host");
     await expect(projectTrigger).toContainText(/select project/i);
-    // The prior model isn't valid on the fake host, so the field re-preselects
-    // that host's default model rather than clearing.
-    await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
+    // Switching hosts clears both project and model — the prior model isn't
+    // valid on the fake host and the field resets to the placeholder rather
+    // than auto-picking the new host's default.
+    await expect(modelTrigger).toContainText(/select model/i);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -352,16 +352,16 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-project-option-${fakeHost.projectId}`).click();
     await expect(projectTrigger).toContainText(fakeHost.projectDisplayName);
     await expectSettled(projectTrigger);
-    await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
+    await expect(modelTrigger).toContainText(/select model/i);
     await expectSettled(modelTrigger);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
 
     await page.getByLabel("Schedule name").fill(`Cross host model ${Date.now()}`);
     await page.getByLabel("Prompt").fill("Run on the fake host project.");
-    // Host+project+name+prompt are set and the model auto-preselected to the
-    // fake host's default, so the form is now submittable.
-    await expect(page.getByRole("button", { name: "Create schedule" })).toBeEnabled();
+    // The model stayed cleared after the host change, so the form is still
+    // incomplete and cannot be submitted.
+    await expect(page.getByRole("button", { name: "Create schedule" })).toBeDisabled();
   });
 
   test("creates and edits schedule isolation and archive cleanup knobs", async ({ page }) => {
