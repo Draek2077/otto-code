@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/server",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Otto backend server",
   "files": [
     "dist/server",
@@ -69,10 +69,10 @@
     "@isaacs/ttlcache": "^2.1.4",
     "@modelcontextprotocol/sdk": "^1.20.1",
     "@opencode-ai/sdk": "1.14.46",
-    "@otto-code/client": "0.4.4",
-    "@otto-code/highlight": "0.4.4",
-    "@otto-code/protocol": "0.4.4",
-    "@otto-code/relay": "0.4.4",
+    "@otto-code/client": "0.5.0",
+    "@otto-code/highlight": "0.5.0",
+    "@otto-code/protocol": "0.5.0",
+    "@otto-code/relay": "0.5.0",
     "@xterm/headless": "^6.0.0",
     "ai": "5.0.78",
     "ajv": "^8.20.0",

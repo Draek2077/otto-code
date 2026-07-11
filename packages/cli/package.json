@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/cli",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Otto CLI - control your AI coding agents from the command line",
   "bin": {
     "otto": "bin/otto"
@@ -27,9 +27,9 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@otto-code/client": "0.4.4",
-    "@otto-code/protocol": "0.4.4",
-    "@otto-code/server": "0.4.4",
+    "@otto-code/client": "0.5.0",
+    "@otto-code/protocol": "0.5.0",
+    "@otto-code/server": "0.5.0",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "mime-types": "^2.1.35",
