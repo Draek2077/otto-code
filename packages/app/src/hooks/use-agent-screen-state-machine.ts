@@ -23,6 +23,8 @@ export interface AgentScreenAgent {
   } | null;
   features?: readonly AgentFeature[];
   lastError?: string | null;
+  /** Spinner colors from the agent's personality; null ⇒ theme default spinner. */
+  personalitySpinner?: { glowA: string; glowB: string } | null;
   projectPlacement?: {
     projectKey?: string;
     projectName?: string;

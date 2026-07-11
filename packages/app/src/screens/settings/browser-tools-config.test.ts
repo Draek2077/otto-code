@@ -13,6 +13,7 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     browserTools: { enabled: browserToolsEnabled },
     providers: {},
     metadataGeneration: { providers: [] },
+    agentPersonalities: { personalities: [] },
     autoArchiveAfterMerge: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",

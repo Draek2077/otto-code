@@ -255,6 +255,78 @@ export const MutableGitHostingConfigSchema = z
 
 export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSchema>;
 
+// Canonical personality roles, in display order. Kept as an exported const so
+// the daemon and app share one vocabulary, but the wire schema stores roles as
+// plain strings (below) — adding an 8th role later must never break an older
+// peer's parsing. Consumers filter incoming role arrays to this known set.
+export const PERSONALITY_ROLES = [
+  "chatter",
+  "artificer",
+  "scheduler",
+  "worker",
+  "judger",
+  "advisor",
+  "orchestrator",
+] as const;
+export type PersonalityRole = (typeof PERSONALITY_ROLES)[number];
+
+// Two glow colors for the personality's thinking spinner (BlobLoader glowA/glowB).
+const AgentPersonalitySpinnerSchema = z
+  .object({
+    glowA: z.string().min(1),
+    glowB: z.string().min(1),
+  })
+  .passthrough();
+
+// A TTS voice for the personality's spoken identity. Stored self-describing —
+// provider + model + voice name — because voice names are namespaced per TTS
+// engine/model (the same speaker index maps to different names across models),
+// so a bare name is ambiguous across hosts. All plain strings (like the speech
+// config) for forward-compat. This is a soft binding: an unavailable voice
+// degrades to the host default at playback time, it never takes the personality
+// out of commission.
+const AgentPersonalityVoiceSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .passthrough();
+
+// A named, reusable agent template stored per-host. `id` is the stable identity
+// everything binds to; `name` is a freely-renamable label. Effort and roles are
+// plain strings on the wire (like speech engine/model ids) so the daemon can
+// grow the vocabulary without breaking old peers; the daemon validates them
+// against its own catalog when applying a patch.
+export const AgentPersonalitySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    // Canonical effort level ("off".."max"); resolved to the bound model's
+    // nearest advertised option at spawn.
+    effortLevel: z.string().min(1).optional(),
+    modeId: z.string().min(1).optional(),
+    personalityPrompt: z.string().optional(),
+    // Default true: the daemon-global appendSystemPrompt still stacks on top of
+    // the personality prompt. False = the personality prompt stands alone.
+    respectGlobalAppendPrompt: z.boolean().optional(),
+    roles: z.array(z.string().min(1)).optional(),
+    spinner: AgentPersonalitySpinnerSchema.optional(),
+    voice: AgentPersonalityVoiceSchema.optional(),
+  })
+  .passthrough();
+
+export type AgentPersonality = z.infer<typeof AgentPersonalitySchema>;
+export type AgentPersonalityVoice = z.infer<typeof AgentPersonalityVoiceSchema>;
+
+const MutableAgentPersonalitiesConfigSchema = z
+  .object({
+    personalities: z.array(AgentPersonalitySchema).default([]),
+  })
+  .passthrough();
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -273,6 +345,10 @@ export const MutableDaemonConfigSchema = z
     speech: MutableSpeechConfigSchema.optional(),
     // Absent on daemons without the gitHostingProviders feature.
     gitHosting: MutableGitHostingConfigSchema.optional(),
+    // Per-host agent personality roster. Gated by the agentPersonalities
+    // feature; defaults to an empty roster so a new client parsing an old
+    // daemon's config still sees a well-formed section.
+    agentPersonalities: MutableAgentPersonalitiesConfigSchema.default({ personalities: [] }),
   })
   .passthrough();
 
@@ -296,6 +372,10 @@ export const MutableDaemonConfigPatchSchema = z
     speech: MutableSpeechConfigSchema.optional(),
     // Gated by server_info features.gitHostingProviders; patches deep-merge.
     gitHosting: MutableGitHostingConfigSchema.optional(),
+    // Gated by server_info features.agentPersonalities. A patch replaces the
+    // full roster (read-modify-write the array), matching how terminalProfiles
+    // and metadataGeneration.providers patch.
+    agentPersonalities: MutableAgentPersonalitiesConfigSchema.partial().optional(),
   })
   .partial()
   .passthrough();
@@ -819,6 +899,11 @@ export const AgentSnapshotPayloadSchema = z.object({
   // COMPAT(observedSubagents): added in v0.4.3; absent ⇒ "attended". Drop the
   // gate when daemon floor >= v0.4.3. See projects/observed-subagents/observed-subagents.md.
   attend: z.enum(["attended", "observed"]).optional(),
+  // Spinner colors from the Agent Personality this agent was spawned from, so
+  // its live thinking indicator renders in the personality's identity. Absent ⇒
+  // the client falls back to the theme's default spinner colors. Purely additive
+  // (no daemon floor needed). See projects/agent-personalities/.
+  personalitySpinner: AgentPersonalitySpinnerSchema.optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -1237,6 +1322,11 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
 
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
+  requestId: z.string(),
+});
+
+export const AgentPersonalitiesGetStatsRequestSchema = z.object({
+  type: z.literal("agentPersonalities.get_stats.request"),
   requestId: z.string(),
 });
 
@@ -2396,6 +2486,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
   SpeechSettingsGetOptionsRequestSchema,
+  AgentPersonalitiesGetStatsRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -2742,6 +2833,8 @@ export const ServerInfoStatusPayloadSchema = z
         speechSettings: z.boolean().optional(),
         // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         gitHostingProviders: z.boolean().optional(),
+        // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
+        agentPersonalities: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3479,6 +3572,17 @@ export const SpeechSettingsGetOptionsResponseSchema = z.object({
 export type SpeechSettingsOptions = z.infer<
   typeof SpeechSettingsGetOptionsResponseSchema
 >["payload"]["options"];
+
+export const AgentPersonalitiesGetStatsResponseSchema = z.object({
+  type: z.literal("agentPersonalities.get_stats.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      // Per-personality spawn counts, keyed by personality id.
+      stats: z.record(z.string(), z.number()),
+    })
+    .passthrough(),
+});
 
 export const DaemonGetStatusResponseSchema = z.object({
   type: z.literal("daemon.get_status.response"),
@@ -4984,6 +5088,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
   SpeechSettingsGetOptionsResponseSchema,
+  AgentPersonalitiesGetStatsResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,

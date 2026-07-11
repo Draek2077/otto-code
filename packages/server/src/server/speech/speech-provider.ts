@@ -63,6 +63,19 @@ export interface SpeechStreamResult {
   format: string;
 }
 
+/**
+ * Per-utterance voice override, e.g. from an Agent Personality's voice. A soft
+ * binding: providers resolve it against their own catalog and silently fall back
+ * to the host default when the name/model isn't theirs (a Kokoro voice on an
+ * OpenAI provider, or vice versa), so it never fails synthesis.
+ */
+export interface SpeechVoiceOverride {
+  /** Voice name (e.g. "af_heart" for Kokoro, "alloy" for OpenAI). */
+  name: string;
+  /** The voice's model id — used to resolve a local speaker id. */
+  model?: string;
+}
+
 export interface TextToSpeechProvider {
-  synthesizeSpeech(text: string): Promise<SpeechStreamResult>;
+  synthesizeSpeech(text: string, voice?: SpeechVoiceOverride): Promise<SpeechStreamResult>;
 }

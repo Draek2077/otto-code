@@ -58,5 +58,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     parentAgentId,
     labels: snapshot.labels,
     attend: snapshot.attend ?? "attended",
+    personalitySpinner: snapshot.personalitySpinner ?? null,
   };
 }

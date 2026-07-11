@@ -5,6 +5,13 @@ import type { Logger } from "pino";
 import type { AgentMode, AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
 import { resolveEffortOption } from "../effort-levels.js";
+import { resolvePersonality, type ResolvedPersonalitySnapshot } from "../agent-personalities.js";
+import {
+  isPersonalityRole,
+  normalizePersonalityRoles,
+  personalityHasRole,
+} from "@otto-code/protocol/agent-personalities";
+import type { AgentPersonality } from "@otto-code/protocol/messages";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -95,6 +102,14 @@ export interface OttoToolHostDependencies {
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   providerSnapshotManager: ProviderSnapshotManager;
+  /**
+   * Reads the live Agent Personalities roster from the daemon config. Enables
+   * spawn-by-personality in create_agent and the list_personalities tool. Absent
+   * on hosts that don't wire personalities.
+   */
+  readAgentPersonalities?: () => AgentPersonality[];
+  /** Records a personality spawn for usage telemetry (fire-and-forget). */
+  recordPersonalitySpawn?: (personalityId: string) => void;
   github?: GitHubService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
@@ -291,6 +306,7 @@ interface ScheduleUpdateToolInput {
   prompt?: string;
   maxRuns?: number | null;
   provider?: string;
+  personality?: string | null;
   model?: string | null;
   mode?: string | null;
   thinkingOptionId?: string | null;
@@ -362,6 +378,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
   });
   const newAgentConfig = {
     ...(providerModelPatch.provider !== undefined ? { provider: providerModelPatch.provider } : {}),
+    ...(input.personality !== undefined ? { personality: input.personality } : {}),
     ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
     ...(input.mode !== undefined ? { modeId: input.mode } : {}),
     ...(input.thinkingOptionId !== undefined ? { thinkingOptionId: input.thinkingOptionId } : {}),
@@ -516,6 +533,39 @@ function resolveEffortAgainstModels(params: {
     return params.requested;
   }
   return resolveEffortOption({ requested: params.requested, thinkingOptions }).optionId;
+}
+
+/**
+ * Fold a resolved personality's prompt + frozen snapshot into a partial agent
+ * config, or undefined when there's nothing to carry. Kept top-level so the
+ * create_agent handler stays under the complexity budget.
+ */
+function buildPersonalityAgentConfig(brain: {
+  systemPrompt?: string;
+  personalitySnapshot?: ResolvedPersonalitySnapshot;
+}): { systemPrompt?: string; personalitySnapshot?: ResolvedPersonalitySnapshot } | undefined {
+  if (brain.systemPrompt === undefined && brain.personalitySnapshot === undefined) {
+    return undefined;
+  }
+  const config: { systemPrompt?: string; personalitySnapshot?: ResolvedPersonalitySnapshot } = {};
+  if (brain.systemPrompt !== undefined) {
+    config.systemPrompt = brain.systemPrompt;
+  }
+  if (brain.personalitySnapshot !== undefined) {
+    config.personalitySnapshot = brain.personalitySnapshot;
+  }
+  return config;
+}
+
+// Record a personality spawn when both a snapshot and a recorder are present.
+// Extracted so the create_agent handler stays under the complexity budget.
+function recordPersonalitySpawnIfAny(
+  snapshot: ResolvedPersonalitySnapshot | undefined,
+  record: ((personalityId: string) => void) | undefined,
+): void {
+  if (snapshot && record) {
+    record(snapshot.personalityId);
+  }
 }
 
 const ArtifactToolSummarySchema = z.object({
@@ -730,6 +780,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     terminalManager,
     scheduleService,
     providerSnapshotManager,
+    readAgentPersonalities,
     callerAgentId,
     resolveSpeakHandler,
     resolveCallerContext,
@@ -941,6 +992,119 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     return entry?.models ?? [];
   };
 
+  const getPersonalityRoster = (): AgentPersonality[] => readAgentPersonalities?.() ?? [];
+
+  const findPersonalityByName = (name: string): AgentPersonality | undefined => {
+    const trimmed = name.trim();
+    const roster = getPersonalityRoster();
+    return (
+      roster.find((p) => p.name === trimmed) ??
+      roster.find((p) => p.name.toLowerCase() === trimmed.toLowerCase())
+    );
+  };
+
+  // Only Orchestrator personalities may enumerate or spawn other personalities.
+  // A top-level (non-agent) session is the user acting directly and is allowed;
+  // an agent-scoped session must have been born from an Orchestrator personality.
+  const assertPersonalityOrchestrationAllowed = (action: string): void => {
+    if (!callerAgentId) {
+      return;
+    }
+    const caller = agentManager.getAgent(callerAgentId);
+    const roles = caller?.config.personalitySnapshot?.roles ?? [];
+    if (!roles.includes("orchestrator")) {
+      throw new Error(
+        `Only agents spawned from an Orchestrator personality may ${action}. This agent is not an Orchestrator.`,
+      );
+    }
+  };
+
+  interface ResolvedCreateAgentBrain {
+    providerModel: string;
+    modeId?: string;
+    thinkingOptionId?: string;
+    systemPrompt?: string;
+    personalitySnapshot?: ResolvedPersonalitySnapshot;
+  }
+
+  // Turn the create_agent brain inputs — a personality name and/or explicit
+  // provider/settings — into the concrete provider/model/effort/mode/prompt to
+  // spawn with. A personality expands to its resolved snapshot; explicit sibling
+  // fields override it per-field (no heuristic substitution). Without a
+  // personality this is the plain provider/model path.
+  const resolveCreateAgentBrain = async (input: {
+    personalityName: string | undefined;
+    providerOverride: string | undefined;
+    modeOverride: string | undefined;
+    thinkingOverride: string | undefined;
+    cwd: string | undefined;
+  }): Promise<ResolvedCreateAgentBrain> => {
+    const resolveThinkingAgainstProvider = async (
+      requested: string,
+      providerModel: string,
+    ): Promise<string> => {
+      const { provider, model } = resolveScheduleProviderAndModel({
+        provider: providerModel,
+        defaultProvider: providerModel,
+      });
+      return resolveEffortAgainstModels({
+        requested,
+        models: await listProviderModels(provider),
+        model,
+      });
+    };
+
+    if (input.personalityName) {
+      assertPersonalityOrchestrationAllowed("spawn agents from a personality");
+      const personality = findPersonalityByName(input.personalityName);
+      if (!personality) {
+        const names = getPersonalityRoster()
+          .map((p) => p.name)
+          .join(", ");
+        throw new Error(
+          `Personality "${input.personalityName}" not found.${names ? ` Available: ${names}.` : " No personalities are configured on this host."}`,
+        );
+      }
+      const entries = await providerSnapshotManager.listProviders({ cwd: input.cwd, wait: true });
+      const resolution = resolvePersonality(personality, entries);
+      if (resolution.status === "unavailable") {
+        throw new Error(
+          `Personality "${personality.name}" is unavailable here: ${resolution.reason}`,
+        );
+      }
+      const snapshot = resolution.snapshot;
+      // Explicit args override the personality per-field.
+      const snapshotProviderModel = snapshot.model
+        ? `${snapshot.provider}/${snapshot.model}`
+        : snapshot.provider;
+      const providerModel = input.providerOverride?.trim() || snapshotProviderModel;
+      const modeId = input.modeOverride ?? snapshot.modeId;
+      const thinkingOptionId = input.thinkingOverride
+        ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
+        : snapshot.thinkingOptionId;
+      return {
+        providerModel,
+        ...(modeId !== undefined ? { modeId } : {}),
+        ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
+        ...(snapshot.systemPrompt !== undefined ? { systemPrompt: snapshot.systemPrompt } : {}),
+        personalitySnapshot: snapshot,
+      };
+    }
+
+    const providerModel = input.providerOverride?.trim();
+    if (!providerModel) {
+      throw new Error("Either provider or personality is required.");
+    }
+    const thinkingOptionId = input.thinkingOverride
+      ? await resolveThinkingAgainstProvider(input.thinkingOverride, providerModel)
+      : undefined;
+    return {
+      providerModel,
+      ...(input.modeOverride !== undefined ? { modeId: input.modeOverride } : {}),
+      ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
+    };
+  };
+
   const resolveNewAgentScheduleTarget = (params?: { provider?: string; cwd?: string }) => {
     if (!params?.provider?.trim()) {
       throw new Error("provider is required when target is new-agent");
@@ -1141,9 +1305,17 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1, "Title is required")
       .max(60, "Title must be 60 characters or fewer")
       .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
-    provider: ProviderModelInputSchema.describe(
-      "Required provider/model pair, for example codex/gpt-5.4.",
+    provider: ProviderModelInputSchema.optional().describe(
+      "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` is given; when both are given, this overrides the personality's provider/model.",
     ),
+    personality: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        "Spawn from a named Agent Personality configured on this host. Expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. Personality-bound spawns require the caller to be an Orchestrator personality (top-level user sessions are always allowed). Fails loudly if the personality is unavailable here — no fallback.",
+      ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
       "Initial runtime settings for the new agent.",
@@ -1358,7 +1530,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create agent",
       description:
-        "Create an agent. Requires relationship, workspace, provider/model (for example codex/gpt-5.4), and an initial prompt. Do not guess; call list_providers and list_models first if uncertain.",
+        "Create an agent. Requires relationship, workspace, an initial prompt, and either a provider/model (for example codex/gpt-5.4) or a personality name. Prefer a personality when the host has them (call list_personalities). Do not guess; call list_providers and list_models first if uncertain.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -1388,18 +1560,17 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
         detached = resolvedArgs.parsedArgs.relationship.kind === "detached";
       }
-      let requestedThinkingOptionId = parsedArgs.settings?.thinkingOptionId;
-      if (requestedThinkingOptionId) {
-        const { provider: targetProvider, model: targetModel } = resolveScheduleProviderAndModel({
-          provider: parsedArgs.provider,
-          defaultProvider: parsedArgs.provider,
-        });
-        requestedThinkingOptionId = resolveEffortAgainstModels({
-          requested: requestedThinkingOptionId,
-          models: await listProviderModels(targetProvider),
-          model: targetModel,
-        });
-      }
+      const brain = await resolveCreateAgentBrain({
+        personalityName: parsedArgs.personality,
+        providerOverride: parsedArgs.provider,
+        modeOverride: parsedArgs.settings?.modeId,
+        thinkingOverride: parsedArgs.settings?.thinkingOptionId,
+        cwd: resolvedArgs.cwd,
+      });
+      // A personality carries a systemPrompt and its frozen snapshot onto the
+      // agent config (spread first in buildMcpSessionConfig, so nothing below
+      // clobbers them).
+      const personalityConfig = buildPersonalityAgentConfig(brain);
       const {
         snapshot,
         background: createdInBackground,
@@ -1420,15 +1591,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         },
         {
           kind: "mcp",
-          provider: parsedArgs.provider,
+          provider: brain.providerModel,
+          ...(personalityConfig ? { config: personalityConfig } : {}),
           title: parsedArgs.title,
           initialPrompt: parsedArgs.initialPrompt,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
-          thinking: requestedThinkingOptionId,
+          thinking: brain.thinkingOptionId,
           features: parsedArgs.settings?.features,
           labels: parsedArgs.labels,
-          mode: parsedArgs.settings?.modeId,
+          mode: brain.modeId,
           background: requestedBackground,
           notifyOnFinish,
           detached,
@@ -1437,6 +1609,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           worktree,
         },
       );
+
+      // Count the spawn for per-personality usage telemetry (best-effort).
+      recordPersonalitySpawnIfAny(brain.personalitySnapshot, options.recordPersonalitySpawn);
 
       try {
         if (!createdInBackground && initialPromptStarted) {
@@ -1493,6 +1668,101 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return response;
     },
   );
+
+  if (readAgentPersonalities) {
+    registerTool(
+      "list_personalities",
+      {
+        title: "List personalities",
+        description:
+          "List the Agent Personalities configured on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Use a personality's name with create_agent's `personality` argument to spawn it. Availability is resolved against a workspace; unavailable personalities cannot be spawned there. Restricted to Orchestrator personalities (top-level user sessions are always allowed).",
+        inputSchema: {
+          cwd: z
+            .string()
+            .optional()
+            .describe(
+              "Workspace directory to resolve availability against. Defaults to your current cwd.",
+            ),
+          role: z
+            .string()
+            .optional()
+            .describe(
+              "Only return personalities carrying this role (for example worker, judger, advisor).",
+            ),
+        },
+        outputSchema: {
+          personalities: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              roles: z.array(z.string()),
+              provider: z.string(),
+              model: z.string(),
+              available: z.boolean(),
+              unavailableReason: z.string().optional(),
+              modeId: z.string().optional(),
+              thinkingOptionId: z.string().optional(),
+              effortLevel: z.string().optional(),
+            }),
+          ),
+        },
+      },
+      async (args: { cwd?: string; role?: string }) => {
+        assertPersonalityOrchestrationAllowed("list personalities");
+        const roleFilter = args.role?.trim();
+        const caller = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+        const cwd = args.cwd?.trim() || caller?.cwd || undefined;
+        const entries = await providerSnapshotManager.listProviders({ cwd, wait: true });
+        const personalities = getPersonalityRoster()
+          .filter(
+            (personality) =>
+              !roleFilter ||
+              (isPersonalityRole(roleFilter) && personalityHasRole(personality, roleFilter)),
+          )
+          .map((personality) => {
+            const resolution = resolvePersonality(personality, entries);
+            const entryOut: {
+              id: string;
+              name: string;
+              roles: string[];
+              provider: string;
+              model: string;
+              available: boolean;
+              unavailableReason?: string;
+              modeId?: string;
+              thinkingOptionId?: string;
+              effortLevel?: string;
+            } = {
+              id: personality.id,
+              name: personality.name,
+              roles: normalizePersonalityRoles(personality.roles),
+              provider: personality.provider,
+              model: personality.model,
+              available: resolution.status === "available",
+            };
+            if (resolution.status === "unavailable") {
+              entryOut.unavailableReason = resolution.reason;
+              return entryOut;
+            }
+            const snapshot = resolution.snapshot;
+            if (snapshot.modeId !== undefined) {
+              entryOut.modeId = snapshot.modeId;
+            }
+            if (snapshot.thinkingOptionId !== undefined) {
+              entryOut.thinkingOptionId = snapshot.thinkingOptionId;
+            }
+            if (snapshot.effortLevel !== undefined) {
+              entryOut.effortLevel = snapshot.effortLevel;
+            }
+            return entryOut;
+          });
+        return {
+          content: [],
+          structuredContent: ensureValidJson({ personalities }),
+        };
+      },
+    );
+  }
 
   type ResolvedCreateAgentToolArgs =
     | {
@@ -2628,6 +2898,62 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
   );
 
+  // Build a new-agent schedule config from either a personality binding or a
+  // raw provider. A personality is validated + resolved now (to fill the
+  // required provider field and fail fast), and its name is stored so each run
+  // re-resolves it authoritatively.
+  const buildScheduleNewAgentConfig = async (input: {
+    provider?: string;
+    personality?: string;
+    cwd?: string;
+    thinkingOptionId?: string;
+  }) => {
+    const personalityName = input.personality?.trim();
+    if (personalityName) {
+      const brain = await resolveCreateAgentBrain({
+        personalityName,
+        providerOverride: input.provider,
+        modeOverride: undefined,
+        thinkingOverride: input.thinkingOptionId,
+        cwd: input.cwd,
+      });
+      const baseTarget = resolveNewAgentScheduleTarget({
+        provider: brain.providerModel,
+        cwd: input.cwd,
+      });
+      return {
+        ...baseTarget.config,
+        personality: personalityName,
+        ...(brain.modeId !== undefined ? { modeId: brain.modeId } : {}),
+        ...(brain.thinkingOptionId !== undefined
+          ? { thinkingOptionId: brain.thinkingOptionId }
+          : {}),
+      };
+    }
+
+    const baseTarget = resolveNewAgentScheduleTarget({ provider: input.provider, cwd: input.cwd });
+    const config: typeof baseTarget.config & { thinkingOptionId?: string } = {
+      ...baseTarget.config,
+    };
+    const inheritedEffort =
+      typeof config.thinkingOptionId === "string" ? config.thinkingOptionId : undefined;
+    const requestedEffort = input.thinkingOptionId ?? inheritedEffort;
+    if (requestedEffort) {
+      const resolved = resolveEffortOrDropInherited({
+        requested: requestedEffort,
+        explicit: Boolean(input.thinkingOptionId),
+        models: await listProviderModels(config.provider),
+        model: config.model,
+      });
+      if (resolved === undefined) {
+        delete config.thinkingOptionId;
+      } else {
+        config.thinkingOptionId = resolved;
+      }
+    }
+    return config;
+  };
+
   registerTool(
     "create_schedule",
     {
@@ -2644,8 +2970,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .describe("IANA time zone for the cron cadence. For example: America/New_York."),
         name: z.string().optional(),
         provider: AgentProviderEnum.optional().describe(
-          "Provider, or provider/model (for example: codex or codex/gpt-5.4).",
+          "Provider, or provider/model (for example: codex or codex/gpt-5.4). Required unless `personality` is given.",
         ),
+        personality: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            "Bind this schedule to an Agent Personality by name. Each run re-resolves it against the run workspace and hard-fails if it's unavailable. Requires the Orchestrator role when called by an agent.",
+          ),
         cwd: z.string().optional(),
         thinkingOptionId: z
           .string()
@@ -2666,6 +3000,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       timezone,
       name,
       provider,
+      personality,
       cwd,
       thinkingOptionId,
       maxRuns,
@@ -2675,26 +3010,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         throw new Error("Schedule service is not configured");
       }
 
-      const baseTarget = resolveNewAgentScheduleTarget({ provider, cwd });
-      const config: typeof baseTarget.config & { thinkingOptionId?: string } = {
-        ...baseTarget.config,
-      };
-      const inheritedEffort =
-        typeof config.thinkingOptionId === "string" ? config.thinkingOptionId : undefined;
-      const requestedEffort = thinkingOptionId ?? inheritedEffort;
-      if (requestedEffort) {
-        const resolved = resolveEffortOrDropInherited({
-          requested: requestedEffort,
-          explicit: Boolean(thinkingOptionId),
-          models: await listProviderModels(config.provider),
-          model: config.model,
-        });
-        if (resolved === undefined) {
-          delete config.thinkingOptionId;
-        } else {
-          config.thinkingOptionId = resolved;
-        }
-      }
+      const config = await buildScheduleNewAgentConfig({
+        provider,
+        personality,
+        cwd,
+        thinkingOptionId,
+      });
 
       const expiresAt = buildScheduleExpiry(expiresIn);
       const schedule = await scheduleService.createOrReplace({
@@ -2921,6 +3242,15 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .optional()
           .describe("New provider for new-agent target."),
+        personality: z
+          .string()
+          .trim()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe(
+            "Bind (or, with null, unbind) an Agent Personality by name for the new-agent target. Re-resolved at each run.",
+          ),
         model: z
           .string()
           .trim()

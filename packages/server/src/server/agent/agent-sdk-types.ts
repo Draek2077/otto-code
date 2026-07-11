@@ -3,6 +3,9 @@ import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
 import type { AgentAttachment, AgentContextUsage } from "@otto-code/protocol/messages";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
+// Type-only import — erased at compile time, so the resolver ⇄ config-types
+// cycle never exists at runtime.
+import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 
 export type { AgentProviderNotice };
 export type { AgentContextUsage };
@@ -608,6 +611,14 @@ export interface AgentSessionConfig {
     claude?: Partial<ClaudeAgentOptions>;
   };
   mcpServers?: Record<string, McpServerConfig>;
+  /**
+   * Frozen personality resolution captured at spawn when the agent was created
+   * from an Agent Personality. Everything the agent needs to keep the
+   * personality's identity (spinner, voice, roles) and honor its prompt
+   * composition (`respectGlobalAppendPrompt`) lives here. Editing the personality
+   * later never mutates this — the agent runs its birth snapshot for life.
+   */
+  personalitySnapshot?: ResolvedPersonalitySnapshot;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
    * They are used for ephemeral system tasks like commit/PR generation.

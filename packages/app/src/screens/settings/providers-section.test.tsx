@@ -224,6 +224,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     browserTools: { enabled: false },
     providers,
     metadataGeneration: { providers: [] },
+    agentPersonalities: { personalities: [] },
     autoArchiveAfterMerge: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",

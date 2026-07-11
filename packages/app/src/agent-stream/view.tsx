@@ -813,6 +813,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
             onForkAssistantTurn={handleForkAssistantTurn}
+            spinner={agent.personalitySpinner ?? undefined}
           />
         ) : null,
       [
@@ -821,6 +822,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         baseRenderModel.turnTiming.runningStartedAt,
         bottomTurnFooterHost,
         streamRenderStrategy,
+        agent.personalitySpinner,
       ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
