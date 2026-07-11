@@ -197,8 +197,11 @@ test.describe("Schedules project target", () => {
     await expect(page.getByTestId("schedule-host-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-project-trigger")).toBeVisible();
     // No stepped disclosure: the model field is offered before a project is
-    // picked (models are host-scoped, not project-scoped).
-    await expect(page.getByTestId("schedule-model-trigger")).toContainText(/select model/i);
+    // picked (models are host-scoped) and preselects the last-used model from
+    // device form preferences.
+    await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
@@ -314,7 +317,8 @@ test.describe("Schedules project target", () => {
     await hostTrigger.click();
     await page.getByTestId(`schedule-host-option-${serverId}`).click();
     await expect(projectTrigger).toBeVisible();
-    await expect(modelTrigger).toContainText(/select model/i);
+    // Choosing a host preselects the last-used model (valid on this host).
+    await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -334,6 +338,9 @@ test.describe("Schedules project target", () => {
     await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
     await expect(hostTrigger).toContainText("Fake host");
     await expect(projectTrigger).toContainText(/select project/i);
+    // Switching hosts clears both project and model — the prior model isn't
+    // valid on the fake host and the field resets to the placeholder rather
+    // than auto-picking the new host's default.
     await expect(modelTrigger).toContainText(/select model/i);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
@@ -352,6 +359,8 @@ test.describe("Schedules project target", () => {
 
     await page.getByLabel("Schedule name").fill(`Cross host model ${Date.now()}`);
     await page.getByLabel("Prompt").fill("Run on the fake host project.");
+    // The model stayed cleared after the host change, so the form is still
+    // incomplete and cannot be submitted.
     await expect(page.getByRole("button", { name: "Create schedule" })).toBeDisabled();
   });
 

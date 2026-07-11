@@ -685,6 +685,11 @@ function startDaemon(args: DaemonSpawnArgs): ChildProcess {
     [pathKey]: `${args.fakeEditorBinDir}${path.delimiter}${process.env[pathKey] ?? ""}`,
     OTTO_HOME: args.ottoHome,
     OTTO_E2E_EDITOR_RECORD_PATH: args.editorRecordPath,
+    // The dev supervisor spawns the server worker with --inspect by default; a
+    // second worker on the same runner then logs "inspector on 127.0.0.1:9229
+    // failed: address already in use". Harmless, but disable it so E2E daemon
+    // logs stay clean and no debugger port is opened in CI.
+    OTTO_NODE_INSPECT: "0",
     OTTO_SERVER_ID: "srv_e2e_test_daemon",
     OTTO_LISTEN: `0.0.0.0:${args.port}`,
     OTTO_RELAY_ENDPOINT: `127.0.0.1:${args.relayPort}`,
