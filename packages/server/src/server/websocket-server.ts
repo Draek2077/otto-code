@@ -435,6 +435,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
   private speech!: SpeechService | null;
+  private getPersonalityStatsFn:
+    | (() => Record<string, number> | Promise<Record<string, number>>)
+    | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -605,6 +608,16 @@ export class VoiceAssistantWebSocketServer {
     this.startRuntimeMetricsInterval();
 
     this.logger.info("WebSocket server initialized on /ws");
+  }
+
+  /**
+   * Provide the per-personality usage stats getter (file-backed, async). Wired
+   * from bootstrap so the `agentPersonalities.get_stats` RPC can serve counts.
+   */
+  public setPersonalityStatsProvider(
+    fn: () => Record<string, number> | Promise<Record<string, number>>,
+  ): void {
+    this.getPersonalityStatsFn = fn;
   }
 
   private assignOptionalServices(params: {
@@ -1073,6 +1086,7 @@ export class VoiceAssistantWebSocketServer {
             }
           : undefined,
       getSpeechSettingsOptions: this.speech ? () => this.speech!.getSettingsOptions() : undefined,
+      getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -1263,6 +1277,8 @@ export class VoiceAssistantWebSocketServer {
         artifactsToolGroup: true,
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         speechSettings: this.speech !== null,
+        // COMPAT(agentPersonalities): added in v0.4.6, drop the gate when daemon floor >= v0.4.6.
+        agentPersonalities: true,
       },
     };
   }

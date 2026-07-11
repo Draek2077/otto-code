@@ -34,6 +34,11 @@ const formPreferencesSchema = z.object({
     )
     .optional(),
   isolation: z.enum(["local", "worktree"]).optional(),
+  // Last-used agent personality per picker role (e.g. "chatter" → id). Lets each
+  // picker re-select the personality the user last chose there. Keyed by role
+  // string (not the PersonalityRole enum) so this device-local store never needs
+  // to move in lockstep with the role vocabulary.
+  lastPersonalityByRole: z.record(z.string(), z.string()).optional(),
 });
 
 export type ProviderPreferences = z.infer<typeof providerPreferencesSchema>;
@@ -128,6 +133,21 @@ export function mergeCreateAgentSelectionPreferences(args: {
       ...(args.featureValues ? { featureValues: args.featureValues } : {}),
     },
   });
+}
+
+export function mergeLastPersonality(args: {
+  preferences: FormPreferences;
+  role: string;
+  personalityId: string | null;
+}): FormPreferences {
+  const existing = args.preferences.lastPersonalityByRole ?? {};
+  const next = { ...existing };
+  if (args.personalityId) {
+    next[args.role] = args.personalityId;
+  } else {
+    delete next[args.role];
+  }
+  return { ...args.preferences, lastPersonalityByRole: next };
 }
 
 export function buildFavoriteModelKey(input: FavoriteModelPreference): string {

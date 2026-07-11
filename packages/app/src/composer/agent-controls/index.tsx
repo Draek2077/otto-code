@@ -32,7 +32,10 @@ import { compactUp } from "@/styles/theme";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
-import { CombinedModelSelector } from "@/components/combined-model-selector";
+import {
+  CombinedModelSelector,
+  type SelectorPersonality,
+} from "@/components/combined-model-selector";
 import {
   buildProviderSelectorProviders,
   buildSelectableProviderSelectorProviders,
@@ -78,7 +81,20 @@ interface AgentControlOption {
 
 type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
 
-interface ControlledAgentControlsProps {
+/**
+ * Optional personality roster + selection wired into the model picker. Only the
+ * draft (new-chat / Chatter) surface passes these; the active-agent controls
+ * leave them undefined so a running agent never gains a personality switcher
+ * (running agents must not swap personality mid-stream).
+ */
+interface AgentControlsPersonalityProps {
+  personalities?: SelectorPersonality[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
+}
+
+interface ControlledAgentControlsProps extends AgentControlsPersonalityProps {
   provider: string;
   providerOptions?: AgentControlOption[];
   selectedProviderId?: string;
@@ -107,7 +123,7 @@ interface ControlledAgentControlsProps {
   isCompactLayout?: boolean;
 }
 
-export interface DraftAgentControlsProps {
+export interface DraftAgentControlsProps extends AgentControlsPersonalityProps {
   providerDefinitions: AgentProviderDefinition[];
   selectedProvider: AgentProvider | null;
   onSelectProvider: (provider: AgentProvider) => void;
@@ -414,6 +430,10 @@ function ControlledAgentControls({
   desktopExtras,
   modelSelectorServerId = null,
   isCompactLayout,
+  personalities,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -656,6 +676,10 @@ function ControlledAgentControls({
           renderThinkingOption={renderThinkingOption}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
+          personalities={personalities}
+          selectedPersonalityId={selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
         />
       )}
     </View>
@@ -877,7 +901,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   );
 }
 
-interface SheetAgentControlsContentProps {
+interface SheetAgentControlsContentProps extends AgentControlsPersonalityProps {
   provider: string;
   selectedModelId?: string;
   selectedThinkingOptionId?: string;
@@ -947,6 +971,10 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     renderThinkingOption,
     extras,
     modelSelectorServerId,
+    personalities,
+    selectedPersonalityId,
+    onSelectPersonality,
+    onClearPersonality,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
@@ -1017,6 +1045,10 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           serverId={modelSelectorServerId}
           desktopPlacement="top-start"
           desktopMinWidth={360}
+          personalities={personalities}
+          selectedPersonalityId={selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
         />
       ) : null}
 
@@ -1629,6 +1661,10 @@ export function DraftAgentControls({
   disabled = false,
   modelSelectorServerId = null,
   isCompactLayout,
+  personalities,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1710,6 +1746,10 @@ export function DraftAgentControls({
           serverId={modelSelectorServerId}
           desktopPlacement="top-start"
           desktopMinWidth={360}
+          personalities={personalities}
+          selectedPersonalityId={selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
         />
         {selectedProvider ? (
           <ControlledAgentControls
@@ -1754,6 +1794,10 @@ export function DraftAgentControls({
       desktopExtras={draftModeChip}
       modelSelectorServerId={modelSelectorServerId}
       isCompactLayout={isCompactLayout}
+      personalities={personalities}
+      selectedPersonalityId={selectedPersonalityId}
+      onSelectPersonality={onSelectPersonality}
+      onClearPersonality={onClearPersonality}
     />
   );
 }

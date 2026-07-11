@@ -12,11 +12,11 @@ Transfer the current task — context, decisions, failed attempts, constraints �
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing a provider, read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the receiving agent until you have read it.
+Read the **otto** skill. Before choosing a provider, call `list_personalities` (role `worker`); if the host has a worker personality that fits, hand off to it by name. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the receiving agent until you have done one of these.
 
 ## Parsing arguments
 
-1. **Provider** — explicit user request first; otherwise resolve from `impl` preference (or `ui` if the task is styling-only).
+1. **Provider or personality** — explicit user request first; otherwise a `worker` **personality** from `list_personalities` (pass its name as `create_agent`'s `personality`), or, failing that, resolve a provider from `impl` preference (or `ui` if the task is styling-only).
 2. **Worktree** — "in a worktree" / "worktree" → create a worktree via Otto with a short branch name derived from the task, based on the current branch.
 3. **Task description** — anything else the user said.
 

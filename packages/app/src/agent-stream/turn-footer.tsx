@@ -11,7 +11,13 @@ import {
 import { resolveAssistantTurnBoundaryMessageId } from "./turn-boundary";
 import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
-import { ThemedBlobLoader } from "@/components/blob-loader";
+import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
+
+/** Two glow colors for an agent's personality thinking spinner. */
+export interface PersonalitySpinnerColors {
+  glowA: string;
+  glowB: string;
+}
 
 export type TurnContentStrategy = StreamStrategy;
 export type AssistantTurnForkHandler = (input: {
@@ -25,17 +31,19 @@ export const TurnFooter = memo(function TurnFooter({
   host,
   strategy,
   onForkAssistantTurn,
+  spinner,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  spinner?: PersonalitySpinnerColors;
 }) {
   if (isRunning) {
     return (
       <TurnFooterRow>
-        <RunningTurnFooter inFlightTurnStartedAt={inFlightTurnStartedAt} />
+        <RunningTurnFooter inFlightTurnStartedAt={inFlightTurnStartedAt} spinner={spinner} />
       </TurnFooterRow>
     );
   }
@@ -81,13 +89,19 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
 
 const WorkingIndicator = memo(function WorkingIndicator({
   inFlightTurnStartedAt = null,
+  spinner,
 }: {
   inFlightTurnStartedAt?: Date | null;
+  spinner?: PersonalitySpinnerColors;
 }) {
   return (
     <View style={stylesheet.turnFooterContent}>
       <View style={stylesheet.workingLoader}>
-        <ThemedBlobLoader size={18} />
+        {spinner ? (
+          <BlobLoader size={18} glowA={spinner.glowA} glowB={spinner.glowB} />
+        ) : (
+          <ThemedBlobLoader size={18} />
+        )}
       </View>
       {inFlightTurnStartedAt ? (
         <LiveElapsed
@@ -100,10 +114,16 @@ const WorkingIndicator = memo(function WorkingIndicator({
   );
 });
 
-function RunningTurnFooter({ inFlightTurnStartedAt }: { inFlightTurnStartedAt: Date | null }) {
+function RunningTurnFooter({
+  inFlightTurnStartedAt,
+  spinner,
+}: {
+  inFlightTurnStartedAt: Date | null;
+  spinner?: PersonalitySpinnerColors;
+}) {
   return (
     <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
-      <WorkingIndicator inFlightTurnStartedAt={inFlightTurnStartedAt} />
+      <WorkingIndicator inFlightTurnStartedAt={inFlightTurnStartedAt} spinner={spinner} />
     </View>
   );
 }

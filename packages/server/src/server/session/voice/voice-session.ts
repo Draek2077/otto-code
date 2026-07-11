@@ -5,7 +5,11 @@ import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import { TTSManager } from "../../agent/tts-manager.js";
 import { STTManager } from "../../agent/stt-manager.js";
-import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech/speech-provider.js";
+import type {
+  SpeechToTextProvider,
+  SpeechVoiceOverride,
+  TextToSpeechProvider,
+} from "../../speech/speech-provider.js";
 import type { TurnDetectionProvider } from "../../speech/turn-detection-provider.js";
 import { maybePersistTtsDebugAudio } from "../../agent/tts-debug.js";
 import { isOttoDictationDebugEnabled } from "../../agent/recordings-debug.js";
@@ -1028,6 +1032,26 @@ export class VoiceSession {
     await this.flushPendingAudioSegments("transcription complete");
   }
 
+  // The personality's spoken identity: if the voice-mode agent was spawned from
+  // a personality with a voice, use it for TTS. Soft binding — any failure or a
+  // voice that doesn't resolve on the active provider degrades to the host
+  // default (handled downstream), never breaking playback.
+  private async resolvePersonalityVoiceOverride(
+    agentId: string,
+  ): Promise<SpeechVoiceOverride | undefined> {
+    try {
+      const agent = await this.host.loadAgent(agentId);
+      const voice = agent.config.personalitySnapshot?.voice;
+      if (!voice) {
+        return undefined;
+      }
+      return { name: voice.name, ...(voice.model ? { model: voice.model } : {}) };
+    } catch (error) {
+      this.sessionLogger.warn({ err: error, agentId }, "Failed to resolve personality voice");
+      return undefined;
+    }
+  }
+
   private registerVoiceBridgeForAgent(agentId: string): void {
     this.registerVoiceSpeakHandler?.(agentId, async ({ text, signal }) => {
       this.sessionLogger.info(
@@ -1039,11 +1063,13 @@ export class VoiceSession {
         "Voice speak tool call received by session handler",
       );
       const abortSignal = signal ?? this.abortController.signal;
+      const voice = await this.resolvePersonalityVoiceOverride(agentId);
       await this.ttsManager.generateAndWaitForPlayback(
         text,
         (msg) => this.emit(msg),
         abortSignal,
         true,
+        voice,
       );
       this.sessionLogger.info(
         { agentId, textLength: text.length },

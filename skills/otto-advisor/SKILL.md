@@ -13,16 +13,17 @@ Single agent. Reads the situation you're in. Gives a judgment. You decide what t
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing a provider, read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the advisor until you have read it.
+Read the **otto** skill. Before choosing a provider, call `list_personalities` (role `advisor`); if the host has an advisor personality, prefer it. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named a provider in this request. Do not create the advisor until you have done one of these.
 
 ## Picking the advisor
 
 1. **User named one** (`--provider claude/opus`) → use it.
-2. **Otherwise** resolve from preferences — pick the category that matches the question:
+2. **Advisor personality available** → spawn it via `create_agent`'s `personality` argument (it already carries the right provider/model/effort/prompt). This is the preferred path when the host has one.
+3. **Otherwise** resolve from preferences — pick the category that matches the question:
    - Design / approach question → `planning`
    - "Did I miss something" review → `audit`
    - "Is this even right" → `research`
-3. **Contrast helps.** If your own provider matches what preferences would pick, swap to a different family on purpose — fresh perspective is the point.
+4. **Contrast helps.** If your own provider matches what preferences would pick, swap to a different family on purpose — fresh perspective is the point.
 
 ## The briefing
 

@@ -280,7 +280,10 @@ function handleSessionRequest(message: LocalSpeechWorkerSessionRequest): void {
 
 async function handleRequest(message: LocalSpeechWorkerRequest): Promise<void> {
   if (message.type === "tts.synthesize") {
-    const result = await getTtsProvider(message.config).synthesizeSpeech(message.text);
+    const result = await getTtsProvider(message.config).synthesizeSpeech(
+      message.text,
+      message.voice,
+    );
     const chunks: Buffer[] = [];
     for await (const chunk of result.stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

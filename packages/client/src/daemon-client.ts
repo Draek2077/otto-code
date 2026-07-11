@@ -4263,6 +4263,17 @@ export class DaemonClient {
     });
   }
 
+  async getPersonalityStats(
+    requestId?: string,
+  ): Promise<{ requestId: string; stats: Record<string, number> }> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "agentPersonalities.get_stats.request",
+      },
+    });
+  }
+
   sendBrowserAutomationExecuteResponse(response: BrowserAutomationExecuteResponse): void {
     this.sendSessionMessageStrict(response);
   }

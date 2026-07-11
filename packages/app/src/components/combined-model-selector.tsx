@@ -13,12 +13,14 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
 import {
   AlertTriangle,
+  Check,
   ChevronRight,
   Search,
   Settings,
   Star,
   StarFilled,
 } from "@/components/icons/material-icons";
+import { BlobLoader } from "@/components/blob-loader";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
@@ -76,12 +78,30 @@ const DESKTOP_PROVIDER_VIEW_BASE_HEIGHT = 80;
 const DESKTOP_MODEL_ROW_HEIGHT = 40;
 
 const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const ThemedCheck = withUnistyles(Check);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedStar = withUnistyles(Star);
 const ThemedStarFilled = withUnistyles(StarFilled);
+
+const accentMapping = (theme: Theme) => ({ color: theme.colors.accent });
+
+/**
+ * Presentation view-model for a personality row in the picker. The selector is
+ * pure presentation — callers (via usePersonalitySelection) build these,
+ * including availability, so the component never touches daemon config.
+ */
+export interface SelectorPersonality {
+  id: string;
+  name: string;
+  subtitle: string;
+  glowA?: string;
+  glowB?: string;
+  available: boolean;
+  unavailableReason?: string;
+}
 
 const foregroundMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -161,6 +181,16 @@ interface CombinedModelSelectorProps {
   desktopPlacement?: ComboboxProps["desktopPlacement"];
   desktopMinWidth?: number;
   /**
+   * Optional personality roster, rendered as a section above the model list.
+   * Selecting one auto-fills provider/model/effort/mode via the caller's
+   * onSelectPersonality; the caller keeps the selected id (deviation keeps
+   * identity). Empty/undefined hides the section entirely.
+   */
+  personalities?: SelectorPersonality[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
+  /**
    * Render the custom trigger as a full-width form field: the outer Pressable
    * becomes a transparent passthrough that stretches its child edge-to-edge and
    * stops painting its own hover/pressed background and rounded corners. The
@@ -183,6 +213,10 @@ interface SelectorContentProps {
   onDrillDown: (providerId: string, providerLabel: string) => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
+  personalities?: SelectorPersonality[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
 }
 
 function normalizeSearchQuery(value: string): string {
@@ -506,6 +540,99 @@ function ProviderErrorEmptyState({
   );
 }
 
+function PersonalityRow({
+  personality,
+  isSelected,
+  onSelect,
+  onClear,
+}: {
+  personality: SelectorPersonality;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+}) {
+  const handlePress = useCallback(() => {
+    if (!personality.available) return;
+    if (isSelected) {
+      onClear();
+    } else {
+      onSelect(personality.id);
+    }
+  }, [personality.available, personality.id, isSelected, onSelect, onClear]);
+
+  const rowStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.personalityRow,
+      Boolean(hovered) && personality.available && styles.drillDownRowHovered,
+      pressed && personality.available && styles.drillDownRowPressed,
+      !personality.available && styles.personalityRowDisabled,
+    ],
+    [personality.available],
+  );
+  const a11yState = useMemo(
+    () => ({ selected: isSelected, disabled: !personality.available }),
+    [isSelected, personality.available],
+  );
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      disabled={!personality.available}
+      style={rowStyle}
+      accessibilityRole="button"
+      accessibilityState={a11yState}
+      testID={`personality-row-${personality.id}`}
+    >
+      <BlobLoader size={ICON_SIZE.md} glowA={personality.glowA} glowB={personality.glowB} />
+      <View style={styles.personalityText}>
+        <Text style={styles.personalityName} numberOfLines={1}>
+          {personality.name}
+        </Text>
+        <Text style={styles.personalitySubtitle} numberOfLines={1}>
+          {personality.available
+            ? personality.subtitle
+            : (personality.unavailableReason ?? personality.subtitle)}
+        </Text>
+      </View>
+      {isSelected ? <ThemedCheck size={ICON_SIZE.sm} uniProps={accentMapping} /> : null}
+    </Pressable>
+  );
+}
+
+function PersonalitiesSection({
+  personalities,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
+}: {
+  personalities?: SelectorPersonality[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
+}) {
+  if (!personalities || personalities.length === 0 || !onSelectPersonality) {
+    return null;
+  }
+  const handleClear = onClearPersonality ?? noop;
+  return (
+    <View style={styles.personalitiesContainer}>
+      <View style={styles.sectionHeading}>
+        {/* i18n: English-only pending the agent-personalities translation pass. */}
+        <Text style={styles.sectionHeadingText}>Personalities</Text>
+      </View>
+      {personalities.map((personality) => (
+        <PersonalityRow
+          key={personality.id}
+          personality={personality}
+          isSelected={personality.id === selectedPersonalityId}
+          onSelect={onSelectPersonality}
+          onClear={handleClear}
+        />
+      ))}
+    </View>
+  );
+}
+
 function SelectorContent({
   view,
   providers,
@@ -518,6 +645,10 @@ function SelectorContent({
   onDrillDown,
   onRetryProvider,
   isRetryingProvider,
+  personalities,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
 }: SelectorContentProps) {
   const { t } = useTranslation();
   const normalizedQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
@@ -539,7 +670,8 @@ function SelectorContent({
     () => getAllProviderModelRows(providers).filter((row) => favoriteKeys.has(row.favoriteKey)),
     [favoriteKeys, providers],
   );
-  const hasResults = favoriteRows.length > 0 || providers.length > 0;
+  const hasResults =
+    favoriteRows.length > 0 || providers.length > 0 || (personalities?.length ?? 0) > 0;
   const emptyState = (
     <View style={styles.emptyState}>
       <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
@@ -591,6 +723,13 @@ function SelectorContent({
 
   return (
     <View>
+      <PersonalitiesSection
+        personalities={personalities}
+        selectedPersonalityId={selectedPersonalityId}
+        onSelectPersonality={onSelectPersonality}
+        onClearPersonality={onClearPersonality}
+      />
+
       <FavoritesSection
         favoriteRows={favoriteRows}
         selectedProvider={selectedProvider}
@@ -626,6 +765,10 @@ export function CombinedModelSelector({
   serverId = null,
   desktopPlacement,
   desktopMinWidth,
+  personalities,
+  selectedPersonalityId = null,
+  onSelectPersonality,
+  onClearPersonality,
   triggerFill = false,
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
@@ -640,13 +783,16 @@ export function CombinedModelSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
 
-  // Single-provider mode: only one provider → skip Level 1 entirely
+  const hasPersonalities = (personalities?.length ?? 0) > 0;
+
+  // Single-provider mode: only one provider → skip Level 1 entirely. But when a
+  // personality roster is present it lives in the "all" view, so keep that view.
   const singleProviderView = useMemo<SelectorView | null>(() => {
-    if (providers.length !== 1) return null;
+    if (providers.length !== 1 || hasPersonalities) return null;
     const provider = providers[0];
     if (!provider) return null;
     return { kind: "provider", providerId: provider.id, providerLabel: provider.label };
-  }, [providers]);
+  }, [providers, hasPersonalities]);
 
   const computeInitialView = useCallback((): SelectorView => {
     if (singleProviderView) return singleProviderView;
@@ -685,6 +831,23 @@ export function CombinedModelSelector({
     },
     [onSelect],
   );
+
+  const handlePersonalitySelect = useCallback(
+    (id: string) => {
+      onSelectPersonality?.(id);
+      setIsOpen(false);
+      setSearchQuery("");
+      bumpSearchResetKey();
+    },
+    [onSelectPersonality],
+  );
+
+  const handlePersonalityClear = useCallback(() => {
+    onClearPersonality?.();
+    setIsOpen(false);
+    setSearchQuery("");
+    bumpSearchResetKey();
+  }, [onClearPersonality]);
 
   const hasSelectedProvider = selectedProvider.trim().length > 0;
 
@@ -901,6 +1064,10 @@ export function CombinedModelSelector({
             onDrillDown={handleDrillDown}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}
+            personalities={personalities}
+            selectedPersonalityId={selectedPersonalityId}
+            onSelectPersonality={handlePersonalitySelect}
+            onClearPersonality={handlePersonalityClear}
           />
         ) : (
           <View style={styles.sheetLoadingState}>
@@ -967,6 +1134,34 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  personalitiesContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  personalityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    minHeight: 44,
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
+  },
+  personalityRowDisabled: {
+    opacity: 0.5,
+  },
+  personalityText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  personalityName: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+  },
+  personalitySubtitle: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   separator: {
     height: 1,

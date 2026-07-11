@@ -99,6 +99,7 @@ interface ChatAgentStateShape {
   runtimeInfo?: Agent["runtimeInfo"];
   features?: Agent["features"];
   lastError?: Agent["lastError"] | null;
+  personalitySpinner?: Agent["personalitySpinner"];
 }
 
 interface ChatAgentSelectedState extends ChatAgentStateShape {
@@ -149,6 +150,7 @@ function selectChatAgentState(
     runtimeInfo: agent.runtimeInfo,
     features: agent.features,
     lastError: agent.lastError ?? null,
+    personalitySpinner: agent.personalitySpinner ?? null,
     archivedAt: agent.archivedAt ?? null,
     requiresAttention: agent.requiresAttention ?? false,
     attentionReason: agent.attentionReason ?? null,
@@ -176,6 +178,7 @@ function buildChatAgentFromState(
     runtimeInfo: state.runtimeInfo,
     features: state.features,
     lastError: state.lastError ?? null,
+    personalitySpinner: state.personalitySpinner ?? null,
     projectPlacement,
   };
 }
@@ -667,6 +670,7 @@ function AgentPanelBody({
           runtimeInfo: agentState.runtimeInfo,
           features: agentState.features,
           lastError: agentState.lastError ?? null,
+          personalitySpinner: agentState.personalitySpinner ?? null,
           projectPlacement,
         }
       : null;

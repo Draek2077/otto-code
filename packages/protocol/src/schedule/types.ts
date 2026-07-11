@@ -27,6 +27,10 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
     config: z.object({
       provider: AgentProviderSchema,
       cwd: z.string().trim().min(1),
+      // Optional Agent Personality binding (by name). When set, each run
+      // re-resolves the personality against the run cwd and hard-fails if it is
+      // unavailable — so schedule runs pick up personality edits between runs.
+      personality: z.string().trim().min(1).optional(),
       modeId: z.string().trim().min(1).optional(),
       model: z.string().trim().min(1).optional(),
       thinkingOptionId: z.string().trim().min(1).optional(),
@@ -102,6 +106,7 @@ export interface CreateScheduleInput {
 
 export interface UpdateScheduleNewAgentConfig {
   provider?: string;
+  personality?: string | null;
   model?: string | null;
   modeId?: string | null;
   thinkingOptionId?: string | null;

@@ -10,7 +10,7 @@ import {
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { Brain, ChevronDown, Folder } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
-import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition, AgentProvider } from "@otto-code/protocol/agent-types";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import {
   AdaptiveModalSheet,
@@ -20,6 +20,8 @@ import {
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
+import { usePersonalitySelection } from "@/hooks/use-personality-selection";
+import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { getProviderIcon } from "@/components/provider-icons";
 import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { useAgentFormState, type FormInitialValues } from "@/hooks/use-agent-form-state";
@@ -321,6 +323,7 @@ export function ArtifactCreateSheet({
     setWorkingDir,
     setWorkingDirFromUser,
     modelSelectorProviders,
+    allProviderEntries,
     isAllModelsLoading,
     persistFormPreferences,
   } = form;
@@ -340,6 +343,36 @@ export function ArtifactCreateSheet({
     selectedServerId,
     initialServerId,
   });
+
+  // Artifact generation runs unattended, so a personality's mode is ignored;
+  // only its provider/model/effort auto-fill here.
+  const applyPersonality = useCallback(
+    (values: PersonalityFormValues) => {
+      setProviderAndModelFromUser(values.provider as AgentProvider, values.model);
+      setThinkingOptionFromUser(values.thinkingOptionId);
+    },
+    [setProviderAndModelFromUser, setThinkingOptionFromUser],
+  );
+  const personalityCurrentSelection = useMemo(
+    () => ({
+      provider: selectedProvider,
+      model: selectedModel,
+      thinkingOptionId: selectedThinkingOptionId,
+    }),
+    [selectedProvider, selectedModel, selectedThinkingOptionId],
+  );
+  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
+    usePersonalitySelection({
+      serverId: mutationServerId || null,
+      role: "artificer",
+      entries: allProviderEntries ?? [],
+      onApply: applyPersonality,
+      currentSelection: personalityCurrentSelection,
+    });
+  const selectedPersonalityName = useMemo(
+    () => personalities.find((entry) => entry.id === selectedPersonalityId)?.name ?? null,
+    [personalities, selectedPersonalityId],
+  );
 
   const handleSelectProject = useCallback(
     (target: ScheduleProjectTarget) => {
@@ -373,14 +406,14 @@ export function ArtifactCreateSheet({
       pressed: boolean;
     }): ReactNode => (
       <ModelTrigger
-        label={selectedModelLabel}
+        label={selectedPersonalityName ?? selectedModelLabel}
         provider={selectedProvider}
         disabled={disabled}
         active={hovered || pressed || isOpen}
-        isPlaceholder={!selectedModel}
+        isPlaceholder={!selectedModel && !selectedPersonalityName}
       />
     ),
-    [selectedModel, selectedProvider],
+    [selectedModel, selectedProvider, selectedPersonalityName],
   );
 
   const { createArtifact, updateArtifact, isCreating, isUpdating } = useArtifactMutations();
@@ -568,6 +601,10 @@ export function ArtifactCreateSheet({
           renderTrigger={renderModelTrigger}
           triggerFill
           serverId={mutationServerId}
+          personalities={personalities}
+          selectedPersonalityId={selectedPersonalityId}
+          onSelectPersonality={selectPersonality}
+          onClearPersonality={clearPersonality}
         />
       </View>
 

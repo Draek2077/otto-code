@@ -14,16 +14,16 @@ The purpose is to step back, not double down. The committee may propose a comple
 
 ## Prerequisites
 
-Read the **otto** skill. Before choosing committee members, read `~/.otto/orchestration-preferences.json` unless the user explicitly named providers in this request. Do not create committee agents until you have read it.
+Read the **otto** skill. Before choosing committee members, call `list_personalities` (role `advisor` or `judger`) — if the host has suitable personalities, spawn the members by `personality` name and skip provider selection. Otherwise read `~/.otto/orchestration-preferences.json` unless the user explicitly named providers in this request. Do not create committee agents until you have done one of these.
 
-Contrast is the point of a committee, so pick across providers deliberately using the configured preferences rather than hardcoded defaults.
+Contrast is the point of a committee, so pick two deliberately contrasting members — by personality when available, otherwise across providers using the configured preferences rather than hardcoded defaults.
 
 ## Composition
 
-Two members with different reasoning styles, selected from orchestration preferences:
+Two members with different reasoning styles:
 
-- one planning/research-strength provider
-- one contrasting high-reasoning provider
+- Prefer two contrasting `advisor`/`judger` **personalities** (from `list_personalities`), spawned via `create_agent`'s `personality` argument.
+- Otherwise select from orchestration preferences: one planning/research-strength provider and one contrasting high-reasoning provider.
 
 Override only when the user explicitly asks for different members.
 
