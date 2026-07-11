@@ -95,10 +95,19 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
   requestId: string;
   snapshot: WorkspaceGitRuntimeSnapshot;
 }): CheckoutPrStatusResponse["payload"] {
+  const provider = snapshot.github.provider ?? "github";
   return {
     cwd,
     status: normalizeCheckoutPrStatusPayload(snapshot.github.pullRequest),
-    githubFeaturesEnabled: snapshot.github.featuresEnabled,
+    // Legacy GitHub-only flag: old clients read this, so it must stay false
+    // for non-GitHub providers (they would otherwise render GitHub UI against
+    // a Bitbucket workspace).
+    githubFeaturesEnabled: provider === "github" && snapshot.github.featuresEnabled,
+    hosting: {
+      provider,
+      featuresEnabled: snapshot.github.featuresEnabled,
+      ...(snapshot.github.capabilities ? { capabilities: snapshot.github.capabilities } : {}),
+    },
     error: snapshot.github.error
       ? {
           code: "UNKNOWN",
@@ -133,6 +142,12 @@ export function normalizeCheckoutPrStatusPayload(
   };
   if (status.github) {
     payload.github = status.github;
+  }
+  if (status.bitbucket) {
+    payload.hosting = {
+      provider: "bitbucket-cloud",
+      bitbucket: status.bitbucket,
+    };
   }
   return payload;
 }

@@ -70,6 +70,18 @@ export function getAgentAttachmentPillContent(
         title: attachment.title,
         subtitle: `Issue #${attachment.number}`,
       };
+    case "hosting_pr":
+      return {
+        icon: attachmentGithubPrIcon,
+        title: attachment.title,
+        subtitle: `PR #${attachment.number}`,
+      };
+    case "hosting_issue":
+      return {
+        icon: attachmentGithubIssueIcon,
+        title: attachment.title,
+        subtitle: `Issue #${attachment.number}`,
+      };
     case "text":
       return {
         icon: attachmentFileIcon,

@@ -28,6 +28,8 @@ import type {
 } from "../../workspace-git-service.js";
 import { assertSafeGitRef } from "../../worktree-session.js";
 import type { GitMutationService } from "../git-mutation/git-mutation-service.js";
+import type { GitHostingResolver } from "../../../services/git-hosting/resolver.js";
+import { isGitHostingFeatureDisabledError } from "../../../services/git-hosting/types.js";
 import {
   assertPullRequestAutoMergeDisableReady,
   assertPullRequestAutoMergeEnableReady,
@@ -89,6 +91,9 @@ export interface CheckoutSessionOptions {
   gitMutation: Pick<GitMutationService, "checkoutExistingBranch" | "notifyGitMutation">;
   workspaceGitService: WorkspaceGitService;
   github: GitHubService;
+  // Present on daemons with the gitHostingProviders feature; absent in legacy
+  // test constructions (hosting.search then answers as GitHub).
+  gitHostingResolver?: GitHostingResolver;
   checkoutDiffManager: CheckoutDiffSubscriber;
   gitMetadataGenerator: GitMetadataGenerator;
   ottoHome: string;
@@ -116,6 +121,7 @@ export class CheckoutSession {
   >;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly github: GitHubService;
+  private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly checkoutDiffManager: CheckoutDiffSubscriber;
   private readonly gitMetadataGenerator: GitMetadataGenerator;
   private readonly ottoHome: string;
@@ -128,6 +134,7 @@ export class CheckoutSession {
     this.gitMutation = options.gitMutation;
     this.workspaceGitService = options.workspaceGitService;
     this.github = options.github;
+    this.gitHostingResolver = options.gitHostingResolver ?? null;
     this.checkoutDiffManager = options.checkoutDiffManager;
     this.gitMetadataGenerator = options.gitMetadataGenerator;
     this.ottoHome = options.ottoHome;
@@ -975,7 +982,10 @@ export class CheckoutSession {
       return;
     }
 
-    const githubFeaturesEnabled = await this.github.isAuthenticated({ cwd });
+    // Treat missing CLI/credentials as features-off, not a thrown failure —
+    // the router surfaces GitHostingCredentialsMissingError for providers
+    // whose project has no token configured yet.
+    const githubFeaturesEnabled = await this.github.isAuthenticated({ cwd }).catch(() => false);
     if (!githubFeaturesEnabled) {
       this.host.emit({
         type: "pull_request_timeline_response",
@@ -1101,6 +1111,78 @@ export class CheckoutSession {
         payload: {
           items: [],
           githubFeaturesEnabled: true,
+          error: error instanceof Error ? error.message : String(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  // Provider-neutral successor to handleGitHubSearchRequest: resolves the
+  // project's hosting provider from cwd, so a Bitbucket project searches
+  // Bitbucket PRs and a GitHub project searches GitHub issues + PRs.
+  async handleHostingSearchRequest(
+    msg: Extract<SessionInboundMessage, { type: "hosting.search.request" }>,
+  ): Promise<void> {
+    const { cwd, query, limit, kinds, requestId } = msg;
+    const resolvedCwd = expandTilde(cwd);
+    const resolved = this.gitHostingResolver
+      ? await this.gitHostingResolver.resolveForCwd(resolvedCwd).catch(() => null)
+      : null;
+    const provider = resolved?.providerId ?? "github";
+
+    if (resolved && !resolved.service) {
+      this.host.emit({
+        type: "hosting.search.response",
+        payload: {
+          items: [],
+          provider,
+          featuresEnabled: false,
+          error: null,
+          requestId,
+        },
+      });
+      return;
+    }
+
+    try {
+      const requestedKinds = kinds ?? ["issue", "pr"];
+      const result = await this.github.searchIssuesAndPrs({
+        cwd: resolvedCwd,
+        query,
+        limit,
+        kinds: requestedKinds.map((kind) => (kind === "issue" ? "github-issue" : "github-pr")),
+      });
+      this.host.emit({
+        type: "hosting.search.response",
+        payload: {
+          items: result.items,
+          provider,
+          featuresEnabled: result.githubFeaturesEnabled,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      if (isGitHostingFeatureDisabledError(error)) {
+        this.host.emit({
+          type: "hosting.search.response",
+          payload: {
+            items: [],
+            provider,
+            featuresEnabled: false,
+            error: null,
+            requestId,
+          },
+        });
+        return;
+      }
+      this.host.emit({
+        type: "hosting.search.response",
+        payload: {
+          items: [],
+          provider,
+          featuresEnabled: true,
           error: error instanceof Error ? error.message : String(error),
           requestId,
         },

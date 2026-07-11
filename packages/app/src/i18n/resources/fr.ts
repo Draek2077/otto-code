@@ -1790,6 +1790,7 @@ export const fr: TranslationResources = {
       connections: "Relations",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "Fournisseurs Git",
       providers: "Fournisseurs",
       usage: "Utilisation",
       terminals: "Terminals",
@@ -2160,6 +2161,30 @@ export const fr: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      gitProviders: {
+        info: "Connectez les services qui hébergent vos dépôts. Chaque projet utilise le fournisseur vers lequel pointe son dépôt distant git.",
+        updateHost: "Mettez à jour l'hôte pour configurer les fournisseurs Git.",
+        checkConnection: "Vérifier la connexion",
+        checking: "Vérification de la connexion…",
+        connected: "Connecté",
+        connectionFailed: "Échec de la connexion",
+        github: {
+          name: "GitHub",
+          hint: "Authentifié via l'interface en ligne de commande GitHub (gh)",
+          idle: "Utilise la connexion à l'interface en ligne de commande GitHub de l'hôte",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "Authentifié avec un e-mail Atlassian et un jeton d'API",
+          email: "E-mail Atlassian",
+          apiToken: "Jeton d'API",
+          apiTokenHint: "Stocké de manière privée sur l'hôte — jamais dans un dépôt",
+          apiTokenPlaceholder: "Collez un jeton d'API",
+          saveError: "Échec de l'enregistrement des identifiants",
+          readyToCheck: "Identifiants enregistrés",
+          missingCredentials: "Saisissez votre e-mail et votre jeton d'API",
+        },
       },
       speech: {
         sectionTitle: "Voix et dictée",

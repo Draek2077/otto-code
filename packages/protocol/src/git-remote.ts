@@ -1,4 +1,5 @@
 const GITHUB_HOSTS = new Set(["github.com", "ssh.github.com"]);
+const BITBUCKET_CLOUD_HOSTS = new Set(["bitbucket.org", "altssh.bitbucket.org"]);
 
 const TRANSPORT_BY_PROTOCOL: Record<string, GitRemoteLocation["transport"]> = {
   "https:": "https",
@@ -21,6 +22,18 @@ export interface GitHubRemoteIdentity {
 export function parseGitHubRemoteUrl(remoteUrl: string): GitHubRemoteIdentity | null {
   const location = parseGitRemoteLocation(remoteUrl);
   if (!location || !isGitHubHost(location.host)) return null;
+  return parseGitHubRemoteIdentity(location.path);
+}
+
+export function isBitbucketCloudHost(host: string): boolean {
+  return BITBUCKET_CLOUD_HOSTS.has(host);
+}
+
+// Bitbucket Cloud remotes share GitHub's two-segment workspace/repo shape, so
+// identity parsing is common; only host classification differs.
+export function parseBitbucketCloudRemoteUrl(remoteUrl: string): GitHubRemoteIdentity | null {
+  const location = parseGitRemoteLocation(remoteUrl);
+  if (!location || !isBitbucketCloudHost(location.host)) return null;
   return parseGitHubRemoteIdentity(location.path);
 }
 

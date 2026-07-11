@@ -32,6 +32,7 @@ import {
   Puzzle,
   Plus,
   FolderGit2,
+  GitPullRequest,
   SquareTerminal,
 } from "@/components/icons/material-icons";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
@@ -99,6 +100,7 @@ import {
   HostAgentsPage,
   HostSettingsPage,
   HostProvidersPage,
+  HostGitProvidersPage,
   HostUsagePage,
   HostWorkspacesPage,
   HostTerminalsPage,
@@ -168,6 +170,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
+  { id: "git-providers", labelKey: "settings.hostSections.gitProviders", icon: GitPullRequest },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
   { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
@@ -184,6 +187,8 @@ function renderHostSettingsContent(
       return <HostAgentsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
+    case "git-providers":
+      return <HostGitProvidersPage serverId={view.serverId} />;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
     case "usage":

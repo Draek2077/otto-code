@@ -32,6 +32,9 @@ import {
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { resolveGitHubRemote, type GitHubRemoteIdentity } from "../utils/github-remote.js";
+import { parseBitbucketCloudRemoteUrl } from "@otto-code/protocol/git-remote";
+import type { GitHostingCapabilities, GitHostingProviderId } from "@otto-code/protocol/messages";
+import type { BitbucketPullRequestStatusFacts } from "../services/git-hosting/types.js";
 import { listOttoWorktrees, type OttoWorktreeInfo } from "../utils/worktree.js";
 import { READ_ONLY_GIT_ENV } from "./checkout-git-utils.js";
 import {
@@ -80,6 +83,13 @@ export interface WorkspaceGitRuntimeSnapshot {
   };
   github: {
     featuresEnabled: boolean;
+    // Which hosting provider serves this workspace's project. Absent means
+    // GitHub (legacy paths that predate multi-provider support).
+    provider?: GitHostingProviderId;
+    capabilities?: GitHostingCapabilities;
+    // The provider is selected but has no usable credentials yet (e.g.
+    // Bitbucket project without an API token) — features off, not an error.
+    credentialsMissing?: boolean;
     pullRequest: {
       number?: number;
       repoOwner?: string;
@@ -102,9 +112,19 @@ export interface WorkspaceGitRuntimeSnapshot {
       checksStatus?: "none" | "pending" | "success" | "failure";
       reviewDecision?: "approved" | "changes_requested" | "pending" | null;
       github?: GitHubPullRequestStatusFacts;
+      bitbucket?: BitbucketPullRequestStatusFacts;
     } | null;
     error: { message: string } | null;
   };
+}
+
+// Hosting-provider context stamped onto workspace snapshots so downstream
+// projections (checkout PR status, workspace runtime) can gate per-provider
+// features without re-resolving.
+export interface WorkspaceHostingInfo {
+  providerId: GitHostingProviderId;
+  capabilities: GitHostingCapabilities;
+  credentialsMissing: boolean;
 }
 
 export interface WorkspaceGitService {
@@ -249,6 +269,9 @@ interface WorkspaceGitServiceDependencies {
   listBranchSuggestions: typeof listBranchSuggestions;
   listOttoWorktrees: typeof listOttoWorktrees;
   github: GitHubService;
+  // Resolves the hosting provider for a cwd (project-level selection). Absent
+  // on legacy construction paths — behavior stays GitHub-only.
+  resolveHostingForCwd?: (cwd: string) => Promise<WorkspaceHostingInfo | null>;
   resolveAbsoluteGitDir: (cwd: string) => Promise<string | null>;
   hasOriginRemote: (cwd: string) => Promise<boolean>;
   runGitFetch: (cwd: string) => Promise<void>;
@@ -285,7 +308,12 @@ interface WorkspaceGitTarget {
   latestFingerprint: string | null;
   lastShellOutAtMs: number | null;
   repoGitRoot: string | null;
-  cachedGitHubRemote: { remoteUrl: string; identity: GitHubRemoteIdentity | null } | null;
+  cachedGitHubRemote: {
+    remoteUrl: string;
+    identity: GitHubRemoteIdentity | null;
+    providerId: GitHostingProviderId;
+  } | null;
+  hostingInfo: WorkspaceHostingInfo | null;
   observationSetupPromise: Promise<void> | null;
   observationSetupComplete: boolean;
   closed: boolean;
@@ -831,6 +859,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       lastShellOutAtMs: null,
       repoGitRoot: null,
       cachedGitHubRemote: null,
+      hostingInfo: null,
       observationSetupPromise: null,
       observationSetupComplete: false,
       closed: false,
@@ -1207,9 +1236,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         if (!this.isActiveObservedWorkspaceTarget(target)) {
           return;
         }
-        this.rememberGitHubSnapshot(target, buildGitHubSnapshotFromStatus(status), {
-          notify: true,
-        });
+        this.rememberGitHubSnapshot(
+          target,
+          buildGitHubSnapshotFromStatus(status, target.hostingInfo),
+          {
+            notify: true,
+          },
+        );
       },
       onError: (error) => {
         this.logger.warn(
@@ -1528,16 +1561,41 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target: WorkspaceGitTarget,
     remoteUrl: string | null,
   ): Promise<GitHubRemoteIdentity | null> {
+    target.hostingInfo = await this.resolveHostingInfoForTarget(target);
+    const providerId = target.hostingInfo?.providerId ?? "github";
     if (!remoteUrl) {
       target.cachedGitHubRemote = null;
       return null;
     }
-    if (target.cachedGitHubRemote?.remoteUrl === remoteUrl) {
+    if (
+      target.cachedGitHubRemote?.remoteUrl === remoteUrl &&
+      target.cachedGitHubRemote.providerId === providerId
+    ) {
       return target.cachedGitHubRemote.identity;
     }
-    const identity = await resolveGitHubRemote({ remoteUrl });
-    target.cachedGitHubRemote = { remoteUrl, identity };
+    const identity =
+      providerId === "bitbucket-cloud"
+        ? parseBitbucketCloudRemoteUrl(remoteUrl)
+        : await resolveGitHubRemote({ remoteUrl });
+    target.cachedGitHubRemote = { remoteUrl, identity, providerId };
     return identity;
+  }
+
+  private async resolveHostingInfoForTarget(
+    target: WorkspaceGitTarget,
+  ): Promise<WorkspaceHostingInfo | null> {
+    if (!this.deps.resolveHostingForCwd) {
+      return null;
+    }
+    try {
+      return await this.deps.resolveHostingForCwd(target.cwd);
+    } catch (error) {
+      this.logger.warn(
+        { err: error, cwd: target.cwd },
+        "Failed to resolve git hosting provider for workspace",
+      );
+      return null;
+    }
   }
 
   private shouldThrottleNonForcedRefresh(
@@ -1676,7 +1734,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.latestGitLoadedAtMs = this.deps.now().getTime();
 
     if (previousGitHubPollKey !== this.getGitHubPollKey(target)) {
-      target.latestGithub = buildGitHubUnavailableSnapshot();
+      target.latestGithub = buildGitHubUnavailableSnapshot(target.hostingInfo);
       target.latestGithubLoadedAtMs = target.latestGitLoadedAtMs;
     }
     return facts;
@@ -1696,6 +1754,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.latestGithub = await loadGitHubSnapshot({
       cwd: target.cwd,
       githubRemote,
+      hosting: target.hostingInfo,
       now: this.deps.now(),
       deps: this.deps,
       force: forceGitHub,
@@ -1911,18 +1970,34 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 }
 
+function buildHostingSnapshotStamp(
+  hosting: WorkspaceHostingInfo | null,
+): Pick<WorkspaceGitRuntimeSnapshot["github"], "provider" | "capabilities" | "credentialsMissing"> {
+  if (!hosting) {
+    return {};
+  }
+  return {
+    provider: hosting.providerId,
+    capabilities: hosting.capabilities,
+    ...(hosting.credentialsMissing ? { credentialsMissing: true } : {}),
+  };
+}
+
 async function loadGitHubSnapshot(options: {
   cwd: string;
   githubRemote: GitHubRemoteIdentity | null;
+  hosting: WorkspaceHostingInfo | null;
   now: Date;
   deps: Pick<WorkspaceGitServiceDependencies, "getPullRequestStatus" | "github">;
   force?: boolean;
   reason?: string;
   facts?: CheckoutSnapshotFacts;
 }): Promise<WorkspaceGitRuntimeSnapshot["github"]> {
-  if (!options.githubRemote) {
+  const hostingStamp = buildHostingSnapshotStamp(options.hosting);
+  if (!options.githubRemote || options.hosting?.credentialsMissing) {
     return {
       featuresEnabled: false,
+      ...hostingStamp,
       pullRequest: null,
       error: null,
     };
@@ -1933,6 +2008,7 @@ async function loadGitHubSnapshot(options: {
   } catch {
     return {
       featuresEnabled: false,
+      ...hostingStamp,
       pullRequest: null,
       error: null,
     };
@@ -1950,12 +2026,14 @@ async function loadGitHubSnapshot(options: {
     );
     return {
       featuresEnabled: true,
+      ...hostingStamp,
       pullRequest: result.status,
       error: null,
     };
   } catch (error) {
     return {
       featuresEnabled: true,
+      ...hostingStamp,
       pullRequest: null,
       error: {
         message: error instanceof Error ? error.message : String(error),
@@ -2022,9 +2100,12 @@ function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
   };
 }
 
-function buildGitHubUnavailableSnapshot(): WorkspaceGitRuntimeSnapshot["github"] {
+function buildGitHubUnavailableSnapshot(
+  hosting: WorkspaceHostingInfo | null = null,
+): WorkspaceGitRuntimeSnapshot["github"] {
   return {
     featuresEnabled: false,
+    ...buildHostingSnapshotStamp(hosting),
     pullRequest: null,
     error: null,
   };
@@ -2032,9 +2113,11 @@ function buildGitHubUnavailableSnapshot(): WorkspaceGitRuntimeSnapshot["github"]
 
 function buildGitHubSnapshotFromStatus(
   status: WorkspaceGitRuntimeSnapshot["github"]["pullRequest"],
+  hosting: WorkspaceHostingInfo | null = null,
 ): WorkspaceGitRuntimeSnapshot["github"] {
   return {
     featuresEnabled: true,
+    ...buildHostingSnapshotStamp(hosting),
     pullRequest: status,
     error: null,
   };

@@ -1,4 +1,4 @@
-import type { GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { GitHostingProviderId, GitHubSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -336,8 +336,14 @@ export function openComposerAttachment(input: OpenComposerAttachmentInput): void
   input.openExternalUrl(input.attachment.item.url);
 }
 
-export function buildGithubAttachment(item: GitHubSearchItem): UserComposerAttachment {
-  return item.kind === "pr" ? { kind: "github_pr", item } : { kind: "github_issue", item };
+export function buildGithubAttachment(
+  item: GitHubSearchItem,
+  provider?: GitHostingProviderId,
+): UserComposerAttachment {
+  const providerField = provider && provider !== "github" ? { provider } : {};
+  return item.kind === "pr"
+    ? { kind: "github_pr", item, ...providerField }
+    : { kind: "github_issue", item, ...providerField };
 }
 
 function isGithubAttachment(
@@ -349,6 +355,7 @@ function isGithubAttachment(
 export function toggleGithubAttachment(
   current: UserComposerAttachment[],
   item: GitHubSearchItem,
+  provider?: GitHostingProviderId,
 ): UserComposerAttachment[] {
   const matches = (attachment: UserComposerAttachment) =>
     isGithubAttachment(attachment) &&
@@ -357,18 +364,20 @@ export function toggleGithubAttachment(
   if (current.some(matches)) {
     return current.filter((attachment) => !matches(attachment));
   }
-  return [...current, buildGithubAttachment(item)];
+  return [...current, buildGithubAttachment(item, provider)];
 }
 
 interface ToggleGithubAttachmentFromPickerInput {
   current: UserComposerAttachment[];
   item: GitHubSearchItem;
+  provider?: GitHostingProviderId;
   markGithubAttachmentRemoved: (attachment: UserComposerAttachment) => void;
 }
 
 export function toggleGithubAttachmentFromPicker({
   current,
   item,
+  provider,
   markGithubAttachmentRemoved,
 }: ToggleGithubAttachmentFromPickerInput): UserComposerAttachment[] {
   const existingAttachment = current.find(
@@ -380,7 +389,7 @@ export function toggleGithubAttachmentFromPicker({
   if (existingAttachment) {
     markGithubAttachmentRemoved(existingAttachment);
   }
-  return toggleGithubAttachment(current, item);
+  return toggleGithubAttachment(current, item, provider);
 }
 
 export function findGithubItemByOption(

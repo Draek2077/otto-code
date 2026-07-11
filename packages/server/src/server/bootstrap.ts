@@ -90,7 +90,10 @@ function formatListenTarget(listenTarget: ListenTarget | null): string | null {
 }
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
-import { createGitHubService } from "../services/github-service.js";
+import { createGitHubHostingService } from "../services/git-hosting/github-hosting-service.js";
+import { createGitHostingResolver } from "../services/git-hosting/resolver.js";
+import { createGitHostingRouter } from "../services/git-hosting/router.js";
+import { readOttoConfigJson } from "../utils/otto-config-file.js";
 import {
   createOttoWorktree as createRegisteredOttoWorktree,
   createLocalCheckoutWorkspace,
@@ -585,6 +588,10 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     }),
   );
 
+  // Per-project git hosting credentials round-trip config.json ⇄ mutable
+  // config the same way the speech OpenAI key does.
+  const persistedGitHosting = loadPersistedConfig(config.ottoHome).gitHosting;
+
   const initialConfig: MutableDaemonConfig = {
     mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
     browserTools: { enabled: config.browserToolsEnabled ?? false },
@@ -596,6 +603,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
+    ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -863,13 +871,35 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
     logger,
   });
-  const github = createGitHubService();
+  // All PR/issue functionality routes through the git hosting layer: each
+  // call resolves the target project's configured provider (GitHub via gh
+  // CLI, Bitbucket Cloud via REST). `github` keeps its historical name — it
+  // is the provider-routing facade, not the gh CLI.
+  const gitHostingResolver = createGitHostingResolver({
+    github: createGitHubHostingService(),
+    getDaemonConfig: () => daemonConfigStore.get(),
+    readOttoConfigJson,
+    ottoHome: config.ottoHome,
+  });
+  const github = createGitHostingRouter(gitHostingResolver);
+  const unsubscribeGitHostingConfigChange = daemonConfigStore.onChange(() => {
+    // Provider credentials may have changed; re-resolve on next use.
+    gitHostingResolver.invalidateAll();
+  });
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
       github,
+      resolveHostingForCwd: async (cwd) => {
+        const resolved = await gitHostingResolver.resolveForCwd(cwd);
+        return {
+          providerId: resolved.providerId,
+          capabilities: resolved.capabilities,
+          credentialsMissing: resolved.credentialsMissing,
+        };
+      },
     },
   });
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
@@ -1566,6 +1596,7 @@ export async function createOttoDaemon(
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
               previewDevServers,
+              gitHostingResolver,
             );
 
             // Sanity guard: never let preview "stop external server" tree-kill
@@ -1654,6 +1685,8 @@ export async function createOttoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     unsubscribeSpeechConfigChange();
+    unsubscribeGitHostingConfigChange();
+    github.dispose?.();
     speechService.stop();
     toolArtifactService.stop();
     await scheduleService.stop().catch(() => undefined);

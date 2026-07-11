@@ -119,7 +119,7 @@ import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/componen
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
-import { useGithubSearchQuery } from "@/git/use-github-search-query";
+import { useGithubSearchQuery, useHostingSearchFeature } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
@@ -1057,6 +1057,7 @@ export function Composer({
   });
   const setSelectedAttachments = onChangeAttachments;
   const checkoutStatusQuery = useCheckoutStatusQuery({ serverId, cwd });
+  const hostingSearchEnabled = useHostingSearchFeature(serverId);
   const githubAutoAttach = useComposerGithubAutoAttach({
     text: userInput,
     remoteUrl: resolveCheckoutRemoteUrl(checkoutStatusQuery.status),
@@ -1065,6 +1066,7 @@ export function Composer({
     isConnected,
     serverId,
     cwd,
+    hostingSearchEnabled,
     setAttachments: setSelectedAttachments,
   });
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -1831,6 +1833,7 @@ export function Composer({
       const nextAttachments = toggleGithubAttachmentFromPicker({
         current: attachments,
         item,
+        provider: githubSearchResultsQuery.data?.provider,
         markGithubAttachmentRemoved: githubAutoAttach.markGithubAttachmentRemoved,
       });
       setSelectedAttachments(nextAttachments);
@@ -1840,6 +1843,7 @@ export function Composer({
     [
       attachments,
       githubAutoAttach,
+      githubSearchResultsQuery.data?.provider,
       setSelectedAttachments,
       setGithubSearchQuery,
       setIsGithubPickerOpen,

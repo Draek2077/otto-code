@@ -36,7 +36,9 @@ export function splitComposerAttachmentsForSubmit(attachments: ComposerAttachmen
       continue;
     }
 
-    const reviewAttachment = buildGitHubAttachmentFromSearchItem(attachment.item);
+    const reviewAttachment = buildGitHubAttachmentFromSearchItem(attachment.item, {
+      provider: attachment.provider,
+    });
     if (reviewAttachment) {
       agentAttachments.push(reviewAttachment);
     }

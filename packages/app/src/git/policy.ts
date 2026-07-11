@@ -63,6 +63,8 @@ export interface BuildGitActionsInput {
   pullRequestIsMerged: boolean;
   pullRequestMergeable: PullRequestMergeable;
   pullRequestGithub: PullRequestGithubStatus | null;
+  // Provider-neutral per-PR hosting facts (absent on old daemons / GitHub).
+  pullRequestHosting?: PullRequestHostingStatus | null;
   hasRemote: boolean;
   isOttoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
@@ -99,6 +101,9 @@ type PullRequestAutoMergeEnableActionId = Extract<
 >;
 type PullRequestActionRole = "status" | "direct" | "auto";
 type PullRequestGithubStatus = NonNullable<CheckoutPrStatusResponse["payload"]["status"]>["github"];
+type PullRequestHostingStatus = NonNullable<
+  CheckoutPrStatusResponse["payload"]["status"]
+>["hosting"];
 
 interface PullRequestActionModel {
   readonly id: PullRequestActionId;
@@ -556,12 +561,7 @@ function canMergePr(input: BuildGitActionsInput): boolean {
   }
 
   if (!hasPullRequestGithubFacts(github)) {
-    return (
-      input.pullRequestMergeable === "MERGEABLE" &&
-      input.behindOfOrigin === 0 &&
-      input.aheadOfOrigin === 0 &&
-      !canMergeFromBase(input)
-    );
+    return canMergePrWithoutGithubFacts(input);
   }
 
   return (
@@ -571,6 +571,18 @@ function canMergePr(input: BuildGitActionsInput): boolean {
     !github.isInMergeQueue &&
     getAllowedDirectPullRequestMergeActionModels(input).length > 0
   );
+}
+
+function canMergePrWithoutGithubFacts(input: BuildGitActionsInput): boolean {
+  const branchInSyncWithOrigin =
+    input.behindOfOrigin === 0 && input.aheadOfOrigin === 0 && !canMergeFromBase(input);
+  // Bitbucket Cloud reports no computed mergeability (always UNKNOWN); the
+  // daemon re-checks that the PR is open before merging and Bitbucket
+  // enforces its own merge checks server-side.
+  if (input.pullRequestHosting?.provider === "bitbucket-cloud") {
+    return branchInSyncWithOrigin && getAllowedDirectPullRequestMergeActionModels(input).length > 0;
+  }
+  return input.pullRequestMergeable === "MERGEABLE" && branchInSyncWithOrigin;
 }
 
 function canEnablePrAutoMerge(input: BuildGitActionsInput): boolean {
@@ -817,6 +829,10 @@ function isPullRequestMergeMethodAllowed(
 ): boolean {
   const repository = input.pullRequestGithub?.repository;
   if (!repository) {
+    const bitbucket = input.pullRequestHosting?.bitbucket;
+    if (bitbucket) {
+      return bitbucket.mergeStrategiesAllowed.includes(method);
+    }
     return true;
   }
   if (method === "squash") {

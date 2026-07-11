@@ -1778,6 +1778,7 @@ export const ru: TranslationResources = {
       connections: "Соединения",
       agents: "Agents",
       workspaces: "Workspaces",
+      gitProviders: "Провайдеры Git",
       providers: "Провайдеры",
       usage: "Использование",
       terminals: "Terminals",
@@ -2146,6 +2147,30 @@ export const ru: TranslationResources = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+      },
+      gitProviders: {
+        info: "Подключите сервисы, которые размещают ваши репозитории. Каждый проект использует того провайдера, на которого указывает его git-удалёнка.",
+        updateHost: "Обновите хост, чтобы настроить провайдеров Git.",
+        checkConnection: "Проверить подключение",
+        checking: "Проверка подключения…",
+        connected: "Подключено",
+        connectionFailed: "Ошибка подключения",
+        github: {
+          name: "GitHub",
+          hint: "Аутентификация через GitHub CLI (gh)",
+          idle: "Использует вход в GitHub CLI на хосте",
+        },
+        bitbucket: {
+          name: "Bitbucket Cloud",
+          hint: "Аутентификация с помощью email Atlassian и API-токена",
+          email: "Email Atlassian",
+          apiToken: "API-токен",
+          apiTokenHint: "Хранится приватно на хосте — никогда в репозитории",
+          apiTokenPlaceholder: "Вставьте API-токен",
+          saveError: "Не удалось сохранить учётные данные",
+          readyToCheck: "Учётные данные сохранены",
+          missingCredentials: "Введите email и API-токен",
+        },
       },
       speech: {
         sectionTitle: "Голос и диктовка",

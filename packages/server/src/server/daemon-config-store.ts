@@ -19,6 +19,7 @@ export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonConfig;
 type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
 type MutableSpeechConfig = import("@otto-code/protocol/messages").MutableSpeechConfig;
+type MutableGitHostingConfig = import("@otto-code/protocol/messages").MutableGitHostingConfig;
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
 
 interface LoggerLike {
@@ -300,7 +301,31 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     agents: nextAgents,
     features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
     providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),
+    gitHosting: buildPersistedGitHosting(persisted, mutable.gitHosting),
   } as PersistedConfig;
+}
+
+// Host-level hosting credentials persist under gitHosting.providers in
+// config.json — one set per provider. The mutable config is the post-merge
+// source of truth; empty strings mean "remove" and a provider with no
+// remaining credentials is dropped so stale tokens never linger on disk.
+function buildPersistedGitHosting(
+  persisted: PersistedConfig,
+  gitHosting: MutableGitHostingConfig | undefined,
+): PersistedConfig["gitHosting"] {
+  if (!gitHosting) {
+    return persisted.gitHosting;
+  }
+  const email = gitHosting.providers?.bitbucketCloud?.email?.trim();
+  const apiToken = gitHosting.providers?.bitbucketCloud?.apiToken?.trim();
+  const bitbucketCloud = {
+    ...(email ? { email } : {}),
+    ...(apiToken ? { apiToken } : {}),
+  };
+  if (Object.keys(bitbucketCloud).length === 0) {
+    return undefined;
+  }
+  return { providers: { bitbucketCloud } };
 }
 
 // The speech OpenAI key lives at providers.openai.apiKey in config.json (the

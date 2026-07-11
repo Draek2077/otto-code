@@ -27,6 +27,9 @@ interface ComposerGithubAutoAttachInput {
   isConnected: boolean;
   serverId: string;
   cwd: string;
+  // server_info features.gitHostingProviders — routes ref lookups through the
+  // provider-neutral search RPC.
+  hostingSearchEnabled?: boolean;
   setAttachments: Dispatch<SetStateAction<UserComposerAttachment[]>>;
 }
 
@@ -151,7 +154,7 @@ async function attachRef({
     if (removedRefKeys.has(key) || isAttachmentSelectedForGithubItem(current, item)) {
       return current;
     }
-    return toggleGithubAttachment(current, item);
+    return toggleGithubAttachment(current, item, search.provider);
   });
 }
 
@@ -199,6 +202,7 @@ async function fetchGithubRefSearch({
         cwd: snapshot.cwd,
         query: String(ref.number),
         enabled: true,
+        hostingSearchEnabled: snapshot.hostingSearchEnabled,
       }),
     );
   } catch {
