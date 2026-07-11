@@ -98,12 +98,12 @@ export function usePersonalitySelection(
   // clearing can't immediately re-select the still-matching personality.
   const interactedRef = useRef(false);
 
+  // Depend on the roster slice, not the whole config — unrelated daemon-config
+  // changes must not rebuild the roster → resolutions → personalities chain.
+  const rosterSource = config?.agentPersonalities?.personalities;
   const roster = useMemo(
-    () =>
-      (config?.agentPersonalities?.personalities ?? []).filter((personality) =>
-        personalityHasRole(personality, role),
-      ),
-    [config, role],
+    () => (rosterSource ?? []).filter((personality) => personalityHasRole(personality, role)),
+    [rosterSource, role],
   );
 
   const resolutions = useMemo(
@@ -199,5 +199,18 @@ export function usePersonalitySelection(
     selectedPersonalityId,
   ]);
 
-  return { personalities, selectedPersonalityId, selectPersonality, clearPersonality };
+  // A selection whose personality has since left the roster (deleted remotely,
+  // role removed) reads as no selection — the draft must not spawn with a stale
+  // id the daemon would soft-skip (spinner shown, prompt silently absent).
+  const effectiveSelectedPersonalityId =
+    selectedPersonalityId && roster.some((entry) => entry.id === selectedPersonalityId)
+      ? selectedPersonalityId
+      : null;
+
+  return {
+    personalities,
+    selectedPersonalityId: effectiveSelectedPersonalityId,
+    selectPersonality,
+    clearPersonality,
+  };
 }

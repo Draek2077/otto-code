@@ -251,6 +251,7 @@ interface RenderLeftContentArgs {
   serverId: string;
   focusInput: () => void;
   isCompactLayout: boolean;
+  onPersonalitySwitchingChange: (switching: boolean) => void;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
@@ -264,6 +265,7 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
       serverId={serverId}
       onDropdownClose={focusInput}
       isCompactLayout={isCompactLayout}
+      onPersonalitySwitchingChange={args.onPersonalitySwitchingChange}
     />
   );
 }
@@ -885,6 +887,7 @@ interface ComposerVoiceModeButtonProps {
   handleToggleRealtimeVoice: () => void;
   isConnected: boolean;
   isVoiceSwitching: boolean;
+  isPersonalitySwitching: boolean;
   realtimeVoiceButtonStyle: (
     state: PressableStateCallbackType & { hovered?: boolean },
   ) => (object | undefined)[];
@@ -930,6 +933,7 @@ function ComposerVoiceModeButton({
   handleToggleRealtimeVoice,
   isConnected,
   isVoiceSwitching,
+  isPersonalitySwitching,
   realtimeVoiceButtonStyle,
   voiceToggleKeys,
   t,
@@ -949,7 +953,7 @@ function ComposerVoiceModeButton({
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
         onPress={handleToggleRealtimeVoice}
-        disabled={!isConnected || isVoiceSwitching}
+        disabled={!isConnected || isVoiceSwitching || isPersonalitySwitching}
         accessibilityLabel={t("composer.voice.enableVoiceMode")}
         accessibilityRole="button"
         style={realtimeVoiceButtonStyle}
@@ -1080,6 +1084,11 @@ export function Composer({
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
   const [folderSearchQuery, setFolderSearchQuery] = useState("");
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
+  // Mirrored up from AgentControls: true while an agent.personality.set RPC is
+  // in flight. Locks send (button + keyboard), dictation, and voice mode —
+  // typing and attachments deliberately stay enabled, so this must never feed
+  // the MessageInput `disabled` prop.
+  const [isPersonalitySwitching, setIsPersonalitySwitching] = useState(false);
   const attachButtonRef = useRef<View | null>(null);
   const messageInputRef = useRef<MessageInputRef>(null);
   const isComposerLocked = resolveIsComposerLocked(submitBehavior, isSubmitLoading);
@@ -1678,6 +1687,7 @@ export function Composer({
         handleToggleRealtimeVoice={handleToggleRealtimeVoice}
         isConnected={isConnected}
         isVoiceSwitching={isVoiceSwitching}
+        isPersonalitySwitching={isPersonalitySwitching}
         realtimeVoiceButtonStyle={realtimeVoiceButtonStyle}
         voiceToggleKeys={voiceToggleKeys}
         t={t}
@@ -1693,6 +1703,7 @@ export function Composer({
       isAgentRunning,
       isConnected,
       isCompactLayout,
+      isPersonalitySwitching,
       isProcessing,
       isVoiceModeForAgent,
       isVoiceSwitching,
@@ -1858,6 +1869,7 @@ export function Composer({
         serverId,
         focusInput,
         isCompactLayout,
+        onPersonalitySwitchingChange: setIsPersonalitySwitching,
       }),
     [agentControls, agentId, focusInput, isCompactLayout, serverId],
   );
@@ -2027,7 +2039,7 @@ export function Composer({
                 submitButtonAccessibilityLabel={submitButtonAccessibilityLabel}
                 submitButtonTestID={submitButtonTestID}
                 submitIcon={submitIcon}
-                isSubmitDisabled={isSubmitBusy}
+                isSubmitDisabled={isSubmitBusy || isPersonalitySwitching}
                 isSubmitLoading={isSubmitBusy}
                 preserveHeightOnSubmit={submitBehavior === "preserve-and-lock"}
                 attachments={selectedAttachments}
@@ -2036,7 +2048,7 @@ export function Composer({
                 onAttachButtonRef={handleAttachButtonRef}
                 onAddImages={addImages}
                 client={client}
-                isReadyForDictation={isDictationReady}
+                isReadyForDictation={isDictationReady && !isPersonalitySwitching}
                 placeholder={messagePlaceholder}
                 autoFocus={messageInputAutoFocus}
                 autoFocusKey={`${serverId}:${agentId}`}

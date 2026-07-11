@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,7 @@ import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   CombinedModelSelector,
   type SelectorPersonality,
@@ -44,13 +46,18 @@ import {
 } from "@/provider-selection/provider-selection";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import { resolvePersonalityForForm } from "@/provider-selection/personality-form";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import {
   buildFavoriteModelKey,
   mergeProviderPreferences,
+  mergeSuppressPersonalitySwitchWarning,
   toggleFavoriteModel,
   useFormPreferences,
 } from "@/hooks/use-form-preferences";
+import { confirmDialogWithCheckbox, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { DraftAgentModeControl, AgentModeControl } from "@/composer/agent-controls/mode-control";
@@ -61,7 +68,10 @@ import type {
   AgentMode,
   AgentModelDefinition,
   AgentProvider,
+  ProviderSnapshotEntry,
 } from "@otto-code/protocol/agent-types";
+import type { AgentPersonality } from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import {
   getFeatureHighlightColor,
@@ -80,65 +90,432 @@ interface AgentControlOption {
   label: string;
 }
 
-// Synthetic id for the read-only personality identity shown on a running agent's
-// controls. The agent carries only the personality name (not the roster id), so
-// this stands in as the selected id purely to drive the trigger label.
-const RUNNING_AGENT_PERSONALITY_ID = "__running_agent_personality__";
+// Stable empty fallbacks so the running-agent personality memos keep a constant
+// deps identity while the provider snapshot / daemon config are still loading.
+const EMPTY_SNAPSHOT_ENTRIES: readonly ProviderSnapshotEntry[] = [];
+const EMPTY_PERSONALITY_ROSTER: readonly AgentPersonality[] = [];
+
+// A personality switch restarts the provider query, so the controls lock while
+// it's in flight. If the daemon doesn't answer within this window the controls
+// re-enable so the user can retry or carry on (the switch may still land late —
+// agent_state then updates the identity on its own).
+const PERSONALITY_SWITCH_TIMEOUT_MS = 30_000;
 
 /**
- * Build the read-only personality identity for a running agent's controls: a
- * one-entry roster (labels the model trigger, no section since no onSelect) plus
- * effort hidden while a personality is bound. Returns bare provider/model
- * controls when the agent has no personality.
+ * Build the selectable personality roster for a running agent's model picker:
+ * the host's personalities that carry the "chat" role AND belong to the agent's
+ * locked-in provider family, resolved for availability against the live snapshot.
+ * The family menu pins these above the raw model list so a running chat agent can
+ * switch to a same-family personality (see combined-model-selector). Empty ⇒
+ * bare model rows.
  */
-function buildRunningAgentPersonalityControls(input: {
-  provider: string;
-  personalityName: string | null;
-  personalitySpinner: { glowA: string; glowB: string } | null;
-  thinkingOptions: AgentControlOption[];
-}): {
-  personalities: SelectorPersonality[] | undefined;
-  selectedPersonalityId: string | undefined;
-  thinkingOptions: AgentControlOption[] | undefined;
-} {
-  const { provider, personalityName, personalitySpinner, thinkingOptions } = input;
-  if (!personalityName) {
+function buildRunningChatPersonalities(input: {
+  roster: readonly AgentPersonality[];
+  entries: readonly ProviderSnapshotEntry[];
+}): SelectorPersonality[] {
+  const { roster, entries } = input;
+  return roster.map((personality) => {
+    const resolution = resolvePersonalityForForm(personality, entries);
     return {
-      personalities: undefined,
-      selectedPersonalityId: undefined,
-      thinkingOptions: thinkingOptions.length > 1 ? thinkingOptions : undefined,
+      id: personality.id,
+      name: personality.name,
+      provider: personality.provider,
+      subtitle: `${personality.provider} · ${personality.model}`,
+      glowA: personality.spinner?.glowA,
+      glowB: personality.spinner?.glowB,
+      available: resolution.available,
+      unavailableReason: resolution.available ? undefined : resolution.reason,
+    };
+  });
+}
+
+/**
+ * Copy for the personality-switch warning dialog. The switch (or clear) applies
+ * a new system prompt, which restarts the provider query — the conversation
+ * resumes, but the change lands on the next turn. Suppressible per device.
+ * i18n: English-only pending the agent-personalities translation pass.
+ */
+function buildPersonalitySwitchDialog(target: { name: string } | null): ConfirmDialogInput {
+  if (target === null) {
+    return {
+      title: "Clear personality?",
+      message:
+        "Clearing the personality removes its system prompt from this agent. " +
+        "The provider session restarts to apply the change — the conversation " +
+        "continues, and the model, effort, and mode stay as they are.",
+      confirmLabel: "Clear",
+      checkboxLabel: "Don't show this again",
     };
   }
   return {
-    personalities: [
-      {
-        id: RUNNING_AGENT_PERSONALITY_ID,
-        name: personalityName,
-        provider,
-        subtitle: "",
-        available: true,
-        glowA: personalitySpinner?.glowA,
-        glowB: personalitySpinner?.glowB,
-      },
-    ],
-    selectedPersonalityId: RUNNING_AGENT_PERSONALITY_ID,
-    thinkingOptions: undefined,
+    title: `Switch to ${target.name}?`,
+    message:
+      `Switching applies ${target.name}'s model, effort, mode, and system prompt ` +
+      "to this running agent. The provider session restarts to pick up the new " +
+      "prompt — the conversation continues, and the change takes effect on the " +
+      "next turn.",
+    confirmLabel: "Switch",
+    checkboxLabel: "Don't show this again",
   };
+}
+
+/**
+ * Copy for picking a raw model while a personality is bound: one confirm covers
+ * both halves (clear the personality, then apply the chosen model). Shares the
+ * same device-local suppression as the switch/clear dialogs.
+ * i18n: English-only pending the agent-personalities translation pass.
+ */
+function buildModelOverPersonalityDialog(input: {
+  personalityName: string;
+  modelLabel: string;
+}): ConfirmDialogInput {
+  return {
+    title: `Switch to ${input.modelLabel}?`,
+    message:
+      `Picking a plain model releases ${input.personalityName} — its system prompt ` +
+      `is removed and the agent switches to ${input.modelLabel}. The provider ` +
+      "session restarts to apply the change; the conversation continues, and it " +
+      "takes effect on the next turn.",
+    confirmLabel: "Switch",
+    checkboxLabel: "Don't show this again",
+  };
+}
+
+/**
+ * Running chat agent's family-scoped personality selection for the model picker.
+ * Filters the host roster to "chatter"-role personalities on the agent's locked-in
+ * provider, and seeds the selection from the agent's live personality name. A pick
+ * (after a suppressible warning dialog) goes through one agent.personality.set RPC:
+ * the daemon applies prompt + identity + model/mode/effort atomically and restarts
+ * the provider query, then the updated agent_state flows the new identity back —
+ * there is no client-side selection state to drift.
+ */
+function useRunningChatPersonality(input: {
+  agentId: string;
+  serverId: string;
+  agent: AgentControlsSlice;
+  entries: readonly ProviderSnapshotEntry[] | undefined;
+  client: DaemonClient | null;
+  toast: ReturnType<typeof useToast>;
+}): {
+  personalities: SelectorPersonality[] | undefined;
+  selectedPersonalityId: string | null;
+  onSelectPersonality: ((id: string) => void) | undefined;
+  onClearPersonality: (() => void) | undefined;
+  onSelectModelOverPersonality: ((provider: string, modelId: string) => void) | undefined;
+  hasBoundPersonality: boolean;
+  /** True while an agent.personality.set RPC is in flight (capped at 30s). */
+  isSwitching: boolean;
+} {
+  const { agentId, serverId, agent, client, toast } = input;
+  const { config } = useDaemonConfig(serverId);
+  // COMPAT(setAgentPersonality): added in v0.5.0 — an older daemon cannot apply
+  // a personality to a running agent, so the switcher's handlers hide there
+  // (the bound identity still displays read-only via the fallback entry).
+  const canSetPersonality = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.setAgentPersonality === true,
+  );
+  const { preferences, updatePreferences } = useFormPreferences();
+  const provider = agent?.provider;
+  const personalityName = agent?.personalityName;
+  const boundPersonalityId = agent?.personalityId;
+  const entries = input.entries ?? EMPTY_SNAPSHOT_ENTRIES;
+
+  const familyRoster = useMemo(
+    () =>
+      (config?.agentPersonalities?.personalities ?? EMPTY_PERSONALITY_ROSTER).filter(
+        (personality) =>
+          personalityHasRole(personality, "chatter") && personality.provider === provider,
+      ),
+    [config?.agentPersonalities?.personalities, provider],
+  );
+  const rosterPersonalities = useMemo(
+    () => buildRunningChatPersonalities({ roster: familyRoster, entries }),
+    [familyRoster, entries],
+  );
+  // Selection keys on the stable personality id; the name match is the
+  // fallback against daemons that predate personalityId on agent_state.
+  const rosterSelectedId = useMemo(
+    () =>
+      resolveRosterSelectedId({
+        familyRoster,
+        boundPersonalityId,
+        personalityName,
+      }),
+    [familyRoster, boundPersonalityId, personalityName],
+  );
+  // The agent can be bound to a personality the selectable roster can't
+  // account for — deleted, renamed (old daemons match by name), chatter role
+  // removed, or a daemon that predates the live switch. Synthesize a
+  // display-only entry from agent_state so the trigger keeps the truthful
+  // identity (name + spinner) instead of half-reverting to the raw model.
+  const fallbackEntry = useMemo(
+    () =>
+      rosterSelectedId
+        ? null
+        : buildBoundFallbackPersonality({
+            boundPersonalityId,
+            personalityName,
+            provider,
+            model: agent?.runtimeModelId ?? agent?.model ?? null,
+            spinner: agent?.personalitySpinner,
+          }),
+    [
+      rosterSelectedId,
+      boundPersonalityId,
+      personalityName,
+      provider,
+      agent?.runtimeModelId,
+      agent?.model,
+      agent?.personalitySpinner,
+    ],
+  );
+  const selectedPersonalityId = rosterSelectedId ?? fallbackEntry?.id ?? null;
+
+  const suppressWarning = preferences.suppressPersonalitySwitchWarning === true;
+  const confirmWithSuppression = useCallback(
+    async (dialog: ConfirmDialogInput): Promise<boolean> => {
+      if (suppressWarning) {
+        return true;
+      }
+      const result = await confirmDialogWithCheckbox(dialog);
+      if (result.confirmed && result.checkboxChecked) {
+        void updatePreferences((current) =>
+          mergeSuppressPersonalitySwitchWarning({ preferences: current, suppressed: true }),
+        ).catch((error) => {
+          console.warn("[AgentControls] persist switch-warning suppression failed", error);
+        });
+      }
+      return result.confirmed;
+    },
+    [suppressWarning, updatePreferences],
+  );
+
+  // In-flight lock. The token guards against a stale completion (or the 30s
+  // timeout) clobbering the lock of a newer switch started after it.
+  const [isSwitching, setIsSwitching] = useState(false);
+  const switchTokenRef = useRef(0);
+  const runLockedSwitch = useCallback(
+    async (operation: () => Promise<void>) => {
+      const token = ++switchTokenRef.current;
+      setIsSwitching(true);
+      const timeout = setTimeout(() => {
+        if (switchTokenRef.current !== token) return;
+        setIsSwitching(false);
+        // i18n: English-only pending the agent-personalities translation pass.
+        toast.error(
+          "Personality switch timed out — controls re-enabled. It may still apply in the background.",
+        );
+      }, PERSONALITY_SWITCH_TIMEOUT_MS);
+      try {
+        await operation();
+      } catch (error) {
+        console.warn("[AgentControls] personality switch failed", error);
+        toast.error(toErrorMessage(error));
+      } finally {
+        clearTimeout(timeout);
+        if (switchTokenRef.current === token) {
+          setIsSwitching(false);
+        }
+      }
+    },
+    [toast],
+  );
+
+  const applyPersonality = useCallback(
+    (personalityId: string | null, dialogTarget: { name: string } | null) => {
+      if (!client) return;
+      void (async () => {
+        if (!(await confirmWithSuppression(buildPersonalitySwitchDialog(dialogTarget)))) {
+          return;
+        }
+        await runLockedSwitch(async () => {
+          const notice = await client.setAgentPersonality(agentId, personalityId);
+          showProviderNoticeToast(toast, notice);
+        });
+      })();
+    },
+    [agentId, client, confirmWithSuppression, runLockedSwitch, toast],
+  );
+  const onSelectPersonality = useCallback(
+    (id: string) => {
+      const personality = familyRoster.find((entry) => entry.id === id);
+      if (!personality) return;
+      applyPersonality(id, { name: personality.name });
+    },
+    [applyPersonality, familyRoster],
+  );
+  const onClearPersonality = useCallback(() => {
+    applyPersonality(null, null);
+  }, [applyPersonality]);
+  // Picking a raw model with a personality bound: one confirm, then clear the
+  // personality and apply the model as a single locked flow. The model half
+  // also persists the last-used-model preference, mirroring handleSelectModel.
+  const boundPersonalityLabel =
+    familyRoster.find((entry) => entry.id === selectedPersonalityId)?.name ?? personalityName;
+  const onSelectModelOverPersonality = useCallback(
+    (providerId: string, modelId: string) => {
+      if (!client) return;
+      const modelLabel = resolveSnapshotModelLabel(entries, providerId, modelId);
+      void (async () => {
+        const dialog = buildModelOverPersonalityDialog({
+          personalityName: boundPersonalityLabel ?? "the personality",
+          modelLabel,
+        });
+        if (!(await confirmWithSuppression(dialog))) {
+          return;
+        }
+        void updatePreferences((current) =>
+          mergeProviderPreferences({
+            preferences: current,
+            provider: providerId,
+            updates: { model: modelId },
+          }),
+        ).catch((error) => {
+          console.warn("[AgentControls] persist model preference failed", error);
+        });
+        await runLockedSwitch(async () => {
+          const notice = await client.setAgentPersonality(agentId, null);
+          await client.setAgentModel(agentId, modelId);
+          showProviderNoticeToast(toast, notice);
+        });
+      })();
+    },
+    [
+      agentId,
+      boundPersonalityLabel,
+      client,
+      confirmWithSuppression,
+      entries,
+      runLockedSwitch,
+      toast,
+      updatePreferences,
+    ],
+  );
+
+  // COMPAT(setAgentPersonality): old daemon — read-only identity, no handlers,
+  // so the model picker can't emit the unsupported RPC.
+  if (!canSetPersonality) {
+    return buildReadOnlyChatPersonalityResult(fallbackEntry);
+  }
+  const personalities = fallbackEntry
+    ? [...rosterPersonalities, fallbackEntry]
+    : rosterPersonalities;
+  return {
+    personalities: personalities.length > 0 ? personalities : undefined,
+    selectedPersonalityId,
+    onSelectPersonality,
+    onClearPersonality,
+    onSelectModelOverPersonality,
+    hasBoundPersonality: selectedPersonalityId != null,
+    isSwitching,
+  };
+}
+
+// Read-only shape for daemons without the live switch: the bound identity still
+// displays, but no handler exists that could emit the unsupported RPC.
+function buildReadOnlyChatPersonalityResult(
+  fallbackEntry: SelectorPersonality | null,
+): ReturnType<typeof useRunningChatPersonality> {
+  return {
+    personalities: fallbackEntry ? [fallbackEntry] : undefined,
+    selectedPersonalityId: fallbackEntry?.id ?? null,
+    onSelectPersonality: undefined,
+    onClearPersonality: undefined,
+    onSelectModelOverPersonality: undefined,
+    hasBoundPersonality: fallbackEntry != null,
+    isSwitching: false,
+  };
+}
+
+// Pure selection resolution, split out of the hook for the complexity budget.
+function resolveRosterSelectedId(input: {
+  familyRoster: readonly AgentPersonality[];
+  boundPersonalityId: string | null | undefined;
+  personalityName: string | null | undefined;
+}): string | null {
+  const { familyRoster, boundPersonalityId, personalityName } = input;
+  if (boundPersonalityId) {
+    return familyRoster.some((entry) => entry.id === boundPersonalityId)
+      ? boundPersonalityId
+      : null;
+  }
+  if (!personalityName) {
+    return null;
+  }
+  return familyRoster.find((entry) => entry.name === personalityName)?.id ?? null;
+}
+
+const BOUND_PERSONALITY_FALLBACK_ID = "__bound-personality__";
+
+function resolveSnapshotModelLabel(
+  entries: readonly ProviderSnapshotEntry[],
+  providerId: string,
+  modelId: string,
+): string {
+  const entry = entries.find((candidate) => candidate.provider === providerId);
+  const model = entry?.models?.find((candidate) => candidate.id === modelId);
+  return model?.label ?? modelId;
+}
+
+function buildBoundFallbackPersonality(input: {
+  boundPersonalityId: string | null | undefined;
+  personalityName: string | null | undefined;
+  provider: string | undefined;
+  model: string | null;
+  spinner: { glowA: string; glowB: string } | null | undefined;
+}): SelectorPersonality | null {
+  const { boundPersonalityId, personalityName, provider, model, spinner } = input;
+  if (!personalityName) {
+    return null;
+  }
+  return {
+    id: boundPersonalityId ?? BOUND_PERSONALITY_FALLBACK_ID,
+    name: personalityName,
+    provider: provider ?? "",
+    subtitle: model && provider ? `${provider} · ${model}` : (provider ?? ""),
+    glowA: spinner?.glowA,
+    glowB: spinner?.glowB,
+    available: true,
+    unavailableReason: undefined,
+  };
+}
+
+// A bound personality fixed effort at spawn, so hide the effort chip while one is
+// selected (mirrors the draft/artifact surfaces); otherwise show it when there's a
+// real choice. Kept as a plain helper so the branches don't inflate AgentControls.
+function resolvePersonalityAwareThinkingOptions(
+  hasBoundPersonality: boolean,
+  thinkingOptions: AgentControlOption[],
+): AgentControlOption[] | undefined {
+  if (hasBoundPersonality || thinkingOptions.length <= 1) {
+    return undefined;
+  }
+  return thinkingOptions;
 }
 
 type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
 
 /**
- * Optional personality roster + selection wired into the model picker. Only the
- * draft (new-chat / Chatter) surface passes these; the active-agent controls
- * leave them undefined so a running agent never gains a personality switcher
- * (running agents must not swap personality mid-stream).
+ * Optional personality roster + selection wired into the model picker. The
+ * draft (new-chat / Chatter) surface passes client-state handlers; the
+ * active-agent controls pass RPC-backed handlers from useRunningChatPersonality
+ * (agent.personality.set live switch). On daemons without that capability the
+ * running surface passes a read-only roster (identity display, no handlers).
  */
 interface AgentControlsPersonalityProps {
   personalities?: SelectorPersonality[];
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
   onClearPersonality?: () => void;
+  /**
+   * Picking a raw model while a personality is bound. When set, the picker
+   * routes the model pick here INSTEAD of onSelect + onClearPersonality, so
+   * the owner can confirm once and apply "clear personality + set model" as a
+   * single flow (running agents). Absent ⇒ the picker falls back to
+   * onSelect + onClearPersonality (draft surfaces, instant client-state).
+   */
+  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
 }
 
 interface ControlledAgentControlsProps extends AgentControlsPersonalityProps {
@@ -168,6 +545,12 @@ interface ControlledAgentControlsProps extends AgentControlsPersonalityProps {
   desktopExtras?: ReactNode;
   modelSelectorServerId?: string | null;
   isCompactLayout?: boolean;
+  /**
+   * A personality switch RPC is in flight: the model trigger shows a spinner
+   * in place of the provider glyph. Callers pair this with `disabled` so the
+   * whole controls row locks until the switch completes or times out.
+   */
+  isPersonalitySwitching?: boolean;
 }
 
 export interface DraftAgentControlsProps extends AgentControlsPersonalityProps {
@@ -203,6 +586,13 @@ interface AgentControlsProps {
   serverId: string;
   onDropdownClose?: () => void;
   isCompactLayout?: boolean;
+  /**
+   * Mirrors the personality-switch in-flight state up to the composer so it
+   * can lock send/dictation/voice-mode while the RPC runs. Typing and
+   * attachments stay enabled — the composer must not route this through its
+   * `disabled` prop.
+   */
+  onPersonalitySwitchingChange?: (switching: boolean) => void;
 }
 
 function findOptionLabel(
@@ -419,8 +809,8 @@ type AgentControlsSlice = {
   model: string | null | undefined;
   features: AgentFeature[] | undefined;
   thinkingOptionId: string | null | undefined;
-  lastUsage: unknown;
   personalityName: string | null;
+  personalityId: string | null;
   personalitySpinner: { glowA: string; glowB: string } | null;
 } | null;
 
@@ -440,8 +830,8 @@ function selectAgentControlsSlice(
     model: currentAgent.model,
     features: currentAgent.features,
     thinkingOptionId: currentAgent.thinkingOptionId,
-    lastUsage: currentAgent.lastUsage,
     personalityName: currentAgent.personalityName ?? null,
+    personalityId: currentAgent.personalityId ?? null,
     personalitySpinner: currentAgent.personalitySpinner ?? null,
   };
 }
@@ -516,10 +906,12 @@ function ControlledAgentControls({
   desktopExtras,
   modelSelectorServerId = null,
   isCompactLayout,
+  isPersonalitySwitching = false,
   personalities,
   selectedPersonalityId,
   onSelectPersonality,
   onClearPersonality,
+  onSelectModelOverPersonality,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -730,8 +1122,12 @@ function ControlledAgentControls({
           renderThinkingOption={renderThinkingOption}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
+          isPersonalitySwitching={isPersonalitySwitching}
           personalities={personalities}
           selectedPersonalityId={selectedPersonalityId}
+          onSelectPersonality={onSelectPersonality}
+          onClearPersonality={onClearPersonality}
+          onSelectModelOverPersonality={onSelectModelOverPersonality}
         />
       ) : (
         <SheetAgentControlsContent
@@ -764,10 +1160,12 @@ function ControlledAgentControls({
           renderThinkingOption={renderThinkingOption}
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
+          isPersonalitySwitching={isPersonalitySwitching}
           personalities={personalities}
           selectedPersonalityId={selectedPersonalityId}
           onSelectPersonality={onSelectPersonality}
           onClearPersonality={onClearPersonality}
+          onSelectModelOverPersonality={onSelectModelOverPersonality}
         />
       )}
     </View>
@@ -822,9 +1220,17 @@ interface DesktopAgentControlsContentProps {
   }) => ReactElement;
   extras?: ReactNode;
   modelSelectorServerId: string | null;
-  /** Read-only personality identity for a running personality agent (label only). */
+  isPersonalitySwitching?: boolean;
+  /**
+   * Personality roster + selection for the model picker's family menu. Selectable
+   * when onSelectPersonality is wired (running chat agent); a bare roster with no
+   * handlers just labels the trigger.
+   */
   personalities?: SelectorPersonality[];
   selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
+  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
@@ -874,8 +1280,12 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     renderThinkingOption,
     extras,
     modelSelectorServerId,
+    isPersonalitySwitching = false,
     personalities,
     selectedPersonalityId,
+    onSelectPersonality,
+    onClearPersonality,
+    onSelectModelOverPersonality,
   } = props;
 
   return (
@@ -929,8 +1339,12 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 serverId={modelSelectorServerId}
                 desktopPlacement="top-start"
                 desktopMinWidth={360}
+                triggerLoading={isPersonalitySwitching}
                 personalities={personalities}
                 selectedPersonalityId={selectedPersonalityId}
+                onSelectPersonality={onSelectPersonality}
+                onClearPersonality={onClearPersonality}
+                onSelectModelOverPersonality={onSelectModelOverPersonality}
               />
             </View>
           </TooltipTrigger>
@@ -1031,6 +1445,7 @@ interface SheetAgentControlsContentProps extends AgentControlsPersonalityProps {
   }) => ReactElement;
   extras?: ReactNode;
   modelSelectorServerId: string | null;
+  isPersonalitySwitching?: boolean;
 }
 
 function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
@@ -1066,10 +1481,12 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     renderThinkingOption,
     extras,
     modelSelectorServerId,
+    isPersonalitySwitching = false,
     personalities,
     selectedPersonalityId,
     onSelectPersonality,
     onClearPersonality,
+    onSelectModelOverPersonality,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
@@ -1102,19 +1519,31 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   // Icon-only on mobile — the label rarely fits next to the mode chip and the
   // other toolbar controls, so it's dropped instead of wrapping or truncating.
   // A bound personality still tints the glyph with its colors (see desktop).
+  // While a personality switch is in flight the glyph becomes a spinner.
   const renderModelTrigger = useCallback(
     () => (
       <View pointerEvents="none" style={styles.prefsButton} testID="agent-controls-model">
-        <CompactModelTriggerIcon
-          provider={provider}
-          ProviderIcon={ProviderIcon}
-          personality={selectedPersonality}
-          size={theme.iconSize.md}
-          color={theme.colors.foregroundMuted}
-        />
+        {isPersonalitySwitching ? (
+          <LoadingSpinner size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+        ) : (
+          <CompactModelTriggerIcon
+            provider={provider}
+            ProviderIcon={ProviderIcon}
+            personality={selectedPersonality}
+            size={theme.iconSize.md}
+            color={theme.colors.foregroundMuted}
+          />
+        )}
       </View>
     ),
-    [ProviderIcon, provider, selectedPersonality, theme.iconSize.md, theme.colors.foregroundMuted],
+    [
+      ProviderIcon,
+      isPersonalitySwitching,
+      provider,
+      selectedPersonality,
+      theme.iconSize.md,
+      theme.colors.foregroundMuted,
+    ],
   );
 
   const thinkingButtonStyle = makeBadgePressableStyle(
@@ -1154,6 +1583,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           selectedPersonalityId={selectedPersonalityId}
           onSelectPersonality={onSelectPersonality}
           onClearPersonality={onClearPersonality}
+          onSelectModelOverPersonality={onSelectModelOverPersonality}
         />
       ) : null}
 
@@ -1527,6 +1957,7 @@ export const AgentControls = memo(function AgentControls({
   serverId,
   onDropdownClose,
   isCompactLayout,
+  onPersonalitySwitchingChange,
 }: AgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
@@ -1702,27 +2133,43 @@ export const AgentControls = memo(function AgentControls({
     [refreshSnapshot],
   );
 
+  // Selectable same-family personalities for the model picker. Picking one goes
+  // through the agent.personality.set RPC — the daemon applies prompt + identity
+  // + model/mode/effort atomically and restarts the provider query — behind a
+  // suppressible warning dialog. While the RPC is in flight the whole controls
+  // row locks and the model trigger spins (30s cap, then it unlocks for retry).
+  const chatPersonality = useRunningChatPersonality({
+    agentId,
+    serverId,
+    agent,
+    entries: snapshotEntries,
+    client,
+    toast,
+  });
+  const isSwitchingPersonality = chatPersonality.isSwitching;
+
+  useEffect(() => {
+    onPersonalitySwitchingChange?.(isSwitchingPersonality);
+    return () => {
+      onPersonalitySwitchingChange?.(false);
+    };
+  }, [isSwitchingPersonality, onPersonalitySwitchingChange]);
+
   const modeChip = useMemo(
     () => (
-      <AgentModeControl serverId={serverId} agentId={agentId} isCompactLayout={isCompactLayout} />
+      <AgentModeControl
+        serverId={serverId}
+        agentId={agentId}
+        isCompactLayout={isCompactLayout}
+        disabled={isSwitchingPersonality}
+      />
     ),
-    [serverId, agentId, isCompactLayout],
+    [serverId, agentId, isCompactLayout, isSwitchingPersonality],
   );
 
-  // A personality-bound running agent keeps its identity in the controls,
-  // read-only: the model trigger shows the personality name and the effort chip
-  // is hidden (the personality fixed effort at spawn). No onSelect/onClear is
-  // wired, so the picker never renders a personalities section — a live agent
-  // can't switch personality mid-stream, only its raw model.
-  const personalityControls = useMemo(
-    () =>
-      buildRunningAgentPersonalityControls({
-        provider: agent?.provider ?? "",
-        personalityName: agent?.personalityName ?? null,
-        personalitySpinner: agent?.personalitySpinner ?? null,
-        thinkingOptions,
-      }),
-    [agent?.provider, agent?.personalityName, agent?.personalitySpinner, thinkingOptions],
+  const thinkingOptionsForControls = resolvePersonalityAwareThinkingOptions(
+    chatPersonality.hasBoundPersonality,
+    thinkingOptions,
   );
 
   if (!agent) {
@@ -1738,7 +2185,7 @@ export const AgentControls = memo(function AgentControls({
       onSelectModel={handleSelectModel}
       favoriteKeys={favoriteKeys}
       onToggleFavoriteModel={handleToggleFavoriteModel}
-      thinkingOptions={personalityControls.thinkingOptions}
+      thinkingOptions={thinkingOptionsForControls}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={handleSelectThinkingOption}
       features={agent.features}
@@ -1748,12 +2195,16 @@ export const AgentControls = memo(function AgentControls({
       onRetryModelProvider={handleRetryModelProvider}
       isRetryingModelProvider={snapshotIsRefreshing}
       onDropdownClose={onDropdownClose}
-      disabled={!client}
+      disabled={!client || isSwitchingPersonality}
       desktopExtras={modeChip}
       modelSelectorServerId={serverId}
       isCompactLayout={isCompactLayout}
-      personalities={personalityControls.personalities}
-      selectedPersonalityId={personalityControls.selectedPersonalityId}
+      isPersonalitySwitching={isSwitchingPersonality}
+      personalities={chatPersonality.personalities}
+      selectedPersonalityId={chatPersonality.selectedPersonalityId}
+      onSelectPersonality={chatPersonality.onSelectPersonality}
+      onClearPersonality={chatPersonality.onClearPersonality}
+      onSelectModelOverPersonality={chatPersonality.onSelectModelOverPersonality}
     />
   );
 });
@@ -1788,6 +2239,7 @@ export function DraftAgentControls({
   selectedPersonalityId,
   onSelectPersonality,
   onClearPersonality,
+  onSelectModelOverPersonality,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1879,6 +2331,7 @@ export function DraftAgentControls({
           selectedPersonalityId={selectedPersonalityId}
           onSelectPersonality={onSelectPersonality}
           onClearPersonality={onClearPersonality}
+          onSelectModelOverPersonality={onSelectModelOverPersonality}
         />
         {selectedProvider ? (
           <ControlledAgentControls

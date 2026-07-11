@@ -51,6 +51,14 @@ describe("resolveSyntaxColors", () => {
           expect(colors.diffAdded).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
           expect(colors.diffRemoved).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
         });
+
+        it("derives intraline emphasis colors that share the diff hues", () => {
+          const hue = (rgba: string) => rgba.slice(0, rgba.lastIndexOf(","));
+          expect(colors.diffAddedEmphasis).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
+          expect(colors.diffRemovedEmphasis).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
+          expect(hue(colors.diffAddedEmphasis)).toBe(hue(colors.diffAdded));
+          expect(hue(colors.diffRemovedEmphasis)).toBe(hue(colors.diffRemoved));
+        });
       });
     }
   }

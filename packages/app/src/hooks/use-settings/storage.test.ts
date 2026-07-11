@@ -453,6 +453,52 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(deps)).hidePinnedToolbarOptions).toBe(true);
   });
 
+  it("defaults hide-chat-message-details to true when omitted", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hideChatMessageDetails).toBe(true);
+  });
+
+  it("loads a persisted hide-chat-message-details preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ hideChatMessageDetails: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hideChatMessageDetails).toBe(false);
+  });
+
+  it("defaults chat-timestamp-display to absolute and rejects unknown values", async () => {
+    const omitted = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(omitted)).chatTimestampDisplay).toBe("absolute");
+
+    const invalid = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ chatTimestampDisplay: "sundial" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(invalid)).chatTimestampDisplay).toBe("absolute");
+  });
+
+  it("loads a persisted chat-timestamp-display preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ chatTimestampDisplay: "relative" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).chatTimestampDisplay).toBe("relative");
+  });
+
   it("clamps the UI font size into range and rejects non-numeric values", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

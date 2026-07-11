@@ -924,6 +924,67 @@ describe("turn lifecycle events", () => {
     );
   });
 
+  it("stamps turn_completed usage onto the turn's last assistant message", () => {
+    let state = reduceStreamUpdate(
+      [],
+      { type: "timeline", provider: "claude", item: { type: "user_message", text: "hi" } },
+      new Date("2025-01-01T12:00:00Z"),
+    );
+    state = reduceStreamUpdate(
+      state,
+      { type: "timeline", provider: "claude", item: { type: "assistant_message", text: "one" } },
+      new Date("2025-01-01T12:00:01Z"),
+    );
+    state = reduceStreamUpdate(
+      state,
+      {
+        type: "timeline",
+        provider: "claude",
+        item: { type: "assistant_message", text: "two", messageId: "msg-2" },
+      },
+      new Date("2025-01-01T12:00:02Z"),
+    );
+    state = reduceStreamUpdate(
+      state,
+      {
+        type: "turn_completed",
+        provider: "claude",
+        usage: { inputTokens: 100, cachedInputTokens: 2000, outputTokens: 300 },
+      },
+      new Date("2025-01-01T12:00:03Z"),
+    );
+
+    const assistants = state.filter((item) => item.kind === "assistant_message");
+    assert.strictEqual(assistants.length, 2);
+    assert.strictEqual(assistants[0]?.turnUsage, undefined);
+    assert.deepStrictEqual(assistants[1]?.turnUsage, {
+      inputTokens: 100,
+      cachedInputTokens: 2000,
+      outputTokens: 300,
+    });
+  });
+
+  it("does not stamp usage across a completed earlier turn's user boundary", () => {
+    let state = reduceStreamUpdate(
+      [],
+      { type: "timeline", provider: "claude", item: { type: "assistant_message", text: "old" } },
+      new Date("2025-01-01T12:00:00Z"),
+    );
+    state = reduceStreamUpdate(
+      state,
+      { type: "timeline", provider: "claude", item: { type: "user_message", text: "next" } },
+      new Date("2025-01-01T12:00:01Z"),
+    );
+    state = reduceStreamUpdate(
+      state,
+      { type: "turn_completed", provider: "claude", usage: { outputTokens: 5 } },
+      new Date("2025-01-01T12:00:02Z"),
+    );
+
+    const assistant = state.find((item) => item.kind === "assistant_message");
+    assert.strictEqual(assistant?.turnUsage, undefined);
+  });
+
   it("hydrates canonical timeline rows without synthetic turn rows", () => {
     const state = hydrateStreamState([
       {

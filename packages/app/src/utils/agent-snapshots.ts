@@ -60,5 +60,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     attend: snapshot.attend ?? "attended",
     personalitySpinner: snapshot.personalitySpinner ?? null,
     personalityName: snapshot.personalityName ?? null,
+    personalityId: snapshot.personalityId ?? null,
   };
 }

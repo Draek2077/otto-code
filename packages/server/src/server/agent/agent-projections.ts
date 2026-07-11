@@ -155,6 +155,10 @@ export function toAgentPayload(
   if (personalityName !== undefined) {
     payload.personalityName = personalityName;
   }
+  const personalityId = agent.config.personalitySnapshot?.personalityId;
+  if (personalityId !== undefined) {
+    payload.personalityId = personalityId;
+  }
 
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
@@ -271,6 +275,10 @@ function buildStoredAgentPayloadTail(
   const personalityName = record.config?.personalitySnapshot?.name;
   if (personalityName) {
     tail.personalityName = personalityName;
+  }
+  const personalityId = record.config?.personalitySnapshot?.personalityId;
+  if (personalityId) {
+    tail.personalityId = personalityId;
   }
   if (!providerAvailable) {
     tail.providerUnavailable = true;

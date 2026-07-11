@@ -39,6 +39,9 @@ const formPreferencesSchema = z.object({
   // string (not the PersonalityRole enum) so this device-local store never needs
   // to move in lockstep with the role vocabulary.
   lastPersonalityByRole: z.record(z.string(), z.string()).optional(),
+  // "Don't show this again" on the running-agent personality-switch warning
+  // (the switch restarts the provider query). Device-local by design.
+  suppressPersonalitySwitchWarning: z.boolean().optional(),
 });
 
 export type ProviderPreferences = z.infer<typeof providerPreferencesSchema>;
@@ -148,6 +151,13 @@ export function mergeLastPersonality(args: {
     delete next[args.role];
   }
   return { ...args.preferences, lastPersonalityByRole: next };
+}
+
+export function mergeSuppressPersonalitySwitchWarning(args: {
+  preferences: FormPreferences;
+  suppressed: boolean;
+}): FormPreferences {
+  return { ...args.preferences, suppressPersonalitySwitchWarning: args.suppressed };
 }
 
 export function buildFavoriteModelKey(input: FavoriteModelPreference): string {

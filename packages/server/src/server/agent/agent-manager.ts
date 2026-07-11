@@ -11,6 +11,7 @@ import {
   PARENT_AGENT_ID_LABEL,
 } from "@otto-code/protocol/agent-labels";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
+import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -29,6 +30,7 @@ import {
   type AgentPermissionResponse,
   type AgentPermissionResult,
   type AgentPersistenceHandle,
+  type AgentPersonalityUpdate,
   type AgentProviderNotice,
   type AgentPromptInput,
   type AgentProvider,
@@ -235,6 +237,12 @@ export interface AgentManagerOptions {
   registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
+  /**
+   * Fires once per agent spawned with a bound personality (fire-and-forget
+   * usage telemetry). Lives at the createAgent choke point so composer, MCP
+   * create_agent, and schedule spawns all count.
+   */
+  onPersonalitySpawn?: (personalityId: string) => void;
   durableTimelineStore?: AgentTimelineStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
@@ -586,6 +594,7 @@ export class AgentManager {
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
+  private onPersonalitySpawn?: (personalityId: string) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
 
@@ -595,6 +604,7 @@ export class AgentManager {
     this.durableTimelineStore = options?.durableTimelineStore;
     this.onAgentAttention = options?.onAgentAttention;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
+    this.onPersonalitySpawn = options?.onPersonalitySpawn;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
     this.configureOttoTools(options);
@@ -1004,11 +1014,16 @@ export class AgentManager {
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
     const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
-    return this.registerSession(session, storedConfig, resolvedAgentId, {
+    const managed = this.registerSession(session, storedConfig, resolvedAgentId, {
       labels: options.labels,
       initialTitle: options.initialTitle,
       workspaceId: options.workspaceId,
     });
+    const spawnedPersonalityId = storedConfig.personalitySnapshot?.personalityId;
+    if (spawnedPersonalityId) {
+      this.onPersonalitySpawn?.(spawnedPersonalityId);
+    }
+    return managed;
   }
 
   private buildCreateSessionOptions(options?: {
@@ -1380,7 +1395,40 @@ export class AgentManager {
     });
   }
 
+  /**
+   * Config mutations on one agent serialize through a per-agent promise chain:
+   * the multi-await setters (setAgentPersonality resolves snapshots and applies
+   * prompt + brain across several RPC hops) must not interleave with a racing
+   * set_agent_model/mode/thinking and persist a mixed half-and-half state.
+   */
+  private readonly agentConfigMutations = new Map<string, Promise<void>>();
+
+  private async withAgentConfigLock<T>(agentId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.agentConfigMutations.get(agentId) ?? Promise.resolve();
+    const run = previous.then(operation);
+    const settled: Promise<void> = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.agentConfigMutations.set(agentId, settled);
+    const cleanup = async () => {
+      await settled;
+      if (this.agentConfigMutations.get(agentId) === settled) {
+        this.agentConfigMutations.delete(agentId);
+      }
+    };
+    void cleanup();
+    return run;
+  }
+
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
+    return this.withAgentConfigLock(agentId, () => this.setAgentModeUnlocked(agentId, modeId));
+  }
+
+  private async setAgentModeUnlocked(
+    agentId: string,
+    modeId: string,
+  ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
     const notice = (await agent.session.setMode(modeId)) ?? null;
     const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
@@ -1396,6 +1444,10 @@ export class AgentManager {
   }
 
   async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
+    return this.withAgentConfigLock(agentId, () => this.setAgentModelUnlocked(agentId, modelId));
+  }
+
+  private async setAgentModelUnlocked(agentId: string, modelId: string | null): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
@@ -1413,6 +1465,15 @@ export class AgentManager {
   }
 
   async setAgentThinkingOption(
+    agentId: string,
+    thinkingOptionId: string | null,
+  ): Promise<AgentProviderNotice | null> {
+    return this.withAgentConfigLock(agentId, () =>
+      this.setAgentThinkingOptionUnlocked(agentId, thinkingOptionId),
+    );
+  }
+
+  private async setAgentThinkingOptionUnlocked(
     agentId: string,
     thinkingOptionId: string | null,
   ): Promise<AgentProviderNotice | null> {
@@ -1439,7 +1500,146 @@ export class AgentManager {
     return notice;
   }
 
+  /**
+   * Live-switch a running agent's personality (or clear it with null). The
+   * prompt half goes through the session's applyPersonality (providers without
+   * it reject — they cannot change a system prompt mid-conversation); the brain
+   * half (model/mode/effort) rides the existing setters. Identity (name/spinner)
+   * follows automatically: agent_state projects it from config.personalitySnapshot.
+   * The caller resolves the roster personality against the agent's cwd and
+   * guarantees provider match; this method only applies.
+   */
+  async setAgentPersonality(
+    agentId: string,
+    snapshot: ResolvedPersonalitySnapshot | null,
+  ): Promise<AgentProviderNotice | null> {
+    return this.withAgentConfigLock(agentId, () =>
+      this.setAgentPersonalityUnlocked(agentId, snapshot),
+    );
+  }
+
+  private async setAgentPersonalityUnlocked(
+    agentId: string,
+    snapshot: ResolvedPersonalitySnapshot | null,
+  ): Promise<AgentProviderNotice | null> {
+    const agent = this.requireSessionAgent(agentId);
+    const session = agent.session;
+    if (!session.applyPersonality) {
+      throw new Error(
+        `Provider '${agent.config.provider}' does not support switching personality on a running agent`,
+      );
+    }
+    if (snapshot && snapshot.provider !== agent.config.provider) {
+      throw new Error(
+        `Personality "${snapshot.name}" targets provider '${snapshot.provider}', but this agent runs '${agent.config.provider}'`,
+      );
+    }
+
+    // Prompt half. The personality prompt only owns config.systemPrompt when
+    // the caller set none at spawn (mirrors applyPersonalityIdentityToConfig);
+    // a caller-authored prompt survives the switch.
+    const outgoingPersonalityPrompt = agent.config.personalitySnapshot?.systemPrompt;
+    const promptIsPersonalityOwned =
+      agent.config.systemPrompt === undefined ||
+      agent.config.systemPrompt === outgoingPersonalityPrompt;
+    const nextSystemPrompt = promptIsPersonalityOwned
+      ? snapshot?.systemPrompt
+      : agent.config.systemPrompt;
+
+    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+    const personalityUpdate: AgentPersonalityUpdate = {
+      personalitySnapshot: snapshot ?? undefined,
+      systemPrompt: nextSystemPrompt,
+      // Same rule as applyDaemonAppendSystemPrompt: a personality with
+      // respectGlobalAppendPrompt === false owns its whole prompt.
+      daemonAppendSystemPrompt:
+        daemonAppendSystemPrompt && snapshot?.respectGlobalAppendPrompt !== false
+          ? daemonAppendSystemPrompt
+          : undefined,
+    };
+    const notices: (AgentProviderNotice | null)[] = [];
+
+    // Brain half first — only when binding a personality; clearing keeps the
+    // brain. Ordering matters for Claude: applyPersonality flags a query
+    // restart, and the brain's setModel/setMode call ensureQuery, which would
+    // then tear down + respawn the CLI synchronously inside this RPC. Brain
+    // first rides the live query; the restart stays lazy (next turn).
+    if (snapshot) {
+      notices.push(...(await this.applyPersonalityBrain(agent, session, snapshot)));
+    }
+    notices.push((await session.applyPersonality(personalityUpdate)) ?? null);
+
+    // Stored config: personality + prompt persist; daemonAppendSystemPrompt is
+    // deliberately runtime-only (re-derived from daemon settings on resume).
+    agent.config.personalitySnapshot = snapshot ?? undefined;
+    agent.config.systemPrompt = nextSystemPrompt;
+
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return notices.find((notice) => notice !== null) ?? null;
+  }
+
+  /**
+   * Apply a personality's brain fields (model/effort/mode) to a live session and
+   * mirror them onto the managed agent's config/runtimeInfo. Split out of
+   * setAgentPersonality purely to keep that method under the complexity ceiling.
+   */
+  private async applyPersonalityBrain(
+    agent: ManagedAgent,
+    session: AgentSession,
+    snapshot: ResolvedPersonalitySnapshot,
+  ): Promise<(AgentProviderNotice | null)[]> {
+    const notices: (AgentProviderNotice | null)[] = [];
+    // Ordering carries two invariants:
+    // 1. setMode is the fallible step (Claude rejects e.g. "auto" on
+    //    Bedrock/Vertex), so it runs FIRST — a mode failure must not leave a
+    //    half-applied switch (new model + old identity) behind.
+    // 2. Mode and model ride the live query (Claude: ensureQuery + SDK
+    //    setters) and run before setThinkingOption, which flags a query
+    //    restart.
+    if (snapshot.modeId !== undefined) {
+      notices.push((await session.setMode(snapshot.modeId)) ?? null);
+      const currentMode = (await session.getCurrentMode()) ?? snapshot.modeId;
+      agent.config.modeId = currentMode ?? undefined;
+      agent.currentModeId = currentMode;
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
+      }
+    }
+    if (session.setModel) {
+      await session.setModel(snapshot.model);
+      agent.config.model = snapshot.model;
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = { ...agent.runtimeInfo, model: snapshot.model };
+      }
+    }
+    if (session.setThinkingOption) {
+      // Always set — a snapshot without an effort (degraded or unspecified)
+      // clears the previous personality's thinking option back to the model
+      // default instead of silently carrying it onto the new model.
+      notices.push((await session.setThinkingOption(snapshot.thinkingOptionId ?? null)) ?? null);
+      agent.config.thinkingOptionId = snapshot.thinkingOptionId;
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = {
+          ...agent.runtimeInfo,
+          thinkingOptionId: snapshot.thinkingOptionId,
+        };
+      }
+    }
+    return notices;
+  }
+
   async setAgentFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
+    return this.withAgentConfigLock(agentId, () =>
+      this.setAgentFeatureUnlocked(agentId, featureId, value),
+    );
+  }
+
+  private async setAgentFeatureUnlocked(
+    agentId: string,
+    featureId: string,
+    value: unknown,
+  ): Promise<void> {
     const agent = this.requireAgent(agentId);
 
     if (!agent.session.setFeature) {

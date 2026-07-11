@@ -86,6 +86,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
             <RedesignSection />
             <MultiProviderSection />
             <OpenAICompatibleSection />
+            <PersonalitiesSection />
             <SelfHostedSection />
             <WorkflowSection />
             <PreviewVerificationSection />
@@ -205,6 +206,7 @@ const PASEO_PILLARS = [
     items: [
       "Frontier-model tooling for every provider",
       "In-browser preview verification for agents",
+      "Named agent personalities, spawnable by role",
       "Artifacts, rich permission modes, new tools",
       "Local models via LM Studio, Ollama & friends",
       "A familiar, refined UI that never boxes you in",
@@ -406,6 +408,104 @@ function OpenAICompatibleSection() {
           >
             <span className="font-medium">{name}</span>
           </div>
+        ))}
+      </div>
+    </FeatureSection>
+  );
+}
+
+// Starter team of agent personalities. Each carries two "spinner" glow colors
+// (the app tints a running agent's identity with them) — represented here as a
+// gradient orb. Style objects live at module scope so JSX passes a stable
+// reference (jsx-no-new-object-as-prop).
+const PERSONALITY_TEAM = [
+  {
+    name: "Atlas",
+    model: "Claude · Opus",
+    roles: ["Orchestrator", "Chatter"],
+    orbStyle: { background: "linear-gradient(135deg, #4f46e5, #f59e0b)" },
+  },
+  {
+    name: "Sage",
+    model: "Claude · Opus",
+    roles: ["Advisor"],
+    orbStyle: { background: "linear-gradient(135deg, #14b8a6, #8b5cf6)" },
+  },
+  {
+    name: "Vera",
+    model: "Claude · Sonnet",
+    roles: ["Judger"],
+    orbStyle: { background: "linear-gradient(135deg, #f43f5e, #fbbf24)" },
+  },
+  {
+    name: "Pixel",
+    model: "Claude · Sonnet",
+    roles: ["Artificer"],
+    orbStyle: { background: "linear-gradient(135deg, #ec4899, #06b6d4)" },
+  },
+  {
+    name: "Dash",
+    model: "Claude · Haiku",
+    roles: ["Worker", "Scheduler"],
+    orbStyle: { background: "linear-gradient(135deg, #22c55e, #a3e635)" },
+  },
+  {
+    name: "Sprocket",
+    model: "Claude · Sonnet",
+    roles: ["Chatter", "Worker"],
+    orbStyle: { background: "linear-gradient(135deg, #64748b, #38bdf8)" },
+  },
+] as const;
+
+function PersonalityCard({
+  name,
+  model,
+  roles,
+  orbStyle,
+}: {
+  name: string;
+  model: string;
+  roles: readonly string[];
+  orbStyle: React.CSSProperties;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <span className="h-8 w-8 shrink-0 rounded-full ring-2 ring-white/10" style={orbStyle} />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-medium text-white/90">{name}</span>
+          <span className="truncate text-xs text-white/35">{model}</span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {roles.map((role) => (
+            <span
+              key={role}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-white/55"
+            >
+              {role}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PersonalitiesSection() {
+  return (
+    <FeatureSection
+      title="A team of agents, by name"
+      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role — a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike."
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {PERSONALITY_TEAM.map((p) => (
+          <PersonalityCard
+            key={p.name}
+            name={p.name}
+            model={p.model}
+            roles={p.roles}
+            orbStyle={p.orbStyle}
+          />
         ))}
       </div>
     </FeatureSection>

@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -28,6 +29,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "@/components/icons/material-icons";
+import { ChatSeamFade } from "@/components/chat-seam-fade";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { usePanelStore } from "@/stores/panel-store";
 import {
@@ -70,6 +72,13 @@ import {
   type TurnContentStrategy,
 } from "./turn-footer";
 import { layoutStream, type StreamLayoutItem } from "./layout";
+import {
+  clampRevealBudget,
+  computeLiveTurnReveal,
+  type TurnRevealSpan,
+  type TurnRevealTicker,
+  useTurnRevealTicker,
+} from "./turn-reveal";
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -137,44 +146,62 @@ function renderPendingPermissionsNode(input: {
   );
 }
 
-function renderStreamItemWithTurnFooter(input: {
+// The plain View around content + footer is a hover scope (docs/hover.md):
+// with the hide-message-details setting on, mousing anywhere over the turn's
+// footer-bearing item reveals the completed-turn details row rendered next to
+// it. Items without a footer skip the wrapper (and its hover state) entirely.
+function StreamItemWithTurnFooter({
+  content,
+  layoutItem,
+  strategy,
+  onForkAssistantTurn,
+}: {
   content: ReactNode;
   layoutItem: StreamLayoutItem;
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
 }): ReactNode {
-  if (!input.content) {
+  const [isHovered, setIsHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+
+  if (!content) {
     return null;
   }
 
-  const footerHost = input.layoutItem.completedFooter;
-  const footer = footerHost ? (
+  const wrappedContent = (
+    <StreamItemWrapper gapBelow={layoutItem.gapBelow}>{content}</StreamItemWrapper>
+  );
+  const footerHost = layoutItem.completedFooter;
+  if (!footerHost) {
+    return wrappedContent;
+  }
+
+  const footer = (
     <CompletedTurnFooterRow
-      strategy={input.strategy}
+      strategy={strategy}
       items={footerHost.items}
       timing={footerHost.timing}
       startIndex={footerHost.startIndex}
-      onForkAssistantTurn={input.onForkAssistantTurn}
+      onForkAssistantTurn={onForkAssistantTurn}
+      revealed={isHovered}
     />
-  ) : null;
-  const content = (
-    <StreamItemWrapper gapBelow={input.layoutItem.gapBelow}>{input.content}</StreamItemWrapper>
   );
 
-  if (input.layoutItem.frameOrder === "footer-then-content") {
-    return (
-      <>
-        {footer}
-        {content}
-      </>
-    );
-  }
-
   return (
-    <>
-      {content}
-      {footer}
-    </>
+    <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+      {layoutItem.frameOrder === "footer-then-content" ? (
+        <>
+          {footer}
+          {wrappedContent}
+        </>
+      ) : (
+        <>
+          {wrappedContent}
+          {footer}
+        </>
+      )}
+    </View>
   );
 }
 
@@ -254,6 +281,28 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+
+/**
+ * Subscribes one live-turn assistant item to the shared reveal ticker. The
+ * snapshot is the item's own clamped budget, so a 32ms tick re-renders ONLY
+ * the item the reveal boundary is currently crossing — fully revealed and
+ * not-yet-reached items bail on an unchanged snapshot.
+ */
+function RevealedAssistantMessage({
+  ticker,
+  span,
+  ...messageProps
+}: ComponentProps<typeof AssistantMessage> & {
+  ticker: TurnRevealTicker;
+  span: TurnRevealSpan;
+}) {
+  const revealBudget = useSyncExternalStore(
+    ticker.subscribe,
+    () => clampRevealBudget(ticker.getRevealed(), span),
+    () => span.length,
+  );
+  return <AssistantMessage {...messageProps} revealBudget={revealBudget} />;
+}
 
 function buildChatHistoryAttachment(input: {
   draftId: string;
@@ -612,8 +661,36 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [agent.capabilities, agentId, client, resolvedServerId],
     );
 
+    // The live turn's typewriter reveal: one paced position over ALL of the
+    // turn's assistant text, spanning promoted blocks and the live head item
+    // alike (see turn-reveal.ts for why per-item pacing can't work). Items the
+    // reveal hasn't reached render nothing yet; the boundary item types.
+    const liveTurnReveal = useMemo(
+      () =>
+        computeLiveTurnReveal({
+          running: agent.status === "running",
+          tail: effectiveStreamItems,
+          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+        }),
+      [agent.status, effectiveStreamItems, effectiveStreamHead],
+    );
+    const revealTicker = useTurnRevealTicker({
+      turnKey: liveTurnReveal.turnKey,
+      target: liveTurnReveal.totalChars,
+      enabled: agent.status === "running",
+    });
+
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
+        const revealSpan = liveTurnReveal.spans.get(item.id);
+        const messageProps = {
+          message: item.text,
+          timestamp: item.timestamp.getTime(),
+          workspaceRoot,
+          serverId: resolvedServerId,
+          client,
+          spacing: layoutItem.assistantSpacing,
+        };
         return (
           <AssistantFileLinkResolverProvider
             client={client}
@@ -622,18 +699,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onOpenWorkspaceFile={handleInlinePathPress}
             toast={toast}
           >
-            <AssistantMessage
-              message={item.text}
-              timestamp={item.timestamp.getTime()}
-              workspaceRoot={workspaceRoot}
-              serverId={resolvedServerId}
-              client={client}
-              spacing={layoutItem.assistantSpacing}
-            />
+            {revealSpan ? (
+              <RevealedAssistantMessage {...messageProps} ticker={revealTicker} span={revealSpan} />
+            ) : (
+              <AssistantMessage {...messageProps} />
+            )}
           </AssistantFileLinkResolverProvider>
         );
       },
-      [client, handleInlinePathPress, resolvedServerId, toast, workspaceRoot],
+      [
+        client,
+        handleInlinePathPress,
+        liveTurnReveal,
+        resolvedServerId,
+        revealTicker,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderThoughtItem = useCallback(
@@ -780,12 +862,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
-        return renderStreamItemWithTurnFooter({
-          content,
-          layoutItem,
-          strategy: streamRenderStrategy,
-          onForkAssistantTurn: handleForkAssistantTurn,
-        });
+        return (
+          <StreamItemWithTurnFooter
+            content={content}
+            layoutItem={layoutItem}
+            strategy={streamRenderStrategy}
+            onForkAssistantTurn={handleForkAssistantTurn}
+          />
+        );
       },
       [handleForkAssistantTurn, renderStreamItemContent, streamRenderStrategy],
     );
@@ -810,6 +894,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <TurnFooter
             isRunning={showRunningTurnFooter}
             inFlightTurnStartedAt={baseRenderModel.turnTiming.runningStartedAt}
+            inFlightEstimatedTokens={baseRenderModel.turnTiming.runningEstimatedTokens}
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
             onForkAssistantTurn={handleForkAssistantTurn}
@@ -820,6 +905,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleForkAssistantTurn,
         showRunningTurnFooter,
         baseRenderModel.turnTiming.runningStartedAt,
+        baseRenderModel.turnTiming.runningEstimatedTokens,
         bottomTurnFooterHost,
         streamRenderStrategy,
         agent.personalitySpinner,
@@ -943,6 +1029,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
             })}
           </MessageOuterSpacingProvider>
+          {/* Seam fades. Both live INSIDE the stream view (not at panel level)
+              so they share a stacking context with the desktop web scrollbar
+              overlay (zIndex 10, rendered by the web strategy) — the scrollbar
+              stays visible over the fades. Must stay rendered BEFORE the
+              scroll-to-bottom overlay: neither fade carries a zIndex, so
+              later-sibling paint order is what keeps the button above them. */}
+          <ChatSeamFade edge="top" />
+          <ChatSeamFade edge="bottom" />
           {!isNearBottom && (
             <Animated.View
               style={stylesheet.scrollToBottomContainer}

@@ -16,18 +16,18 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Agents
 
-| Tool                 | Function                                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `create_agent`       | Create an agent tied to a working directory, optionally with initial settings or a new git worktree. |
-| `send_agent_prompt`  | Send a task to a running agent.                                                                      |
-| `get_agent_status`   | Return the latest snapshot for an agent.                                                             |
-| `list_agents`        | List recent agents as compact metadata.                                                              |
-| `cancel_agent`       | Abort an agent's current run but keep the agent alive.                                               |
-| `archive_agent`      | Soft-delete an agent and remove it from the active list.                                             |
-| `kill_agent`         | Terminate an agent session permanently.                                                              |
-| `update_agent`       | Update an agent name, labels, or runtime settings such as mode/model/thinking/features.              |
-| `get_agent_activity` | Return recent agent timeline entries as a curated summary.                                           |
-| `set_agent_mode`     | Switch an agent's session mode.                                                                      |
+| Tool                 | Function                                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_agent`       | Create an agent tied to a working directory, optionally with initial settings, a [personality](/docs/personalities), or a new git worktree. |
+| `send_agent_prompt`  | Send a task to a running agent.                                                                                                             |
+| `get_agent_status`   | Return the latest snapshot for an agent.                                                                                                    |
+| `list_agents`        | List recent agents as compact metadata.                                                                                                     |
+| `cancel_agent`       | Abort an agent's current run but keep the agent alive.                                                                                      |
+| `archive_agent`      | Soft-delete an agent and remove it from the active list.                                                                                    |
+| `kill_agent`         | Terminate an agent session permanently.                                                                                                     |
+| `update_agent`       | Update an agent name, labels, or runtime settings such as mode/model/effort/features.                                                       |
+| `get_agent_activity` | Return recent agent timeline entries as a curated summary.                                                                                  |
+| `set_agent_mode`     | Switch an agent's session mode.                                                                                                             |
 
 ### Terminals
 
@@ -57,6 +57,14 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 | `list_providers`   | List configured agent providers, availability, and modes.         |
 | `list_models`      | List models for an agent provider.                                |
 | `inspect_provider` | Inspect compact provider capabilities and draft feature settings. |
+
+### Personalities
+
+| Tool                 | Function                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `list_personalities` | List [agent personalities](/docs/personalities) with roles and availability. Restricted to agents running as an **Orchestrator**. |
+
+Personalities are also spawned through `create_agent` (its `personality` argument) and bound to schedules through `create_schedule` / `update_schedule`.
 
 ### Worktrees
 

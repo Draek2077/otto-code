@@ -31,6 +31,15 @@ export interface AgentConfigOperations {
     agentId: string,
     thinkingOptionId: string | null,
   ): Promise<AgentProviderNotice | null>;
+  /**
+   * Live-switch (or clear, with null) the agent's personality. The shell
+   * resolves the roster id against the agent's cwd before applying; resolution
+   * failures reject the request with the unavailability reason.
+   */
+  setPersonality(
+    agentId: string,
+    personalityId: string | null,
+  ): Promise<AgentProviderNotice | null>;
 }
 
 export interface AgentConfigSessionOptions {
@@ -130,6 +139,22 @@ export class AgentConfigSession {
       failureText: "Failed to set agent thinking option",
       run: () => this.operations.setThinking(agentId, thinkingOptionId),
       emitResponse: (payload) => this.host.emit({ type: "set_agent_thinking_response", payload }),
+    });
+  }
+
+  handleAgentPersonalitySetRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.personality.set.request" }>,
+  ): Promise<void> {
+    const { agentId, personalityId, requestId } = msg;
+    return this.applyConfigChange({
+      agentId,
+      requestId,
+      logLabel: "agent.personality.set.request",
+      logFields: { agentId, personalityId, requestId },
+      failureText: "Failed to set agent personality",
+      run: () => this.operations.setPersonality(agentId, personalityId),
+      emitResponse: (payload) =>
+        this.host.emit({ type: "agent.personality.set.response", payload }),
     });
   }
 

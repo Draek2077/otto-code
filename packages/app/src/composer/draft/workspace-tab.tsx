@@ -8,6 +8,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
+import { ChatSeamFade } from "@/components/chat-seam-fade";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { AgentStreamView } from "@/agent-stream/view";
@@ -722,6 +723,9 @@ export function WorkspaceDraftAgentTab({
             </View>
           </ScrollView>
         )}
+        {/* The stream branch's AgentStreamView carries its own seam fades;
+            rendering another here would double-stack the gradient. */}
+        {isSubmitting && draftAgent ? null : <ChatSeamFade edge="top" />}
       </View>
 
       <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>

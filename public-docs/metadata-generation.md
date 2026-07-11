@@ -58,7 +58,7 @@ Each entry accepts:
 
 - `provider` (required) — the provider id. Built-in ids are `claude`, `codex`, `copilot`, `opencode`, and `pi`; custom providers use the id you gave them.
 - `model` (optional) — a specific model id. Omit it to use that provider's default model.
-- `thinkingOptionId` (optional) — a reasoning/thinking level for models that support one. Falls back to the model's default if the value isn't valid for that model.
+- `thinkingOptionId` (optional) — an effort level for models that support one (this config key keeps its historical name; it's the same "Effort" control used everywhere else). Falls back to the model's default if the value isn't valid for that model.
 
 Restart the daemon after editing the file.
 

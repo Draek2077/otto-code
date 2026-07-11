@@ -23,6 +23,8 @@ export const darkHighlightColors: Record<HighlightStyle, string> & DiffBackgroun
   link: "#a5d6ff",
   diffAdded: "rgba(46, 160, 67, 0.15)",
   diffRemoved: "rgba(248, 81, 73, 0.1)",
+  diffAddedEmphasis: "rgba(46, 160, 67, 0.4)",
+  diffRemovedEmphasis: "rgba(248, 81, 73, 0.35)",
 };
 
 export const lightHighlightColors: Record<HighlightStyle, string> & DiffBackgroundColors = {
@@ -48,4 +50,6 @@ export const lightHighlightColors: Record<HighlightStyle, string> & DiffBackgrou
   link: "#0a3069",
   diffAdded: "rgba(46, 160, 67, 0.15)",
   diffRemoved: "rgba(248, 81, 73, 0.1)",
+  diffAddedEmphasis: "rgba(46, 160, 67, 0.4)",
+  diffRemovedEmphasis: "rgba(248, 81, 73, 0.35)",
 };

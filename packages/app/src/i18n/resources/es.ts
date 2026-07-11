@@ -2022,6 +2022,19 @@ export const es: TranslationResources = {
           hint: "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
           accessibilityLabel: "Siempre expandir razonamiento",
         },
+        hideMessageDetails: {
+          title: "Ocultar detalles del mensaje hasta pasar el cursor",
+          hint: "Mantener ocultas las marcas de tiempo, estadísticas y acciones de los mensajes hasta pasar el cursor; en dispositivos táctiles siempre se muestran",
+          accessibilityLabel: "Ocultar detalles del mensaje hasta pasar el cursor",
+        },
+        messageTimestamp: {
+          title: "Formato de hora de los mensajes",
+          hint: "Mostrar la hora de los mensajes como hora exacta o tiempo transcurrido",
+          options: {
+            absolute: "Hora exacta",
+            relative: "Hace cuánto",
+          },
+        },
       },
       layout: {
         title: "Layout",

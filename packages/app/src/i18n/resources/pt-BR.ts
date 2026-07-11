@@ -2007,6 +2007,19 @@ export const ptBR: TranslationResources = {
           hint: "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
           accessibilityLabel: "Sempre expandir raciocínio",
         },
+        hideMessageDetails: {
+          title: "Ocultar detalhes da mensagem até passar o mouse",
+          hint: "Manter carimbos de hora, estatísticas e ações das mensagens ocultos até passar o mouse; em dispositivos de toque ficam sempre visíveis",
+          accessibilityLabel: "Ocultar detalhes da mensagem até passar o mouse",
+        },
+        messageTimestamp: {
+          title: "Formato de hora das mensagens",
+          hint: "Mostrar a hora das mensagens como hora exata ou tempo decorrido",
+          options: {
+            absolute: "Hora exata",
+            relative: "Há quanto tempo",
+          },
+        },
       },
       layout: {
         title: "Layout",

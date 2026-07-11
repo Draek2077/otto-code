@@ -13,8 +13,10 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
   readonly modelCalls: Array<{ agentId: string; modelId: string | null }> = [];
   readonly featureCalls: Array<{ agentId: string; featureId: string; value: unknown }> = [];
   readonly thinkingCalls: Array<{ agentId: string; thinkingOptionId: string | null }> = [];
+  readonly personalityCalls: Array<{ agentId: string; personalityId: string | null }> = [];
   modeNotice: AgentProviderNotice | null = null;
   thinkingNotice: AgentProviderNotice | null = null;
+  personalityNotice: AgentProviderNotice | null = null;
   failWith: Error | null = null;
 
   async setMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
@@ -40,6 +42,15 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
     this.thinkingCalls.push({ agentId, thinkingOptionId });
     if (this.failWith) throw this.failWith;
     return this.thinkingNotice;
+  }
+
+  async setPersonality(
+    agentId: string,
+    personalityId: string | null,
+  ): Promise<AgentProviderNotice | null> {
+    this.personalityCalls.push({ agentId, personalityId });
+    if (this.failWith) throw this.failWith;
+    return this.personalityNotice;
   }
 }
 
@@ -255,6 +266,68 @@ describe("AgentConfigSession", () => {
     expect(emitted[1]).toEqual({
       type: "set_agent_thinking_response",
       payload: { requestId: "req-1", agentId: "agent-1", accepted: false, error: "thinking boom" },
+    });
+  });
+
+  test("set personality: forwards the args and emits an accepted response carrying the notice", async () => {
+    const { subsystem, emitted, operations } = makeSubsystem();
+    operations.personalityNotice = { type: "info", message: "Applies on the next turn" };
+
+    await subsystem.handleAgentPersonalitySetRequest({
+      type: "agent.personality.set.request",
+      agentId: "agent-1",
+      personalityId: "p-atlas",
+      requestId: "req-1",
+    });
+
+    expect(operations.personalityCalls).toEqual([{ agentId: "agent-1", personalityId: "p-atlas" }]);
+    expect(emitted).toEqual([
+      {
+        type: "agent.personality.set.response",
+        payload: {
+          requestId: "req-1",
+          agentId: "agent-1",
+          accepted: true,
+          error: null,
+          notice: { type: "info", message: "Applies on the next turn" },
+        },
+      },
+    ]);
+  });
+
+  test("set personality: clearing passes null through", async () => {
+    const { subsystem, operations } = makeSubsystem();
+
+    await subsystem.handleAgentPersonalitySetRequest({
+      type: "agent.personality.set.request",
+      agentId: "agent-1",
+      personalityId: null,
+      requestId: "req-1",
+    });
+
+    expect(operations.personalityCalls).toEqual([{ agentId: "agent-1", personalityId: null }]);
+  });
+
+  test("set personality: a failed mutation reports the personality-specific failure text", async () => {
+    const { subsystem, emitted, operations } = makeSubsystem();
+    operations.failWith = new Error("personality boom");
+
+    await subsystem.handleAgentPersonalitySetRequest({
+      type: "agent.personality.set.request",
+      agentId: "agent-1",
+      personalityId: "p-atlas",
+      requestId: "req-1",
+    });
+
+    expect(emitted.map((m) => m.type)).toEqual(["activity_log", "agent.personality.set.response"]);
+    expect(emitted[1]).toEqual({
+      type: "agent.personality.set.response",
+      payload: {
+        requestId: "req-1",
+        agentId: "agent-1",
+        accepted: false,
+        error: "personality boom",
+      },
     });
   });
 });

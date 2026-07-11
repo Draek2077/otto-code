@@ -1979,6 +1979,19 @@ export const ar: TranslationResources = {
           hint: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
           accessibilityLabel: "عرض التفكير دائماً",
         },
+        hideMessageDetails: {
+          title: "إخفاء تفاصيل الرسائل حتى التمرير",
+          hint: "إبقاء الطوابع الزمنية والإحصاءات وإجراءات الرسائل مخفية حتى تمرر المؤشر فوقها؛ تظهر دائماً على أجهزة اللمس",
+          accessibilityLabel: "إخفاء تفاصيل الرسائل حتى التمرير",
+        },
+        messageTimestamp: {
+          title: "تنسيق وقت الرسائل",
+          hint: "عرض أوقات الرسائل كوقت دقيق أو كمدة منقضية",
+          options: {
+            absolute: "وقت الساعة",
+            relative: "منذ متى",
+          },
+        },
       },
       layout: {
         title: "Layout",

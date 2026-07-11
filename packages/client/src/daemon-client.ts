@@ -2829,6 +2829,44 @@ export class DaemonClient {
     return payload.notice ?? null;
   }
 
+  /**
+   * Live-switch a running agent's personality (null clears it). The daemon
+   * re-resolves the roster id against the agent's cwd and applies the full
+   * personality — system prompt, identity, model/mode/effort — restarting the
+   * provider query so the prompt takes effect on the next turn. Gate on
+   * server_info.features.setAgentPersonality.
+   */
+  async setAgentPersonality(
+    agentId: string,
+    personalityId: string | null,
+  ): Promise<AgentProviderNotice | null> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.personality.set.request",
+      agentId,
+      personalityId,
+      requestId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.personality.set.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setAgentPersonality rejected");
+    }
+    return payload.notice ?? null;
+  }
+
   async restartServer(reason?: string, requestId?: string): Promise<RestartRequestedStatusPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
     const message = SessionInboundMessageSchema.parse({

@@ -74,6 +74,7 @@ import {
   type AgentPermissionResponse,
   type AgentPermissionUpdate,
   type AgentPersistenceHandle,
+  type AgentPersonalityUpdate,
   type AgentProviderNotice,
   type AgentPromptInput,
   type AgentRunOptions,
@@ -2170,7 +2171,24 @@ class ClaudeAgentSession implements AgentSession {
     return this.currentMode ?? null;
   }
 
-  async setMode(modeId: string): Promise<void> {
+  /**
+   * When a query restart is already pending, live SDK setters must not call
+   * ensureQuery(): with a turn active it would recycle the CLI mid-turn — the
+   * replaced query's pump deliberately skips failActiveTurns and no pump
+   * starts until the next startTurn, orphaning the foreground turn forever.
+   * The doomed query is rebuilt from config anyway, so staging the change in
+   * config and letting the pending lazy restart pick it up is both safe and
+   * cheaper (idle case: skips an eager teardown + respawn).
+   */
+  private mustStageSettingChange(): boolean {
+    return this.queryRestartNeeded;
+  }
+
+  private hasActiveTurn(): boolean {
+    return Boolean(this.activeForegroundTurnId || this.autonomousTurn);
+  }
+
+  async setMode(modeId: string): Promise<void | AgentProviderNotice> {
     // Validate mode
     if (!VALID_CLAUDE_MODES.has(modeId)) {
       const validModesList = Array.from(VALID_CLAUDE_MODES).join(", ");
@@ -2182,8 +2200,11 @@ class ClaudeAgentSession implements AgentSession {
     const normalized = isPermissionMode(modeId) ? modeId : "default";
     assertClaudeAutoModeEligible(normalized, this.buildSdkEnv(this.config.extra?.claude));
     const previousMode = this.currentMode;
-    const activeQuery = await this.ensureQuery();
-    await activeQuery.setPermissionMode(normalized);
+    const stagedOnly = this.mustStageSettingChange();
+    if (!stagedOnly) {
+      const activeQuery = await this.ensureQuery();
+      await activeQuery.setPermissionMode(normalized);
+    }
     if (normalized === "plan") {
       if (previousMode !== "plan") {
         this.planResumeMode = previousMode;
@@ -2191,17 +2212,26 @@ class ClaudeAgentSession implements AgentSession {
     } else {
       this.planResumeMode = normalized;
     }
+    // The rebuilt query reads permissionMode from currentMode in buildOptions,
+    // so the staged value applies at the pending restart.
     this.currentMode = normalized;
+    if (stagedOnly && this.hasActiveTurn()) {
+      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+    }
   }
 
   async setModel(modelId: string | null): Promise<void> {
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
-    const activeQuery = await this.ensureQuery();
-    await activeQuery.setModel(normalizedModelId ?? undefined);
+    if (!this.mustStageSettingChange()) {
+      const activeQuery = await this.ensureQuery();
+      await activeQuery.setModel(normalizedModelId ?? undefined);
+    }
+    // Staged case: buildOptions reads config.model when the pending restart
+    // rebuilds the query.
     this.config.model = normalizedModelId ?? undefined;
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
-      await this.applyFastModeFeature(false, activeQuery);
+      await this.applyFastModeFeature(false);
     }
     this.contextUsage.setInitialContextWindowMaxTokens(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
@@ -2226,6 +2256,18 @@ class ClaudeAgentSession implements AgentSession {
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
     }
+    this.queryRestartNeeded = true;
+    if (this.activeForegroundTurnId || this.autonomousTurn) {
+      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+    }
+  }
+
+  async applyPersonality(update: AgentPersonalityUpdate): Promise<void | AgentProviderNotice> {
+    this.config.personalitySnapshot = update.personalitySnapshot;
+    this.config.systemPrompt = update.systemPrompt;
+    this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
+    // The system prompt is baked into the query options; recreate the query on
+    // the next turn (resuming the same session id) so the new prompt applies.
     this.queryRestartNeeded = true;
     if (this.activeForegroundTurnId || this.autonomousTurn) {
       return SETTING_APPLIES_NEXT_TURN_NOTICE;

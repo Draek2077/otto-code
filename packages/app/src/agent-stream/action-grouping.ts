@@ -4,10 +4,9 @@ import {
 } from "@otto-code/protocol/tool-name-normalization";
 import type { ActionGroupItem, ActionGroupMemberItem, StreamItem } from "@/types/stream";
 
-// A run only folds once it has 3+ actions, and only settled actions ever
-// group: live (running) actions stay visible outside, below the group, and
-// collapse in when they complete. A group always holds 2+ actions.
-const MIN_RUN_LENGTH_TO_GROUP = 3;
+// Only settled actions ever group: live (running) actions stay visible
+// outside, below the group, and collapse in when they complete. A group
+// always holds 2+ settled actions — a lone settled action renders on its own.
 const MIN_GROUP_SIZE = 2;
 
 function isSpeakMessageToolCall(item: Extract<StreamItem, { kind: "tool_call" }>): boolean {
@@ -164,14 +163,17 @@ export function countActionGroupCategories(
   return counts;
 }
 
-function createActionGroupItem(members: ActionGroupMemberItem[]): ActionGroupItem {
-  const first = members[0];
+function createActionGroupItem(
+  members: ActionGroupMemberItem[],
+  runAnchor: ActionGroupMemberItem,
+): ActionGroupItem {
   const last = members[members.length - 1];
   return {
     kind: "action_group",
-    // Keyed off the first member: runs only ever grow at their end, so the id
-    // stays stable while a live run accumulates and expansion state survives.
-    id: `action_group_${first.id}`,
+    // Keyed off the run's first member — which may itself still be live and
+    // outside the group — so the id stays stable while members settle into
+    // the group and expansion state survives.
+    id: `action_group_${runAnchor.id}`,
     timestamp: last.timestamp,
     items: members,
   };
@@ -187,32 +189,30 @@ export function isActiveActionMember(member: ActionGroupMemberItem): boolean {
 
 /** @returns whether the run was folded into a group */
 function flushRun(output: StreamItem[], run: ActionGroupMemberItem[]): boolean {
-  if (run.length < MIN_RUN_LENGTH_TO_GROUP) {
+  // Partition, not prefix: with parallel tool calls a settled action can sit
+  // behind a still-live one, and it belongs in the group regardless. Live
+  // actions render individually below the group, in their original order.
+  const settled: ActionGroupMemberItem[] = [];
+  const active: ActionGroupMemberItem[] = [];
+  for (const member of run) {
+    (isActiveActionMember(member) ? active : settled).push(member);
+  }
+  if (settled.length < MIN_GROUP_SIZE) {
     output.push(...run);
     return false;
   }
-  // Only the settled prefix of the run folds; everything from the first
-  // still-live action onward stays visible outside (below) the group and
-  // collapses in once it completes.
-  let settledCount = 0;
-  while (settledCount < run.length && !isActiveActionMember(run[settledCount])) {
-    settledCount += 1;
-  }
-  if (settledCount < MIN_GROUP_SIZE) {
-    output.push(...run);
-    return false;
-  }
-  output.push(createActionGroupItem(run.slice(0, settledCount)));
-  output.push(...run.slice(settledCount));
+  output.push(createActionGroupItem(settled, run[0]));
+  output.push(...active);
   return true;
 }
 
 /**
- * Fold runs of 3+ consecutive action items (tool calls and thoughts) in a
- * chronological stream into a single collapsed `action_group` item. Only
- * settled actions group: live actions stay outside (below) the group and
- * collapse in once they complete. Runs of 1–2 actions are left untouched.
- * Returns the input array identity when nothing groups.
+ * Fold the settled actions of each consecutive run of action items (tool
+ * calls and thoughts) into a single collapsed `action_group` item. Live
+ * actions never group: they stay outside (below) the group and collapse in
+ * once they complete. A group forms as soon as a run has 2+ settled actions;
+ * a lone settled action stays a plain row. Returns the input array identity
+ * when nothing groups.
  */
 export function groupConsecutiveActionItems(items: StreamItem[]): StreamItem[] {
   const output: StreamItem[] = [];

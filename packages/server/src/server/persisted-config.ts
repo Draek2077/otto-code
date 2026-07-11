@@ -220,11 +220,14 @@ export const AgentPersonalityConfigSchema = z
 
 export type PersistedAgentPersonality = z.infer<typeof AgentPersonalityConfigSchema>;
 
+// Passthrough like every other persisted level: a sibling key written by a
+// newer daemon must survive a rollback (strict would fail the whole config
+// load and keep the daemon from booting).
 const AgentPersonalitiesSchema = z
   .object({
     personalities: z.array(AgentPersonalityConfigSchema).optional(),
   })
-  .strict();
+  .passthrough();
 
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 

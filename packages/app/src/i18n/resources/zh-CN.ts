@@ -1962,6 +1962,19 @@ export const zhCN: TranslationResources = {
           hint: "默认情况下完全展开 AI 的思考和推理过程",
           accessibilityLabel: "始终展开推理过程",
         },
+        hideMessageDetails: {
+          title: "悬停时才显示消息详情",
+          hint: "将聊天消息的时间戳、统计信息和操作按钮隐藏，鼠标悬停时才显示；触屏设备始终显示",
+          accessibilityLabel: "悬停时才显示消息详情",
+        },
+        messageTimestamp: {
+          title: "消息时间格式",
+          hint: "消息时间显示为精确时钟时间或相对时间",
+          options: {
+            absolute: "时钟时间",
+            relative: "多久之前",
+          },
+        },
       },
       layout: {
         title: "Layout",

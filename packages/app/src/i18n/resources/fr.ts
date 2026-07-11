@@ -2026,6 +2026,19 @@ export const fr: TranslationResources = {
           hint: "Afficher le raisonnement de l'agent entièrement développé par défaut",
           accessibilityLabel: "Toujours afficher le raisonnement",
         },
+        hideMessageDetails: {
+          title: "Masquer les détails des messages jusqu'au survol",
+          hint: "Garder les horodatages, statistiques et actions des messages masqués jusqu'au passage de la souris ; toujours visibles sur les appareils tactiles",
+          accessibilityLabel: "Masquer les détails des messages jusqu'au survol",
+        },
+        messageTimestamp: {
+          title: "Format de l'heure des messages",
+          hint: "Afficher l'heure des messages en heure exacte ou en temps écoulé",
+          options: {
+            absolute: "Heure exacte",
+            relative: "Il y a",
+          },
+        },
       },
       layout: {
         title: "Layout",

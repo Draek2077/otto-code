@@ -1988,6 +1988,19 @@ export const en = {
           hint: "Show agent thinking and chain-of-thought blocks fully expanded by default",
           accessibilityLabel: "Always expand reasoning",
         },
+        hideMessageDetails: {
+          title: "Hide message details until hover",
+          hint: "Keep timestamps, stats, and actions on chat messages hidden until you mouse over them; touch devices always show them",
+          accessibilityLabel: "Hide message details until hover",
+        },
+        messageTimestamp: {
+          title: "Message time format",
+          hint: "Show message times as exact clock time or as how long ago",
+          options: {
+            absolute: "Clock time",
+            relative: "Time ago",
+          },
+        },
       },
       layout: {
         title: "Layout",

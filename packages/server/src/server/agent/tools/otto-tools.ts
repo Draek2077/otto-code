@@ -109,8 +109,6 @@ export interface OttoToolHostDependencies {
    * on hosts that don't wire personalities.
    */
   readAgentPersonalities?: () => AgentPersonality[];
-  /** Records a personality spawn for usage telemetry (fire-and-forget). */
-  recordPersonalitySpawn?: (personalityId: string) => void;
   github?: GitHubService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
@@ -556,17 +554,6 @@ function buildPersonalityAgentConfig(brain: {
     config.personalitySnapshot = brain.personalitySnapshot;
   }
   return config;
-}
-
-// Record a personality spawn when both a snapshot and a recorder are present.
-// Extracted so the create_agent handler stays under the complexity budget.
-function recordPersonalitySpawnIfAny(
-  snapshot: ResolvedPersonalitySnapshot | undefined,
-  record: ((personalityId: string) => void) | undefined,
-): void {
-  if (snapshot && record) {
-    record(snapshot.personalityId);
-  }
 }
 
 const ArtifactToolSummarySchema = z.object({
@@ -1610,9 +1597,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           worktree,
         },
       );
-
-      // Count the spawn for per-personality usage telemetry (best-effort).
-      recordPersonalitySpawnIfAny(brain.personalitySnapshot, options.recordPersonalitySpawn);
 
       try {
         if (!createdInBackground && initialPromptStarted) {

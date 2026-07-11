@@ -616,7 +616,9 @@ export interface AgentSessionConfig {
    * from an Agent Personality. Everything the agent needs to keep the
    * personality's identity (spinner, voice, roles) and honor its prompt
    * composition (`respectGlobalAppendPrompt`) lives here. Editing the personality
-   * later never mutates this — the agent runs its birth snapshot for life.
+   * later never mutates this; it only changes through an explicit
+   * agent.personality.set switch (AgentManager.setAgentPersonality), which
+   * re-resolves a roster personality and replaces the snapshot wholesale.
    */
   personalitySnapshot?: ResolvedPersonalitySnapshot;
   /**
@@ -634,6 +636,19 @@ export interface AgentSessionConfig {
    * agents (branch-name/git-metadata generators) stay fully silent.
    */
   observable?: boolean;
+}
+
+/**
+ * The prompt-side half of a live personality switch, computed by the manager
+ * (which owns the daemon-global append text) and applied wholesale by the
+ * provider session. All three fields are absolute new values, not patches —
+ * `undefined` means "clear". Clearing the personality passes all-undefined
+ * except a restored `daemonAppendSystemPrompt`.
+ */
+export interface AgentPersonalityUpdate {
+  personalitySnapshot: ResolvedPersonalitySnapshot | undefined;
+  systemPrompt: string | undefined;
+  daemonAppendSystemPrompt: string | undefined;
 }
 
 export interface AgentLaunchContext {
@@ -698,6 +713,16 @@ export interface AgentSession {
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;
+  /**
+   * Live-switch the session's personality prompt fields (see
+   * AgentPersonalityUpdate). Present only on providers that can apply a new
+   * system prompt to a running conversation — Claude recreates its query on the
+   * next turn, openai-compat rebuilds its leading system message. Brain fields
+   * (model/mode/effort) are applied separately via the existing setters; the
+   * manager sequences both halves. Absence ⇒ the manager rejects
+   * agent.personality.set for this provider.
+   */
+  applyPersonality?(update: AgentPersonalityUpdate): Promise<void | AgentProviderNotice>;
   /**
    * Apply updated provider-level compaction defaults to a live session
    * (providers whose conversation the daemon owns). Returns true when the
