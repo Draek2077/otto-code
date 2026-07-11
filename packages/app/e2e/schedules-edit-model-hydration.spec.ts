@@ -228,9 +228,11 @@ test.describe("Schedules", () => {
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     await expect(projectTrigger).toContainText(/select project/i);
     await expectSettled(projectTrigger);
-    // The model field shows immediately (no stepped disclosure); pristine
-    // create has no selection yet.
-    await expect(page.getByTestId("schedule-model-trigger")).toContainText(/select model/i);
+    // The model field shows immediately (no stepped disclosure) and preselects
+    // the last-used model from device form preferences.
+    await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
