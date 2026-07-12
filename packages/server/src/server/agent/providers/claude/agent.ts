@@ -335,6 +335,23 @@ const INTERRUPT_PLACEHOLDER_PATTERN = /^\[Request interrupted by user(?:[^\]]*)\
 const NO_RESPONSE_REQUESTED_PLACEHOLDER = "No response requested.";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * True for the SDK errors raised when a control-plane call (interrupt/return)
+ * is issued against a CLI process that has already exited or been aborted.
+ * These are expected during session teardown, not real failures.
+ */
+export function isExpectedTransportTeardownError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message;
+  return (
+    message.includes("is not ready for writing") ||
+    message.includes("Operation aborted") ||
+    message.includes("process aborted by user")
+  );
+}
+
 interface SlashCommandInvocation {
   commandName: string;
   args?: string;
@@ -2413,6 +2430,11 @@ class ClaudeAgentSession implements AgentSession {
     return this.persistence;
   }
 
+  private isChildProcessAlive(): boolean {
+    const child = this.childProcess;
+    return child !== null && child.exitCode === null && child.signalCode === null;
+  }
+
   async close(): Promise<void> {
     this.logger.trace(
       {
@@ -2441,7 +2463,16 @@ class ClaudeAgentSession implements AgentSession {
     this.pendingObservedEvents = [];
     this.input?.end();
     this.query?.close?.();
-    await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
+    // interrupt() issues a control-plane request that writes to the CLI's stdin.
+    // Only worth doing while the process is still running: one-shot internal
+    // agents (commit-message / PR / branch-name generators) have already exited
+    // by the time we close them, so the write hits a dead transport and throws
+    // "ProcessTransport is not ready for writing". An in-flight turn was already
+    // interrupted above via cancelCurrentTurn(). return() takes no such request
+    // (it just cancels the input reader), so it stays unconditional.
+    if (this.isChildProcessAlive()) {
+      await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
+    }
     await this.awaitWithTimeout(this.query?.return?.(), "close query return");
     this.query = null;
     this.input = null;
@@ -2945,7 +2976,18 @@ class ClaudeAgentSession implements AgentSession {
         "provider.claude.query_operation.settled",
       );
     } catch (error) {
-      this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
+      // A query whose CLI process has already exited rejects control-plane calls
+      // with "ProcessTransport is not ready for writing" / "Operation aborted".
+      // That is expected during teardown (and covered by the liveness gate in
+      // close()); only a race can still reach here, so don't log it as a warning.
+      if (isExpectedTransportTeardownError(error)) {
+        this.logger.debug(
+          { err: error, label },
+          "Claude query operation skipped on closed transport",
+        );
+      } else {
+        this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
+      }
     }
   }
 
