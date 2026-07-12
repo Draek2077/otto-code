@@ -1359,7 +1359,7 @@ describe("create_agent MCP tool", () => {
     );
   });
 
-  it("requires provider as provider/model and rejects the old model field", async () => {
+  it("enforces provider/model formatting and the provider-or-personality contract", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1370,18 +1370,37 @@ describe("create_agent MCP tool", () => {
     });
     const tool = registeredTool(server, "create_agent");
 
-    const missingProvider = await tool.inputSchema.safeParseAsync({
+    // `provider` is now optional at the schema level because a personality can
+    // supply the brain instead. "One of provider/personality" is enforced at
+    // resolution (resolveCreateAgentBrain), not by the schema — so a create with
+    // neither still parses...
+    const missingBrain = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
       title: "Short title",
       initialPrompt: "test",
     });
-    expect(missingProvider.success).toBe(false);
-    expect(
-      missingProvider.error.issues.some(
-        (issue: { path: Array<string | number> }) => issue.path[0] === "provider",
-      ),
-    ).toBe(true);
+    expect(missingBrain.success).toBe(true);
+
+    // ...but the resolution-time contract still rejects it loudly.
+    await expect(
+      tool.handler({
+        ...detachedDirectoryWorkspace(existingCwd),
+        settings: { modeId: "default" },
+        title: "Short title",
+        initialPrompt: "test",
+      }),
+    ).rejects.toThrow("Either provider or personality is required.");
+
+    // Supplying only a personality (no provider) parses at the schema level.
+    const personalityOnly = await tool.inputSchema.safeParseAsync({
+      ...detachedDirectoryWorkspace(existingCwd),
+      settings: { modeId: "default" },
+      title: "Short title",
+      personality: "Backend Specialist",
+      initialPrompt: "test",
+    });
+    expect(personalityOnly.success).toBe(true);
 
     const providerWithoutModel = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),

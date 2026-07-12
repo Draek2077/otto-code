@@ -989,13 +989,25 @@ test("preserves bypass capability across query restarts triggered by thinking ch
     await session.setThinkingOption("high");
     await session.setMode("bypassPermissions");
 
-    expect(capturedOptions).toHaveLength(2);
+    // The thinking change stages a pending restart (queryRestartNeeded); the
+    // subsequent setMode coalesces into it — staging the mode in config instead
+    // of eagerly recreating the SDK query. So only the very first setMode spun
+    // up a live query.
+    expect(capturedOptions).toHaveLength(1);
     expect(capturedOptions[0]).toMatchObject({
       permissionMode: "default",
       allowDangerouslySkipPermissions: true,
     });
+
+    // The pending restart fires lazily on the next turn: buildOptions reads the
+    // staged mode + thinking. Bypass capability survives the coalesced restart —
+    // the rebuilt query carries the final bypassPermissions mode, the staged
+    // "high" effort, and allowDangerouslySkipPermissions still true.
+    await collectUntilTerminal(streamSession(session, "fire the pending restart"));
+
+    expect(capturedOptions).toHaveLength(2);
     expect(capturedOptions[1]).toMatchObject({
-      permissionMode: "acceptEdits",
+      permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       effort: "high",
     });

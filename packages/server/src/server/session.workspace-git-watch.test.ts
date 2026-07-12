@@ -681,6 +681,7 @@ describe("workspace git watch targets", () => {
         },
       },
       githubFeaturesEnabled: true,
+      hosting: { featuresEnabled: true, provider: "github" },
       error: null,
       requestId: REPO_SUBSCRIPTION_REQUEST_ID,
     });
@@ -735,6 +736,7 @@ describe("workspace git watch targets", () => {
         reviewDecision: undefined,
       },
       githubFeaturesEnabled: true,
+      hosting: { featuresEnabled: true, provider: "github" },
       error: null,
       requestId: "req-pr-status",
     });
