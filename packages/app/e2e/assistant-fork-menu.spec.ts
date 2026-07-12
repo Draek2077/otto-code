@@ -10,7 +10,7 @@ import {
   type MockAgentWorkspace,
 } from "./helpers/mock-agent";
 import { getServerId } from "./helpers/server-id";
-import { seedSavedSettingsHosts } from "./helpers/settings";
+import { seedAppSettings, seedSavedSettingsHosts } from "./helpers/settings";
 
 const test = base.extend<{
   seedForkWorkspace: (options: MockAgentOptions) => Promise<MockAgentWorkspace>;
@@ -52,6 +52,15 @@ async function expectChatHistoryPill(page: Page): Promise<void> {
 
 test.describe("Assistant fork menu", () => {
   test.describe.configure({ timeout: 180_000 });
+
+  // The assistant turn footer that hosts the fork trigger is hidden-until-hover
+  // by default in 0.5.0 (`hideChatMessageDetails` defaults to true), which on
+  // desktop web renders it with opacity 0 / pointer-events none — the trigger is
+  // present but unclickable, so the fork flow can't be driven. Pin the setting
+  // off so the footer is always visible for these tests.
+  test.beforeEach(async ({ page }) => {
+    await seedAppSettings(page, { hideChatMessageDetails: false });
+  });
 
   test("forks an assistant turn into a new workspace draft tab", async ({
     page,
