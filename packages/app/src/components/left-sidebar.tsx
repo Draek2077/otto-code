@@ -5,14 +5,11 @@ import {
   FolderPlus,
   History,
   Home,
-  ListChevronsDownUp,
-  ListChevronsUpDown,
   Plus,
   Search,
   Server,
   Settings,
   X,
-  type IconComponent,
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -22,20 +19,12 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type PressableProps,
   type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  Extrapolation,
-  interpolate,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -44,21 +33,18 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
-import { useAppSettings } from "@/hooks/use-settings";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
 import {
   type SidebarProjectEntry,
-  type SidebarStatusWorkspacePlacement,
-  useSidebarWorkspacesList,
+  type SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
-import { useStatusModeWorkspacePlacements } from "@/hooks/use-status-mode-workspaces";
-import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { useSidebarModel } from "@/components/sidebar/sidebar-model";
+import { RetainedPanelActivity } from "@/components/retained-panel";
+import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
+import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -70,46 +56,40 @@ import {
   usePanelStore,
 } from "@/stores/panel-store";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { canCloseLeftSidebarGesture } from "@/utils/sidebar-animation-state";
+import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
+import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import {
   buildOpenProjectRoute,
+  buildArtifactsRoute,
   buildNewWorkspaceRoute,
   buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
-  buildArtifactsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import { compactUp, ICON_SIZE } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
-import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
-import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
 
 const MIN_CHAT_WIDTH = 400;
 
-type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>;
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
-
-interface LeftSidebarProps {
-  selectedAgentId?: string;
-}
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
-  statusWorkspacePlacements: SidebarStatusWorkspacePlacement[];
+  statusGroups: StatusGroup[];
   projects: SidebarProjectEntry[];
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   projectNamesByKey: Map<string, string>;
   isInitialLoad: boolean;
   isRevalidating: boolean;
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
-  collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
-  shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
-  toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
+  collapsedProjectKeys: ReadonlySet<string>;
+  shortcutIndexByWorkspaceKey: Map<string, number>;
+  toggleProjectCollapsed: (projectKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
@@ -136,7 +116,6 @@ interface SidebarLabels {
 interface MobileSidebarProps extends SidebarSharedProps {
   insetsTop: number;
   insetsBottom: number;
-  isOpen: boolean;
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
@@ -151,11 +130,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   handleViewArtifacts: () => void;
 }
 
-export const LeftSidebar = memo(function LeftSidebar({
-  selectedAgentId: _selectedAgentId,
-}: LeftSidebarProps) {
-  void _selectedAgentId;
-
+export const LeftSidebar = memo(function LeftSidebar() {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -166,22 +141,19 @@ export const LeftSidebar = memo(function LeftSidebar({
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const {
-    workspacePlacements,
     projects,
+    workspaceEntriesByKey,
     projectNamesByKey,
     isInitialLoad,
     isRevalidating,
     refreshAll,
-  } = useSidebarWorkspacesList({
-    enabled: isCompactLayout || isOpen,
-  });
-  const statusWorkspacePlacements = useStatusModeWorkspacePlacements({
-    placements: workspacePlacements,
-  });
-  const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed } =
-    useSidebarShortcutModel({ projects });
-
-  const groupMode = useSidebarViewStore((state) => state.groupMode);
+    statusGroups,
+    collapsedProjectKeys,
+    toggleProjectCollapsed,
+    groupMode,
+    shortcutModel,
+  } = useSidebarModel();
+  const { shortcutIndexByWorkspaceKey } = shortcutModel;
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
 
@@ -277,8 +249,9 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const sharedProps = {
     theme,
-    statusWorkspacePlacements,
+    statusGroups,
     projects,
+    workspaceEntriesByKey,
     projectNamesByKey,
     isInitialLoad,
     isRevalidating,
@@ -294,38 +267,41 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   if (isCompactLayout) {
     return (
-      <MobileSidebar
-        {...sharedProps}
-        insetsTop={insets.top}
-        insetsBottom={insets.bottom}
-        isOpen={isOpen}
-        closeSidebar={showMobileAgent}
-        handleOpenProject={handleOpenProjectMobile}
-        handleHome={handleHomeMobile}
-        handleSettings={handleSettingsMobile}
-        handleAddHost={handleAddHostMobile}
-        handleOpenHostSettings={handleOpenHostSettingsMobile}
-        handleViewMoreNavigate={handleViewMoreNavigate}
-        handleViewSchedulesNavigate={handleViewSchedulesNavigate}
-        handleViewArtifactsNavigate={handleViewArtifactsNavigate}
-      />
+      <RetainedPanelActivity active={isOpen}>
+        <MobileSidebar
+          {...sharedProps}
+          insetsTop={insets.top}
+          insetsBottom={insets.bottom}
+          closeSidebar={showMobileAgent}
+          handleOpenProject={handleOpenProjectMobile}
+          handleHome={handleHomeMobile}
+          handleSettings={handleSettingsMobile}
+          handleAddHost={handleAddHostMobile}
+          handleOpenHostSettings={handleOpenHostSettingsMobile}
+          handleViewMoreNavigate={handleViewMoreNavigate}
+          handleViewSchedulesNavigate={handleViewSchedulesNavigate}
+          handleViewArtifactsNavigate={handleViewArtifactsNavigate}
+        />
+      </RetainedPanelActivity>
     );
   }
 
   return (
-    <DesktopSidebar
-      {...sharedProps}
-      insetsTop={insets.top}
-      isOpen={isOpen}
-      handleOpenProject={handleOpenProjectDesktop}
-      handleHome={handleHomeDesktop}
-      handleSettings={handleSettingsDesktop}
-      handleAddHost={handleAddHostDesktop}
-      handleOpenHostSettings={handleOpenHostSettingsDesktop}
-      handleViewMore={handleViewMoreNavigate}
-      handleViewSchedules={handleViewSchedulesNavigate}
-      handleViewArtifacts={handleViewArtifactsNavigate}
-    />
+    <RetainedPanelActivity active={isOpen}>
+      <DesktopSidebar
+        {...sharedProps}
+        insetsTop={insets.top}
+        isOpen={isOpen}
+        handleOpenProject={handleOpenProjectDesktop}
+        handleHome={handleHomeDesktop}
+        handleSettings={handleSettingsDesktop}
+        handleAddHost={handleAddHostDesktop}
+        handleOpenHostSettings={handleOpenHostSettingsDesktop}
+        handleViewMore={handleViewMoreNavigate}
+        handleViewSchedules={handleViewSchedulesNavigate}
+        handleViewArtifacts={handleViewArtifactsNavigate}
+      />
+    </RetainedPanelActivity>
   );
 });
 
@@ -333,42 +309,27 @@ function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
 }
 
-function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
-  return [
-    styles.footerIconButton,
-    (Boolean(hovered) || Boolean(pressed)) && styles.footerIconButtonHovered,
-  ];
-}
-
 function FooterIconButton({
-  ref,
+  buttonRef,
   onPress,
   testID,
   accessibilityLabel,
   icon: Icon,
   iconSize,
   theme,
-  ...pressableProps
 }: {
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: IconComponent;
+  icon: typeof FolderPlus;
   iconSize?: number;
   theme: SidebarTheme;
-  ref?: RefObject<View | null>;
-} & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
-  const isCompactLayout = useIsCompactFormFactor();
-  // Footer icons are always scaled up on every form factor, and another 1.5x on
-  // compact so they stay comfortably tappable. Static ICON_SIZE (not
-  // theme.iconSize) — the theme tokens are already doubled on compact by
-  // applyAppearance, which would compound here.
-  const baseIconSize = iconSize ?? ICON_SIZE.md * 1.5;
+  buttonRef?: RefObject<View | null>;
+}) {
   return (
     <Pressable
-      {...pressableProps}
-      ref={ref}
-      style={footerIconButtonStyle}
+      ref={buttonRef}
+      style={styles.footerIconButton}
       testID={testID}
       nativeID={testID}
       collapsable={false}
@@ -379,7 +340,7 @@ function FooterIconButton({
     >
       {({ hovered }) => (
         <Icon
-          size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
+          size={iconSize ?? theme.iconSize.md}
           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
         />
       )}
@@ -389,12 +350,10 @@ function FooterIconButton({
 
 function SidebarHostPicker({
   theme,
-  switchHostLabel,
   onAddHost,
   onOpenHostSettings,
 }: {
   theme: SidebarTheme;
-  switchHostLabel: string;
   onAddHost: () => void;
   onOpenHostSettings: (serverId: string) => void;
 }) {
@@ -429,22 +388,15 @@ function SidebarHostPicker({
       addHostTestID="sidebar-host-add"
       hostOptionTestID={sidebarHostOptionTestID}
     >
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <FooterIconButton
-            ref={triggerRef}
-            onPress={handleOpen}
-            testID="sidebar-hosts-trigger"
-            accessibilityLabel="Hosts"
-            icon={Server}
-            iconSize={ICON_SIZE.sm * 1.5}
-            theme={theme}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <HeaderIconTooltipContent label={switchHostLabel} />
-        </TooltipContent>
-      </Tooltip>
+      <FooterIconButton
+        buttonRef={triggerRef}
+        onPress={handleOpen}
+        testID="sidebar-hosts-trigger"
+        accessibilityLabel="Hosts"
+        icon={Server}
+        iconSize={theme.iconSize.sm}
+        theme={theme}
+      />
     </HostPicker>
   );
 }
@@ -562,36 +514,11 @@ function SidebarFooter({
   return (
     <View style={styles.sidebarFooter}>
       <View style={styles.footerIconRow}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <FooterIconButton
-              onPress={handleHome}
-              testID="sidebar-home"
-              accessibilityLabel={labels.home}
-              icon={Home}
-              theme={theme}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={labels.home} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <FooterIconButton
-              onPress={handleSettings}
-              testID="sidebar-settings"
-              accessibilityLabel={labels.settings}
-              icon={Settings}
-              theme={theme}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={labels.settings} />
-          </TooltipContent>
-        </Tooltip>
-      </View>
-      <View style={styles.footerIconRow}>
+        <SidebarHostPicker
+          theme={theme}
+          onAddHost={handleAddHost}
+          onOpenHostSettings={handleOpenHostSettings}
+        />
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <FooterIconButton
@@ -606,11 +533,19 @@ function SidebarFooter({
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
           </TooltipContent>
         </Tooltip>
-        <SidebarHostPicker
+        <FooterIconButton
+          onPress={handleHome}
+          testID="sidebar-home"
+          accessibilityLabel={labels.home}
+          icon={Home}
           theme={theme}
-          switchHostLabel={labels.switchHost}
-          onAddHost={handleAddHost}
-          onOpenHostSettings={handleOpenHostSettings}
+        />
+        <FooterIconButton
+          onPress={handleSettings}
+          testID="sidebar-settings"
+          accessibilityLabel={labels.settings}
+          icon={Settings}
+          theme={theme}
         />
       </View>
     </View>
@@ -619,8 +554,9 @@ function SidebarFooter({
 
 function MobileSidebar({
   theme,
-  statusWorkspacePlacements,
+  statusGroups,
   projects,
+  workspaceEntriesByKey,
   projectNamesByKey,
   isInitialLoad,
   isRevalidating,
@@ -639,7 +575,6 @@ function MobileSidebar({
   handleOpenHostSettings,
   insetsTop,
   insetsBottom,
-  isOpen,
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
@@ -649,296 +584,134 @@ function MobileSidebar({
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    overlayVisible,
-    isGesturing,
-    mobilePanelState,
-    gestureAnimatingRef,
-    closeGestureRef,
-  } = useSidebarAnimation();
-  const closeTouchStartX = useSharedValue(0);
-  const closeTouchStartY = useSharedValue(0);
-
-  const handleCloseFromGesture = useCallback(() => {
-    gestureAnimatingRef.current = true;
-    closeSidebar();
-  }, [closeSidebar, gestureAnimatingRef]);
+  const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
 
   const handleViewMore = useCallback(() => {
-    translateX.value = -windowWidth;
-    backdropOpacity.value = 0;
     closeSidebar();
     handleViewMoreNavigate();
-  }, [backdropOpacity, closeSidebar, handleViewMoreNavigate, translateX, windowWidth]);
+  }, [closeSidebar, handleViewMoreNavigate]);
 
   const handleViewSchedules = useCallback(() => {
-    translateX.value = -windowWidth;
-    backdropOpacity.value = 0;
     closeSidebar();
     handleViewSchedulesNavigate();
-  }, [backdropOpacity, closeSidebar, handleViewSchedulesNavigate, translateX, windowWidth]);
+  }, [closeSidebar, handleViewSchedulesNavigate]);
 
   const handleViewArtifacts = useCallback(() => {
-    translateX.value = -windowWidth;
-    backdropOpacity.value = 0;
     closeSidebar();
     handleViewArtifactsNavigate();
-  }, [backdropOpacity, closeSidebar, handleViewArtifactsNavigate, translateX, windowWidth]);
+  }, [closeSidebar, handleViewArtifactsNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
   }, [closeSidebar]);
 
-  const closeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .withRef(closeGestureRef)
-        .enabled(true)
-        .manualActivation(true)
-        .onTouchesDown((event) => {
-          const touch = event.changedTouches[0];
-          if (!touch) {
-            return;
-          }
-          closeTouchStartX.value = touch.absoluteX;
-          closeTouchStartY.value = touch.absoluteY;
-        })
-        .onTouchesMove((event, stateManager) => {
-          const touch = event.changedTouches[0];
-          if (!touch || event.numberOfTouches !== 1) {
-            stateManager.fail();
-            return;
-          }
-
-          const deltaX = touch.absoluteX - closeTouchStartX.value;
-          const deltaY = touch.absoluteY - closeTouchStartY.value;
-          const absDeltaX = Math.abs(deltaX);
-          const absDeltaY = Math.abs(deltaY);
-
-          if (!canCloseLeftSidebarGesture(mobilePanelState.value)) {
-            stateManager.fail();
-            return;
-          }
-
-          if (deltaX >= 10) {
-            stateManager.fail();
-            return;
-          }
-          if (absDeltaY > 10 && absDeltaY > absDeltaX) {
-            stateManager.fail();
-            return;
-          }
-          if (deltaX <= -15 && absDeltaX > absDeltaY) {
-            stateManager.activate();
-          }
-        })
-        .onStart(() => {
-          isGesturing.value = true;
-        })
-        .onUpdate((event) => {
-          const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX));
-          translateX.value = newTranslateX;
-          backdropOpacity.value = interpolate(
-            newTranslateX,
-            [-windowWidth, 0],
-            [0, 1],
-            Extrapolation.CLAMP,
-          );
-        })
-        .onEnd((event) => {
-          isGesturing.value = false;
-          const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500;
-          if (shouldClose) {
-            animateToClose();
-            runOnJS(handleCloseFromGesture)();
-          } else {
-            animateToOpen();
-          }
-        })
-        .onFinalize(() => {
-          isGesturing.value = false;
-        }),
-    [
-      closeGestureRef,
-      closeTouchStartX,
-      closeTouchStartY,
-      isGesturing,
-      mobilePanelState,
-      windowWidth,
-      translateX,
-      backdropOpacity,
-      animateToClose,
-      animateToOpen,
-      handleCloseFromGesture,
-    ],
-  );
-
   const mobileSidebarInsetStyle = useMemo(
-    () => ({ width: windowWidth, paddingTop: insetsTop, paddingBottom: insetsBottom }),
-    [windowWidth, insetsTop, insetsBottom],
-  );
-
-  const sidebarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-  }));
-
-  let overlayPointerEvents: "auto" | "none" | "box-none";
-  if (!isWeb) overlayPointerEvents = "box-none";
-  else if (isOpen) overlayPointerEvents = "auto";
-  else overlayPointerEvents = "none";
-
-  const backdropStyle = useMemo(
-    () => [
-      staticStyles.backdrop,
-      backdropAnimatedStyle,
-      // pointerEvents is React-owned, not worklet-owned: Reanimated never
-      // touches it, so a stale animated-prop revert can't wedge an invisible
-      // tap-eating backdrop.
-      { pointerEvents: isOpen ? ("auto" as const) : ("none" as const) },
-    ],
-    [backdropAnimatedStyle, isOpen],
-  );
-  const mobileSidebarStyle = useMemo(
-    () => [
-      staticStyles.mobileSidebar,
-      mobileSidebarInsetStyle,
-      sidebarAnimatedStyle,
-      { backgroundColor: theme.colors.surfaceSidebar },
-    ],
-    [mobileSidebarInsetStyle, sidebarAnimatedStyle, theme.colors.surfaceSidebar],
-  );
-  // display is React-owned on the plain wrapper View (no animated styles), so
-  // a hidden overlay stays hidden no matter what Reanimated's Fabric overlay
-  // reverts the panel transform to after a heavy commit (reanimated#9635).
-  //
-  // The no-drag carve-out is required because this drawer renders inside
-  // #root with no TitlebarDragRegion of its own: without it, the underlying
-  // screen header's Electron drag strip eats clicks on the drawer's top rows
-  // (drag rects ignore DOM z-order — docs/floating-panels.md Gotcha 7).
-  // display:none removes the wrapper's boxes entirely, so the closed drawer
-  // cannot punch a hole in the drag strip.
-  const overlayStyle = useMemo(
-    () => [
-      StyleSheet.absoluteFillObject,
-      { display: overlayVisible ? ("flex" as const) : ("none" as const) },
-      FLOATING_LAYER_NO_DRAG_STYLE,
-    ],
-    [overlayVisible],
+    () => ({
+      paddingTop: insetsTop,
+      paddingBottom: insetsBottom,
+      backgroundColor: theme.colors.surfaceSidebar,
+    }),
+    [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
   );
 
   return (
-    <View style={overlayStyle} pointerEvents={overlayPointerEvents}>
-      <Animated.View style={backdropStyle} />
-
-      <GestureDetector gesture={closeGesture} touchAction="pan-y">
-        <Animated.View style={mobileSidebarStyle} pointerEvents="auto">
-          <View style={styles.sidebarContent} pointerEvents="auto">
-            <View style={styles.sidebarHeaderGroup}>
-              <SidebarNewWorkspaceHeaderRow
-                label={labels.newWorkspace}
-                testID="sidebar-global-new-workspace"
-                variant="compact"
-                shortcutKeys={newWorkspaceKeys}
-                onBeforeNavigate={closeSidebar}
-              />
-              <SidebarHeaderRow
-                icon={History}
-                label={labels.sessions}
-                onPress={handleViewMore}
-                isActive={isSessionsActive}
-                testID="sidebar-sessions"
-                variant="compact"
-              />
-              <SidebarHeaderRow
-                icon={CalendarClock}
-                label={labels.schedules}
-                onPress={handleViewSchedules}
-                isActive={isSchedulesActive}
-                testID="sidebar-schedules"
-                variant="compact"
-              />
-              <SidebarHeaderRow
-                icon={FileText}
-                label={labels.artifacts}
-                onPress={handleViewArtifacts}
-                isActive={isArtifactsActive}
-                testID="sidebar-artifacts"
-                variant="compact"
-              />
-            </View>
-            <WorkspacesSectionHeader
-              projects={projects}
-              statusWorkspacePlacements={statusWorkspacePlacements}
-              groupMode={groupMode}
+    <MobilePanelOverlay
+      panel="agent-list"
+      closeGesture={closeGesture}
+      panelStyle={mobileSidebarInsetStyle}
+    >
+      <View style={styles.sidebarContent} pointerEvents="auto">
+        <View style={styles.sidebarHeaderGroup}>
+          <SidebarNewWorkspaceHeaderRow
+            label={labels.newWorkspace}
+            testID="sidebar-global-new-workspace"
+            variant="compact"
+            shortcutKeys={newWorkspaceKeys}
+            onBeforeNavigate={closeSidebar}
+          />
+          <SidebarHeaderRow
+            icon={History}
+            label={labels.sessions}
+            onPress={handleViewMore}
+            isActive={isSessionsActive}
+            testID="sidebar-sessions"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={CalendarClock}
+            label={labels.schedules}
+            onPress={handleViewSchedules}
+            isActive={isSchedulesActive}
+            testID="sidebar-schedules"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={FileText}
+            label={labels.artifacts}
+            onPress={handleViewArtifacts}
+            isActive={isArtifactsActive}
+            testID="sidebar-artifacts"
+            variant="compact"
+          />
+        </View>
+        <WorkspacesSectionHeader />
+        <Pressable
+          style={styles.mobileCloseButton}
+          onPress={closeSidebar}
+          testID="sidebar-close"
+          nativeID="sidebar-close"
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={labels.closeSidebar}
+          hitSlop={8}
+        >
+          {({ hovered, pressed }) => (
+            <X
+              size={theme.iconSize.md}
+              color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
             />
-            <Pressable
-              style={styles.mobileCloseButton}
-              onPress={closeSidebar}
-              testID="sidebar-close"
-              nativeID="sidebar-close"
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={labels.closeSidebar}
-              hitSlop={8}
-            >
-              {({ hovered, pressed }) => (
-                <X
-                  size={theme.iconSize.md}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
+          )}
+        </Pressable>
 
-            {isInitialLoad ? (
-              <SidebarAgentListSkeleton />
-            ) : (
-              <SidebarWorkspaceList
-                collapsedProjectKeys={collapsedProjectKeys}
-                onToggleProjectCollapsed={toggleProjectCollapsed}
-                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                groupMode={groupMode}
-                statusWorkspacePlacements={statusWorkspacePlacements}
-                projects={projects}
-                projectNamesByKey={projectNamesByKey}
-                isRefreshing={isManualRefresh && isRevalidating}
-                onRefresh={handleRefresh}
-                onWorkspacePress={handleWorkspacePress}
-                onAddProject={handleOpenProject}
-                parentGestureRef={closeGestureRef}
-              />
-            )}
+        {isInitialLoad ? (
+          <SidebarAgentListSkeleton />
+        ) : (
+          <SidebarWorkspaceList
+            collapsedProjectKeys={collapsedProjectKeys}
+            onToggleProjectCollapsed={toggleProjectCollapsed}
+            shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+            groupMode={groupMode}
+            statusGroups={statusGroups}
+            projects={projects}
+            workspaceEntriesByKey={workspaceEntriesByKey}
+            projectNamesByKey={projectNamesByKey}
+            isRefreshing={isManualRefresh && isRevalidating}
+            onRefresh={handleRefresh}
+            onWorkspacePress={handleWorkspacePress}
+            onAddProject={handleOpenProject}
+            parentGestureRef={closeGestureRef}
+          />
+        )}
 
-            <SidebarFooter
-              theme={theme}
-              handleOpenProject={handleOpenProject}
-              handleHome={handleHome}
-              handleSettings={handleSettings}
-              labels={labels}
-              handleAddHost={handleAddHost}
-              handleOpenHostSettings={handleOpenHostSettings}
-            />
-          </View>
-        </Animated.View>
-      </GestureDetector>
-    </View>
+        <SidebarFooter
+          theme={theme}
+          handleOpenProject={handleOpenProject}
+          handleHome={handleHome}
+          handleSettings={handleSettings}
+          labels={labels}
+          handleAddHost={handleAddHost}
+          handleOpenHostSettings={handleOpenHostSettings}
+        />
+      </View>
+    </MobilePanelOverlay>
   );
 }
 
 function DesktopSidebar({
   theme,
-  statusWorkspacePlacements,
+  statusGroups,
   projects,
+  workspaceEntriesByKey,
   projectNamesByKey,
   isInitialLoad,
   isRevalidating,
@@ -966,8 +739,6 @@ function DesktopSidebar({
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
   const padding = useWindowControlsPadding("sidebar");
-  const { settings } = useAppSettings();
-  const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -1030,7 +801,7 @@ function DesktopSidebar({
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
           <TitlebarDragRegion />
-          {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
+          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNewWorkspaceHeaderRow
               label={labels.newWorkspace}
@@ -1064,11 +835,7 @@ function DesktopSidebar({
             />
           </View>
         </View>
-        <WorkspacesSectionHeader
-          projects={projects}
-          statusWorkspacePlacements={statusWorkspacePlacements}
-          groupMode={groupMode}
-        />
+        <WorkspacesSectionHeader />
 
         {isInitialLoad ? (
           <SidebarAgentListSkeleton />
@@ -1078,16 +845,15 @@ function DesktopSidebar({
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
-            statusWorkspacePlacements={statusWorkspacePlacements}
+            statusGroups={statusGroups}
             projects={projects}
+            workspaceEntriesByKey={workspaceEntriesByKey}
             projectNamesByKey={projectNamesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
           />
         )}
-
-        <SidebarActiveWorkspaceTools />
 
         <SidebarCalloutSlot />
 
@@ -1105,75 +871,22 @@ function DesktopSidebar({
         <GestureDetector gesture={resizeGesture}>
           <View style={resizeHandleStyle} />
         </GestureDetector>
-
-        <SidebarSeamShadow seam="right" />
       </View>
     </Animated.View>
   );
 }
 
-function WorkspacesSectionHeader({
-  projects,
-  statusWorkspacePlacements,
-  groupMode,
-}: {
-  projects: SidebarProjectEntry[];
-  statusWorkspacePlacements: SidebarStatusWorkspacePlacement[];
-  groupMode: SidebarGroupMode;
-}) {
+function WorkspacesSectionHeader() {
   const { theme } = useUnistyles();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
-  const setSectionsCollapsed = useSidebarCollapsedSectionsStore(
-    (state) => state.setSectionsCollapsed,
-  );
-  const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
-    (state) => state.collapsedProjectKeys,
-  );
-  const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
-    (state) => state.collapsedStatusGroupKeys,
-  );
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const allSectionsExpanded = useMemo(() => {
-    if (groupMode === "status") {
-      return statusWorkspacePlacements.every(
-        (placement) => !collapsedStatusGroupKeys.has(placement.statusBucket),
-      );
-    }
-    return projects.every((project) => !collapsedProjectKeys.has(project.projectKey));
-  }, [
-    collapsedProjectKeys,
-    collapsedStatusGroupKeys,
-    groupMode,
-    projects,
-    statusWorkspacePlacements,
-  ]);
-  const handleToggleExpandAll = useCallback(() => {
-    const collapsed = allSectionsExpanded;
-    if (groupMode === "status") {
-      const statusGroupKeys = Array.from(
-        new Set(statusWorkspacePlacements.map((placement) => placement.statusBucket)),
-      );
-      setSectionsCollapsed({ statusGroupKeys, collapsed });
-      return;
-    }
-    setSectionsCollapsed({
-      projectKeys: projects.map((project) => project.projectKey),
-      collapsed,
-    });
-  }, [allSectionsExpanded, groupMode, projects, setSectionsCollapsed, statusWorkspacePlacements]);
-  const expandAllLabel = allSectionsExpanded ? "Collapse all" : "Expand all";
-  const headerIconButtonStyle = useCallback(
+  const searchButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
       (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
     ],
     [],
-  );
-  const headerIconColor = useCallback(
-    ({ hovered = false, pressed }: { hovered?: boolean; pressed: boolean }) =>
-      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted,
-    [theme.colors.foreground, theme.colors.foregroundMuted],
   );
 
   return (
@@ -1186,44 +899,21 @@ function WorkspacesSectionHeader({
               accessibilityRole="button"
               accessibilityLabel="Open command center"
               testID="sidebar-command-center-search"
-              style={headerIconButtonStyle}
+              style={searchButtonStyle}
               onPress={handleSearchPress}
             >
               {({ hovered, pressed }) => (
-                <Search size={theme.iconSize.sm} color={headerIconColor({ hovered, pressed })} />
+                <Search
+                  size={14}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
               )}
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="center" offset={8}>
             <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={expandAllLabel}
-              testID="sidebar-toggle-expand-all"
-              style={headerIconButtonStyle}
-              onPress={handleToggleExpandAll}
-            >
-              {({ hovered, pressed }) =>
-                allSectionsExpanded ? (
-                  <ListChevronsDownUp
-                    size={theme.iconSize.sm}
-                    color={headerIconColor({ hovered, pressed })}
-                  />
-                ) : (
-                  <ListChevronsUpDown
-                    size={theme.iconSize.sm}
-                    color={headerIconColor({ hovered, pressed })}
-                  />
-                )
-              }
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <HeaderIconTooltipContent label={expandAllLabel} />
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
@@ -1245,17 +935,6 @@ function WorkspacesSectionHeader({
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles
 // tries to patch the native node that Reanimated also manages.
 const staticStyles = RNStyleSheet.create({
-  backdrop: {
-    ...RNStyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  mobileSidebar: {
-    position: "absolute" as const,
-    top: 0,
-    left: 0,
-    bottom: 0,
-    overflow: "hidden" as const,
-  },
   desktopSidebar: {
     position: "relative" as const,
   },
@@ -1291,11 +970,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacesSectionTitle: {
     color: theme.colors.foregroundMuted,
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: {
-      xs: theme.fontSize.xs + 2,
-      md: theme.fontSize.xs,
-    },
+    fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
   },
   workspacesSectionActions: {
@@ -1304,14 +979,14 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   workspacesHeaderIconButton: {
-    width: compactUp(28),
-    height: compactUp(28),
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
   },
   workspacesHeaderIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   sidebarContent: {
     flex: 1,
@@ -1348,7 +1023,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
@@ -1361,16 +1036,12 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   footerIconButton: {
-    // 1.5x on compact to wrap the icons' matching compact upscale.
-    width: compactUp(theme.spacing[8], 1.5),
-    height: compactUp(theme.spacing[8], 1.5),
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
-    padding: 0,
-    borderRadius: theme.borderRadius.lg,
-  },
-  footerIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
   },
   tooltipRow: {
     flexDirection: "row",

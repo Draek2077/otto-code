@@ -8,14 +8,7 @@ import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
-import {
-  Stack,
-  useGlobalSearchParams,
-  useNavigationContainerRef,
-  usePathname,
-  useRouter,
-} from "expo-router";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
 import {
   createContext,
   type ReactNode,
@@ -28,9 +21,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { View } from "react-native";
-import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
+import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
@@ -41,6 +33,7 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
+import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
@@ -51,16 +44,8 @@ import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
-import {
-  HorizontalScrollProvider,
-  useHorizontalScrollOptional,
-} from "@/contexts/horizontal-scroll-context";
+import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
-import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
-import {
-  SidebarAnimationProvider,
-  useSidebarAnimation,
-} from "@/contexts/sidebar-animation-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
@@ -73,6 +58,7 @@ import {
   type StartupBlocker,
 } from "@/navigation/host-runtime-bootstrap";
 import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-route-navigation";
+import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -89,6 +75,8 @@ import { useCompactWebViewportZoomLock } from "@/hooks/use-compact-web-viewport-
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
+import { MobilePanelsProvider } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { polyfillCrypto } from "@/polyfills/crypto";
@@ -105,17 +93,11 @@ import { getDaemonStartService } from "@/runtime/daemon-start-service";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { applyAppearance } from "@/screens/settings/appearance/apply-appearance";
 import { applyColorScheme } from "@/screens/settings/appearance/apply-color-scheme";
-import { usePanelStore } from "@/stores/panel-store";
+import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
-import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
-import {
-  buildOpenProjectRoute,
-  parseHostAgentRouteFromPathname,
-  parseServerIdFromPathname,
-  parseWorkspaceOpenIntent,
-} from "@/utils/host-routes";
+import { buildOpenProjectRoute, parseServerIdFromPathname } from "@/utils/host-routes";
 import { startDesktopResizeReflow } from "@/utils/desktop-window";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -420,12 +402,10 @@ function QueryProvider({ children }: { children: ReactNode }) {
 
 const rowStyle = { flex: 1, flexDirection: "row" } as const;
 const flexStyle = { flex: 1 } as const;
-const MOBILE_WEB_EDGE_SWIPE_WIDTH = 32;
 const MOBILE_WEB_GESTURE_TOUCH_ACTION = isWeb ? "auto" : "pan-y";
 
 interface AppContainerProps {
   children: ReactNode;
-  selectedAgentId?: string;
   chromeEnabled?: boolean;
 }
 
@@ -446,11 +426,7 @@ const THEME_CYCLE_ORDER: ThemeCycleStep[] = [
   { colorSchemeMode: "light", lightTheme: "daylight" }, // Daylight
 ];
 
-function AppContainer({
-  children,
-  selectedAgentId,
-  chromeEnabled: chromeEnabledOverride,
-}: AppContainerProps) {
+function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppContainerProps) {
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
@@ -514,28 +490,31 @@ function AppContainer({
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
 
+  const sidebarChrome = (
+    <SidebarChrome
+      showSidebar={chromeEnabled && (isCompactLayout || !isFocusModeEnabled)}
+      keyboardShortcutsEnabled={keyboardShortcutsEnabled}
+    />
+  );
+
   const workspaceChrome = (
     <View style={rowStyle}>
-      {!isCompactLayout && chromeEnabled && !isFocusModeEnabled && (
-        <LeftSidebar selectedAgentId={selectedAgentId} />
-      )}
+      {!isCompactLayout ? sidebarChrome : null}
       {isCompactLayout && chromeEnabled ? (
-        <ExplorerSidebarAnimationProvider>
-          <CompactExplorerSidebarHost enabled={chromeEnabled}>
-            <View style={flexStyle}>{children}</View>
-          </CompactExplorerSidebarHost>
-        </ExplorerSidebarAnimationProvider>
+        <CompactExplorerSidebarHost enabled={chromeEnabled}>
+          <View style={flexStyle}>{children}</View>
+        </CompactExplorerSidebarHost>
       ) : (
         <View style={flexStyle}>{children}</View>
       )}
     </View>
   );
 
-  const content = (
+  const surface = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
       <FloatingPanelPortalHost />
-      {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+      {isCompactLayout ? sidebarChrome : null}
       <DownloadToast />
       <RosettaCalloutSource />
       <UpdateCalloutSource />
@@ -544,7 +523,6 @@ function AppContainer({
       <HostChooserModal />
       <ProjectPickerModal />
       <ProviderSettingsHost />
-      <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
       <ConfirmDialogHost />
@@ -553,11 +531,32 @@ function AppContainer({
     </View>
   );
 
-  if (!isCompactLayout) {
-    return content;
-  }
+  const content = isCompactLayout ? (
+    <MobileGestureWrapper chromeEnabled={chromeEnabled}>{surface}</MobileGestureWrapper>
+  ) : (
+    surface
+  );
 
-  return <MobileGestureWrapper chromeEnabled={chromeEnabled}>{content}</MobileGestureWrapper>;
+  return content;
+}
+
+function SidebarChrome({
+  showSidebar,
+  keyboardShortcutsEnabled,
+}: {
+  showSidebar: boolean;
+  keyboardShortcutsEnabled: boolean;
+}) {
+  const isCompactLayout = useIsCompactFormFactor();
+  const isOpen = usePanelStore((state) =>
+    selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
+  );
+  return (
+    <SidebarModelProvider active={showSidebar && isOpen}>
+      {showSidebar ? <LeftSidebar /> : null}
+      <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
+    </SidebarModelProvider>
+  );
 }
 
 function MobileGestureWrapper({
@@ -567,131 +566,13 @@ function MobileGestureWrapper({
   children: ReactNode;
   chromeEnabled: boolean;
 }) {
-  const showMobileAgentList = usePanelStore((state) => state.showMobileAgentList);
-  const horizontalScroll = useHorizontalScrollOptional();
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    setOverlayPeek,
-    isGesturing,
-    mobilePanelState,
-    gestureAnimatingRef,
-    openGestureRef,
-  } = useSidebarAnimation();
-  const touchStartX = useSharedValue(0);
-  const touchStartY = useSharedValue(0);
-  const openGestureEnabled = chromeEnabled;
-
-  const handleGestureOpen = useCallback(() => {
-    gestureAnimatingRef.current = true;
-    showMobileAgentList();
-  }, [showMobileAgentList, gestureAnimatingRef]);
-
-  const openGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .withRef(openGestureRef)
-        .enabled(openGestureEnabled)
-        .manualActivation(true)
-        .failOffsetY([-10, 10])
-        .onTouchesDown((event) => {
-          const touch = event.changedTouches[0];
-          if (touch) {
-            touchStartX.value = touch.absoluteX;
-            touchStartY.value = touch.absoluteY;
-          }
-        })
-        .onTouchesMove((event, stateManager) => {
-          const touch = event.changedTouches[0];
-          if (!touch || event.numberOfTouches !== 1) return;
-
-          const deltaX = touch.absoluteX - touchStartX.value;
-          const deltaY = touch.absoluteY - touchStartY.value;
-          const absDeltaX = Math.abs(deltaX);
-          const absDeltaY = Math.abs(deltaY);
-
-          if (!canOpenLeftSidebarGesture(mobilePanelState.value, translateX.value, windowWidth)) {
-            stateManager.fail();
-            return;
-          }
-
-          if (horizontalScroll?.isAnyScrolledRight.value) {
-            stateManager.fail();
-            return;
-          }
-
-          if (isWeb && touchStartX.value > MOBILE_WEB_EDGE_SWIPE_WIDTH) {
-            stateManager.fail();
-            return;
-          }
-
-          if (deltaX <= -10) {
-            stateManager.fail();
-            return;
-          }
-
-          if (absDeltaY > 10 && absDeltaY > absDeltaX) {
-            stateManager.fail();
-            return;
-          }
-
-          if (deltaX > 15 && absDeltaX > absDeltaY) {
-            stateManager.activate();
-          }
-        })
-        .onStart(() => {
-          isGesturing.value = true;
-          // The overlay is display:none while closed; reveal it for the drag.
-          runOnJS(setOverlayPeek)(true);
-        })
-        .onUpdate((event) => {
-          const newTranslateX = Math.min(0, -windowWidth + event.translationX);
-          translateX.value = newTranslateX;
-          backdropOpacity.value = interpolate(
-            newTranslateX,
-            [-windowWidth, 0],
-            [0, 1],
-            Extrapolation.CLAMP,
-          );
-        })
-        .onEnd((event) => {
-          isGesturing.value = false;
-          const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
-          if (shouldOpen) {
-            animateToOpen();
-            runOnJS(handleGestureOpen)();
-          } else {
-            animateToClose();
-          }
-        })
-        .onFinalize(() => {
-          isGesturing.value = false;
-          runOnJS(setOverlayPeek)(false);
-        }),
-    [
-      openGestureEnabled,
-      windowWidth,
-      translateX,
-      backdropOpacity,
-      mobilePanelState,
-      animateToOpen,
-      animateToClose,
-      setOverlayPeek,
-      handleGestureOpen,
-      isGesturing,
-      openGestureRef,
-      horizontalScroll?.isAnyScrolledRight,
-      touchStartX,
-      touchStartY,
-    ],
-  );
+  const openGesture = useOpenAgentListGesture(chromeEnabled);
 
   return (
     <GestureDetector gesture={openGesture} touchAction={MOBILE_WEB_GESTURE_TOUCH_ACTION}>
-      {children}
+      <View collapsable={false} style={layoutStyles.surfaceFill}>
+        {children}
+      </View>
     </GestureDetector>
   );
 }
@@ -961,7 +842,6 @@ function OpenProjectListener() {
 
 function AppWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const params = useGlobalSearchParams<{ open?: string | string[] }>();
   const hosts = useHosts();
   const storeReady = useStoreReady();
   const routeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
@@ -976,30 +856,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/artifacts" ||
       routeHasKnownHost);
 
-  // Parse selectedAgentKey directly from pathname
-  // useLocalSearchParams doesn't update when navigating between same-pattern routes
-  const selectedAgentKey = useMemo(() => {
-    const workspaceMatch = pathname.match(/^\/h\/([^/]+)\/workspace\/[^/]+(?:\/|$)/);
-    const workspaceServerId = workspaceMatch?.[1]?.trim() ?? "";
-    const openValue = Array.isArray(params.open) ? params.open[0] : params.open;
-    const openIntent = parseWorkspaceOpenIntent(openValue);
-    if (workspaceServerId && openIntent?.kind === "agent") {
-      const agentId = openIntent.agentId.trim();
-      return agentId ? `${workspaceServerId}:${agentId}` : undefined;
-    }
-
-    const match = parseHostAgentRouteFromPathname(pathname);
-    return match ? `${match.serverId}:${match.agentId}` : undefined;
-  }, [params.open, pathname]);
-
-  return (
-    <AppContainer
-      selectedAgentId={shouldShowAppChrome ? selectedAgentKey : undefined}
-      chromeEnabled={shouldShowAppChrome}
-    >
-      {children}
-    </AppContainer>
-  );
+  return <AppContainer chromeEnabled={shouldShowAppChrome}>{children}</AppContainer>;
 }
 
 function FaviconStatusSync() {
@@ -1007,61 +864,33 @@ function FaviconStatusSync() {
   return null;
 }
 
+const ROOT_STACK_SCREEN_OPTIONS = {
+  headerShown: false,
+  animation: "none" as const,
+};
+
 function RootStack() {
   const storeReady = useStoreReady();
-  const { theme } = useUnistyles();
-  const stackScreenOptions = useMemo(
-    () => ({
-      headerShown: false,
-      animation: "none" as const,
-      contentStyle: {
-        backgroundColor: theme.colors.surface0,
-      },
-    }),
-    [theme.colors.surface0],
-  );
-  // Every stack scene (root and nested host stack) wraps its content in
-  // @react-navigation/elements' Background, which paints the *navigation*
-  // theme's colors.background. Without this provider that is the default
-  // light theme's near-white — the flash visible while a heavy screen
-  // (workspace deck) cold-mounts on top of it. contentStyle above only covers
-  // the root stack's own scenes; the provider covers every nested navigator.
-  const navigationTheme = useMemo(() => {
-    const base = theme.colorScheme === "dark" ? DarkTheme : DefaultTheme;
-    return {
-      ...base,
-      colors: {
-        ...base.colors,
-        primary: theme.colors.accent,
-        background: theme.colors.surface0,
-        card: theme.colors.surface1,
-        text: theme.colors.foreground,
-        border: theme.colors.border,
-      },
-    };
-  }, [theme]);
   return (
-    <ThemeProvider value={navigationTheme}>
-      <Stack screenOptions={stackScreenOptions}>
-        <Stack.Screen name="index" />
-        <Stack.Protected guard={storeReady}>
-          <Stack.Screen name="welcome" />
-          <Stack.Screen name="settings/index" />
-          <Stack.Screen name="settings/[section]" />
-          <Stack.Screen name="settings/projects/index" />
-          <Stack.Screen name="settings/projects/[projectKey]" />
-          <Stack.Screen name="new" />
-          <Stack.Screen name="open-project" />
-          <Stack.Screen name="sessions" />
-          <Stack.Screen name="schedules" />
-          <Stack.Screen name="artifacts" />
-          <Stack.Screen name="pair-scan" />
-        </Stack.Protected>
-        <Stack.Screen name="h/[serverId]" />
-        <Stack.Screen name="settings/hosts/[serverId]/index" />
-        <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
-      </Stack>
-    </ThemeProvider>
+    <ThemedStack screenOptions={ROOT_STACK_SCREEN_OPTIONS}>
+      <Stack.Screen name="index" />
+      <Stack.Protected guard={storeReady}>
+        <Stack.Screen name="welcome" />
+        <Stack.Screen name="settings/index" />
+        <Stack.Screen name="settings/[section]" />
+        <Stack.Screen name="settings/projects/index" />
+        <Stack.Screen name="settings/projects/[projectKey]" />
+        <Stack.Screen name="new" />
+        <Stack.Screen name="open-project" />
+        <Stack.Screen name="sessions" />
+        <Stack.Screen name="schedules" />
+        <Stack.Screen name="artifacts" />
+        <Stack.Screen name="pair-scan" />
+      </Stack.Protected>
+      <Stack.Screen name="h/[serverId]" />
+      <Stack.Screen name="settings/hosts/[serverId]/index" />
+      <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
+    </ThemedStack>
   );
 }
 
@@ -1077,7 +906,7 @@ function WorkspaceRouteNavigationBridge() {
 
 function AppShell() {
   return (
-    <SidebarAnimationProvider>
+    <MobilePanelsProvider>
       <HorizontalScrollProvider>
         <OpenProjectListener />
         <AppWithSidebar>
@@ -1085,7 +914,7 @@ function AppShell() {
           <RootStack />
         </AppWithSidebar>
       </HorizontalScrollProvider>
-    </SidebarAnimationProvider>
+    </MobilePanelsProvider>
   );
 }
 

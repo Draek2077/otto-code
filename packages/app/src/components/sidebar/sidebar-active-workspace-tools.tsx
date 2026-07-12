@@ -4,7 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { getIsElectron } from "@/constants/platform";
-import { WorkspaceGitActions } from "@/git/workspace-actions";
+import { WorkspaceActions } from "@/git/workspace-actions";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -153,7 +153,7 @@ export function SidebarActiveWorkspaceTools() {
           hideLabels={isCompact}
           fill={!isCompact}
         />
-        <WorkspaceGitActions
+        <WorkspaceActions
           serverId={workspaceEntry.serverId}
           cwd={workspaceDirectory}
           hideLabels={isCompact}

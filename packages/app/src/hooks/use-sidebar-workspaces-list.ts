@@ -30,10 +30,9 @@ export {
   applyStoredOrdering,
   buildSidebarProjectsFromHostProjects,
   buildSidebarProjectsFromStructure,
-  buildSidebarStatusWorkspacePlacements,
+  createSidebarWorkspaceEntry,
   buildSidebarWorkspacePlacementModel,
   computeSidebarOrderUpdates,
-  createSidebarWorkspaceEntry,
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
   type SidebarLoadingState,
@@ -65,12 +64,14 @@ export function useSidebarWorkspaceEntry(
     (state) => {
       const workspace = selectWorkspace(state, serverId, workspaceId);
       if (!workspace) return null;
-      const agents = serverId ? state.sessions[serverId]?.agents : undefined;
+      const workspaceAgentActivity = serverId
+        ? state.sessions[serverId]?.workspaceAgentActivity
+        : undefined;
       return createSidebarWorkspaceEntry({
         serverId: serverId ?? "",
         workspace,
         pendingCreateAttempts,
-        agents,
+        workspaceAgentActivity,
       });
     },
     equal,

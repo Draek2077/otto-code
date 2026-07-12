@@ -22,6 +22,7 @@
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
     "test:e2e": "playwright test --project='Desktop Chrome'",
+    "test:e2e:desktop": "cross-env E2E_DESKTOP_RUNTIME=1 playwright test --project='Desktop Chrome' e2e/project-picker-desktop.spec.ts",
     "test:e2e:real": "cross-env E2E_FORK_OTTO_HOME_FROM=../../.dev/otto-home playwright test --project=real-provider",
     "test:e2e:ui": "playwright test --ui",
     "demo": "playwright test --config playwright.demo.config.ts --project=demo",

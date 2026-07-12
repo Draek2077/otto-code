@@ -23,6 +23,8 @@ interface TestOttoDaemonOptions {
   isDev?: boolean;
   relayEnabled?: boolean;
   relayEndpoint?: string;
+  relayUseTls?: boolean;
+  relayPublicUseTls?: boolean;
   agentClients?: Partial<Record<AgentProvider, AgentClient>>;
   providerOverrides?: OttoDaemonConfig["providerOverrides"];
   ottoHomeRoot?: string;
@@ -166,6 +168,8 @@ async function prepareTestDaemonConfig(
     agentStoragePath: path.join(ottoHome, "agents"),
     relayEnabled: options.relayEnabled ?? false,
     relayEndpoint: options.relayEndpoint ?? "relay.otto-code.me:443",
+    relayUseTls: options.relayUseTls,
+    relayPublicUseTls: options.relayPublicUseTls,
     appBaseUrl: "https://app.otto-code.me",
     auth: options.auth,
     pushNotificationSender: options.pushNotificationSender,

@@ -12,7 +12,7 @@ import {
 // This live test uses the hosted relay's real TLS endpoint. Self-hosted relay TLS
 // opt-in is covered at URL-building/integration level so the local E2E does not
 // need to provision trusted certificates.
-const RELAY_BASE_URL = "wss://relay.otto-code.ai";
+const RELAY_BASE_URL = process.env.OTTO_LIVE_RELAY_URL ?? "wss://relay.otto-code.me";
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -90,7 +90,7 @@ function waitForOnceMessage<T extends "string" | "buffer">(
   });
 }
 
-describe("Live relay (relay.otto-code.ai) E2E", () => {
+describe("Live relay (relay.otto-code.me) E2E", () => {
   const liveIt = process.env.RUN_LIVE_RELAY_E2E === "1" ? it : it.skip;
 
   liveIt("bridges encrypted traffic end-to-end", { timeout: 45_000 }, async () => {
@@ -119,6 +119,7 @@ describe("Live relay (relay.otto-code.ai) E2E", () => {
         // === Connect ===
         const daemonControlWs = new WebSocket(serverControlUrl);
         const clientWs = new WebSocket(clientUrl);
+        const connected = waitForConnected(daemonControlWs, connectionId);
         let daemonWs: WebSocket | null = null;
 
         try {
@@ -127,7 +128,7 @@ describe("Live relay (relay.otto-code.ai) E2E", () => {
             waitOpen(clientWs, "client"),
           ]);
 
-          await waitForConnected(daemonControlWs, connectionId);
+          await connected;
 
           daemonWs = new WebSocket(serverDataUrl);
           await waitOpen(daemonWs, "server-data");

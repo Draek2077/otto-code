@@ -4,16 +4,8 @@ import { View, Text, Pressable, ScrollView, type PressableStateCallbackType } fr
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import {
-  useSidebarWorkspaceEntry,
-  type SidebarStatusWorkspacePlacement,
-  type SidebarWorkspaceEntry,
-} from "@/hooks/use-sidebar-workspaces-list";
-import {
-  buildStatusGroups,
-  buildStatusShortcutIndex,
-  type StatusGroup,
-} from "@/hooks/sidebar-status-view-model";
+import { type SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import { isWeb as platformIsWeb, isNative as platformIsNative } from "@/constants/platform";
 import { StyleSheet } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -31,10 +23,9 @@ import { useToast } from "@/contexts/toast-context";
 import { useMutation } from "@tanstack/react-query";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
-import { requireWorkspaceDirectory, resolveWorkspaceDirectory } from "@/utils/workspace-directory";
+import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
-import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
 import * as Clipboard from "expo-clipboard";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -48,7 +39,10 @@ import {
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
 } from "@/components/sidebar/sidebar-workspace-row-content";
-import { WorkspaceKebabMenu, WorkspaceMenuItems } from "@/components/sidebar/sidebar-workspace-row";
+import {
+  SidebarWorkspaceMenu,
+  WorkspaceMenuItems,
+} from "@/components/sidebar/sidebar-workspace-menu";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -72,9 +66,8 @@ const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleX = withUnistyles(CircleX);
-
 interface StatusWorkspaceListProps {
-  workspaces: SidebarStatusWorkspacePlacement[];
+  groups: StatusGroup[];
   projectNamesByKey: Map<string, string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   showShortcutBadges: boolean;
@@ -84,31 +77,19 @@ interface StatusWorkspaceListProps {
 }
 
 export function SidebarStatusWorkspaceList({
-  workspaces,
+  groups,
   projectNamesByKey,
-  shortcutIndexByWorkspaceKey: _projectShortcutIndex,
+  shortcutIndexByWorkspaceKey,
   showShortcutBadges,
   onWorkspacePress,
   hostLabelByServerId,
   showHostLabels,
 }: StatusWorkspaceListProps) {
-  const groups = useMemo(
-    () => buildStatusGroups(workspaces, projectNamesByKey),
-    [workspaces, projectNamesByKey],
-  );
   const collapsedStatusGroupKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedStatusGroupKeys,
   );
 
-  const statusShortcutIndex = useMemo(
-    () =>
-      showShortcutBadges
-        ? buildStatusShortcutIndex(
-            groups.filter((group) => !collapsedStatusGroupKeys.has(group.bucket)),
-          )
-        : new Map<string, number>(),
-    [collapsedStatusGroupKeys, groups, showShortcutBadges],
-  );
+  const statusShortcutIndex = showShortcutBadges ? shortcutIndexByWorkspaceKey : new Map();
 
   return (
     <View style={styles.container}>
@@ -309,13 +290,12 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   showShortcutBadge,
   onWorkspacePress,
 }: {
-  workspace: SidebarStatusWorkspacePlacement;
+  workspace: SidebarWorkspaceEntry;
   subtitle: string;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
   onWorkspacePress?: () => void;
 }) {
-  const workspaceEntry = useSidebarWorkspaceEntry(workspace.serverId, workspace.workspaceId);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const selected =
     activeWorkspaceSelection?.serverId === workspace.serverId &&
@@ -327,11 +307,9 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
     navigateToWorkspace(workspace.serverId, workspace.workspaceId);
   }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
 
-  if (!workspaceEntry) return null;
-
   return (
     <StatusWorkspaceRowWithMenu
-      workspace={workspaceEntry}
+      workspace={workspace}
       subtitle={subtitle}
       selected={selected}
       shortcutNumber={shortcutNumber}
@@ -360,20 +338,7 @@ function StatusWorkspaceRowWithMenu({
   const toast = useToast();
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
-  const workspaceDirectory = resolveWorkspaceDirectory({
-    workspaceDirectory: workspace.workspaceDirectory,
-  });
-  const worktreeArchiveStatus = useCheckoutGitActionsStore((state) =>
-    workspaceDirectory
-      ? state.getStatus({
-          serverId: workspace.serverId,
-          cwd: workspaceDirectory,
-          actionId: "archive-worktree",
-        })
-      : "idle",
-  );
-  const isWorktree = workspace.workspaceKind === "worktree";
-  const isArchiving = isWorktree ? workspace.archivingAt !== null : isHidingWorkspace;
+  const isArchiving = workspace.archivingAt !== null || isHidingWorkspace;
 
   const redirectAfterArchive = useCallback(() => {
     redirectIfArchivingActiveWorkspace({
@@ -388,7 +353,6 @@ function StatusWorkspaceRowWithMenu({
   const archiveController = useWorkspaceArchive({
     serverId: workspace.serverId,
     workspaceId: workspace.workspaceId,
-    workspaceDirectory: workspace.workspaceDirectory,
     workspaceKind: workspace.workspaceKind,
     name: workspace.name,
     ...toWorktreeArchiveRisk(workspace),
@@ -438,7 +402,7 @@ function StatusWorkspaceRowWithMenu({
     [renameMutation],
   );
 
-  const archiveShortcutKeys = useShortcutKeys("archive-worktree");
+  const archiveShortcutKeys = useShortcutKeys("archive-workspace");
   const { hasClearableAttention, clearAttention } = useClearWorkspaceAttention({
     serverId: workspace.serverId,
     workspaceId: workspace.workspaceId,
@@ -450,8 +414,8 @@ function StatusWorkspaceRowWithMenu({
   }, [clearAttention, toast]);
 
   useKeyboardActionHandler({
-    handlerId: `worktree-archive-${workspace.workspaceKey}`,
-    actions: ["worktree.archive"],
+    handlerId: `workspace-archive-${workspace.workspaceKey}`,
+    actions: ["workspace.archive"],
     enabled: selected && !isArchiving,
     priority: 0,
     handle: () => {
@@ -459,13 +423,6 @@ function StatusWorkspaceRowWithMenu({
       return true;
     },
   });
-
-  let computedArchiveStatus: "idle" | "pending" | "success" = "idle";
-  if (isWorktree) {
-    computedArchiveStatus = worktreeArchiveStatus;
-  } else if (isHidingWorkspace) {
-    computedArchiveStatus = "pending";
-  }
 
   return (
     <>
@@ -478,7 +435,7 @@ function StatusWorkspaceRowWithMenu({
         onPress={onPress}
         isArchiving={isArchiving}
         archiveLabel={t("sidebar.workspace.actions.archive")}
-        archiveStatus={computedArchiveStatus}
+        archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
         onArchive={handleArchive}
         onCopyBranchName={workspace.projectKind === "git" ? handleCopyBranchName : undefined}
@@ -679,7 +636,7 @@ function StatusWorkspaceActionSlot({
       </SidebarWorkspaceTrailingActionBase>
       <SidebarWorkspaceTrailingActionOverlay visible={showOverlay}>
         {onArchive ? (
-          <WorkspaceKebabMenu
+          <SidebarWorkspaceMenu
             workspaceKey={workspace.workspaceKey}
             onCopyPath={onCopyPath}
             onCopyBranchName={onCopyBranchName}
@@ -804,13 +761,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarRowSelected: {
     backgroundColor: theme.colors.surfaceSidebarHover,
-  },
-  kebabButton: {
-    padding: 2,
-    borderRadius: 4,
-    marginLeft: 2,
-  },
-  kebabButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
   },
 }));

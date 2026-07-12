@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -41,7 +40,7 @@ import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/ut
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
 import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
-import { MountedTabActiveContext } from "@/components/split-container";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
 
@@ -657,7 +656,7 @@ export function FilePreview({
   // Re-read the file when this pane becomes visible again (#445). `isActive`
   // covers tab switches, `isAppVisible` the whole-app background/foreground; the
   // gate itself lives in isFileQueryEnabled.
-  const isActive = useContext(MountedTabActiveContext);
+  const isActive = useRetainedPanelActive();
   const isAppVisible = useAppVisible();
 
   const query = useQuery({

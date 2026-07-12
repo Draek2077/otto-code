@@ -89,6 +89,7 @@ import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import { UPSTREAM_BASE_NAME, UPSTREAM_BASE_VERSION } from "@/utils/upstream-base-version";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -605,7 +606,15 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
               <Text style={settingsStyles.rowTitle}>{t("settings.about.appVersion")}</Text>
               <Text style={settingsStyles.rowHint}>{t("settings.about.thisDevice")}</Text>
             </View>
-            <Text style={styles.aboutValue}>{appVersionText}</Text>
+            <View style={styles.aboutVersionColumn}>
+              <Text style={styles.aboutValue}>{appVersionText}</Text>
+              <Text style={styles.aboutBaseVersion}>
+                {t("settings.about.upstreamBase", {
+                  brand: UPSTREAM_BASE_NAME,
+                  version: formatVersionWithPrefix(UPSTREAM_BASE_VERSION),
+                })}
+              </Text>
+            </View>
           </View>
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
         </View>
@@ -1803,6 +1812,17 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.fontSize.sm + 2,
       md: theme.fontSize.sm,
     },
+  },
+  aboutVersionColumn: {
+    alignItems: "flex-end",
+  },
+  aboutBaseVersion: {
+    color: theme.colors.foregroundMuted,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    marginTop: theme.spacing[1],
   },
   aboutVersionMismatch: {
     color: theme.colors.palette.amber[500],

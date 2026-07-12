@@ -16,6 +16,7 @@ import { resolveAssistantTurnBoundaryMessageId } from "./turn-boundary";
 import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 
 /** Two glow colors for an agent's personality thinking spinner. */
 export interface PersonalitySpinnerColors {
@@ -150,12 +151,14 @@ const WorkingIndicator = memo(function WorkingIndicator({
   estimatedTokens?: number | null;
   spinner?: PersonalitySpinnerColors;
 }) {
+  const active = useRetainedPanelActive();
   return (
     <View style={stylesheet.turnFooterContent}>
       <TurnSpinner spinner={spinner} />
       {inFlightTurnStartedAt ? (
         <LiveElapsed
           startedAt={inFlightTurnStartedAt}
+          active={active}
           style={stylesheet.workingElapsed}
           testID="turn-working-elapsed"
         />

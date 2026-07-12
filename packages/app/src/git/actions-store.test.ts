@@ -8,10 +8,7 @@ import {
   isLocalWorktreeArchivePending,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
-import {
-  clearWorkspaceArchivePending,
-  isWorkspaceArchivePending,
-} from "@/contexts/session-workspace-upserts";
+import { isWorkspaceArchivePending } from "@/contexts/session-workspace-upserts";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -57,7 +54,6 @@ describe("checkout-git-actions-store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     __resetCheckoutGitActionsStoreForTests();
-    clearWorkspaceArchivePending({ serverId, workspaceId });
     appQueryClient.clear();
     useSessionStore.setState((state) => ({ ...state, sessions: {} }));
   });
@@ -65,7 +61,6 @@ describe("checkout-git-actions-store", () => {
   afterEach(() => {
     vi.useRealTimers();
     __resetCheckoutGitActionsStoreForTests();
-    clearWorkspaceArchivePending({ serverId, workspaceId });
     appQueryClient.clear();
     useSessionStore.setState((state) => ({ ...state, sessions: {} }));
   });
