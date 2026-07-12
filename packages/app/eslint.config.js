@@ -5,6 +5,8 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*"],
+    // Demo templates are standalone fake projects (their own package.json),
+    // not app code — they must not be linted against the app's config.
+    ignores: ["dist/*", "demo/staging/templates/**", "demo/.out/**"],
   },
 ]);

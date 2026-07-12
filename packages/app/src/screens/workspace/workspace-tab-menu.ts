@@ -141,6 +141,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "artifact") {
     return `workspace-artifact-close-${tab.target.artifactId}`;
   }
+  if (tab.target.kind === "gitLog") {
+    return `workspace-gitlog-close-${tab.target.operation}`;
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

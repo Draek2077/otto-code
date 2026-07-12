@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import pino from "pino";
 import {
+  type BusyWorkspaceAgent,
   type CheckoutDiffSubscriber,
   CheckoutSession,
   type CheckoutSessionHost,
@@ -22,6 +27,12 @@ import {
 } from "../../test-utils/workspace-git-service-stub.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
+import { GitOperationLogService } from "../../git-operation-log.js";
+import type { GitOperationLogEntry } from "../../messages.js";
+
+function isLoggedGitCommitCommand(entry: GitOperationLogEntry): boolean {
+  return entry.level === "info" && /^\$ git .*commit/.test(entry.text);
+}
 
 interface FakeDiffSubscription {
   cwd: string;
@@ -85,6 +96,7 @@ function makeCheckoutSession(options?: {
   host?: Partial<CheckoutSessionHost>;
   gitMutation?: Partial<GitMutationFake>;
   gitMetadataGenerator?: Partial<GitMetadataGenerator>;
+  busyAgents?: BusyWorkspaceAgent[];
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const hostCalls: RecordedHostCalls = {
@@ -136,9 +148,12 @@ function makeCheckoutSession(options?: {
     ...options?.gitMetadataGenerator,
   };
   const github: GitHubService = { ...createGitHubService(), ...options?.github };
+  const gitOperationLog = new GitOperationLogService();
   const checkout = new CheckoutSession({
     host,
     gitMutation,
+    listBusyAgentsForCwd: () => options?.busyAgents ?? [],
+    gitOperationLog,
     workspaceGitService: createNoopWorkspaceGitService(options?.git),
     github,
     checkoutDiffManager:
@@ -148,7 +163,7 @@ function makeCheckoutSession(options?: {
     worktreesRoot: undefined,
     logger: pino({ level: "silent" }),
   });
-  return { checkout, emitted, hostCalls, gitMutationCalls, generatorCalls };
+  return { checkout, emitted, hostCalls, gitMutationCalls, generatorCalls, gitOperationLog };
 }
 
 function createGitSnapshot(
@@ -690,6 +705,154 @@ describe("CheckoutSession", () => {
             success: false,
             error: { code: "UNKNOWN", message: "Commit message is required" },
             requestId: "c1",
+          },
+        },
+      ]);
+    });
+  });
+
+  describe("git commit (checkout.git.commit)", () => {
+    function initCommitRepo(): string {
+      const repoDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-session-commit-")));
+      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+      execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
+      writeFileSync(join(repoDir, "seed.txt"), "seed\n");
+      execFileSync("git", ["add", "."], { cwd: repoDir });
+      execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir });
+      return repoDir;
+    }
+
+    it("refuses while agents are busy in the cwd", async () => {
+      const busyAgents = [{ id: "agent-1", title: "Refactor auth" }];
+      const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({ busyAgents });
+
+      await checkout.handleCheckoutGitCommitRequest({
+        type: "checkout.git.commit.request",
+        cwd: "/repo",
+        message: "wip",
+        paths: ["a.txt"],
+        requestId: "gc1",
+      });
+
+      expect(gitMutationCalls.notifyGitMutation).toEqual([]);
+      expect(emitted).toEqual([
+        {
+          type: "checkout.git.commit.response",
+          payload: {
+            cwd: "/repo",
+            success: false,
+            commitSha: null,
+            error: { kind: "agents_running", agents: busyAgents },
+            requestId: "gc1",
+          },
+        },
+      ]);
+    });
+
+    it("commits selected paths after the user confirms despite busy agents", async () => {
+      const repoDir = initCommitRepo();
+      try {
+        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
+        const { subscriber, refreshedCwds } = createFakeDiffSubscriber({
+          cwd: "",
+          files: [],
+          error: null,
+        });
+        const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
+          busyAgents: [{ id: "agent-1", title: null }],
+          diff: subscriber,
+        });
+
+        await checkout.handleCheckoutGitCommitRequest({
+          type: "checkout.git.commit.request",
+          cwd: repoDir,
+          message: "confirmed commit",
+          paths: ["seed.txt"],
+          allowWithRunningAgents: true,
+          requestId: "gc2",
+        });
+
+        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir }).toString().trim();
+        expect(gitMutationCalls.notifyGitMutation).toEqual([
+          { cwd: repoDir, reason: "commit-changes", options: undefined },
+        ]);
+        expect(refreshedCwds).toEqual([repoDir]);
+        expect(emitted).toEqual([
+          {
+            type: "checkout.git.commit.response",
+            payload: {
+              cwd: repoDir,
+              success: true,
+              commitSha: sha,
+              error: null,
+              requestId: "gc2",
+            },
+          },
+        ]);
+      } finally {
+        rmSync(repoDir, { recursive: true, force: true });
+      }
+    });
+
+    it("records the operation log and serves it via get_operation_log", async () => {
+      const repoDir = initCommitRepo();
+      try {
+        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
+        const { checkout, emitted, gitOperationLog } = makeCheckoutSession();
+
+        await checkout.handleCheckoutGitCommitRequest({
+          type: "checkout.git.commit.request",
+          cwd: repoDir,
+          message: "log me",
+          paths: ["seed.txt"],
+          requestId: "gl1",
+        });
+
+        const entries = gitOperationLog.getEntries(repoDir, "commit");
+        expect(entries[0]?.text).toBe("── git commit");
+        expect(entries.filter(isLoggedGitCommitCommand).length).toBeGreaterThan(0);
+        expect(entries.at(-1)?.text).toMatch(/^created commit [0-9a-f]{40}$/);
+
+        emitted.length = 0;
+        await checkout.handleCheckoutGitGetOperationLogRequest({
+          type: "checkout.git.get_operation_log.request",
+          cwd: repoDir,
+          operation: "commit",
+          requestId: "gl2",
+        });
+        expect(emitted).toEqual([
+          {
+            type: "checkout.git.get_operation_log.response",
+            payload: { cwd: repoDir, operation: "commit", entries, requestId: "gl2" },
+          },
+        ]);
+      } finally {
+        rmSync(repoDir, { recursive: true, force: true });
+      }
+    });
+
+    it("fails with git_failed when the message is blank", async () => {
+      const { checkout, emitted } = makeCheckoutSession();
+
+      await checkout.handleCheckoutGitCommitRequest({
+        type: "checkout.git.commit.request",
+        cwd: "/repo",
+        message: "   ",
+        paths: ["a.txt"],
+        requestId: "gc3",
+      });
+
+      expect(emitted).toEqual([
+        {
+          type: "checkout.git.commit.response",
+          payload: {
+            cwd: "/repo",
+            success: false,
+            commitSha: null,
+            error: { kind: "git_failed", detail: "Commit message is required" },
+            requestId: "gc3",
           },
         },
       ]);

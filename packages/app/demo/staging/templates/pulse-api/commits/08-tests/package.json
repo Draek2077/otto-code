@@ -1,0 +1,15 @@
+{
+  "name": "pulse-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight in-memory telemetry API: event ingest, ring-buffered history, live gauges.",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

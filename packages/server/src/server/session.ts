@@ -145,7 +145,8 @@ import {
 import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
-import { CheckoutSession } from "./session/checkout/checkout-session.js";
+import { CheckoutSession, type BusyWorkspaceAgent } from "./session/checkout/checkout-session.js";
+import { gitOperationLog } from "./git-operation-log.js";
 import {
   createWorkspaceGitObserverService,
   type WorkspaceGitObserverService,
@@ -188,7 +189,7 @@ import {
   matchesAgentUpdatesFilter,
   type AgentUpdatesService,
 } from "./session/agent-updates/agent-updates-service.js";
-import { expandTilde } from "../utils/path.js";
+import { areEquivalentPaths, expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
@@ -586,6 +587,7 @@ export class Session {
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
+  private unsubscribeGitOperationLog: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
   private clientActivity: {
@@ -736,6 +738,8 @@ export class Session {
         renameCurrentBranch: (cwd, branch) => this.renameCurrentBranch(cwd, branch),
       },
       gitMutation: this.gitMutation,
+      listBusyAgentsForCwd: (cwd) => this.listBusyAgentsForCwd(cwd),
+      gitOperationLog,
       workspaceGitService: this.workspaceGitService,
       github: this.github,
       ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
@@ -1195,6 +1199,11 @@ export class Session {
    */
   private subscribeToOptionalManagers(): void {
     this.terminalController.start();
+    // Git operations are low-volume and user-initiated, so every session gets
+    // the append stream; clients ignore cwds they aren't watching.
+    this.unsubscribeGitOperationLog = gitOperationLog.subscribe((append) => {
+      this.emit({ type: "checkout.git.log_appended.notification", payload: append });
+    });
     if (this.terminalManager) {
       this.unsubscribeTerminalWorkspaceContributionEvents =
         this.terminalManager.subscribeTerminalWorkspaceContributionChanged((event) => {
@@ -1730,6 +1739,20 @@ export class Session {
       });
   }
 
+  // Agents actively producing work in this cwd. Matching is by cwd, not
+  // workspaceId, because a commit sweeps whatever those agents have written to
+  // the shared working tree regardless of which workspace owns them.
+  private listBusyAgentsForCwd(cwd: string): BusyWorkspaceAgent[] {
+    return this.agentManager
+      .listAgents()
+      .filter(
+        (agent) =>
+          (agent.lifecycle === "running" || agent.lifecycle === "initializing") &&
+          areEquivalentPaths(agent.cwd, cwd),
+      )
+      .map((agent) => ({ id: agent.id, title: agent.config.title ?? null }));
+  }
+
   // eslint-disable-next-line complexity
   private dispatchCheckoutMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
@@ -1752,6 +1775,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutRenameBranchRequest(msg);
       case "checkout_commit_request":
         return this.checkoutSession.handleCheckoutCommitRequest(msg);
+      case "checkout.git.commit.request":
+        return this.checkoutSession.handleCheckoutGitCommitRequest(msg);
+      case "checkout.git.get_operation_log.request":
+        return this.checkoutSession.handleCheckoutGitGetOperationLogRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":
@@ -6158,6 +6185,10 @@ export class Session {
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;
+    }
+    if (this.unsubscribeGitOperationLog) {
+      this.unsubscribeGitOperationLog();
+      this.unsubscribeGitOperationLog = null;
     }
     this.providerCatalogSession.dispose();
 

@@ -40,6 +40,8 @@
     "dev:server:raw": "npm run dev --workspace=@otto-code/server",
     "dev:app": "cross-env OTTO_LISTEN=127.0.0.1:6868 EXPO_PORT=8081 ./scripts/dev-app.sh",
     "dev:website": "npm run dev --workspace=@otto-code/website",
+    "demo": "npm run demo --workspace=@otto-code/app --",
+    "demo:assets": "npm run demo:assets --workspace=@otto-code/app --",
     "postinstall": "node scripts/postinstall-patches.mjs",
     "prepare": "lefthook install --force",
     "build": "npm run build --workspaces --if-present",

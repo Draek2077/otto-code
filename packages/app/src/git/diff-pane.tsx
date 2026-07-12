@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Pressable,
   FlatList,
+  TextInput,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
@@ -33,6 +34,7 @@ import {
   AlignJustify,
   Archive,
   ArrowDownUp,
+  Check,
   ChevronDown,
   Columns2,
   Copy,
@@ -48,6 +50,7 @@ import {
   RefreshCcw,
   RotateCw,
   SquarePen,
+  SquareTerminal,
   Upload,
   WrapText,
 } from "@/components/icons/material-icons";
@@ -103,7 +106,11 @@ import { ChangesToolbar, type ChangesToolbarItem } from "@/git/changes-toolbar/t
 import { toggleChangesToolbarItem, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import { BranchSwitcher } from "@/components/branch-switcher";
 import { useGitActions } from "@/git/use-actions";
-import { useCheckoutGitActionsStore } from "@/git/actions-store";
+import { CheckoutGitCommitFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
+import type { CheckoutGitCommitError } from "@otto-code/protocol/messages";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import { Button } from "@/components/ui/button";
+import { openGitLogTab } from "@/git/open-git-log-tab";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -218,6 +225,10 @@ interface DiffFileSectionProps {
   depth?: number;
   /** Show the muted directory suffix (flat list); false inside the folder tree. */
   showDir?: boolean;
+  /** Commit selection checkbox (uncommitted mode with a commit-capable host). */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: (path: string) => void;
   onToggle: (path: string) => void;
   onHeaderHeightChange?: (path: string, height: number) => void;
   onShowContextMenu?: (input: DiffContextMenuRequest) => void;
@@ -972,12 +983,24 @@ const DiffFileHeader = memo(function DiffFileHeader({
   isExpanded,
   depth = 0,
   showDir = true,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
   onToggle,
   onHeaderHeightChange,
   onShowContextMenu,
   testID,
 }: DiffFileSectionProps) {
   const { t } = useTranslation();
+
+  const handleToggleSelected = useCallback(
+    (event: { stopPropagation?: () => void }) => {
+      event.stopPropagation?.();
+      onToggleSelected?.(file.path);
+    },
+    [file.path, onToggleSelected],
+  );
+  const checkboxAccessibilityState = useMemo(() => ({ checked: selected }), [selected]);
   const layoutYRef = useRef<number | null>(null);
   const pressHandledRef = useRef(false);
   const pressInRef = useRef<{ ts: number; pageX: number; pageY: number } | null>(null);
@@ -1068,6 +1091,22 @@ const DiffFileHeader = memo(function DiffFileHeader({
             onContextMenu={onShowContextMenu ? handleContextMenu : undefined}
           >
             <View style={styles.fileHeaderLeft}>
+              {selectable ? (
+                <Pressable
+                  style={selected ? SELECTED_FILE_CHECKBOX_STYLE : styles.fileCheckbox}
+                  onPress={handleToggleSelected}
+                  accessibilityRole="checkbox"
+                  accessibilityState={checkboxAccessibilityState}
+                  aria-checked={selected}
+                  accessibilityLabel={t("workspace.git.commit.includeFile", { fileName })}
+                  hitSlop={6}
+                  testID={testID ? `${testID}-checkbox` : undefined}
+                >
+                  {selected ? (
+                    <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />
+                  ) : null}
+                </Pressable>
+              ) : null}
               {showDir ? null : (
                 <View style={styles.fileIcon}>
                   <SvgXml xml={getFileIconSvg(fileName)} width={16} height={16} />
@@ -1342,6 +1381,9 @@ type PressableStyleFn = (
 ) => StyleProp<ViewStyle>;
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const accentForegroundIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.accentForeground,
+});
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedAlignJustify = withUnistyles(AlignJustify);
@@ -1361,6 +1403,7 @@ const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedRefreshCcw = withUnistyles(RefreshCcw);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedCheck = withUnistyles(Check);
 
 const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedCopy = withUnistyles(Copy);
@@ -1720,6 +1763,266 @@ function DiffContextToggleMenuItem({ toggle }: { toggle: DiffContextAttachmentTo
   );
 }
 
+interface ChangesCommitSectionProps {
+  serverId: string;
+  cwd: string;
+  workspaceId: string | null | undefined;
+  selectedPaths: string[];
+  totalFiles: number;
+  commitSupported: boolean;
+  logSupported: boolean;
+  // Visibility inputs the section resolves itself (keeps the parent's render
+  // flat): the form only exists for a git checkout showing uncommitted changes.
+  isGit: boolean;
+  diffMode: "uncommitted" | "base";
+  hasChanges: boolean;
+  onToggleSelectAll: () => void;
+  onCommitted: () => void;
+}
+
+interface CommitErrorDescription {
+  title: string;
+  detail: string | null;
+}
+
+function describeCommitError(
+  error: CheckoutGitCommitError,
+  t: ReturnType<typeof useTranslation>["t"],
+): CommitErrorDescription {
+  switch (error.kind) {
+    case "identity_missing":
+      return { title: t("workspace.git.commit.errorIdentity"), detail: null };
+    case "hook_failed":
+      return { title: t("workspace.git.commit.errorHook"), detail: error.output.trim() || null };
+    case "signing_failed":
+      return { title: t("workspace.git.commit.errorSigning"), detail: error.detail.trim() || null };
+    case "nothing_to_commit":
+      return { title: t("workspace.git.commit.errorNothingToCommit"), detail: null };
+    case "git_failed":
+      return {
+        title: t("workspace.git.commit.errorGitFailed"),
+        detail: error.detail.trim() || null,
+      };
+    case "agents_running":
+      // Surfaces as a confirm dialog before retry, never as an inline error.
+      return { title: t("workspace.git.commit.errorGitFailed"), detail: null };
+  }
+}
+
+function CommitLogButton({
+  serverId,
+  workspaceId,
+  enabled,
+}: {
+  serverId: string;
+  workspaceId: string | null | undefined;
+  enabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const handleOpenLog = useCallback(() => {
+    if (workspaceId) {
+      openGitLogTab({ serverId, workspaceId, operation: "commit" });
+    }
+  }, [serverId, workspaceId]);
+
+  if (!enabled || !workspaceId) {
+    return null;
+  }
+
+  return (
+    <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          leftIcon={SquareTerminal}
+          onPress={handleOpenLog}
+          accessibilityLabel={t("workspace.git.commit.viewLog")}
+          testID="changes-commit-log-button"
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top" align="end" offset={6}>
+        <Text style={styles.tooltipText}>{t("workspace.git.commit.viewLog")}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ChangesCommitSection({
+  serverId,
+  cwd,
+  workspaceId,
+  selectedPaths,
+  totalFiles,
+  commitSupported,
+  logSupported,
+  isGit,
+  diffMode,
+  hasChanges,
+  onToggleSelectAll,
+  onCommitted,
+}: ChangesCommitSectionProps) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [message, setMessage] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
+  const [commitError, setCommitError] = useState<CheckoutGitCommitError | null>(null);
+  const commitPaths = useCheckoutGitActionsStore((s) => s.commitPaths);
+  const isCommitting =
+    useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "commit" })) ===
+    "pending";
+
+  const handleFocus = useCallback(() => setIsFocused(true), []);
+  const handleBlur = useCallback(() => setIsFocused(false), []);
+  const inputStyle = useMemo(
+    () => [styles.commitInput, isFocused && styles.commitInputFocused],
+    [isFocused],
+  );
+
+  const handleCommit = useCallback(async () => {
+    const trimmed = message.trim();
+    if (!trimmed || selectedPaths.length === 0 || isCommitting) {
+      return;
+    }
+    setCommitError(null);
+    const attempt = async (allowWithRunningAgents: boolean): Promise<void> => {
+      try {
+        await commitPaths({
+          serverId,
+          cwd,
+          message: trimmed,
+          paths: selectedPaths,
+          ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+        });
+        setMessage("");
+        onCommitted();
+      } catch (error) {
+        if (error instanceof CheckoutGitCommitFailedError) {
+          if (error.commitError.kind === "agents_running") {
+            const agents = error.commitError.agents
+              .map((agent) => agent.title?.trim() || t("workspace.git.commit.unnamedAgent"))
+              .join(", ");
+            const confirmed = await confirmDialog({
+              title: t("workspace.git.commit.agentsRunningTitle"),
+              message: t("workspace.git.commit.agentsRunningMessage", { agents }),
+              confirmLabel: t("workspace.git.commit.agentsRunningConfirm"),
+            });
+            if (confirmed) {
+              await attempt(true);
+            }
+            return;
+          }
+          setCommitError(error.commitError);
+          return;
+        }
+        toast.error(
+          error instanceof Error ? error.message : t("workspace.git.commit.errorGitFailed"),
+        );
+      }
+    };
+    await attempt(false);
+  }, [commitPaths, cwd, isCommitting, message, onCommitted, selectedPaths, serverId, t, toast]);
+
+  const allSelected = totalFiles > 0 && selectedPaths.length === totalFiles;
+  const partiallySelected = selectedPaths.length > 0 && !allSelected;
+  const selectAllAccessibilityState = useMemo(
+    () => ({ checked: partiallySelected ? ("mixed" as const) : allSelected }),
+    [allSelected, partiallySelected],
+  );
+
+  if (!isGit || diffMode !== "uncommitted" || !hasChanges) {
+    return null;
+  }
+
+  if (!commitSupported) {
+    return (
+      <View style={styles.commitSection} testID="changes-commit-section">
+        <Text style={styles.commitUnsupportedText}>{t("workspace.git.commit.updateHost")}</Text>
+      </View>
+    );
+  }
+
+  const commitDisabled = message.trim().length === 0 || selectedPaths.length === 0 || isCommitting;
+  const errorDescription = commitError ? describeCommitError(commitError, t) : null;
+
+  let selectAllMark: ReactElement | null = null;
+  if (partiallySelected) {
+    selectAllMark = <View style={styles.fileCheckboxIndeterminateMark} />;
+  } else if (allSelected) {
+    selectAllMark = <ThemedCheck size={12} uniProps={accentForegroundIconColorMapping} />;
+  }
+
+  return (
+    <View style={styles.commitSection} testID="changes-commit-section">
+      <TextInput
+        multiline
+        value={message}
+        onChangeText={setMessage}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        editable={!isCommitting}
+        placeholder={t("workspace.git.commit.messagePlaceholder")}
+        placeholderTextColor={styles.commitPlaceholderColor.color}
+        accessibilityLabel={t("workspace.git.commit.messagePlaceholder")}
+        style={inputStyle}
+        testID="changes-commit-message"
+      />
+      <View style={styles.commitActions}>
+        <View style={styles.commitSelectionGroup}>
+          <Pressable
+            style={
+              allSelected || partiallySelected ? SELECTED_FILE_CHECKBOX_STYLE : styles.fileCheckbox
+            }
+            onPress={onToggleSelectAll}
+            accessibilityRole="checkbox"
+            accessibilityState={selectAllAccessibilityState}
+            aria-checked={partiallySelected ? "mixed" : allSelected}
+            accessibilityLabel={
+              allSelected
+                ? t("workspace.git.commit.deselectAllFiles")
+                : t("workspace.git.commit.selectAllFiles")
+            }
+            hitSlop={6}
+            testID="changes-commit-select-all"
+          >
+            {selectAllMark}
+          </Pressable>
+          <Text style={styles.commitSelectionCount} numberOfLines={1}>
+            {t("workspace.git.commit.filesSelected", {
+              selected: selectedPaths.length,
+              total: totalFiles,
+            })}
+          </Text>
+        </View>
+        <View style={styles.commitButtonGroup}>
+          <CommitLogButton serverId={serverId} workspaceId={workspaceId} enabled={logSupported} />
+          <Button
+            size="sm"
+            variant="default"
+            disabled={commitDisabled}
+            onPress={handleCommit}
+            testID="changes-commit-button"
+          >
+            {isCommitting ? t("workspace.git.commit.committing") : t("workspace.git.commit.button")}
+          </Button>
+        </View>
+      </View>
+      {errorDescription ? (
+        <Text style={styles.commitErrorText} testID="changes-commit-error">
+          {errorDescription.title}
+        </Text>
+      ) : null}
+      {errorDescription?.detail ? (
+        <Text style={styles.commitErrorDetail} testID="changes-commit-error-detail">
+          {errorDescription.detail}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+const EMPTY_DESELECTED_PATHS: ReadonlySet<string> = new Set<string>();
+
 export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }: GitDiffPaneProps) {
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
@@ -1781,6 +2084,30 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const refreshSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutRefresh === true,
   );
+  const commitSupported = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitCommit === true,
+  );
+  const gitLogSupported = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitLog === true,
+  );
+  // Commit selection is an ephemeral exclusion set: files default to included,
+  // so changes appearing after the user starts selecting stay checked.
+  const [deselectedPaths, setDeselectedPaths] =
+    useState<ReadonlySet<string>>(EMPTY_DESELECTED_PATHS);
+  const handleToggleFileSelected = useCallback((path: string) => {
+    setDeselectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+  const clearCommitSelection = useCallback(() => {
+    setDeselectedPaths(EMPTY_DESELECTED_PATHS);
+  }, []);
   const runRefresh = useCheckoutGitActionsStore((s) => s.refresh);
   const isRefreshing =
     useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "refresh" })) ===
@@ -1834,6 +2161,18 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     ignoreWhitespace: changesPreferences.hideWhitespace,
     enabled: shouldEnableCheckoutDiff({ paneEnabled: enabled !== false, isGit }),
   });
+  const commitSelectionEnabled = commitSupported && diffMode === "uncommitted";
+  const selectedPaths = useMemo(
+    () => files.filter((file) => !deselectedPaths.has(file.path)).map((file) => file.path),
+    [deselectedPaths, files],
+  );
+  const handleToggleSelectAll = useCallback(() => {
+    setDeselectedPaths((prev) => {
+      const allSelected = files.every((file) => !prev.has(file.path));
+      return allSelected ? new Set(files.map((file) => file.path)) : EMPTY_DESELECTED_PATHS;
+    });
+  }, [files]);
+
   const reviewDraftKey = useMemo(
     () =>
       buildReviewDraftKey({
@@ -2433,6 +2772,9 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
             isExpanded={item.isExpanded}
             depth={item.depth}
             showDir={viewMode === "flat"}
+            selectable={commitSelectionEnabled}
+            selected={!deselectedPaths.has(item.file.path)}
+            onToggleSelected={handleToggleFileSelected}
             onToggle={handleToggleExpanded}
             onHeaderHeightChange={handleHeaderHeightChange}
             onShowContextMenu={handleShowFileContextMenu}
@@ -2456,6 +2798,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     },
     [
       codeFontSize,
+      commitSelectionEnabled,
+      deselectedPaths,
       diffTextMetricsStyle,
       effectiveLayout,
       handleBodyHeightChange,
@@ -2464,6 +2808,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       handleLineContextMenu,
       handleShowFileContextMenu,
       handleToggleExpanded,
+      handleToggleFileSelected,
       handleToggleFolder,
       reviewActions,
       viewMode,
@@ -2491,6 +2836,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     () => ({
       expandedPathsArray,
       collapsedFoldersArray,
+      commitSelectionEnabled,
+      deselectedPaths,
       effectiveLayout,
       diffBodyTypographyKey,
       heightVersion,
@@ -2501,6 +2848,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     [
       expandedPathsArray,
       collapsedFoldersArray,
+      commitSelectionEnabled,
+      deselectedPaths,
       effectiveLayout,
       diffBodyTypographyKey,
       heightVersion,
@@ -2650,6 +2999,21 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
           </View>
         </View>
       ) : null}
+
+      <ChangesCommitSection
+        serverId={serverId}
+        cwd={cwd}
+        workspaceId={workspaceId}
+        selectedPaths={selectedPaths}
+        totalFiles={files.length}
+        commitSupported={commitSupported}
+        logSupported={gitLogSupported}
+        isGit={isGit}
+        diffMode={diffMode}
+        hasChanges={hasChanges}
+        onToggleSelectAll={handleToggleSelectAll}
+        onCommitted={clearCommitSelection}
+      />
 
       {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
 
@@ -2861,6 +3225,105 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  fileCheckbox: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.foregroundMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: theme.spacing[1],
+  },
+  fileCheckboxChecked: {
+    backgroundColor: theme.colors.accent,
+    borderColor: theme.colors.accent,
+  },
+  fileCheckboxIndeterminateMark: {
+    width: 8,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: theme.colors.accentForeground,
+  },
+  commitSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    gap: theme.spacing[2],
+  },
+  commitInput: {
+    minHeight: 56,
+    maxHeight: 120,
+    color: theme.colors.foreground,
+    backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.4,
+    textAlignVertical: "top",
+    ...(isWeb
+      ? {
+          outlineWidth: 0,
+          outlineColor: "transparent",
+        }
+      : {}),
+  },
+  commitInputFocused: {
+    borderColor: theme.colors.accent,
+  },
+  commitPlaceholderColor: {
+    color: theme.colors.foregroundMuted,
+  },
+  commitActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  commitSelectionGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    // The checkbox's built-in marginRight (4px) plus this gap matches the 8px
+    // the file rows get from marginRight + fileHeaderLeft's gap, so the count
+    // text lines up with the filenames below.
+    gap: theme.spacing[1],
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  commitSelectionCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    flexShrink: 1,
+  },
+  commitButtonGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  commitUnsupportedText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  commitErrorText: {
+    color: theme.colors.palette.red[300],
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.4,
+  },
+  commitErrorDetail: {
+    color: theme.colors.foregroundMuted,
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs * 1.5,
+    fontFamily: theme.fontFamily.mono,
+  },
   fileName: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
@@ -3070,6 +3533,7 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const FILE_SECTION_BODY_STYLE = [styles.fileSectionBodyContainer, styles.fileSectionBorder];
+const SELECTED_FILE_CHECKBOX_STYLE = [styles.fileCheckbox, styles.fileCheckboxChecked];
 const DIFF_CONTENT_SPLIT_ROW_STYLE = [styles.diffContent, styles.splitRow];
 const DIFF_CONTENT_ROW_STYLE = [styles.diffContent, styles.diffContentRow];
 const DIFF_HEIGHT_CHANGE_EPSILON = 0.5;

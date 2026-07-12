@@ -75,7 +75,11 @@ interface WorkspaceLayoutStore {
   pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   hiddenAgentIdsByWorkspace: Record<string, Set<string>>;
   focusRestorationByWorkspace: Record<string, WorkspaceFocusRestorationState>;
-  openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
+  openTabFocused: (
+    workspaceKey: string,
+    target: WorkspaceTabTarget,
+    options?: { insertAfterFocusedTab?: boolean },
+  ) => string | null;
   openChildTabFocused: (
     workspaceKey: string,
     target: WorkspaceTabTarget,
@@ -229,7 +233,7 @@ export function createWorkspaceLayoutStore(
         pinnedAgentIdsByWorkspace: {},
         hiddenAgentIdsByWorkspace: {},
         focusRestorationByWorkspace: {},
-        openTabFocused: (workspaceKey, target) => {
+        openTabFocused: (workspaceKey, target, options) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
           const normalizedTarget = normalizeWorkspaceTabTarget(target);
           if (!normalizedWorkspaceKey || !normalizedTarget) {
@@ -240,6 +244,7 @@ export function createWorkspaceLayoutStore(
             layout: getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey),
             target: normalizedTarget,
             now: Date.now(),
+            insertAfterFocusedTab: options?.insertAfterFocusedTab === true,
           });
 
           set((state) => ({

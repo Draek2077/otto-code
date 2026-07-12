@@ -1294,6 +1294,10 @@ export class VoiceAssistantWebSocketServer {
         ttsPreview: this.speech !== null,
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: true,
+        // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitCommit: true,
+        // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitLog: true,
       },
     };
   }

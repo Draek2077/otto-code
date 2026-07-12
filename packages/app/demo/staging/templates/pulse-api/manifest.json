@@ -1,0 +1,70 @@
+{
+  "name": "pulse-api",
+  "defaultBranch": "main",
+  "authors": [
+    { "name": "Priya Raman", "email": "priya@pulse-labs.dev" },
+    { "name": "Felix Moreau", "email": "felix@pulse-labs.dev" }
+  ],
+  "commits": [
+    {
+      "dir": "01-scaffold",
+      "message": "chore: scaffold the pulse-api service",
+      "date": "2026-05-18T09:02:00Z",
+      "author": 0
+    },
+    {
+      "dir": "02-health-route",
+      "message": "feat: add GET /health endpoint",
+      "date": "2026-05-18T15:34:00Z",
+      "author": 0
+    },
+    {
+      "dir": "03-event-store",
+      "message": "feat: add in-memory event store with a ring buffer",
+      "date": "2026-05-21T11:20:00Z",
+      "author": 1
+    },
+    {
+      "dir": "04-event-ingest",
+      "message": "feat: accept telemetry events via POST /events",
+      "date": "2026-05-22T16:48:00Z",
+      "author": 1
+    },
+    {
+      "dir": "05-recent-events",
+      "message": "feat: expose recent events at GET /events/recent",
+      "date": "2026-05-28T10:15:00Z",
+      "author": 0
+    },
+    {
+      "dir": "06-gauges",
+      "message": "feat: track gauges from numeric event values",
+      "date": "2026-06-03T14:27:00Z",
+      "author": 1
+    },
+    {
+      "dir": "07-metrics-route",
+      "message": "feat: add GET /metrics endpoint",
+      "date": "2026-06-09T09:58:00Z",
+      "author": 0
+    },
+    {
+      "dir": "08-tests",
+      "message": "test: cover health, ingest, and metrics with vitest",
+      "date": "2026-06-17T18:22:00Z",
+      "author": 0
+    },
+    {
+      "dir": "09-hardening",
+      "message": "fix: reject malformed and invalid event payloads with 400",
+      "date": "2026-06-25T12:44:00Z",
+      "author": 1
+    },
+    {
+      "dir": "10-readme",
+      "message": "docs: write the README with an API reference",
+      "date": "2026-07-08T09:12:00Z",
+      "author": 0
+    }
+  ]
+}

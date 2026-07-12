@@ -23,7 +23,10 @@ export type WorkspaceTabTarget =
   | { kind: "browser"; browserId: string }
   | WorkspaceFileTabTarget
   | { kind: "setup"; workspaceId: string }
-  | { kind: "artifact"; artifactId: string };
+  | { kind: "artifact"; artifactId: string }
+  // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
+  // operation per workspace; `operation` is the wire operation id.
+  | { kind: "gitLog"; operation: string };
 
 export interface WorkspaceTab {
   tabId: string;
@@ -523,6 +526,9 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   }
   if (kind === "artifact" && typeof raw.artifactId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "artifact", artifactId: raw.artifactId });
+  }
+  if (kind === "gitLog" && typeof raw.operation === "string") {
+    return normalizeWorkspaceTabTarget({ kind: "gitLog", operation: raw.operation });
   }
   return null;
 }

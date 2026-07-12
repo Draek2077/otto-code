@@ -400,7 +400,17 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "artifact") {
     return tab.target.artifactId;
   }
+  if (tab.target.kind === "gitLog") {
+    return formatGitLogFallbackTitle(tab.target.operation);
+  }
   return labels.agent;
+}
+
+// Fallback-only (the registry descriptor carries the localized title); matches
+// the artifact fallback's raw-identity precedent.
+function formatGitLogFallbackTitle(operation: string): string {
+  const capitalized = operation.charAt(0).toUpperCase() + operation.slice(1);
+  return `Git ${capitalized}`;
 }
 
 function getFallbackTabOptionDescription(
@@ -430,6 +440,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "artifact") {
     return tab.target.artifactId;
+  }
+  if (tab.target.kind === "gitLog") {
+    return formatGitLogFallbackTitle(tab.target.operation);
   }
   return tab.target.path;
 }
