@@ -12,6 +12,10 @@ import invariant from "tiny-invariant";
 import type { GitOperationLogEntry } from "@otto-code/protocol/messages";
 import { SquareTerminal } from "@/components/icons/material-icons";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { DEFAULT_MONO_FONT_STACK } from "@/styles/theme";
+import { isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useAppSettings } from "@/hooks/use-settings";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
@@ -94,23 +98,42 @@ function GitLogPanel() {
 
   const scrollRef = useRef<ScrollView>(null);
   const pinnedToBottomRef = useRef(true);
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    pinnedToBottomRef.current =
-      contentOffset.y + layoutMeasurement.height >= contentSize.height - BOTTOM_PIN_THRESHOLD_PX;
-  }, []);
-  const handleContentSizeChange = useCallback(() => {
-    if (pinnedToBottomRef.current) {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    }
-  }, []);
+  const isMobile = useIsCompactFormFactor();
+  const showDesktopWebScrollbar = isWeb && !isMobile;
+  const {
+    onScroll: onScrollbarScroll,
+    onLayout: onScrollbarLayout,
+    onContentSizeChange: onScrollbarContentSize,
+    overlay: scrollbarOverlay,
+  } = useWebScrollViewScrollbar(scrollRef, { enabled: showDesktopWebScrollbar });
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      pinnedToBottomRef.current =
+        contentOffset.y + layoutMeasurement.height >= contentSize.height - BOTTOM_PIN_THRESHOLD_PX;
+      onScrollbarScroll(event);
+    },
+    [onScrollbarScroll],
+  );
+  const handleContentSizeChange = useCallback(
+    (width: number, height: number) => {
+      if (pinnedToBottomRef.current) {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      }
+      onScrollbarContentSize(width, height);
+    },
+    [onScrollbarContentSize],
+  );
 
-  const monoFontFamily = settings.monoFontFamily.trim();
+  // Empty setting ("") means "use the platform default mono stack" — fall back to
+  // it explicitly so log lines render monospace like the terminal, rather than
+  // inheriting the sans interface font.
+  const monoFontFamily = settings.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
   const levelStyles = useMemo(() => {
     const lineTextStyle = {
       fontSize: settings.codeFontSize,
       lineHeight: Math.round(settings.codeFontSize * 1.5),
-      ...(monoFontFamily ? { fontFamily: monoFontFamily } : null),
+      fontFamily: monoFontFamily,
     };
     return {
       info: [styles.line, lineTextStyle, styles.lineInfo],
@@ -128,22 +151,27 @@ function GitLogPanel() {
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      onScroll={handleScroll}
-      onContentSizeChange={handleContentSizeChange}
-      scrollEventThrottle={64}
-      dataSet={CODE_SURFACE_DATASET}
-      testID="git-log-pane"
-    >
-      {entries.map((entry) => (
-        <Text key={entry.seq} selectable style={levelStyles[entry.level]}>
-          {entry.text}
-        </Text>
-      ))}
-    </ScrollView>
+    <View style={styles.scrollHost}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        onScroll={handleScroll}
+        onLayout={onScrollbarLayout}
+        onContentSizeChange={handleContentSizeChange}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+        dataSet={CODE_SURFACE_DATASET}
+        testID="git-log-pane"
+      >
+        {entries.map((entry) => (
+          <Text key={entry.seq} selectable style={levelStyles[entry.level]}>
+            {entry.text}
+          </Text>
+        ))}
+      </ScrollView>
+      {scrollbarOverlay}
+    </View>
   );
 }
 
@@ -157,6 +185,12 @@ export const gitLogPanelRegistration: PanelRegistration<"gitLog"> = {
 };
 
 const styles = StyleSheet.create((theme) => ({
+  scrollHost: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+    backgroundColor: theme.colors.background,
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,

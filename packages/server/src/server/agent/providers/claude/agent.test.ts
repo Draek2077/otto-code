@@ -9,6 +9,7 @@ import * as executableUtils from "../../../../executable-resolution/executable-r
 import {
   ClaudeAgentClient,
   convertClaudeHistoryEntry,
+  isExpectedTransportTeardownError,
   normalizeClaudeAskUserQuestionRequestInput,
   normalizeClaudeAskUserQuestionUpdatedInput,
   toClaudeSdkMcpConfig,
@@ -22,6 +23,26 @@ interface TestClaudeSession {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("isExpectedTransportTeardownError", () => {
+  test("matches SDK errors from writing to a dead/aborted CLI transport", () => {
+    expect(
+      isExpectedTransportTeardownError(new Error("ProcessTransport is not ready for writing")),
+    ).toBe(true);
+    expect(isExpectedTransportTeardownError(new Error("Operation aborted"))).toBe(true);
+    expect(isExpectedTransportTeardownError(new Error("Claude Code process aborted by user"))).toBe(
+      true,
+    );
+  });
+
+  test("does not match unrelated errors or non-errors", () => {
+    expect(isExpectedTransportTeardownError(new Error("schema validation failed"))).toBe(false);
+    expect(isExpectedTransportTeardownError("ProcessTransport is not ready for writing")).toBe(
+      false,
+    );
+    expect(isExpectedTransportTeardownError(null)).toBe(false);
+  });
 });
 
 describe("convertClaudeHistoryEntry", () => {
@@ -657,6 +678,35 @@ describe("ClaudeAgentSession features", () => {
     expect(queryMock.applyFlagSettings).toHaveBeenCalledWith({ fastMode: true });
 
     await session.close();
+  });
+
+  test("close() does not interrupt a query whose CLI process has already exited", async () => {
+    // A one-shot internal agent (commit-message / PR generator) has already exited
+    // by the time it is closed. Issuing a control-plane interrupt then writes to a
+    // dead stdin and throws "ProcessTransport is not ready for writing"; close() must
+    // not poke it. childProcess is never set through the mock query path, so the
+    // liveness gate treats the process as not-alive and skips interrupt entirely.
+    const { queryFactory, queryMock } = createQueryMock();
+    const interrupt = vi.fn(async () => {
+      throw new Error("ProcessTransport is not ready for writing");
+    });
+    const mockWithInterrupt = queryMock as typeof queryMock & { interrupt: typeof interrupt };
+    mockWithInterrupt.interrupt = interrupt;
+
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
+    // Create the query without an active turn (as a finished one-shot generator would
+    // be at close): the only path that could reach interrupt() is the standalone
+    // close-path call, which the liveness gate must skip. An active turn would be
+    // interrupted through the separate cancel path, which is not what this covers.
+    await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(interrupt).not.toHaveBeenCalled();
   });
 
   test("maps Ultracode to xhigh effort and Claude ultracode settings", async () => {
