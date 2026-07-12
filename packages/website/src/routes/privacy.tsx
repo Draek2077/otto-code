@@ -22,6 +22,13 @@ function Privacy() {
           Otto is a self-hosted tool for managing coding agents. Your code and data stay on your
           machine.
         </p>
+        <p>
+          For our security policy and responsibility disclaimer, see the{" "}
+          <a href="/security" className="underline hover:text-white/90">
+            Security Policy
+          </a>
+          .
+        </p>
 
         <section className="space-y-3">
           <h2 className="text-xl font-medium text-white">What we collect</h2>

@@ -63,6 +63,7 @@ ${agents}
 - [Otto Cloud](${SITE_URL}/cloud): Waitlist for the hosted multi-user version of Otto.
 - [Blog](${SITE_URL}/blog): Updates and technical posts from the Otto team.
 - [Privacy](${SITE_URL}/privacy): Privacy policy.
+- [Security](${SITE_URL}/security): Security policy and responsibility disclaimer.
 - [GitHub](https://github.com/Draek2077/otto-code): Source code, issues, and releases.
 `;
 }
