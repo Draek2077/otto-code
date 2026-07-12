@@ -507,7 +507,11 @@ describe("absolute directory-path configuration", () => {
 
     const results = await searchAbsoluteDirectoryPaths({
       homeDir: symlinkHome,
-      query: "pso",
+      // Fuzzy subsequence of the leaf "otto-desktop" (o-t-o). The upstream test
+      // used "pso" to match the pre-rebrand "paseo-desktop"; the rebrand renamed
+      // the directory but not this query, leaving a non-matching pair that only
+      // surfaced on Linux (the test is skipped on Windows).
+      query: "oto",
       limit: 10,
     });
 
