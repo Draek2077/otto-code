@@ -8,8 +8,14 @@ routes = [{ pattern = "relay.otto-code.me", custom_domain = true }]
 [observability]
 enabled = true
 
-[vars]
-OTTO_RELAY_UPSTREAM = "https://otto-relay-next.fly.dev"
+# OTTO_RELAY_UPSTREAM is intentionally NOT declared here. When set, the worker
+# proxies every request to the Fly upstream (see cloudflare-adapter.ts) instead
+# of serving from its local Durable Object. Declaring it in base [vars] leaks it
+# into every `wrangler dev` — the relay e2e (`e2e.test.ts`) and the app
+# playwright global-setup both spawn one — forcing them to bridge to an external
+# host CI can't reach, which turns those jobs permanently red. The production
+# bridge sets it explicitly at deploy time via `wrangler deploy --var` in
+# .github/workflows/deploy-relay.yml, so local/e2e dev stays self-contained.
 
 [[durable_objects.bindings]]
 name = "RELAY"
