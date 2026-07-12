@@ -48,28 +48,37 @@ custom-domain attach was missing until this date; now done — see "Web app cust
 six `@otto-code/*` packages were first published at 0.5.0 — `release:publish` is now a normal
 part of the release chain.
 
+**Update (2026-07-12): Google Play internal-track auto-submit is wired.** The `Android Play
+Release` workflow (`.github/workflows/android-play-release.yml`) builds an AAB via EAS and submits
+it to the Play **internal testing** track on a `v*` tag — the automated replacement for
+hand-uploading the AAB. The two one-time Google setups it needs (enable the Android Publisher API;
+grant the service account release permission in the Play Console) were both completed during 0.5.1.
+See "Android release → Play internal-track auto-submit" below. 0.5.1's submit was ultimately done
+by hand (so a versionCode already existed and `eas submit` rejected the duplicate), so the
+automation first runs fully end-to-end on 0.5.2.
+
 **Update (2026-07-05):** the domain is decided — `otto-code.me` (`otto-code.ai` was too expensive).
 Every code-level reference to `otto-code.ai` across the repo (source, docs, nix packaging, the
 rebrand-upstream tooling) has been swapped to `otto-code.me`.
 
-| Surface                                | Currently points at                                                                           | Fork-ready?                   | What you need                                                                                                               |
-| -------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| GitHub repo                            | `Draek2077/otto-code` (`origin`)                                                              | ✅ Yes                        | Already done                                                                                                                |
-| Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                         | ✅ Yes                        | Already done (see below) — unaffected by domain/hosting choice                                                              |
-| npm packages (`@otto-code/*`)          | npm org `otto-code` (owner `draek2077`); all six packages published at 0.5.0 on 2026-07-11    | ✅ Yes                        | Nothing — `release:publish` is part of the normal release chain now; stay logged in as an org member                        |
-| Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                      | ✅ Yes                        | Nothing — the workflow reads the owner from GitHub automatically                                                            |
-| Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set      | ✅ Yes                        | Already done (see "Android release" below)                                                                                  |
-| Android package identity               | `me.ottocode.mobile` / `me.ottocode.mobile.debug` (`packages/app/app.config.js`)              | ✅ Yes                        | Already done — fork-owned namespace, safe for eventual Play Store use                                                       |
-| Play Store listing                     | N/A (not created)                                                                             | ❌ No                         | Your own Google Play Console developer account ($25 one-time)                                                               |
-| Push notifications (FCM)               | No Firebase project yet; `app.config.js` resolves `google-services` files from env/`.secrets` | ❌ No                         | Your own Firebase project + `google-services.json` for `me.ottocode.mobile`                                                 |
-| **Daemon + web UI (the app itself)**   | Your own home server, once you enable `--web-ui`                                              | ✅ Ready, just needs enabling | Nothing new — built into the daemon. See "Local network hosting" below.                                                     |
-| Web app (`app.otto-code.me`)           | Cloudflare Pages project `otto-app`, deployed by `Deploy App` on stable `v*` tags             | ✅ Yes                        | Already done — custom domain attached 2026-07-11 (see "Web app custom domain" below for the gotcha)                         |
-| Domain (`otto-code.me`)                | On the fork's Cloudflare account; Workers/Pages custom-domain routes bound                    | ✅ Yes                        | Already done                                                                                                                |
-| Marketing website (`packages/website`) | Cloudflare Workers on the fork's account, deployed by `Deploy Website`                        | ✅ Yes                        | Already done                                                                                                                |
-| QR-code pairing (relay-based)          | `relay.otto-code.me` deployed by `Deploy Relay` (Cloudflare Durable Objects)                  | ✅ Deployed                   | Infra fully in place as of 2026-07-11 (relay + `app.otto-code.me` both live); verify a QR pair end-to-end from a phone once |
-| Direct connection (no relay, no QR)    | Works today, zero cloud dependency                                                            | ✅ Yes                        | Nothing — host/port/password against your own daemon, works over LAN or your domain once exposed                            |
-| macOS code signing                     | N/A (not configured)                                                                          | N/A                           | Apple Developer Program ($99/yr) + certs as GH secrets, only if you want signed/notarized Mac builds                        |
-| Windows code signing                   | N/A (ships unsigned)                                                                          | N/A                           | Optional; unsigned Windows builds just show a SmartScreen warning on first run                                              |
+| Surface                                | Currently points at                                                                                                        | Fork-ready?                   | What you need                                                                                                                                                                                                                         |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub repo                            | `Draek2077/otto-code` (`origin`)                                                                                           | ✅ Yes                        | Already done                                                                                                                                                                                                                          |
+| Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                                                      | ✅ Yes                        | Already done (see below) — unaffected by domain/hosting choice                                                                                                                                                                        |
+| npm packages (`@otto-code/*`)          | npm org `otto-code` (owner `draek2077`); all six packages published at 0.5.0 on 2026-07-11                                 | ✅ Yes                        | Nothing — `release:publish` is part of the normal release chain now; stay logged in as an org member                                                                                                                                  |
+| Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                                                   | ✅ Yes                        | Nothing — the workflow reads the owner from GitHub automatically                                                                                                                                                                      |
+| Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set                                   | ✅ Yes                        | Already done (see "Android release" below)                                                                                                                                                                                            |
+| Android package identity               | `me.ottocode.mobile` / `me.ottocode.mobile.debug` (`packages/app/app.config.js`)                                           | ✅ Yes                        | Already done — fork-owned namespace, safe for eventual Play Store use                                                                                                                                                                 |
+| Play Store listing (internal track)    | Play Console app `me.ottocode.mobile` live; `Android Play Release` auto-submits the AAB to the internal track on `v*` tags | ✅ Yes (internal)             | Already done — Play Console dev account, `GOOGLE_SERVICE_ACCOUNT_KEY` secret, Android Publisher API enabled, and service account granted release perms (all during 0.5.1). Production/open tracks + store-listing polish still manual |
+| Push notifications (FCM)               | No Firebase project yet; `app.config.js` resolves `google-services` files from env/`.secrets`                              | ❌ No                         | Your own Firebase project + `google-services.json` for `me.ottocode.mobile`                                                                                                                                                           |
+| **Daemon + web UI (the app itself)**   | Your own home server, once you enable `--web-ui`                                                                           | ✅ Ready, just needs enabling | Nothing new — built into the daemon. See "Local network hosting" below.                                                                                                                                                               |
+| Web app (`app.otto-code.me`)           | Cloudflare Pages project `otto-app`, deployed by `Deploy App` on stable `v*` tags                                          | ✅ Yes                        | Already done — custom domain attached 2026-07-11 (see "Web app custom domain" below for the gotcha)                                                                                                                                   |
+| Domain (`otto-code.me`)                | On the fork's Cloudflare account; Workers/Pages custom-domain routes bound                                                 | ✅ Yes                        | Already done                                                                                                                                                                                                                          |
+| Marketing website (`packages/website`) | Cloudflare Workers on the fork's account, deployed by `Deploy Website`                                                     | ✅ Yes                        | Already done                                                                                                                                                                                                                          |
+| QR-code pairing (relay-based)          | `relay.otto-code.me` deployed by `Deploy Relay` (Cloudflare Durable Objects)                                               | ✅ Deployed                   | Infra fully in place as of 2026-07-11 (relay + `app.otto-code.me` both live); verify a QR pair end-to-end from a phone once                                                                                                           |
+| Direct connection (no relay, no QR)    | Works today, zero cloud dependency                                                                                         | ✅ Yes                        | Nothing — host/port/password against your own daemon, works over LAN or your domain once exposed                                                                                                                                      |
+| macOS code signing                     | N/A (not configured)                                                                                                       | N/A                           | Apple Developer Program ($99/yr) + certs as GH secrets, only if you want signed/notarized Mac builds                                                                                                                                  |
+| Windows code signing                   | N/A (ships unsigned)                                                                                                       | N/A                           | Optional; unsigned Windows builds just show a SmartScreen warning on first run                                                                                                                                                        |
 
 ## Versioning
 
@@ -166,16 +175,68 @@ distribution, not submitted anywhere) and attaches the APK to the GitHub Release
 sideload it directly. Still needs your own EAS project (step 1-3 above) and `EXPO_TOKEN`, but
 skips the Play Console entirely — no $25 fee, no store review, no `eas submit` credentials.
 
-**B. Play Store (full infra).** Additionally requires a Google Play Console developer account
-($25 one-time) and `eas submit` credentials (EAS-managed, no separate keystore juggling needed —
-EAS handles Play Store credentials once you link the Play Console account). `eas.json`'s
-`submit.production.android` is already configured to auto-submit to the `production` track on a
-stable tag push; you'd point it at your own listing once the Play Console app exists.
+**B. Play Store internal track (full infra — ✅ wired 2026-07-12).** The `Android Play Release`
+workflow builds an AAB and auto-submits it to the Play **internal testing** track on a `v*` tag.
+This is the path for getting a build to testers without hand-uploading. Full details, the two
+one-time Google prerequisites, the build gotcha, and the retry mechanism are in "Play
+internal-track auto-submit" just below. `eas.json` also keeps a `submit.production` profile for
+an eventual production-track submit, but that track (and the store listing polish it needs) is
+still manual.
 
 There's also a **zero-infrastructure fallback** for a quick local test build: `npm run
 android:production` from the repo root builds and installs a release APK directly to a connected
 device/emulator with no EAS account at all (see [docs/android.md](android.md)). Good for smoke-testing
 before you've set up EAS; not a distribution mechanism for other users.
+
+### Play internal-track auto-submit
+
+`.github/workflows/android-play-release.yml` is the automated replacement for hand-downloading the
+AAB and uploading it in the Play Console. On a `v*` tag it builds an AAB via EAS's `production`
+profile and runs `eas submit --profile internal` (see `eas.json`'s `submit.internal`, which reads
+`packages/app/google-service-account.json`). It's kept separate from `android-apk-release.yml` so
+the sideload APK and the Play submit retry independently.
+
+**Repo secrets it needs** (both set): `EXPO_TOKEN` (authenticates EAS) and
+`GOOGLE_SERVICE_ACCOUNT_KEY` (full JSON of a Play service-account key). The workflow materializes
+the key to `packages/app/google-service-account.json` at submit time from the secret and deletes it
+after — the file is gitignored and must never be committed.
+
+**Two one-time Google setups — both are separate permission layers, and both were done during
+0.5.1:**
+
+1. **Google Cloud → enable the Android Publisher API** for the GCP project the service account
+   belongs to. Without it, submit fails `PERMISSION_DENIED: Google Play Android Developer API has
+not been used in project <id> before or it is disabled`. Enable it, wait a few minutes to
+   propagate.
+2. **Play Console → Users and permissions → invite the service-account email** (the `client_email`
+   in the key JSON) with **Release to testing tracks** on `me.ottocode.mobile`. Enabling the API
+   only lets the account authenticate; this grant lets it actually release. Without it, submit
+   fails "the service account is missing the necessary permissions to submit the app."
+
+**Build gotcha — hermesc OOM (fixed 2026-07-12).** The `production` (AAB) profile in `eas.json`
+carries a `gradleCommand: ":app:bundleRelease --no-parallel --max-workers=1 -x lint ..."`. Without
+that serialization, the AAB build dies at `:app:createBundleReleaseJsAndAssets` with `hermesc`
+**exit code 137 (SIGKILL / OOM)** — Hermes compiles the JS bundle while the parallel native CMake
+builds (reanimated, worklets, nitro) run concurrently and starve it of RAM. The `production-apk`
+profile has always had these flags (that's why the APK build survived); the AAB profile didn't
+until this fix. `production-apk` overrides `gradleCommand`, so it's unaffected.
+
+**Retrying a failed _submit_ without rebuilding.** The workflow accepts a `workflow_dispatch`
+`build_id` input: when set, the build step is skipped and that already-finished EAS build is
+submitted as-is (~2 min instead of a ~7-min rebuild, and no wasted versionCode). Use it after
+fixing a Google-side issue like the two setups above:
+
+```bash
+gh workflow run android-play-release.yml --ref main \
+  -f tag=<tag with the current eas.json> -f build_id=<finished EAS build id>
+```
+
+Get the build id from the failed run's "Build ... on EAS" step log (`.../builds/<uuid>`). There's
+also an `android-play-vX.Y.Z` tag trigger that rebuilds+submits only this path (independent of the
+full `vX.Y.Z` release). Note the `eas submit` guard: it refuses a versionCode Play already has
+("You've already submitted this version"), so if you upload a build to Play by hand first, the
+automated submit of that same build will bounce as a duplicate — a fresh release (new versionCode)
+avoids it.
 
 ## Local network hosting (recommended path)
 
@@ -364,8 +425,12 @@ Pulling the above into one end-to-end runbook for "ship a new version":
 - [ ] **Desktop**: confirm `Desktop Release` workflow is green for Windows/Linux on the new tag
       (macOS jobs skip until Apple signing is set up), and `finalize-rollout` uploaded the
       updater manifests
-- [ ] **Android**: confirm `Android APK Release` workflow is green and the APK is attached to the
-      GitHub Release
+- [ ] **Android (APK)**: confirm `Android APK Release` workflow is green and the APK is attached to
+      the GitHub Release
+- [ ] **Android (Play internal)**: confirm `Android Play Release` is green and the build reached the
+      Play Console internal track. If only the _submit_ step failed on a Google-side issue, fix it
+      and re-dispatch with the existing `build_id` (no rebuild) — see "Play internal-track
+      auto-submit"
 - [ ] **Web app**: confirm `Deploy App` ran on the tag (stable only)
 - [ ] **Website**: confirm `Deploy Website` ran on the published release
 - [ ] **Docker**: confirm the `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` (works
@@ -376,10 +441,11 @@ Pulling the above into one end-to-end runbook for "ship a new version":
 
 Being explicit about the open questions rather than picking answers for you:
 
-- **Whether to pursue Play Store distribution** or stick with GitHub-Release APKs — Play Store
-  needs the $25 developer account and a store listing (screenshots, privacy policy, content
-  rating) that don't exist yet; APK-only is live-able much faster. The fork-owned
-  `me.ottocode.mobile` package ID is ready either way.
+- **How far to take Play Store distribution.** The **internal testing** track is wired and working
+  (auto-submit on `v*` tags — see "Play internal-track auto-submit"), which covers getting builds
+  to invited testers. Going wider — the **production** track, or open/closed testing — still needs
+  a completed store listing (screenshots, privacy policy, content rating) and is manual for now.
+  GitHub-Release APK sideloading remains the zero-Play-infra alternative.
 - **macOS code signing** — needs an Apple Developer Program membership; without it, scope releases
   to Windows/Linux (and Android) until/unless you decide it's worth $99/year.
 - **iOS distribution** — untouched: no Apple account, and `eas.json` no longer carries upstream's
