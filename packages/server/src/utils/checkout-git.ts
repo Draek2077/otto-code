@@ -33,6 +33,7 @@ const READ_ONLY_GIT_ENV = {
  */
 export type GitMutationRefreshReason =
   | "commit-changes"
+  | "rollback-changes"
   | "pull"
   | "push"
   | "merge-to-base"
@@ -2723,6 +2724,112 @@ export async function commitPaths(
     envOverlay: READ_ONLY_GIT_ENV,
   });
   return { kind: "committed", sha: head.stdout.trim() };
+}
+
+export interface RollbackPathsInput {
+  paths: string[];
+}
+
+/**
+ * Outcome of a per-path rollback. Mirrors the wire error union of
+ * checkout.git.rollback.response.
+ */
+export type RollbackPathsResult =
+  | { kind: "rolled_back"; paths: string[] }
+  | { kind: "nothing_to_rollback" }
+  | { kind: "git_failed"; detail: string };
+
+const ROLLBACK_WRITE_TIMEOUT_MS = 120_000;
+
+/** True when HEAD has no commits yet (a fresh repo). */
+async function isUnbornHead(cwd: string): Promise<boolean> {
+  const result = await runGitCommand(["rev-parse", "--verify", "--quiet", "HEAD"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  return result.exitCode !== 0;
+}
+
+/**
+ * Repo-relative paths that exist in HEAD (tracked at the last commit). Paths not
+ * in the returned set are "new" — added to the index and/or untracked — and are
+ * discarded by removal rather than by restoring a HEAD version.
+ */
+async function listPathsInHead(cwd: string, paths: string[]): Promise<Set<string>> {
+  if (paths.length === 0 || (await isUnbornHead(cwd))) {
+    return new Set();
+  }
+  const result = await runGitCommand(
+    ["--literal-pathspecs", "ls-tree", "-z", "--name-only", "HEAD", "--", ...paths],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV },
+  );
+  return new Set(result.stdout.split("\0").filter((entry) => entry.length > 0));
+}
+
+/**
+ * Discard uncommitted working-tree changes for the given repo-relative paths.
+ * Tracked files (modified, deleted, or with staged changes) are reset to their
+ * HEAD version in both the index and the working tree; files newly added since
+ * HEAD (whether staged or untracked) are unstaged and removed from disk. Never
+ * touches paths outside the given set.
+ *
+ * A working-tree rename shows up as its new path here: rolling it back deletes
+ * the new path but does not resurrect the old one. That edge case aside, the
+ * common modified / added / deleted cases are all handled.
+ */
+export async function rollbackPaths(
+  cwd: string,
+  input: RollbackPathsInput,
+): Promise<RollbackPathsResult> {
+  await requireGitRepo(cwd);
+  assertRepoRelativeCommitPaths(input.paths);
+  if (input.paths.length === 0) {
+    return { kind: "nothing_to_rollback" };
+  }
+
+  try {
+    const inHead = await listPathsInHead(cwd, input.paths);
+    const existingPaths = input.paths.filter((path) => inHead.has(path));
+    const newPaths = input.paths.filter((path) => !inHead.has(path));
+
+    if (existingPaths.length > 0) {
+      // `checkout HEAD -- <paths>` resets the index and working tree for tracked
+      // paths, discarding both staged and unstaged edits and restoring deletions.
+      await runGitCommand(["--literal-pathspecs", "checkout", "HEAD", "--", ...existingPaths], {
+        cwd,
+        timeout: ROLLBACK_WRITE_TIMEOUT_MS,
+        envOverlay: NON_INTERACTIVE_GIT_ENV,
+      });
+    }
+
+    if (newPaths.length > 0) {
+      // Unstage any staged additions (ignore-unmatch keeps purely-untracked paths
+      // from erroring), then delete the untracked working-tree files.
+      await runGitCommand(
+        [
+          "--literal-pathspecs",
+          "rm",
+          "-f",
+          "--quiet",
+          "--cached",
+          "--ignore-unmatch",
+          "--",
+          ...newPaths,
+        ],
+        { cwd, timeout: ROLLBACK_WRITE_TIMEOUT_MS, envOverlay: NON_INTERACTIVE_GIT_ENV },
+      );
+      await runGitCommand(["--literal-pathspecs", "clean", "-fdq", "--", ...newPaths], {
+        cwd,
+        timeout: ROLLBACK_WRITE_TIMEOUT_MS,
+        envOverlay: NON_INTERACTIVE_GIT_ENV,
+      });
+    }
+
+    return { kind: "rolled_back", paths: input.paths };
+  } catch (error) {
+    return { kind: "git_failed", detail: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 interface DetectMergeToBaseConflictInput {

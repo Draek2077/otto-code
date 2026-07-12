@@ -267,6 +267,84 @@ describe("checkout-git-actions-store", () => {
     ).toBe("success");
   });
 
+  it("rolls back the given paths when the daemon advertises rollback support", async () => {
+    const client = {
+      checkoutGitRollback: vi.fn(async () => ({
+        cwd,
+        success: true,
+        rolledBackPaths: ["a.txt", "b.txt"],
+        error: null,
+        requestId: "req-1",
+      })),
+    };
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: null,
+      features: { checkoutGitRollback: true },
+    });
+
+    await useCheckoutGitActionsStore
+      .getState()
+      .rollbackPaths({ serverId, cwd, paths: ["a.txt", "b.txt"] });
+
+    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, { paths: ["a.txt", "b.txt"] });
+    expect(
+      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
+    ).toBe("success");
+  });
+
+  it("surfaces a git_failed rollback error and stays idle", async () => {
+    const client = {
+      checkoutGitRollback: vi.fn(async () => ({
+        cwd,
+        success: false,
+        rolledBackPaths: [],
+        error: { kind: "git_failed", detail: "boom" },
+        requestId: "req-2",
+      })),
+    };
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: null,
+      features: { checkoutGitRollback: true },
+    });
+
+    await expect(
+      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
+    ).rejects.toThrow("boom");
+    expect(
+      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
+    ).toBe("idle");
+  });
+
+  it("does not call the rollback RPC when the daemon lacks the feature flag", async () => {
+    const client = {
+      checkoutGitRollback: vi.fn(async () => ({
+        cwd,
+        success: true,
+        rolledBackPaths: ["a.txt"],
+        error: null,
+        requestId: "req-3",
+      })),
+    };
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: null,
+      features: {},
+    });
+
+    await expect(
+      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
+    ).rejects.toThrow("Update the host to roll back files from the changes panel.");
+    expect(client.checkoutGitRollback).not.toHaveBeenCalled();
+  });
+
   it("does not call PR auto-merge RPCs when the daemon lacks the feature flag", async () => {
     const client = {
       checkoutGithubSetAutoMerge: vi.fn(async () => ({

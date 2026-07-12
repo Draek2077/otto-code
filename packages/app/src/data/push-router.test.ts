@@ -1,7 +1,7 @@
 import { QueryClient, QueryObserver, skipToken } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { MutableDaemonConfig, SessionOutboundMessage } from "@otto-code/protocol/messages";
-import { checkoutDiffQueryKey } from "@/git/query-keys";
+import { checkoutDiffQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
@@ -231,6 +231,96 @@ describe("server data push router", () => {
 
     expect(fake.unsubscribeCheckoutDiffCalls).toEqual([subscriptionId]);
 
+    unmount();
+  });
+
+  it("heals a stale-clean checkout status when an uncommitted diff push shows files", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const queryKey = checkoutDiffQueryKey(serverId, cwd, "uncommitted", undefined, false);
+    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
+    const observer = new QueryObserver(queryClient, {
+      queryKey,
+      queryFn: skipToken,
+      enabled: true,
+      gcTime: Infinity,
+      staleTime: Infinity,
+      meta: checkoutDiffPushRoute({
+        enabled: true,
+        serverId,
+        subscriptionId,
+        cwd,
+        compare: { mode: "uncommitted", ignoreWhitespace: false },
+      }),
+    });
+    const unsubscribeObserver = observer.subscribe(() => undefined);
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+
+    const statusKey = checkoutStatusQueryKey(serverId, cwd);
+    queryClient.setQueryData(statusKey, { cwd, isGit: true, isDirty: false });
+
+    fake.emit({
+      type: "checkout_diff_update",
+      payload: {
+        subscriptionId,
+        cwd,
+        files: [
+          { path: "a.ts", isNew: false, isDeleted: false, additions: 1, deletions: 0, hunks: [] },
+        ],
+        error: null,
+      },
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+
+    unsubscribeObserver();
+    unmount();
+  });
+
+  it("does not touch checkout status for a base-mode diff push", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const queryKey = checkoutDiffQueryKey(serverId, cwd, "base", "main", true);
+    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
+    const observer = new QueryObserver(queryClient, {
+      queryKey,
+      queryFn: skipToken,
+      enabled: true,
+      gcTime: Infinity,
+      staleTime: Infinity,
+      meta: checkoutDiffPushRoute({
+        enabled: true,
+        serverId,
+        subscriptionId,
+        cwd,
+        compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
+      }),
+    });
+    const unsubscribeObserver = observer.subscribe(() => undefined);
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+
+    const statusKey = checkoutStatusQueryKey(serverId, cwd);
+    queryClient.setQueryData(statusKey, { cwd, isGit: true, isDirty: false });
+
+    fake.emit({
+      type: "checkout_diff_update",
+      payload: {
+        subscriptionId,
+        cwd,
+        files: [
+          { path: "a.ts", isNew: false, isDeleted: false, additions: 1, deletions: 0, hunks: [] },
+        ],
+        error: null,
+      },
+    });
+
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(false);
+
+    unsubscribeObserver();
     unmount();
   });
 

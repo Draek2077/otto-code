@@ -12,6 +12,7 @@ import {
   type CheckoutPrStatusPayload,
   type CheckoutStatusPayload,
   fetchCheckoutStatus,
+  reconcileCheckoutStatusWithUncommittedDiff,
 } from "./checkout-status-cache";
 
 const serverId = "server-1";
@@ -211,5 +212,92 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
 
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(otherTimelineKey)?.isInvalidated).toBe(false);
+  });
+});
+
+describe("reconcileCheckoutStatusWithUncommittedDiff", () => {
+  it("invalidates a stale-clean status when the uncommitted diff proves the tree is dirty", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ isDirty: false }),
+    );
+
+    reconcileCheckoutStatusWithUncommittedDiff({
+      queryClient,
+      serverId,
+      cwd,
+      diffHasUncommittedFiles: true,
+    });
+
+    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      true,
+    );
+  });
+
+  it("leaves an already-dirty status untouched", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ isDirty: true }),
+    );
+
+    reconcileCheckoutStatusWithUncommittedDiff({
+      queryClient,
+      serverId,
+      cwd,
+      diffHasUncommittedFiles: true,
+    });
+
+    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      false,
+    );
+  });
+
+  it("does not reconcile the reverse direction (empty diff) to avoid whitespace-filter churn", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ isDirty: true }),
+    );
+
+    reconcileCheckoutStatusWithUncommittedDiff({
+      queryClient,
+      serverId,
+      cwd,
+      diffHasUncommittedFiles: false,
+    });
+
+    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      false,
+    );
+  });
+
+  it("no-ops when the checkout is not git or has no cached status", () => {
+    const queryClient = createQueryClient();
+
+    // No cached status at all.
+    reconcileCheckoutStatusWithUncommittedDiff({
+      queryClient,
+      serverId,
+      cwd,
+      diffHasUncommittedFiles: true,
+    });
+    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))).toBeUndefined();
+
+    // Cached status is a non-git checkout — isDirty is null, nothing to reconcile.
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ isGit: false, isDirty: null, repoRoot: null, currentBranch: null }),
+    );
+    reconcileCheckoutStatusWithUncommittedDiff({
+      queryClient,
+      serverId,
+      cwd,
+      diffHasUncommittedFiles: true,
+    });
+    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      false,
+    );
   });
 });

@@ -1402,6 +1402,9 @@ function WorkspaceHeaderTitleBar({
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
+  // Match the Explorer toggle's icon sizing so the mobile Play button beside the
+  // "..." menu shares the same chrome and glyph size.
+  const headerActionIconSize = useIconSize(1.5);
   return (
     <View style={containerStyle} dataSet={HEADER_LABEL_DRAG_DATASET}>
       {isLoading ? (
@@ -1459,6 +1462,7 @@ function WorkspaceHeaderTitleBar({
             onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
             hideLabels
             presentation="ghost"
+            ghostIconSize={headerActionIconSize.lg}
           />
         ) : null}
       </View>

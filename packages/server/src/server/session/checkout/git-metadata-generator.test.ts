@@ -10,6 +10,7 @@ import {
   type StructuredTextGeneration,
   type StructuredTextGenerationRequest,
 } from "./git-metadata-generator.js";
+import type { ResolvedStructuredGenerationAgent } from "../../agent/structured-generation-providers.js";
 
 type DiffSource = Pick<WorkspaceGitService, "getCheckoutDiff" | "resolveRepoRoot">;
 
@@ -27,15 +28,23 @@ function createDiffSource(result: CheckoutDiffResult) {
   return { diffSource, diffCalls };
 }
 
-function createGeneration(handler: (request: StructuredTextGenerationRequest<unknown>) => unknown) {
+function createGeneration(
+  handler: (request: StructuredTextGenerationRequest<unknown>) => unknown,
+  resolvedAgent: ResolvedStructuredGenerationAgent | null = null,
+) {
   const generateCalls: Array<StructuredTextGenerationRequest<unknown>> = [];
+  const resolveAgentCalls: Array<{ cwd: string; role: string }> = [];
   const generation: StructuredTextGeneration = {
     generate: async <T>(request: StructuredTextGenerationRequest<T>): Promise<T> => {
       generateCalls.push(request as StructuredTextGenerationRequest<unknown>);
       return handler(request as StructuredTextGenerationRequest<unknown>) as T;
     },
+    resolveAgent: async ({ cwd, role }) => {
+      resolveAgentCalls.push({ cwd, role });
+      return resolvedAgent;
+    },
   };
-  return { generation, generateCalls };
+  return { generation, generateCalls, resolveAgentCalls };
 }
 
 const DIFF_WITH_ONE_FILE: CheckoutDiffResult = {
@@ -108,6 +117,40 @@ describe("createGitMetadataGenerator", () => {
     const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
 
     await expect(generator.generateCommitMessage("/repo")).rejects.toThrow("network down");
+  });
+
+  it("resolveCommitMessageAgent returns the resolved writer agent identity", async () => {
+    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
+    const { generation, resolveAgentCalls } = createGeneration(() => ({ message: "x" }), {
+      kind: "personality",
+      personalityId: "scribe",
+      personalityName: "Scribe",
+      provider: "claude",
+      providerLabel: "Claude Code",
+      model: "haiku",
+      modelLabel: "Haiku",
+    });
+    const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
+
+    await expect(generator.resolveCommitMessageAgent("/repo")).resolves.toEqual({
+      kind: "personality",
+      personalityId: "scribe",
+      personalityName: "Scribe",
+      provider: "claude",
+      providerLabel: "Claude Code",
+      model: "haiku",
+      modelLabel: "Haiku",
+    });
+    // Commit messages route through the writer role.
+    expect(resolveAgentCalls).toEqual([{ cwd: "/repo", role: "writer" }]);
+  });
+
+  it("resolveCommitMessageAgent reports none when nothing resolves", async () => {
+    const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
+    const { generation } = createGeneration(() => ({ message: "x" }), null);
+    const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
+
+    await expect(generator.resolveCommitMessageAgent("/repo")).resolves.toEqual({ kind: "none" });
   });
 
   it("generatePullRequestText returns the generated title and body from a base-diff prompt", async () => {

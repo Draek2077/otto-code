@@ -24,7 +24,7 @@ Loops are a CLI primitive: `otto loop run`. Manage with `otto loop ls`, `otto lo
    - Shell check (`--verify-check`) for objective criteria a command can answer (`gh pr checks --fail-fast`, `npm test`).
    - Verifier prompt (`--verify`) for judgment ("Return done=true only if all tests pass and the changed files are coherent. Cite the command and the outcome.").
    - Both, when shell rules out the obvious failures and the verifier judges the rest.
-4. **Providers** — `--provider` for the worker, `--verify-provider` for the verifier. From preferences unless the user named them. The worker maps to the `worker` role and the verifier to the `judger` role: if the host has such personalities (`list_personalities`), let the matching personality's provider/model guide these flags. For implementation loops, pair worker and verifier on different providers — each catches the other's blind spots.
+4. **Providers** — `--provider` for the worker, `--verify-provider` for the verifier. From preferences unless the user named them. The worker maps to the `coder` role and the verifier to the `judger` role: if the host has such personalities (`list_personalities`), let the matching personality's provider/model guide these flags. For implementation loops, pair worker and verifier on different providers — each catches the other's blind spots.
 5. **Sleep** — `--sleep` only when polling something external. Otherwise let it run as fast as the loop completes.
 6. **Stops** — set a sensible `--max-iterations` and/or `--max-time`. Open-ended loops are how runaways happen.
 7. **Archive** — `--archive` keeps agents after each iteration for inspection.

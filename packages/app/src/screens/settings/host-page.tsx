@@ -583,7 +583,7 @@ function ConnectionRow({
   }, [onRemove, connection]);
 
   const rowStyle = useMemo(
-    () => [settingsStyles.row, showBorder && settingsStyles.rowBorder],
+    () => [settingsStyles.rowResponsive, showBorder && settingsStyles.rowBorder],
     [showBorder],
   );
   const latencyTextStyle = useMemo(
@@ -602,15 +602,17 @@ function ConnectionRow({
           {title}
         </Text>
       </View>
-      <Text style={latencyTextStyle}>{latencyText}</Text>
-      <Button
-        variant="ghost"
-        size="sm"
-        textStyle={destructiveTextStyle}
-        onPress={handlePressRemove}
-      >
-        {t("settings.host.connections.removeAction")}
-      </Button>
+      <View style={CONNECTION_TRAILING_STYLE}>
+        <Text style={latencyTextStyle}>{latencyText}</Text>
+        <Button
+          variant="ghost"
+          size="sm"
+          textStyle={destructiveTextStyle}
+          onPress={handlePressRemove}
+        >
+          {t("settings.host.connections.removeAction")}
+        </Button>
+      </View>
     </View>
   );
 }
@@ -760,7 +762,7 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
 
   return (
     <View style={settingsStyles.card} testID="host-page-restart-card">
-      <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.restart.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.daemon.restart.hint")}</Text>
@@ -969,7 +971,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
 
   return (
     <View style={settingsStyles.card} testID="host-page-update-card">
-      <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.update.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.daemon.update.hint")}</Text>
@@ -1159,7 +1161,7 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
   return (
     <>
       <View style={settingsStyles.card} testID="host-page-append-system-prompt-card">
-        <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {t("settings.host.orchestration.systemPrompt.title")}
@@ -1370,7 +1372,7 @@ function RemoveHostSection({
       <RestartDaemonCard host={host} />
 
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {isLocalDaemon
@@ -1487,7 +1489,11 @@ function TerminalProfileRow({
       : profile.command;
 
   const rowStyle = useMemo(
-    () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder, terminalProfileStyles.row],
+    () => [
+      settingsStyles.rowResponsive,
+      !isFirst && settingsStyles.rowBorder,
+      terminalProfileStyles.row,
+    ],
     [isFirst],
   );
 
@@ -1495,24 +1501,26 @@ function TerminalProfileRow({
 
   return (
     <View style={rowStyle} testID={`terminal-profile-row-${profile.id}`}>
-      <View style={terminalProfileStyles.iconWrapper}>
-        {icon ? (
-          <ThemedDynamicProviderIcon
-            iconKey={icon}
-            size={iconSize.md}
-            uniProps={mutedColorMapping}
-          />
-        ) : (
-          <ThemedProfileSquareTerminal size={iconSize.md} uniProps={mutedColorMapping} />
-        )}
-      </View>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-          {profile.name}
-        </Text>
-        <Text style={settingsStyles.rowHint} numberOfLines={1}>
-          {commandText}
-        </Text>
+      <View style={terminalProfileStyles.rowPrimary}>
+        <View style={terminalProfileStyles.iconWrapper}>
+          {icon ? (
+            <ThemedDynamicProviderIcon
+              iconKey={icon}
+              size={iconSize.md}
+              uniProps={mutedColorMapping}
+            />
+          ) : (
+            <ThemedProfileSquareTerminal size={iconSize.md} uniProps={mutedColorMapping} />
+          )}
+        </View>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+            {profile.name}
+          </Text>
+          <Text style={settingsStyles.rowHint} numberOfLines={1}>
+            {commandText}
+          </Text>
+        </View>
       </View>
       <View style={terminalProfileStyles.rowActions}>
         <Button
@@ -1800,8 +1808,20 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
 
 const terminalProfileStyles = StyleSheet.create((theme) => ({
   row: {
-    gap: theme.spacing[2],
     minHeight: 56,
+  },
+  // Icon + label; the first line of a profile row. Fills inline at sm+, stays
+  // full-width above the centered action buttons when the row stacks. Uses an
+  // auto flex-basis so it keeps its height in the stacked column (a 0 basis would
+  // collapse it and overlap the buttons).
+  rowPrimary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexGrow: { xs: 0, sm: 1 },
+    flexShrink: 1,
+    flexBasis: "auto",
+    alignSelf: { xs: "stretch", sm: "auto" },
   },
   iconWrapper: {
     width: theme.iconSize.md,
@@ -1900,6 +1920,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     marginRight: theme.spacing[2],
   },
+  connectionTrailing: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   confirmText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
@@ -1927,3 +1951,6 @@ const styles = StyleSheet.create((theme) => ({
 
 const FLEX_1_STYLE = { flex: 1 };
 const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
+// Latency + Remove group: stacks below the connection title and centers on the
+// narrowest widths, hugs the right edge inline at sm+.
+const CONNECTION_TRAILING_STYLE = [styles.connectionTrailing, settingsStyles.rowControlGroup];

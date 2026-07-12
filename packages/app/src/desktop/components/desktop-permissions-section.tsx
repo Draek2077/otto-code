@@ -53,18 +53,22 @@ export function DesktopPermissionsSection() {
     [theme.iconSize.md, theme.colors.foregroundMuted],
   );
 
-  const refreshButton = useMemo(
+  // Refresh sits in a centered footer below the cards (not the section header)
+  // so it never crowds the title on narrow windows.
+  const refreshFooter = useMemo(
     () => (
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={refreshIcon}
-        onPress={handleRefreshPress}
-        disabled={isBusy}
-        accessibilityLabel={t("settings.permissions.refreshAccessibility")}
-      >
-        {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
-      </Button>
+      <View style={styles.refreshFooter}>
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={refreshIcon}
+          onPress={handleRefreshPress}
+          disabled={isBusy}
+          accessibilityLabel={t("settings.permissions.refreshAccessibility")}
+        >
+          {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
+        </Button>
+      </View>
     ),
     [refreshIcon, handleRefreshPress, isBusy, isRefreshing, t],
   );
@@ -84,7 +88,7 @@ export function DesktopPermissionsSection() {
   }
 
   return (
-    <SettingsSection title={t("settings.permissions.title")} trailing={refreshButton}>
+    <SettingsSection title={t("settings.permissions.title")}>
       <View style={settingsStyles.card}>
         <DesktopPermissionRow
           title={t("settings.permissions.notifications")}
@@ -107,6 +111,7 @@ export function DesktopPermissionsSection() {
           labels={permissionLabels}
         />
       </View>
+      {refreshFooter}
     </SettingsSection>
   );
 }
@@ -116,5 +121,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     paddingHorizontal: theme.spacing[4],
     paddingBottom: theme.spacing[2],
+  },
+  refreshFooter: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: theme.spacing[1],
   },
 }));

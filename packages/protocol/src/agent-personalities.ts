@@ -7,6 +7,15 @@ import { PERSONALITY_ROLES, type AgentPersonality, type PersonalityRole } from "
 
 const ROLE_SET: ReadonlySet<string> = new Set(PERSONALITY_ROLES);
 
+// Retired role names, mapped to their canonical replacement. "worker" was split
+// into "writer" (fast small-text generation) and "coder" (sub-agent coding); a
+// personality that still carries the old tag resolves to "coder", the closer
+// heir of what a worker did. Normalization applies these before filtering so
+// personalities persisted before the split keep a real role.
+const LEGACY_ROLE_ALIASES: Readonly<Record<string, PersonalityRole>> = {
+  worker: "coder",
+};
+
 export function isPersonalityRole(value: string): value is PersonalityRole {
   return ROLE_SET.has(value);
 }
@@ -14,13 +23,20 @@ export function isPersonalityRole(value: string): value is PersonalityRole {
 /**
  * Filter an arbitrary role array (roles ride the wire as plain strings) down to
  * the known set, deduped and returned in canonical `PERSONALITY_ROLES` order.
- * Unknown roles from a newer peer are dropped rather than trusted.
+ * Retired role names are mapped through `LEGACY_ROLE_ALIASES`; anything else
+ * unknown (e.g. a role from a newer peer) is dropped rather than trusted.
  */
 export function normalizePersonalityRoles(roles: readonly string[] | undefined): PersonalityRole[] {
   if (!roles || roles.length === 0) {
     return [];
   }
-  const present = new Set(roles.filter(isPersonalityRole));
+  const present = new Set<PersonalityRole>();
+  for (const raw of roles) {
+    const canonical = LEGACY_ROLE_ALIASES[raw] ?? (isPersonalityRole(raw) ? raw : null);
+    if (canonical) {
+      present.add(canonical);
+    }
+  }
   return PERSONALITY_ROLES.filter((role) => present.has(role));
 }
 

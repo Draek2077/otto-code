@@ -47,7 +47,7 @@ export function DesktopPermissionRow({
     state !== "not-granted";
 
   const rowStyle = useMemo(
-    () => [settingsStyles.row, showBorder && settingsStyles.rowBorder],
+    () => [settingsStyles.rowResponsive, showBorder && settingsStyles.rowBorder],
     [showBorder],
   );
 
@@ -89,12 +89,17 @@ export function DesktopPermissionRow({
 
 const styles = StyleSheet.create((theme) => ({
   permissionRowActions: {
-    alignItems: "flex-end",
+    // Fills the row and centers its contents when the row stacks on the
+    // narrowest widths; hugs the right edge inline at sm+.
+    width: { xs: "100%", sm: "auto" },
+    alignItems: { xs: "center", sm: "flex-end" },
     gap: theme.spacing[1],
   },
   permissionGrantedActions: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: theme.spacing[2],
   },
   permissionStatusPill: {

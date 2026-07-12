@@ -227,6 +227,9 @@ function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { ho
 }
 
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
+// Responsive bordered row: stacks + centers a wide trailing control below the
+// label on compact widths (see `settingsStyles.rowResponsive`).
+const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
 
 function getSendBehaviorOptions(t: TFunction) {
   return [
@@ -386,7 +389,7 @@ function GeneralSection({
     <Fragment>
       <SettingsSection title={t("settings.general.title")}>
         <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowResponsive}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
               <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
@@ -456,7 +459,7 @@ function GeneralSection({
               </DropdownMenu>
             </View>
           ) : null}
-          <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.general.terminalScrollback.label")}
@@ -481,7 +484,7 @@ function GeneralSection({
       </SettingsSection>
       <SettingsSection title={t("settings.preview.title")}>
         <View style={settingsStyles.card}>
-          <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>
                 {t("settings.general.previewServerCloseBehavior.label")}
@@ -547,7 +550,7 @@ function DiagnosticsSection({
   return (
     <SettingsSection title={t("settings.diagnostics.title")}>
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row} testID="app-diagnostic-row">
+        <View style={settingsStyles.rowResponsive} testID="app-diagnostic-row">
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.diagnostics.app.rowHint")}</Text>
@@ -556,7 +559,7 @@ function DiagnosticsSection({
             {t("settings.diagnostics.app.run")}
           </Button>
         </View>
-        <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.testAudio")}</Text>
             {playbackTestResult ? (
@@ -792,7 +795,7 @@ function DesktopAppUpdateRow() {
 
   return (
     <>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.about.releaseChannel.label")}</Text>
           <Text style={settingsStyles.rowHint}>
@@ -806,7 +809,7 @@ function DesktopAppUpdateRow() {
           options={releaseChannelOptions}
         />
       </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
           <Text style={settingsStyles.rowHint}>{statusText}</Text>
@@ -1282,10 +1285,15 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const isCompactLayout = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
   const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
-  const showDesktopWebScrollbar = isWeb && !isCompactLayout;
-  const desktopScrollRef = useRef<ScrollView>(null);
-  const desktopScrollbar = useWebScrollViewScrollbar(desktopScrollRef, {
-    enabled: showDesktopWebScrollbar,
+  // The themed, auto-hiding overlay scrollbar replaces the native scrollbar on
+  // web for every settings ScrollView — including narrow desktop windows that
+  // fall into the compact layout branch. Native keeps its platform scrollbars.
+  // Only one of the three ScrollViews below is ever mounted at a time, so a
+  // single ref + hook serves whichever branch renders.
+  const showWebScrollbar = isWeb;
+  const scrollRef = useRef<ScrollView>(null);
+  const webScrollbar = useWebScrollViewScrollbar(scrollRef, {
+    enabled: showWebScrollbar,
   });
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
@@ -1635,19 +1643,31 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     return (
       <View style={styles.container}>
         <BackHeader title={t("settings.title")} onBack={handleBackToWorkspace} />
-        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-          <SettingsSidebar
-            view={view}
-            onSelectSection={handleSelectSection}
-            onSelectHostSection={handleSelectHostSection}
-            onSelectHost={handleSelectHost}
-            onSelectProjects={handleSelectProjects}
-            onAddHost={handleAddHost}
-            onBackToWorkspace={handleBackToWorkspace}
-            activeHostServerId={activeHostServerId}
-            layout="mobile"
-          />
-        </ScrollView>
+        <View style={styles.scrollView}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.scrollView}
+            contentContainerStyle={insetBottomStyle}
+            onLayout={webScrollbar.onLayout}
+            onScroll={webScrollbar.onScroll}
+            onContentSizeChange={webScrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!showWebScrollbar}
+          >
+            <SettingsSidebar
+              view={view}
+              onSelectSection={handleSelectSection}
+              onSelectHostSection={handleSelectHostSection}
+              onSelectHost={handleSelectHost}
+              onSelectProjects={handleSelectProjects}
+              onAddHost={handleAddHost}
+              onBackToWorkspace={handleBackToWorkspace}
+              activeHostServerId={activeHostServerId}
+              layout="mobile"
+            />
+          </ScrollView>
+          {webScrollbar.overlay}
+        </View>
         {addHostModals}
       </View>
     );
@@ -1666,9 +1686,21 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           titleAccessory={detailHeader?.titleAccessory}
           onBack={detailBackHandler}
         />
-        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-          <View style={styles.content}>{content}</View>
-        </ScrollView>
+        <View style={styles.scrollView}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.scrollView}
+            contentContainerStyle={insetBottomStyle}
+            onLayout={webScrollbar.onLayout}
+            onScroll={webScrollbar.onScroll}
+            onContentSizeChange={webScrollbar.onContentSizeChange}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={!showWebScrollbar}
+          >
+            <View style={styles.content}>{content}</View>
+          </ScrollView>
+          {webScrollbar.overlay}
+        </View>
         {addHostModals}
       </View>
     );
@@ -1715,18 +1747,18 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           />
           <View style={styles.scrollView}>
             <ScrollView
-              ref={desktopScrollRef}
+              ref={scrollRef}
               style={styles.scrollView}
               contentContainerStyle={insetBottomStyle}
-              onLayout={desktopScrollbar.onLayout}
-              onScroll={desktopScrollbar.onScroll}
-              onContentSizeChange={desktopScrollbar.onContentSizeChange}
+              onLayout={webScrollbar.onLayout}
+              onScroll={webScrollbar.onScroll}
+              onContentSizeChange={webScrollbar.onContentSizeChange}
               scrollEventThrottle={16}
-              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+              showsVerticalScrollIndicator={!showWebScrollbar}
             >
               <View style={styles.content}>{content}</View>
             </ScrollView>
-            {desktopScrollbar.overlay}
+            {webScrollbar.overlay}
           </View>
         </View>
       </View>

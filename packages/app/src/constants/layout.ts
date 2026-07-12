@@ -58,6 +58,16 @@ export function useIsCompactFormFactor(): boolean {
   return rt.breakpoint === "xs" || rt.breakpoint === "sm";
 }
 
+/**
+ * True only at the narrowest breakpoint (`xs`, below `sm` ≈ <576px) — the point
+ * at which settings rows stack their controls below the label. Narrower than
+ * {@link useIsCompactFormFactor}, which also includes `sm`. Reactive.
+ */
+export function useIsExtraCompactFormFactor(): boolean {
+  const { rt } = useUnistyles();
+  return rt.breakpoint === "xs";
+}
+
 // SplitContainer relies on dnd-kit and DOM-backed accessibility helpers.
 // Keep that capability distinct from desktop-width layout so touch tablets
 // can use the desktop shell without entering web-only code paths.

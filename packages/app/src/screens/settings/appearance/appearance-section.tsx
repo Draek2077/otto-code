@@ -109,6 +109,10 @@ function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
   return [styles.trigger, pressed ? styles.triggerPressed : null];
 }
 
+// Responsive rows whose trailing control is wide (segmented control, text
+// input, slider). They stack the control below the label on compact widths.
+const ROW_RESPONSIVE_WITH_BORDER = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
+
 // ---------------------------------------------------------------------------
 // Mode picker (Light / Dark / System)
 // ---------------------------------------------------------------------------
@@ -141,7 +145,7 @@ function ModeRow({ value, onChange }: ModeRowProps) {
     [t],
   );
   return (
-    <View style={settingsStyles.row}>
+    <View style={settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.mode")}</Text>
       </View>
@@ -268,7 +272,7 @@ function FontFamilyRow({
   }, [value]);
 
   return (
-    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
+    <View style={withBorder ? ROW_RESPONSIVE_WITH_BORDER : settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
@@ -312,7 +316,7 @@ function FontSizeRow({
   onCommit,
 }: FontSizeRowProps) {
   return (
-    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
+    <View style={withBorder ? ROW_RESPONSIVE_WITH_BORDER : settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
@@ -420,7 +424,7 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
     [t],
   );
   return (
-    <View style={styles.rowWithBorder}>
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>
           {t("settings.appearance.layout.chatWidth.title")}
@@ -463,7 +467,7 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
     [t],
   );
   return (
-    <View style={styles.rowWithBorder}>
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>
           {t("settings.appearance.agents.messageTimestamp.title")}
@@ -923,6 +927,9 @@ const styles = StyleSheet.create((theme) => ({
   fontFamilyInput: {
     flexGrow: 1,
     flexShrink: 1,
+    // When stacked the row centers the input; give it a definite width so it
+    // fills up to its cap (rather than shrinking to content) before centering.
+    width: { xs: "100%", sm: "auto" },
     maxWidth: 280,
     minHeight: 36,
     paddingVertical: theme.spacing[2],
@@ -939,9 +946,16 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
-    flex: 1,
+    // `flexBasis: "auto"` (not `flex: 1`) so the field keeps its height when the
+    // row stacks in a column; a 0 basis would collapse it and overlap the label.
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "auto",
+    // Definite width so the centered slider fills up to its cap when stacked.
+    width: { xs: "100%", sm: "auto" },
     maxWidth: 220,
-    marginLeft: theme.spacing[4],
+    // No left inset when the slider drops below its label when stacked.
+    marginLeft: { xs: 0, sm: theme.spacing[4] },
   },
   sizeValue: {
     color: theme.colors.foregroundMuted,

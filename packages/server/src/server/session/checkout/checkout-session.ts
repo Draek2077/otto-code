@@ -46,6 +46,7 @@ import {
   mergeToBase,
   pullCurrentBranch,
   pushCurrentBranch,
+  rollbackPaths,
 } from "../../../utils/checkout-git.js";
 import { execCommand } from "../../../utils/spawn.js";
 import { expandTilde } from "../../../utils/path.js";
@@ -603,6 +604,26 @@ export class CheckoutSession {
     }
   }
 
+  async handleCheckoutGitCommitAgentRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.commit_agent.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const agent = await this.gitMetadataGenerator.resolveCommitMessageAgent(cwd);
+      this.host.emit({
+        type: "checkout.git.commit_agent.response",
+        payload: { cwd, agent, requestId },
+      });
+    } catch {
+      // Resolution failure is treated as "no agent available" so the client
+      // refuses the AI commit rather than proceeding on a broken lookup.
+      this.host.emit({
+        type: "checkout.git.commit_agent.response",
+        payload: { cwd, agent: { kind: "none" }, requestId },
+      });
+    }
+  }
+
   async handleCheckoutGitCommitRequest(
     msg: Extract<SessionInboundMessage, { type: "checkout.git.commit.request" }>,
   ): Promise<void> {
@@ -658,6 +679,63 @@ export class CheckoutSession {
       });
     } catch (error) {
       respondError({ kind: "git_failed", detail: getErrorMessage(error) });
+    }
+  }
+
+  async handleCheckoutGitRollbackRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.rollback.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    try {
+      const result = await this.gitOperationLog.runOperation(
+        { cwd, operation: "rollback", label: "git rollback" },
+        () => rollbackPaths(cwd, { paths: msg.paths }),
+      );
+      if (result.kind !== "rolled_back") {
+        if (result.kind === "git_failed") {
+          this.gitOperationLog.append({
+            cwd,
+            operation: "rollback",
+            level: "error",
+            text: `rollback failed: ${result.detail}`,
+          });
+        }
+        this.host.emit({
+          type: "checkout.git.rollback.response",
+          payload: { cwd, success: false, rolledBackPaths: [], error: result, requestId },
+        });
+        return;
+      }
+      this.gitOperationLog.append({
+        cwd,
+        operation: "rollback",
+        level: "info",
+        text: `rolled back ${result.paths.length} file(s)`,
+      });
+
+      await this.gitMutation.notifyGitMutation(cwd, "rollback-changes");
+      this.scheduleDiffRefresh(cwd);
+      this.host.emit({
+        type: "checkout.git.rollback.response",
+        payload: {
+          cwd,
+          success: true,
+          rolledBackPaths: result.paths,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.rollback.response",
+        payload: {
+          cwd,
+          success: false,
+          rolledBackPaths: [],
+          error: { kind: "git_failed", detail: getErrorMessage(error) },
+          requestId,
+        },
+      });
     }
   }
 

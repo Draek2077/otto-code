@@ -36,12 +36,13 @@ Roles decide **where a personality shows up**. A personality can have as many ro
 | **Chatter**      | Interactive chats with an agent                                                             | The composer's model picker           |
 | **Artificer**    | Creating and managing artifacts                                                             | The artifact create sheet             |
 | **Scheduler**    | Creating and managing [schedules](/docs/schedules)                                          | The schedule form                     |
-| **Worker**       | Doing focused sub-tasks spawned by another agent                                            | Via skills and Otto tooling           |
+| **Writer**       | Fast, cheap small-text generation — commit messages, summaries, branch and workspace names  | Automatically, for those mini-tasks   |
+| **Coder**        | Doing focused coding sub-tasks spawned by another agent                                     | Via skills and Otto tooling           |
 | **Judger**       | Reviewing and judging work                                                                  | Via review / committee skills         |
 | **Advisor**      | Giving a second opinion — read-only, never edits                                            | Via the advisor / committee skills    |
 | **Orchestrator** | Running multi-agent workflows — the only role allowed to list and spawn other personalities | Via committee / handoff / loop skills |
 
-Chatter, Artificer, and Scheduler surface directly in the app's pickers. Worker, Judger, Advisor, and Orchestrator are used by [orchestration skills](/docs/skills): a skill can say "spawn a Worker and a Judger" and Otto resolves those to your personalities, so a multi-agent workflow never has to hardcode a provider.
+Chatter, Artificer, and Scheduler surface directly in the app's pickers. Coder, Judger, Advisor, and Orchestrator are used by [orchestration skills](/docs/skills): a skill can say "spawn a Coder and a Judger" and Otto resolves those to your personalities, so a multi-agent workflow never has to hardcode a provider. **Writer** is used automatically: when Otto needs a commit message, a summary, or a branch name, it routes that mini-task to an available Writer personality before falling back to a built-in default — so those little bits of text are written by the fast, cheap model you picked. (Writer and Coder replaced the old single **Worker** role; a personality you tagged Worker before still works and now counts as a Coder.)
 
 ## The starter team
 
@@ -53,8 +54,8 @@ A fresh host comes with a **starter team** of six personalities so you're not st
 | **Sage**     | Advisor               | Opus   | xhigh · plan          |
 | **Vera**     | Judger                | Sonnet | high · plan           |
 | **Pixel**    | Artificer             | Sonnet | medium · accept edits |
-| **Dash**     | Worker, Scheduler     | Haiku  | low · auto            |
-| **Sprocket** | Chatter, Worker       | Sonnet | medium · default      |
+| **Dash**     | Writer, Scheduler     | Haiku  | low · auto            |
+| **Sprocket** | Chatter, Coder        | Sonnet | medium · default      |
 
 The model choices follow cost and fit: Opus for low-volume, high-stakes reasoning; Sonnet for everyday building and review; Haiku for fast, cheap, recurring work.
 
@@ -100,7 +101,7 @@ Personalities are first-class in Otto's agent-management tooling, so an orchestr
 - `list_personalities` enumerates the roster with roles and availability — this one is limited to agents running as an **Orchestrator**, so only an orchestrating agent can enumerate and spawn others.
 - Schedules can be bound to a personality and re-resolve it on every run, so edits land between runs.
 
-The bundled [orchestration skills](/docs/skills) already use this: `/otto-committee` prefers contrasting Advisor and Judger personalities, `/otto-advisor` prefers an Advisor, `/otto-handoff` prefers a Worker, and `/otto-loop` maps its worker and verifier to Worker and Judger roles.
+The bundled [orchestration skills](/docs/skills) already use this: `/otto-committee` prefers contrasting Advisor and Judger personalities, `/otto-advisor` prefers an Advisor, `/otto-handoff` prefers a Coder, and `/otto-loop` maps its worker and verifier to Coder and Judger roles.
 
 ## Where next
 

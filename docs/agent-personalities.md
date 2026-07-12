@@ -43,7 +43,7 @@ Two invariants:
 - **Identity is the `id`, never the `name`.** Renaming a personality must not break any schedule, remembered picker selection, or in-flight agent. Everything binds `id`.
 - **Effort is stored canonical, resolved at spawn.** Store the `EffortLevel`, never a raw `thinkingOptionId` (option ids differ per model). Resolve against the bound model at spawn with `resolveEffortOption` (`packages/protocol/src/effort.ts`; `packages/server/src/server/agent/effort-levels.ts` re-exports).
 
-## Roles (7)
+## Roles (8)
 
 A personality carries one or more roles. Roles gate where a personality shows up. A new personality defaults to **all roles**; the editor has an All / None toggle.
 
@@ -52,12 +52,19 @@ A personality carries one or more roles. Roles gate where a personality shows up
 | **Chatter**      | Interactive agent chats                                                                        | Composer agent-controls picker                     |
 | **Artificer**    | Creating & managing artifacts                                                                  | Artifact create sheet                              |
 | **Scheduler**    | Creating & managing schedules                                                                  | Schedule form sheet                                |
-| **Worker**       | Spawned as a sub-agent (incl. text-editor AI refactor)                                         | None yet — via skills / MCP                        |
+| **Writer**       | Fast small-text generation — commit messages, PR text, branch/workspace names (mini-tasks)     | None (daemon-internal, see below)                  |
+| **Coder**        | Spawned as a coding sub-agent (incl. text-editor AI refactor)                                  | None yet — via skills / MCP                        |
 | **Judger**       | Judging / review passes                                                                        | None yet — via committee / review skills           |
 | **Advisor**      | Planning / second opinion; **read-only / advisory**                                            | None yet — via advisor / committee skills          |
 | **Orchestrator** | Drives multi-agent workflows; **only role permitted to enumerate & spawn other personalities** | None yet — via committee / panels / handoff / loop |
 
 The role catalog lives in `PERSONALITY_ROLES` and the shared predicate/helpers in `packages/protocol/src/agent-personalities.ts` (used by both app pickers and the daemon).
+
+**Writer and Coder replaced the old single `Worker` role.** Worker split into the fast small-text tier (`writer`) and the coding sub-agent tier (`coder`). A personality persisted with the retired `worker` tag resolves to `coder` via `LEGACY_ROLE_ALIASES` in `agent-personalities.ts` — normalization maps it before filtering, so no personality silently loses its role. Roles still ride the wire as plain strings, so old peers keep parsing.
+
+### Writer routing (mini-tasks prefer a personality first)
+
+Daemon-internal mini-tasks — commit messages, PR title/body, and branch/workspace name generation — resolve their model through `resolveStructuredGenerationProviders` (`packages/server/src/server/agent/structured-generation-providers.ts`). When a caller passes `role: "writer"`, every **available** Writer personality (checked against the live provider snapshot with the same `checkPersonalityAvailability` predicate the pickers use) is resolved to a concrete provider/model/effort and **prepended ahead of the legacy chain** (explicit `metadataGeneration.providers` config → built-in substring preference list → current selection → hardcoded string). So a user's Writer personality is the primary worker for these tasks; the legacy substring list is the fallback that only runs when no Writer is available or all of them fail. The personality's canonical effort resolves to the model's nearest advertised thinking option here, exactly as at spawn. The two callers that pass `role: "writer"` are `git-metadata-generator.ts` (commit + PR) and `worktree-branch-name-generator.ts` (titles + branches); the roster reaches the resolver through `StructuredGenerationDaemonConfig.agentPersonalities`.
 
 ## Availability ("out of commission")
 
@@ -118,7 +125,7 @@ Personalities are first-class in the agent-management MCP tools, so multi-agent 
 
 Separately from the MCP tools, the **`agentPersonalities.get_stats`** WebSocket RPC serves per-personality spawn counts from a separate atomic-write stats file under `$OTTO_HOME/stats/` (not `config.json` — avoids spamming the config-changed broadcast). Spawns are counted at the `AgentManager.createAgent` choke point (`onPersonalitySpawn`), so composer, MCP `create_agent`, and schedule runs all increment. The editor surfaces "Used N times" per row.
 
-The five `skills/*/SKILL.md` files teach role-aware discovery: committee prefers contrasting `advisor`/`judger`, advisor prefers `advisor`, handoff prefers `worker`, loop maps worker→`worker`/verifier→`judger`.
+The five `skills/*/SKILL.md` files teach role-aware discovery: committee prefers contrasting `advisor`/`judger`, advisor prefers `advisor`, handoff prefers `coder`, loop maps worker→`coder`/verifier→`judger`.
 
 ## Editor
 
@@ -137,7 +144,7 @@ The editor enforces the invariants that make a personality safe to reference:
 
 ## Starter team
 
-A fresh host seeds a **starter team** so the editor opens with a working, role-complete roster instead of empty. Single source of truth: `DEFAULT_AGENT_PERSONALITIES` in `packages/protocol/src/default-personalities.ts`, imported by the daemon (first-run seeding) and the app (restore button). Six personalities, all Claude, covering all 7 roles: **Atlas** (orchestrator, chatter), **Sage** (advisor), **Vera** (judger), **Pixel** (artificer), **Dash** (worker, scheduler), **Sprocket** (chatter, worker).
+A fresh host seeds a **starter team** so the editor opens with a working, role-complete roster instead of empty. Single source of truth: `DEFAULT_AGENT_PERSONALITIES` in `packages/protocol/src/default-personalities.ts`, imported by the daemon (first-run seeding) and the app (restore button). Six personalities, all Claude, covering all 8 roles: **Atlas** (orchestrator, chatter), **Sage** (advisor), **Vera** (judger), **Pixel** (artificer), **Dash** (writer, scheduler — the fast Haiku scribe for commit messages/summaries/names), **Sprocket** (chatter, coder).
 
 Seeding is first-run-only and delete-safe: `bootstrap.ts` seeds the in-memory roster only when the persisted `agents.agentPersonalities` section is **absent** (distinct from an empty roster the user cleared), then `seedDefaultPersonalitiesIfAbsent` records it on disk once, writing only the personalities branch. Once the section exists on disk (even empty), seeding is a permanent no-op — **deleting the whole team sticks across restarts.** The editor shows "Add starter team" in the empty state and "Restore starter team (N missing)" as a footer, re-adding only builtins whose stable `personality_builtin_*` id is missing.
 

@@ -830,6 +830,29 @@ export const ar: TranslationResources = {
         errorGitFailed: "Commit failed",
         viewLog: "View commit log",
       },
+      commitAgent: {
+        confirmTitle: "Commit with AI",
+        confirmCta: "Commit",
+        providerModel: "{{provider}} · {{model}}",
+        messagePersonality: "The {{name}} personality ({{detail}}) will write your commit message.",
+        messageProvider: "{{detail}} will write your commit message.",
+        noneTitle: "No AI agent available",
+        noneMessage:
+          "No AI agent or model is set up to write a commit message. Configure a provider or an Agent Personality, then try again.",
+        noneConfirm: "OK",
+      },
+      rollback: {
+        fileAction: "Rollback file",
+        filesAction: "Rollback {{count}} files",
+        confirmTitleSingle: "Roll back file?",
+        confirmTitleMultiple: "Roll back {{count}} files?",
+        confirmMessageSingle:
+          "Discard all uncommitted changes to {{fileName}}? This can't be undone.",
+        confirmMessageMultiple:
+          "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
+        confirmButton: "Roll back",
+        failed: "Failed to roll back changes",
+      },
       log: {
         titleCommit: "Git Commit",
         titlePull: "Git Pull",

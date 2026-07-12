@@ -42,6 +42,7 @@ import {
   useSpeechSettingsOptions,
 } from "@/screens/settings/speech-settings-cards";
 import { useTtsPreviewFeature, VoicePreviewButton } from "@/screens/settings/voice-preview-button";
+import { useIsExtraCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -90,7 +91,8 @@ const ROLE_LABELS: Record<PersonalityRole, string> = {
   chatter: "Chatter",
   artificer: "Artificer",
   scheduler: "Scheduler",
-  worker: "Worker",
+  writer: "Writer",
+  coder: "Coder",
   judger: "Judger",
   advisor: "Advisor",
   orchestrator: "Orchestrator",
@@ -100,7 +102,8 @@ const ROLE_HINTS: Record<PersonalityRole, string> = {
   chatter: "Interactive agent chats",
   artificer: "Creating & managing artifacts",
   scheduler: "Creating & managing schedules",
-  worker: "Spawned as a sub-agent",
+  writer: "Fast small-text generation (commit messages, summaries, names)",
+  coder: "Spawned as a coding sub-agent",
   judger: "Judging / review passes",
   advisor: "Planning / second opinion (read-only)",
   orchestrator: "Drives multi-agent workflows",
@@ -597,6 +600,26 @@ function formatUsageCount(count: number): string {
   return count === 1 ? "Used once" : `Used ${count} times`;
 }
 
+// Resolve the display labels the dropdowns use (not raw ids) plus availability.
+// Falls back to the stored id when the provider/model is no longer resolvable.
+function derivePersonalityRowInfo(
+  personality: AgentPersonality,
+  entries: readonly ProviderSnapshotEntry[],
+) {
+  const entry = entries.find((candidate) => candidate.provider === personality.provider);
+  const availability = checkPersonalityAvailability(personality, {
+    providerStatus: entry?.status,
+    providerEnabled: entry?.enabled,
+    modelIds: entry?.models?.map((model) => model.id),
+    modeIds: entry?.modes?.map((mode) => mode.id),
+  });
+  const providerLabel = entry?.label ?? personality.provider;
+  const modelLabel =
+    entry?.models?.find((model) => model.id === personality.model)?.label ?? personality.model;
+  const rolesSummary = formatRolesSummary(normalizePersonalityRoles(personality.roles));
+  return { availability, providerLabel, modelLabel, rolesSummary };
+}
+
 function PersonalityRow({
   personality,
   entries,
@@ -608,40 +631,88 @@ function PersonalityRow({
   const handleEdit = useCallback(() => onEdit(personality.id), [onEdit, personality.id]);
   const handleRemove = useCallback(() => onRemove(personality.id), [onRemove, personality.id]);
 
-  const entry = entries.find((candidate) => candidate.provider === personality.provider);
-  const availability = checkPersonalityAvailability(personality, {
-    providerStatus: entry?.status,
-    providerEnabled: entry?.enabled,
-    modelIds: entry?.models?.map((model) => model.id),
-    modeIds: entry?.modes?.map((mode) => mode.id),
-  });
+  const { availability, providerLabel, modelLabel, rolesSummary } = derivePersonalityRowInfo(
+    personality,
+    entries,
+  );
+  const available = availability.available;
 
-  // Show the display labels the dropdowns use, not the raw ids. Fall back to the
-  // stored id when the provider/model is no longer available to resolve a label.
-  const providerLabel = entry?.label ?? personality.provider;
-  const modelLabel =
-    entry?.models?.find((model) => model.id === personality.model)?.label ?? personality.model;
+  // On the narrowest widths (xs) the row uses a fully stacked, centered layout
+  // per the design: [icon name] / model / roles / times / [buttons]. At sm+ it
+  // keeps the inline icon | name+meta | actions layout.
+  const isStacked = useIsExtraCompactFormFactor();
 
-  const roles = normalizePersonalityRoles(personality.roles);
-  const rolesSummary = formatRolesSummary(roles);
-
-  const rowStyle = useMemo(
-    () => [settingsStyles.row, !isFirst && styles.rowBorder, styles.row],
+  const contentStyle = useMemo(
+    () => [settingsStyles.rowContent, !available && styles.dimmed],
+    [available],
+  );
+  const stackedRowStyle = useMemo(
+    () => [styles.stackedRow, !isFirst && styles.rowBorder],
     [isFirst],
   );
-  const contentStyle = useMemo(
-    () => [settingsStyles.rowContent, !availability.available && styles.dimmed],
-    [availability.available],
+  const stackedInfoStyle = useMemo(
+    () => [styles.stackedInfo, !available && styles.dimmed],
+    [available],
+  );
+  const wideRowStyle = useMemo(
+    () => [settingsStyles.row, !isFirst && styles.rowBorder, styles.wideRow],
+    [isFirst],
   );
 
-  return (
-    <View style={rowStyle} testID={`agent-personality-row-${personality.id}`}>
-      <PersonalityProviderIcon
-        provider={personality.provider}
-        size={18}
-        glowA={personality.spinner?.glowA}
-        glowB={personality.spinner?.glowB}
+  const icon = (
+    <PersonalityProviderIcon
+      provider={personality.provider}
+      size={18}
+      glowA={personality.spinner?.glowA}
+      glowB={personality.spinner?.glowB}
+    />
+  );
+
+  const actions = (
+    <View style={styles.rowActions}>
+      <IconButton
+        Icon={ThemedPencil}
+        label="Edit personality"
+        onPress={handleEdit}
+        testID={`agent-personality-edit-${personality.id}`}
       />
+      <IconButton
+        Icon={ThemedTrash}
+        label="Delete personality"
+        destructive
+        onPress={handleRemove}
+        testID={`agent-personality-remove-${personality.id}`}
+      />
+    </View>
+  );
+
+  if (isStacked) {
+    return (
+      <View style={stackedRowStyle} testID={`agent-personality-row-${personality.id}`}>
+        <View style={stackedInfoStyle}>
+          <View style={styles.stackedNameRow}>
+            {icon}
+            <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+              {personality.name}
+            </Text>
+          </View>
+          <Text style={styles.stackedMeta}>
+            {providerLabel} · {modelLabel}
+          </Text>
+          <Text style={styles.stackedMeta}>{rolesSummary}</Text>
+          <Text style={styles.stackedMeta}>{formatUsageCount(usageCount)}</Text>
+          {!available ? (
+            <Text style={styles.stackedUnavailable}>Unavailable — {availability.reason}</Text>
+          ) : null}
+        </View>
+        {actions}
+      </View>
+    );
+  }
+
+  return (
+    <View style={wideRowStyle} testID={`agent-personality-row-${personality.id}`}>
+      {icon}
       <View style={contentStyle}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {personality.name}
@@ -649,27 +720,13 @@ function PersonalityRow({
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {providerLabel} · {modelLabel} · {rolesSummary} · {formatUsageCount(usageCount)}
         </Text>
-        {!availability.available ? (
+        {!available ? (
           <Text style={styles.unavailableText} numberOfLines={2}>
             Unavailable — {availability.reason}
           </Text>
         ) : null}
       </View>
-      <View style={styles.rowActions}>
-        <IconButton
-          Icon={ThemedPencil}
-          label="Edit personality"
-          onPress={handleEdit}
-          testID={`agent-personality-edit-${personality.id}`}
-        />
-        <IconButton
-          Icon={ThemedTrash}
-          label="Delete personality"
-          destructive
-          onPress={handleRemove}
-          testID={`agent-personality-remove-${personality.id}`}
-        />
-      </View>
+      {actions}
     </View>
   );
 }
@@ -1221,9 +1278,36 @@ function ColorInput({ label, value, onChange, testID }: ColorInputProps): ReactE
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create((theme) => ({
-  row: {
+  // Inline (sm+) row: gap between the leading icon, the label block, and the
+  // trailing action buttons.
+  wideRow: {
     gap: theme.spacing[3],
+  },
+  // Stacked (xs) row: everything centered on its own line.
+  stackedRow: {
+    paddingVertical: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
     alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  stackedInfo: {
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  stackedNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  stackedMeta: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs + 2,
+    textAlign: "center",
+  },
+  stackedUnavailable: {
+    color: theme.colors.destructive,
+    fontSize: theme.fontSize.xs + 2,
+    textAlign: "center",
   },
   rowBorder: {
     borderTopWidth: theme.borderWidth[1],

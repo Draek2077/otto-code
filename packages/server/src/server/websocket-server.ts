@@ -1296,6 +1296,10 @@ export class VoiceAssistantWebSocketServer {
         setAgentPersonality: true,
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitCommit: true,
+        // COMPAT(checkoutGitCommitAgent): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitCommitAgent: true,
+        // COMPAT(checkoutGitRollback): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitRollback: true,
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: true,
       },

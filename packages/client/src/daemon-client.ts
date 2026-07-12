@@ -41,6 +41,8 @@ import type {
   CheckoutStatusResponse,
   CheckoutCommitResponse,
   CheckoutGitCommitResponse,
+  CheckoutGitCommitAgentResponse,
+  CheckoutGitRollbackResponse,
   CheckoutGitGetOperationLogResponse,
   CheckoutMergeResponse,
   CheckoutMergeFromBaseResponse,
@@ -334,6 +336,8 @@ type SubscribeCheckoutDiffPayload = Extract<
 type CheckoutDiffPayload = Omit<SubscribeCheckoutDiffPayload, "subscriptionId">;
 type CheckoutCommitPayload = CheckoutCommitResponse["payload"];
 export type CheckoutGitCommitPayload = CheckoutGitCommitResponse["payload"];
+export type CheckoutGitCommitAgentPayload = CheckoutGitCommitAgentResponse["payload"];
+export type CheckoutGitRollbackPayload = CheckoutGitRollbackResponse["payload"];
 export type CheckoutGitGetOperationLogPayload = CheckoutGitGetOperationLogResponse["payload"];
 type CheckoutMergePayload = CheckoutMergeResponse["payload"];
 type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
@@ -3388,6 +3392,34 @@ export class DaemonClient {
         message: input.message,
         paths: input.paths,
         ...(input.allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+      },
+    });
+  }
+
+  async checkoutGitCommitAgent(
+    cwd: string,
+    requestId?: string,
+  ): Promise<CheckoutGitCommitAgentPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.commit_agent.response">({
+      requestId,
+      message: {
+        type: "checkout.git.commit_agent.request",
+        cwd,
+      },
+    });
+  }
+
+  async checkoutGitRollback(
+    cwd: string,
+    input: { paths: string[] },
+    requestId?: string,
+  ): Promise<CheckoutGitRollbackPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.rollback.response">({
+      requestId,
+      message: {
+        type: "checkout.git.rollback.request",
+        cwd,
+        paths: input.paths,
       },
     });
   }

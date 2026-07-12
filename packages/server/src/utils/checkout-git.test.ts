@@ -39,6 +39,7 @@ import {
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
   renameCurrentBranch,
+  rollbackPaths,
   isOttoWorktreePath,
   isDescendantPath,
   warmCheckoutShortstatInBackground,
@@ -3133,6 +3134,102 @@ const x = 1;
       });
 
       expect(result.kind).toBe("signing_failed");
+    });
+  });
+
+  describe("rollbackPaths", () => {
+    function porcelainStatus(cwd: string): string {
+      return execFileSync("git", ["status", "--porcelain"], { cwd }).toString().trim();
+    }
+
+    // Normalize CRLF so assertions hold on Windows checkouts (git autocrlf).
+    function readText(cwd: string, path: string): string {
+      return readFileSync(join(cwd, path), "utf8").replace(/\r\n/g, "\n");
+    }
+
+    it("restores a modified tracked file to its HEAD contents", async () => {
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+
+      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
+
+      expect(result).toEqual({ kind: "rolled_back", paths: ["file.txt"] });
+      expect(readText(repoDir, "file.txt")).toBe("hello\n");
+      expect(porcelainStatus(repoDir)).toBe("");
+    });
+
+    it("discards staged modifications to a tracked file", async () => {
+      writeFileSync(join(repoDir, "file.txt"), "staged change\n");
+      execFileSync("git", ["add", "file.txt"], { cwd: repoDir });
+
+      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
+
+      expect(result.kind).toBe("rolled_back");
+      expect(readText(repoDir, "file.txt")).toBe("hello\n");
+      expect(porcelainStatus(repoDir)).toBe("");
+    });
+
+    it("restores a deleted tracked file", async () => {
+      rmSync(join(repoDir, "file.txt"));
+
+      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
+
+      expect(result.kind).toBe("rolled_back");
+      expect(existsSync(join(repoDir, "file.txt"))).toBe(true);
+      expect(porcelainStatus(repoDir)).toBe("");
+    });
+
+    it("removes an untracked new file", async () => {
+      writeFileSync(join(repoDir, "untracked.txt"), "new\n");
+
+      const result = await rollbackPaths(repoDir, { paths: ["untracked.txt"] });
+
+      expect(result.kind).toBe("rolled_back");
+      expect(existsSync(join(repoDir, "untracked.txt"))).toBe(false);
+      expect(porcelainStatus(repoDir)).toBe("");
+    });
+
+    it("unstages and removes a newly added (staged) file", async () => {
+      writeFileSync(join(repoDir, "added.txt"), "new\n");
+      execFileSync("git", ["add", "added.txt"], { cwd: repoDir });
+
+      const result = await rollbackPaths(repoDir, { paths: ["added.txt"] });
+
+      expect(result.kind).toBe("rolled_back");
+      expect(existsSync(join(repoDir, "added.txt"))).toBe(false);
+      expect(porcelainStatus(repoDir)).toBe("");
+    });
+
+    it("rolls back a mixed set of paths and leaves unlisted changes untouched", async () => {
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      writeFileSync(join(repoDir, "untracked.txt"), "new\n");
+      writeFileSync(join(repoDir, "other.txt"), "left alone\n");
+
+      const result = await rollbackPaths(repoDir, {
+        paths: ["file.txt", "untracked.txt"],
+      });
+
+      expect(result).toEqual({
+        kind: "rolled_back",
+        paths: ["file.txt", "untracked.txt"],
+      });
+      expect(readText(repoDir, "file.txt")).toBe("hello\n");
+      expect(existsSync(join(repoDir, "untracked.txt"))).toBe(false);
+      // The unlisted untracked file is preserved.
+      expect(porcelainStatus(repoDir)).toBe("?? other.txt");
+    });
+
+    it("returns nothing_to_rollback for an empty selection without running git", async () => {
+      const result = await rollbackPaths(repoDir, { paths: [] });
+      expect(result).toEqual({ kind: "nothing_to_rollback" });
+    });
+
+    it("rejects absolute and repo-escaping paths", async () => {
+      await expect(rollbackPaths(repoDir, { paths: ["/etc/passwd"] })).rejects.toBeInstanceOf(
+        InvalidCommitPathError,
+      );
+      await expect(rollbackPaths(repoDir, { paths: ["../outside.txt"] })).rejects.toBeInstanceOf(
+        InvalidCommitPathError,
+      );
     });
   });
 });
