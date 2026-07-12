@@ -13,6 +13,7 @@ import { Route as VtcodeRouteImport } from "./routes/vtcode";
 import { Route as StakpakRouteImport } from "./routes/stakpak";
 import { Route as SponsorRouteImport } from "./routes/sponsor";
 import { Route as SigitRouteImport } from "./routes/sigit";
+import { Route as SecurityRouteImport } from "./routes/security";
 import { Route as QwenCodeRouteImport } from "./routes/qwen-code";
 import { Route as QoderRouteImport } from "./routes/qoder";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
@@ -87,6 +88,11 @@ const SponsorRoute = SponsorRouteImport.update({
 const SigitRoute = SigitRouteImport.update({
   id: "/sigit",
   path: "/sigit",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const SecurityRoute = SecurityRouteImport.update({
+  id: "/security",
+  path: "/security",
   getParentRoute: () => rootRouteImport,
 } as any);
 const QwenCodeRoute = QwenCodeRouteImport.update({
@@ -412,6 +418,7 @@ export interface FileRoutesByFullPath {
   "/privacy": typeof PrivacyRoute;
   "/qoder": typeof QoderRoute;
   "/qwen-code": typeof QwenCodeRoute;
+  "/security": typeof SecurityRoute;
   "/sigit": typeof SigitRoute;
   "/sponsor": typeof SponsorRoute;
   "/stakpak": typeof StakpakRoute;
@@ -471,6 +478,7 @@ export interface FileRoutesByTo {
   "/privacy": typeof PrivacyRoute;
   "/qoder": typeof QoderRoute;
   "/qwen-code": typeof QwenCodeRoute;
+  "/security": typeof SecurityRoute;
   "/sigit": typeof SigitRoute;
   "/sponsor": typeof SponsorRoute;
   "/stakpak": typeof StakpakRoute;
@@ -533,6 +541,7 @@ export interface FileRoutesById {
   "/privacy": typeof PrivacyRoute;
   "/qoder": typeof QoderRoute;
   "/qwen-code": typeof QwenCodeRoute;
+  "/security": typeof SecurityRoute;
   "/sigit": typeof SigitRoute;
   "/sponsor": typeof SponsorRoute;
   "/stakpak": typeof StakpakRoute;
@@ -596,6 +605,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/qoder"
     | "/qwen-code"
+    | "/security"
     | "/sigit"
     | "/sponsor"
     | "/stakpak"
@@ -655,6 +665,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/qoder"
     | "/qwen-code"
+    | "/security"
     | "/sigit"
     | "/sponsor"
     | "/stakpak"
@@ -716,6 +727,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/qoder"
     | "/qwen-code"
+    | "/security"
     | "/sigit"
     | "/sponsor"
     | "/stakpak"
@@ -778,6 +790,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute;
   QoderRoute: typeof QoderRoute;
   QwenCodeRoute: typeof QwenCodeRoute;
+  SecurityRoute: typeof SecurityRoute;
   SigitRoute: typeof SigitRoute;
   SponsorRoute: typeof SponsorRoute;
   StakpakRoute: typeof StakpakRoute;
@@ -819,6 +832,13 @@ declare module "@tanstack/react-router" {
       path: "/sigit";
       fullPath: "/sigit";
       preLoaderRoute: typeof SigitRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/security": {
+      id: "/security";
+      path: "/security";
+      fullPath: "/security";
+      preLoaderRoute: typeof SecurityRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/qwen-code": {
@@ -1278,6 +1298,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   QoderRoute: QoderRoute,
   QwenCodeRoute: QwenCodeRoute,
+  SecurityRoute: SecurityRoute,
   SigitRoute: SigitRoute,
   SponsorRoute: SponsorRoute,
   StakpakRoute: StakpakRoute,
