@@ -695,6 +695,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       metadataGeneration: { providers: [] },
       autoArchiveAfterMerge: false,
       enableTerminalAgentHooks: false,
+      agentPersonalities: { personalities: [] },
       appendSystemPrompt: "",
     },
   });
@@ -750,6 +751,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       metadataGeneration: { providers: [] },
       autoArchiveAfterMerge: false,
       enableTerminalAgentHooks: false,
+      agentPersonalities: { personalities: [] },
       appendSystemPrompt: "",
     },
   });
