@@ -1,6 +1,6 @@
 # Interface modes — User & Developer
 
-**Status:** Charter — not yet started. Drafted 2026-07-11.
+**Status:** Charter — not yet started. Drafted 2026-07-11. **Absorbed into the [first-time wizard](first-time-wizard.md) project on 2026-07-12:** the first-run picker described below ships as **wizard step 2** (the standalone `choose-interface` route is superseded), and this plan's build phases are executed as first-time-wizard Phases 1 (plumbing) and 5 (surface gating). Everything else here — the binding constraints, surface inventory, gate architecture — remains the authoritative spec.
 
 Give Otto two display depths, chosen on first launch and switchable anytime: **Developer** (everything Otto is today — git, diffs, files, search, terminals, full technical detail) and **User** (the same AI platform — projects, workspaces, chat, personalities, artifacts, schedules, voice — with the developer machinery hidden and a friendlier, less technical presentation). One product, two lenses.
 
