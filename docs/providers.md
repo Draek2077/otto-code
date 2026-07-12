@@ -26,7 +26,9 @@ Pi is a process-backed provider. Otto requires the user to have the `pi` binary 
 
 Otto's per-agent and daemon-wide system prompts are passed to Pi with `--append-system-prompt`, so Pi keeps its default coding prompt while receiving Otto's additional instructions.
 
-Pi MCP support depends on the open-source `pi-mcp-adapter` extension being loaded for the agent cwd. Probe with Pi RPC `get_commands`; the adapter registers an extension command named `mcp` (often with `sourceInfo.source` containing `pi-mcp-adapter`). When Otto injects MCP servers into Pi, write a per-agent MCP config and pass it with `--mcp-config` instead of modifying user or project MCP files. For local HTTP servers such as Otto's own `/mcp/agents` endpoint, explicitly disable adapter OAuth (`auth: false`, `oauth: false`) in the generated config.
+Pi model records expose input capabilities through `model.input`. Only send raw RPC `images` when the current model explicitly includes `"image"` in that list. Text-only Pi/OMP models reject image content and persist the rejected image in JSONL history, so image prompts for those models must be materialized to a local file and passed as a text path hint instead.
+
+Pi MCP support depends on the open-source `pi-mcp-adapter` extension being loaded for the agent cwd. Probe with Pi RPC `get_commands`; the adapter registers an extension command named `mcp` (often with `sourceInfo.source` containing `pi-mcp-adapter`). When Otto injects MCP servers into Pi, write a per-agent MCP config and pass it with `--mcp-config` instead of modifying user or project MCP files. Because that flag replaces the Pi global config layer, preserve the existing `<Pi agent dir>/mcp.json` in the generated file before overlaying injected servers. For local HTTP servers such as Otto's own `/mcp/agents` endpoint, explicitly disable adapter OAuth (`auth: false`, `oauth: false`) in the generated config.
 
 Pi import discovery reads Pi's persisted JSONL session files because Pi RPC does not expose a recent-session listing command. Resume and full history hydration still go through `pi --mode rpc` using the session file as `nativeHandle`.
 
@@ -171,7 +173,7 @@ export class CopilotACPAgentClient extends ACPAgentClient {
 
 ### 2. Add to the provider manifest
 
-In `packages/protocol/src/provider-manifest.ts` (the manifest lives in the protocol package so clients can render provider metadata without the server), add mode definitions with UI metadata (icons, color tiers) and a provider definition entry.
+In `packages/server/src/server/agent/provider-manifest.ts`, add mode definitions with UI metadata (icons, color tiers) and a provider definition entry.
 
 First, define the modes with visual metadata:
 
@@ -194,8 +196,8 @@ const MY_PROVIDER_MODES: AgentProviderModeDefinition[] = [
 ];
 ```
 
-Available `colorTier` values: `"safe"`, `"moderate"`, `"dangerous"`, `"planning"`, or a custom `#rrggbb` hex color.
-`icon` is any icon name the app's icon set knows (existing modes use `"ShieldCheck"`, `"ShieldQuestionMark"`, `"ShieldAlert"`).
+Available `colorTier` values: `"safe"`, `"moderate"`, `"dangerous"`, `"planning"`.
+Available `icon` values: `"ShieldCheck"`, `"ShieldAlert"`, `"ShieldOff"`.
 
 Then add to the `AGENT_PROVIDER_DEFINITIONS` array:
 

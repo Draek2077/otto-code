@@ -4,7 +4,7 @@ import type { WorkspaceStructureProject } from "@/projects/workspace-structure";
 import {
   appendMissingOrderKeys,
   applyStoredOrdering,
-  buildSidebarStatusWorkspacePlacements,
+  buildSidebarWorkspaceEntries,
   buildSidebarWorkspacePlacementModel,
   buildSidebarProjectsFromStructure,
   computeSidebarOrderUpdates,
@@ -234,11 +234,12 @@ describe("shared sidebar workspace model", () => {
         }),
       ],
     });
-    const statusRows = buildSidebarStatusWorkspacePlacements({
+    const workspaceEntries = buildSidebarWorkspaceEntries({
       placements: model.workspaces,
       sessions: [
         {
           serverId: "host-a",
+          workspaceAgentActivity: new Map(),
           workspaces: new Map([
             [
               "main",
@@ -254,6 +255,7 @@ describe("shared sidebar workspace model", () => {
         },
         {
           serverId: "host-b",
+          workspaceAgentActivity: new Map(),
           workspaces: new Map([
             [
               "feature",
@@ -304,15 +306,67 @@ describe("shared sidebar workspace model", () => {
         ],
       }),
     ]);
-    expect(statusRows.map((entry) => [entry.workspaceKey, entry.statusBucket, entry.name])).toEqual(
-      [
-        ["host-a:main", "done", "main"],
-        ["host-b:feature", "running", "feature/status-flow"],
-      ],
-    );
+    expect(
+      Array.from(workspaceEntries.values()).map((entry) => [
+        entry.workspaceKey,
+        entry.statusBucket,
+        entry.name,
+      ]),
+    ).toEqual([
+      ["host-a:main", "done", "main"],
+      ["host-b:feature", "running", "feature/status-flow"],
+    ]);
     expect(model.projectNamesByKey).toEqual(
       new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]),
     );
+  });
+
+  it("preserves unchanged row identities when another workspace updates", () => {
+    const model = buildSidebarWorkspacePlacementModel({
+      projects: [project({ projectKey: "project", workspaceKeys: ["srv:one", "srv:two"] })],
+    });
+    const one = workspace({
+      id: "one",
+      name: "one",
+      projectId: "project",
+      projectDisplayName: "project",
+    });
+    const two = workspace({
+      id: "two",
+      name: "two",
+      projectId: "project",
+      projectDisplayName: "project",
+    });
+    const previousEntries = buildSidebarWorkspaceEntries({
+      placements: model.workspaces,
+      sessions: [
+        {
+          serverId: "srv",
+          workspaceAgentActivity: new Map(),
+          workspaces: new Map([
+            ["one", one],
+            ["two", two],
+          ]),
+        },
+      ],
+    });
+    const nextEntries = buildSidebarWorkspaceEntries({
+      placements: model.workspaces,
+      sessions: [
+        {
+          serverId: "srv",
+          workspaceAgentActivity: new Map(),
+          workspaces: new Map([
+            ["one", one],
+            ["two", { ...two, status: "running" }],
+          ]),
+        },
+      ],
+      previousEntries,
+    });
+
+    expect(nextEntries.get("srv:one")).toBe(previousEntries.get("srv:one"));
+    expect(nextEntries.get("srv:two")).not.toBe(previousEntries.get("srv:two"));
   });
 });
 

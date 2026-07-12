@@ -72,7 +72,8 @@ git grep -ilE 'paseo|getpaseo' -- \
   ':!packages/website/src/components/site-footer.tsx' \
   ':!packages/website/src/routes/index.tsx' \
   ':!packages/website/src/routes/sponsor.tsx' \
-  ':!packages/app/src/styles/theme.ts'
+  ':!packages/app/src/styles/theme.ts' \
+  ':!packages/app/src/utils/upstream-base-version.ts'
 ```
 
 Expected output: **nothing**. The excluded files keep Paseo references on
@@ -86,6 +87,10 @@ purpose:
   and the sponsorship page pointing at upstream's author.
 - `packages/app/src/styles/theme.ts` — comments recording which themes are
   inherited from upstream.
+- `packages/app/src/utils/upstream-base-version.ts` — the single source of the
+  upstream base name + version shown in Settings → About. It is Otto-only (so
+  the rebrand pass never touches it) and deliberately holds the "Paseo" literal
+  so the display code and i18n never have to. Bump its version in step 4 below.
 
 Anything outside this list must be Otto. If a merge adds a new intentional
 reference (e.g. more credit copy), add it to the exclusion list here in the
@@ -97,7 +102,29 @@ Also check the port didn't sneak back:
 git grep -n '\b6767\b' -- ':!*package-lock.json'
 ```
 
-### 4. Regenerate lockfiles and verify
+### 4. Bump the upstream base version
+
+Every upstream merge **must** update `UPSTREAM_BASE_VERSION` in
+`packages/app/src/utils/upstream-base-version.ts` to the Paseo release this merge
+ingests. That constant is the single source of the "Based on Paseo vX.Y.Z" line
+shown in Settings → About next to the Otto app version, so users can tell which
+upstream fixes are under the hood — a stale value silently misreports the base.
+
+Only the version changes; `UPSTREAM_BASE_NAME` stays `"Paseo"`. Read the number
+from the upstream tip you're merging (works during or after the merge):
+
+```bash
+git show MERGE_HEAD:package.json | grep -m1 '"version"'      # during the merge
+git show upstream/main:package.json | grep -m1 '"version"'   # or from the fetched tip
+git describe --tags upstream/main                            # sanity-check the tag
+```
+
+This is why the file is on the audit exclusion list in step 3 — it is the one
+place the "Paseo" literal is allowed to live. Do not move the name/version into
+the display code or i18n strings; the rebrand pass would rewrite them on the next
+merge that touches those files.
+
+### 5. Regenerate lockfiles and verify
 
 ```bash
 npm install --package-lock-only

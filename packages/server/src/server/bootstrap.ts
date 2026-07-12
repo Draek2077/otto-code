@@ -1715,11 +1715,14 @@ export async function createOttoDaemon(
 
   const stop = async () => {
     scriptHealthMonitor.stop();
-    // Dev servers first: they are children of this daemon and hold ports the
+    // Freeze both ingress and registration before taking the agent closure snapshot.
+    wsServer?.prepareForShutdown();
+    agentManager.prepareForShutdown();
+    // Dev servers next: they are children of this daemon and hold ports the
     // next daemon instance may want.
     await previewDevServers.shutdown().catch(() => undefined);
     await closeAllAgents(logger, agentManager);
-    await agentManager.flush().catch(() => undefined);
+    await agentManager.flushForShutdown().catch(() => undefined);
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();

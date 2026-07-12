@@ -50,7 +50,7 @@ function GitActionMenuItem({
   const handleSelect = useCallback(() => onSelect(action), [onSelect, action]);
   const trailing = useMemo(
     () =>
-      action.id === "archive-worktree" && archiveShortcutKeys ? (
+      action.id === "archive-workspace" && archiveShortcutKeys ? (
         <Shortcut chord={archiveShortcutKeys} />
       ) : undefined,
     [action.id, archiveShortcutKeys],
@@ -60,7 +60,7 @@ function GitActionMenuItem({
       {needsSeparator && showSeparator ? <DropdownMenuSeparator /> : null}
       <DropdownMenuItem
         testID={
-          action.id === "archive-worktree"
+          action.id === "archive-workspace"
             ? "workspace-archive-action"
             : `changes-menu-${action.id}`
         }
@@ -88,7 +88,7 @@ export function GitActionsSplitButton({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const toast = useToast();
-  const archiveShortcutKeys = useShortcutKeys("archive-worktree");
+  const archiveShortcutKeys = useShortcutKeys("archive-workspace");
 
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
     if (action.status === "pending") return action.pendingLabel;

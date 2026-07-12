@@ -8,6 +8,9 @@ routes = [{ pattern = "relay.otto-code.me", custom_domain = true }]
 [observability]
 enabled = true
 
+[vars]
+OTTO_RELAY_UPSTREAM = "https://otto-relay-next.fly.dev"
+
 [[durable_objects.bindings]]
 name = "RELAY"
 class_name = "RelayDurableObject"
