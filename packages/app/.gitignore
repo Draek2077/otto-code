@@ -18,6 +18,10 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Google Play service-account key (materialized from a CI secret at submit time;
+# must never be committed). See .github/workflows/android-play-release.yml.
+google-service-account.json
+
 # Metro
 .metro-health-check*
 
