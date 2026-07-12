@@ -24,6 +24,10 @@ jobs:
         run: npm run typecheck --workspace=@otto-code/relay
 
       - name: Deploy worker
-        run: cd packages/relay && npx wrangler deploy
+        # OTTO_RELAY_UPSTREAM is set here, not in wrangler.toml [vars], so the
+        # Fly cutover bridge only applies to the deployed production worker and
+        # never leaks into local/e2e `wrangler dev` runs (which would then fail
+        # to reach the external upstream in CI). See wrangler.toml for context.
+        run: cd packages/relay && npx wrangler deploy --var OTTO_RELAY_UPSTREAM:https://otto-relay-next.fly.dev
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
