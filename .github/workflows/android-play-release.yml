@@ -9,6 +9,11 @@ name: Android Play Release
 # failed Play submission does not require rebuilding the sideload APK, and a
 # retry tag `android-play-vX.Y.Z` rebuilds/submits only this path.
 #
+# Retrying a failed *submit* without rebuilding: run this workflow via
+# workflow_dispatch with `build_id` set to an already-finished EAS build id. The
+# build step is skipped and that build is submitted as-is (e.g. after enabling a
+# missing Google API or fixing a Play permission).
+#
 # Requires two repo secrets:
 #   - EXPO_TOKEN                     (already set; authenticates the EAS build)
 #   - GOOGLE_SERVICE_ACCOUNT_KEY     (full JSON of a Google Play service-account
@@ -23,9 +28,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to build and submit (e.g. v0.5.1)"
+        description: "Existing tag to check out (e.g. v0.5.1 or android-play-v0.5.1)"
         required: true
         type: string
+      build_id:
+        description: "Existing EAS build id to submit as-is (skips the build). Leave empty to build from the tag."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: android-play-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
@@ -74,6 +84,9 @@ jobs:
 
       - name: Build Android App Bundle on EAS
         id: eas_build
+        # Skip the build when a caller supplies an existing build id to submit
+        # as-is (retry-a-failed-submit path). Empty for tag pushes, so they build.
+        if: ${{ github.event.inputs.build_id == '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -93,10 +106,22 @@ jobs:
 
       - name: Submit AAB to Play internal track
         shell: bash
+        env:
+          INPUT_BUILD_ID: ${{ github.event.inputs.build_id }}
+          BUILT_BUILD_ID: ${{ steps.eas_build.outputs.build_id }}
         run: |
           set -euo pipefail
           cd packages/app
-          npx eas submit --platform android --profile internal --id '${{ steps.eas_build.outputs.build_id }}' --non-interactive
+          # Prefer a caller-supplied build id (submit-only retry); otherwise use
+          # the id from the build step above.
+          submit_id="${INPUT_BUILD_ID:-}"
+          if [ -z "$submit_id" ]; then submit_id="${BUILT_BUILD_ID:-}"; fi
+          if [ -z "$submit_id" ]; then
+            echo "No EAS build id to submit (build step skipped and no build_id input)." >&2
+            exit 1
+          fi
+          echo "Submitting EAS build $submit_id to Play internal track"
+          npx eas submit --platform android --profile internal --id "$submit_id" --non-interactive
 
       - name: Clean up service account key
         if: always()
