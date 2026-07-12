@@ -225,7 +225,10 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await openWorkspaceChanges(page, workspace);
 
   await expectFlatFileList(page);
-  await expect(page.getByTestId("changes-toggle-layout")).toBeVisible();
+  // "split" and "tree" are pinned by default, so their controls render as
+  // toolbar strip buttons whose testIDs carry the "-pinned" suffix (the bare
+  // testID belongs to the ▾-menu row). See changes-toolbar/toolbar.tsx.
+  await expect(page.getByTestId("changes-toggle-layout-pinned")).toBeVisible();
   await expect(page.getByTestId("changes-layout-unified")).toHaveCount(0);
   await expect(page.getByTestId("changes-layout-split")).toHaveCount(0);
 
@@ -240,14 +243,14 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await page.keyboard.press("Escape");
 
   await scrollToLowerUnwrappedDiffRows(page);
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-view-mode-pinned").click();
   await expect(page.getByTestId("diff-folder-src")).toBeVisible();
   await expect(page.getByTestId("diff-file-0")).toBeVisible();
 
   await page.getByTestId("diff-folder-src-toggle").click();
   await expect(page.getByTestId("diff-file-0")).toHaveCount(0);
 
-  await page.getByTestId("changes-toggle-view-mode").click();
+  await page.getByTestId("changes-toggle-view-mode-pinned").click();
   await expectFlatFileList(page);
 });
 
