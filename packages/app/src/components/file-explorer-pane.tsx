@@ -38,6 +38,7 @@ import {
   SquarePen,
 } from "@/components/icons/material-icons";
 import { getFileIconSvg } from "@/components/material-file-icons";
+import { compactUp, useIconSize } from "@/styles/theme";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -161,6 +162,7 @@ function TreeRowItem({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
+  const iconSize = useIconSize();
   const isDirectory = entry.kind === "directory";
   // Hover lives on a plain outer View (see docs/hover.md) so the kebab can
   // collapse without the nested-Pressable hover fight; the menu stays mounted
@@ -221,20 +223,20 @@ function TreeRowItem({
   }, [onToggleContextEntry, entry]);
 
   const copyLeading = useMemo(
-    () => <Copy size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Copy size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const downloadLeading = useMemo(
-    () => <Download size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Download size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const editLeading = useMemo(
-    () => <SquarePen size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <SquarePen size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const contextLeading = useMemo(
-    () => <Paperclip size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Paperclip size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
 
   return (
@@ -254,7 +256,13 @@ function TreeRowItem({
           <View style={styles.entryIcon}>
             {(() => {
               if (!isDirectory) {
-                return <SvgXml xml={getFileIconSvg(entry.name)} width={16} height={16} />;
+                return (
+                  <SvgXml
+                    xml={getFileIconSvg(entry.name)}
+                    width={iconSize.md}
+                    height={iconSize.md}
+                  />
+                );
               }
               if (loading) return <ActivityIndicator size="small" />;
               return <TreeChevron expanded={isExpanded} />;
@@ -271,7 +279,7 @@ function TreeRowItem({
               onPressIn={stopPressInPropagation}
               style={menuButtonStyle}
             >
-              <MoreVertical size={16} color={theme.colors.foregroundMuted} />
+              <MoreVertical size={iconSize.md} color={theme.colors.foregroundMuted} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" width={220}>
               <EntryMetaBlock entry={entry} />
@@ -359,6 +367,7 @@ function EntryContextMenu({
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const entry = request?.entry ?? null;
 
   const handleToggleContext = useCallback(() => {
@@ -375,20 +384,20 @@ function EntryContextMenu({
   }, [entry, onDownloadEntry]);
 
   const contextLeading = useMemo(
-    () => <Paperclip size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Paperclip size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const editLeading = useMemo(
-    () => <SquarePen size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <SquarePen size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const copyLeading = useMemo(
-    () => <Copy size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Copy size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
   const downloadLeading = useMemo(
-    () => <Download size={14} color={theme.colors.foregroundMuted} />,
-    [theme.colors.foregroundMuted],
+    () => <Download size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
   );
 
   return (
@@ -947,6 +956,9 @@ interface FileExplorerPaneContentProps {
 function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  // useIconSize (not theme.iconSize props) — the runtime theme patch doesn't
+  // reliably reach icon size props here; the hook scales with the breakpoint.
+  const iconSize = useIconSize();
   const {
     error,
     showInitialLoading,
@@ -1021,7 +1033,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
       <View style={styles.paneHeader} testID="files-pane-header">
         <Pressable onPress={handleSortCycle} style={sortTriggerStyleProp}>
           <Text style={styles.sortTriggerText}>{currentSortLabel}</Text>
-          <ChevronDown size={12} color={theme.colors.foregroundMuted} />
+          <ChevronDown size={iconSize.xs} color={theme.colors.foregroundMuted} />
         </Pressable>
         <View style={styles.headerActions}>
           {onOpenFinder ? (
@@ -1034,7 +1046,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
                 accessibilityLabel={t("fileFinder.open")}
                 testID="file-explorer-open-finder"
               >
-                <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <Search size={iconSize.sm} color={theme.colors.foregroundMuted} />
               </TooltipTrigger>
               <TooltipContent side="bottom" align="center" offset={8}>
                 <Text style={styles.tooltipText}>{t("fileFinder.open")}</Text>
@@ -1051,9 +1063,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
               accessibilityState={hiddenFilesToggleAccessibilityState}
             >
               {showHiddenFiles ? (
-                <Eye size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <Eye size={iconSize.sm} color={theme.colors.foregroundMuted} />
               ) : (
-                <EyeOff size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                <EyeOff size={iconSize.sm} color={theme.colors.foregroundMuted} />
               )}
             </TooltipTrigger>
             <TooltipContent side="bottom" align="center" offset={8}>
@@ -1075,9 +1087,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
             >
               <View style={styles.refreshIcon}>
                 {isRefreshFetching ? (
-                  <LoadingSpinner size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                  <LoadingSpinner size={iconSize.sm} color={theme.colors.foregroundMuted} />
                 ) : (
-                  <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                  <RotateCw size={iconSize.sm} color={theme.colors.foregroundMuted} />
                 )}
               </View>
             </TooltipTrigger>
@@ -1539,14 +1551,22 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     marginLeft: theme.spacing[3] - theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
-    height: 24,
+    height: {
+      xs: 28,
+      sm: 28,
+      md: 24,
+    },
     borderRadius: theme.borderRadius.base,
   },
   sortTriggerHovered: {
     backgroundColor: theme.colors.surfaceHover,
   },
   sortTriggerText: {
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump matching the Changes pane's mode trigger.
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     color: theme.colors.foregroundMuted,
   },
   headerActions: {
@@ -1617,8 +1637,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     // Pin the height the 30px kebab button would give the row, so rows don't
-    // shrink (and hover-flicker) when the kebab collapses.
-    minHeight: 34,
+    // shrink (and hover-flicker) when the kebab collapses. 1.5x on compact to
+    // wrap the icons' compact upscale.
+    minHeight: compactUp(34, 1.5),
     paddingVertical: 2,
     paddingRight: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
@@ -1639,11 +1660,16 @@ const styles = StyleSheet.create((theme) => ({
   entryName: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump matching the explorer tab labels.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   menuButton: {
-    width: 30,
-    height: 30,
+    // 1.5x on compact to wrap the kebab icon's compact upscale.
+    width: compactUp(30, 1.5),
+    height: compactUp(30, 1.5),
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -1681,8 +1707,9 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   iconButton: {
-    width: 22,
-    height: 22,
+    // 1.5x on compact to wrap the header icons' compact upscale.
+    width: compactUp(22, 1.5),
+    height: compactUp(22, 1.5),
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isNative } from "@/constants/platform";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import { isChangesToolbarItemPinned, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -102,6 +102,7 @@ function ChangesPinnableMenuItem({
   onTogglePin: (id: ChangesToolbarItemId) => void;
 }): ReactElement {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const [isHovered, setIsHovered] = useState(false);
 
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
@@ -121,12 +122,12 @@ function ChangesPinnableMenuItem({
   );
   const trailingSpacer = useMemo(() => <View style={slotStyle} />, [slotStyle]);
 
-  let pinIcon = <ThemedPin size={14} uniProps={mutedColorMapping} />;
+  let pinIcon = <ThemedPin size={iconSize.sm} uniProps={mutedColorMapping} />;
   if (isPinned) {
     pinIcon = isHovered ? (
-      <ThemedPinOff size={14} uniProps={mutedColorMapping} />
+      <ThemedPinOff size={iconSize.sm} uniProps={mutedColorMapping} />
     ) : (
-      <ThemedPinFilled size={14} uniProps={starColorMapping} />
+      <ThemedPinFilled size={iconSize.sm} uniProps={starColorMapping} />
     );
   }
 
@@ -138,7 +139,7 @@ function ChangesPinnableMenuItem({
     >
       <DropdownMenuItem
         testID={item.testID}
-        leading={item.renderIcon(14)}
+        leading={item.renderIcon(iconSize.sm)}
         trailing={trailingSpacer}
         disabled={item.disabled}
         onSelect={item.onPress}
@@ -202,7 +203,8 @@ export function ChangesToolbar({
   // portaled menu then, which reads as "left the row" to the hover tracker.
   // With hide-until-hover off (the default), the strip is always revealed.
   const revealed = !hideUntilHover || hovered || isNative || isMobile || menuOpen;
-  const barIconSize = isMobile ? 18 : 14;
+  // Doubled on compact via the icon-size tokens (14 desktop / 28 mobile).
+  const barIconSize = useIconSize().sm;
 
   const pinnedButtons = useMemo(
     () => items.filter((item) => isChangesToolbarItemPinned(pinnedItems, item.id)),
@@ -302,8 +304,9 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   pinToggleSlot: {
-    width: 22,
-    height: 22,
+    // 1.5x on compact to wrap the pin icons' compact upscale.
+    width: compactUp(22, 1.5),
+    height: compactUp(22, 1.5),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -318,13 +321,13 @@ const styles = StyleSheet.create((theme) => ({
     top: 0,
     bottom: 0,
     right: theme.spacing[3],
-    width: 22,
+    width: compactUp(22, 1.5),
     alignItems: "center",
     justifyContent: "center",
   },
   pinToggleButton: {
-    width: 22,
-    height: 22,
+    width: compactUp(22, 1.5),
+    height: compactUp(22, 1.5),
     alignItems: "center",
     justifyContent: "center",
   },

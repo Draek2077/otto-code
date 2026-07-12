@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronRight } from "@/components/icons/material-icons";
-import { SPACING, type Theme } from "@/styles/theme";
+import { compactUp, SPACING, useIconSize, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 // Shared presentation primitives for the app's directory trees. Both the Files
@@ -50,9 +50,10 @@ export function TreeIndentGuides({ depth }: { depth: number }) {
 
 /** Rotating disclosure chevron for a directory row (points right; rotates down when expanded). */
 export function TreeChevron({ expanded }: { expanded: boolean }) {
+  const iconSize = useIconSize();
   return (
     <View style={expanded ? CHEVRON_EXPANDED_STYLE : styles.chevron}>
-      <ThemedChevronRight size={16} uniProps={foregroundMutedIconColorMapping} />
+      <ThemedChevronRight size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
     </View>
   );
 }
@@ -66,8 +67,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   chevron: {
-    width: 16,
-    height: 16,
+    // Doubled on compact to wrap the chevron icon's compact upscale.
+    width: compactUp(16),
+    height: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,

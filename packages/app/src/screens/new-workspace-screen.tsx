@@ -33,6 +33,7 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
+import { compactUp } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { useGithubSearchQuery } from "@/git/use-github-search-query";
@@ -2369,7 +2370,9 @@ const styles = StyleSheet.create((theme) => ({
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    height: BADGE_HEIGHT,
+    // 1.5x on compact to wrap the badge icons' compact upscale — otherwise the
+    // theme-scaled icon/text get clipped by the fixed desktop height.
+    height: compactUp(BADGE_HEIGHT, 1.5),
     maxWidth: 240,
     overflow: "hidden",
     paddingHorizontal: theme.spacing[2],
@@ -2379,7 +2382,7 @@ const styles = StyleSheet.create((theme) => ({
   checkoutHintBadge: {
     flexDirection: "row",
     alignItems: "center",
-    height: BADGE_HEIGHT,
+    height: compactUp(BADGE_HEIGHT, 1.5),
     maxWidth: 240,
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius["2xl"],
@@ -2404,7 +2407,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   badgeText: {
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump matching other picker triggers.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },

@@ -28,7 +28,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { BORDER_WIDTH, SPACING, type Theme } from "@/styles/theme";
+import { BORDER_WIDTH, SPACING, useIconSize, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import {
   AlignJustify,
@@ -3007,22 +3007,41 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     () => computeBaseRefLabel(baseRef, t("workspace.git.diff.base")),
     [baseRef, t],
   );
+  const iconSize = useIconSize();
+  const actionIconSize = iconSize.md;
   const gitActionsIcons = useMemo(
     () => ({
-      commit: <ThemedGitCommitHorizontal size={16} uniProps={foregroundMutedIconColorMapping} />,
-      pull: <ThemedDownload size={16} uniProps={foregroundMutedIconColorMapping} />,
-      push: <ThemedUpload size={16} uniProps={foregroundMutedIconColorMapping} />,
-      pullAndPush: <ThemedArrowDownUp size={16} uniProps={foregroundMutedIconColorMapping} />,
-      viewPr: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      createPr: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrSquash: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrMerge: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergePrRebase: <ThemedGitHubIcon size={16} uniProps={foregroundMutedIconColorMapping} />,
-      merge: <ThemedGitMerge size={16} uniProps={foregroundMutedIconColorMapping} />,
-      mergeFromBase: <ThemedRefreshCcw size={16} uniProps={foregroundMutedIconColorMapping} />,
-      archive: <ThemedArchive size={16} uniProps={foregroundMutedIconColorMapping} />,
+      commit: (
+        <ThemedGitCommitHorizontal
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
+      ),
+      pull: <ThemedDownload size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
+      push: <ThemedUpload size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
+      pullAndPush: (
+        <ThemedArrowDownUp size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      viewPr: <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
+      createPr: (
+        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      mergePrSquash: (
+        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      mergePrMerge: (
+        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      mergePrRebase: (
+        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      merge: <ThemedGitMerge size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
+      mergeFromBase: (
+        <ThemedRefreshCcw size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      ),
+      archive: <ThemedArchive size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
     }),
-    [],
+    [actionIconSize],
   );
   const { gitActions, branchLabel } = useGitActions({
     serverId,
@@ -3107,7 +3126,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
                 <Text style={styles.diffStatusText} numberOfLines={1}>
                   {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
                 </Text>
-                <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
                 <DropdownMenuItem
@@ -3258,8 +3277,15 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   diffStatusText: {
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.25,
+    // Explicit compact bump matching the branch switcher's label treatment.
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    lineHeight: {
+      xs: (theme.fontSize.xs + 2) * 1.25,
+      md: theme.fontSize.xs * 1.25,
+    },
     color: theme.colors.foregroundMuted,
   },
   diffStatusIconHidden: {
