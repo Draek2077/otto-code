@@ -12,6 +12,36 @@ import {
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
 const REGISTRY_KEY = "@otto:daemon-registry";
+const APP_SETTINGS_KEY = "@otto:app-settings";
+
+/**
+ * Seed device-local app settings before the app boots. Registers an init script
+ * so the override survives every navigation and reload in the test; it merges
+ * over whatever is already stored, so unrelated keys keep their defaults.
+ *
+ * Use this to pin appearance preferences a spec depends on. For example, the
+ * assistant turn footer (copy / fork / timestamp) is hidden-until-hover by
+ * default in 0.5.0 (`hideChatMessageDetails` defaults to true), which makes the
+ * fork trigger unclickable on desktop web; seeding it to false keeps the footer
+ * always visible so hover isn't required.
+ */
+export async function seedAppSettings(page: Page, updates: Record<string, unknown>): Promise<void> {
+  await page.addInitScript(
+    ({ key, partial }) => {
+      let current: Record<string, unknown> = {};
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          current = JSON.parse(raw) as Record<string, unknown>;
+        }
+      } catch {
+        current = {};
+      }
+      localStorage.setItem(key, JSON.stringify({ ...current, ...partial }));
+    },
+    { key: APP_SETTINGS_KEY, partial: updates },
+  );
+}
 
 interface SavedSettingsHostInput {
   serverId: string;
