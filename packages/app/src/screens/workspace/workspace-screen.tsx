@@ -33,7 +33,6 @@ import {
   Ellipsis,
   EllipsisVertical,
   Explore,
-  ExploreOff,
   FileText,
   Globe,
   Import as ImportIcon,
@@ -71,7 +70,6 @@ import {
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
-import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
@@ -279,8 +277,6 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedExplore = withUnistyles(Explore);
-const ThemedExploreOff = withUnistyles(ExploreOff);
-const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
 
 interface DynamicProviderIconProps {
   iconKey: string;
@@ -2079,13 +2075,19 @@ function WorkspaceScreenContent({
   );
 
   const hasDiffStat = useMemo(() => Boolean(workspaceDescriptor?.diffStat), [workspaceDescriptor]);
+  // The open sidebar already shows the diff stats on the workspace row — hide
+  // the header copy to avoid the duplicate; they reappear when it's closed.
+  const showExplorerDiffStat = useMemo(
+    () => hasDiffStat && !isSidebarOpen,
+    [hasDiffStat, isSidebarOpen],
+  );
   const explorerToggleStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       styles.sourceControlButton,
-      hasDiffStat && !isSidebarOpen && styles.sourceControlButtonWithStats,
+      showExplorerDiffStat && styles.sourceControlButtonWithStats,
       (Boolean(hovered) || Boolean(pressed)) && styles.sourceControlButtonHovered,
     ],
-    [hasDiffStat, isSidebarOpen],
+    [showExplorerDiffStat],
   );
   const explorerToggleAccessibilityState = useMemo(
     () => ({ expanded: isExplorerOpen }),
@@ -3624,15 +3626,20 @@ function WorkspaceScreenContent({
                     style={explorerToggleStyle}
                   >
                     {({ hovered, pressed }) => {
-                      const active = isExplorerOpen || hovered || pressed;
-                      const colorMapping = active ? foregroundColorMapping : mutedColorMapping;
+                      const inactiveMapping =
+                        hovered || pressed ? foregroundMdMapping : mutedMdMapping;
                       return (
                         <>
-                          <ThemedSourceControlPanelIcon size={16} uniProps={colorMapping} />
-                          {workspaceDescriptor?.diffStat ? (
+                          {isExplorerOpen ? (
+                            <ThemedExplore uniProps={accentMdMapping} />
+                          ) : (
+                            <ThemedExplore uniProps={inactiveMapping} />
+                          )}
+                          {workspaceDescriptor?.diffStat && showExplorerDiffStat ? (
                             <DiffStat
                               additions={workspaceDescriptor.diffStat.additions}
                               deletions={workspaceDescriptor.diffStat.deletions}
+                              style={styles.sourceControlDiffStat}
                             />
                           ) : null}
                         </>
@@ -3674,7 +3681,7 @@ function WorkspaceScreenContent({
               if (isExplorerOpen) {
                 return <ThemedExplore uniProps={accentMdMapping} />;
               }
-              return <ThemedExploreOff uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />;
+              return <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />;
             }}
           </HeaderToggleButton>
         ) : null}
@@ -3697,7 +3704,7 @@ function WorkspaceScreenContent({
                 );
               }
               return (
-                <ThemedExploreOff
+                <ThemedExplore
                   size={headerActionIconSize.lg}
                   uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
                 />
@@ -3725,6 +3732,7 @@ function WorkspaceScreenContent({
       explorerToggleLabel,
       explorerToggleAccessibilityState,
       explorerToggleStyle,
+      showExplorerDiffStat,
       settings.workspaceToolsPlacement,
       headerActionIconSize.lg,
       t,
@@ -4134,7 +4142,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfaceHover,
   },
   sourceControlDiffStat: {
-    paddingLeft: theme.spacing[2],
+    paddingLeft: 5,
   },
   newTabActions: {
     flexDirection: "row",

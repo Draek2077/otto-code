@@ -19,6 +19,7 @@ import {
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { compactUp, useIconSize } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useToast } from "@/contexts/toast-context";
 import type { GitAction, GitActions } from "@/git/policy";
@@ -88,6 +89,7 @@ export function GitActionsSplitButton({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const toast = useToast();
+  const iconSize = useIconSize();
   const archiveShortcutKeys = useShortcutKeys("archive-workspace");
 
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
@@ -191,7 +193,7 @@ export function GitActionsSplitButton({
                 accessibilityRole="button"
                 accessibilityLabel={t("workspace.git.actions.moreOptions")}
               >
-                <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                <ChevronDown size={iconSize.md} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
                 {gitActions.secondary.map((action, index) => (
@@ -224,7 +226,7 @@ export function GitActionsSplitButton({
             accessibilityRole="button"
             accessibilityLabel={t("workspace.git.actions.moreActions")}
           >
-            <MoreVertical size={16} color={theme.colors.foregroundMuted} />
+            <MoreVertical size={iconSize.md} color={theme.colors.foregroundMuted} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" width={220} testID="changes-overflow-content">
             {gitActions.menu.map((action) => (
@@ -272,8 +274,16 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    // Explicit compact bump matching the branch switcher's label so the two
+    // header combos read at the same size on mobile.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    lineHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 1,
@@ -285,22 +295,29 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     // Icon-only content (16px) is shorter than the label's line height — pin
     // the same minimum so all three workspace-tools split buttons match.
-    minHeight: theme.fontSize.sm * 1.5,
+    minHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: theme.fontSize.sm * 1.5,
+    minHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
+    },
   },
   splitButtonCaret: {
-    width: 28,
+    // 1.5x on compact to wrap the caret icon's compact upscale.
+    width: compactUp(28, 1.5),
     alignItems: "center",
     justifyContent: "center",
     borderLeftWidth: theme.borderWidth[1],
     borderLeftColor: theme.colors.borderAccent,
   },
   iconButton: {
-    width: 32,
-    height: 32,
+    width: compactUp(32, 1.5),
+    height: compactUp(32, 1.5),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,

@@ -10,6 +10,7 @@ import {
   Server,
   Settings,
   X,
+  type IconComponent,
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -19,6 +20,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type PressableProps,
   type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -34,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
@@ -69,11 +72,19 @@ import {
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { compactUp, ICON_SIZE, useIconSize } from "@/styles/theme";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
 
 const MIN_CHAT_WIDTH = 400;
+
+// How much to shave off the window-controls top spacer: the DESKTOP_* height
+// constants are one-size guesses that read as surplus space above the sidebar
+// menu, so the menu is nudged up slightly. Shared with the settings sidebar so
+// the two "Back to workspace" / "New workspace" rows stay vertically aligned.
+export const SIDEBAR_TOP_SPACER_TRIM = 6;
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -309,6 +320,13 @@ function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
 }
 
+function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
+  return [
+    styles.footerIconButton,
+    (Boolean(hovered) || Boolean(pressed)) && styles.footerIconButtonHovered,
+  ];
+}
+
 function FooterIconButton({
   buttonRef,
   onPress,
@@ -317,19 +335,27 @@ function FooterIconButton({
   icon: Icon,
   iconSize,
   theme,
+  ...pressableProps
 }: {
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: typeof FolderPlus;
+  icon: IconComponent;
   iconSize?: number;
   theme: SidebarTheme;
   buttonRef?: RefObject<View | null>;
-}) {
+} & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
+  const isCompactLayout = useIsCompactFormFactor();
+  // Footer icons are always scaled up on every form factor, and another 1.5x on
+  // compact so they stay comfortably tappable. Static ICON_SIZE (not
+  // theme.iconSize) — the theme tokens are already doubled on compact by
+  // applyAppearance, which would compound here.
+  const baseIconSize = iconSize ?? ICON_SIZE.md * 1.5;
   return (
     <Pressable
+      {...pressableProps}
       ref={buttonRef}
-      style={styles.footerIconButton}
+      style={footerIconButtonStyle}
       testID={testID}
       nativeID={testID}
       collapsable={false}
@@ -340,7 +366,7 @@ function FooterIconButton({
     >
       {({ hovered }) => (
         <Icon
-          size={iconSize ?? theme.iconSize.md}
+          size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
         />
       )}
@@ -350,10 +376,12 @@ function FooterIconButton({
 
 function SidebarHostPicker({
   theme,
+  switchHostLabel,
   onAddHost,
   onOpenHostSettings,
 }: {
   theme: SidebarTheme;
+  switchHostLabel: string;
   onAddHost: () => void;
   onOpenHostSettings: (serverId: string) => void;
 }) {
@@ -388,15 +416,22 @@ function SidebarHostPicker({
       addHostTestID="sidebar-host-add"
       hostOptionTestID={sidebarHostOptionTestID}
     >
-      <FooterIconButton
-        buttonRef={triggerRef}
-        onPress={handleOpen}
-        testID="sidebar-hosts-trigger"
-        accessibilityLabel="Hosts"
-        icon={Server}
-        iconSize={theme.iconSize.sm}
-        theme={theme}
-      />
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <FooterIconButton
+            buttonRef={triggerRef}
+            onPress={handleOpen}
+            testID="sidebar-hosts-trigger"
+            accessibilityLabel="Hosts"
+            icon={Server}
+            iconSize={ICON_SIZE.sm * 1.5}
+            theme={theme}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <HeaderIconTooltipContent label={switchHostLabel} />
+        </TooltipContent>
+      </Tooltip>
     </HostPicker>
   );
 }
@@ -514,11 +549,36 @@ function SidebarFooter({
   return (
     <View style={styles.sidebarFooter}>
       <View style={styles.footerIconRow}>
-        <SidebarHostPicker
-          theme={theme}
-          onAddHost={handleAddHost}
-          onOpenHostSettings={handleOpenHostSettings}
-        />
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <FooterIconButton
+              onPress={handleHome}
+              testID="sidebar-home"
+              accessibilityLabel={labels.home}
+              icon={Home}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <HeaderIconTooltipContent label={labels.home} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <FooterIconButton
+              onPress={handleSettings}
+              testID="sidebar-settings"
+              accessibilityLabel={labels.settings}
+              icon={Settings}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <HeaderIconTooltipContent label={labels.settings} />
+          </TooltipContent>
+        </Tooltip>
+      </View>
+      <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <FooterIconButton
@@ -533,19 +593,11 @@ function SidebarFooter({
             <AddProjectTooltipContent newAgentKeys={newAgentKeys} label={labels.addProject} />
           </TooltipContent>
         </Tooltip>
-        <FooterIconButton
-          onPress={handleHome}
-          testID="sidebar-home"
-          accessibilityLabel={labels.home}
-          icon={Home}
+        <SidebarHostPicker
           theme={theme}
-        />
-        <FooterIconButton
-          onPress={handleSettings}
-          testID="sidebar-settings"
-          accessibilityLabel={labels.settings}
-          icon={Settings}
-          theme={theme}
+          switchHostLabel={labels.switchHost}
+          onAddHost={handleAddHost}
+          onOpenHostSettings={handleOpenHostSettings}
         />
       </View>
     </View>
@@ -739,6 +791,8 @@ function DesktopSidebar({
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
   const padding = useWindowControlsPadding("sidebar");
+  const { settings } = useAppSettings();
+  const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -778,7 +832,12 @@ function DesktopSidebar({
     width: resizeWidth.value,
   }));
 
-  const paddingTopSpacerStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
+  // The raw window-controls guess overshoots the actual overlay strip; trim the
+  // spacer so the menu sits a touch higher while still clearing the controls.
+  const paddingTopSpacerStyle = useMemo(
+    () => ({ height: Math.max(0, padding.top - SIDEBAR_TOP_SPACER_TRIM) }),
+    [padding.top],
+  );
   const desktopSidebarStyle = useMemo(
     () => [staticStyles.desktopSidebar, resizeAnimatedStyle],
     [resizeAnimatedStyle],
@@ -801,7 +860,7 @@ function DesktopSidebar({
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
           <TitlebarDragRegion />
-          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+          {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
             <SidebarNewWorkspaceHeaderRow
               label={labels.newWorkspace}
@@ -855,6 +914,8 @@ function DesktopSidebar({
           />
         )}
 
+        <SidebarActiveWorkspaceTools />
+
         <SidebarCalloutSlot />
 
         <SidebarFooter
@@ -878,6 +939,9 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader() {
   const { theme } = useUnistyles();
+  // useIconSize (not theme.iconSize props) — the runtime theme patch doesn't
+  // reliably reach icon size props; the hook scales with the breakpoint.
+  const iconSize = useIconSize();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
@@ -904,7 +968,7 @@ function WorkspacesSectionHeader() {
             >
               {({ hovered, pressed }) => (
                 <Search
-                  size={14}
+                  size={iconSize.sm}
                   color={
                     hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
                   }
@@ -970,7 +1034,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacesSectionTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    // Explicit compact bump (not left to the ambient theme-patch scale).
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
   },
   workspacesSectionActions: {
@@ -979,8 +1047,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   workspacesHeaderIconButton: {
-    width: 28,
-    height: 28,
+    width: compactUp(28),
+    height: compactUp(28),
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
@@ -1023,7 +1091,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
@@ -1036,12 +1104,16 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   footerIconButton: {
-    width: 28,
-    height: 28,
+    // 1.5x on compact to wrap the icons' matching compact upscale.
+    width: compactUp(theme.spacing[8], 1.5),
+    height: compactUp(theme.spacing[8], 1.5),
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    padding: 0,
+    borderRadius: theme.borderRadius.lg,
+  },
+  footerIconButtonHovered: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   tooltipRow: {
     flexDirection: "row",

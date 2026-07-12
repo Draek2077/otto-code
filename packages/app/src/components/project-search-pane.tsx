@@ -43,7 +43,7 @@ import {
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
 import { confirmBulkReplace } from "@/components/project-search-replace-warning";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -135,6 +135,7 @@ function SelectionBox({
   testID: string;
   onPress: () => void;
 }) {
+  const iconSize = useIconSize();
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -146,9 +147,9 @@ function SelectionBox({
       hitSlop={6}
     >
       {checked ? (
-        <ThemedCheck size={14} uniProps={accentIconColorMapping} />
+        <ThemedCheck size={iconSize.sm} uniProps={accentIconColorMapping} />
       ) : (
-        <ThemedSquare size={14} uniProps={foregroundMutedIconColorMapping} />
+        <ThemedSquare size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
       )}
     </Pressable>
   );
@@ -168,6 +169,7 @@ export function ProjectSearchPane({
   const { t } = useTranslation();
   const toast = useToast();
   const isCompact = useIsCompactFormFactor();
+  const iconSize = useIconSize();
   const showDesktopWebScrollbar = isWeb && !isCompact;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
@@ -602,9 +604,9 @@ export function ProjectSearchPane({
               style={iconButtonStyle}
             >
               {replaceOpen ? (
-                <ThemedChevronDown size={14} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronDown size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
               ) : (
-                <ThemedChevronRight size={14} uniProps={foregroundMutedIconColorMapping} />
+                <ThemedChevronRight size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
               )}
             </Pressable>
           ) : null}
@@ -627,7 +629,7 @@ export function ProjectSearchPane({
             onPress={handleSubmit}
             style={iconButtonStyle}
           >
-            <ThemedSearch size={16} uniProps={foregroundMutedIconColorMapping} />
+            <ThemedSearch size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
           </Pressable>
           <View style={styles.searchToggles} onLayout={handleTogglesLayout}>
             <SearchToggle
@@ -679,7 +681,7 @@ export function ProjectSearchPane({
                   {replacing ? (
                     <ThemedLoadingSpinner uniProps={foregroundMutedIconColorMapping} />
                   ) : (
-                    <ThemedPlay size={16} uniProps={foregroundMutedIconColorMapping} />
+                    <ThemedPlay size={iconSize.md} uniProps={foregroundMutedIconColorMapping} />
                   )}
                 </View>
               </TooltipTrigger>
@@ -776,6 +778,7 @@ function FileRow({
   onShowContextMenu?: (input: { file: SearchFileResult; x: number; y: number }) => void;
 }) {
   const { t } = useTranslation();
+  const iconSize = useIconSize();
   const handleToggleCollapsed = useCallback(
     () => onToggleCollapsed(file.path),
     [file.path, onToggleCollapsed],
@@ -817,9 +820,9 @@ function FileRow({
         testID={`project-search-file-${file.path}`}
       >
         {collapsed ? (
-          <ThemedChevronRight size={12} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedChevronRight size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
         ) : (
-          <ThemedChevronDown size={12} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
         )}
         <Text style={styles.filePath} numberOfLines={1}>
           {file.path}
@@ -951,9 +954,10 @@ function SearchEntryContextMenu({
     return isInContext ? t("projectSearch.removeFromContext") : t("projectSearch.addToContext");
   }, [isInContext, request, t]);
 
+  const iconSize = useIconSize();
   const contextLeading = useMemo(
-    () => <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />,
-    [],
+    () => <ThemedPaperclip size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />,
+    [iconSize.sm],
   );
 
   return (
@@ -992,7 +996,12 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    paddingLeft: theme.spacing[2] - 5,
+    // On compact the leading replace-expand button isn't rendered, so the field
+    // needs a bit more breathing room against the pane edge.
+    paddingLeft: {
+      xs: theme.spacing[2] - 2,
+      md: theme.spacing[2] - 5,
+    },
     paddingRight: theme.spacing[2] + 5,
     paddingTop: theme.spacing[2] - 2.75,
   },
@@ -1006,10 +1015,20 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump matching the explorer tab labels.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   replaceIndent: {
-    width: 22,
+    // Mirrors the replace-expand button's width (icon + iconButton padding) so
+    // the replace field aligns with the query field on each form factor.
+    width: {
+      xs: 36,
+      sm: 36,
+      md: 22,
+    },
   },
   searchDetails: {
     alignItems: "center",
@@ -1021,11 +1040,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   summaryText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   truncatedText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
   },
   iconButton: {
     padding: theme.spacing[1],
@@ -1038,8 +1063,9 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.4,
   },
   goIconSlot: {
-    width: 16,
-    height: 16,
+    // Doubled on compact to wrap the run icon's compact upscale.
+    width: compactUp(16),
+    height: compactUp(16),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1065,7 +1091,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   searchToggleText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontFamily: theme.fontFamily.mono,
   },
   searchToggleTextActive: {
@@ -1110,11 +1139,18 @@ const styles = StyleSheet.create((theme) => ({
   filePath: {
     flexShrink: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Explicit compact bump matching the Files tree's row labels.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   fileCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontVariant: ["tabular-nums"],
   },
   matchRow: {
