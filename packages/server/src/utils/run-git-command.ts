@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import pLimit from "p-limit";
 import type { Logger } from "pino";
 import type { ProcessEnvRecord } from "../server/otto-env.js";
+import { getActiveGitCommandObserver } from "../server/git-operation-log.js";
 import { spawnProcess } from "./spawn.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -18,6 +19,9 @@ export interface GitCommandOptions {
   logger?: Pick<Logger, "trace">;
   timeout?: number;
   maxOutputBytes?: number;
+  // Raise past the 2 KB default when stderr carries user-facing output the
+  // caller must relay in full (e.g. commit hook failures).
+  maxStderrBytes?: number;
   acceptExitCodes?: number[];
 }
 
@@ -123,11 +127,15 @@ export function runGitCommand(
   args: string[],
   options: GitCommandOptions,
 ): Promise<GitCommandResult> {
+  // Captured before the concurrency queue: the thunk may execute in a later
+  // async context where the operation-log ALS store is no longer active.
+  const commandObserver = getActiveGitCommandObserver();
   return gitLimit(
     () =>
       new Promise<GitCommandResult>((resolve, reject) => {
         const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
         const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+        const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_STDERR_LIMIT;
         const acceptExitCodes = options.acceptExitCodes ?? [0];
         const command = formatGitCommand(args);
         const envOverlay = mergeEnvOverlays(options.env, options.envOverlay);
@@ -168,6 +176,14 @@ export function runGitCommand(
         const stdoutChunks: Buffer[] = [];
         const stderrChunks: Buffer[] = [];
 
+        commandObserver?.onCommandStart(command);
+        let observerEnded = false;
+        const endObserver = (exitCode: number | null) => {
+          if (!commandObserver || observerEnded) return;
+          observerEnded = true;
+          commandObserver.onCommandEnd({ exitCode, durationMs: Date.now() - startedAt });
+        };
+
         const settle = (callback: () => void) => {
           if (settled) return;
           settled = true;
@@ -184,6 +200,7 @@ export function runGitCommand(
         const timer = setTimeout(() => {
           const error = new Error(`Git command timed out after ${timeout}ms: ${command}`);
           child.kill("SIGKILL");
+          endObserver(null);
           finishMetricOnce({
             args,
             cwd: options.cwd,
@@ -200,6 +217,7 @@ export function runGitCommand(
           if (settled || truncated) return;
 
           const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          commandObserver?.onCommandOutput(buffer.toString("utf8"), "stdout");
           const remainingBytes = maxOutputBytes - stdoutBytes;
 
           if (remainingBytes <= 0) {
@@ -221,10 +239,12 @@ export function runGitCommand(
         });
 
         child.stderr!.on("data", (chunk: Buffer | string) => {
-          if (settled || stderrBytes >= DEFAULT_STDERR_LIMIT) return;
+          if (settled) return;
 
           const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          const remainingBytes = DEFAULT_STDERR_LIMIT - stderrBytes;
+          commandObserver?.onCommandOutput(buffer.toString("utf8"), "stderr");
+          if (stderrBytes >= maxStderrBytes) return;
+          const remainingBytes = maxStderrBytes - stderrBytes;
 
           if (buffer.length > remainingBytes) {
             stderrChunks.push(buffer.subarray(0, remainingBytes));
@@ -237,6 +257,7 @@ export function runGitCommand(
         });
 
         child.on("error", (error) => {
+          endObserver(null);
           finishMetricOnce({
             args,
             cwd: options.cwd,
@@ -260,6 +281,7 @@ export function runGitCommand(
         });
 
         child.on("close", (exitCode, signal) => {
+          endObserver(exitCode);
           const result: GitCommandResult = {
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: Buffer.concat(stderrChunks).toString("utf8"),

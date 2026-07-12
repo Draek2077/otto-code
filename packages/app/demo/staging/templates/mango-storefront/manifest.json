@@ -1,0 +1,95 @@
+{
+  "name": "mango-storefront",
+  "defaultBranch": "main",
+  "authors": [
+    { "name": "Maya Castillo", "email": "maya@mangothreads.dev" },
+    { "name": "Jonas Berg", "email": "jonas@mangothreads.dev" }
+  ],
+  "commits": [
+    {
+      "dir": "01-scaffold",
+      "message": "chore: scaffold Vite + React app",
+      "date": "2026-05-12T14:22:00Z",
+      "author": 0
+    },
+    {
+      "dir": "02-header-nav",
+      "message": "feat: add site header with logo and nav",
+      "date": "2026-05-13T09:41:00Z",
+      "author": 0
+    },
+    {
+      "dir": "03-hero",
+      "message": "feat: add hero section with CTA",
+      "date": "2026-05-14T16:05:00Z",
+      "author": 1
+    },
+    {
+      "dir": "04-product-data",
+      "message": "feat: add product catalog data",
+      "date": "2026-05-18T10:12:00Z",
+      "author": 0
+    },
+    {
+      "dir": "05-product-grid",
+      "message": "feat: render the product grid",
+      "date": "2026-05-19T15:47:00Z",
+      "author": 0
+    },
+    {
+      "dir": "06-cart-badge",
+      "message": "feat: wire add-to-cart with a header badge",
+      "date": "2026-05-26T11:30:00Z",
+      "author": 1
+    },
+    {
+      "dir": "07-dark-theme",
+      "message": "style: dark theme pass across the storefront",
+      "date": "2026-06-02T19:18:00Z",
+      "author": 0
+    },
+    {
+      "dir": "08-readme",
+      "message": "docs: write the project README",
+      "date": "2026-06-04T08:56:00Z",
+      "author": 1
+    },
+    {
+      "dir": "09-launch-config",
+      "message": "chore: add Otto preview launch config",
+      "date": "2026-06-10T13:24:00Z",
+      "author": 0
+    },
+    {
+      "dir": "10-footer",
+      "message": "feat: add site footer",
+      "date": "2026-06-16T17:40:00Z",
+      "author": 1
+    },
+    {
+      "dir": "11-polish",
+      "message": "style: hover states and interaction polish",
+      "date": "2026-06-24T10:03:00Z",
+      "author": 0
+    }
+  ],
+  "featureBranch": {
+    "name": "feature/checkout-flow",
+    "branchFromCommit": 8,
+    "commits": [
+      {
+        "dir": "f1-checkout-page",
+        "message": "feat: scaffold the checkout page",
+        "date": "2026-06-06T14:11:00Z",
+        "author": 1
+      },
+      {
+        "dir": "f2-checkout-form",
+        "message": "feat: build out the checkout form fields",
+        "date": "2026-06-09T09:35:00Z",
+        "author": 1
+      }
+    ]
+  },
+  "workingChanges": "working-changes"
+}

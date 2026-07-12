@@ -83,6 +83,9 @@ interface InsertTabIntoPaneInput {
   paneId: string;
   tab: WorkspaceTab;
   focusTabId?: string | null;
+  // Insert directly after this tab instead of appending to the pane's end
+  // (used for panes that open "next to" the tab the user is looking at).
+  insertAfterTabId?: string | null;
 }
 
 interface InsertSplitInternalInput {
@@ -102,6 +105,9 @@ interface OpenTabInLayoutInput {
   layout: WorkspaceLayout;
   target: WorkspaceTabTarget;
   now: number;
+  // Place a newly created tab right after the focused tab instead of at the
+  // pane's end. Ignored when the target already has a tab (focus-only path).
+  insertAfterFocusedTab?: boolean;
 }
 
 interface OpenTabInLayoutResult {
@@ -728,7 +734,7 @@ function insertTabIntoPane(
     const nextTabs =
       existingIndex >= 0
         ? node.pane.tabs.map((tab, index) => (index === existingIndex ? input.tab : tab))
-        : [...node.pane.tabs, input.tab];
+        : insertTabAtPosition(node.pane.tabs, input.tab, input.insertAfterTabId ?? null);
     return {
       kind: "pane",
       pane: normalizePaneAfterTabChange({
@@ -738,6 +744,20 @@ function insertTabIntoPane(
       }),
     };
   });
+}
+
+function insertTabAtPosition(
+  tabs: WorkspaceTab[],
+  tab: WorkspaceTab,
+  insertAfterTabId: string | null,
+): WorkspaceTab[] {
+  const anchorIndex = insertAfterTabId
+    ? tabs.findIndex((entry) => entry.tabId === insertAfterTabId)
+    : -1;
+  if (anchorIndex < 0) {
+    return [...tabs, tab];
+  }
+  return [...tabs.slice(0, anchorIndex + 1), tab, ...tabs.slice(anchorIndex + 1)];
 }
 
 function focusTabInPane(root: SplitNodeInternal, paneId: string, tabId: string): SplitNodeInternal {
@@ -1028,6 +1048,7 @@ function insertNewTabIntoFocusedPane(input: {
   target: WorkspaceTabTarget;
   now: number;
   focus: boolean;
+  insertAfterFocusedTab?: boolean;
 }): OpenTabInLayoutResult {
   const layout = asInternalLayout(input.layout);
   const focusedPane =
@@ -1052,6 +1073,7 @@ function insertNewTabIntoFocusedPane(input: {
         paneId: focusedPane.id,
         tab: nextTab,
         focusTabId: input.focus ? tabId : preservedFocusTabId,
+        insertAfterTabId: input.insertAfterFocusedTab ? focusedPane.focusedTabId : null,
       }),
       focusedPaneId: input.focus ? focusedPane.id : layout.focusedPaneId,
       parentTabIdByTabId: input.layout.parentTabIdByTabId,

@@ -1,0 +1,17 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  background: #fffdf8;
+  color: #221d15;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}

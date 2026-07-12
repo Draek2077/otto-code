@@ -1810,6 +1810,64 @@ export const CheckoutCommitRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// One entry in a git operation log (the "Git Commit"/"Git Push" log panes).
+// `seq` is a per-(cwd, operation) monotonic counter used for client-side
+// dedup between backfill and live pushes.
+export const GitOperationLogEntrySchema = z.object({
+  seq: z.number(),
+  timestamp: z.string(),
+  level: z.enum(["info", "output", "error"]),
+  text: z.string(),
+});
+
+// Backfill for a git operation log pane. `operation` is an open string on the
+// wire ("commit" | "pull" | "push" today) so newly watchable operations don't
+// break old peers. Gated by server_info.features.checkoutGitLog.
+export const CheckoutGitGetOperationLogRequestSchema = z.object({
+  type: z.literal("checkout.git.get_operation_log.request"),
+  cwd: z.string(),
+  operation: z.string(),
+  requestId: z.string(),
+});
+
+export const CheckoutGitGetOperationLogResponseSchema = z.object({
+  type: z.literal("checkout.git.get_operation_log.response"),
+  payload: z.object({
+    cwd: z.string(),
+    operation: z.string(),
+    entries: z.array(GitOperationLogEntrySchema),
+    requestId: z.string(),
+  }),
+});
+
+// Live append notification, broadcast to connected clients while a watched git
+// operation runs. Carries only the appended entries; `seq` orders them against
+// the backfill.
+export const CheckoutGitLogAppendedNotificationSchema = z.object({
+  type: z.literal("checkout.git.log_appended.notification"),
+  payload: z.object({
+    cwd: z.string(),
+    operation: z.string(),
+    entries: z.array(GitOperationLogEntrySchema),
+  }),
+});
+
+// Namespaced successor to checkout_commit_request: per-file selection and
+// structured errors. Gated by server_info.features.checkoutGitCommit; the flat
+// RPC stays accepted for old clients.
+export const CheckoutGitCommitRequestSchema = z.object({
+  type: z.literal("checkout.git.commit.request"),
+  cwd: z.string(),
+  message: z.string(),
+  // Repo-relative paths to stage and commit. Only these paths land in the
+  // commit, even if other changes are already staged.
+  paths: z.array(z.string()),
+  // Set after the user confirms committing while agents are running in this
+  // workspace; without it the daemon refuses with kind "agents_running".
+  allowWithRunningAgents: z.boolean().optional(),
+  requestId: z.string(),
+});
+
 export const CheckoutMergeRequestSchema = z.object({
   type: z.literal("checkout_merge_request"),
   cwd: z.string(),
@@ -2582,6 +2640,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SubscribeCheckoutDiffRequestSchema,
   UnsubscribeCheckoutDiffRequestSchema,
   CheckoutCommitRequestSchema,
+  CheckoutGitCommitRequestSchema,
+  CheckoutGitGetOperationLogRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
   CheckoutPullRequestSchema,
@@ -2897,6 +2957,10 @@ export const ServerInfoStatusPayloadSchema = z
         ttsPreview: z.boolean().optional(),
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: z.boolean().optional(),
+        // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitCommit: z.boolean().optional(),
+        // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitLog: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4038,6 +4102,50 @@ export const CheckoutCommitResponseSchema = z.object({
     cwd: z.string(),
     success: z.boolean(),
     error: CheckoutErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+const CheckoutGitCommitRunningAgentSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+});
+
+export const CheckoutGitCommitErrorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("agents_running"),
+    agents: z.array(CheckoutGitCommitRunningAgentSchema),
+  }),
+  z.object({
+    kind: z.literal("identity_missing"),
+    missingName: z.boolean(),
+    missingEmail: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("hook_failed"),
+    output: z.string(),
+    exitCode: z.number().nullable(),
+  }),
+  z.object({
+    kind: z.literal("signing_failed"),
+    detail: z.string(),
+  }),
+  z.object({
+    kind: z.literal("nothing_to_commit"),
+  }),
+  z.object({
+    kind: z.literal("git_failed"),
+    detail: z.string(),
+  }),
+]);
+
+export const CheckoutGitCommitResponseSchema = z.object({
+  type: z.literal("checkout.git.commit.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    commitSha: z.string().nullable(),
+    error: CheckoutGitCommitErrorSchema.nullable(),
     requestId: z.string(),
   }),
 });
@@ -5195,6 +5303,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SubscribeCheckoutDiffResponseSchema,
   CheckoutDiffUpdateSchema,
   CheckoutCommitResponseSchema,
+  CheckoutGitCommitResponseSchema,
+  CheckoutGitGetOperationLogResponseSchema,
+  CheckoutGitLogAppendedNotificationSchema,
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
@@ -5531,6 +5642,19 @@ export type SubscribeCheckoutDiffResponse = z.infer<typeof SubscribeCheckoutDiff
 export type CheckoutDiffUpdate = z.infer<typeof CheckoutDiffUpdateSchema>;
 export type CheckoutCommitRequest = z.infer<typeof CheckoutCommitRequestSchema>;
 export type CheckoutCommitResponse = z.infer<typeof CheckoutCommitResponseSchema>;
+export type CheckoutGitCommitRequest = z.infer<typeof CheckoutGitCommitRequestSchema>;
+export type CheckoutGitCommitResponse = z.infer<typeof CheckoutGitCommitResponseSchema>;
+export type CheckoutGitCommitError = z.infer<typeof CheckoutGitCommitErrorSchema>;
+export type GitOperationLogEntry = z.infer<typeof GitOperationLogEntrySchema>;
+export type CheckoutGitGetOperationLogRequest = z.infer<
+  typeof CheckoutGitGetOperationLogRequestSchema
+>;
+export type CheckoutGitGetOperationLogResponse = z.infer<
+  typeof CheckoutGitGetOperationLogResponseSchema
+>;
+export type CheckoutGitLogAppendedNotification = z.infer<
+  typeof CheckoutGitLogAppendedNotificationSchema
+>;
 export type CheckoutMergeRequest = z.infer<typeof CheckoutMergeRequestSchema>;
 export type CheckoutMergeResponse = z.infer<typeof CheckoutMergeResponseSchema>;
 export type CheckoutMergeFromBaseRequest = z.infer<typeof CheckoutMergeFromBaseRequestSchema>;

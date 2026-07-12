@@ -17,6 +17,8 @@ import {
   __resetPullRequestStatusCacheForTests,
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
+  commitPaths,
+  InvalidCommitPathError,
   getCachedCheckoutShortstat,
   getCheckoutSnapshotFacts,
   getCurrentBranch,
@@ -2975,6 +2977,162 @@ const x = 1;
 
     it("is case insensitive on Windows paths", () => {
       expect(isDescendantPath("c:\\repo\\child", "C:\\repo")).toBe(true);
+    });
+  });
+
+  describe("commitPaths", () => {
+    function disableSigning(cwd: string): void {
+      execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd });
+    }
+
+    function headSha(cwd: string): string {
+      return execFileSync("git", ["rev-parse", "HEAD"], { cwd }).toString().trim();
+    }
+
+    function committedFiles(cwd: string): string[] {
+      return execFileSync("git", ["show", "--name-only", "--pretty=format:"], { cwd })
+        .toString()
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+
+    it("commits only the selected paths and leaves other staged changes staged", async () => {
+      disableSigning(repoDir);
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      writeFileSync(join(repoDir, "selected-new.txt"), "new\n");
+      writeFileSync(join(repoDir, "unselected.txt"), "staged but not selected\n");
+      execFileSync("git", ["add", "unselected.txt"], { cwd: repoDir });
+
+      const result = await commitPaths(repoDir, {
+        message: "commit selection",
+        paths: ["file.txt", "selected-new.txt"],
+      });
+
+      expect(result).toEqual({ kind: "committed", sha: headSha(repoDir) });
+      expect(committedFiles(repoDir).sort()).toEqual(["file.txt", "selected-new.txt"]);
+      const stillStaged = execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: repoDir })
+        .toString()
+        .trim();
+      expect(stillStaged).toBe("unselected.txt");
+    });
+
+    it("commits a deleted file", async () => {
+      disableSigning(repoDir);
+      rmSync(join(repoDir, "file.txt"));
+
+      const result = await commitPaths(repoDir, {
+        message: "remove file",
+        paths: ["file.txt"],
+      });
+
+      expect(result).toEqual({ kind: "committed", sha: headSha(repoDir) });
+      expect(committedFiles(repoDir)).toEqual(["file.txt"]);
+      const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoDir })
+        .toString()
+        .trim();
+      expect(status).toBe("");
+    });
+
+    it("returns nothing_to_commit when the selected paths have no changes", async () => {
+      disableSigning(repoDir);
+
+      const result = await commitPaths(repoDir, {
+        message: "no changes",
+        paths: ["file.txt"],
+      });
+
+      expect(result).toEqual({ kind: "nothing_to_commit" });
+    });
+
+    it("returns nothing_to_commit for an empty selection without running git", async () => {
+      const result = await commitPaths(repoDir, { message: "empty", paths: [] });
+      expect(result).toEqual({ kind: "nothing_to_commit" });
+    });
+
+    it("rejects absolute and repo-escaping paths", async () => {
+      await expect(
+        commitPaths(repoDir, { message: "bad", paths: ["/etc/passwd"] }),
+      ).rejects.toBeInstanceOf(InvalidCommitPathError);
+      await expect(
+        commitPaths(repoDir, { message: "bad", paths: ["../outside.txt"] }),
+      ).rejects.toBeInstanceOf(InvalidCommitPathError);
+      await expect(
+        commitPaths(repoDir, { message: "bad", paths: ["C:\\windows\\system32"] }),
+      ).rejects.toBeInstanceOf(InvalidCommitPathError);
+    });
+
+    it("returns identity_missing when user.name and user.email are not configured", async () => {
+      const bareIdentityRepo = join(tempDir, "no-identity-repo");
+      mkdirSync(bareIdentityRepo, { recursive: true });
+      execFileSync("git", ["init", "-b", "main"], { cwd: bareIdentityRepo });
+      writeFileSync(join(bareIdentityRepo, "a.txt"), "a\n");
+
+      const savedGlobal = process.env.GIT_CONFIG_GLOBAL;
+      const savedNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+      process.env.GIT_CONFIG_GLOBAL = join(tempDir, "nonexistent-gitconfig");
+      process.env.GIT_CONFIG_NOSYSTEM = "1";
+      try {
+        const result = await commitPaths(bareIdentityRepo, {
+          message: "who am I",
+          paths: ["a.txt"],
+        });
+        expect(result).toEqual({
+          kind: "identity_missing",
+          missingName: true,
+          missingEmail: true,
+        });
+      } finally {
+        if (savedGlobal === undefined) {
+          delete process.env.GIT_CONFIG_GLOBAL;
+        } else {
+          process.env.GIT_CONFIG_GLOBAL = savedGlobal;
+        }
+        if (savedNoSystem === undefined) {
+          delete process.env.GIT_CONFIG_NOSYSTEM;
+        } else {
+          process.env.GIT_CONFIG_NOSYSTEM = savedNoSystem;
+        }
+      }
+    });
+
+    it("returns hook_failed with the hook output when pre-commit fails", async () => {
+      disableSigning(repoDir);
+      const hooksDir = join(repoDir, ".git", "hooks");
+      mkdirSync(hooksDir, { recursive: true });
+      const hookPath = join(hooksDir, "pre-commit");
+      writeFileSync(hookPath, "#!/bin/sh\necho 'lint failed: fix your code' >&2\nexit 1\n", {
+        mode: 0o755,
+      });
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      const before = headSha(repoDir);
+
+      const result = await commitPaths(repoDir, {
+        message: "should be blocked",
+        paths: ["file.txt"],
+      });
+
+      expect(result.kind).toBe("hook_failed");
+      if (result.kind === "hook_failed") {
+        expect(result.output).toContain("lint failed: fix your code");
+        expect(result.exitCode).toBe(1);
+      }
+      expect(headSha(repoDir)).toBe(before);
+    });
+
+    it("returns signing_failed when the configured signing program cannot run", async () => {
+      execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+      execFileSync("git", ["config", "gpg.program", join(tempDir, "missing-gpg")], {
+        cwd: repoDir,
+      });
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+
+      const result = await commitPaths(repoDir, {
+        message: "should not sign",
+        paths: ["file.txt"],
+      });
+
+      expect(result.kind).toBe("signing_failed");
     });
   });
 });

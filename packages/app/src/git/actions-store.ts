@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
+import type { CheckoutGitCommitError, CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/data/query-client";
 import {
@@ -59,6 +59,24 @@ function assertGitHubAutoMergeActionsSupported(serverId: string) {
   const session = useSessionStore.getState().sessions[serverId];
   if (session?.serverInfo?.features?.checkoutGithubSetAutoMerge !== true) {
     throw new Error("Update the host to use GitHub auto-merge actions.");
+  }
+}
+
+function assertCheckoutGitCommitSupported(serverId: string) {
+  const session = useSessionStore.getState().sessions[serverId];
+  if (session?.serverInfo?.features?.checkoutGitCommit !== true) {
+    throw new Error("Update the host to commit from the changes panel.");
+  }
+}
+
+/**
+ * A commit the daemon refused or that failed, with the structured reason the
+ * changes panel renders (running agents, hook output, missing identity, ...).
+ */
+export class CheckoutGitCommitFailedError extends Error {
+  constructor(public readonly commitError: CheckoutGitCommitError) {
+    super(`Commit failed: ${commitError.kind}`);
+    this.name = "CheckoutGitCommitFailedError";
   }
 }
 
@@ -227,6 +245,13 @@ interface CheckoutGitActionsStoreState {
   }) => CheckoutGitActionStatus;
 
   commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  commitPaths: (params: {
+    serverId: string;
+    cwd: string;
+    message: string;
+    paths: string[];
+    allowWithRunningAgents?: boolean;
+  }) => Promise<void>;
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -321,6 +346,26 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         const payload = await client.checkoutCommit(cwd, { addAll: true });
         if (payload.error) {
           throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  commitPaths: async ({ serverId, cwd, message, paths, allowWithRunningAgents }) => {
+    assertCheckoutGitCommitSupported(serverId);
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "commit",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutGitCommit(cwd, {
+          message,
+          paths,
+          ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+        });
+        if (payload.error) {
+          throw new CheckoutGitCommitFailedError(payload.error);
         }
       },
     });

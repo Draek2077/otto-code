@@ -283,15 +283,15 @@ function BuiltOnPaseoSection() {
   );
 }
 
-const LIGHT_THEMES = ["Daylight", "Meadow", "Terracotta", "Horizon", "Powder", "Pastel"] as const;
+const LIGHT_THEMES = ["Daylight", "Sherbet", "Meadow", "Terracotta", "Horizon", "Powder"] as const;
 const DARK_THEMES = [
-  "Dark",
+  "Twilight",
   "Evergreen",
-  "Zinc",
-  "Midnight",
-  "Claude",
-  "Ghostty",
-  "Cyberpunk",
+  "Graphite",
+  "Nightfall",
+  "Ember",
+  "Slate",
+  "Neotokyo",
 ] as const;
 
 const CUSTOMIZATION_OPTIONS = [

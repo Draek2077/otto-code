@@ -19,7 +19,7 @@ import {
 } from "../services/github-service.js";
 import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
-import { runGitCommand } from "./run-git-command.js";
+import { runGitCommand, type GitCommandResult } from "./run-git-command.js";
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
 import { readOttoWorktreeMetadata } from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV = {
@@ -2537,6 +2537,192 @@ export async function commitChanges(
 
 export async function commitAll(cwd: string, message: string): Promise<void> {
   await commitChanges(cwd, { message, addAll: true });
+}
+
+const NON_INTERACTIVE_GIT_ENV = {
+  GIT_TERMINAL_PROMPT: "0",
+} as const;
+
+const COMMIT_WRITE_TIMEOUT_MS = 120_000;
+const COMMIT_HOOK_OUTPUT_MAX_BYTES = 64 * 1024;
+const COMMIT_HOOK_FILES = ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"];
+
+export class InvalidCommitPathError extends Error {
+  constructor(public readonly path: string) {
+    super(`Commit path must be repo-relative: ${path}`);
+    this.name = "InvalidCommitPathError";
+  }
+}
+
+export interface CommitPathsInput {
+  message: string;
+  paths: string[];
+}
+
+/**
+ * Outcome of a per-path commit. Mirrors the wire error union of
+ * checkout.git.commit.response minus "agents_running", which is a session-level
+ * guard, not a git outcome.
+ */
+export type CommitPathsResult =
+  | { kind: "committed"; sha: string }
+  | { kind: "identity_missing"; missingName: boolean; missingEmail: boolean }
+  | { kind: "hook_failed"; output: string; exitCode: number | null }
+  | { kind: "signing_failed"; detail: string }
+  | { kind: "nothing_to_commit" }
+  | { kind: "git_failed"; detail: string };
+
+function assertRepoRelativeCommitPaths(paths: string[]): void {
+  for (const path of paths) {
+    const isAbsolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path);
+    const escapesRepo = path.split(/[\\/]/).includes("..");
+    if (path.length === 0 || isAbsolute || escapesRepo) {
+      throw new InvalidCommitPathError(path);
+    }
+  }
+}
+
+async function readCommitIdentityGaps(
+  cwd: string,
+): Promise<{ missingName: boolean; missingEmail: boolean }> {
+  const readConfig = (key: string) =>
+    runGitCommand(["config", "--get", key], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+      acceptExitCodes: [0, 1],
+    });
+  const [name, email] = await Promise.all([readConfig("user.name"), readConfig("user.email")]);
+  return {
+    missingName: name.stdout.trim() === "",
+    missingEmail: email.stdout.trim() === "",
+  };
+}
+
+async function isCommitSigningEnabled(cwd: string): Promise<boolean> {
+  const result = await runGitCommand(["config", "--type=bool", "--get", "commit.gpgsign"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+  });
+  return result.stdout.trim() === "true";
+}
+
+async function hasCommitHooks(cwd: string): Promise<boolean> {
+  const revParse = await runGitCommand(["rev-parse", "--git-path", "hooks"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  const hooksDir = resolveGitRevParsePath(cwd, revParse.stdout);
+  if (!hooksDir) {
+    return false;
+  }
+  return COMMIT_HOOK_FILES.some((hook) => existsSync(resolve(hooksDir, hook)));
+}
+
+function combineCommitOutput(stdout: string, stderr: string): string {
+  return [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
+}
+
+const SIGNING_FAILURE_PATTERN =
+  /gpg failed to sign|gpg: signing failed|cannot run gpg|no default signing key|failed to sign the data|ssh-keygen.*(?:failed|not found)/i;
+const NOTHING_TO_COMMIT_PATTERN =
+  /nothing to commit|no changes added to commit|nothing added to commit/i;
+
+function classifyFailedCommit(input: {
+  output: string;
+  exitCode: number | null;
+  signingEnabled: boolean;
+  hooksPresent: boolean;
+}): CommitPathsResult {
+  const { output, exitCode, signingEnabled, hooksPresent } = input;
+  if (NOTHING_TO_COMMIT_PATTERN.test(output)) {
+    return { kind: "nothing_to_commit" };
+  }
+  if (/please tell me who you are/i.test(output)) {
+    return { kind: "identity_missing", missingName: true, missingEmail: true };
+  }
+  if (signingEnabled && SIGNING_FAILURE_PATTERN.test(output)) {
+    return { kind: "signing_failed", detail: output };
+  }
+  if (hooksPresent) {
+    return { kind: "hook_failed", output, exitCode };
+  }
+  return { kind: "git_failed", detail: output };
+}
+
+/**
+ * Stage the given repo-relative paths and commit exactly those paths — changes
+ * already staged for other files stay staged and out of the commit. Never
+ * prompts: terminal prompts are disabled, stdin is closed, and a hung signing
+ * or hook process is killed at the timeout and reported as a structured
+ * failure instead of hanging the daemon.
+ */
+export async function commitPaths(
+  cwd: string,
+  input: CommitPathsInput,
+): Promise<CommitPathsResult> {
+  await requireGitRepo(cwd);
+  assertRepoRelativeCommitPaths(input.paths);
+  if (input.paths.length === 0) {
+    return { kind: "nothing_to_commit" };
+  }
+
+  const [identity, signingEnabled, hooksPresent] = await Promise.all([
+    readCommitIdentityGaps(cwd),
+    isCommitSigningEnabled(cwd),
+    hasCommitHooks(cwd),
+  ]);
+  if (identity.missingName || identity.missingEmail) {
+    return { kind: "identity_missing", ...identity };
+  }
+
+  await runGitCommand(["--literal-pathspecs", "add", "-A", "--", ...input.paths], {
+    cwd,
+    timeout: COMMIT_WRITE_TIMEOUT_MS,
+    envOverlay: NON_INTERACTIVE_GIT_ENV,
+  });
+
+  let commit: GitCommandResult;
+  try {
+    commit = await runGitCommand(
+      ["--literal-pathspecs", "commit", "-m", input.message, "--", ...input.paths],
+      {
+        cwd,
+        timeout: COMMIT_WRITE_TIMEOUT_MS,
+        envOverlay: NON_INTERACTIVE_GIT_ENV,
+        acceptExitCodes: [0, 1, 128],
+        maxStderrBytes: COMMIT_HOOK_OUTPUT_MAX_BYTES,
+      },
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const timedOut = /timed out/i.test(detail);
+    if (timedOut && signingEnabled) {
+      return {
+        kind: "signing_failed",
+        detail: `Commit signing did not complete within ${COMMIT_WRITE_TIMEOUT_MS / 1000}s — a signing prompt cannot be answered here. Commit from a terminal, or disable signing for this repository (git config commit.gpgsign false).`,
+      };
+    }
+    if (timedOut && hooksPresent) {
+      return { kind: "hook_failed", output: detail, exitCode: null };
+    }
+    return { kind: "git_failed", detail };
+  }
+
+  if (commit.exitCode !== 0) {
+    return classifyFailedCommit({
+      output: combineCommitOutput(commit.stdout, commit.stderr),
+      exitCode: commit.exitCode,
+      signingEnabled,
+      hooksPresent,
+    });
+  }
+
+  const head = await runGitCommand(["rev-parse", "HEAD"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  return { kind: "committed", sha: head.stdout.trim() };
 }
 
 interface DetectMergeToBaseConflictInput {

@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useClientActivity } from "@/hooks/use-client-activity";
+import { useGitLogStore } from "@/git/log-store";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { refreshAgentInitializationTimeout } from "@/hooks/use-agent-initialization";
@@ -1383,6 +1384,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyCheckoutStatusUpdateFromEvent({ queryClient, serverId, message });
     });
 
+    const unsubGitLogAppended = client.on("checkout.git.log_appended.notification", (message) => {
+      if (message.type !== "checkout.git.log_appended.notification") return;
+      useGitLogStore.getState().mergeEntries({ serverId, ...message.payload });
+    });
+
     const unsubWorkspaceSetupProgress = client.on("workspace_setup_progress", (message) => {
       if (message.type !== "workspace_setup_progress") return;
       applyWorkspaceSetupProgress(message.payload);
@@ -1753,6 +1759,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubWorkspaceUpdate();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
+      unsubGitLogAppended();
       unsubWorkspaceSetupProgress();
       unsubWorkspaceSetupStatusResponse();
       unsubStatus();

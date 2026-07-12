@@ -40,6 +40,10 @@ export function normalizeWorkspaceTabTarget(
     const artifactId = trimNonEmpty(value.artifactId);
     return artifactId ? { kind: "artifact", artifactId } : null;
   }
+  if (value.kind === "gitLog") {
+    const operation = trimNonEmpty(value.operation);
+    return operation ? { kind: "gitLog", operation } : null;
+  }
   return null;
 }
 
@@ -95,6 +99,9 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "artifact" && right.kind === "artifact") {
     return left.artifactId === right.artifactId;
   }
+  if (left.kind === "gitLog" && right.kind === "gitLog") {
+    return left.operation === right.operation;
+  }
   return false;
 }
 
@@ -149,6 +156,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "artifact") {
     return `artifact_${target.artifactId}`;
+  }
+  if (target.kind === "gitLog") {
+    return `gitlog_${target.operation}`;
   }
   return `file_${target.path}`;
 }

@@ -1,0 +1,18 @@
+.checkout {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.checkout-title {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.checkout-note {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}

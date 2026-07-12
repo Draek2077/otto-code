@@ -3,6 +3,7 @@ import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import { validateBranchSlug } from "@otto-code/protocol/branch-slug";
 import type {
   BranchSuggestionsRequest,
+  CheckoutGitCommitError,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
   CheckoutStatusRequest,
@@ -28,6 +29,7 @@ import type {
 } from "../../workspace-git-service.js";
 import { assertSafeGitRef } from "../../worktree-session.js";
 import type { GitMutationService } from "../git-mutation/git-mutation-service.js";
+import type { GitOperationLogService } from "../../git-operation-log.js";
 import type { GitHostingResolver } from "../../../services/git-hosting/resolver.js";
 import { isGitHostingFeatureDisabledError } from "../../../services/git-hosting/types.js";
 import {
@@ -38,6 +40,7 @@ import {
 } from "../../../services/github-service.js";
 import {
   commitChanges,
+  commitPaths,
   createPullRequest,
   mergeFromBase,
   mergeToBase,
@@ -86,9 +89,19 @@ export interface CheckoutDiffSubscriber {
   scheduleRefreshForCwd(cwd: string): void;
 }
 
+export interface BusyWorkspaceAgent {
+  id: string;
+  title: string | null;
+}
+
 export interface CheckoutSessionOptions {
   host: CheckoutSessionHost;
   gitMutation: Pick<GitMutationService, "checkoutExistingBranch" | "notifyGitMutation">;
+  // Guard for checkout.git.commit: which agents are actively working in this
+  // cwd right now. Committing under a running agent risks capturing
+  // half-finished work, so the handler refuses until the user confirms.
+  listBusyAgentsForCwd: (cwd: string) => BusyWorkspaceAgent[];
+  gitOperationLog: GitOperationLogService;
   workspaceGitService: WorkspaceGitService;
   github: GitHubService;
   // Present on daemons with the gitHostingProviders feature; absent in legacy
@@ -119,6 +132,8 @@ export class CheckoutSession {
     GitMutationService,
     "checkoutExistingBranch" | "notifyGitMutation"
   >;
+  private readonly listBusyAgentsForCwd: (cwd: string) => BusyWorkspaceAgent[];
+  private readonly gitOperationLog: GitOperationLogService;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -132,6 +147,8 @@ export class CheckoutSession {
   constructor(options: CheckoutSessionOptions) {
     this.host = options.host;
     this.gitMutation = options.gitMutation;
+    this.listBusyAgentsForCwd = options.listBusyAgentsForCwd;
+    this.gitOperationLog = options.gitOperationLog;
     this.workspaceGitService = options.workspaceGitService;
     this.github = options.github;
     this.gitHostingResolver = options.gitHostingResolver ?? null;
@@ -553,10 +570,14 @@ export class CheckoutSession {
         throw new Error("Commit message is required");
       }
 
-      await commitChanges(cwd, {
-        message,
-        addAll: msg.addAll ?? true,
-      });
+      await this.gitOperationLog.runOperation(
+        { cwd, operation: "commit", label: "git commit" },
+        () =>
+          commitChanges(cwd, {
+            message,
+            addAll: msg.addAll ?? true,
+          }),
+      );
       await this.gitMutation.notifyGitMutation(cwd, "commit-changes");
       this.scheduleDiffRefresh(cwd);
 
@@ -580,6 +601,79 @@ export class CheckoutSession {
         },
       });
     }
+  }
+
+  async handleCheckoutGitCommitRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.commit.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+    const respondError = (error: CheckoutGitCommitError) => {
+      this.host.emit({
+        type: "checkout.git.commit.response",
+        payload: { cwd, success: false, commitSha: null, error, requestId },
+      });
+    };
+
+    try {
+      if (!msg.allowWithRunningAgents) {
+        const busyAgents = this.listBusyAgentsForCwd(cwd);
+        if (busyAgents.length > 0) {
+          respondError({ kind: "agents_running", agents: busyAgents });
+          return;
+        }
+      }
+
+      const message = msg.message.trim();
+      if (!message) {
+        respondError({ kind: "git_failed", detail: "Commit message is required" });
+        return;
+      }
+
+      const result = await this.gitOperationLog.runOperation(
+        { cwd, operation: "commit", label: "git commit" },
+        () => commitPaths(cwd, { message, paths: msg.paths }),
+      );
+      if (result.kind !== "committed") {
+        this.gitOperationLog.append({
+          cwd,
+          operation: "commit",
+          level: "error",
+          text: `commit not created (${result.kind})`,
+        });
+        respondError(result);
+        return;
+      }
+      this.gitOperationLog.append({
+        cwd,
+        operation: "commit",
+        level: "info",
+        text: `created commit ${result.sha}`,
+      });
+
+      await this.gitMutation.notifyGitMutation(cwd, "commit-changes");
+      this.scheduleDiffRefresh(cwd);
+      this.host.emit({
+        type: "checkout.git.commit.response",
+        payload: { cwd, success: true, commitSha: result.sha, error: null, requestId },
+      });
+    } catch (error) {
+      respondError({ kind: "git_failed", detail: getErrorMessage(error) });
+    }
+  }
+
+  async handleCheckoutGitGetOperationLogRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.get_operation_log.request" }>,
+  ): Promise<void> {
+    const { cwd, operation, requestId } = msg;
+    this.host.emit({
+      type: "checkout.git.get_operation_log.response",
+      payload: {
+        cwd,
+        operation,
+        entries: this.gitOperationLog.getEntries(cwd, operation),
+        requestId,
+      },
+    });
   }
 
   async handleCheckoutMergeRequest(
@@ -691,7 +785,9 @@ export class CheckoutSession {
     const { cwd, requestId } = msg;
 
     try {
-      await pullCurrentBranch(cwd);
+      await this.gitOperationLog.runOperation({ cwd, operation: "pull", label: "git pull" }, () =>
+        pullCurrentBranch(cwd),
+      );
       await this.gitMutation.notifyGitMutation(cwd, "pull", { invalidateGithub: true });
       this.scheduleDiffRefresh(cwd);
 
@@ -723,7 +819,9 @@ export class CheckoutSession {
     const { cwd, requestId } = msg;
 
     try {
-      await pushCurrentBranch(cwd);
+      await this.gitOperationLog.runOperation({ cwd, operation: "push", label: "git push" }, () =>
+        pushCurrentBranch(cwd),
+      );
       await this.gitMutation.notifyGitMutation(cwd, "push", { invalidateGithub: true });
       this.host.emit({
         type: "checkout_push_response",

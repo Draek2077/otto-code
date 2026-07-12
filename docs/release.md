@@ -44,24 +44,16 @@ Before running any stable patch release command:
 - **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying — and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
 - Do not use `npm run release:patch` as a substitute for checking whether the current commit is actually ready.
 
-> **Fork gotcha — skip npm publish.** The `@otto-code/*` npm scope is unregistered, so
-> `npm run release:patch` fails at `release:publish` **after** creating the version commit
-> and tag but **before** `release:push` — leaving a half-finished release with an unpushed
-> tag. Until the scope exists (see [fork-release-guide.md](fork-release-guide.md)), release
-> with the publish step omitted:
->
-> ```bash
-> npm run release:check
-> npm run version:all:patch
-> npm run release:push
-> ```
->
-> The same applies to the beta flow (`release:beta:*`, `release:promote`): run
-> `release:check`, then the matching `version:all:*` mode, then `release:push`, skipping
-> `release:publish` / `release:publish:beta`.
+> **npm publish is live.** The `otto-code` npm org was claimed and all six packages
+> (`@otto-code/{highlight,relay,protocol,client,server,cli}`) were first published at 0.5.0
+> on 2026-07-11, so the full `release:patch` chain — including `release:publish` — now works
+> end to end. Publishing requires being logged in (`npm whoami`) as a member of the
+> `otto-code` org. **If publish fails mid-chain** (auth expired, registry hiccup), the
+> version commit and tag exist but are unpushed — fix the cause, then resume manually with
+> `npm run release:publish` followed by `npm run release:push`; don't re-run the full chain.
 
 ```bash
-npm run release:patch        # only once the @otto-code npm scope exists — see fork gotcha above
+npm run release:patch
 ```
 
 This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does — and on this fork does **not** — happen on the store side.
@@ -492,8 +484,8 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 
 - [ ] Working tree is clean and the intended commit is on `main`
 - [ ] Update the in-place beta entry in `CHANGELOG.md` (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
-- [ ] `release:check` + `version:all:beta:*` + `release:push` complete successfully (skip `release:publish:beta` — see the fork gotcha under "Standard release")
-- [ ] ~~npm shows the version under the `beta` dist-tag, not `latest`~~ — N/A until the `@otto-code` npm scope is registered
+- [ ] `release:beta:*` completes successfully (includes `release:publish:beta` — be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
+- [ ] npm shows the version under the `beta` dist-tag, not `latest` (`npm view @otto-code/cli dist-tags`)
 - [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
 - [ ] GitHub `Android APK Release` workflow for the same tag is green
 - [ ] GitHub `Release Notes Sync` mirrored the beta entry into the prerelease body
@@ -505,7 +497,8 @@ Betas are checkpoints along the way; the entry is the single record for the jump
 - [ ] Ensure local `npm run typecheck` passes on that exact commit before running any `release:*` patch/promote command
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors). When promoting from beta, overwrite the existing `## X.Y.Z-beta.N` heading in place (heading → `X.Y.Z`, date → promotion day) — do not add a new entry on top of the beta one
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
-- [ ] `release:check` + `version:all:patch`/`version:all:promote` + `release:push` complete successfully (skip `release:publish` — see the fork gotcha under "Standard release")
+- [ ] `release:patch`/`release:promote` completes successfully (includes `release:publish` — be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
+- [ ] npm shows the new version on `latest` (`npm view @otto-code/cli version`)
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green (macOS jobs excepted until Apple signing is configured — Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
 - [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached to the release
 - [ ] GitHub `Deploy App` workflow for the same tag is green (web app on Cloudflare Pages)

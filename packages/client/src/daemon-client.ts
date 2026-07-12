@@ -40,6 +40,8 @@ import type {
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommitResponse,
+  CheckoutGitCommitResponse,
+  CheckoutGitGetOperationLogResponse,
   CheckoutMergeResponse,
   CheckoutMergeFromBaseResponse,
   CheckoutPullResponse,
@@ -331,6 +333,8 @@ type SubscribeCheckoutDiffPayload = Extract<
 >["payload"];
 type CheckoutDiffPayload = Omit<SubscribeCheckoutDiffPayload, "subscriptionId">;
 type CheckoutCommitPayload = CheckoutCommitResponse["payload"];
+export type CheckoutGitCommitPayload = CheckoutGitCommitResponse["payload"];
+export type CheckoutGitGetOperationLogPayload = CheckoutGitGetOperationLogResponse["payload"];
 type CheckoutMergePayload = CheckoutMergeResponse["payload"];
 type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
 type CheckoutPullPayload = CheckoutPullResponse["payload"];
@@ -3368,6 +3372,38 @@ export class DaemonClient {
         addAll: input.addAll,
       },
       responseType: "checkout_commit_response",
+    });
+  }
+
+  async checkoutGitCommit(
+    cwd: string,
+    input: { message: string; paths: string[]; allowWithRunningAgents?: boolean },
+    requestId?: string,
+  ): Promise<CheckoutGitCommitPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.commit.response">({
+      requestId,
+      message: {
+        type: "checkout.git.commit.request",
+        cwd,
+        message: input.message,
+        paths: input.paths,
+        ...(input.allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+      },
+    });
+  }
+
+  async checkoutGitGetOperationLog(
+    cwd: string,
+    operation: string,
+    requestId?: string,
+  ): Promise<CheckoutGitGetOperationLogPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.get_operation_log.response">({
+      requestId,
+      message: {
+        type: "checkout.git.get_operation_log.request",
+        cwd,
+        operation,
+      },
     });
   }
 

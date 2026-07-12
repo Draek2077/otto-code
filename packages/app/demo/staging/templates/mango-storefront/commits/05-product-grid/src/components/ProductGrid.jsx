@@ -1,0 +1,11 @@
+import ProductCard from "./ProductCard.jsx";
+
+export default function ProductGrid({ products }) {
+  return (
+    <section className="product-grid" id="shop">
+      {products.map((product) => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+    </section>
+  );
+}
