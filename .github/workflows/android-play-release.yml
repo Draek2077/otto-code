@@ -31,9 +31,6 @@ concurrency:
   group: android-play-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
-env:
-  SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-
 jobs:
   submit-play-internal:
     runs-on: ubuntu-latest
@@ -45,10 +42,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
-
-      - name: Resolve release tag
-        shell: bash
-        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
