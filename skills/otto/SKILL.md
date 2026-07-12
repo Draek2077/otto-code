@@ -70,11 +70,11 @@ Agent Personalities are named, host-configured templates that bind a provider→
 
 **`list_personalities`** — enumerate the host's personalities: `{ id, name, roles, provider, model, available, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. This tool is **Orchestrator-gated**: it works for you when you are driving orchestration (a top-level session, or an agent spawned from an Orchestrator personality). If it isn't available, fall back to provider strings from orchestration preferences.
 
-The seven roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `worker` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). Worker/Judger/Advisor are the ones you spawn.
+The eight roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `writer` (fast small-text: commit messages, summaries, names), `coder` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). Coder/Judger/Advisor are the ones you spawn.
 
 **Spawning by personality** — pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** — there is no silent fallback, so surface the error rather than guessing a provider.
 
-Prefer a personality whose role matches the work (a `worker` for implementation, a `judger` for review, an `advisor` for a read-only opinion). Only when no suitable personality exists (or `list_personalities` is unavailable) resolve a raw provider from orchestration preferences below.
+Prefer a personality whose role matches the work (a `coder` for implementation, a `judger` for review, an `advisor` for a read-only opinion). Only when no suitable personality exists (or `list_personalities` is unavailable) resolve a raw provider from orchestration preferences below.
 
 ## Schedules and heartbeats
 

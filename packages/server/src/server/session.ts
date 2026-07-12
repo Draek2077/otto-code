@@ -1076,8 +1076,10 @@ export class Session {
   }
 
   private readStructuredGenerationDaemonConfig(): StructuredGenerationDaemonConfig {
+    const config = this.daemonConfigStore.get();
     return {
-      metadataGeneration: this.daemonConfigStore.get().metadataGeneration,
+      metadataGeneration: config.metadataGeneration,
+      agentPersonalities: config.agentPersonalities,
     };
   }
 
@@ -1777,6 +1779,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutCommitRequest(msg);
       case "checkout.git.commit.request":
         return this.checkoutSession.handleCheckoutGitCommitRequest(msg);
+      case "checkout.git.commit_agent.request":
+        return this.checkoutSession.handleCheckoutGitCommitAgentRequest(msg);
+      case "checkout.git.rollback.request":
+        return this.checkoutSession.handleCheckoutGitRollbackRequest(msg);
       case "checkout.git.get_operation_log.request":
         return this.checkoutSession.handleCheckoutGitGetOperationLogRequest(msg);
       case "checkout_merge_request":

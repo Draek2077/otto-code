@@ -1,3 +1,8 @@
+import {
+  checkPersonalityAvailability,
+  personalityHasRole,
+} from "@otto-code/protocol/agent-personalities";
+import type { AgentPersonality, PersonalityRole } from "@otto-code/protocol/messages";
 import type {
   AgentModelDefinition,
   AgentProvider,
@@ -5,6 +10,7 @@ import type {
 } from "./agent-sdk-types.js";
 import type { StructuredGenerationProvider } from "./agent-response-loop.js";
 import type { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
+import { resolveEffortOption } from "./effort-levels.js";
 
 export interface StructuredGenerationDaemonConfig {
   metadataGeneration?: {
@@ -13,6 +19,11 @@ export interface StructuredGenerationDaemonConfig {
       model?: string;
       thinkingOptionId?: string;
     }>;
+  };
+  // The host's Agent Personalities roster, so role-matched personalities can be
+  // resolved as the primary worker for a mini-task before the legacy chain.
+  agentPersonalities?: {
+    personalities?: readonly AgentPersonality[];
   };
 }
 
@@ -33,6 +44,14 @@ export interface ResolveStructuredGenerationProvidersOptions {
   cwd: string;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "listProviders">;
   daemonConfig?: StructuredGenerationDaemonConfig | null;
+  /**
+   * When set, every available Agent Personality carrying this role is resolved
+   * FIRST and prepended ahead of the legacy configured/substring/current chain.
+   * This is how mini-task generation (commit messages, branch/workspace names)
+   * prefers a user's role-matched personality — a Writer — before falling back
+   * to the built-in preference list.
+   */
+  role?: PersonalityRole;
   currentSelection?: {
     provider?: AgentProvider | null;
     model?: string | null;
@@ -44,7 +63,12 @@ export async function resolveStructuredGenerationProviders(
   options: ResolveStructuredGenerationProvidersOptions,
 ): Promise<StructuredGenerationProvider[]> {
   const configuredProviders = readConfiguredProviders(options.daemonConfig);
-  if (configuredProviders.length > 0) {
+  const role = options.role;
+
+  // Explicit-config fast path (no snapshot fetch). Skipped when a role is
+  // requested: personality routing must consult the live snapshot to decide
+  // availability and prepend ahead of the configured providers.
+  if (!role && configuredProviders.length > 0) {
     const explicitProviders = resolveExplicitConfiguredProviders(configuredProviders);
     if (explicitProviders.length === configuredProviders.length) {
       return dedupeProviders(explicitProviders);
@@ -68,6 +92,20 @@ export async function resolveStructuredGenerationProviders(
   const modelEntries = enabledEntries.filter((entry) => (entry.models?.length ?? 0) > 0);
   const entriesByProvider = new Map(enabledEntries.map((entry) => [entry.provider, entry]));
   const providers: StructuredGenerationProvider[] = [];
+
+  // Agent Personalities come first: a role-matched, available personality is the
+  // primary worker for this task. Everything below — configured providers, the
+  // built-in substring list, the current selection — is the legacy fallback that
+  // only runs when no suitable personality exists (or all of them fail).
+  if (role) {
+    for (const resolved of resolvePersonalityProviders(
+      role,
+      readConfiguredPersonalities(options.daemonConfig),
+      providerEntries,
+    )) {
+      providers.push(resolved);
+    }
+  }
 
   for (const configured of configuredProviders) {
     const resolvedConfigured = resolveConfiguredCandidate(
@@ -98,6 +136,131 @@ export async function resolveStructuredGenerationProviders(
   }
 
   return dedupeProviders(providers);
+}
+
+/**
+ * The primary agent identity the daemon would use for a role-scoped mini-task,
+ * resolved for display before the task runs. Mirrors the head of the ordered
+ * provider chain from resolveStructuredGenerationProviders: when an available
+ * role-matched personality wins (personalities are prepended first), that
+ * personality's name and bound provider/model; otherwise the bare provider/model.
+ * null when nothing resolves — the caller decides how to refuse the task.
+ */
+export type ResolvedStructuredGenerationAgent =
+  | {
+      kind: "personality";
+      personalityId: string;
+      personalityName: string;
+      provider: string;
+      providerLabel: string;
+      model: string | null;
+      modelLabel: string | null;
+    }
+  | {
+      kind: "provider";
+      provider: string;
+      providerLabel: string;
+      model: string | null;
+      modelLabel: string | null;
+    };
+
+/**
+ * Resolve the first provider resolveStructuredGenerationProviders would use and
+ * describe it for the user. Honest about the primary only: generation still
+ * falls back through the rest of the chain on failure, but the confirmation
+ * names who runs first. Returns null when the chain is empty (no agent set up).
+ */
+export async function resolveStructuredGenerationAgent(
+  options: ResolveStructuredGenerationProvidersOptions,
+): Promise<ResolvedStructuredGenerationAgent | null> {
+  const providers = await resolveStructuredGenerationProviders(options);
+  const primary = providers[0];
+  if (!primary) {
+    return null;
+  }
+
+  const providerEntries = await options.providerSnapshotManager.listProviders({
+    cwd: options.cwd,
+    wait: true,
+  });
+  const providerLabel = resolveProviderLabel(primary.provider, providerEntries);
+  const model = primary.model ?? null;
+  const modelLabel = resolveModelLabel(primary.provider, primary.model, providerEntries);
+
+  if (options.role) {
+    const personality = findPrimaryPersonalityMatch(
+      options.role,
+      readConfiguredPersonalities(options.daemonConfig),
+      providerEntries,
+      primary,
+    );
+    if (personality) {
+      return {
+        kind: "personality",
+        personalityId: personality.id,
+        personalityName: personality.name,
+        provider: primary.provider,
+        providerLabel,
+        model,
+        modelLabel,
+      };
+    }
+  }
+
+  return { kind: "provider", provider: primary.provider, providerLabel, model, modelLabel };
+}
+
+// The first available role-matched personality is the prepended head of the
+// chain, so it is the primary when its bound provider/model equals `primary`.
+function findPrimaryPersonalityMatch(
+  role: PersonalityRole,
+  personalities: readonly AgentPersonality[],
+  entries: readonly ProviderSnapshotEntry[],
+  primary: StructuredGenerationProvider,
+): AgentPersonality | null {
+  const entryByProvider = new Map<string, ProviderSnapshotEntry>(
+    entries.map((entry) => [entry.provider, entry]),
+  );
+  for (const personality of personalities) {
+    if (!personalityHasRole(personality, role)) {
+      continue;
+    }
+    const entry = entryByProvider.get(personality.provider);
+    const availability = checkPersonalityAvailability(personality, {
+      providerStatus: entry?.status,
+      providerEnabled: entry?.enabled,
+      modelIds: entry?.models?.map((model) => model.id),
+      modeIds: entry?.modes?.map((mode) => mode.id),
+    });
+    if (!availability.available) {
+      continue;
+    }
+    return personality.provider === primary.provider && personality.model === primary.model
+      ? personality
+      : null;
+  }
+  return null;
+}
+
+function resolveProviderLabel(
+  providerId: string,
+  entries: readonly ProviderSnapshotEntry[],
+): string {
+  const entry = entries.find((candidate) => candidate.provider === providerId);
+  return entry?.label?.trim() || providerId;
+}
+
+function resolveModelLabel(
+  providerId: string,
+  modelId: string | undefined,
+  entries: readonly ProviderSnapshotEntry[],
+): string | null {
+  if (!modelId) {
+    return null;
+  }
+  const entry = entries.find((candidate) => candidate.provider === providerId);
+  const model = entry?.models?.find((candidate) => candidate.id === modelId);
+  return model?.label?.trim() || modelId;
 }
 
 function resolveConfiguredProviders(
@@ -303,6 +466,74 @@ function readConfiguredProviders(
   }
   const providers = "providers" in metadataGeneration ? metadataGeneration.providers : undefined;
   return Array.isArray(providers) ? providers : [];
+}
+
+function readConfiguredPersonalities(
+  daemonConfig: ResolveStructuredGenerationProvidersOptions["daemonConfig"],
+): readonly AgentPersonality[] {
+  const personalities = daemonConfig?.agentPersonalities?.personalities;
+  return Array.isArray(personalities) ? personalities : [];
+}
+
+/**
+ * Resolve every personality carrying `role` and available against the live
+ * snapshot into a structured-generation provider, in roster order. Availability
+ * uses the same shared predicate the pickers and spawn path use, so a mini-task
+ * never routes to a personality whose provider/model/mode can't resolve here.
+ */
+function resolvePersonalityProviders(
+  role: PersonalityRole,
+  personalities: readonly AgentPersonality[],
+  entries: readonly ProviderSnapshotEntry[],
+): StructuredGenerationProvider[] {
+  const entryByProvider = new Map<string, ProviderSnapshotEntry>(
+    entries.map((entry) => [entry.provider, entry]),
+  );
+  const resolved: StructuredGenerationProvider[] = [];
+  for (const personality of personalities) {
+    if (!personalityHasRole(personality, role)) {
+      continue;
+    }
+    const entry = entryByProvider.get(personality.provider);
+    const availability = checkPersonalityAvailability(personality, {
+      providerStatus: entry?.status,
+      providerEnabled: entry?.enabled,
+      modelIds: entry?.models?.map((model) => model.id),
+      modeIds: entry?.modes?.map((mode) => mode.id),
+    });
+    if (!availability.available) {
+      continue;
+    }
+    const model = entry?.models?.find((candidate) => candidate.id === personality.model);
+    const thinkingOptionId = resolvePersonalityThinkingOptionId(model, personality.effortLevel);
+    resolved.push({
+      provider: personality.provider,
+      model: personality.model,
+      ...(thinkingOptionId ? { thinkingOptionId } : {}),
+    });
+  }
+  return resolved;
+}
+
+// Map the personality's canonical effort level onto the bound model's advertised
+// thinking options — the same resolution the spawn path uses — falling back to
+// the model default when the level can't be mapped (fully custom option ids).
+function resolvePersonalityThinkingOptionId(
+  model: AgentModelDefinition | undefined,
+  effortLevel: string | undefined,
+): string | undefined {
+  if (!model) {
+    return undefined;
+  }
+  const options = model.thinkingOptions ?? [];
+  if (!effortLevel || options.length === 0) {
+    return model.defaultThinkingOptionId;
+  }
+  try {
+    return resolveEffortOption({ requested: effortLevel, thinkingOptions: options }).optionId;
+  } catch {
+    return model.defaultThinkingOptionId;
+  }
 }
 
 function selectDefaultModel(models: readonly AgentModelDefinition[]): AgentModelDefinition | null {

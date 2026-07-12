@@ -1,5 +1,9 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { CheckoutGitCommitError, CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
+import type {
+  CheckoutGitCommitError,
+  CheckoutPrMergeMethod,
+  CommitMessageAgent,
+} from "@otto-code/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/data/query-client";
 import {
@@ -23,6 +27,7 @@ export type CheckoutGitActionStatus = "idle" | "pending" | "success";
 
 export type CheckoutGitAsyncActionId =
   | "commit"
+  | "rollback"
   | "pull"
   | "push"
   | "pull-and-push"
@@ -66,6 +71,20 @@ function assertCheckoutGitCommitSupported(serverId: string) {
   const session = useSessionStore.getState().sessions[serverId];
   if (session?.serverInfo?.features?.checkoutGitCommit !== true) {
     throw new Error("Update the host to commit from the changes panel.");
+  }
+}
+
+function assertCheckoutGitCommitAgentSupported(serverId: string) {
+  const session = useSessionStore.getState().sessions[serverId];
+  if (session?.serverInfo?.features?.checkoutGitCommitAgent !== true) {
+    throw new Error("Update the host to preview the commit-message agent.");
+  }
+}
+
+function assertCheckoutGitRollbackSupported(serverId: string) {
+  const session = useSessionStore.getState().sessions[serverId];
+  if (session?.serverInfo?.features?.checkoutGitRollback !== true) {
+    throw new Error("Update the host to roll back files from the changes panel.");
   }
 }
 
@@ -245,6 +264,7 @@ interface CheckoutGitActionsStoreState {
   }) => CheckoutGitActionStatus;
 
   commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  resolveCommitAgent: (params: { serverId: string; cwd: string }) => Promise<CommitMessageAgent>;
   commitPaths: (params: {
     serverId: string;
     cwd: string;
@@ -252,6 +272,7 @@ interface CheckoutGitActionsStoreState {
     paths: string[];
     allowWithRunningAgents?: boolean;
   }) => Promise<void>;
+  rollbackPaths: (params: { serverId: string; cwd: string; paths: string[] }) => Promise<void>;
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -351,6 +372,13 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
+  resolveCommitAgent: async ({ serverId, cwd }) => {
+    assertCheckoutGitCommitAgentSupported(serverId);
+    const client = resolveClient(serverId);
+    const payload = await client.checkoutGitCommitAgent(cwd);
+    return payload.agent;
+  },
+
   commitPaths: async ({ serverId, cwd, message, paths, allowWithRunningAgents }) => {
     assertCheckoutGitCommitSupported(serverId);
     await runCheckoutAction({
@@ -366,6 +394,26 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         });
         if (payload.error) {
           throw new CheckoutGitCommitFailedError(payload.error);
+        }
+      },
+    });
+  },
+
+  rollbackPaths: async ({ serverId, cwd, paths }) => {
+    assertCheckoutGitRollbackSupported(serverId);
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "rollback",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutGitRollback(cwd, { paths });
+        if (payload.error) {
+          const message =
+            payload.error.kind === "git_failed"
+              ? payload.error.detail
+              : i18n.t("workspace.git.rollback.failed");
+          throw new Error(message);
         }
       },
     });

@@ -1103,7 +1103,10 @@ export async function createOttoDaemon(
     workspaceRegistry,
     workspaceGitService,
     providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    readDaemonConfig: () => ({
+      metadataGeneration: daemonConfigStore.get().metadataGeneration,
+      agentPersonalities: daemonConfigStore.get().agentPersonalities,
+    }),
     gitMutation: createGitMutationService({
       workspaceGitService,
       github,

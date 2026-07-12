@@ -51,6 +51,7 @@ import {
   RotateCw,
   SquarePen,
   SquareTerminal,
+  Undo2,
   Upload,
   WrapText,
 } from "@/components/icons/material-icons";
@@ -92,6 +93,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import * as Clipboard from "expo-clipboard";
@@ -108,7 +110,7 @@ import { BranchSwitcher } from "@/components/branch-switcher";
 import { useGitActions } from "@/git/use-actions";
 import { CheckoutGitCommitFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
 import type { CheckoutGitCommitError } from "@otto-code/protocol/messages";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { confirmDialog, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { openGitLogTab } from "@/git/open-git-log-tab";
 import { useToast } from "@/contexts/toast-context";
@@ -1381,6 +1383,7 @@ type PressableStyleFn = (
 ) => StyleProp<ViewStyle>;
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const destructiveIconColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const accentForegroundIconColorMapping = (theme: Theme) => ({
   color: theme.colors.accentForeground,
 });
@@ -1420,6 +1423,8 @@ const DIFF_CONTEXT_FIND_IN_FILES_ICON = (
 const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
   <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />
 );
+const ThemedUndo2 = withUnistyles(Undo2);
+const DIFF_CONTEXT_ROLLBACK_ICON = <ThemedUndo2 size={14} uniProps={destructiveIconColorMapping} />;
 
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
@@ -1671,6 +1676,99 @@ interface DiffContextAttachmentToggle {
   onToggle: () => void;
 }
 
+interface DiffRollbackActions {
+  /** The host supports rollback and the diff is in uncommitted mode. */
+  canRollbackFile: boolean;
+  /** Multiple files are checkbox-selected, so a bulk rollback is offered. */
+  canRollbackSelection: boolean;
+  selectionCount: number;
+  onRollbackFile: () => void;
+  onRollbackSelected: () => void;
+}
+
+/**
+ * "Rollback file" / "Rollback N files" for the Changes context menu. Rollback
+ * discards uncommitted working-tree changes via git, so it only applies in
+ * uncommitted mode against a rollback-capable host. The single action targets
+ * the right-clicked file; the bulk action targets the commit-checkbox selection.
+ * Each is gated behind a destructive confirmation dialog.
+ */
+function useDiffRollbackActions({
+  serverId,
+  cwd,
+  diffMode,
+  contextMenuPath,
+  selectedPaths,
+  commitSelectionEnabled,
+}: {
+  serverId: string;
+  cwd: string;
+  diffMode: "uncommitted" | "base";
+  contextMenuPath: string | null;
+  selectedPaths: string[];
+  commitSelectionEnabled: boolean;
+}): DiffRollbackActions {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const rollbackSupported = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
+  );
+  const rollbackFiles = useCheckoutGitActionsStore((s) => s.rollbackPaths);
+
+  const runRollback = useCallback(
+    async (paths: string[], confirm: ConfirmDialogInput) => {
+      if (paths.length === 0) {
+        return;
+      }
+      const confirmed = await confirmDialog(confirm);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await rollbackFiles({ serverId, cwd, paths });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("workspace.git.rollback.failed"));
+      }
+    },
+    [cwd, rollbackFiles, serverId, t, toast],
+  );
+
+  const onRollbackFile = useCallback(() => {
+    if (!contextMenuPath) {
+      return;
+    }
+    const fileName = contextMenuPath.split("/").pop() ?? contextMenuPath;
+    void runRollback([contextMenuPath], {
+      title: t("workspace.git.rollback.confirmTitleSingle"),
+      message: t("workspace.git.rollback.confirmMessageSingle", { fileName }),
+      confirmLabel: t("workspace.git.rollback.confirmButton"),
+      destructive: true,
+    });
+  }, [contextMenuPath, runRollback, t]);
+
+  const onRollbackSelected = useCallback(() => {
+    const count = selectedPaths.length;
+    void runRollback(selectedPaths, {
+      title: t("workspace.git.rollback.confirmTitleMultiple", { count }),
+      message: t("workspace.git.rollback.confirmMessageMultiple", { count }),
+      confirmLabel: t("workspace.git.rollback.confirmButton"),
+      destructive: true,
+    });
+  }, [runRollback, selectedPaths, t]);
+
+  const canRollbackFile = rollbackSupported && diffMode === "uncommitted";
+  const selectionCount = commitSelectionEnabled ? selectedPaths.length : 0;
+  const canRollbackSelection = canRollbackFile && selectionCount > 1;
+
+  return {
+    canRollbackFile,
+    canRollbackSelection,
+    selectionCount,
+    onRollbackFile,
+    onRollbackSelected,
+  };
+}
+
 /**
  * "Add to context" for the Changes context menu, mirroring the file explorer's
  * and project search's: the file (or a specific diff line) lands in the
@@ -1742,6 +1840,40 @@ function useDiffContextAttachmentToggle({
       : t("workspace.fileExplorer.context.addToContext");
   }
   return { isInContext, label, onToggle };
+}
+
+function DiffRollbackMenuItems({
+  rollback,
+}: {
+  rollback: DiffRollbackActions;
+}): ReactElement | null {
+  const { t } = useTranslation();
+  if (!rollback.canRollbackFile) {
+    return null;
+  }
+  return (
+    <>
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        leading={DIFF_CONTEXT_ROLLBACK_ICON}
+        destructive
+        onSelect={rollback.onRollbackFile}
+        testID="changes-context-menu-rollback-file"
+      >
+        {t("workspace.git.rollback.fileAction")}
+      </ContextMenuItem>
+      {rollback.canRollbackSelection ? (
+        <ContextMenuItem
+          leading={DIFF_CONTEXT_ROLLBACK_ICON}
+          destructive
+          onSelect={rollback.onRollbackSelected}
+          testID="changes-context-menu-rollback-selected"
+        >
+          {t("workspace.git.rollback.filesAction", { count: rollback.selectionCount })}
+        </ContextMenuItem>
+      ) : null}
+    </>
+  );
 }
 
 function DiffContextToggleMenuItem({ toggle }: { toggle: DiffContextAttachmentToggle | null }) {
@@ -2742,6 +2874,15 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     setExplorerTabForCheckout({ serverId, cwd, isGit: true, tab: "files" });
   }, [contextMenuRequest, cwd, serverId]);
 
+  const rollback = useDiffRollbackActions({
+    serverId,
+    cwd,
+    diffMode,
+    contextMenuPath: contextMenuRequest?.path ?? null,
+    selectedPaths,
+    commitSelectionEnabled,
+  });
+
   const contextAttachmentToggle = useDiffContextAttachmentToggle({
     serverId,
     scopeKey: workspaceAttachmentScopeKey,
@@ -3000,6 +3141,13 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         </View>
       ) : null}
 
+      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
+
+      <View style={styles.diffContainer}>
+        {bodyContent}
+        {hasChanges ? scrollbar.overlay : null}
+      </View>
+
       <ChangesCommitSection
         serverId={serverId}
         cwd={cwd}
@@ -3014,13 +3162,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         onToggleSelectAll={handleToggleSelectAll}
         onCommitted={clearCommitSelection}
       />
-
-      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
-
-      <View style={styles.diffContainer}>
-        {bodyContent}
-        {hasChanges ? scrollbar.overlay : null}
-      </View>
 
       <ContextMenu
         open={contextMenuRequest !== null}
@@ -3052,6 +3193,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
           >
             {t("workspace.fileExplorer.context.copyPath")}
           </ContextMenuItem>
+          <DiffRollbackMenuItems rollback={rollback} />
         </ContextMenuContent>
       </ContextMenu>
     </View>
@@ -3247,8 +3389,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.accentForeground,
   },
   commitSection: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[2],

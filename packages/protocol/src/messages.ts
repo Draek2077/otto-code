@@ -259,13 +259,17 @@ export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSche
 
 // Canonical personality roles, in display order. Kept as an exported const so
 // the daemon and app share one vocabulary, but the wire schema stores roles as
-// plain strings (below) — adding an 8th role later must never break an older
-// peer's parsing. Consumers filter incoming role arrays to this known set.
+// plain strings (below) — adding a role later must never break an older peer's
+// parsing. Consumers filter incoming role arrays to this known set. The retired
+// "worker" role is mapped to "coder" on the way in (see LEGACY_ROLE_ALIASES in
+// agent-personalities.ts) so personalities persisted before the split keep their
+// role rather than silently losing it.
 export const PERSONALITY_ROLES = [
   "chatter",
   "artificer",
   "scheduler",
-  "worker",
+  "writer",
+  "coder",
   "judger",
   "advisor",
   "orchestrator",
@@ -1868,6 +1872,27 @@ export const CheckoutGitCommitRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// Resolve which agent the daemon would use to author a commit message for this
+// checkout (the "writer" role) so the client can name it in a confirmation
+// before running the AI-authored commit. A pure query — it never commits. Gated
+// by server_info.features.checkoutGitCommitAgent.
+export const CheckoutGitCommitAgentRequestSchema = z.object({
+  type: z.literal("checkout.git.commit_agent.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+// Discard uncommitted working-tree changes for specific repo-relative paths
+// (restore tracked files from HEAD, delete newly-added files). Gated by
+// server_info.features.checkoutGitRollback.
+export const CheckoutGitRollbackRequestSchema = z.object({
+  type: z.literal("checkout.git.rollback.request"),
+  cwd: z.string(),
+  // Repo-relative paths whose uncommitted changes should be discarded.
+  paths: z.array(z.string()),
+  requestId: z.string(),
+});
+
 export const CheckoutMergeRequestSchema = z.object({
   type: z.literal("checkout_merge_request"),
   cwd: z.string(),
@@ -2641,6 +2666,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UnsubscribeCheckoutDiffRequestSchema,
   CheckoutCommitRequestSchema,
   CheckoutGitCommitRequestSchema,
+  CheckoutGitCommitAgentRequestSchema,
+  CheckoutGitRollbackRequestSchema,
   CheckoutGitGetOperationLogRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
@@ -2959,6 +2986,10 @@ export const ServerInfoStatusPayloadSchema = z
         setAgentPersonality: z.boolean().optional(),
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitCommit: z.boolean().optional(),
+        // COMPAT(checkoutGitCommitAgent): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitCommitAgent: z.boolean().optional(),
+        // COMPAT(checkoutGitRollback): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
+        checkoutGitRollback: z.boolean().optional(),
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: z.boolean().optional(),
       })
@@ -4150,6 +4181,64 @@ export const CheckoutGitCommitResponseSchema = z.object({
   }),
 });
 
+// The agent the daemon resolved to author a commit message. "personality" when
+// an available role-matched Agent Personality wins the mini-task routing (its
+// name plus the bound provider/model); "provider" when a bare provider/model is
+// used instead; "none" when nothing is configured to run the task, in which case
+// the client refuses the AI commit rather than falling back to placeholder text.
+export const CommitMessageAgentSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("personality"),
+    personalityId: z.string(),
+    personalityName: z.string(),
+    provider: z.string(),
+    providerLabel: z.string(),
+    model: z.string().nullable(),
+    modelLabel: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("provider"),
+    provider: z.string(),
+    providerLabel: z.string(),
+    model: z.string().nullable(),
+    modelLabel: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("none"),
+  }),
+]);
+
+export const CheckoutGitCommitAgentResponseSchema = z.object({
+  type: z.literal("checkout.git.commit_agent.response"),
+  payload: z.object({
+    cwd: z.string(),
+    agent: CommitMessageAgentSchema,
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutGitRollbackErrorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("nothing_to_rollback"),
+  }),
+  z.object({
+    kind: z.literal("git_failed"),
+    detail: z.string(),
+  }),
+]);
+
+export const CheckoutGitRollbackResponseSchema = z.object({
+  type: z.literal("checkout.git.rollback.response"),
+  payload: z.object({
+    cwd: z.string(),
+    success: z.boolean(),
+    // Repo-relative paths whose changes were discarded.
+    rolledBackPaths: z.array(z.string()),
+    error: CheckoutGitRollbackErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutMergeResponseSchema = z.object({
   type: z.literal("checkout_merge_response"),
   payload: z.object({
@@ -5304,6 +5393,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutDiffUpdateSchema,
   CheckoutCommitResponseSchema,
   CheckoutGitCommitResponseSchema,
+  CheckoutGitCommitAgentResponseSchema,
+  CheckoutGitRollbackResponseSchema,
   CheckoutGitGetOperationLogResponseSchema,
   CheckoutGitLogAppendedNotificationSchema,
   CheckoutMergeResponseSchema,
@@ -5645,6 +5736,12 @@ export type CheckoutCommitResponse = z.infer<typeof CheckoutCommitResponseSchema
 export type CheckoutGitCommitRequest = z.infer<typeof CheckoutGitCommitRequestSchema>;
 export type CheckoutGitCommitResponse = z.infer<typeof CheckoutGitCommitResponseSchema>;
 export type CheckoutGitCommitError = z.infer<typeof CheckoutGitCommitErrorSchema>;
+export type CheckoutGitCommitAgentRequest = z.infer<typeof CheckoutGitCommitAgentRequestSchema>;
+export type CheckoutGitCommitAgentResponse = z.infer<typeof CheckoutGitCommitAgentResponseSchema>;
+export type CommitMessageAgent = z.infer<typeof CommitMessageAgentSchema>;
+export type CheckoutGitRollbackRequest = z.infer<typeof CheckoutGitRollbackRequestSchema>;
+export type CheckoutGitRollbackResponse = z.infer<typeof CheckoutGitRollbackResponseSchema>;
+export type CheckoutGitRollbackError = z.infer<typeof CheckoutGitRollbackErrorSchema>;
 export type GitOperationLogEntry = z.infer<typeof GitOperationLogEntrySchema>;
 export type CheckoutGitGetOperationLogRequest = z.infer<
   typeof CheckoutGitGetOperationLogRequestSchema

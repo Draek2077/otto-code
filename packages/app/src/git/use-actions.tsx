@@ -11,7 +11,8 @@ import {
   type GitAction,
   type GitActions,
 } from "@/git/policy";
-import type { CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
+import type { CheckoutPrMergeMethod, CommitMessageAgent } from "@otto-code/protocol/messages";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -27,6 +28,26 @@ export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
 function openURLInNewTab(url: string): void {
   void openExternalUrl(url);
+}
+
+/** Human-friendly "who writes the message" line for the AI-commit confirmation. */
+function describeCommitAgentMessage(
+  agent: Exclude<CommitMessageAgent, { kind: "none" }>,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const detail = agent.modelLabel
+    ? t("workspace.git.commitAgent.providerModel", {
+        provider: agent.providerLabel,
+        model: agent.modelLabel,
+      })
+    : agent.providerLabel;
+  if (agent.kind === "personality") {
+    return t("workspace.git.commitAgent.messagePersonality", {
+      name: agent.personalityName,
+      detail,
+    });
+  }
+  return t("workspace.git.commitAgent.messageProvider", { detail });
 }
 
 function isActionDisabled(actionsDisabled: boolean, status: CheckoutGitActionStatus): boolean {
@@ -347,6 +368,10 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
 
   const runCommit = useCheckoutGitActionsStore((s) => s.commit);
+  const resolveCommitAgent = useCheckoutGitActionsStore((s) => s.resolveCommitAgent);
+  const commitAgentSupported = useSessionStore(
+    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitCommitAgent === true,
+  );
   const runPull = useCheckoutGitActionsStore((s) => s.pull);
   const runPush = useCheckoutGitActionsStore((s) => s.push);
   const runPullAndPush = useCheckoutGitActionsStore((s) => s.pullAndPush);
@@ -376,16 +401,55 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
 
   // Handlers
+  const performCommit = useCallback(
+    () =>
+      runCommit({ serverId, cwd })
+        .then(() => {
+          toastActionSuccess(t("workspace.git.actions.commit.success"));
+          return;
+        })
+        .catch((err) => {
+          toastActionError(err, t("workspace.git.actions.toasts.failedCommit"));
+        }),
+    [cwd, runCommit, serverId, t, toastActionError, toastActionSuccess],
+  );
+
+  // The header "Commit" CTA authors its message with an AI agent. Before running
+  // it, resolve which agent the host would use and confirm it with the user; if
+  // nothing is set up to write the message, refuse instead of committing
+  // placeholder text. Old hosts that can't name the agent keep the one-click flow.
   const handleCommit = useCallback(() => {
-    void runCommit({ serverId, cwd })
-      .then(() => {
-        toastActionSuccess(t("workspace.git.actions.commit.success"));
-        return;
-      })
-      .catch((err) => {
+    if (!commitAgentSupported) {
+      void performCommit();
+      return;
+    }
+    void (async () => {
+      let agent: CommitMessageAgent;
+      try {
+        agent = await resolveCommitAgent({ serverId, cwd });
+      } catch (err) {
         toastActionError(err, t("workspace.git.actions.toasts.failedCommit"));
+        return;
+      }
+      if (agent.kind === "none") {
+        await confirmDialog({
+          title: t("workspace.git.commitAgent.noneTitle"),
+          message: t("workspace.git.commitAgent.noneMessage"),
+          confirmLabel: t("workspace.git.commitAgent.noneConfirm"),
+        });
+        return;
+      }
+      const confirmed = await confirmDialog({
+        title: t("workspace.git.commitAgent.confirmTitle"),
+        message: describeCommitAgentMessage(agent, t),
+        confirmLabel: t("workspace.git.commitAgent.confirmCta"),
       });
-  }, [cwd, runCommit, serverId, t, toastActionError, toastActionSuccess]);
+      if (!confirmed) {
+        return;
+      }
+      await performCommit();
+    })();
+  }, [commitAgentSupported, cwd, performCommit, resolveCommitAgent, serverId, t, toastActionError]);
 
   const handlePull = useCallback(() => {
     void runPull({ serverId, cwd })

@@ -327,7 +327,7 @@ interface SpeedRowProps {
 
 function SpeedRow({ label, value, onChange, testID }: SpeedRowProps) {
   return (
-    <View style={ROW_WITH_BORDER_STYLE}>
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{label}</Text>
       </View>
@@ -615,7 +615,7 @@ function OpenAiKeyCard({
 
   return (
     <View style={settingsStyles.card} testID="host-speech-openai-key-card">
-      <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.speech.openaiKey.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.speech.openaiKey.hint")}</Text>
@@ -756,6 +756,9 @@ const styles = StyleSheet.create((theme) => ({
   keyInput: {
     flexGrow: 1,
     flexShrink: 1,
+    // Fills up to its cap then centers when the row stacks on the narrowest
+    // widths, instead of collapsing to content width.
+    width: { xs: "100%", sm: "auto" },
     maxWidth: 280,
     minHeight: 36,
     paddingVertical: theme.spacing[2],
@@ -774,3 +777,4 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, styles.rowWithBorder];
+const ROW_RESPONSIVE_WITH_BORDER = [settingsStyles.rowResponsive, styles.rowWithBorder];

@@ -5,6 +5,7 @@ import type {
   SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
+import { reconcileCheckoutStatusWithUncommittedDiff } from "@/git/checkout-status-cache";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
@@ -423,6 +424,15 @@ function applyCheckoutDiffUpdate(input: {
       requestId: `subscription:${input.message.payload.subscriptionId}`,
     },
   });
+  reconcileStatusFromCheckoutDiff({
+    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
+    queryClient: input.queryClient,
+    serverId: input.serverId,
+    subscriptionId: input.message.payload.subscriptionId,
+    cwd: input.message.payload.cwd,
+    files: input.message.payload.files,
+    error: input.message.payload.error,
+  });
 }
 
 function applyCheckoutDiffSubscribeResponse(input: {
@@ -442,6 +452,43 @@ function applyCheckoutDiffSubscribeResponse(input: {
       error: input.message.payload.error,
       requestId: input.message.payload.requestId,
     },
+  });
+  reconcileStatusFromCheckoutDiff({
+    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
+    queryClient: input.queryClient,
+    serverId: input.serverId,
+    subscriptionId: input.message.payload.subscriptionId,
+    cwd: input.message.payload.cwd,
+    files: input.message.payload.files,
+    error: input.message.payload.error,
+  });
+}
+
+// The uncommitted-mode diff subscription is authoritative and live; checkout status is
+// push-only and can freeze stale (see reconcileCheckoutStatusWithUncommittedDiff). When a
+// diff payload for that subscription lands, use it to heal a stale-clean status so the
+// git-actions CTA doesn't vanish while real uncommitted changes exist.
+function reconcileStatusFromCheckoutDiff(input: {
+  activeCheckoutDiffSubscriptions: Map<string, CheckoutDiffRoute>;
+  queryClient: QueryClient;
+  serverId: string;
+  subscriptionId: string;
+  cwd: string;
+  files: CheckoutDiffResponsePayload["files"];
+  error: CheckoutDiffResponsePayload["error"];
+}): void {
+  if (input.error) {
+    return;
+  }
+  const route = input.activeCheckoutDiffSubscriptions.get(input.subscriptionId);
+  if (!route || route.compare.mode !== "uncommitted") {
+    return;
+  }
+  reconcileCheckoutStatusWithUncommittedDiff({
+    queryClient: input.queryClient,
+    serverId: input.serverId,
+    cwd: input.cwd,
+    diffHasUncommittedFiles: input.files.length > 0,
   });
 }
 

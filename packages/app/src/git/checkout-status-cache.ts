@@ -67,6 +67,46 @@ export function applyCheckoutStatusUpdateFromEvent({
   }
 }
 
+/**
+ * Resync checkout status when the live uncommitted diff proves the tree is dirty
+ * but the cached status still says clean.
+ *
+ * The uncommitted diff is a per-pane live subscription (checkout_diff_update), while
+ * checkout status is a passive, push-only cache (staleTime: Infinity, no refetch on
+ * mount/focus/reconnect — see use-status-query.ts). If a checkout_status_update
+ * broadcast is missed after the tree goes dirty again (e.g. edits right after a
+ * commit/push), isDirty freezes at `false` and never self-heals. The git-actions CTA
+ * derives its only commit affordance from isDirty, so the whole split button vanishes —
+ * even though the manual commit box, which reads the diff, is still shown.
+ *
+ * We reconcile only the dirty-proving direction: a non-empty uncommitted diff means the
+ * tree is unambiguously dirty, so a cached `isDirty: false` is wrong and we refetch. The
+ * reverse (empty diff, isDirty true) can happen legitimately under whitespace filtering,
+ * so it's left alone to avoid needless refetch churn.
+ */
+export function reconcileCheckoutStatusWithUncommittedDiff({
+  queryClient,
+  serverId,
+  cwd,
+  diffHasUncommittedFiles,
+}: {
+  queryClient: QueryClient;
+  serverId: string;
+  cwd: string;
+  diffHasUncommittedFiles: boolean;
+}): void {
+  if (!diffHasUncommittedFiles) {
+    return;
+  }
+  const status = queryClient.getQueryData<CheckoutStatusPayload>(
+    checkoutStatusQueryKey(serverId, cwd),
+  );
+  if (!status || !status.isGit || status.isDirty) {
+    return;
+  }
+  void queryClient.invalidateQueries({ queryKey: checkoutStatusQueryKey(serverId, cwd) });
+}
+
 // requestId changes on every emission and carries no PR state.
 function prStatusWithoutVolatileFields(
   prStatus: CheckoutPrStatusPayload,

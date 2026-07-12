@@ -19,7 +19,7 @@ import { useCliInstall, useSkillsStatus } from "@/desktop/hooks/use-install-stat
 
 const CLI_DOCS_URL = "https://otto-code.me/docs/cli";
 const SKILLS_DOCS_URL = "https://otto-code.me/docs/skills";
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
+const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
 
 const OP_KIND_ORDER: Record<SkillOp["kind"], number> = { add: 0, update: 1, delete: 2 };
 const OP_KIND_LABEL_KEY: Record<SkillOp["kind"], string> = {
@@ -114,9 +114,12 @@ export function IntegrationsSection() {
     [theme.iconSize.sm, theme.colors.foregroundMuted],
   );
 
-  const trailing = useMemo(
+  // Doc links live in a centered footer below the cards (not the section
+  // header) so they never overflow the header on narrow windows; they wrap one
+  // beneath the other when both don't fit on a single line.
+  const docsFooter = useMemo(
     () => (
-      <View style={styles.headerLinks}>
+      <View style={styles.docsFooter}>
         <Button
           variant="ghost"
           size="sm"
@@ -151,9 +154,9 @@ export function IntegrationsSection() {
   const skillsState = skillsStatus?.state ?? null;
 
   return (
-    <SettingsSection title={t("settings.integrations.title")} trailing={trailing}>
+    <SettingsSection title={t("settings.integrations.title")}>
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <Terminal size={theme.iconSize.md} color={theme.colors.foreground} />
@@ -183,7 +186,7 @@ export function IntegrationsSection() {
             </Button>
           )}
         </View>
-        <View style={ROW_WITH_BORDER_STYLE}>
+        <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <Blocks size={theme.iconSize.md} color={theme.colors.foreground} />
@@ -204,6 +207,7 @@ export function IntegrationsSection() {
           />
         </View>
       </View>
+      {docsFooter}
     </SettingsSection>
   );
 }
@@ -222,7 +226,7 @@ function SkillsActions({ state, isWorking, onInstall, onUpdate, onUninstall }: S
 
   if (state === "up-to-date") {
     return (
-      <View style={styles.actionsRow}>
+      <View style={ACTIONS_ROW_STYLE}>
         <View style={styles.installedLabel}>
           <Check size={14} color={theme.colors.foregroundMuted} />
           <Text style={styles.mutedText}>{t("settings.integrations.actions.installed")}</Text>
@@ -236,7 +240,7 @@ function SkillsActions({ state, isWorking, onInstall, onUpdate, onUninstall }: S
 
   if (state === "drift") {
     return (
-      <View style={styles.actionsRow}>
+      <View style={ACTIONS_ROW_STYLE}>
         <Button variant="outline" size="sm" onPress={onUpdate} disabled={isWorking}>
           {isWorking
             ? t("settings.integrations.actions.working")
@@ -259,10 +263,13 @@ function SkillsActions({ state, isWorking, onInstall, onUpdate, onUninstall }: S
 }
 
 const styles = StyleSheet.create((theme) => ({
-  headerLinks: {
+  docsFooter: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: theme.spacing[0],
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[1],
   },
   rowTitleRow: {
     flexDirection: "row",
@@ -280,7 +287,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   actionsRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[2],
   },
 }));
+
+const ACTIONS_ROW_STYLE = [styles.actionsRow, settingsStyles.rowControlGroup];

@@ -41,6 +41,9 @@ interface WorkspaceScriptsButtonProps {
   // Stretch to fill the available width (content stays centered).
   fill?: boolean;
   presentation?: "split" | "ghost";
+  // Ghost-presentation trigger icon size. The mobile header passes the same
+  // `useIconSize(1.5).lg` the Explorer toggle uses so the two buttons match.
+  ghostIconSize?: number;
 }
 
 interface ScriptActionButtonProps {
@@ -387,6 +390,7 @@ export function WorkspaceScriptsButton({
   hideLabels,
   fill,
   presentation = "split",
+  ghostIconSize,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const { t } = useTranslation();
   const toast = useToast();
@@ -453,7 +457,8 @@ export function WorkspaceScriptsButton({
 
   const hasAnyRunning = scripts.some((s) => s.lifecycle === "running");
   const triggerPlayMapping = hasAnyRunning ? blueColorMapping : mutedColorMapping;
-  const triggerIconSize = presentation === "ghost" ? GHOST_TRIGGER_ICON_SIZE : 14;
+  const triggerIconSize =
+    presentation === "ghost" ? (ghostIconSize ?? GHOST_TRIGGER_ICON_SIZE) : 14;
 
   return (
     <View style={rowStyle}>
@@ -530,10 +535,14 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "stretch",
   },
+  // Mirrors the header toggle/menu chrome (`headerIconSlotStyle.slot`) instead of
+  // a separately-sized fixed box, so the mobile Play trigger matches the Explorer
+  // button beside it exactly.
   ghostButton: {
-    width: theme.spacing[8],
-    height: theme.spacing[8],
-    padding: 0,
+    padding: {
+      xs: theme.spacing[3],
+      md: theme.spacing[2],
+    },
     borderRadius: theme.borderRadius.lg,
     alignItems: "center",
     justifyContent: "center",

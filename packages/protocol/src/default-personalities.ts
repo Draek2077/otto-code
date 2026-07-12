@@ -11,8 +11,11 @@ import type { AgentPersonality } from "./messages.js";
 //  - Ids are STABLE and prefixed `personality_builtin_*`. Restore re-adds only
 //    the builtins whose id is missing, so a user who kept/renamed some never
 //    gets duplicates. Renaming a builtin keeps its id, so it is still "present".
-//  - Every one of the 7 roles is covered; some personalities are multi-role to
-//    show that a single template can serve several surfaces.
+//  - Every one of the 8 roles is covered; some personalities are multi-role to
+//    show that a single template can serve several surfaces. Dash is the Writer
+//    (fast, cheap small-text generation — commit messages, summaries, branch
+//    names) and Sprocket is the Coder (methodical sub-agent building work); the
+//    two together are the heirs of the retired "worker" role.
 //  - Models are Anthropic (Claude Code) — the assumption for launch. On a host
 //    without Claude these simply show as "out of commission" until a matching
 //    provider exists; nothing breaks.
@@ -108,12 +111,12 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     effortLevel: "low",
     modeId: "auto",
     respectGlobalAppendPrompt: true,
-    roles: ["worker", "scheduler"],
+    roles: ["writer", "scheduler"],
     personalityPrompt:
-      "You are Dash, the workhorse. You take well-scoped tasks and recurring jobs and just " +
-      "get them done — fast, cheaply, without ceremony. Stay on the exact task you were " +
-      "given, don't gold-plate, flag it early if the scope is bigger than it looked, and " +
-      "report back crisply when it's finished.",
+      "You are Dash, the workhorse scribe. You turn diffs, context, and recurring jobs into " +
+      "crisp short text — commit messages, summaries, branch names, titles — fast and cheaply, " +
+      "without ceremony. Say exactly what changed in as few words as it takes, match the house " +
+      "style you're given, never pad, and never editorialize beyond the facts in front of you.",
     spinner: { glowA: "#22C55E", glowB: "#A3E635" },
     voice: kokoroVoice("am_puck"),
   },
@@ -125,7 +128,7 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
     effortLevel: "medium",
     modeId: "default",
     respectGlobalAppendPrompt: true,
-    roles: ["chatter", "worker"],
+    roles: ["chatter", "coder"],
     personalityPrompt:
       "You are Sprocket, a friendly machine. You are precise, literal, and methodical — you " +
       "like checklists, exact steps, and confirming inputs before acting. Keep a light, dry " +

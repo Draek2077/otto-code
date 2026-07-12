@@ -270,14 +270,14 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           accessibilityLabel={t("desktop.daemon.keepRunning.title")}
         />
       </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.logs.title")}</Text>
           <Text style={settingsStyles.rowHint}>
             {daemonLogs?.logPath ?? t("desktop.daemon.logs.unavailable")}
           </Text>
         </View>
-        <View style={styles.actionGroup}>
+        <View style={LOGS_ACTION_GROUP_STYLE}>
           {daemonLogs?.logPath ? (
             <Button variant="outline" size="sm" leftIcon={copyIcon} onPress={handleCopyLogPath}>
               {t("desktop.daemon.logs.copyPath")}
@@ -294,7 +294,7 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           </Button>
         </View>
       </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.fullStatus.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.fullStatus.hint")}</Text>
@@ -474,8 +474,6 @@ const styles = StyleSheet.create((theme) => ({
   actionGroup: {
     flexDirection: "row",
     gap: theme.spacing[2],
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
   },
   loadingCard: {
     alignItems: "center",
@@ -526,5 +524,7 @@ const styles = StyleSheet.create((theme) => ({
 
 const LOADING_CARD_STYLE = [settingsStyles.card, styles.loadingCard];
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
+const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
+const LOGS_ACTION_GROUP_STYLE = [styles.actionGroup, settingsStyles.rowControlGroup];
 const LOGS_MODAL_SNAP_POINTS = ["70%", "92%"];
 const CLI_STATUS_MODAL_SNAP_POINTS = ["60%", "85%"];

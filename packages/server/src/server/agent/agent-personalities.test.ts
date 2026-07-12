@@ -14,7 +14,7 @@ function personality(overrides: Partial<AgentPersonality> = {}): AgentPersonalit
     modeId: "yolo",
     personalityPrompt: "Be bold.",
     respectGlobalAppendPrompt: false,
-    roles: ["chatter", "worker"],
+    roles: ["chatter", "coder"],
     spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
     voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
     ...overrides,
@@ -62,7 +62,7 @@ describe("resolvePersonality", () => {
       respectGlobalAppendPrompt: false,
       spinner: { glowA: "#4ec4ff", glowB: "#e14fe8" },
       voice: { provider: "local", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
-      roles: ["chatter", "worker"],
+      roles: ["chatter", "coder"],
     });
   });
 
@@ -125,12 +125,20 @@ describe("resolvePersonality", () => {
 
   test("drops unknown roles and returns known roles in canonical order", () => {
     const result = resolvePersonality(
-      personality({ roles: ["worker", "bogus", "chatter", "orchestrator"] }),
+      personality({ roles: ["coder", "bogus", "chatter", "orchestrator"] }),
       [readyEntry()],
     );
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
-    expect(result.snapshot.roles).toEqual(["chatter", "worker", "orchestrator"]);
+    expect(result.snapshot.roles).toEqual(["chatter", "coder", "orchestrator"]);
+  });
+
+  test("maps the retired 'worker' role to 'coder' so old personalities keep a role", () => {
+    const result = resolvePersonality(personality({ roles: ["writer", "worker"] }), [readyEntry()]);
+    expect(result.status).toBe("available");
+    if (result.status !== "available") return;
+    // "worker" normalizes to "coder"; both survive in canonical order, deduped.
+    expect(result.snapshot.roles).toEqual(["writer", "coder"]);
   });
 
   test("is unavailable when the provider is absent from the snapshot", () => {

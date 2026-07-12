@@ -7,10 +7,13 @@ import {
 import type { AgentManager } from "../../agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "../../agent/provider-snapshot-manager.js";
 import {
+  resolveStructuredGenerationAgent,
   resolveStructuredGenerationProviders,
+  type ResolvedStructuredGenerationAgent,
   type ResolveStructuredGenerationProvidersOptions,
   type StructuredGenerationDaemonConfig,
 } from "../../agent/structured-generation-providers.js";
+import type { CommitMessageAgent, PersonalityRole } from "@otto-code/protocol/messages";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import {
   buildMetadataPrompt,
@@ -30,6 +33,13 @@ export interface PullRequestText {
 export interface GitMetadataGenerator {
   generateCommitMessage(cwd: string): Promise<string>;
   generatePullRequestText(cwd: string, baseRef?: string): Promise<PullRequestText>;
+  /**
+   * Describe the agent that generateCommitMessage would use, so the client can
+   * name it in a confirmation before the AI-authored commit. "none" when nothing
+   * is configured to run the task — the client then refuses rather than
+   * committing placeholder text.
+   */
+  resolveCommitMessageAgent(cwd: string): Promise<CommitMessageAgent>;
 }
 
 /**
@@ -41,6 +51,14 @@ export interface GitMetadataGenerator {
  */
 export interface StructuredTextGeneration {
   generate<T>(request: StructuredTextGenerationRequest<T>): Promise<T>;
+  /**
+   * Resolve the primary agent the given role would route to for `cwd`, for
+   * display. Returns null when nothing resolves.
+   */
+  resolveAgent(request: {
+    cwd: string;
+    role: PersonalityRole;
+  }): Promise<ResolvedStructuredGenerationAgent | null>;
 }
 
 export interface StructuredTextGenerationRequest<T> {
@@ -140,6 +158,13 @@ export function createGitMetadataGenerator(deps: {
       }
     },
 
+    async resolveCommitMessageAgent(cwd) {
+      // Commit messages route through the "writer" role — the same role the
+      // production generation uses (see createAgentStructuredTextGeneration).
+      const agent = await generation.resolveAgent({ cwd, role: "writer" });
+      return agent ?? { kind: "none" };
+    },
+
     async generatePullRequestText(cwd, baseRef) {
       const prompt = await buildPromptForDiff({
         cwd,
@@ -182,11 +207,23 @@ export function createAgentStructuredTextGeneration(deps: {
   ) => ResolveStructuredGenerationProvidersOptions["currentSelection"];
 }): StructuredTextGeneration {
   return {
+    async resolveAgent({ cwd, role }) {
+      return resolveStructuredGenerationAgent({
+        cwd,
+        providerSnapshotManager: deps.providerSnapshotManager,
+        daemonConfig: deps.readDaemonConfig(),
+        role,
+        currentSelection: deps.getFocusedSelection(cwd),
+      });
+    },
     async generate({ cwd, prompt, schema, schemaName, agentTitle }) {
       const providers = await resolveStructuredGenerationProviders({
         cwd,
         providerSnapshotManager: deps.providerSnapshotManager,
         daemonConfig: deps.readDaemonConfig(),
+        // Commit messages and PR text are fast small-text generation — prefer an
+        // available Writer personality before the legacy substring fallback.
+        role: "writer",
         currentSelection: deps.getFocusedSelection(cwd),
       });
       return generateStructuredAgentResponseWithFallback({

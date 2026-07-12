@@ -295,12 +295,15 @@ const styles = StyleSheet.create((theme) => ({
   iconColor: {
     color: theme.colors.foreground,
   },
-  // settingsStyles.row plus a top separator, flattened into one style so JSX
-  // never allocates a fresh style array per render.
+  // settingsStyles.rowResponsive plus a top separator, flattened into one style
+  // so JSX never allocates a fresh style array per render. On the narrowest
+  // widths the trailing control (button / text input) stacks below the label and
+  // centers.
   borderedRow: {
-    flexDirection: "row",
+    flexDirection: { xs: "column", sm: "row" },
     alignItems: "center",
     justifyContent: "space-between",
+    gap: { xs: theme.spacing[3], sm: 0 },
     paddingVertical: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
     borderTopWidth: 1,
@@ -309,6 +312,9 @@ const styles = StyleSheet.create((theme) => ({
   credentialInput: {
     flexGrow: 1,
     flexShrink: 1,
+    // Fills up to its cap then centers when the row stacks on the narrowest
+    // widths, instead of collapsing to content width.
+    width: { xs: "100%", sm: "auto" },
     maxWidth: 280,
     minHeight: 36,
     paddingVertical: theme.spacing[2],

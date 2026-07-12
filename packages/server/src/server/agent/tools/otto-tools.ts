@@ -1672,7 +1672,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             .string()
             .optional()
             .describe(
-              "Only return personalities carrying this role (for example worker, judger, advisor).",
+              "Only return personalities carrying this role (for example writer, coder, judger, advisor).",
             ),
         },
         outputSchema: {

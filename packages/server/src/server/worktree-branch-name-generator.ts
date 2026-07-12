@@ -108,6 +108,9 @@ export async function generateBranchNameFromFirstAgentContext(
           cwd: options.cwd,
           providerSnapshotManager: options.providerSnapshotManager,
           daemonConfig: options.daemonConfig,
+          // Titles and branch names are fast small-text generation — prefer an
+          // available Writer personality before the legacy substring fallback.
+          role: "writer",
           currentSelection: options.currentSelection,
         })
       : [];

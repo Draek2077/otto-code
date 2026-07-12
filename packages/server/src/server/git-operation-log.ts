@@ -4,7 +4,7 @@ import type { GitOperationLogEntry } from "@otto-code/protocol/messages";
 // Known watchable operations. The wire carries an open string so this list can
 // grow without breaking old peers; keep in sync with the client's
 // GIT_LOG_OPERATIONS.
-export type GitOperationId = "commit" | "pull" | "push";
+export type GitOperationId = "commit" | "rollback" | "pull" | "push";
 
 const MAX_ENTRIES_PER_LOG = 500;
 const MAX_CHARS_PER_OUTPUT_ENTRY = 8_192;

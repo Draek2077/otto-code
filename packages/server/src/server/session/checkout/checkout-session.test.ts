@@ -145,6 +145,7 @@ function makeCheckoutSession(options?: {
       generatorCalls.generatePullRequestText.push({ cwd, baseRef });
       return { title: "", body: "" };
     },
+    resolveCommitMessageAgent: async () => ({ kind: "none" }),
     ...options?.gitMetadataGenerator,
   };
   const github: GitHubService = { ...createGitHubService(), ...options?.github };
