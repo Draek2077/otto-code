@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.1 - 2026-07-12
+
+### Added
+
+- Commit changed files straight from the Changes panel, choosing which to include
+- New Git Log tab with commit history, scrollable on desktop web
+- Roll back individual files from the Changes view
+- AI commit messages come from a matching Writer personality
+
+### Improved
+
+- Mobile Git settings polish
+
+### Fixed
+
+- Explorer, sidebar, and Git chrome scale correctly on compact and mobile layouts
+- No white flash when switching between workspaces
+- Header Git actions stay hidden for non-Git workspaces
+- Regular Git checkouts no longer show an archived workspace as primary
+- Clearer fuzzy project search
+
 ## 0.5.0 - 2026-07-11
 
 ### Added
