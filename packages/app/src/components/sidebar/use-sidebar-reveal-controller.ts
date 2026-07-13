@@ -9,9 +9,9 @@ const REVEAL_PADDING = 16;
 // request (navigation + virtualization). Poll a short while for it to appear.
 const MAX_ATTEMPTS = 30;
 
-// Temporary reveal diagnostics. Forced ON (not gated on __DEV__) so it prints in
-// production-style desktop bundles too. Remove once verified on-device.
-const DEBUG_REVEAL = true;
+// Reveal diagnostics, dev builds only — never ship console noise to production
+// bundles. Metro dead-code-strips the calls when `__DEV__` is false.
+const DEBUG_REVEAL = __DEV__;
 function debugReveal(...args: unknown[]): void {
   if (DEBUG_REVEAL) {
     console.warn("[SidebarReveal]", ...args);
