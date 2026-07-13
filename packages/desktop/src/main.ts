@@ -87,6 +87,14 @@ import {
   consumeQuitPreConfirmation,
 } from "./daemon/quit-confirm.js";
 import { runDesktopStartup } from "./desktop-startup.js";
+import {
+  applyPersistedHardwareAccelerationFallback,
+  armGpuStartupSentinel,
+  isGpuRecoveryInProgress,
+  markGpuStartupHealthy,
+  registerGpuFallbackRecovery,
+} from "./gpu-fallback.js";
+import { registerCrashDialog, showStartupErrorDialog } from "./crash-dialog.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import {
@@ -339,6 +347,15 @@ if (electronFlags) {
   }
   log.info("[electron-flags]", electronFlags);
 }
+
+// VM guests without 3D acceleration (VMware "No 3D enabled") and broken GPU
+// drivers crash the GPU process and leave the window blank with no actionable
+// error. Recover automatically: honor a persisted software-rendering marker up
+// front (must happen before app.whenReady()), and register a listener that, on
+// the first GPU failure, persists that marker and relaunches into software
+// rendering. Both run before whenReady() so early GPU launch failures are caught.
+applyPersistedHardwareAccelerationFallback();
+registerGpuFallbackRecovery();
 
 let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
@@ -846,6 +863,10 @@ async function createWindow(
   });
 
   mainWindow.once("ready-to-show", () => {
+    // The first window painted — the graphics path works this launch, so disarm
+    // the startup watch that would otherwise flip the next launch to software
+    // rendering. Fires even when the window stays hidden (start-minimized).
+    markGpuStartupHealthy();
     if (shouldStartMinimizedToTray) {
       // Window stays hidden (created with show: false); surface the tray icon
       // immediately instead of waiting for a hide/show transition to trigger it.
@@ -1034,6 +1055,19 @@ async function bootstrap(): Promise<void> {
       setCachedMinimizeOnCloseSetting(settings.tray.minimizeOnClose),
   });
   registerWindowManager();
+  // Surface a native dialog when a window's renderer dies, instead of leaving a
+  // blank frame. Suppressed while the GPU fallback is relaunching into software
+  // rendering, so we don't talk over our own recovery.
+  registerCrashDialog({
+    isSuppressed: isGpuRecoveryInProgress,
+    getLogFilePath: () => {
+      try {
+        return log.transports.file.getFile().path;
+      } catch {
+        return null;
+      }
+    },
+  });
   registerDialogHandlers();
   registerNotificationHandlers();
   registerOpenerHandlers();
@@ -1051,6 +1085,12 @@ async function bootstrap(): Promise<void> {
       pendingOpenProjectPath: typeof pendingPath === "string" ? pendingPath : null,
     });
   });
+
+  // Arm the GPU startup watch on the GUI path only (CLI passthrough and smoke
+  // runs return before reaching here). ready-to-show disarms it once the window
+  // paints; a launch that never paints leaves it set for the next boot to
+  // recover from.
+  armGpuStartupSentinel();
 
   // The first window of the session restores and persists saved geometry.
   await createWindow({ pendingOpenProjectPath, restoreWindowState: true });
@@ -1080,6 +1120,10 @@ void runDesktopStartup({
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`${message}\n`);
+  // A GUI launch that never got off the ground otherwise dies silently — show a
+  // native error box (works even when the renderer/GPU is what failed) before
+  // exiting.
+  showStartupErrorDialog(error);
   process.exit(1);
 });
 

@@ -64,6 +64,10 @@ linux:
   extraResources:
     - from: bin/otto
       to: bin/otto
+    # AppArmor profile installed to /etc/apparmor.d/otto by after-install.sh so
+    # Chromium's sandbox works under Ubuntu 24.04's unprivileged-userns lockdown.
+    - from: build/linux/apparmor/otto
+      to: apparmor/otto
   target:
     - AppImage
     - deb
