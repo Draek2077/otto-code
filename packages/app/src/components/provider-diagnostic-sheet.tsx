@@ -54,6 +54,7 @@ import {
   type OttoToolGroup,
 } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
@@ -241,24 +242,7 @@ function DiscoveredModelRow({
 }) {
   return (
     <View style={sheetStyles.modelRow}>
-      <Text style={sheetStyles.modelTitle} numberOfLines={1}>
-        {model.label}
-      </Text>
-      <Text
-        style={sheetStyles.monoHint}
-        numberOfLines={1}
-        selectable
-        dataSet={CODE_SURFACE_DATASET}
-      >
-        {model.id}
-      </Text>
-      {model.description ? (
-        <Text style={sheetStyles.descriptionInline} numberOfLines={1}>
-          {model.description}
-        </Text>
-      ) : (
-        <View style={sheetStyles.modelRowFiller} />
-      )}
+      <ModelRowText label={model.label} id={model.id} description={model.description} />
       {showTier ? (
         <ModelTierSelect
           modelId={model.id}
@@ -268,6 +252,55 @@ function DiscoveredModelRow({
         />
       ) : null}
     </View>
+  );
+}
+
+// The shrinkable text region of a model row: label, mono id, optional
+// description all ellipsize so the trailing control (tier picker / delete)
+// never gets pushed off screen; hovering reveals the full strings.
+function ModelRowText({
+  label,
+  id,
+  description,
+}: {
+  label: string;
+  id: string;
+  description?: string;
+}) {
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <View style={sheetStyles.modelRowText}>
+          <Text style={sheetStyles.modelTitle} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text
+            style={sheetStyles.monoHint}
+            numberOfLines={1}
+            selectable
+            dataSet={CODE_SURFACE_DATASET}
+          >
+            {id}
+          </Text>
+          {description ? (
+            <Text style={sheetStyles.descriptionInline} numberOfLines={1}>
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start" offset={4} maxWidth={480}>
+        <View style={sheetStyles.modelTooltip}>
+          <Text style={sheetStyles.modelTooltipTitle}>{label}</Text>
+          <Text style={sheetStyles.modelTooltipMono} dataSet={CODE_SURFACE_DATASET}>
+            {id}
+          </Text>
+          {description ? (
+            <Text style={sheetStyles.modelTooltipDescription}>{description}</Text>
+          ) : null}
+        </View>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -293,18 +326,7 @@ function CustomModelRow({
 
   return (
     <View style={sheetStyles.modelRow}>
-      <Text style={sheetStyles.modelTitle} numberOfLines={1}>
-        {model.label}
-      </Text>
-      <Text
-        style={sheetStyles.monoHint}
-        numberOfLines={1}
-        selectable
-        dataSet={CODE_SURFACE_DATASET}
-      >
-        {model.id}
-      </Text>
-      <View style={sheetStyles.modelRowFiller} />
+      <ModelRowText label={model.label} id={model.id} />
       <Pressable
         onPress={handleDelete}
         disabled={deleting}
@@ -1648,7 +1670,8 @@ const sheetStyles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.code,
     color: theme.colors.foregroundMuted,
-    flexShrink: 0,
+    // Shrinks before the label: the mono id usually repeats it.
+    flexShrink: 3,
   },
   descriptionInline: {
     flex: 1,
@@ -1748,13 +1771,34 @@ const sheetStyles = StyleSheet.create((theme) => ({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
   },
+  // Text column shrinks as a unit so the trailing control keeps its width.
+  modelRowText: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
   modelTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    flexShrink: 0,
+    flexShrink: 1,
   },
-  modelRowFiller: {
-    flex: 1,
+  modelTooltip: {
+    gap: theme.spacing[1],
+  },
+  modelTooltipTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  modelTooltipMono: {
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
+    color: theme.colors.foregroundMuted,
+  },
+  modelTooltipDescription: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   emptyState: {
     paddingVertical: theme.spacing[8],

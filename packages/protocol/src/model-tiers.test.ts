@@ -3,9 +3,20 @@ import { catalogTier, inferModelTier, resolveModelTier } from "./model-tiers.js"
 
 describe("model-tiers", () => {
   it("classifies known catalog models, case-insensitively", () => {
-    expect(catalogTier("claude-opus-4-8")).toBe("deep");
+    expect(catalogTier("claude-opus-4-8[1m]")).toBe("deep");
+    expect(catalogTier("claude-opus-4-8")).toBe("standard");
+    expect(catalogTier("claude-fable-5")).toBe("deep");
     expect(catalogTier("GPT-4o")).toBe("standard");
     expect(catalogTier("deepseek-chat")).toBe("standard");
+  });
+
+  it("tiers 1M-context Opus as deep and non-1M Opus as standard", () => {
+    expect(catalogTier("claude-opus-4-7[1m]")).toBe("deep");
+    expect(catalogTier("claude-opus-4-7")).toBe("standard");
+    expect(catalogTier("claude-opus-4-6[1m]")).toBe("deep");
+    expect(catalogTier("claude-opus-4-6")).toBe("standard");
+    expect(catalogTier("claude-sonnet-4-6")).toBe("standard");
+    expect(catalogTier("claude-sonnet-4-6[1m]")).toBe("standard");
   });
 
   it("leaves models we don't ship an id for as Unknown (undefined)", () => {
