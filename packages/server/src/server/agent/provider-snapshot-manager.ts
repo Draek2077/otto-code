@@ -139,6 +139,11 @@ export interface ResolveProviderCreateConfigOptions {
 export interface ResolvedProviderCreateConfig {
   modeId: string | undefined;
   featureValues: Record<string, unknown> | undefined;
+  // The effective unattended signal after OR-ing in an unattended parent — the
+  // same value that drove mode coercion. Callers stamp this onto the session
+  // config so the deny-responder arms for children of unattended parents, not
+  // just directly-unattended runs. See projects/safe-unattended/safe-unattended.md.
+  unattended: boolean;
 }
 
 interface ResolveDefaultModelOptions {
@@ -375,15 +380,17 @@ export class ProviderSnapshotManager {
     });
     const definition = this.requireProvider(input.provider);
     const parent = input.parent ? this.resolveParent(input.parent) : null;
-    return definition.resolveCreateConfig({
+    const effectiveUnattended = input.unattended || parent?.isUnattended === true;
+    const resolved = await definition.resolveCreateConfig({
       provider: input.provider,
       requestedMode: input.requestedMode,
       featureValues: input.featureValues,
       parent,
-      unattended: input.unattended || parent?.isUnattended === true,
+      unattended: effectiveUnattended,
       availableModes: entry.modes ?? [],
       model: input.model,
     });
+    return { ...resolved, unattended: effectiveUnattended };
   }
 
   async getProviderDiagnostic(provider: AgentProvider): Promise<ProviderDiagnosticResult> {

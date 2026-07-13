@@ -798,7 +798,14 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: false,
       });
 
-      expect(resolved).toEqual({ modeId: "child-unattended", featureValues: undefined });
+      // The resolver reports the effective unattended (input.unattended OR the
+      // unattended parent), so a child of an unattended parent can arm its
+      // deny-responder even though its own create input never set the flag.
+      expect(resolved).toEqual({
+        modeId: "child-unattended",
+        featureValues: undefined,
+        unattended: true,
+      });
       expect(resolverInputs).toEqual([
         {
           provider: "codex",
@@ -857,7 +864,7 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: true,
       });
 
-      expect(resolved).toEqual({ modeId: "worker", featureValues: undefined });
+      expect(resolved).toEqual({ modeId: "worker", featureValues: undefined, unattended: true });
       expect(resolverInputs).toEqual([
         {
           provider: "codex",
@@ -923,7 +930,11 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: false,
       });
 
-      expect(resolved).toEqual({ modeId: "base", featureValues: { auto_accept: true } });
+      expect(resolved).toEqual({
+        modeId: "base",
+        featureValues: { auto_accept: true },
+        unattended: true,
+      });
     } finally {
       manager.destroy();
     }

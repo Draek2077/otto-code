@@ -195,6 +195,7 @@ export function createProviderSnapshotManagerStub(): {
   const resolveCreateConfig = vi.fn<[unknown], Promise<ResolvedProviderCreateConfig>>(async () => ({
     modeId: undefined,
     featureValues: undefined,
+    unattended: false,
   }));
   const resolveDefaultModel = vi.fn<[unknown], Promise<string | undefined>>(async () => undefined);
   const getProviderDiagnostic = vi.fn<[AgentProvider], Promise<ProviderDiagnosticResult>>(
