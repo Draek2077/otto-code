@@ -101,6 +101,12 @@ const STORED_AGENT_SCHEMA = z.object({
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
   internal: z.boolean().optional(),
+  // Guardrail (safe-unattended Phase 2): created-unattended flag plus the
+  // running count / timestamp of policy-denied permission escalations. Additive
+  // optional fields; older records simply omit them.
+  unattended: z.boolean().optional(),
+  guardrailDenials: z.number().optional(),
+  lastGuardrailDenialAt: z.string().optional(),
   archivedAt: z.string().nullable().optional(),
 });
 
@@ -120,6 +126,28 @@ export type SerializableAgentConfig = Pick<
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
 export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
   return STORED_AGENT_SCHEMA.parse(value);
+}
+
+// Guardrail fields (safe-unattended Phase 2) are not rehydrated onto the live
+// agent, so a resumed agent's fresh in-memory value would clobber the persisted
+// running total on the next snapshot. Keep the larger count / most-recent
+// timestamp and never drop a persisted `unattended` flag.
+function preserveGuardrailFields(
+  record: StoredAgentRecord,
+  existing: StoredAgentRecord | null,
+): void {
+  if (!existing) {
+    return;
+  }
+  if ((record.guardrailDenials ?? 0) < (existing.guardrailDenials ?? 0)) {
+    record.guardrailDenials = existing.guardrailDenials;
+  }
+  if (record.lastGuardrailDenialAt === undefined && existing.lastGuardrailDenialAt !== undefined) {
+    record.lastGuardrailDenialAt = existing.lastGuardrailDenialAt;
+  }
+  if (record.unattended === undefined && existing.unattended !== undefined) {
+    record.unattended = existing.unattended;
+  }
 }
 
 export class AgentStorage {
@@ -253,6 +281,8 @@ export class AgentStorage {
     if (existing && existing.archivedAt !== undefined) {
       record.archivedAt = existing.archivedAt;
     }
+
+    preserveGuardrailFields(record, existing);
     await this.upsert(record);
   }
 

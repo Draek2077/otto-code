@@ -53,6 +53,13 @@ const PersistedWorkspaceRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // Server-internal visibility flag. A hidden workspace is withheld from every
+  // client (never listed, never emitted as an upsert) — the daemon behaves as if
+  // it does not exist for sidebar purposes. Used for transient schedule-run
+  // workspaces that stay invisible until the run finishes-and-is-kept or errors,
+  // at which point the daemon flips this to false and emits the workspace. Never
+  // crosses the wire as a field; it only gates what the wire carries.
+  hidden: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   archivedAt: z.string().nullable(),
@@ -254,6 +261,7 @@ export function createPersistedWorkspaceRecord(input: {
   title?: string | null;
   branch?: string | null;
   baseBranch?: string | null;
+  hidden?: boolean;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -263,6 +271,7 @@ export function createPersistedWorkspaceRecord(input: {
     title: input.title ?? null,
     branch: input.branch ?? null,
     baseBranch: input.baseBranch ?? null,
+    hidden: input.hidden ?? false,
     archivedAt: input.archivedAt ?? null,
   });
 }

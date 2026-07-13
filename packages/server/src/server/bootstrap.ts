@@ -1245,9 +1245,14 @@ export async function createOttoDaemon(
   const createScheduleLocalWorkspaceExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
+    hidden: boolean;
   }) => {
     const workspace = await createLocalCheckoutWorkspace(
-      { cwd: input.cwd, title: resolveFirstAgentPromptTitle(input.firstAgentContext) },
+      {
+        cwd: input.cwd,
+        title: resolveFirstAgentPromptTitle(input.firstAgentContext),
+        hidden: input.hidden,
+      },
       { projectRegistry, workspaceRegistry, workspaceGitService },
     );
     workspaceAutoName.scheduleForDirectory({
@@ -1255,19 +1260,38 @@ export async function createOttoDaemon(
       cwd: workspace.cwd,
       firstAgentContext: input.firstAgentContext,
     });
+    // A hidden workspace resolves to no descriptor, so this emit is a no-op REMOVE
+    // (the row was never shown); it stays out of the sidebar until revealed.
     await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
     return workspace;
   };
   const createScheduleOttoWorktreeExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
+    hidden: boolean;
   }) => {
     const result = await createOttoWorktreeForTools({
       cwd: input.cwd,
       firstAgentContext: input.firstAgentContext,
+      hidden: input.hidden,
     });
     await emitWorkspaceUpdatesExternal([result.workspace.workspaceId]);
     return result;
+  };
+  // Reveal a hidden schedule-run workspace: flip `hidden` to false in the shared
+  // registry, then emit so every session upserts it into the sidebar (the
+  // descriptor now resolves). No-op if the workspace is already visible or gone.
+  const revealScheduleWorkspaceExternal = async (workspaceId: string) => {
+    const existing = await workspaceRegistry.get(workspaceId);
+    if (!existing || !existing.hidden || existing.archivedAt) {
+      return;
+    }
+    await workspaceRegistry.upsert({
+      ...existing,
+      hidden: false,
+      updatedAt: new Date().toISOString(),
+    });
+    await emitWorkspaceUpdatesExternal([workspaceId]);
   };
   const archiveScheduleWorkspaceExternal = async (workspaceId: string, repoRoot: string) => {
     await archiveByScope(
@@ -1311,6 +1335,7 @@ export async function createOttoDaemon(
     createLocalCheckoutWorkspace: createScheduleLocalWorkspaceExternal,
     createOttoWorktreeWorkspace: createScheduleOttoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    revealWorkspace: revealScheduleWorkspaceExternal,
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,

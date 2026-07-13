@@ -27,6 +27,10 @@ export interface CreateWorktreeCoreInput {
   ottoHome?: string;
   worktreesRoot?: string;
   runSetup?: boolean;
+  // When true, the created workspace record is persisted hidden (withheld from
+  // clients). Used by schedule runs so the transient worktree never flashes into
+  // the sidebar; the owning service reveals it on finish-and-keep or error.
+  hidden?: boolean;
 }
 
 export interface CreateWorktreeCoreDeps {

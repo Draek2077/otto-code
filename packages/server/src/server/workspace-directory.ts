@@ -197,8 +197,14 @@ export class WorkspaceDirectory {
     const archivedProjectIds = new Set(
       persistedProjects.filter((project) => project.archivedAt).map((project) => project.projectId),
     );
+    // Hidden workspaces are withheld from every descriptor the daemon emits or
+    // lists: excluding them here feeds BOTH hydration (listDescriptors) and live
+    // emission (buildDescriptorMap for specific ids). A hidden workspace resolves
+    // to no descriptor, so the emission chokepoint emits a REMOVE; flipping
+    // `hidden` back to false makes it resolve again and emit an UPSERT.
     const activeRecords = persistedWorkspaces.filter(
-      (workspace) => !workspace.archivedAt && !archivedProjectIds.has(workspace.projectId),
+      (workspace) =>
+        !workspace.archivedAt && !workspace.hidden && !archivedProjectIds.has(workspace.projectId),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
     const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
@@ -483,6 +489,12 @@ export class WorkspaceDirectory {
       this.deps.workspaceRegistry.list(),
       this.deps.projectRegistry.list(),
     ]);
+    // Hidden workspaces intentionally still count as "occupying" their project
+    // here (only `!archivedAt` is checked, not `!hidden`). A project whose only
+    // workspace is a hidden schedule run must NOT surface as an empty-project
+    // ghost row — counting the hidden workspace keeps the project out of the
+    // empty list, so it renders nowhere at all (no workspace rows, no ghost)
+    // until the run reveals its workspace.
     const projectIdsWithActiveWorkspaces = new Set(
       persistedWorkspaces
         .filter((workspace) => !workspace.archivedAt)

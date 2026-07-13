@@ -73,6 +73,17 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     colorTier: "moderate",
   },
   {
+    id: "dontAsk",
+    label: "Don't Ask",
+    description: "Runs without prompting — actions not pre-approved are denied",
+    // Guarded unattended mode: more dangerous than acceptEdits (edits only) but
+    // safer than bypass (deny-by-default vs. run-everything), so it sits at the
+    // "moderate" tier alongside Auto.
+    icon: "ShieldCheck",
+    colorTier: "moderate",
+    isUnattended: true,
+  },
+  {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",

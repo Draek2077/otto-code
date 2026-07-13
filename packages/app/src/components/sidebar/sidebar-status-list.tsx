@@ -66,6 +66,19 @@ const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 
+// Status-group mode sorts rows by statusEnteredAt DESC (see
+// sidebar-status-view-model.ts), so a workspace that's revealed (e.g. a
+// schedule-run row surfaced on error) or created from another device mounts at
+// the top of its bucket instead of appending at the end. This keeps whatever
+// the user is already looking at pinned in place instead of jumping. RN docs
+// warn maintainVisibleContentPosition can jank if existing rows *reorder*, but
+// our sort order is otherwise stable — rows only re-sort by leaving one bucket
+// for another, which is itself a mount/unmount this prop covers. Hoisted to a
+// stable reference so it isn't a new object every render (react-perf lint).
+// No-op on react-native-web (unsupported there) — kept for parity; native is
+// where the scroll-jump actually hurts.
+const SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION = { minIndexForVisible: 0 };
+
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
@@ -115,6 +128,7 @@ export function SidebarStatusWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          maintainVisibleContentPosition={SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION}
           testID="sidebar-status-list-scroll"
         >
           <StatusGroupList
@@ -136,6 +150,7 @@ export function SidebarStatusWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          maintainVisibleContentPosition={SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION}
           testID="sidebar-status-list-scroll"
         >
           <StatusGroupList

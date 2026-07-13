@@ -73,6 +73,10 @@ export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSe
     extra: record.config?.extra ?? undefined,
     systemPrompt: record.config?.systemPrompt ?? undefined,
     mcpServers: record.config?.mcpServers ?? undefined,
+    // Restore the creation-time unattended flag so a reloaded schedule/loop run
+    // keeps its guardrail deny-responder behavior across daemon restarts.
+    // See projects/safe-unattended/safe-unattended.md (Phase 2).
+    unattended: record.unattended ?? undefined,
   });
 }
 
@@ -94,6 +98,7 @@ export function buildSessionConfig(
     extra: overrides.extra,
     systemPrompt: overrides.systemPrompt,
     mcpServers: overrides.mcpServers,
+    unattended: overrides.unattended,
   });
 }
 

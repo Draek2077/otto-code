@@ -95,6 +95,9 @@ export function toStoredAgentRecord(
       ? agent.attention.attentionTimestamp.toISOString()
       : null,
     internal: options?.internal,
+    unattended: agent.unattended,
+    guardrailDenials: agent.guardrailDenials,
+    lastGuardrailDenialAt: agent.lastGuardrailDenialAt,
   } satisfies StoredAgentRecord;
 }
 

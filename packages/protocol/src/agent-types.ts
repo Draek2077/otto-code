@@ -95,6 +95,13 @@ export interface AgentModelDefinition {
    * and the user hasn't tagged. Consumers fall back to their own inference.
    */
   tier?: ModelTier;
+  /**
+   * False when this model cannot run the provider's "auto" permission mode
+   * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku). Absent
+   * = supported or unknown (including old daemons); clients only hide the Auto
+   * option on an explicit false.
+   */
+  supportsAutoMode?: boolean;
 }
 
 export interface AgentSelectOption {
