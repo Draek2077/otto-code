@@ -10,6 +10,7 @@ export interface SubagentRow {
   status: Agent["status"];
   requiresAttention: Agent["requiresAttention"];
   createdAt: Agent["createdAt"];
+  updatedAt: Agent["updatedAt"];
   attend?: Agent["attend"];
   cumulativeTokens?: Agent["cumulativeTokens"];
 }
@@ -31,6 +32,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
     status: agent.status,
     requiresAttention: agent.requiresAttention,
     createdAt: agent.createdAt,
+    updatedAt: agent.updatedAt,
     attend: agent.attend,
     cumulativeTokens: agent.cumulativeTokens,
   };
