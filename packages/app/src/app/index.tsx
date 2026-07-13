@@ -12,6 +12,7 @@ import {
   useIsLastWorkspaceSelectionHydrated,
   useLastWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
+import { useAppSettings } from "@/hooks/use-settings";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
 const isDesktop = shouldUseDesktopDaemon();
@@ -31,6 +32,7 @@ export default function Index() {
     workspaceSelectionServerId,
     workspaceSelectionWorkspaceId,
   );
+  const { settings: appSettings, isLoading: isAppSettingsLoading } = useAppSettings();
 
   const startupRoute = resolveStartupRoute({
     route: { kind: "index", pathname },
@@ -45,6 +47,8 @@ export default function Index() {
     }),
     isWorkspaceSelectionLoaded,
     hasGivenUpWaitingForHost: bootstrapState.hasGivenUpWaitingForHost,
+    hasCompletedSetupWizard: appSettings.hasCompletedSetupWizard,
+    isSetupWizardStateLoaded: !isAppSettingsLoading,
   });
 
   if (startupRoute.kind === "redirect") {

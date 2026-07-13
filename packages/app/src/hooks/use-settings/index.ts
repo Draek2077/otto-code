@@ -39,6 +39,7 @@ import {
   type Settings,
   type SettingsDeps,
   type ChatTimestampDisplay,
+  type InterfaceMode,
   type PreviewServerCloseBehavior,
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
@@ -65,6 +66,7 @@ export type {
   AppSettings,
   AppLanguage,
   ChatTimestampDisplay,
+  InterfaceMode,
   DesktopSettingsBridge,
   KeyValueStorage,
   ReleaseChannel,
@@ -103,6 +105,60 @@ export interface UseSettingsReturn {
 }
 
 type SettingsSelector<TSelected> = (settings: Settings) => TSelected;
+
+// Per-field allowlist for routing merged-Settings updates to the AppSettings
+// store. Desktop-owned fields (manageBuiltInDaemon, releaseChannel) are handled
+// separately by the caller. Extracted from the updateSettings callback to keep it
+// under the cyclomatic-complexity ceiling — add new AppSettings fields here.
+function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {
+  const appUpdates: Partial<AppSettings> = {};
+  if (updates.colorSchemeMode !== undefined) {
+    appUpdates.colorSchemeMode = updates.colorSchemeMode;
+  }
+  if (updates.lightTheme !== undefined) {
+    appUpdates.lightTheme = updates.lightTheme;
+  }
+  if (updates.darkTheme !== undefined) {
+    appUpdates.darkTheme = updates.darkTheme;
+  }
+  if (updates.language !== undefined) {
+    appUpdates.language = updates.language;
+  }
+  if (updates.sendBehavior !== undefined) {
+    appUpdates.sendBehavior = updates.sendBehavior;
+  }
+  if (updates.serviceUrlBehavior !== undefined) {
+    appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
+  }
+  if (updates.terminalScrollbackLines !== undefined) {
+    appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
+  }
+  if (updates.uiFontFamily !== undefined) {
+    appUpdates.uiFontFamily = updates.uiFontFamily;
+  }
+  if (updates.monoFontFamily !== undefined) {
+    appUpdates.monoFontFamily = updates.monoFontFamily;
+  }
+  if (updates.uiFontSize !== undefined) {
+    appUpdates.uiFontSize = updates.uiFontSize;
+  }
+  if (updates.codeFontSize !== undefined) {
+    appUpdates.codeFontSize = updates.codeFontSize;
+  }
+  if (updates.syntaxTheme !== undefined) {
+    appUpdates.syntaxTheme = updates.syntaxTheme;
+  }
+  if (updates.workspaceTitleSource !== undefined) {
+    appUpdates.workspaceTitleSource = updates.workspaceTitleSource;
+  }
+  if (updates.autoExpandReasoning !== undefined) {
+    appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
+  }
+  if (updates.interfaceMode !== undefined) {
+    appUpdates.interfaceMode = updates.interfaceMode;
+  }
+  return appUpdates;
+}
 
 export function useAppSettings(): UseAppSettingsReturn {
   const queryClient = useQueryClient();
@@ -155,49 +211,7 @@ export function useSettings<TSelected>(
 
   const updateSettings = useCallback(
     async (updates: Partial<Settings>) => {
-      const appUpdates: Partial<AppSettings> = {};
-      if (updates.colorSchemeMode !== undefined) {
-        appUpdates.colorSchemeMode = updates.colorSchemeMode;
-      }
-      if (updates.lightTheme !== undefined) {
-        appUpdates.lightTheme = updates.lightTheme;
-      }
-      if (updates.darkTheme !== undefined) {
-        appUpdates.darkTheme = updates.darkTheme;
-      }
-      if (updates.language !== undefined) {
-        appUpdates.language = updates.language;
-      }
-      if (updates.sendBehavior !== undefined) {
-        appUpdates.sendBehavior = updates.sendBehavior;
-      }
-      if (updates.serviceUrlBehavior !== undefined) {
-        appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
-      }
-      if (updates.terminalScrollbackLines !== undefined) {
-        appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
-      }
-      if (updates.uiFontFamily !== undefined) {
-        appUpdates.uiFontFamily = updates.uiFontFamily;
-      }
-      if (updates.monoFontFamily !== undefined) {
-        appUpdates.monoFontFamily = updates.monoFontFamily;
-      }
-      if (updates.uiFontSize !== undefined) {
-        appUpdates.uiFontSize = updates.uiFontSize;
-      }
-      if (updates.codeFontSize !== undefined) {
-        appUpdates.codeFontSize = updates.codeFontSize;
-      }
-      if (updates.syntaxTheme !== undefined) {
-        appUpdates.syntaxTheme = updates.syntaxTheme;
-      }
-      if (updates.workspaceTitleSource !== undefined) {
-        appUpdates.workspaceTitleSource = updates.workspaceTitleSource;
-      }
-      if (updates.autoExpandReasoning !== undefined) {
-        appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
-      }
+      const appUpdates = collectAppSettingsUpdates(updates);
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {
         promises.push(appSettings.updateSettings(appUpdates));

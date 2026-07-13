@@ -8,7 +8,15 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
+import Svg, {
+  Circle,
+  Defs,
+  FeGaussianBlur,
+  Filter,
+  G,
+  RadialGradient,
+  Stop,
+} from "react-native-svg";
 import { withUnistyles } from "react-native-unistyles";
 
 // One full loop. Glow A makes 2 revolutions per loop and glow B 3 (same
@@ -74,13 +82,15 @@ function ensureSharedBlobLoopStarted(): void {
   );
 }
 
-const GLOW_LAYER_STYLE = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-} as const;
+// Extra viewBox margin (in 0..100 units, per side) a blurred ring needs so its
+// glow fits inside the SVG viewport instead of being clipped. The outer halo
+// stroke already reaches r≈53 (coordinate 103, past the 0..100 box) and the
+// gaussian bloom spreads a further ~3σ. Zero when unblurred. GlowLayer uses it
+// to size the viewBox + filter region; BlobLoader uses it to over-scan the SVG
+// so the visible ring stays `0.8 × size` regardless of blur (see there).
+function blurPadUnits(blur: number): number {
+  return blur > 0 ? Math.ceil(6 + blur * 3) : 0;
+}
 
 /**
  * One color of orbiting light: a bright ring plus soft halo strokes, all
@@ -88,48 +98,90 @@ const GLOW_LAYER_STYLE = {
  * orbits the hot spot. Everything fades to transparent — there is no opaque
  * body, so the loader glows over both black and white backgrounds.
  */
-function GlowLayer({ color, gradientId }: { color: string; gradientId: string }) {
+function GlowLayer({
+  color,
+  gradientId,
+  filterId,
+  blur = 0,
+}: {
+  color: string;
+  gradientId: string;
+  filterId: string;
+  blur?: number;
+}) {
+  // Opt-in gaussian bloom: blurs the ring into a soft plasma haze (the setup
+  // wizard's brand bookends use this for a black-hole-like look). stdDeviation
+  // is in the 0..100 viewBox space, so a single value is resolution-independent
+  // and looks the same at any rendered size. Default 0 keeps every small
+  // working-indicator instance crisp.
+  const filtered = blur > 0;
+
+  // An SVG clips to its viewBox (always on native; overflow:hidden by default
+  // on web), which shaves a blurred ring's glow into a squared-off oval. Pad
+  // the viewBox symmetrically so the whole glow fits inside the viewport, and
+  // match the filter region to the padded box (userSpaceOnUse) so the filter
+  // doesn't re-clip. BlobLoader over-scans the SVG by the same pad so the ring
+  // still renders at its intended size. The unblurred path keeps the tight
+  // 0..100 box, byte-for-byte unchanged.
+  const pad = blurPadUnits(blur);
+  const min = -pad;
+  const span = 100 + pad * 2;
+
   return (
-    <Svg width="100%" height="100%" viewBox="0 0 100 100">
+    <Svg width="100%" height="100%" viewBox={`${min} ${min} ${span} ${span}`}>
       <Defs>
         <RadialGradient id={gradientId} cx="76%" cy="20%" r="75%">
           <Stop offset="0%" stopColor={color} stopOpacity={0.95} />
           <Stop offset="45%" stopColor={color} stopOpacity={0.35} />
           <Stop offset="100%" stopColor={color} stopOpacity={0} />
         </RadialGradient>
+        {filtered ? (
+          <Filter
+            id={filterId}
+            filterUnits="userSpaceOnUse"
+            x={min}
+            y={min}
+            width={span}
+            height={span}
+          >
+            <FeGaussianBlur stdDeviation={blur} />
+          </Filter>
+        ) : null}
       </Defs>
-      {/* Feathered halo: stacked strokes fade the glow outward and inward. */}
-      <Circle
-        cx={50}
-        cy={50}
-        r={40}
-        stroke={`url(#${gradientId})`}
-        strokeWidth={26}
-        fill="none"
-        opacity={0.16}
-      />
-      <Circle
-        cx={50}
-        cy={50}
-        r={40}
-        stroke={`url(#${gradientId})`}
-        strokeWidth={16}
-        fill="none"
-        opacity={0.3}
-      />
-      {/* Bright core ring. */}
-      <Circle
-        cx={50}
-        cy={50}
-        r={40}
-        stroke={`url(#${gradientId})`}
-        strokeWidth={9}
-        fill="none"
-        opacity={0.95}
-      />
-      {/* Whisper of inner bloom so the transparent center doesn't read as a
-          hollow outline at small sizes. */}
-      <Circle cx={50} cy={50} r={33} fill={`url(#${gradientId})`} opacity={0.14} />
+      <G filter={filtered ? `url(#${filterId})` : undefined}>
+        {/* Feathered halo: stacked strokes fade the glow outward and inward. */}
+        <Circle
+          cx={50}
+          cy={50}
+          r={40}
+          stroke={`url(#${gradientId})`}
+          strokeWidth={26}
+          fill="none"
+          opacity={0.16}
+        />
+        <Circle
+          cx={50}
+          cy={50}
+          r={40}
+          stroke={`url(#${gradientId})`}
+          strokeWidth={16}
+          fill="none"
+          opacity={0.3}
+        />
+        {/* Bright core ring. */}
+        <Circle
+          cx={50}
+          cy={50}
+          r={40}
+          stroke={`url(#${gradientId})`}
+          strokeWidth={9}
+          fill="none"
+          opacity={0.95}
+        />
+        {/* Whisper of inner bloom so the transparent center doesn't read as a
+            hollow outline at small sizes. */}
+        <Circle cx={50} cy={50} r={33} fill={`url(#${gradientId})`} opacity={0.14} />
+      </G>
     </Svg>
   );
 }
@@ -149,26 +201,43 @@ export function BlobLoader({
   size = 20,
   glowA = GLOW_CYAN,
   glowB = GLOW_MAGENTA,
+  blur = 0,
+  wobble = true,
 }: {
   size?: number;
   glowA?: string;
   glowB?: string;
+  // stdDeviation (0..100 viewBox units) of an opt-in gaussian bloom on both
+  // orbiting layers. 0 (default) = today's crisp ring. See GlowLayer.
+  blur?: number;
+  // Whether the ring squashes organically as it spins (the plasma "wobble").
+  // On (default) for the tiny working indicator; callers that want a smooth,
+  // perfectly circular spin — e.g. the setup wizard's large brand halo — pass
+  // false. The orbiting glow still spins; only the scaleX/scaleY pulse stops.
+  wobble?: boolean;
 }) {
   useEffect(() => {
     ensureSharedBlobLoopStarted();
   }, []);
 
-  // Gradient ids are rendered into the DOM on web, so they must be unique
+  // Gradient/filter ids are rendered into the DOM on web, so they must be unique
   // per instance; useId output is sanitized for use inside url(#...).
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const glowAId = `blob-glow-a-${uid}`;
   const glowBId = `blob-glow-b-${uid}`;
+  const blurAId = `blob-blur-a-${uid}`;
+  const blurBId = `blob-blur-b-${uid}`;
 
+  const wobbleAmplitude = wobble ? 0.045 : 0;
   const wobbleStyle = useAnimatedStyle(() => {
-    // Integer squash cycles per loop keep the repeat seamless.
-    const wobble = Math.sin(sharedBlobProgress.value * Math.PI * 8);
+    // Integer squash cycles per loop keep the repeat seamless. Amplitude 0
+    // (wobble disabled) leaves scaleX/scaleY at 1 — a smooth circular spin.
+    const squash = Math.sin(sharedBlobProgress.value * Math.PI * 8);
     return {
-      transform: [{ scaleX: 1 + 0.045 * wobble }, { scaleY: 1 - 0.045 * wobble }],
+      transform: [
+        { scaleX: 1 + wobbleAmplitude * squash },
+        { scaleY: 1 - wobbleAmplitude * squash },
+      ],
     };
   });
 
@@ -196,18 +265,43 @@ export function BlobLoader({
     [wobbleStyle, size],
   );
 
-  const glowALayerStyle = useMemo(() => [glowASpinStyle, GLOW_LAYER_STYLE], [glowASpinStyle]);
-  const glowBLayerStyle = useMemo(() => [glowBSpinStyle, GLOW_LAYER_STYLE], [glowBSpinStyle]);
+  // Over-scan each glow layer past the `size` box by the blur's viewBox pad
+  // (converted to px: pad is per-side in 0..100 units, so `size * pad / 100`).
+  // The SVG then renders at `size * span/100`, which pulls the padded ring back
+  // to `0.8 × size` on screen — so `size` means the same visible ring diameter
+  // whether or not there's a bloom, and the glow overflows the box instead of
+  // clipping. Zero pad (unblurred) collapses this to a plain inset-0 fill.
+  const overscan = (size * blurPadUnits(blur)) / 100;
+  const overscanStyle = useMemo(
+    () =>
+      ({
+        position: "absolute",
+        top: -overscan,
+        left: -overscan,
+        right: -overscan,
+        bottom: -overscan,
+      }) as const,
+    [overscan],
+  );
+
+  const glowALayerStyle = useMemo(
+    () => [glowASpinStyle, overscanStyle],
+    [glowASpinStyle, overscanStyle],
+  );
+  const glowBLayerStyle = useMemo(
+    () => [glowBSpinStyle, overscanStyle],
+    [glowBSpinStyle, overscanStyle],
+  );
 
   return (
     <View style={containerStyle}>
       <Animated.View style={blobStyle}>
         {/* Orbiting lights, each on its own rotation of the shared clock. */}
         <Animated.View style={glowALayerStyle}>
-          <GlowLayer color={glowA} gradientId={glowAId} />
+          <GlowLayer color={glowA} gradientId={glowAId} filterId={blurAId} blur={blur} />
         </Animated.View>
         <Animated.View style={glowBLayerStyle}>
-          <GlowLayer color={glowB} gradientId={glowBId} />
+          <GlowLayer color={glowB} gradientId={glowBId} filterId={blurBId} blur={blur} />
         </Animated.View>
       </Animated.View>
     </View>

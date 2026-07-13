@@ -45,6 +45,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { isWeb } from "@/constants/platform";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { useIconSize } from "@/styles/theme";
@@ -93,6 +94,7 @@ export function CompactExplorerSidebar({
   const insets = useSafeAreaInsets();
   const isOpen = usePanelStore((state) => selectIsFileExplorerOpen(state, { isCompact: true }));
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const isDeveloperMode = useIsDeveloperMode();
   const { explorerTab, handleTabPress } = useExplorerSidebarSharedState({
     serverId,
     workspaceRoot,
@@ -143,6 +145,7 @@ export function CompactExplorerSidebar({
           workspaceId={workspaceId}
           workspaceRoot={workspaceRoot}
           isGit={isGit}
+          isDeveloperMode={isDeveloperMode}
           isMobile
           isOpen={isOpen}
           onOpenFile={onOpenFile}
@@ -164,6 +167,7 @@ export function ExplorerSidebar({
   const setExplorerWidth = usePanelStore((state) => state.setExplorerWidth);
   const isOpen = usePanelStore((state) => selectIsFileExplorerOpen(state, { isCompact: false }));
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
+  const isDeveloperMode = useIsDeveloperMode();
   const { explorerTab, handleTabPress } = useExplorerSidebarSharedState({
     serverId,
     workspaceRoot,
@@ -215,6 +219,22 @@ export function ExplorerSidebar({
     [explorerWidth, resizeWidth, setExplorerWidth, viewportWidth],
   );
 
+  // Double-tapping the resize handle closes the sidebar, same as the toggle.
+  const closeGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+          runOnJS(closeDesktopFileExplorer)();
+        }),
+    [closeDesktopFileExplorer],
+  );
+
+  const resizeHandleGesture = useMemo(
+    () => Gesture.Race(closeGesture, resizeGesture),
+    [closeGesture, resizeGesture],
+  );
+
   const resizeAnimatedStyle = useAnimatedStyle(() => ({
     width: resizeWidth.value,
   }));
@@ -230,7 +250,7 @@ export function ExplorerSidebar({
   return (
     <Animated.View style={desktopSidebarStyle}>
       <View style={DESKTOP_SIDEBAR_BORDER_STYLE}>
-        <GestureDetector gesture={resizeGesture}>
+        <GestureDetector gesture={resizeHandleGesture}>
           <View style={RESIZE_HANDLE_STYLE} />
         </GestureDetector>
 
@@ -242,6 +262,7 @@ export function ExplorerSidebar({
           workspaceId={workspaceId}
           workspaceRoot={workspaceRoot}
           isGit={isGit}
+          isDeveloperMode={isDeveloperMode}
           isMobile={false}
           isOpen={isOpen}
           onOpenFile={onOpenFile}
@@ -331,7 +352,14 @@ function resolveActiveExplorerTab(input: {
   isGit: boolean;
   hasProjectSearch: boolean;
   showPrTab: boolean;
+  isDeveloperMode: boolean;
 }): ExplorerTab {
+  // User interface mode exposes only the Files tab (Changes / Search / PR are
+  // developer-and-git surfaces). Any persisted dev-tab selection coerces to
+  // files rather than rendering an empty pane — see interface-modes.md.
+  if (!input.isDeveloperMode) {
+    return "files";
+  }
   const featureCoerced =
     input.activeTab === "search" && !input.hasProjectSearch ? "files" : input.activeTab;
   const requested =
@@ -358,6 +386,7 @@ interface SidebarContentProps {
   workspaceId?: string | null;
   workspaceRoot: string;
   isGit: boolean;
+  isDeveloperMode: boolean;
   isMobile: boolean;
   isOpen: boolean;
   onOpenFile?: (filePath: string, options?: { edit?: boolean; lineStart?: number }) => void;
@@ -371,6 +400,7 @@ function ExplorerSidebarContent({
   workspaceId,
   workspaceRoot,
   isGit,
+  isDeveloperMode,
   isMobile,
   isOpen,
   onOpenFile,
@@ -380,7 +410,9 @@ function ExplorerSidebarContent({
   const iconSize = useIconSize();
   const toast = useToast();
   const padding = useWindowControlsPadding("explorerSidebar");
-  const canQueryPullRequest = isGit && Boolean(workspaceRoot);
+  // In User interface mode only the Files tab renders, so the PR/git query is
+  // never needed — keep it from firing (a lens, not a lock: no dev-surface RPCs).
+  const canQueryPullRequest = isDeveloperMode && isGit && Boolean(workspaceRoot);
   const prPane = usePrPaneData({
     serverId,
     cwd: workspaceRoot,
@@ -390,7 +422,13 @@ function ExplorerSidebarContent({
   const hasPullRequest = prPane.prNumber !== null;
   const showPrTab = hasPullRequest || (activeTab === "pr" && prPane.isLoading);
   const hasProjectSearch = useProjectSearchFeature(serverId);
-  const resolvedTab = resolveActiveExplorerTab({ activeTab, isGit, hasProjectSearch, showPrTab });
+  const resolvedTab = resolveActiveExplorerTab({
+    activeTab,
+    isGit,
+    hasProjectSearch,
+    showPrTab,
+    isDeveloperMode,
+  });
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const refreshGitActions = useCheckoutGitActionsStore((s) => s.refresh);
   const handlePrRetry = useCallback(() => {
@@ -425,8 +463,11 @@ function ExplorerSidebarContent({
     setTextTabsWidth(event.nativeEvent.layout.width);
   }, []);
 
+  // User mode shows only Files; Changes / Search / PR are developer-and-git
+  // surfaces gated out of that lens (interface-modes.md). Search may return to
+  // User mode later as a simpler variant — keep it behind the same gate for now.
   const tabDefs: ExplorerTabDef[] = [];
-  if (isGit) {
+  if (isDeveloperMode && isGit) {
     tabDefs.push({
       tab: "changes",
       label: t("workspace.tabs.explorer.changes"),
@@ -440,7 +481,7 @@ function ExplorerSidebarContent({
     testID: "explorer-tab-files",
     renderIcon: (color) => <Files size={iconSize.sm} color={color} />,
   });
-  if (hasProjectSearch) {
+  if (isDeveloperMode && hasProjectSearch) {
     tabDefs.push({
       tab: "search",
       label: t("workspace.tabs.explorer.search"),
@@ -448,7 +489,7 @@ function ExplorerSidebarContent({
       renderIcon: (color) => <DocumentSearch size={iconSize.sm} color={color} />,
     });
   }
-  if (isGit && showPrTab) {
+  if (isDeveloperMode && isGit && showPrTab) {
     tabDefs.push({
       tab: "pr",
       label: prTabLabel,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { PersonalityRole } from "@otto-code/protocol/messages";
 import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
 import type { SelectorPersonality } from "@/components/combined-model-selector";
 import {
   resolvePersonalityForForm,
@@ -44,6 +45,13 @@ export interface UsePersonalitySelectionInput {
    * never auto-re-selects a remembered personality (persistence still works).
    */
   currentSelection?: PersonalityCurrentSelection;
+  /**
+   * A personality id that stays selectable even when the active team's strict
+   * member filter would hide it — the schedule form's already-bound off-team
+   * personality (it was valid when authored; the form must not break). Never
+   * pass a speculative id here.
+   */
+  alwaysIncludePersonalityId?: string | null;
 }
 
 export interface UsePersonalitySelectionResult {
@@ -90,7 +98,7 @@ function selectionMatches(
 export function usePersonalitySelection(
   input: UsePersonalitySelectionInput,
 ): UsePersonalitySelectionResult {
-  const { serverId, role, entries, onApply, currentSelection } = input;
+  const { serverId, role, entries, onApply, currentSelection, alwaysIncludePersonalityId } = input;
   const { config } = useDaemonConfig(serverId);
   const { preferences, isLoading: preferencesLoading, updatePreferences } = useFormPreferences();
   const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(null);
@@ -101,9 +109,27 @@ export function usePersonalitySelection(
   // Depend on the roster slice, not the whole config — unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
   const rosterSource = config?.agentPersonalities?.personalities;
+  // Strict active-team scoping: with a team active only its members show
+  // (role/availability-filtered as always). The one escape hatch is the
+  // caller's already-bound personality (schedule form editing an off-team
+  // binding). No active team = the full roster, exactly legacy behavior.
+  const agentTeamsSource = config?.agentTeams;
+  const activeTeam = useMemo(() => getActiveAgentTeam(agentTeamsSource), [agentTeamsSource]);
   const roster = useMemo(
-    () => (rosterSource ?? []).filter((personality) => personalityHasRole(personality, role)),
-    [rosterSource, role],
+    () =>
+      (rosterSource ?? []).filter((personality) => {
+        if (!personalityHasRole(personality, role)) {
+          return false;
+        }
+        if (!activeTeam) {
+          return true;
+        }
+        return (
+          isTeamMember(activeTeam, personality.id) ||
+          personality.id === (alwaysIncludePersonalityId ?? null)
+        );
+      }),
+    [rosterSource, role, activeTeam, alwaysIncludePersonalityId],
   );
 
   const resolutions = useMemo(

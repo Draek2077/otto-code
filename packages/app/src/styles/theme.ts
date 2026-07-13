@@ -221,6 +221,23 @@ function lightenHex(hex: string, amount: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
+// Ink for text/glyphs sitting on a solid accent *fill* (e.g. the "Active" team
+// pill). Deliberately NOT accentForeground: that token maximizes contrast, so
+// on the light gold/blue accents it lands dark — legible, but the dark glyphs
+// read heavy and "thick" on a bright chip. This instead prefers white and only
+// flips to dark ink once the accent is pale enough (perceived luminance) that
+// white would wash out — the Graphite/Powder near-white accents. Net effect:
+// accent pills read as bright chips in most themes and invert on pale accents,
+// matching how a chip "should" look at each end.
+function accentFillInk(accentHex: string): string {
+  const value = Number.parseInt(accentHex.slice(1, 7), 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  const perceived = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return perceived >= 0.6 ? "#141417" : "#ffffff";
+}
+
 function buildLightSemanticColors(tint: LightThemeConfig) {
   return {
     // Surfaces (layers)
@@ -269,6 +286,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: tint.accentForeground ?? "#ffffff",
+    accentFillInk: accentFillInk(tint.accent),
     // ON-state switch knob. Distinct from accentForeground (glyph ink): light
     // accents are always mid-dark saturated colors (they must hold on white),
     // so a white knob always contrasts — even where glyphs use dark ink.
@@ -554,6 +572,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     accent: tint.accent,
     accentBright: tint.accentBright,
     accentForeground: tint.accentForeground ?? "#ffffff",
+    accentFillInk: accentFillInk(tint.accent),
     // ON-state switch knob. Follows accentForeground here because dark themes
     // only override it when the accent is near-white (Graphite, Midnight) —
     // exactly the case where a white knob would vanish into the track.

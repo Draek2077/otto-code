@@ -48,6 +48,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
 import { resolvePersonalityForForm } from "@/provider-selection/personality-form";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import {
@@ -221,13 +222,23 @@ function useRunningChatPersonality(input: {
   const boundPersonalityId = agent?.personalityId;
   const entries = input.entries ?? EMPTY_SNAPSHOT_ENTRIES;
 
+  // With a team active, the pinned roster narrows to its members. The agent's
+  // CURRENT personality is deliberately allowed through even when off-team so
+  // the trigger never lies and re-selecting it keeps working; other off-team
+  // picks require switching/deactivating the team (strict filter, locked).
+  const agentTeamsSource = config?.agentTeams;
+  const activeTeam = useMemo(() => getActiveAgentTeam(agentTeamsSource), [agentTeamsSource]);
   const familyRoster = useMemo(
     () =>
       (config?.agentPersonalities?.personalities ?? EMPTY_PERSONALITY_ROSTER).filter(
         (personality) =>
-          personalityHasRole(personality, "chatter") && personality.provider === provider,
+          personalityHasRole(personality, "chatter") &&
+          personality.provider === provider &&
+          (!activeTeam ||
+            isTeamMember(activeTeam, personality.id) ||
+            personality.id === (boundPersonalityId ?? null)),
       ),
-    [config?.agentPersonalities?.personalities, provider],
+    [config?.agentPersonalities?.personalities, provider, activeTeam, boundPersonalityId],
   );
   const rosterPersonalities = useMemo(
     () => buildRunningChatPersonalities({ roster: familyRoster, entries }),

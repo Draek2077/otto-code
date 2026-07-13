@@ -120,6 +120,10 @@ import {
   resolvePersonality,
   type ResolvedPersonalitySnapshot,
 } from "./agent/agent-personalities.js";
+import {
+  composeTeamAndPersonalityPrompt,
+  resolveTeamSnapshotForPersonality,
+} from "./agent/agent-teams.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import {
@@ -1088,6 +1092,7 @@ export class Session {
     return {
       metadataGeneration: config.metadataGeneration,
       agentPersonalities: config.agentPersonalities,
+      agentTeams: config.agentTeams,
     };
   }
 
@@ -2936,11 +2941,20 @@ export class Session {
       return config;
     }
     const snapshot: ResolvedPersonalitySnapshot = resolution.snapshot;
+    // The one team rule: a member of the active team at spawn time carries the
+    // frozen team layer, and the team prompt stacks directly ahead of the
+    // personality prompt. Caller-authored prompts still win — nothing composes.
+    const teamSnapshot = resolveTeamSnapshotForPersonality(
+      this.daemonConfigStore.get().agentTeams,
+      snapshot.personalityId,
+    );
+    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
     return {
       ...config,
       personalitySnapshot: snapshot,
-      ...(config.systemPrompt === undefined && snapshot.systemPrompt !== undefined
-        ? { systemPrompt: snapshot.systemPrompt }
+      ...(teamSnapshot ? { teamSnapshot } : {}),
+      ...(config.systemPrompt === undefined && composedPrompt !== undefined
+        ? { systemPrompt: composedPrompt }
         : {}),
     };
   }

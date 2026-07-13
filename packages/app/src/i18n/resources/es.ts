@@ -1260,6 +1260,7 @@ export const es: TranslationResources = {
     },
   },
   openProject: {
+    setupWizard: "Set up Otto",
     quotes: [
       {
         text: "Eres el amo de tu universo, y aun así estás empapado de sangre de rata y heces. Tu enorme mente literalmente se marchita por tu propia mano.",
@@ -1931,6 +1932,17 @@ export const es: TranslationResources = {
           queue: "Cola",
         },
       },
+      interfaceMode: {
+        label: "Interface mode",
+        descriptions: {
+          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          developer: "The full development environment: files, diffs, terminals, git, and search.",
+        },
+        options: {
+          user: "User",
+          developer: "Developer",
+        },
+      },
       serviceUrls: {
         label: "URL de servicio",
         description: "Dónde abrir URL desde scripts en ejecución",
@@ -2005,6 +2017,11 @@ export const es: TranslationResources = {
       title: "Acerca de",
       appVersion: "Versión de la aplicación",
       thisDevice: "este dispositivo",
+      resetWizard: {
+        label: "Reset First Time Wizard",
+        description: "Re-open the guided setup. It never deletes your agents or teams.",
+        action: "Open",
+      },
       connectedHosts: "Anfitriones conectados",
       offline: "Desconectado",
       versionDiffers: "La versión difiere de este dispositivo.",
@@ -2653,6 +2670,36 @@ export const es: TranslationResources = {
   artifacts: {
     errors: {
       hostDisconnected: "Hostno está conectado",
+    },
+  },
+  tutorial: {
+    exit: "Exit tutorial",
+    launch: "Tutorial",
+    steps: {
+      settings: {
+        title: "Find your Settings",
+        body: "Themes, providers, agents and everything else live in Settings.",
+        hint: "Tap the gear to open Settings.",
+      },
+      createProject: {
+        title: "Create a project",
+        body: "A project is just a folder on your machine. Add one to start working.",
+        hint: "Tap to pick a folder and create your first workspace.",
+      },
+      workspaces: {
+        title: "Your workspaces",
+        body: "Each project's workspaces live here — switch between them anytime.",
+      },
+      explorer: {
+        title: "Explore your files",
+        body: "Open the Explorer to browse files, search, and review changes.",
+        hint: "Tap to open the Explorer.",
+      },
+      chat: {
+        title: "Chat with your agents",
+        body: "This is where you talk to your AI agents. Type a message to get started.",
+        hint: "Tap to finish — you're all set.",
+      },
     },
   },
 };

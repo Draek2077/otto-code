@@ -1209,6 +1209,7 @@ export const zhCN: TranslationResources = {
     },
   },
   openProject: {
+    setupWizard: "Set up Otto",
     quotes: [
       {
         text: "你是自己宇宙的主宰，可你却浑身沾满老鼠血和粪便。你那伟大的头脑，正被你自己亲手荒废。",
@@ -1873,6 +1874,17 @@ export const zhCN: TranslationResources = {
           queue: "排队",
         },
       },
+      interfaceMode: {
+        label: "Interface mode",
+        descriptions: {
+          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          developer: "The full development environment: files, diffs, terminals, git, and search.",
+        },
+        options: {
+          user: "User",
+          developer: "Developer",
+        },
+      },
       serviceUrls: {
         label: "服务 URL",
         description: "运行脚本中的 URL 打开位置",
@@ -1946,6 +1958,11 @@ export const zhCN: TranslationResources = {
       title: "关于",
       appVersion: "应用版本",
       thisDevice: "此设备",
+      resetWizard: {
+        label: "Reset First Time Wizard",
+        description: "Re-open the guided setup. It never deletes your agents or teams.",
+        action: "Open",
+      },
       connectedHosts: "已连接的 Host",
       offline: "离线",
       versionDiffers: "版本与此设备不同",
@@ -2580,6 +2597,36 @@ export const zhCN: TranslationResources = {
   artifacts: {
     errors: {
       hostDisconnected: "Host 未连接",
+    },
+  },
+  tutorial: {
+    exit: "Exit tutorial",
+    launch: "Tutorial",
+    steps: {
+      settings: {
+        title: "Find your Settings",
+        body: "Themes, providers, agents and everything else live in Settings.",
+        hint: "Tap the gear to open Settings.",
+      },
+      createProject: {
+        title: "Create a project",
+        body: "A project is just a folder on your machine. Add one to start working.",
+        hint: "Tap to pick a folder and create your first workspace.",
+      },
+      workspaces: {
+        title: "Your workspaces",
+        body: "Each project's workspaces live here — switch between them anytime.",
+      },
+      explorer: {
+        title: "Explore your files",
+        body: "Open the Explorer to browse files, search, and review changes.",
+        hint: "Tap to open the Explorer.",
+      },
+      chat: {
+        title: "Chat with your agents",
+        body: "This is where you talk to your AI agents. Type a message to get started.",
+        hint: "Tap to finish — you're all set.",
+      },
     },
   },
 };

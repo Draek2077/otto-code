@@ -20,8 +20,17 @@ import {
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
-import { usePersonalitySelection } from "@/hooks/use-personality-selection";
+import {
+  usePersonalitySelection,
+  type PersonalityCurrentSelection,
+  type SelectorPersonality,
+} from "@/hooks/use-personality-selection";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
+import { buildTeamRoleEntry } from "@/provider-selection/team-role-entry";
+import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
+import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
@@ -242,6 +251,124 @@ function canSubmitArtifactForm(input: {
   return input.nameTrimmed.length > 0 && input.descriptionTrimmed.length > 0;
 }
 
+// The synthetic "Team's Artificer" picker entry. Unlike the schedule form's
+// "Team's Scheduler" (which stores a run-time sentinel the daemon re-resolves at
+// every run), artifact generation runs immediately, so this entry has no
+// persisted binding — selecting it resolves the active team's Artificer NOW and
+// auto-fills the same provider/model/effort + spinner snapshot a direct
+// personality pick would. Its id never leaves the form.
+const TEAM_ARTIFICER_ENTRY_ID = "__team-artificer__";
+
+interface ArtifactPersonalitySelection {
+  personalities: SelectorPersonality[];
+  selectedPersonalityId: string | null;
+  selectPersonality: (id: string) => void;
+  clearPersonality: () => void;
+  selectedPersonalityName: string | null;
+  selectedPersonalitySpinner: { glowA: string; glowB: string } | undefined;
+}
+
+// Artifact model picker's personality selection: the role-filtered roster plus,
+// when a team is active, a "Team's Artificer" entry that follows the team's
+// Artificer at pick time. Mirrors the schedule form's binding shape minus the
+// persisted sentinel.
+function useArtifactPersonalitySelection(input: {
+  serverId: string | null;
+  entries: readonly ProviderSnapshotEntry[];
+  onApply: (values: PersonalityFormValues) => void;
+  currentSelection: PersonalityCurrentSelection;
+}): ArtifactPersonalitySelection {
+  const { serverId, entries, onApply, currentSelection } = input;
+  const { config } = useDaemonConfig(serverId);
+  const hasTeamsFeature = useAgentTeamsFeature(serverId ?? "");
+  const rosterSource = config?.agentPersonalities?.personalities;
+  const activeTeam = useMemo(() => getActiveAgentTeam(config?.agentTeams), [config?.agentTeams]);
+
+  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
+    usePersonalitySelection({
+      serverId,
+      role: "artificer",
+      entries,
+      onApply,
+      currentSelection,
+    });
+
+  const teamArtificerEntry = useMemo(
+    () =>
+      hasTeamsFeature && activeTeam
+        ? buildTeamRoleEntry({
+            entryId: TEAM_ARTIFICER_ENTRY_ID,
+            role: "artificer",
+            label: "Team's Artificer",
+            roleLabel: "Artificer",
+            team: activeTeam,
+            roster: rosterSource ?? [],
+            entries,
+          })
+        : null,
+    [hasTeamsFeature, activeTeam, rosterSource, entries],
+  );
+
+  const [teamArtificerSelected, setTeamArtificerSelected] = useState(false);
+
+  const displayPersonalities = useMemo<SelectorPersonality[]>(
+    () => (teamArtificerEntry ? [teamArtificerEntry.selector, ...personalities] : personalities),
+    [teamArtificerEntry, personalities],
+  );
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      if (id === TEAM_ARTIFICER_ENTRY_ID) {
+        if (!teamArtificerEntry?.values) {
+          return;
+        }
+        setTeamArtificerSelected(true);
+        onApply(teamArtificerEntry.values);
+        return;
+      }
+      setTeamArtificerSelected(false);
+      selectPersonality(id);
+    },
+    [teamArtificerEntry, onApply, selectPersonality],
+  );
+
+  const handleClear = useCallback(() => {
+    setTeamArtificerSelected(false);
+    clearPersonality();
+  }, [clearPersonality]);
+
+  // The synthetic entry only stays selected while it still resolves (team
+  // switched away → fall back to the roster selection, exactly like the
+  // schedule form's teamSchedulerSelected gate).
+  let effectiveSelectedId: string | null;
+  if (teamArtificerSelected) {
+    effectiveSelectedId = teamArtificerEntry ? TEAM_ARTIFICER_ENTRY_ID : null;
+  } else {
+    effectiveSelectedId = selectedPersonalityId;
+  }
+
+  const selectedEntry = useMemo(
+    () => displayPersonalities.find((entry) => entry.id === effectiveSelectedId) ?? null,
+    [displayPersonalities, effectiveSelectedId],
+  );
+  const selectedSpinner = useMemo(
+    () =>
+      selectedEntry?.glowA && selectedEntry.glowB
+        ? { glowA: selectedEntry.glowA, glowB: selectedEntry.glowB }
+        : undefined,
+    [selectedEntry],
+  );
+
+  return {
+    personalities: displayPersonalities,
+    selectedPersonalityId: effectiveSelectedId,
+    selectPersonality: handleSelect,
+    clearPersonality: handleClear,
+    selectedPersonalityName: selectedEntry?.name ?? null,
+    selectedPersonalitySpinner: selectedSpinner,
+  };
+}
+
 export function ArtifactCreateSheet({
   visible,
   onClose,
@@ -364,27 +491,23 @@ export function ArtifactCreateSheet({
     }),
     [selectedProvider, selectedModel, selectedThinkingOptionId],
   );
-  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
-    usePersonalitySelection({
-      serverId: mutationServerId || null,
-      role: "artificer",
-      entries: allProviderEntries ?? [],
-      onApply: applyPersonality,
-      currentSelection: personalityCurrentSelection,
-    });
-  const selectedPersonalityName = useMemo(
-    () => personalities.find((entry) => entry.id === selectedPersonalityId)?.name ?? null,
-    [personalities, selectedPersonalityId],
-  );
-  // Snapshot the chosen personality's spinner glow so the generating card
-  // renders in its identity. Only when both glows are present (custom
-  // personalities may omit the pair) — otherwise the card falls back to theme.
-  const selectedPersonalitySpinner = useMemo(() => {
-    const personality = personalities.find((entry) => entry.id === selectedPersonalityId);
-    return personality?.glowA && personality.glowB
-      ? { glowA: personality.glowA, glowB: personality.glowB }
-      : undefined;
-  }, [personalities, selectedPersonalityId]);
+  // Includes a synthetic "Team's Artificer" entry when a team is active; the
+  // hook also snapshots the chosen identity's spinner glow so the generating
+  // card renders in its colors (falling back to theme when a custom personality
+  // omits the pair).
+  const {
+    personalities,
+    selectedPersonalityId,
+    selectPersonality,
+    clearPersonality,
+    selectedPersonalityName,
+    selectedPersonalitySpinner,
+  } = useArtifactPersonalitySelection({
+    serverId: mutationServerId || null,
+    entries: allProviderEntries ?? [],
+    onApply: applyPersonality,
+    currentSelection: personalityCurrentSelection,
+  });
 
   const handleSelectProject = useCallback(
     (target: ScheduleProjectTarget) => {

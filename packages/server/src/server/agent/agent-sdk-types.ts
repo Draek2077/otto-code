@@ -6,6 +6,7 @@ import type { OttoToolCatalog } from "./tools/types.js";
 // Type-only import — erased at compile time, so the resolver ⇄ config-types
 // cycle never exists at runtime.
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import type { ResolvedTeamSnapshot } from "./agent-teams.js";
 
 export type { AgentProviderNotice };
 export type { AgentContextUsage };
@@ -621,6 +622,15 @@ export interface AgentSessionConfig {
    * re-resolves a roster personality and replaces the snapshot wholesale.
    */
   personalitySnapshot?: ResolvedPersonalitySnapshot;
+  /**
+   * Frozen active-team resolution captured at spawn when the spawning
+   * personality was a member of the host's active Agent Team. Same lifecycle
+   * as personalitySnapshot: switching or editing teams never mutates a running
+   * agent — the born team is frozen identity, and a live personality switch
+   * recomposes the prompt against THIS snapshot's teamPrompt, not the current
+   * active team. Absent on raw spawns and non-member personality spawns.
+   */
+  teamSnapshot?: ResolvedTeamSnapshot;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
    * They are used for ephemeral system tasks like commit/PR generation.

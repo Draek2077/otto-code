@@ -13,7 +13,9 @@ import {
   type IconComponent,
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
+import { useRevealActiveWorkspace } from "@/components/sidebar/use-reveal-active-workspace";
 import {
   Pressable,
   StyleSheet as RNStyleSheet,
@@ -30,6 +32,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { SidebarActiveTeamSwitchers } from "@/components/active-team-switcher";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -77,6 +80,7 @@ import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 import { SidebarActiveWorkspaceTools } from "./sidebar/sidebar-active-workspace-tools";
+import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -165,6 +169,10 @@ export const LeftSidebar = memo(function LeftSidebar() {
     shortcutModel,
   } = useSidebarModel();
   const { shortcutIndexByWorkspaceKey } = shortcutModel;
+
+  // Scroll the active workspace's row into view whenever the active workspace
+  // changes (route-derived). No-ops when its row isn't in the mounted list.
+  useRevealActiveWorkspace();
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
 
@@ -343,7 +351,7 @@ function FooterIconButton({
   icon: IconComponent;
   iconSize?: number;
   theme: SidebarTheme;
-  buttonRef?: RefObject<View | null>;
+  buttonRef?: Ref<View>;
 } & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
   const isCompactLayout = useIsCompactFormFactor();
   // Footer icons are always scaled up on every form factor, and another 1.5x on
@@ -417,7 +425,7 @@ function SidebarHostPicker({
       hostOptionTestID={sidebarHostOptionTestID}
     >
       <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
+        <TooltipTrigger asChild triggerRefProp="buttonRef">
           <FooterIconButton
             buttonRef={triggerRef}
             onPress={handleOpen}
@@ -545,12 +553,13 @@ function SidebarFooter({
   handleOpenHostSettings: (serverId: string) => void;
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
+  const settingsAnchorRef = useTutorialAnchor("settings");
 
   return (
     <View style={styles.sidebarFooter}>
       <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
               onPress={handleHome}
               testID="sidebar-home"
@@ -564,8 +573,9 @@ function SidebarFooter({
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
+              buttonRef={settingsAnchorRef}
               onPress={handleSettings}
               testID="sidebar-settings"
               accessibilityLabel={labels.settings}
@@ -580,7 +590,7 @@ function SidebarFooter({
       </View>
       <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
             <FooterIconButton
               onPress={handleOpenProject}
               testID="sidebar-add-project"
@@ -674,6 +684,7 @@ function MobileSidebar({
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
         <View style={styles.sidebarHeaderGroup}>
+          <SidebarActiveTeamSwitchers onBeforeNavigate={closeSidebar} />
           <SidebarNewWorkspaceHeaderRow
             label={labels.newWorkspace}
             testID="sidebar-global-new-workspace"
@@ -795,6 +806,7 @@ function DesktopSidebar({
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
+  const closeDesktopAgentList = usePanelStore((state) => state.closeDesktopAgentList);
   const { width: viewportWidth } = useWindowDimensions();
 
   const startWidthRef = useRef(sidebarWidth);
@@ -826,6 +838,22 @@ function DesktopSidebar({
           runOnJS(setSidebarWidth)(resizeWidth.value);
         }),
     [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
+  );
+
+  // Double-tapping the resize handle closes the sidebar, same as the toggle.
+  const closeGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+          runOnJS(closeDesktopAgentList)();
+        }),
+    [closeDesktopAgentList],
+  );
+
+  const resizeHandleGesture = useMemo(
+    () => Gesture.Race(closeGesture, resizeGesture),
+    [closeGesture, resizeGesture],
   );
 
   const resizeAnimatedStyle = useAnimatedStyle(() => ({
@@ -862,6 +890,7 @@ function DesktopSidebar({
           <TitlebarDragRegion />
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
+            <SidebarActiveTeamSwitchers />
             <SidebarNewWorkspaceHeaderRow
               label={labels.newWorkspace}
               testID="sidebar-global-new-workspace"
@@ -929,9 +958,11 @@ function DesktopSidebar({
         />
 
         {/* Resize handle - absolutely positioned over right border */}
-        <GestureDetector gesture={resizeGesture}>
+        <GestureDetector gesture={resizeHandleGesture}>
           <View style={resizeHandleStyle} />
         </GestureDetector>
+
+        <SidebarSeamShadow seam="right" />
       </View>
     </Animated.View>
   );
@@ -939,6 +970,7 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader() {
   const { theme } = useUnistyles();
+  const workspacesAnchorRef = useTutorialAnchor("workspaces");
   // useIconSize (not theme.iconSize props) — the runtime theme patch doesn't
   // reliably reach icon size props; the hook scales with the breakpoint.
   const iconSize = useIconSize();
@@ -954,7 +986,7 @@ function WorkspacesSectionHeader() {
   );
 
   return (
-    <View style={styles.workspacesSectionHeader}>
+    <View ref={workspacesAnchorRef} collapsable={false} style={styles.workspacesSectionHeader}>
       <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
       <View style={styles.workspacesSectionActions}>
         <Tooltip delayDuration={300}>

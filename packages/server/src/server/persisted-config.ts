@@ -229,6 +229,47 @@ const AgentPersonalitiesSchema = z
   })
   .passthrough();
 
+// Persisted shape of an agent team. Mirrors AgentTeamSchema on the wire;
+// member ids are validated against the roster at use time, not here, so a
+// dangling id never blocks config load.
+const AgentTeamAvatarConfigSchema = z
+  .object({
+    color: z.string().min(1).optional(),
+    imageId: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export const AgentTeamConfigSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    avatar: AgentTeamAvatarConfigSchema.optional(),
+    teamPrompt: z.string().optional(),
+    memberIds: z.array(z.string().min(1)).optional(),
+  })
+  .passthrough();
+
+export type PersistedAgentTeam = z.infer<typeof AgentTeamConfigSchema>;
+
+const AgentTeamsSchema = z
+  .object({
+    teams: z.array(AgentTeamConfigSchema).optional(),
+    activeTeamId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+// Persisted user per-model tier tags. Mirrors ModelTierOverrideSchema on the
+// wire; an entry for a model/provider that no longer exists is simply inert.
+const ModelTierOverrideConfigSchema = z
+  .object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+    tier: z.enum(["deep", "standard", "fast"]),
+  })
+  .passthrough();
+
+export type PersistedModelTierOverride = z.infer<typeof ModelTierOverrideConfigSchema>;
+
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 
 function isLegacyProviderEntry(value: unknown): boolean {
@@ -360,6 +401,8 @@ export const PersistedConfigSchema = z
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
         agentPersonalities: AgentPersonalitiesSchema.optional(),
+        agentTeams: AgentTeamsSchema.optional(),
+        modelTierOverrides: z.array(ModelTierOverrideConfigSchema).optional(),
       })
       .strict()
       .optional(),

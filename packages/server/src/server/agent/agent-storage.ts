@@ -33,6 +33,18 @@ const PERSONALITY_SNAPSHOT_STORAGE_SCHEMA = z
   .nullable()
   .optional();
 
+// Frozen born-team snapshot as stored on disk. Mirrors ResolvedTeamSnapshot;
+// only prompt-recomposition and provenance fields are frozen, never membership.
+const TEAM_SNAPSHOT_STORAGE_SCHEMA = z
+  .object({
+    teamId: z.string(),
+    name: z.string(),
+    avatarColor: z.string().optional(),
+    teamPrompt: z.string().optional(),
+  })
+  .nullable()
+  .optional();
+
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
     modeId: z.string().nullable().optional(),
@@ -43,6 +55,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
     personalitySnapshot: PERSONALITY_SNAPSHOT_STORAGE_SCHEMA,
+    teamSnapshot: TEAM_SNAPSHOT_STORAGE_SCHEMA,
   })
   .nullable()
   .optional();
@@ -101,6 +114,7 @@ export type SerializableAgentConfig = Pick<
   | "systemPrompt"
   | "mcpServers"
   | "personalitySnapshot"
+  | "teamSnapshot"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;

@@ -7,6 +7,16 @@ import type { AgentManager } from "../agent-manager.js";
 import { resolveEffortOption } from "../effort-levels.js";
 import { resolvePersonality, type ResolvedPersonalitySnapshot } from "../agent-personalities.js";
 import {
+  composeTeamAndPersonalityPrompt,
+  resolveTeamSnapshotForPersonality,
+  type ResolvedTeamSnapshot,
+} from "../agent-teams.js";
+import {
+  getActiveAgentTeam,
+  isTeamMember,
+  type AgentTeamsConfigView,
+} from "@otto-code/protocol/agent-teams";
+import {
   isPersonalityRole,
   normalizePersonalityRoles,
   personalityHasRole,
@@ -109,6 +119,13 @@ export interface OttoToolHostDependencies {
    * on hosts that don't wire personalities.
    */
   readAgentPersonalities?: () => AgentPersonality[];
+  /**
+   * Reads the live Agent Teams section (teams + active team id) from the
+   * daemon config. Lets create_agent stamp the frozen team layer onto member
+   * spawns. Absent on hosts that don't wire teams — spawns are then teamless,
+   * exactly the no-active-team behavior.
+   */
+  readAgentTeams?: () => AgentTeamsConfigView | undefined;
   github?: GitHubService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
@@ -542,16 +559,34 @@ function resolveEffortAgainstModels(params: {
 function buildPersonalityAgentConfig(brain: {
   systemPrompt?: string;
   personalitySnapshot?: ResolvedPersonalitySnapshot;
-}): { systemPrompt?: string; personalitySnapshot?: ResolvedPersonalitySnapshot } | undefined {
-  if (brain.systemPrompt === undefined && brain.personalitySnapshot === undefined) {
+  teamSnapshot?: ResolvedTeamSnapshot;
+}):
+  | {
+      systemPrompt?: string;
+      personalitySnapshot?: ResolvedPersonalitySnapshot;
+      teamSnapshot?: ResolvedTeamSnapshot;
+    }
+  | undefined {
+  if (
+    brain.systemPrompt === undefined &&
+    brain.personalitySnapshot === undefined &&
+    brain.teamSnapshot === undefined
+  ) {
     return undefined;
   }
-  const config: { systemPrompt?: string; personalitySnapshot?: ResolvedPersonalitySnapshot } = {};
+  const config: {
+    systemPrompt?: string;
+    personalitySnapshot?: ResolvedPersonalitySnapshot;
+    teamSnapshot?: ResolvedTeamSnapshot;
+  } = {};
   if (brain.systemPrompt !== undefined) {
     config.systemPrompt = brain.systemPrompt;
   }
   if (brain.personalitySnapshot !== undefined) {
     config.personalitySnapshot = brain.personalitySnapshot;
+  }
+  if (brain.teamSnapshot !== undefined) {
+    config.teamSnapshot = brain.teamSnapshot;
   }
   return config;
 }
@@ -769,6 +804,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     scheduleService,
     providerSnapshotManager,
     readAgentPersonalities,
+    readAgentTeams,
     callerAgentId,
     resolveSpeakHandler,
     resolveCallerContext,
@@ -1013,6 +1049,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     thinkingOptionId?: string;
     systemPrompt?: string;
     personalitySnapshot?: ResolvedPersonalitySnapshot;
+    teamSnapshot?: ResolvedTeamSnapshot;
   }
 
   // Turn the create_agent brain inputs — a personality name and/or explicit
@@ -1061,6 +1098,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         );
       }
       const snapshot = resolution.snapshot;
+      // An active-team member carries the frozen team layer; the team prompt
+      // stacks ahead of the personality prompt. Explicit spawn of a non-member
+      // stays deliberate and teamless (explicit is explicit).
+      const teamSnapshot = resolveTeamSnapshotForPersonality(
+        readAgentTeams?.(),
+        snapshot.personalityId,
+      );
+      const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
       // Explicit args override the personality per-field.
       const snapshotProviderModel = snapshot.model
         ? `${snapshot.provider}/${snapshot.model}`
@@ -1074,8 +1119,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         providerModel,
         ...(modeId !== undefined ? { modeId } : {}),
         ...(thinkingOptionId !== undefined ? { thinkingOptionId } : {}),
-        ...(snapshot.systemPrompt !== undefined ? { systemPrompt: snapshot.systemPrompt } : {}),
+        ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
         personalitySnapshot: snapshot,
+        ...(teamSnapshot ? { teamSnapshot } : {}),
       };
     }
 
@@ -1690,6 +1736,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               effortLevel: z.string().optional(),
             }),
           ),
+          activeTeam: z
+            .object({ id: z.string(), name: z.string(), note: z.string() })
+            .optional()
+            .describe(
+              "Present when an Agent Team is active — the list above is scoped to its members.",
+            ),
         },
       },
       async (args: { cwd?: string; role?: string }) => {
@@ -1698,7 +1750,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         const caller = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
         const cwd = args.cwd?.trim() || caller?.cwd || undefined;
         const entries = await providerSnapshotManager.listProviders({ cwd, wait: true });
+        // With a team active, the bench is the team: only members are listed
+        // (create_agent by explicit name still resolves the full roster — an
+        // off-team specialist can be pulled in deliberately, without the team
+        // prompt). No active team = the full roster, exactly as before.
+        const activeTeam = getActiveAgentTeam(readAgentTeams?.());
         const personalities = getPersonalityRoster()
+          .filter((personality) => !activeTeam || isTeamMember(activeTeam, personality.id))
           .filter(
             (personality) =>
               !roleFilter ||
@@ -1743,7 +1801,18 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           });
         return {
           content: [],
-          structuredContent: ensureValidJson({ personalities }),
+          structuredContent: ensureValidJson({
+            personalities,
+            ...(activeTeam
+              ? {
+                  activeTeam: {
+                    id: activeTeam.id,
+                    name: activeTeam.name,
+                    note: `Team "${activeTeam.name}" is active; this list is its bench. create_agent with an off-team personality name still works but spawns without the team prompt.`,
+                  },
+                }
+              : {}),
+          }),
         };
       },
     );

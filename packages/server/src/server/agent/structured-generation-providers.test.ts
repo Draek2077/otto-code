@@ -285,6 +285,88 @@ describe("resolveStructuredGenerationProviders", () => {
     expect(snapshots.calls).toEqual([{ cwd: "/tmp/repo", wait: true }]);
   });
 
+  test("active-team writers are preferred ahead of off-team writers, then the legacy chain", async () => {
+    const snapshots = new ProviderSnapshots([
+      {
+        provider: "lmstudio",
+        status: READY,
+        enabled: true,
+        models: [
+          { provider: "lmstudio", id: "qwen3-writer", label: "Qwen3 Writer" },
+          { provider: "lmstudio", id: "solo-writer", label: "Solo Writer" },
+        ],
+        modes: [{ id: "auto", label: "Auto" }],
+      },
+      {
+        provider: "work-claude",
+        status: READY,
+        enabled: true,
+        models: [
+          { provider: "work-claude", id: "claude-haiku-2026", label: "Haiku", isDefault: true },
+        ],
+      },
+    ]);
+
+    const offTeamWriter = personality({ id: "p-solo", name: "Solo", model: "solo-writer" });
+    const teamWriter = personality();
+    const providers = await resolveStructuredGenerationProviders({
+      cwd: "/tmp/repo",
+      providerSnapshotManager: snapshots,
+      role: "writer",
+      daemonConfig: {
+        // Roster order puts the off-team writer FIRST; the team rung must
+        // still reorder the on-team writer ahead of it.
+        agentPersonalities: { personalities: [offTeamWriter, teamWriter] },
+        agentTeams: {
+          teams: [{ id: "team-crew", name: "Crew", memberIds: [teamWriter.id] }],
+          activeTeamId: "team-crew",
+        },
+      },
+    });
+
+    expect(providers).toEqual([
+      { provider: "lmstudio", model: "qwen3-writer" },
+      { provider: "lmstudio", model: "solo-writer" },
+      { provider: "work-claude", model: "claude-haiku-2026" },
+    ]);
+  });
+
+  test("an inactive or dangling team leaves the writer order untouched", async () => {
+    const snapshots = new ProviderSnapshots([
+      {
+        provider: "lmstudio",
+        status: READY,
+        enabled: true,
+        models: [
+          { provider: "lmstudio", id: "qwen3-writer", label: "Qwen3 Writer" },
+          { provider: "lmstudio", id: "solo-writer", label: "Solo Writer" },
+        ],
+        modes: [{ id: "auto", label: "Auto" }],
+      },
+    ]);
+
+    const first = personality({ id: "p-solo", name: "Solo", model: "solo-writer" });
+    const second = personality();
+    const providers = await resolveStructuredGenerationProviders({
+      cwd: "/tmp/repo",
+      providerSnapshotManager: snapshots,
+      role: "writer",
+      daemonConfig: {
+        agentPersonalities: { personalities: [first, second] },
+        // Active id points at a deleted team — reads as no team, never an error.
+        agentTeams: {
+          teams: [{ id: "team-crew", name: "Crew", memberIds: [second.id] }],
+          activeTeamId: "team-gone",
+        },
+      },
+    });
+
+    expect(providers).toEqual([
+      { provider: "lmstudio", model: "solo-writer" },
+      { provider: "lmstudio", model: "qwen3-writer" },
+    ]);
+  });
+
   test("skips an out-of-commission personality and falls back to the legacy chain", async () => {
     const snapshots = new ProviderSnapshots([
       {

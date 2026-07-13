@@ -12,6 +12,7 @@ import {
 } from "@otto-code/protocol/agent-labels";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
+import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -143,6 +144,9 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
       ...record.config.personalitySnapshot,
       roles: normalizePersonalityRoles(record.config.personalitySnapshot.roles),
     };
+  }
+  if (record.config.teamSnapshot != null) {
+    config.teamSnapshot = record.config.teamSnapshot;
   }
   return stripInternalOttoMcpServer(config);
 }
@@ -1616,13 +1620,23 @@ export class AgentManager {
 
     // Prompt half. The personality prompt only owns config.systemPrompt when
     // the caller set none at spawn (mirrors applyPersonalityIdentityToConfig);
-    // a caller-authored prompt survives the switch.
+    // a caller-authored prompt survives the switch. The born team is frozen:
+    // the prompt recomposes against the agent's teamSnapshot, never the
+    // currently-active team — switching to an off-team personality keeps the
+    // team prompt, and clearing the personality keeps team + brain, dropping
+    // only the personality prompt.
+    const teamSnapshot = agent.config.teamSnapshot;
     const outgoingPersonalityPrompt = agent.config.personalitySnapshot?.systemPrompt;
+    const outgoingComposedPrompt = composeTeamAndPersonalityPrompt(
+      teamSnapshot,
+      outgoingPersonalityPrompt,
+    );
     const promptIsPersonalityOwned =
       agent.config.systemPrompt === undefined ||
+      agent.config.systemPrompt === outgoingComposedPrompt ||
       agent.config.systemPrompt === outgoingPersonalityPrompt;
     const nextSystemPrompt = promptIsPersonalityOwned
-      ? snapshot?.systemPrompt
+      ? composeTeamAndPersonalityPrompt(teamSnapshot, snapshot?.systemPrompt)
       : agent.config.systemPrompt;
 
     const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();

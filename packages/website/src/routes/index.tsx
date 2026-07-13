@@ -17,7 +17,7 @@ function Home() {
     <LandingPage
       title={
         <>
-          A fully featured agentic coding assistant
+          An agentic coding assistant with personality,
           <br />
           for every model, cloud or local
         </>

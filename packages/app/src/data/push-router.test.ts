@@ -39,6 +39,8 @@ const daemonConfig: MutableDaemonConfig = {
   providers: {},
   metadataGeneration: { providers: [] },
   agentPersonalities: { personalities: [] },
+  agentTeams: { teams: [] },
+  modelTierOverrides: [],
   autoArchiveAfterMerge: false,
   enableTerminalAgentHooks: false,
   appendSystemPrompt: "",

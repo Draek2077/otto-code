@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { shouldAllowEmptyDraftText, validateDraftSubmission } from "./workspace-tab-core";
+import {
+  resolveAutoSubmitConfig,
+  resolveDraftPersonality,
+  shouldAllowEmptyDraftText,
+  validateDraftSubmission,
+} from "./workspace-tab-core";
 
 const baseComposerState = {
   providerDefinitions: [{ id: "codewhale" }],
@@ -67,5 +72,81 @@ describe("workspace draft empty text readiness", () => {
         attachments: [],
       }),
     ).toBe(false);
+  });
+});
+
+describe("draft personality resolution", () => {
+  test("carries the picker's selected personality when there is no auto-submit", () => {
+    const draftPersonality = resolveDraftPersonality({
+      autoSubmitConfig: null,
+      agentControls: {
+        selectedPersonalityId: "sage",
+        personalities: [
+          {
+            id: "sage",
+            name: "Sage",
+            provider: "codewhale",
+            subtitle: "codewhale",
+            available: true,
+          },
+        ],
+      },
+    });
+    expect(draftPersonality?.id).toBe("sage");
+  });
+
+  test("carries the personality from a pending new-chat auto-submit", () => {
+    // Regression: starting a brand-new chat with a personality selected used to
+    // drop the personality entirely, because the auto-submit path (new
+    // workspace -> pending submission -> this tab) unconditionally nulled it
+    // out instead of reading the id carried on the pending submission.
+    const autoSubmitConfig = resolveAutoSubmitConfig({
+      provider: "codewhale",
+      model: "deepseek-v4-pro",
+      personality: "sage",
+    });
+    const draftPersonality = resolveDraftPersonality({
+      autoSubmitConfig,
+      agentControls: {
+        // The tab's own composer never selected anything — the personality
+        // came from the originating new-workspace composer instead.
+        selectedPersonalityId: null,
+        personalities: [
+          {
+            id: "sage",
+            name: "Sage",
+            provider: "codewhale",
+            subtitle: "codewhale",
+            available: true,
+          },
+        ],
+      },
+    });
+    expect(draftPersonality?.id).toBe("sage");
+  });
+
+  test("returns no personality when the auto-submit carried none", () => {
+    const autoSubmitConfig = resolveAutoSubmitConfig({
+      provider: "codewhale",
+      model: "deepseek-v4-pro",
+    });
+    const draftPersonality = resolveDraftPersonality({
+      autoSubmitConfig,
+      // Even if this tab's own (unrelated) composer state has a stale
+      // selection, an auto-submit with no personality must not pick it up.
+      agentControls: {
+        selectedPersonalityId: "sage",
+        personalities: [
+          {
+            id: "sage",
+            name: "Sage",
+            provider: "codewhale",
+            subtitle: "codewhale",
+            available: true,
+          },
+        ],
+      },
+    });
+    expect(draftPersonality).toBeNull();
   });
 });

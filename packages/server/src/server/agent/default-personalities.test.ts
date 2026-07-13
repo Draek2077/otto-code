@@ -1,7 +1,14 @@
 import { describe, expect, test } from "vitest";
 
-import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
-import { AgentPersonalitySchema, PERSONALITY_ROLES } from "@otto-code/protocol/messages";
+import {
+  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_TEAMS,
+} from "@otto-code/protocol/default-personalities";
+import {
+  AgentPersonalitySchema,
+  AgentTeamSchema,
+  PERSONALITY_ROLES,
+} from "@otto-code/protocol/messages";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isClaudeManifestModelId } from "./providers/claude/model-manifest.js";
@@ -90,6 +97,35 @@ describe("DEFAULT_AGENT_PERSONALITIES", () => {
     for (const personality of DEFAULT_AGENT_PERSONALITIES) {
       expect(personality.spinner?.glowA).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(personality.spinner?.glowB).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+  });
+});
+
+describe("DEFAULT_AGENT_TEAMS", () => {
+  test("every entry is a schema-valid team with a stable builtin id", () => {
+    for (const team of DEFAULT_AGENT_TEAMS) {
+      expect(() => AgentTeamSchema.parse(team)).not.toThrow();
+      expect(team.id.startsWith("team_builtin_")).toBe(true);
+      expect(team.avatar?.color).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+    const ids = DEFAULT_AGENT_TEAMS.map((team) => team.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("every seeded member id exists in the starter personality roster", () => {
+    const personalityIds = new Set(DEFAULT_AGENT_PERSONALITIES.map((entry) => entry.id));
+    for (const team of DEFAULT_AGENT_TEAMS) {
+      const memberIds = team.memberIds ?? [];
+      expect(memberIds.length).toBeGreaterThan(0);
+      for (const memberId of memberIds) {
+        expect(personalityIds.has(memberId)).toBe(true);
+      }
+    }
+  });
+
+  test("the starter team ships a non-empty team prompt", () => {
+    for (const team of DEFAULT_AGENT_TEAMS) {
+      expect(team.teamPrompt?.trim().length ?? 0).toBeGreaterThan(0);
     }
   });
 });

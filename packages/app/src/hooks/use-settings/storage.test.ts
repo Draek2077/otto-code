@@ -168,6 +168,9 @@ describe("loadAppSettingsFromStorage", () => {
       ...DEFAULT_CLIENT_SETTINGS,
       colorSchemeMode: "dark",
       darkTheme: "dark",
+      // Upgrader from the legacy key: backfilled so it never sees the tour or wizard.
+      hasCompletedTutorial: true,
+      hasCompletedSetupWizard: true,
     });
     expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(JSON.stringify(result));
   });
@@ -194,6 +197,54 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.language).toBe("system");
+  });
+});
+
+describe("corrupt persisted settings self-heal", () => {
+  it("resets to defaults and rewrites storage when the blob is unparseable", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        // Truncated write, e.g. an interrupted upgrade — JSON.parse throws.
+        [APP_SETTINGS_KEY]: '{"chatWidth":"wide",',
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
+    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
+      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+    );
+  });
+
+  it("resets to defaults when the blob parses to a non-object", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify(["not", "an", "object"]),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
+    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
+      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+    );
+  });
+
+  it("falls back to defaults when only a corrupt legacy blob exists", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [LEGACY_SETTINGS_KEY]: "}not json{",
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
+    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
+      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
+    );
   });
 });
 
@@ -315,6 +366,8 @@ describe("loadSettingsFromStorage", () => {
       ...DEFAULT_APP_SETTINGS,
       colorSchemeMode: "light",
       lightTheme: "daylight",
+      hasCompletedTutorial: true,
+      hasCompletedSetupWizard: true,
     });
   });
 
@@ -362,6 +415,8 @@ describe("loadSettingsFromStorage", () => {
       lightTheme: "daylight",
       manageBuiltInDaemon: false,
       releaseChannel: "beta",
+      hasCompletedTutorial: true,
+      hasCompletedSetupWizard: true,
     });
   });
 
@@ -381,6 +436,8 @@ describe("loadSettingsFromStorage", () => {
       ...DEFAULT_APP_SETTINGS,
       colorSchemeMode: "light",
       lightTheme: "daylight",
+      hasCompletedTutorial: true,
+      hasCompletedSetupWizard: true,
     });
   });
 });
@@ -613,6 +670,132 @@ describe("appearance settings", () => {
     });
 
     expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("default");
+  });
+});
+
+describe("one-time tutorial flag", () => {
+  it("defaults hasCompletedTutorial to false on a genuinely fresh install", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.hasCompletedTutorial).toBe(false);
+  });
+
+  it("backfills hasCompletedTutorial to true for an existing device missing the field", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.hasCompletedTutorial).toBe(true);
+  });
+
+  it("backfills hasCompletedTutorial to true when migrating from the legacy settings key", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [LEGACY_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.hasCompletedTutorial).toBe(true);
+  });
+
+  it("preserves an explicitly persisted hasCompletedTutorial value", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ hasCompletedTutorial: false }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.hasCompletedTutorial).toBe(false);
+  });
+});
+
+describe("interface mode", () => {
+  it("defaults interfaceMode to null on a fresh install (unchosen)", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.interfaceMode).toBeNull();
+  });
+
+  it("loads a persisted interface mode", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ interfaceMode: "user" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBe("user");
+  });
+
+  it("drops an unknown interface mode back to null", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ interfaceMode: "wizard" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBeNull();
+  });
+
+  it("keeps an existing device (no interfaceMode) as null so it resolves to developer", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBeNull();
+  });
+});
+
+describe("one-time setup-wizard flag", () => {
+  it("defaults hasCompletedSetupWizard to false on a genuinely fresh install", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.hasCompletedSetupWizard).toBe(false);
+  });
+
+  it("backfills hasCompletedSetupWizard to true for an existing device missing the field", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(true);
+  });
+
+  it("backfills hasCompletedSetupWizard to true when migrating from the legacy settings key", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [LEGACY_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(true);
+  });
+
+  it("preserves an explicitly persisted hasCompletedSetupWizard value", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ hasCompletedSetupWizard: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(false);
   });
 });
 

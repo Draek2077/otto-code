@@ -1,4 +1,4 @@
-import type { AgentPersonality } from "./messages.js";
+import type { AgentPersonality, AgentTeam } from "./messages.js";
 
 // The starter "team" of Agent Personalities shipped with Otto. These seed a
 // fresh host so a new user sees a working, role-complete roster instead of an
@@ -136,5 +136,27 @@ export const DEFAULT_AGENT_PERSONALITIES: readonly AgentPersonality[] = [
       "sharp clarifying question rather than guessing. Beep.",
     spinner: { glowA: "#64748B", glowB: "#38BDF8" },
     voice: kokoroVoice("am_echo"),
+  },
+];
+
+// The starter Agent Team shipped with Otto: every starter personality grouped
+// under one operating template. Seeded the same first-run/absent-section way
+// as the personalities (see seedDefaultTeamsIfAbsent), and re-addable from the
+// Agent teams card. Deliberately NOT active on first run — activating a
+// prompt-bearing team silently on install would change spawn behavior out
+// from under existing users; the user opts in via the Active Team switcher.
+// The stable `team_builtin_*` id makes restore idempotent, exactly like the
+// personalities' `personality_builtin_*` ids.
+export const DEFAULT_AGENT_TEAMS: readonly AgentTeam[] = [
+  {
+    id: "team_builtin_otto_crew",
+    name: "The Otto Crew",
+    avatar: { color: "#4F46E5" },
+    teamPrompt:
+      "You are part of the Otto Crew, a coordinated team of specialists working one project " +
+      "together under Atlas's lead. Stay in your lane and trust your teammates' lanes: do your " +
+      "own role's work well, hand off cleanly with the context the next specialist needs, and " +
+      "flag anything you notice outside your remit instead of fixing it yourself.",
+    memberIds: DEFAULT_AGENT_PERSONALITIES.map((personality) => personality.id),
   },
 ];

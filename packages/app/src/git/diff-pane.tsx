@@ -3364,7 +3364,9 @@ const styles = StyleSheet.create((theme) => ({
   fileHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: theme.spacing[3],
+    // ~2px tighter than spacing[3] (12) so the file checkbox sits closer to the
+    // panel edge, matching the trimmed commit-section inset below.
+    paddingLeft: 10,
     paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[1],
@@ -3417,7 +3419,11 @@ const styles = StyleSheet.create((theme) => ({
   commitSection: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
-    paddingHorizontal: theme.spacing[3],
+    // Trim the horizontal inset slightly (was spacing[3] = 12 both sides) so the
+    // message input, checkbox row, and commit button align better with the file
+    // rows above: ~3px off the left, ~2px off the right.
+    paddingLeft: 9,
+    paddingRight: 10,
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[2],
   },

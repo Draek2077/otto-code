@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useState, type ComponentType, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView } from "react-native";
+import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
-import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material-icons";
+import {
+  FolderOpen,
+  Inbox,
+  Plug,
+  Smartphone,
+  Sparkles,
+  WandStars,
+} from "@/components/icons/material-icons";
 import { OttoLogoWink } from "@/components/icons/otto-logo";
+import { Button } from "@/components/ui/button";
 import { CommunityLinks } from "@/components/community-links";
+import { useTutorialStore } from "@/tutorial/store";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useHostChooser } from "@/hosts/host-chooser";
@@ -19,7 +29,11 @@ import {
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
-import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
+import {
+  buildHostAgentDetailRoute,
+  buildSettingsHostSectionRoute,
+  buildSetupRoute,
+} from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useOpenProject } from "@/hooks/use-open-project";
@@ -57,6 +71,7 @@ export function OpenProjectScreen() {
   const quote = quotes[getSessionQuoteIndex(quotes.length)];
 
   const isCompactLayout = useIsCompactFormFactor();
+  const addProjectAnchorRef = useTutorialAnchor("add-project");
 
   useEffect(() => {
     if (!isCompactLayout) {
@@ -95,6 +110,14 @@ export function OpenProjectScreen() {
     [importServerId, openImportedProject, router],
   );
 
+  const handleLaunchTutorial = useCallback(() => {
+    useTutorialStore.getState().relaunch();
+  }, []);
+
+  const handleOpenSetupWizard = useCallback(() => {
+    router.push(buildSetupRoute());
+  }, [router]);
+
   const handleOpenProviders = useCallback(() => {
     chooseHost({
       title: "Choose host",
@@ -125,6 +148,7 @@ export function OpenProjectScreen() {
               description={t("openProject.tiles.addProject.description")}
               onPress={handleOpenPicker}
               testID="open-project-submit"
+              anchorRef={addProjectAnchorRef}
               accent
             />
             <HomeTile
@@ -152,6 +176,26 @@ export function OpenProjectScreen() {
             ) : null}
           </View>
         </View>
+        <View style={styles.tutorialRow}>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={WandStars}
+            onPress={handleOpenSetupWizard}
+            testID="open-project-launch-setup-wizard"
+          >
+            {t("openProject.setupWizard")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={Sparkles}
+            onPress={handleLaunchTutorial}
+            testID="open-project-launch-tutorial"
+          >
+            {t("tutorial.launch")}
+          </Button>
+        </View>
         <View style={styles.communityRow}>
           <CommunityLinks />
         </View>
@@ -178,13 +222,22 @@ interface HomeTileProps {
   description: string;
   onPress: () => void;
   testID?: string;
+  anchorRef?: Ref<View>;
   accent?: boolean;
 }
 
 const TILE_SHADOW_DARK = "0 0 5px rgba(0, 0, 0, 0.2)";
 const TILE_SHADOW_LIGHT = "0 0 5px rgba(0, 0, 0, 0.1)";
 
-function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: HomeTileProps) {
+function HomeTile({
+  icon: Icon,
+  title,
+  description,
+  onPress,
+  testID,
+  anchorRef,
+  accent,
+}: HomeTileProps) {
   // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
   const { theme } = useUnistyles();
   const [hovered, setHovered] = useState(false);
@@ -211,6 +264,7 @@ function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: H
 
   return (
     <Pressable
+      ref={anchorRef}
       onPress={onPress}
       onHoverIn={handleHoverIn}
       onHoverOut={handleHoverOut}
@@ -305,6 +359,14 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 18,
+  },
+  tutorialRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingTop: theme.spacing[2],
   },
   communityRow: {
     flexDirection: "row",

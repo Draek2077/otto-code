@@ -23,6 +23,9 @@ import type {
   ProviderOverride,
 } from "./provider-launch-config.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
+import type { ModelTier } from "@otto-code/protocol/agent-types";
+import type { ModelTierOverride } from "@otto-code/protocol/messages";
+import { resolveModelTier } from "@otto-code/protocol/model-tiers";
 import {
   buildProviderRegistry,
   shutdownAgentClients,
@@ -77,6 +80,26 @@ export interface ProviderSnapshotManagerOptions {
   extraClients?: Partial<Record<AgentProvider, AgentClient>>;
   refreshTimeoutMs?: number;
   diagnosticTimeoutMs?: number;
+  /** User per-model tier tags, applied when stamping model tiers at ingest. */
+  modelTierOverrides?: ModelTierOverride[];
+}
+
+// provider → (modelId → tier), the lookup form of the stored override array.
+type ModelTierOverrideIndex = Map<string, Map<string, ModelTier>>;
+
+function buildModelTierOverrideIndex(
+  overrides?: readonly ModelTierOverride[],
+): ModelTierOverrideIndex {
+  const index: ModelTierOverrideIndex = new Map();
+  for (const override of overrides ?? []) {
+    let byModel = index.get(override.provider);
+    if (!byModel) {
+      byModel = new Map();
+      index.set(override.provider, byModel);
+    }
+    byModel.set(override.modelId, override.tier);
+  }
+  return index;
 }
 
 interface ProviderSnapshotRefreshOptions {
@@ -179,9 +202,11 @@ export class ProviderSnapshotManager {
   private baseProviderOverrides: Record<string, ProviderOverride> | undefined;
   private providerRegistry: Record<AgentProvider, ProviderDefinition>;
   private providerClients: Record<AgentProvider, AgentClient>;
+  private modelTierOverrides: ModelTierOverrideIndex;
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
+    this.modelTierOverrides = buildModelTierOverrideIndex(options.modelTierOverrides);
     this.workspaceGitService = options.workspaceGitService;
     this.managedProcesses = options.managedProcesses;
     this.isDev = options.isDev === true;
@@ -407,6 +432,45 @@ export class ProviderSnapshotManager {
     }
 
     return this.getAgentManagerProviderState();
+  }
+
+  /**
+   * Apply the user's per-model tier tags (from daemon config). Re-stamps the
+   * tiers of every already-loaded model so a settings edit hot-reloads without
+   * a provider refresh, then emits so connected clients re-render.
+   */
+  setModelTierOverrides(overrides: readonly ModelTierOverride[] | undefined): void {
+    this.modelTierOverrides = buildModelTierOverrideIndex(overrides);
+    for (const [cwd, snapshot] of this.snapshots.entries()) {
+      let changed = false;
+      for (const [provider, entry] of snapshot) {
+        if (!entry.models) {
+          continue;
+        }
+        snapshot.set(provider, {
+          ...entry,
+          models: this.stampModelTiers(provider, entry.models),
+        });
+        changed = true;
+      }
+      if (changed) {
+        this.emitChange(cwd);
+      }
+    }
+  }
+
+  // Stamp each model's `tier` at ingest: a user override wins, else inference
+  // (catalog → name pattern). Undefined leaves the model tier-less for the
+  // consumer's context-window heuristic.
+  private stampModelTiers(
+    provider: AgentProvider,
+    models: readonly AgentModelDefinition[],
+  ): AgentModelDefinition[] {
+    const overrides = this.modelTierOverrides.get(provider);
+    return models.map((model) => ({
+      ...model,
+      tier: resolveModelTier(model, overrides?.get(model.id)),
+    }));
   }
 
   on(event: "change", listener: ProviderSnapshotChangeListener): this {
@@ -789,7 +853,7 @@ export class ProviderSnapshotManager {
         ...base,
         status: "ready",
         enabled: true,
-        models: catalog.models,
+        models: this.stampModelTiers(provider, catalog.models),
         modes: catalog.modes,
         fetchedAt: new Date().toISOString(),
       });

@@ -521,6 +521,8 @@ export function loadConfig(
     agentProviderSettings: extractAgentProviderSettings(providerOverrides),
     metadataGeneration: persisted.agents?.metadataGeneration,
     agentPersonalities: persisted.agents?.agentPersonalities,
+    agentTeams: persisted.agents?.agentTeams,
+    modelTierOverrides: persisted.agents?.modelTierOverrides,
     providerOverrides,
     log: resolveLogConfigFromEnv(env, persisted),
   };

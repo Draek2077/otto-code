@@ -103,12 +103,16 @@ const styles = StyleSheet.create((theme) => {
     },
     xs: {
       ...geometry.buttonXs,
-      minHeight: compactUp(geometry.buttonXs.minHeight),
+      // 1.5x (not the default 2x) keeps these small buttons at a 48px compact
+      // touch target instead of an oversized 64px one.
+      minHeight: compactUp(geometry.buttonXs.minHeight, 1.5),
       paddingHorizontal: compactUp(geometry.buttonXs.paddingHorizontal),
     },
     sm: {
       ...geometry.buttonSm,
-      minHeight: compactUp(geometry.buttonSm.minHeight),
+      // 1.5x (not the default 2x) keeps these small buttons at a 48px compact
+      // touch target instead of an oversized 64px one.
+      minHeight: compactUp(geometry.buttonSm.minHeight, 1.5),
       paddingHorizontal: compactUp(geometry.buttonSm.paddingHorizontal),
     },
     lg: {

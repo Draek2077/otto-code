@@ -37,6 +37,7 @@ import { shortenPath } from "@/utils/shorten-path";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar-workspace-list";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
@@ -229,6 +230,7 @@ function WorkspaceHoverCardContent({
   contentRef: React.RefObject<View | null>;
 }): ReactElement | null {
   const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
   const cwdDisplay = shortenPath(workspace.workspaceDirectory);
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
@@ -303,7 +305,8 @@ function WorkspaceHoverCardContent({
             </Text>
           </View>
           <HostRow serverId={workspace.serverId} />
-          {workspace.currentBranch ? (
+          {/* Branch + diff are git details — hidden in User interface mode. */}
+          {isDeveloperMode && workspace.currentBranch ? (
             <CopyableInfoRow
               icon={ThemedGitBranch}
               value={workspace.currentBranch}
@@ -321,9 +324,9 @@ function WorkspaceHoverCardContent({
               testID="hover-card-workspace-cwd"
             />
           ) : null}
-          {prHint || workspace.diffStat ? (
+          {prHint || (isDeveloperMode && workspace.diffStat) ? (
             <View style={styles.cardMetaRow}>
-              {workspace.diffStat ? (
+              {isDeveloperMode && workspace.diffStat ? (
                 <DiffStat
                   additions={workspace.diffStat.additions}
                   deletions={workspace.diffStat.deletions}

@@ -8,6 +8,7 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
   buildTerminalsQueryKey,
@@ -39,6 +40,9 @@ const LABELED_TOOLS_MIN_WIDTH = 380;
 export function SidebarActiveWorkspaceTools() {
   const { t } = useTranslation();
   const { settings } = useAppSettings();
+  // These are all developer tools (scripts, open-in-editor, git commit/pull/push);
+  // User mode hides the cluster entirely.
+  const isDeveloperMode = useIsDeveloperMode();
   // Start compact so a narrow sidebar never flashes ellipsized labels on the
   // first frame; the first layout pass promotes to labels when there's room.
   const { onLayout: onContainerLayout, isBelow: isCompact } = useContainerWidthBelow(
@@ -126,6 +130,7 @@ export function SidebarActiveWorkspaceTools() {
   );
 
   if (
+    !isDeveloperMode ||
     settings.workspaceToolsPlacement !== "workspaceList" ||
     !workspaceEntry ||
     !workspaceDirectory

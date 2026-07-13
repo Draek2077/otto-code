@@ -1,3 +1,5 @@
+import { getIsDeveloperModeSnapshot } from "@/hooks/use-interface-mode";
+
 export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace";
 
 export type KeyboardActionId =
@@ -68,6 +70,21 @@ export type KeyboardActionDefinition =
   | { id: "worktree.new"; scope: KeyboardActionScope }
   | { id: "workspace.archive"; scope: KeyboardActionScope };
 
+// Actions that reach developer-only surfaces (the git/search explorer tabs, new
+// terminals, pane splits). In User interface mode they are swallowed at dispatch
+// so a stray keybinding can't resurrect a surface the UI hides — one gate for
+// every listener, per interface-modes.md surface inventory (#8).
+//
+// `sidebar.open.files` is NOT here: User mode keeps a Files-only explorer, so the
+// files shortcut stays live. Search/Changes remain gated (their tabs are hidden).
+const DEVELOPER_ONLY_ACTIONS: ReadonlySet<KeyboardActionId> = new Set([
+  "sidebar.open.search",
+  "sidebar.open.changes",
+  "workspace.terminal.new",
+  "workspace.pane.split.right",
+  "workspace.pane.split.down",
+]);
+
 export interface KeyboardActionHandler {
   handlerId: string;
   actions: readonly KeyboardActionId[];
@@ -102,6 +119,9 @@ export function createKeyboardActionDispatcher() {
     },
 
     dispatch(action: KeyboardActionDefinition): boolean {
+      if (DEVELOPER_ONLY_ACTIONS.has(action.id) && !getIsDeveloperModeSnapshot()) {
+        return false;
+      }
       const candidates = Array.from(handlers.values())
         .filter((handler) => handler.actions.includes(action.id))
         .filter((handler) => handler.enabled)

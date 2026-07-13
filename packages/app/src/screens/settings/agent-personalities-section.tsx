@@ -177,12 +177,6 @@ function formatEffortLabel(level: string): string {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-function formatRolesSummary(roles: readonly PersonalityRole[]): string {
-  if (roles.length === PERSONALITY_ROLES.length) return "All roles";
-  if (roles.length === 0) return "No roles";
-  return roles.map((role) => ROLE_LABELS[role]).join(", ");
-}
-
 function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
   return {
     name: personality.name,
@@ -616,8 +610,31 @@ function derivePersonalityRowInfo(
   const providerLabel = entry?.label ?? personality.provider;
   const modelLabel =
     entry?.models?.find((model) => model.id === personality.model)?.label ?? personality.model;
-  const rolesSummary = formatRolesSummary(normalizePersonalityRoles(personality.roles));
-  return { availability, providerLabel, modelLabel, rolesSummary };
+  const roles = normalizePersonalityRoles(personality.roles);
+  return { availability, providerLabel, modelLabel, roles };
+}
+
+// Role pills — one chip per role, matching the Agent Teams list. Optional
+// right-alignment for the mobile row's top line (name | roles).
+function RolePills({
+  roles,
+  align = "start",
+}: {
+  roles: readonly PersonalityRole[];
+  align?: "start" | "end";
+}): ReactElement | null {
+  if (roles.length === 0) {
+    return null;
+  }
+  return (
+    <View style={align === "end" ? styles.rolePillsEnd : styles.rolePills}>
+      {roles.map((role) => (
+        <View key={role} style={styles.rolePill}>
+          <Text style={styles.rolePillText}>{ROLE_LABELS[role]}</Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function PersonalityRow({
@@ -631,27 +648,27 @@ function PersonalityRow({
   const handleEdit = useCallback(() => onEdit(personality.id), [onEdit, personality.id]);
   const handleRemove = useCallback(() => onRemove(personality.id), [onRemove, personality.id]);
 
-  const { availability, providerLabel, modelLabel, rolesSummary } = derivePersonalityRowInfo(
+  const { availability, providerLabel, modelLabel, roles } = derivePersonalityRowInfo(
     personality,
     entries,
   );
   const available = availability.available;
 
-  // On the narrowest widths (xs) the row uses a fully stacked, centered layout
-  // per the design: [icon name] / model / roles / times / [buttons]. At sm+ it
+  // On the narrowest widths (xs) the row uses a two-column stacked layout per the
+  // design: [icon] name | roles / provider·model | times / [buttons]. At sm+ it
   // keeps the inline icon | name+meta | actions layout.
   const isStacked = useIsExtraCompactFormFactor();
 
   const contentStyle = useMemo(
-    () => [settingsStyles.rowContent, !available && styles.dimmed],
+    () => [settingsStyles.rowContent, styles.infoColumn, !available && styles.dimmed],
     [available],
   );
   const stackedRowStyle = useMemo(
     () => [styles.stackedRow, !isFirst && styles.rowBorder],
     [isFirst],
   );
-  const stackedInfoStyle = useMemo(
-    () => [styles.stackedInfo, !available && styles.dimmed],
+  const stackedTextBlockStyle = useMemo(
+    () => [styles.stackedTextBlock, !available && styles.dimmed],
     [available],
   );
   const wideRowStyle = useMemo(
@@ -689,23 +706,27 @@ function PersonalityRow({
   if (isStacked) {
     return (
       <View style={stackedRowStyle} testID={`agent-personality-row-${personality.id}`}>
-        <View style={stackedInfoStyle}>
-          <View style={styles.stackedNameRow}>
-            {icon}
-            <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-              {personality.name}
-            </Text>
+        <View style={styles.stackedTop}>
+          {icon}
+          <View style={stackedTextBlockStyle}>
+            <View style={styles.stackedLine}>
+              <Text style={STACKED_NAME_TITLE_STYLE} numberOfLines={1}>
+                {personality.name}
+              </Text>
+              <RolePills roles={roles} align="end" />
+            </View>
+            <View style={styles.stackedLine}>
+              <Text style={STACKED_META_NAME_STYLE} numberOfLines={1}>
+                {providerLabel} · {modelLabel}
+              </Text>
+              <Text style={styles.stackedMeta}>{formatUsageCount(usageCount)}</Text>
+            </View>
           </View>
-          <Text style={styles.stackedMeta}>
-            {providerLabel} · {modelLabel}
-          </Text>
-          <Text style={styles.stackedMeta}>{rolesSummary}</Text>
-          <Text style={styles.stackedMeta}>{formatUsageCount(usageCount)}</Text>
-          {!available ? (
-            <Text style={styles.stackedUnavailable}>Unavailable — {availability.reason}</Text>
-          ) : null}
         </View>
-        {actions}
+        {!available ? (
+          <Text style={styles.stackedUnavailable}>Unavailable — {availability.reason}</Text>
+        ) : null}
+        <View style={styles.stackedActions}>{actions}</View>
       </View>
     );
   }
@@ -717,9 +738,10 @@ function PersonalityRow({
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {personality.name}
         </Text>
-        <Text style={settingsStyles.rowHint} numberOfLines={1}>
-          {providerLabel} · {modelLabel} · {rolesSummary} · {formatUsageCount(usageCount)}
+        <Text style={META_LINE_STYLE} numberOfLines={1}>
+          {providerLabel} · {modelLabel} · {formatUsageCount(usageCount)}
         </Text>
+        <RolePills roles={roles} />
         {!available ? (
           <Text style={styles.unavailableText} numberOfLines={2}>
             Unavailable — {availability.reason}
@@ -1283,31 +1305,79 @@ const styles = StyleSheet.create((theme) => ({
   wideRow: {
     gap: theme.spacing[3],
   },
-  // Stacked (xs) row: everything centered on its own line.
+  // Stacked (xs) row: a two-column grid — [icon] name|roles over
+  // provider·model|times — with the action buttons centered on their own line.
   stackedRow: {
-    paddingVertical: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
+    gap: theme.spacing[2],
+  },
+  stackedTop: {
+    flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
   },
-  stackedInfo: {
-    alignItems: "center",
-    gap: theme.spacing[1],
+  stackedTextBlock: {
+    flex: 1,
+    gap: 6,
   },
-  stackedNameRow: {
+  stackedLine: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing[2],
+  },
+  stackedName: {
+    flexShrink: 1,
   },
   stackedMeta: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs + 2,
-    textAlign: "center",
+  },
+  stackedActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[1],
   },
   stackedUnavailable: {
     color: theme.colors.destructive,
     fontSize: theme.fontSize.xs + 2,
-    textAlign: "center",
+  },
+  rolePills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  // Info column for the wide row: a uniform 6px gap between the name, meta, and
+  // role-pill rows (each of which centers its own contents vertically). The
+  // per-child marginTops that used to space these rows are neutralized so the
+  // column gap is the single source of spacing.
+  infoColumn: {
+    gap: 6,
+  },
+  metaLine: {
+    marginTop: 0,
+  },
+  rolePillsEnd: {
+    flexShrink: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[1],
+  },
+  rolePill: {
+    paddingVertical: 1,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.full,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  rolePillText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   rowBorder: {
     borderTopWidth: theme.borderWidth[1],
@@ -1336,7 +1406,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.55,
   },
   unavailableText: {
-    marginTop: theme.spacing[1],
+    marginTop: 0,
     color: theme.colors.destructive,
     fontSize: theme.fontSize.xs,
   },
@@ -1541,3 +1611,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
 }));
+
+// Static combined styles for the stacked mobile row — hoisted so the JSX passes
+// stable array references (react-perf/jsx-no-new-array-as-prop).
+const STACKED_NAME_TITLE_STYLE = [settingsStyles.rowTitle, styles.stackedName];
+const STACKED_META_NAME_STYLE = [styles.stackedMeta, styles.stackedName];
+const META_LINE_STYLE = [settingsStyles.rowHint, styles.metaLine];

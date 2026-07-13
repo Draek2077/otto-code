@@ -593,6 +593,7 @@ export class VoiceAssistantWebSocketServer {
         details.removedProviderIds,
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
+      this.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
       this.broadcastDaemonConfigChanged(config);
     });
 
@@ -1323,6 +1324,10 @@ export class VoiceAssistantWebSocketServer {
         checkoutGitRollback: true,
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: true,
+        // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
+        agentTeams: true,
+        // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
+        modelTierOverrides: true,
       },
     };
   }

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView, type PressableStateCallbackType } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
@@ -50,6 +50,12 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import {
+  useSidebarRevealController,
+  type ScrollToCapable,
+} from "@/components/sidebar/use-sidebar-reveal-controller";
+import { useSidebarRowAnchor } from "@/components/sidebar/use-sidebar-row-anchor";
+import { workspaceRowKey } from "@/components/sidebar/sidebar-row-anchors";
 
 // Themed icon wrappers
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -91,10 +97,21 @@ export function SidebarStatusWorkspaceList({
 
   const statusShortcutIndex = showShortcutBadges ? shortcutIndexByWorkspaceKey : new Map();
 
+  const revealContainerRef = useRef<View | null>(null);
+  const revealScrollRef = useRef<ScrollToCapable | null>(null);
+  const setRevealScrollNode = useCallback((node: ScrollToCapable | null) => {
+    revealScrollRef.current = node;
+  }, []);
+  const { onScroll: onRevealScroll } = useSidebarRevealController(
+    revealContainerRef,
+    revealScrollRef,
+  );
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} ref={revealContainerRef}>
       {platformIsNative ? (
         <NestableScrollContainer
+          ref={setRevealScrollNode}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -113,6 +130,9 @@ export function SidebarStatusWorkspaceList({
         </NestableScrollContainer>
       ) : (
         <ScrollView
+          ref={setRevealScrollNode}
+          onScroll={onRevealScroll}
+          scrollEventThrottle={16}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -506,6 +526,11 @@ function StatusWorkspaceRowInner({
   }
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  // Anchor for reveal-into-view (active workspace / tutorial). No existing ref on
+  // the outer row View, so attach directly.
+  const rowAnchorRef = useSidebarRowAnchor(
+    workspaceRowKey(workspace.serverId, workspace.workspaceId),
+  );
 
   return (
     <SidebarWorkspaceRowFrame workspace={workspace}>
@@ -544,7 +569,7 @@ function StatusWorkspaceRowInner({
           </SidebarWorkspaceRowContent>
         );
         return (
-          <View style={styles.workspaceRowContainer} {...hoverHandlers}>
+          <View ref={rowAnchorRef} style={styles.workspaceRowContainer} {...hoverHandlers}>
             {onArchive ? (
               <ContextMenu>
                 <ContextMenuTrigger

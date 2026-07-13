@@ -440,6 +440,9 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
   if (config.personalitySnapshot) {
     serializable.personalitySnapshot = config.personalitySnapshot;
   }
+  if (config.teamSnapshot) {
+    serializable.teamSnapshot = config.teamSnapshot;
+  }
   return Object.keys(serializable).length ? serializable : null;
 }
 

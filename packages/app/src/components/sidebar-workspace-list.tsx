@@ -49,6 +49,13 @@ import {
   Trash2,
 } from "@/components/icons/material-icons";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
+import {
+  useSidebarRevealController,
+  type ScrollToCapable,
+} from "./sidebar/use-sidebar-reveal-controller";
+import { useSidebarRowAnchor } from "./sidebar/use-sidebar-row-anchor";
+import { projectRowKey, workspaceRowKey } from "./sidebar/sidebar-row-anchors";
+import { mergeRefs } from "@/utils/merge-refs";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
@@ -68,6 +75,7 @@ import {
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
@@ -1202,7 +1210,18 @@ function ProjectHeaderRow({
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
-  const diffStat = useSidebarProjectDiffStat(project.workspaces);
+  const isDeveloperMode = useIsDeveloperMode();
+  // Merge the sidebar-row anchor onto the row's existing drag-activator ref so a
+  // reveal (tutorial / active-workspace) can measure this project block.
+  const projectAnchorRef = useSidebarRowAnchor(projectRowKey(project.projectKey));
+  const projectActivatorRef = dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>;
+  const projectOuterRef = useMemo(
+    () => mergeRefs(projectActivatorRef, projectAnchorRef),
+    [projectActivatorRef, projectAnchorRef],
+  );
+  const projectDiffStat = useSidebarProjectDiffStat(project.workspaces);
+  // Diff counts are a developer/git surface — hidden in User interface mode.
+  const diffStat = isDeveloperMode ? projectDiffStat : null;
   const handleBeginWorkspaceSetup = useCallback(() => {
     if (!worktreeTarget) {
       return;
@@ -1294,7 +1313,7 @@ function ProjectHeaderRow({
       <View
         {...dragAttributes}
         {...dragHandleProps?.listeners}
-        ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
+        ref={projectOuterRef}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
       >
@@ -1318,7 +1337,7 @@ function ProjectHeaderRow({
     <View
       {...dragAttributes}
       {...dragHandleProps?.listeners}
-      ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
+      ref={projectOuterRef}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
@@ -1412,6 +1431,17 @@ function WorkspaceRowInner({
 
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
 
+  // Merge the sidebar-row anchor onto the row's drag-activator ref so a reveal
+  // (active-workspace / tutorial) can measure and scroll this row into view.
+  const workspaceAnchorRef = useSidebarRowAnchor(
+    workspaceRowKey(workspace.serverId, workspace.workspaceId),
+  );
+  const workspaceActivatorRef = dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>;
+  const workspaceOuterRef = useMemo(
+    () => mergeRefs(workspaceActivatorRef, workspaceAnchorRef),
+    [workspaceActivatorRef, workspaceAnchorRef],
+  );
+
   return (
     <SidebarWorkspaceRowFrame workspace={workspace} isDragging={isDragging}>
       {({ isHovered, hoverHandlers }) => {
@@ -1462,7 +1492,7 @@ function WorkspaceRowInner({
           <View
             {...dragAttributes}
             {...dragHandleProps?.listeners}
-            ref={dragHandleProps?.setActivatorNodeRef as unknown as Ref<View>}
+            ref={workspaceOuterRef}
             style={styles.workspaceRowContainer}
             {...hoverHandlers}
           >
@@ -1897,6 +1927,9 @@ function ProjectBlock({
     enabled: selectionEnabled,
   });
 
+  // "Copy branch name" is a git affordance — offered only in Developer mode.
+  const isDeveloperMode = useIsDeveloperMode();
+
   const renderWorkspaceRow = useCallback(
     (
       item: SidebarWorkspacePlacement,
@@ -1915,7 +1948,7 @@ function ProjectBlock({
           }
           shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
           showShortcutBadge={showShortcutBadges}
-          canCopyBranchName={project.projectKind === "git"}
+          canCopyBranchName={isDeveloperMode && project.projectKind === "git"}
           isCreating={creatingWorkspaceIds.has(item.workspaceId)}
           selectionEnabled={selectionEnabled}
           activeWorkspaceSelection={activeWorkspaceSelection}
@@ -1928,6 +1961,7 @@ function ProjectBlock({
     },
     [
       project.projectKind,
+      isDeveloperMode,
       showHostLabels,
       activeWorkspaceSelection,
       creatingWorkspaceIds,
@@ -2300,6 +2334,19 @@ function ProjectModeList({
     projects: projectIconTargets,
   });
 
+  // Reveal-into-view plumbing: the outer container is the viewport, the scroll
+  // node does the scrolling. onRevealScroll tracks the offset (web ScrollView
+  // only; NestableScrollContainer overrides onScroll internally on native).
+  const revealContainerRef = useRef<View | null>(null);
+  const revealScrollRef = useRef<ScrollToCapable | null>(null);
+  const setRevealScrollNode = useCallback((node: ScrollToCapable | null) => {
+    revealScrollRef.current = node;
+  }, []);
+  const { onScroll: onRevealScroll } = useSidebarRevealController(
+    revealContainerRef,
+    revealScrollRef,
+  );
+
   useEffect(() => {
     const timeouts = creatingWorkspaceTimeoutsRef.current;
     return () => {
@@ -2500,10 +2547,11 @@ function ProjectModeList({
   );
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} ref={revealContainerRef}>
       {platformIsNative ? (
         <NestableScrollContainer
           {...nativeScrollGestureProps}
+          ref={setRevealScrollNode}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
@@ -2513,6 +2561,9 @@ function ProjectModeList({
         </NestableScrollContainer>
       ) : (
         <ScrollView
+          ref={setRevealScrollNode}
+          onScroll={onRevealScroll}
+          scrollEventThrottle={16}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

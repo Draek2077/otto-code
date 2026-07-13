@@ -2,8 +2,10 @@ import {
   loadPersistedConfig,
   savePersistedConfig,
   AgentPersonalityConfigSchema,
+  AgentTeamConfigSchema,
   type PersistedConfig,
   type PersistedAgentPersonality,
+  type PersistedAgentTeam,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import {
@@ -21,6 +23,7 @@ export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 type MutableDaemonConfig = import("@otto-code/protocol/messages").MutableDaemonConfig;
 type MutableDaemonConfigPatch = import("@otto-code/protocol/messages").MutableDaemonConfigPatch;
 type AgentPersonality = import("@otto-code/protocol/messages").AgentPersonality;
+type AgentTeam = import("@otto-code/protocol/messages").AgentTeam;
 type MutableSpeechConfig = import("@otto-code/protocol/messages").MutableSpeechConfig;
 type MutableGitHostingConfig = import("@otto-code/protocol/messages").MutableGitHostingConfig;
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
@@ -208,6 +211,36 @@ export class DaemonConfigStore {
     this.logger?.info(`Seeded ${defaults.length} default agent personalities`);
   }
 
+  /**
+   * Seed the shipped starter Agent Team onto disk the first time this host
+   * runs the teams feature — ONLY when the persisted config has never carried
+   * an agentTeams section (mirrors seedDefaultPersonalitiesIfAbsent: once the
+   * section exists on disk, even emptied, this is a permanent no-op so
+   * deleting the starter team sticks across restarts). Seeds teams only —
+   * activeTeamId stays unset so a fresh host behaves exactly like today until
+   * the user opts in via the switcher.
+   */
+  public seedDefaultTeamsIfAbsent(defaults: readonly AgentTeam[]): void {
+    const persisted = loadPersistedConfig(this.ottoHome, this.logger);
+    if (persisted.agents?.agentTeams !== undefined) {
+      return;
+    }
+    savePersistedConfig(
+      this.ottoHome,
+      {
+        ...persisted,
+        agents: {
+          ...persisted.agents,
+          agentTeams: {
+            teams: [...defaults],
+          },
+        },
+      },
+      this.logger,
+    );
+    this.logger?.info(`Seeded ${defaults.length} default agent teams`);
+  }
+
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
     // A masked secret that comes back unchanged must not overwrite the stored
@@ -217,7 +250,9 @@ export class DaemonConfigStore {
     const base = removedProviderIds.length
       ? removeProviders(this.current, removedProviderIds)
       : this.current;
-    const next = MutableDaemonConfigSchema.parse(deepMerge(base, prunedPatch));
+    const next = healActiveAgentTeamId(
+      MutableDaemonConfigSchema.parse(deepMerge(base, prunedPatch)),
+    );
 
     const changedFieldPaths = Array.from(this.fieldChangeHandlers.keys()).filter((path) => {
       return !isEqualValue(getValueAtPath(this.current, path), getValueAtPath(next, path));
@@ -283,6 +318,24 @@ export class DaemonConfigStore {
     });
     savePersistedConfig(this.ottoHome, nextPersisted, this.logger);
   }
+}
+
+// Post-validation normalization (wire schemas stay pure declarations): never
+// let a dangling active team id survive a patch. Deleting the active team —
+// or patching an id that matches no team — heals to "no team active" rather
+// than erroring, because teamlessness is a valid state and an active id must
+// always resolve.
+function healActiveAgentTeamId(config: MutableDaemonConfig): MutableDaemonConfig {
+  const section = config.agentTeams;
+  const activeTeamId = section?.activeTeamId;
+  if (typeof activeTeamId !== "string") {
+    return config;
+  }
+  const teams = Array.isArray(section.teams) ? section.teams : [];
+  if (teams.some((team) => team.id === activeTeamId)) {
+    return config;
+  }
+  return { ...config, agentTeams: { ...section, activeTeamId: null } };
 }
 
 function extractProviderRemovals(patch: MutableDaemonConfigPatch): {
@@ -387,6 +440,22 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     persistedAgents,
     hadPersonalities: persisted.agents?.agentPersonalities !== undefined,
     personalities: agentPersonalities,
+  });
+
+  // Fold the teams + active team id into agents.agentTeams.
+  nextAgents = withAgentTeams({
+    nextAgents,
+    persistedAgents,
+    hadTeams: persisted.agents?.agentTeams !== undefined,
+    section: readAgentTeamsSection(mutable),
+  });
+
+  // Fold the user model-tier tags into agents.modelTierOverrides.
+  nextAgents = withModelTierOverrides({
+    nextAgents,
+    persistedAgents,
+    hadOverrides: persisted.agents?.modelTierOverrides !== undefined,
+    overrides: mutable.modelTierOverrides,
   });
 
   return {
@@ -619,6 +688,90 @@ function withAgentPersonalities(params: {
   return {
     ...baseAgents,
     agentPersonalities: { ...existingSection, personalities },
+  } as PersistedConfig["agents"];
+}
+
+interface AgentTeamsPersistSection {
+  teams: PersistedAgentTeam[];
+  activeTeamId: string | null;
+}
+
+// Read the teams section out of the mutable config, dropping entries that lack
+// the required identity fields (id/name). Parsing each entry through the
+// persisted schema (passthrough at every level) re-validates the known fields
+// AND carries unknown fields through untouched — so a team field written by a
+// newer daemon round-trips instead of being silently stripped on the next
+// patch. Member-id validation happens at use time against the roster, not here.
+function readAgentTeamsSection(mutable: MutableDaemonConfig): AgentTeamsPersistSection {
+  const section = mutable.agentTeams;
+  if (!isRecord(section)) {
+    return { teams: [], activeTeamId: null };
+  }
+  const rawTeams = section["teams"];
+  const teams = Array.isArray(rawTeams)
+    ? rawTeams.flatMap((entry) => {
+        const parsed = AgentTeamConfigSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : [];
+  const activeTeamId = section["activeTeamId"];
+  return {
+    teams,
+    activeTeamId: typeof activeTeamId === "string" ? activeTeamId : null,
+  };
+}
+
+// Attach the teams section to the persisted agents section. Writes when there
+// is anything to persist, or when a previously-written section must be cleared
+// to empty (so deleting the last team survives a restart). A null/absent
+// active id persists as an omitted key — the section's presence alone is what
+// blocks re-seeding.
+function withAgentTeams(params: {
+  nextAgents: PersistedConfig["agents"];
+  persistedAgents: Record<string, unknown> | undefined;
+  hadTeams: boolean;
+  section: AgentTeamsPersistSection;
+}): PersistedConfig["agents"] {
+  const { nextAgents, persistedAgents, hadTeams, section } = params;
+  if (section.teams.length === 0 && section.activeTeamId === null && !hadTeams) {
+    return nextAgents;
+  }
+  // Spread the existing section so sibling keys written by a newer daemon
+  // round-trip; teams and activeTeamId are then set explicitly (activeTeamId
+  // deleted when inactive so a stale id can't resurrect from disk).
+  const baseAgents = nextAgents ?? persistedAgents;
+  const existingSection = isRecord(baseAgents?.["agentTeams"])
+    ? (baseAgents["agentTeams"] as Record<string, unknown>)
+    : {};
+  const nextSection: Record<string, unknown> = { ...existingSection, teams: section.teams };
+  if (section.activeTeamId !== null) {
+    nextSection["activeTeamId"] = section.activeTeamId;
+  } else {
+    delete nextSection["activeTeamId"];
+  }
+  return {
+    ...baseAgents,
+    agentTeams: nextSection,
+  } as PersistedConfig["agents"];
+}
+
+// Attach the model-tier overrides to the persisted agents section. Writes when
+// there is anything to persist, or when a previously-written array must be
+// cleared to empty (so removing the last tag survives a restart).
+function withModelTierOverrides(params: {
+  nextAgents: PersistedConfig["agents"];
+  persistedAgents: Record<string, unknown> | undefined;
+  hadOverrides: boolean;
+  overrides: MutableDaemonConfig["modelTierOverrides"];
+}): PersistedConfig["agents"] {
+  const { nextAgents, persistedAgents, hadOverrides, overrides } = params;
+  if (overrides.length === 0 && !hadOverrides) {
+    return nextAgents;
+  }
+  const baseAgents = nextAgents ?? persistedAgents;
+  return {
+    ...baseAgents,
+    modelTierOverrides: overrides,
   } as PersistedConfig["agents"];
 }
 
