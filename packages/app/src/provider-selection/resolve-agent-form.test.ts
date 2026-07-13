@@ -1016,6 +1016,42 @@ describe("resolveAgentForm", () => {
 
       expect(next.form.model).toBe("gpt-5.3-codex");
     });
+
+    it("drops a selected auto mode when the new model cannot run it", () => {
+      const claudeModels: AgentModelDefinition[] = [
+        { provider: "claude", id: "claude-opus-4-8", label: "Opus 4.8", isDefault: true },
+        {
+          provider: "claude",
+          id: "claude-haiku-4-5",
+          label: "Haiku 4.5",
+          supportsAutoMode: false,
+        },
+      ];
+      const state = makeState({ provider: "claude", model: "claude-opus-4-8", modeId: "auto" });
+      const next = resolveAgentForm(state, {
+        type: "SET_MODEL_FROM_USER",
+        modelId: "claude-haiku-4-5",
+        availableModels: claudeModels,
+      });
+
+      expect(next.form.model).toBe("claude-haiku-4-5");
+      expect(next.form.modeId).toBe("");
+    });
+
+    it("keeps a selected auto mode when the new model supports it", () => {
+      const claudeModels: AgentModelDefinition[] = [
+        { provider: "claude", id: "claude-opus-4-8", label: "Opus 4.8", isDefault: true },
+        { provider: "claude", id: "claude-sonnet-5", label: "Sonnet 5" },
+      ];
+      const state = makeState({ provider: "claude", model: "claude-opus-4-8", modeId: "auto" });
+      const next = resolveAgentForm(state, {
+        type: "SET_MODEL_FROM_USER",
+        modelId: "claude-sonnet-5",
+        availableModels: claudeModels,
+      });
+
+      expect(next.form.modeId).toBe("auto");
+    });
   });
 
   describe("SET_THINKING_OPTION_FROM_USER", () => {

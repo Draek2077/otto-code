@@ -34,7 +34,10 @@ import {
   getClaudeModelsWithSettings,
   normalizeClaudeRuntimeModelId,
 } from "./models.js";
-import { CLAUDE_ULTRACODE_THINKING_OPTION_ID } from "./model-manifest.js";
+import {
+  CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  claudeManifestModelAutoModeSupport,
+} from "./model-manifest.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
@@ -93,7 +96,10 @@ import {
   type ListImportableSessionsOptions,
   type McpServerConfig,
   type ProviderCatalog,
+  type ResolveAgentCreateConfigInput,
+  type ResolveAgentCreateConfigResult,
 } from "../../agent-sdk-types.js";
+import { resolveDefaultAgentCreateConfig } from "../../create-agent-mode.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
 import {
   checkProviderLaunchAvailable,
@@ -301,6 +307,17 @@ const DEFAULT_MODES: AgentMode[] = [
     id: "auto",
     label: "Auto mode",
     description: "Uses a model classifier to review permission prompts automatically",
+  },
+  {
+    id: "dontAsk",
+    label: "Don't Ask",
+    // Guardrail-bearing description (same principle as preview tools): the mode
+    // never prompts, but anything not covered by a permission allow-rule is
+    // DENIED rather than run. This is the default unattended target — listed
+    // before bypassPermissions so resolveDefaultAgentCreateConfig picks it as
+    // the coercion target for schedules/loops/artifacts.
+    description: "Runs without prompting — actions not pre-approved are denied",
+    isUnattended: true,
   },
   {
     id: "bypassPermissions",
@@ -873,7 +890,7 @@ function isTruthyEnvValue(value: string | undefined): boolean {
   );
 }
 
-function detectIneligibleAutoModeTransport(env: NodeJS.ProcessEnv): "Bedrock" | "Vertex" | null {
+function detectNonAnthropicApiTransport(env: NodeJS.ProcessEnv): "Bedrock" | "Vertex" | null {
   if (isTruthyEnvValue(env.CLAUDE_CODE_USE_BEDROCK)) {
     return "Bedrock";
   }
@@ -883,17 +900,63 @@ function detectIneligibleAutoModeTransport(env: NodeJS.ProcessEnv): "Bedrock" | 
   return null;
 }
 
-function assertClaudeAutoModeEligible(mode: PermissionMode, env: NodeJS.ProcessEnv): void {
+type ClaudeAutoModeVerdict = { supported: true } | { supported: false; reason: string };
+
+/**
+ * Whether the Auto permission mode (Claude's model-classifier approvals) can
+ * run for the given model + auth path. Mirrors the Claude Code support matrix
+ * (see ClaudeAutoModeSupport in model-manifest.ts); the CLI enforces the same
+ * matrix itself with a mid-session error, so this gate exists to hide/refuse
+ * Auto up front instead of surfacing a runtime toast. Unknown models fail open
+ * to the legacy transport-only rule.
+ */
+export function checkClaudeAutoModeSupport(
+  modelId: string | null | undefined,
+  env: NodeJS.ProcessEnv,
+): ClaudeAutoModeVerdict {
+  const support = claudeManifestModelAutoModeSupport(
+    normalizeClaudeRuntimeModelId(modelId) ?? modelId,
+  );
+  if (support === "none") {
+    return {
+      supported: false,
+      reason: `Claude Auto mode is not supported by model '${modelId}'. Select another permission mode or a newer model.`,
+    };
+  }
+  if (support === "all") {
+    return { supported: true };
+  }
+  // "anthropic-api" tier or unknown model: Bedrock/Vertex never qualify.
+  const transport = detectNonAnthropicApiTransport(env);
+  if (transport !== null) {
+    return {
+      supported: false,
+      reason: `Claude Auto mode requires the Anthropic API and is not supported when Claude Code uses ${transport}. Select another permission mode or unset the ${transport === "Bedrock" ? "CLAUDE_CODE_USE_BEDROCK" : "CLAUDE_CODE_USE_VERTEX"} environment variable.`,
+    };
+  }
+  // API-key presence is the best available signal for Anthropic API billing
+  // vs claude.ai subscription sign-in (OAuth leaves no env marker).
+  if (support === "anthropic-api" && !isTruthyEnvValue(env.ANTHROPIC_API_KEY)) {
+    return {
+      supported: false,
+      reason: `Claude Auto mode on model '${modelId}' requires Anthropic API-key authentication and is not available with claude.ai sign-in. Select another permission mode or a newer model.`,
+    };
+  }
+  return { supported: true };
+}
+
+function assertClaudeAutoModeEligible(
+  mode: PermissionMode,
+  modelId: string | null | undefined,
+  env: NodeJS.ProcessEnv,
+): void {
   if (mode !== "auto") {
     return;
   }
-  const transport = detectIneligibleAutoModeTransport(env);
-  if (transport === null) {
-    return;
+  const verdict = checkClaudeAutoModeSupport(modelId, env);
+  if (!verdict.supported) {
+    throw new Error(verdict.reason);
   }
-  throw new Error(
-    `Claude Auto mode requires the Anthropic API and is not supported when Claude Code uses ${transport}. Select another permission mode or unset the ${transport === "Bedrock" ? "CLAUDE_CODE_USE_BEDROCK" : "CLAUDE_CODE_USE_VERTEX"} environment variable.`,
-  );
 }
 
 function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<AgentSessionConfig> {
@@ -1491,8 +1554,25 @@ export class ClaudeAgentClient implements AgentClient {
 
   async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
     // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
+    // Models carry supportsAutoMode: false only for the model-intrinsic "none"
+    // tier (stamped by the manifest builder); auth-path-dependent Auto
+    // eligibility is enforced per session where the env is well-defined.
     const models = await getClaudeModelsWithSettings(this.logger, this.configDir);
     return { models, modes: DEFAULT_MODES };
+  }
+
+  resolveCreateConfig(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult {
+    // Unattended Claude runs default to `dontAsk` (first isUnattended mode in
+    // DEFAULT_MODES). Upgrade that target to `auto` when the model + auth path
+    // supports the classifier: Auto then auto-approves safe actions (including
+    // safe Bash) and escalations are auto-denied by the unattended responder.
+    // process.env is the auth-path signal (ANTHROPIC_API_KEY / Bedrock / Vertex
+    // markers live there); the per-session buildOptions re-checks with the full
+    // SDK env, so a mismatch fails visibly rather than silently mis-running.
+    const preferredUnattendedModeId = checkClaudeAutoModeSupport(input.model, process.env).supported
+      ? "auto"
+      : undefined;
+    return resolveDefaultAgentCreateConfig({ ...input, preferredUnattendedModeId });
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
@@ -1912,7 +1992,6 @@ class ClaudeAgentSession implements AgentSession {
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
   private planResumeMode: PermissionMode | null = null;
-  private availableModes: AgentMode[] = DEFAULT_MODES;
   private toolUseCache = new Map<string, ToolUseCacheEntry>();
   private toolUseIndexToId = new Map<number, string>();
   private toolUseInputBuffers = new Map<string, string>();
@@ -1987,6 +2066,10 @@ class ClaudeAgentSession implements AgentSession {
       );
     }
 
+    // Note: an auto mode the model can't run is NOT coerced here — the
+    // buildOptions assert fails the first turn with the specific reason
+    // instead, keeping the mismatch visible (clients hide Auto up front via
+    // the catalog's supportsAutoMode stamp and getAvailableModes filtering).
     this.currentMode = isPermissionMode(config.modeId) ? config.modeId : "default";
     if (this.currentMode !== "plan") {
       this.planResumeMode = this.currentMode;
@@ -2181,7 +2264,22 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async getAvailableModes(): Promise<AgentMode[]> {
-    return this.availableModes;
+    // Computed per call so the list tracks the current model: Auto is hidden
+    // whenever the classifier can't run for this model + auth path (the CLI
+    // would reject it with "auto mode unavailable for this model").
+    const verdict = checkClaudeAutoModeSupport(
+      this.currentModelId(),
+      this.buildSdkEnv(this.config.extra?.claude),
+    );
+    if (verdict.supported) {
+      return DEFAULT_MODES;
+    }
+    return DEFAULT_MODES.filter((mode) => mode.id !== "auto");
+  }
+
+  /** Best-known current model: runtime-reported (init message) over configured. */
+  private currentModelId(): string | null {
+    return this.lastOptionsModel ?? this.config.model ?? null;
   }
 
   async getCurrentMode(): Promise<string | null> {
@@ -2215,7 +2313,11 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const normalized = isPermissionMode(modeId) ? modeId : "default";
-    assertClaudeAutoModeEligible(normalized, this.buildSdkEnv(this.config.extra?.claude));
+    assertClaudeAutoModeEligible(
+      normalized,
+      this.currentModelId(),
+      this.buildSdkEnv(this.config.extra?.claude),
+    );
     const previousMode = this.currentMode;
     const stagedOnly = this.mustStageSettingChange();
     if (!stagedOnly) {
@@ -3037,7 +3139,7 @@ class ClaudeAgentSession implements AgentSession {
     const extraClaudeOptions = this.config.extra?.claude;
     const settingsOptions = this.buildSettingsOptions(extraClaudeOptions, { ultracode });
     const sdkEnv = this.buildSdkEnv(extraClaudeOptions);
-    assertClaudeAutoModeEligible(this.currentMode, sdkEnv);
+    assertClaudeAutoModeEligible(this.currentMode, this.currentModelId(), sdkEnv);
 
     const claudeBinary = await this.resolveBinary();
     this.logger.debug(
@@ -3116,7 +3218,47 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
+    this.applyDontAskAllowlist(base);
     return base;
+  }
+
+  /**
+   * Under `dontAsk` the SDK denies anything not pre-approved, so merge a
+   * baseline allow list onto the options (no-op in every other mode). Merge,
+   * never clobber: config/settings may already carry an allowedTools list (user
+   * pre-approvals, runtime settings); dedup keeps the union stable.
+   *
+   * The baseline is the minimum that lets the two unattended workloads function
+   * without opening the dangerous surface:
+   *
+   *  - Otto MCP server tools (`mcp__otto…`): the Team Scheduler's entire job is
+   *    orchestration via Otto's MCP tools (create/list/prompt agents); denying
+   *    them makes scheduled orchestration inert. Whole-server grants so new
+   *    Otto tools don't need re-listing here.
+   *  - Edit / Write / MultiEdit / NotebookEdit: coding schedules must apply
+   *    workspace file changes.
+   *  - TodoWrite: harness-internal task tracking, no external effect.
+   *  - Task: spawning Claude's own subagents (fan-out) is in-model, not a shell.
+   *
+   * Deliberately EXCLUDED (stay denied under dontAsk):
+   *  - Bash: arbitrary shell is exactly the "rm -rf" surface the charter guards
+   *    against — an unattended run must not run unreviewed commands.
+   *  - WebFetch / WebSearch: unattended network egress is out of scope here.
+   *  - Read / Glob / Grep: intentionally omitted — the SDK auto-approves these
+   *    read-only tools in cwd already, so listing them would be redundant.
+   */
+  private applyDontAskAllowlist(base: ClaudeOptions): void {
+    if (this.currentMode !== "dontAsk") {
+      return;
+    }
+    const allow = ["Edit", "Write", "MultiEdit", "NotebookEdit", "TodoWrite", "Task"];
+    for (const serverName of Object.keys(this.config.mcpServers ?? {})) {
+      if (serverName === "otto" || serverName.startsWith("otto_")) {
+        // `mcp__<server>` grants every tool exposed by that MCP server.
+        allow.push(`mcp__${serverName}`);
+      }
+    }
+    base.allowedTools = Array.from(new Set([...(base.allowedTools ?? []), ...allow]));
   }
 
   private buildSettingsOptions(
@@ -4239,7 +4381,6 @@ class ClaudeAgentSession implements AgentSession {
       threadStartedSessionId = newSessionId;
       notice = this.createClaudeSessionChangedNotice(existingSessionId, newSessionId);
     }
-    this.availableModes = DEFAULT_MODES;
     this.currentMode = message.permissionMode;
     if (this.currentMode !== "plan") {
       this.planResumeMode = this.currentMode;

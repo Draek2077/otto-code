@@ -8,6 +8,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
+import { filterModesForModel, findModelDefinition } from "@/provider-selection/mode-support";
 import {
   buildSelectableProviderSelectorProviders,
   type ProviderSelectorProvider,
@@ -307,7 +308,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const allProviderModels = snapshotAllProviderModels;
   const modelSelectorProviders = snapshotModelSelectorProviders;
   const availableModels = snapshotSelectedProviderModels;
-  const modeOptions = snapshotSelectedProviderModes;
+  // Modes are per-provider, but Auto support is per-model (daemon-stamped
+  // supportsAutoMode: false, e.g. Claude Auto on Haiku) — intersect the two.
+  const modeOptions = filterModesForModel(
+    snapshotSelectedProviderModes,
+    findModelDefinition(snapshotSelectedProviderModels, formState.model),
+  );
   const isAllModelsLoading = snapshotIsLoading || selectedProviderIsLoading;
 
   const combinedInitialValues = useMemo(

@@ -4,9 +4,10 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
-import { ClaudeAgentClient } from "./agent.js";
+import { checkClaudeAutoModeSupport, ClaudeAgentClient } from "./agent.js";
 import {
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
+  claudeManifestModelAutoModeSupport,
   claudeManifestModelSupportsFastMode,
   normalizeClaudeManifestModelId,
 } from "./model-manifest.js";
@@ -323,5 +324,60 @@ describe("claudeManifestModelSupportsFastMode", () => {
     expect(normalizeClaudeManifestModelId("openrouter/anthropic/claude-opus-4-8")).toBeNull();
     expect(claudeManifestModelSupportsFastMode("openrouter/anthropic/claude-opus-4-8")).toBe(false);
     expect(claudeManifestModelSupportsFastMode("claude-opus-4-8-20260101")).toBe(true);
+  });
+});
+
+describe("claudeManifestModelAutoModeSupport", () => {
+  it("mirrors the Claude Code auto-mode support matrix", () => {
+    expect(claudeManifestModelAutoModeSupport("claude-opus-4-8")).toBe("all");
+    expect(claudeManifestModelAutoModeSupport("claude-sonnet-5")).toBe("all");
+    expect(claudeManifestModelAutoModeSupport("claude-opus-4-6")).toBe("anthropic-api");
+    expect(claudeManifestModelAutoModeSupport("claude-sonnet-4-6[1m]")).toBe("anthropic-api");
+    expect(claudeManifestModelAutoModeSupport("claude-haiku-4-5")).toBe("none");
+  });
+
+  it("resolves dated and shorthand ids before matching", () => {
+    expect(claudeManifestModelAutoModeSupport("claude-haiku-4-5-20251001")).toBe("none");
+    expect(claudeManifestModelAutoModeSupport("opus-4-8")).toBe("all");
+  });
+
+  it("returns undefined for unknown models so callers fail open", () => {
+    expect(claudeManifestModelAutoModeSupport("my-custom-proxy-model")).toBeUndefined();
+    expect(claudeManifestModelAutoModeSupport(null)).toBeUndefined();
+  });
+});
+
+describe("checkClaudeAutoModeSupport", () => {
+  it("rejects models that can never run the classifier", () => {
+    const verdict = checkClaudeAutoModeSupport("claude-haiku-4-5", {});
+    expect(verdict.supported).toBe(false);
+    if (!verdict.supported) {
+      expect(verdict.reason).toContain("not supported by model 'claude-haiku-4-5'");
+    }
+  });
+
+  it("accepts fully supported models regardless of transport", () => {
+    expect(checkClaudeAutoModeSupport("claude-opus-4-8", {}).supported).toBe(true);
+    expect(
+      checkClaudeAutoModeSupport("claude-sonnet-5", { CLAUDE_CODE_USE_BEDROCK: "1" }).supported,
+    ).toBe(true);
+  });
+
+  it("gates anthropic-api-only models on transport and API-key auth", () => {
+    expect(
+      checkClaudeAutoModeSupport("claude-sonnet-4-6", { CLAUDE_CODE_USE_BEDROCK: "1" }).supported,
+    ).toBe(false);
+    expect(checkClaudeAutoModeSupport("claude-sonnet-4-6", {}).supported).toBe(false);
+    expect(
+      checkClaudeAutoModeSupport("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-test" }).supported,
+    ).toBe(true);
+  });
+
+  it("falls back to the transport-only rule for unknown models", () => {
+    expect(checkClaudeAutoModeSupport("my-custom-proxy-model", {}).supported).toBe(true);
+    expect(
+      checkClaudeAutoModeSupport("my-custom-proxy-model", { CLAUDE_CODE_USE_VERTEX: "true" })
+        .supported,
+    ).toBe(false);
   });
 });

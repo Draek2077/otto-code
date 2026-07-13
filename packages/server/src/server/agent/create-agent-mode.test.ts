@@ -251,4 +251,96 @@ describe("resolveAndValidateCreateAgentMode", () => {
     });
     expect(resolved).toBe("full-access");
   });
+
+  describe("preferredUnattendedModeId (model-aware target)", () => {
+    // Mirrors Claude once dontAsk is the list-order unattended target: a
+    // supported model upgrades the target to `auto`.
+    const CLAUDE_UNATTENDED_MODES = ["default", "acceptEdits", "plan", "auto", "dontAsk"];
+
+    it("wins over the list-order target for an unattended run with no requested mode", () => {
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: undefined,
+        targetProvider: "claude",
+        parent: null,
+        unattended: true,
+        availableModes: CLAUDE_UNATTENDED_MODES,
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+        preferredUnattendedModeId: "auto",
+      });
+      expect(resolved).toBe("auto");
+    });
+
+    it("coerces an attended explicit mode to the preferred target on an unattended run", () => {
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: "default",
+        targetProvider: "claude",
+        parent: null,
+        unattended: true,
+        availableModes: CLAUDE_UNATTENDED_MODES,
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+        preferredUnattendedModeId: "auto",
+      });
+      expect(resolved).toBe("auto");
+    });
+
+    it("keeps an explicit request for the preferred mode on an unattended run", () => {
+      // An explicit `auto` on an unattended run is honored (not coerced to
+      // dontAsk) because the preferred mode counts as an accepted unattended id.
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: "auto",
+        targetProvider: "claude",
+        parent: null,
+        unattended: true,
+        availableModes: CLAUDE_UNATTENDED_MODES,
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+        preferredUnattendedModeId: "auto",
+      });
+      expect(resolved).toBe("auto");
+    });
+
+    it("is ignored when the preferred mode is not available; target stays dontAsk", () => {
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: "default",
+        targetProvider: "claude",
+        parent: null,
+        unattended: true,
+        // No "auto" here (unsupported model): the preferred id must not leak in.
+        availableModes: ["default", "acceptEdits", "plan", "dontAsk"],
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+        preferredUnattendedModeId: "auto",
+      });
+      expect(resolved).toBe("dontAsk");
+    });
+
+    it("falls back to the list-order target (dontAsk) when no preferred id is set", () => {
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: undefined,
+        targetProvider: "claude",
+        parent: null,
+        unattended: true,
+        availableModes: CLAUDE_UNATTENDED_MODES,
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+      });
+      expect(resolved).toBe("dontAsk");
+    });
+
+    it("has no effect on an attended run", () => {
+      const resolved = resolveAndValidateCreateAgentMode({
+        requestedMode: "default",
+        targetProvider: "claude",
+        parent: null,
+        unattended: false,
+        availableModes: CLAUDE_UNATTENDED_MODES,
+        targetUnattendedMode: "dontAsk",
+        unattendedModeIds: ["dontAsk"],
+        preferredUnattendedModeId: "auto",
+      });
+      expect(resolved).toBe("default");
+    });
+  });
 });

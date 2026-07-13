@@ -2,6 +2,18 @@ import type { AgentModelDefinition, AgentSelectOption } from "../../agent-sdk-ty
 
 type ClaudeEffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
+/**
+ * Which auth paths support the Auto permission mode (model-classifier
+ * approvals) for a model, per the Claude Code support matrix:
+ * - "all" — supported on the Anthropic API, Bedrock/Vertex, and claude.ai
+ *   sign-in (Sonnet 5, Opus 4.7+).
+ * - "anthropic-api" — Anthropic API only (Opus 4.6 / Sonnet 4.6); not
+ *   available via Bedrock/Vertex or claude.ai subscription sign-in.
+ * - "none" — the classifier cannot run on this model anywhere (Haiku,
+ *   Sonnet <=4.5, Opus <=4.5, claude-3). The CLI errors if Auto is set.
+ */
+export type ClaudeAutoModeSupport = "all" | "anthropic-api" | "none";
+
 interface ClaudeModelManifestEntry {
   id: string;
   label: string;
@@ -10,6 +22,7 @@ interface ClaudeModelManifestEntry {
   contextWindowMaxTokens?: number;
   effortLevels?: readonly ClaudeEffortLevel[];
   supportsFastMode?: boolean;
+  autoModeSupport?: ClaudeAutoModeSupport;
 }
 
 const CLAUDE_EFFORT_LEVELS = {
@@ -34,6 +47,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Fable 5 · Most powerful model",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-8[1m]",
@@ -42,6 +56,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
+    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-8",
@@ -51,6 +66,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
+    autoModeSupport: "all",
   },
   {
     id: "claude-sonnet-5",
@@ -58,6 +74,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Sonnet 5 · Best for everyday tasks",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-7[1m]",
@@ -66,6 +83,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
+    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-7",
@@ -74,6 +92,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
+    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-6[1m]",
@@ -82,6 +101,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
     supportsFastMode: true,
+    autoModeSupport: "anthropic-api",
   },
   {
     id: "claude-opus-4-6",
@@ -90,6 +110,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
     supportsFastMode: true,
+    autoModeSupport: "anthropic-api",
   },
   {
     id: "claude-sonnet-4-6[1m]",
@@ -97,6 +118,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Sonnet 4.6 with 1M context window",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
+    autoModeSupport: "anthropic-api",
   },
   {
     id: "claude-sonnet-4-6",
@@ -104,12 +126,14 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Sonnet 4.6 · Best for everyday tasks",
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
+    autoModeSupport: "anthropic-api",
   },
   {
     id: "claude-haiku-4-5",
     label: "Haiku 4.5",
     description: "Haiku 4.5 · Fastest for quick answers",
     contextWindowMaxTokens: 200_000,
+    autoModeSupport: "none",
   },
 ] as const satisfies readonly ClaudeModelManifestEntry[];
 
@@ -147,12 +171,36 @@ export function getClaudeManifestModels(): AgentModelDefinition[] {
         ? { contextWindowMaxTokens: model.contextWindowMaxTokens }
         : {}),
       ...(thinkingOptions ? { thinkingOptions } : {}),
+      // Only the model-intrinsic "never" tier is stamped on the wire: it is
+      // deterministic (no env/auth dependence), so clients can hide Auto for
+      // it up front. Auth-path-dependent tiers stay a session-level check.
+      ...(model.autoModeSupport === "none" ? { supportsAutoMode: false } : {}),
     };
   });
 }
 
 export function isClaudeManifestModelId(modelId: string): boolean {
   return CLAUDE_MODEL_MANIFEST.some((model) => model.id === modelId);
+}
+
+/**
+ * Auto-mode support tier for a model, or undefined when the model is not in
+ * the manifest (custom settings.json ids, future models). Callers should fail
+ * open on undefined: wrongly hiding Auto loses a feature, wrongly showing it
+ * just reproduces the CLI's own "unavailable for this model" error.
+ */
+export function claudeManifestModelAutoModeSupport(
+  modelId: string | null | undefined,
+): ClaudeAutoModeSupport | undefined {
+  const normalizedModelId = normalizeClaudeManifestModelId(modelId);
+  if (!normalizedModelId) {
+    return undefined;
+  }
+  const entry = CLAUDE_MODEL_MANIFEST.find((model) => model.id === normalizedModelId);
+  if (!entry || !("autoModeSupport" in entry)) {
+    return undefined;
+  }
+  return entry.autoModeSupport;
 }
 
 export function claudeManifestModelSupportsFastMode(modelId: string | null | undefined): boolean {

@@ -23,7 +23,14 @@ import { listLocalTtsVoices } from "../speech/providers/local/sherpa/tts-voices.
 // The Claude permission modes (packages/.../claude/agent.ts DEFAULT_MODES). Kept
 // as a literal because that list is not exported; if it changes, this mirror
 // must too.
-const CLAUDE_MODE_IDS = new Set(["default", "acceptEdits", "plan", "auto", "bypassPermissions"]);
+const CLAUDE_MODE_IDS = new Set([
+  "default",
+  "acceptEdits",
+  "plan",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+]);
 const KOKORO_V1_MODEL = "kokoro-multi-lang-v1_0";
 const KOKORO_V1_VOICE_NAMES = new Set(
   listLocalTtsVoices(KOKORO_V1_MODEL).map((voice) => voice.name),

@@ -9,6 +9,7 @@ import {
   type FormPreferences,
   type ProviderPreferences,
 } from "@/hooks/use-form-preferences";
+import { coerceModeForModel, findModelDefinition } from "./mode-support";
 
 export interface FormInitialValues {
   serverId?: string | null;
@@ -601,7 +602,11 @@ export function resolveAgentForm(
           ...state.form,
           provider: action.provider,
           model: nextModelId,
-          modeId: nextModeId,
+          // See SET_MODEL_FROM_USER: Auto may not be runnable on this model.
+          modeId: coerceModeForModel(
+            nextModeId,
+            findModelDefinition(action.providerModels, nextModelId),
+          ),
           thinkingOptionId: nextThinkingOptionId,
         },
         userModified: { ...state.userModified, provider: true, model: true },
@@ -630,6 +635,12 @@ export function resolveAgentForm(
         form: {
           ...state.form,
           model: nextModelId,
+          // A selected Auto mode can become unsupported on the new model
+          // (e.g. Claude Auto on Haiku); drop back to the provider default.
+          modeId: coerceModeForModel(
+            state.form.modeId,
+            findModelDefinition(action.availableModels, nextModelId),
+          ),
           thinkingOptionId: nextThinkingOptionId,
         },
         userModified: { ...state.userModified, model: true },

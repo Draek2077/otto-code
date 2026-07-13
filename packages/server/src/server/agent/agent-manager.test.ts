@@ -23,6 +23,7 @@ import type {
   AgentCreateSessionOptions,
   AgentFeature,
   AgentLaunchContext,
+  AgentPermissionResponse,
   AgentPromptInput,
   AgentProvider,
   AgentPersistenceHandle,
@@ -6166,6 +6167,156 @@ test("permission request notifies once without forcing unread attention state", 
     // no-op
   }
 
+  expect(attentionReasons).toContain("permission");
+});
+
+// safe-unattended Phase 2: an unattended run has no client to answer approval
+// prompts, so the daemon must auto-deny permission escalations by policy.
+class GuardrailPermissionSession extends TestAgentSession {
+  readonly responses: AgentPermissionResponse[] = [];
+  private readonly turnId = "turn-guardrail-1";
+
+  override async startTurn(): Promise<{ turnId: string }> {
+    setTimeout(() => {
+      this.pushEvent({ type: "turn_started", provider: this.provider, turnId: this.turnId });
+      this.pushEvent({
+        type: "permission_requested",
+        provider: this.provider,
+        request: { id: "perm-guardrail-1", provider: this.provider, kind: "tool", name: "Bash" },
+        turnId: this.turnId,
+      });
+    }, 0);
+    return { turnId: this.turnId };
+  }
+
+  override async respondToPermission(
+    requestId: string,
+    response: AgentPermissionResponse,
+  ): Promise<void> {
+    this.responses.push(response);
+    // Continue the turn the way a real provider does once the host answers.
+    this.pushEvent({
+      type: "permission_resolved",
+      provider: this.provider,
+      requestId,
+      resolution: response,
+      turnId: this.turnId,
+    });
+    this.pushEvent({ type: "turn_completed", provider: this.provider, turnId: this.turnId });
+  }
+}
+
+class GuardrailPermissionClient implements AgentClient {
+  readonly provider = "codex" as const;
+  readonly capabilities = TEST_CAPABILITIES;
+  session: GuardrailPermissionSession | null = null;
+
+  async isAvailable(): Promise<boolean> {
+    return true;
+  }
+
+  async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+    this.session = new GuardrailPermissionSession(config);
+    return this.session;
+  }
+
+  async resumeSession(
+    _handle: AgentPersistenceHandle,
+    config?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession> {
+    this.session = new GuardrailPermissionSession({
+      provider: "codex",
+      cwd: config?.cwd ?? process.cwd(),
+      ...config,
+    });
+    return this.session;
+  }
+}
+
+test("unattended run auto-denies permission escalations without broadcasting attention", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-deny-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const client = new GuardrailPermissionClient();
+
+  const attentionReasons: Array<"finished" | "error" | "permission"> = [];
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000001a1",
+    onAgentAttention: ({ reason }) => {
+      attentionReasons.push(reason);
+    },
+  });
+
+  const agent = await manager.createAgent(
+    { provider: "codex", cwd: workdir, unattended: true, title: "Scheduled run" },
+    undefined,
+    { workspaceId: undefined },
+  );
+  expect(manager.getAgent(agent.id)?.unattended).toBe(true);
+
+  await manager.runAgent(agent.id, "do something that needs permission");
+  // The auto-deny response runs as a tracked background task; drain it so the
+  // post-deny cleanup (pending-permission removal, persistence) is settled.
+  await manager.flushForShutdown();
+
+  const session = client.session;
+  expect(session).not.toBeNull();
+  // The daemon answered the escalation itself — a single deny by policy.
+  expect(session?.responses).toHaveLength(1);
+  const response = session?.responses[0];
+  expect(response?.behavior).toBe("deny");
+  if (response?.behavior === "deny") {
+    expect(response.message).toBe("Unattended run: 'Bash' is not pre-approved; denied by policy");
+  }
+
+  // No attention broadcast, no dangling pending permission, and the denial is
+  // recorded as a queryable hook for a later phase.
+  expect(attentionReasons).not.toContain("permission");
+  const updated = manager.getAgent(agent.id);
+  expect(updated?.pendingPermissions.size).toBe(0);
+  expect(updated?.guardrailDenials).toBe(1);
+  expect(updated?.lastGuardrailDenialAt).toEqual(expect.any(String));
+
+  // Persisted additively so the count survives a reload.
+  const record = await storage.get(agent.id);
+  expect(record?.unattended).toBe(true);
+  expect(record?.guardrailDenials).toBe(1);
+});
+
+test("attended run still broadcasts permission attention and waits for a response", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attended-permission-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const client = new GuardrailPermissionClient();
+
+  const attentionReasons: Array<"finished" | "error" | "permission"> = [];
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000001a2",
+    onAgentAttention: ({ reason }) => {
+      attentionReasons.push(reason);
+    },
+  });
+
+  const agent = await manager.createAgent(
+    { provider: "codex", cwd: workdir, title: "Interactive chat" },
+    undefined,
+    { workspaceId: undefined },
+  );
+  expect(manager.getAgent(agent.id)?.unattended).toBe(false);
+
+  const stream = manager.streamAgent(agent.id, "do something that needs permission");
+  await stream.next(); // turn_started
+  await stream.next(); // permission_requested
+
+  // Attended agents surface the prompt and hold — the daemon must NOT answer it.
+  const pending = manager.getAgent(agent.id);
+  expect(pending?.pendingPermissions.size).toBe(1);
+  expect(pending?.guardrailDenials).toBe(0);
+  expect(client.session?.responses).toHaveLength(0);
   expect(attentionReasons).toContain("permission");
 });
 

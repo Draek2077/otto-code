@@ -289,6 +289,7 @@ async function resolveMcpCreateAgent(
     provider,
     resolvedCwd,
     parentAgent,
+    model: resolvedProviderModel.model ?? input.config?.model,
   });
 
   const labels = mergeLabels({
@@ -369,6 +370,7 @@ async function resolveMcpProviderCreateConfig(params: {
   provider: string;
   resolvedCwd: string;
   parentAgent: ManagedAgent | null;
+  model: string | null | undefined;
 }): Promise<{ modeId?: string; featureValues?: Record<string, unknown> }> {
   const passthroughConfig = params.input.config;
   return params.dependencies.providerSnapshotManager.resolveCreateConfig({
@@ -378,6 +380,9 @@ async function resolveMcpProviderCreateConfig(params: {
     featureValues: params.input.features ?? passthroughConfig?.featureValues,
     parent: params.parentAgent,
     unattended: params.input.unattended ?? false,
+    // Model-aware unattended-target selection (Claude dontAsk → auto) needs the
+    // resolved model here, before the session config is built.
+    model: params.model,
   });
 }
 
@@ -404,6 +409,10 @@ function buildMcpSessionConfig(params: {
     model: params.resolvedProviderModel.model ?? passthroughConfig?.model,
     thinkingOptionId: params.input.thinking ?? passthroughConfig?.thinkingOptionId,
     internal: params.input.internal ?? passthroughConfig?.internal,
+    // Stamp the creation-time unattended signal onto the config so the daemon's
+    // guardrail deny-responder can auto-deny permission escalations for runs
+    // nobody is watching. See projects/safe-unattended/safe-unattended.md.
+    unattended: params.input.unattended ?? passthroughConfig?.unattended,
   };
   if (provisionalTitle) {
     config.title = provisionalTitle;

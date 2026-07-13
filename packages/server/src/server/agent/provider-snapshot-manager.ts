@@ -131,6 +131,9 @@ export interface ResolveProviderCreateConfigOptions {
   featureValues: Record<string, unknown> | undefined;
   parent: ManagedAgent | null;
   unattended: boolean;
+  // Requested/default model, when known. Forwarded to the provider's
+  // resolveCreateConfig so model-aware unattended-target selection can run.
+  model?: string | null;
 }
 
 export interface ResolvedProviderCreateConfig {
@@ -379,6 +382,7 @@ export class ProviderSnapshotManager {
       parent,
       unattended: input.unattended || parent?.isUnattended === true,
       availableModes: entry.modes ?? [],
+      model: input.model,
     });
   }
 

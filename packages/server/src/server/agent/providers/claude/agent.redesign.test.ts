@@ -5,7 +5,7 @@ import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { asInternals } from "../../../test-utils/class-mocks.js";
 import { ClaudeAgentClient, readEventIdentifiers } from "./agent.js";
 import { streamSession } from "../test-utils/session-stream-adapter.js";
-import type { AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
+import type { AgentMode, AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 
 interface QueryMock {
   next: ReturnType<typeof vi.fn>;
@@ -196,6 +196,49 @@ test("exposes and applies auto permission mode", async () => {
 
     expect(queryMock.setPermissionMode).toHaveBeenCalledWith("auto");
     expect(await session.getCurrentMode()).toBe("auto");
+  } finally {
+    await session.close();
+  }
+});
+
+test("hides auto mode from available modes for models without classifier support", async () => {
+  const client = new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  });
+  const session = await client.createSession({
+    provider: "claude",
+    cwd: process.cwd(),
+    model: "claude-haiku-4-5",
+  });
+
+  try {
+    const modes = await session.getAvailableModes();
+    expect(modes.map((mode) => mode.id)).not.toContain("auto");
+    expect(modes.map((mode) => mode.id)).toContain("bypassPermissions");
+  } finally {
+    await session.close();
+  }
+});
+
+test("rejects setting auto mode for models without classifier support", async () => {
+  const client = new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  });
+  const session = await client.createSession({
+    provider: "claude",
+    cwd: process.cwd(),
+    model: "claude-haiku-4-5",
+  });
+
+  try {
+    await expect(session.setMode("auto")).rejects.toThrow(
+      "Claude Auto mode is not supported by model 'claude-haiku-4-5'",
+    );
+    expect(sdkQueryFactory).not.toHaveBeenCalled();
   } finally {
     await session.close();
   }
@@ -1509,4 +1552,171 @@ test("does not use stream_event uuid as assistant message identity when message_
   expect(assembler.timelineAssembler.messages.size).toBe(0);
 
   await session.close();
+});
+
+// --- Safe-unattended: dontAsk target + Auto upgrade + allow-rule baseline ---
+
+const CLAUDE_MODE_OBJECTS: AgentMode[] = [
+  { id: "default", label: "Always Ask" },
+  { id: "acceptEdits", label: "Accept File Edits" },
+  { id: "plan", label: "Plan Mode" },
+  { id: "auto", label: "Auto mode" },
+  { id: "dontAsk", label: "Don't Ask", isUnattended: true },
+  { id: "bypassPermissions", label: "Bypass", isUnattended: true },
+];
+
+function newClaudeClient() {
+  return new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory: sdkQueryFactory,
+    resolveBinary: async () => "/test/claude/bin",
+  });
+}
+
+test("unattended create on a classifier-less model resolves dontAsk (not bypass)", () => {
+  const resolved = newClaudeClient().resolveCreateConfig({
+    provider: "claude",
+    requestedMode: undefined,
+    featureValues: undefined,
+    parent: null,
+    unattended: true,
+    availableModes: CLAUDE_MODE_OBJECTS,
+    model: "claude-haiku-4-5",
+  });
+  expect(resolved.modeId).toBe("dontAsk");
+});
+
+test("unattended create on an all-tier model upgrades the target to auto", () => {
+  // "all"-tier models (e.g. Opus 4.8) support the classifier on every auth path,
+  // so the unattended target is upgraded from dontAsk to auto regardless of env.
+  const resolved = newClaudeClient().resolveCreateConfig({
+    provider: "claude",
+    requestedMode: undefined,
+    featureValues: undefined,
+    parent: null,
+    unattended: true,
+    availableModes: CLAUDE_MODE_OBJECTS,
+    model: "claude-opus-4-8",
+  });
+  expect(resolved.modeId).toBe("auto");
+});
+
+test("anthropic-api-tier model upgrades to auto only with ANTHROPIC_API_KEY auth", () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  const prevBedrock = process.env.CLAUDE_CODE_USE_BEDROCK;
+  const prevVertex = process.env.CLAUDE_CODE_USE_VERTEX;
+  delete process.env.CLAUDE_CODE_USE_BEDROCK;
+  delete process.env.CLAUDE_CODE_USE_VERTEX;
+  try {
+    const client = newClaudeClient();
+    const base = {
+      provider: "claude" as const,
+      requestedMode: undefined,
+      featureValues: undefined,
+      parent: null,
+      unattended: true,
+      availableModes: CLAUDE_MODE_OBJECTS,
+      model: "claude-sonnet-4-6",
+    };
+
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    expect(client.resolveCreateConfig(base).modeId).toBe("auto");
+
+    delete process.env.ANTHROPIC_API_KEY;
+    // Without an API-key signal (claude.ai sign-in) the anthropic-api tier can't
+    // run the classifier, so the target stays dontAsk.
+    expect(client.resolveCreateConfig(base).modeId).toBe("dontAsk");
+  } finally {
+    restoreEnvValue("ANTHROPIC_API_KEY", prevKey);
+    restoreEnvValue("CLAUDE_CODE_USE_BEDROCK", prevBedrock);
+    restoreEnvValue("CLAUDE_CODE_USE_VERTEX", prevVertex);
+  }
+});
+
+test("an explicit auto request on an unattended run is kept when the model supports it", () => {
+  const resolved = newClaudeClient().resolveCreateConfig({
+    provider: "claude",
+    requestedMode: "auto",
+    featureValues: undefined,
+    parent: null,
+    unattended: true,
+    availableModes: CLAUDE_MODE_OBJECTS,
+    model: "claude-opus-4-8",
+  });
+  expect(resolved.modeId).toBe("auto");
+});
+
+test("setMode accepts dontAsk", async () => {
+  const queryMock = createBaseQueryMock(vi.fn(async () => ({ done: true, value: undefined })));
+  sdkQueryFactory.mockImplementation(() => queryMock);
+  const session = await createSession();
+  try {
+    await session.setMode("dontAsk");
+    expect(await session.getCurrentMode()).toBe("dontAsk");
+  } finally {
+    await session.close();
+  }
+});
+
+test("buildOptions adds the allow-rule baseline only in dontAsk mode", async () => {
+  const captured: Array<{ allowedTools?: string[]; permissionMode?: string }> = [];
+  sdkQueryFactory.mockImplementation(
+    ({ options }: { options: { allowedTools?: string[]; permissionMode?: string } }) => {
+      captured.push({ allowedTools: options.allowedTools, permissionMode: options.permissionMode });
+      return createBaseQueryMock(vi.fn(async () => ({ done: true, value: undefined })));
+    },
+  );
+
+  const client = newClaudeClient();
+  const session = await client.createSession({
+    provider: "claude",
+    cwd: process.cwd(),
+    modeId: "dontAsk",
+    mcpServers: {
+      otto: { type: "http", url: "http://127.0.0.1:6868/mcp/agents" },
+      github: { type: "http", url: "http://127.0.0.1:9000/mcp" },
+    },
+  });
+
+  try {
+    await collectUntilTerminal(streamSession(session, "run under dontAsk"));
+    expect(captured).toHaveLength(1);
+    const allowed = captured[0].allowedTools ?? [];
+    expect(captured[0].permissionMode).toBe("dontAsk");
+    // Workspace edits + orchestration primitives are allowed.
+    expect(allowed).toEqual(
+      expect.arrayContaining([
+        "Edit",
+        "Write",
+        "MultiEdit",
+        "NotebookEdit",
+        "TodoWrite",
+        "Task",
+        "mcp__otto",
+      ]),
+    );
+    // Dangerous / non-Otto surfaces stay denied (absent from the allow list).
+    expect(allowed).not.toContain("Bash");
+    expect(allowed).not.toContain("WebFetch");
+    expect(allowed).not.toContain("mcp__github");
+  } finally {
+    await session.close();
+  }
+});
+
+test("buildOptions leaves allowedTools unset in default (attended) mode", async () => {
+  const captured: Array<{ allowedTools?: string[] }> = [];
+  sdkQueryFactory.mockImplementation(({ options }: { options: { allowedTools?: string[] } }) => {
+    captured.push({ allowedTools: options.allowedTools });
+    return createBaseQueryMock(vi.fn(async () => ({ done: true, value: undefined })));
+  });
+
+  const session = await createSession();
+  try {
+    await collectUntilTerminal(streamSession(session, "run under default mode"));
+    expect(captured).toHaveLength(1);
+    expect(captured[0].allowedTools).toBeUndefined();
+  } finally {
+    await session.close();
+  }
 });

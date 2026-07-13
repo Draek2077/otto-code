@@ -88,6 +88,13 @@ export interface AgentModelDefinition {
   contextWindowMaxTokens?: number;
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
+  /**
+   * False when this model cannot run the provider's "auto" permission mode
+   * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku, and on
+   * 4.6-era models without Anthropic API-key auth). Absent = supported or
+   * unknown; clients only hide Auto on an explicit false.
+   */
+  supportsAutoMode?: boolean;
 }
 
 export interface AgentSelectOption {
@@ -133,6 +140,14 @@ export interface ResolveAgentCreateConfigInput {
   parent: AgentCreateConfigParent | null;
   unattended: boolean;
   availableModes: AgentMode[] | undefined;
+  // The requested/default model for this create, when known. Lets a provider's
+  // own resolveCreateConfig make model-aware decisions (e.g. Claude upgrading
+  // the unattended target to `auto` when the model supports the classifier).
+  model?: string | null;
+  // Provider-computed model-aware override for the unattended coercion target;
+  // see ResolveCreateAgentModeInput.preferredUnattendedModeId. The default
+  // resolver forwards it; provider-specific resolvers set it.
+  preferredUnattendedModeId?: string;
 }
 
 export interface ResolveAgentCreateConfigResult {
@@ -636,6 +651,16 @@ export interface AgentSessionConfig {
    * active team. Absent on raw spawns and non-member personality spawns.
    */
   teamSnapshot?: ResolvedTeamSnapshot;
+  /**
+   * Marks a run created for unattended execution (schedules, loops, artifact
+   * refreshes, unattended-parent spawns — anyone passing `createAgent(...,
+   * unattended: true)`). This is a creation-time signal, NOT derived from the
+   * permission mode: an attended user chatting in Claude auto mode still wants
+   * the prompt. The daemon's guardrail deny-responder keys off this flag to
+   * auto-deny permission escalations that would otherwise stall a run nobody is
+   * watching. See projects/safe-unattended/safe-unattended.md (Phase 2).
+   */
+  unattended?: boolean;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
    * They are used for ephemeral system tasks like commit/PR generation.

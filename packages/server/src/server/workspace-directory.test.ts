@@ -575,3 +575,136 @@ describe("WorkspaceDirectory empty projects", () => {
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
   });
 });
+
+describe("WorkspaceDirectory hidden workspaces", () => {
+  function workspaceRecord(
+    input: Partial<PersistedWorkspaceRecord> & { workspaceId: string; projectId: string },
+  ): PersistedWorkspaceRecord {
+    return {
+      cwd: `/workspace/${input.projectId}`,
+      kind: "directory",
+      displayName: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: null,
+      ...input,
+    } satisfies PersistedWorkspaceRecord;
+  }
+
+  function projectRecord(projectId: string): PersistedProjectRecord {
+    return {
+      projectId,
+      rootPath: `/workspace/${projectId}`,
+      kind: "non_git",
+      displayName: projectId,
+      customName: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: null,
+    };
+  }
+
+  // Mutable backing array so a test can flip `hidden` in place, exactly like the
+  // registry-backed reveal path does.
+  function makeMutableDirectory(input: {
+    projects: PersistedProjectRecord[];
+    workspaces: PersistedWorkspaceRecord[];
+  }): { directory: WorkspaceDirectory; workspaces: PersistedWorkspaceRecord[] } {
+    const workspaces = input.workspaces;
+    const directory = new WorkspaceDirectory({
+      logger: createTestLogger(),
+      projectRegistry: { list: async () => input.projects },
+      workspaceRegistry: { list: async () => workspaces },
+      listAgentPayloads: async () => [],
+      listTerminalActivityContributions: async () => [],
+      isProviderVisibleToClient: () => true,
+      buildWorkspaceDescriptor: async ({ workspace }) => ({
+        id: workspace.workspaceId,
+        projectId: workspace.projectId,
+        projectDisplayName: "project",
+        projectCustomName: null,
+        projectRootPath: "/workspace/project",
+        workspaceDirectory: workspace.cwd,
+        projectKind: "non_git",
+        workspaceKind: workspace.kind,
+        name: workspace.displayName,
+        archivingAt: null,
+        status: "done",
+        activityAt: null,
+        diffStat: null,
+        gitRuntime: null,
+        githubRuntime: null,
+      }),
+    });
+    return { directory, workspaces };
+  }
+
+  test("hidden workspaces are withheld from listings and descriptor maps", async () => {
+    const { directory } = makeMutableDirectory({
+      projects: [projectRecord("proj")],
+      workspaces: [
+        workspaceRecord({ workspaceId: "ws-visible", projectId: "proj" }),
+        workspaceRecord({ workspaceId: "ws-hidden", projectId: "proj", hidden: true }),
+      ],
+    });
+
+    const result = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r1",
+    });
+    expect(result.entries.map((entry) => entry.id)).toEqual(["ws-visible"]);
+
+    // The per-id descriptor map (the live-emission path) also withholds it: the
+    // emission chokepoint resolves no descriptor and emits a REMOVE.
+    const descriptors = await directory.buildDescriptorMap({
+      includeGitData: false,
+      workspaceIds: ["ws-visible", "ws-hidden"],
+    });
+    expect(descriptors.has("ws-visible")).toBe(true);
+    expect(descriptors.has("ws-hidden")).toBe(false);
+  });
+
+  test("a revealed workspace appears in listings and descriptor maps", async () => {
+    const { directory, workspaces } = makeMutableDirectory({
+      projects: [projectRecord("proj")],
+      workspaces: [workspaceRecord({ workspaceId: "ws-run", projectId: "proj", hidden: true })],
+    });
+
+    const before = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r1",
+    });
+    expect(before.entries).toEqual([]);
+
+    // Reveal = flip the flag on the persisted record; the next build resolves a
+    // descriptor and the emission path upserts it.
+    workspaces[0] = { ...workspaces[0], hidden: false };
+
+    const after = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r2",
+    });
+    expect(after.entries.map((entry) => entry.id)).toEqual(["ws-run"]);
+    const descriptors = await directory.buildDescriptorMap({
+      includeGitData: false,
+      workspaceIds: ["ws-run"],
+    });
+    expect(descriptors.has("ws-run")).toBe(true);
+  });
+
+  test("a project whose only workspace is hidden renders nowhere: no entries, no empty-project ghost", async () => {
+    const { directory } = makeMutableDirectory({
+      projects: [projectRecord("proj")],
+      workspaces: [workspaceRecord({ workspaceId: "ws-hidden", projectId: "proj", hidden: true })],
+    });
+
+    const result = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r1",
+    });
+    // The hidden workspace still counts as occupying its project, so the project
+    // must not appear as an empty-project ghost row while the run is invisible.
+    expect(result.entries).toEqual([]);
+    expect(result.emptyProjects).toEqual([]);
+  });
+});

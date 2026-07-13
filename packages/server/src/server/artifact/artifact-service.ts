@@ -458,6 +458,9 @@ export class ArtifactService {
           featureValues: undefined,
           parent: null,
           unattended: true,
+          // Let the provider pick a model-aware unattended target (Claude
+          // resolves dontAsk, upgraded to auto when the model supports it).
+          model: input.model,
         });
 
     const config: AgentSessionConfig = {

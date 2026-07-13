@@ -381,6 +381,23 @@ interface ManagedAgentBase {
   finalizedForegroundTurnIds: Set<string>;
   unsubscribeSession: (() => void) | null;
   /**
+   * True when this agent was created for an unattended run (schedule/loop/
+   * artifact refresh, unattended-parent spawn — `createAgent(..., unattended:
+   * true)`). Creation-time signal, NOT derived from the permission mode. The
+   * guardrail deny-responder (onStreamPermissionRequested) uses it to auto-deny
+   * permission escalations instead of stalling on a prompt nobody can answer.
+   * See projects/safe-unattended/safe-unattended.md (Phase 2).
+   */
+  unattended?: boolean;
+  /**
+   * Count of permission escalations the guardrail deny-responder auto-denied on
+   * this (unattended) agent, plus when the last one happened. Queryable hook a
+   * later phase uses to surface "this run hit a guardrail and may need
+   * attention". See projects/safe-unattended/safe-unattended.md (Phase 3).
+   */
+  guardrailDenials?: number;
+  lastGuardrailDenialAt?: string;
+  /**
    * Internal agents are hidden from listings and don't trigger notifications.
    */
   internal?: boolean;
@@ -3053,6 +3070,8 @@ export class AgentManager {
       lastUsage: options?.lastUsage,
       lastError: options?.lastError,
       attention: resolveInitialAttention(options?.attention),
+      unattended: config.unattended ?? false,
+      guardrailDenials: 0,
       internal: config.internal ?? false,
       observable: config.observable ?? false,
       labels: options?.labels ?? {},
@@ -3759,11 +3778,61 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "permission_requested" }>,
   ): void {
     const hadPendingPermissions = agent.pendingPermissions.size > 0;
-    agent.pendingPermissions.set(event.request.id, event.request);
+    const request = event.request;
+    agent.pendingPermissions.set(request.id, request);
+
+    // Guardrail: an unattended run (schedule/loop/artifact) has no client
+    // watching to answer approval prompts. Claude's auto-mode classifier (and
+    // any other provider that escalates) would otherwise stall the run here
+    // forever. Answer immediately with DENY by policy — no attention broadcast,
+    // no notification — and let the model adapt. Keyed on the creation-time
+    // `unattended` flag, never the permission mode (an attended user in auto
+    // mode still wants the prompt). This is Phase 4 parity for the prompt path.
+    // See projects/safe-unattended/safe-unattended.md (Phase 2).
+    if (agent.unattended) {
+      this.autoDenyUnattendedPermissionRequest(agent, request);
+      return;
+    }
+
     if (!hadPendingPermissions && !agent.internal) {
       this.broadcastAgentAttention(agent, "permission");
     }
     this.emitState(agent);
+  }
+
+  private autoDenyUnattendedPermissionRequest(
+    agent: ActiveManagedAgent,
+    request: AgentPermissionRequest,
+  ): void {
+    const reason = `Unattended run: '${request.name}' is not pre-approved; denied by policy`;
+    this.recordGuardrailDenial(agent, request.name);
+    // Reuse the exact deny path a client's response takes (resolves the pending
+    // permission, refreshes state, continues the turn). Fire-and-forget: the
+    // stream event handler is synchronous, so track the promise as a background
+    // task and log any failure.
+    this.trackBackgroundTask(
+      this.respondToPermission(agent.id, request.id, { behavior: "deny", message: reason })
+        .then(() => undefined)
+        .catch((err) => {
+          this.logger.error(
+            { err, agentId: agent.id, tool: request.name },
+            "safe-unattended: failed to auto-deny unattended permission request",
+          );
+        }),
+    );
+  }
+
+  private recordGuardrailDenial(agent: ActiveManagedAgent, tool: string): void {
+    agent.guardrailDenials = (agent.guardrailDenials ?? 0) + 1;
+    agent.lastGuardrailDenialAt = new Date().toISOString();
+    // TODO(safe-unattended Phase 3): surface this to the owning service
+    // (schedule/artifact) as a promote-on-problem trigger so a guarded run that
+    // hit a guardrail denial gets revealed alongside hard failures.
+    // See projects/safe-unattended/safe-unattended.md (Phase 3).
+    this.logger.info(
+      { agentId: agent.id, tool, guardrailDenials: agent.guardrailDenials },
+      "safe-unattended: denied unattended permission request by policy",
+    );
   }
 
   private onStreamPermissionResolved(params: {

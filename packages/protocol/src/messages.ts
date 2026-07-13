@@ -571,6 +571,9 @@ const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z.object({
   // Daemon-stamped capability tier (deep/standard/fast). Optional: absent on old
   // daemons and on models neither classified nor user-tagged.
   tier: ModelTierSchema.optional(),
+  // False when the model can't run the provider's "auto" permission mode.
+  // Optional: absent on old daemons and when supported/unknown.
+  supportsAutoMode: z.boolean().optional(),
 });
 
 export const ProviderSnapshotEntrySchema = z.object({

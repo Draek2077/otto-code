@@ -1,7 +1,8 @@
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { checkPersonalityAvailability } from "@otto-code/protocol/agent-personalities";
 import { resolveEffortOption } from "@otto-code/protocol/effort";
+import { coerceModeForModel } from "./mode-support";
 
 // App-side resolution of a personality into the concrete form values a picker
 // auto-fills: provider, model, mode, and the model-specific thinking option the
@@ -20,6 +21,19 @@ export interface PersonalityFormValues {
 export type PersonalityFormResolution =
   | { available: true; values: PersonalityFormValues }
   | { available: false; reason: string };
+
+// Auto support is per-model: fall back to the provider default when the model
+// can't run the classifier (daemon-stamped supportsAutoMode: false).
+function resolvePersonalityModeId(
+  personality: AgentPersonality,
+  entry: ProviderSnapshotEntry,
+  model: AgentModelDefinition,
+): string {
+  return (
+    coerceModeForModel(personality.modeId ?? entry.defaultModeId ?? "", model) ||
+    coerceModeForModel(entry.defaultModeId ?? "", model)
+  );
+}
 
 export function resolvePersonalityForForm(
   personality: AgentPersonality,
@@ -41,7 +55,7 @@ export function resolvePersonalityForForm(
     return { available: false, reason: `Model "${personality.model}" is not available.` };
   }
 
-  const modeId = personality.modeId ?? entry.defaultModeId ?? "";
+  const modeId = resolvePersonalityModeId(personality, entry, model);
   let thinkingOptionId = "";
   if (personality.effortLevel && model.thinkingOptions && model.thinkingOptions.length > 0) {
     try {

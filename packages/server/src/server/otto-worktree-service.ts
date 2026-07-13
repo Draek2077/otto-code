@@ -74,6 +74,7 @@ export async function createOttoWorktree(
     worktree: createdWorktree.worktree,
     baseBranch: resolveIntentBaseBranch(createdWorktree.intent),
     title: resolveFirstAgentPromptTitle(input.firstAgentContext),
+    hidden: input.hidden ?? false,
     deps,
   });
 
@@ -219,6 +220,7 @@ async function upsertWorkspaceForWorktree(options: {
   worktree: WorktreeConfig;
   baseBranch?: string | null;
   title?: string | null;
+  hidden?: boolean;
   deps: Pick<
     CreateOttoWorktreeDeps,
     "projectRegistry" | "workspaceRegistry" | "workspaceGitService"
@@ -262,6 +264,7 @@ async function upsertWorkspaceForWorktree(options: {
     branch: options.worktree.branchName || null,
     baseBranch: options.baseBranch ?? null,
     title: options.title ?? null,
+    hidden: options.hidden ?? false,
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
@@ -281,7 +284,7 @@ export interface CreateLocalCheckoutWorkspaceDeps {
 // Never reuses a same-cwd record: a directory may back any number of
 // workspaces. Used by explicit user creation.
 export async function createLocalCheckoutWorkspace(
-  options: { cwd: string; title?: string | null },
+  options: { cwd: string; title?: string | null; hidden?: boolean },
   deps: CreateLocalCheckoutWorkspaceDeps,
 ): Promise<PersistedWorkspaceRecord> {
   const normalizedCwd = resolve(options.cwd);
@@ -310,6 +313,7 @@ export async function createLocalCheckoutWorkspace(
     displayName: membership.workspaceDisplayName,
     branch,
     title: trimmedTitle ? trimmedTitle : null,
+    hidden: options.hidden ?? false,
     createdAt: now,
     updatedAt: now,
   });

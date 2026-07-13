@@ -219,6 +219,7 @@ function buildRunOutput(params: {
 
 type ScheduleAgentManager = Pick<
   AgentManager,
+  | "closeAgent"
   | "createAgent"
   | "getAgent"
   | "getRegisteredProviderIds"
@@ -232,6 +233,10 @@ type ScheduleAgentManager = Pick<
 interface ScheduleWorkspaceCreateInput {
   cwd: string;
   firstAgentContext: FirstAgentContext;
+  // Schedule runs always create their workspace hidden (withheld from clients).
+  // The host honors this by persisting the workspace record with `hidden: true`;
+  // the run reveals it later only on finish-and-keep or error.
+  hidden: boolean;
 }
 
 /** Narrow provider-snapshot surface the run path needs for personality resolution. */
@@ -267,6 +272,10 @@ export interface ScheduleServiceOptions {
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreateOttoWorktreeWorkflowResult>;
   archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
+  // Flip a hidden schedule-run workspace to visible and emit a workspace_update
+  // so it appears in every client's sidebar. Called on finish-and-keep and on
+  // error (never on archive-on-finish success — that path stays invisible).
+  revealWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
 }
@@ -284,6 +293,7 @@ export class ScheduleService {
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreateOttoWorktreeWorkflowResult>;
   private readonly archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
+  private readonly revealWorkspace: (workspaceId: string) => Promise<void>;
   private readonly providerSnapshotManager: ScheduleProviderLister | null;
   private readonly readAgentPersonalities: (() => AgentPersonality[]) | null;
   private readonly readAgentTeams: (() => AgentTeamsConfigView | undefined) | null;
@@ -304,6 +314,7 @@ export class ScheduleService {
     this.createLocalCheckoutWorkspace = options.createLocalCheckoutWorkspace;
     this.createOttoWorktreeWorkspace = options.createOttoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
+    this.revealWorkspace = options.revealWorkspace;
     this.providerSnapshotManager = options.providerSnapshotManager ?? null;
     this.readAgentPersonalities = options.readAgentPersonalities ?? null;
     this.readAgentTeams = options.readAgentTeams ?? null;
@@ -633,6 +644,11 @@ export class ScheduleService {
       agentId: string | null;
       runId: string;
     }> = [];
+    // Interrupted runs that we do NOT archive must be revealed: they were created
+    // hidden, so without reveal a kept-run (archiveOnFinish=false) workspace would
+    // be orphaned hidden forever. A daemon restart mid-run is a failure the user
+    // should see.
+    const revealWorkspaceIds: string[] = [];
     await this.store.update(scheduleId, (current) => {
       let updated = { ...current };
       let dirty = false;
@@ -641,20 +657,22 @@ export class ScheduleService {
       if (runningIndex !== -1) {
         const runs = [...updated.runs];
         const runningRun = runs[runningIndex];
-        if (
-          updated.target.type === "new-agent" &&
-          runningRun.workspaceId &&
-          shouldArchiveScheduleRunWorkspace({
-            agentId: runningRun.agentId,
-            archiveOnFinish: updated.target.config.archiveOnFinish,
-          })
-        ) {
-          interruptedWorkspaces.push({
-            workspaceId: runningRun.workspaceId,
-            repoRoot: updated.target.config.cwd,
-            agentId: runningRun.agentId,
-            runId: runningRun.id,
-          });
+        if (updated.target.type === "new-agent" && runningRun.workspaceId) {
+          if (
+            shouldArchiveScheduleRunWorkspace({
+              agentId: runningRun.agentId,
+              archiveOnFinish: updated.target.config.archiveOnFinish,
+            })
+          ) {
+            interruptedWorkspaces.push({
+              workspaceId: runningRun.workspaceId,
+              repoRoot: updated.target.config.cwd,
+              agentId: runningRun.agentId,
+              runId: runningRun.id,
+            });
+          } else {
+            revealWorkspaceIds.push(runningRun.workspaceId);
+          }
         }
         runs[runningIndex] = {
           ...runningRun,
@@ -684,6 +702,16 @@ export class ScheduleService {
       }
       return current;
     });
+    for (const workspaceId of revealWorkspaceIds) {
+      try {
+        await this.revealWorkspace(workspaceId);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, workspaceId, scheduleId },
+          "Failed to reveal interrupted scheduled workspace after daemon restart",
+        );
+      }
+    }
     const interruptedWorkspace = interruptedWorkspaces[0];
     if (!interruptedWorkspace) {
       return;
@@ -915,6 +943,7 @@ export class ScheduleService {
     await this.assertNewAgentCwdDirectory(config.cwd);
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
+    let succeeded = false;
     try {
       workspace = await this.createScheduleRunWorkspace(config, schedule.prompt);
       await this.recordRunWorkspace({
@@ -950,6 +979,14 @@ export class ScheduleService {
         thinking: spawn.thinking,
         features: config.featureValues,
         unattended: true,
+        // Schedule-run agents are internal like artifact-generator agents: this
+        // suppresses agent-level attention broadcasts (agent-manager skips
+        // internal agents), so a clean run is fully silent. Problems surface
+        // through the schedule service's own error detection (waitResult.status
+        // === "error"), which reveals the hidden workspace. Whether these agents
+        // should instead stay listed/persisted is a deferred decision — see the
+        // safe-unattended charter's Open questions.
+        internal: true,
         promptFailure: "return-error",
         background: true,
         notifyOnFinish: false,
@@ -979,6 +1016,7 @@ export class ScheduleService {
         throw new Error(waitResult.lastMessage ?? `Scheduled agent ${agent.id} failed`);
       }
       const timelineText = curateAgentActivity(result.timeline);
+      succeeded = true;
       return {
         agentId: agent.id,
         output: buildRunOutput({
@@ -988,25 +1026,70 @@ export class ScheduleService {
         }),
       };
     } finally {
-      if (
-        workspace &&
-        shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish: config.archiveOnFinish })
-      ) {
+      // Schedule-run agents are internal (ephemeral), so archive-by-workspace
+      // can't see them — close the agent directly, mirroring how the artifact
+      // generator tears down its internal agent. Without this the finished agent
+      // would leak in-memory (internal agents are never persisted or listed).
+      if (agentId) {
         try {
-          await this.archiveWorkspace(workspace.workspaceId, config.cwd);
+          await this.agentManager.closeAgent(agentId);
         } catch (error) {
           this.logger.warn(
-            {
-              err: error,
-              agentId,
-              workspaceId: workspace.workspaceId,
-              scheduleId: schedule.id,
-              runId,
-            },
-            "Failed to archive scheduled workspace after run",
+            { err: error, agentId, scheduleId: schedule.id, runId },
+            "Failed to close scheduled agent after run",
           );
         }
       }
+      if (workspace) {
+        await this.disposeScheduleRunWorkspace({
+          workspace,
+          agentId,
+          succeeded,
+          archiveOnFinish: config.archiveOnFinish,
+          repoRoot: config.cwd,
+          scheduleId: schedule.id,
+          runId,
+        });
+      }
+    }
+  }
+
+  // Disposition of a schedule-run workspace once the run settles. The workspace
+  // was created hidden, so exactly one of three things happens:
+  //   - error (run threw): REVEAL and never archive — the failure must surface,
+  //     and archiving would hide the very problem the user needs to see, even
+  //     when archiveOnFinish is set.
+  //   - success + archiveOnFinish: archive as before — it was never revealed, so
+  //     the user never sees the transient workspace.
+  //   - success + keep (archiveOnFinish=false): REVEAL so the kept result shows.
+  private async disposeScheduleRunWorkspace(params: {
+    workspace: PersistedWorkspaceRecord;
+    agentId: string | null;
+    succeeded: boolean;
+    archiveOnFinish?: boolean;
+    repoRoot: string;
+    scheduleId: string;
+    runId: string;
+  }): Promise<void> {
+    const { workspace, agentId, succeeded, archiveOnFinish, repoRoot, scheduleId, runId } = params;
+    if (succeeded && shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish })) {
+      try {
+        await this.archiveWorkspace(workspace.workspaceId, repoRoot);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, agentId, workspaceId: workspace.workspaceId, scheduleId, runId },
+          "Failed to archive scheduled workspace after run",
+        );
+      }
+      return;
+    }
+    try {
+      await this.revealWorkspace(workspace.workspaceId);
+    } catch (error) {
+      this.logger.warn(
+        { err: error, agentId, workspaceId: workspace.workspaceId, scheduleId, runId, succeeded },
+        "Failed to reveal scheduled workspace after run",
+      );
     }
   }
 
@@ -1015,12 +1098,23 @@ export class ScheduleService {
     prompt: string,
   ): Promise<PersistedWorkspaceRecord> {
     const firstAgentContext = { prompt };
+    // Schedule runs are invisible until they finish-and-keep or error: create the
+    // backing workspace hidden so it never flashes into any client's sidebar.
     switch (config.isolation ?? "local") {
       case "local":
-        return this.createLocalCheckoutWorkspace({ cwd: config.cwd, firstAgentContext });
+        return this.createLocalCheckoutWorkspace({
+          cwd: config.cwd,
+          firstAgentContext,
+          hidden: true,
+        });
       case "worktree":
-        return (await this.createOttoWorktreeWorkspace({ cwd: config.cwd, firstAgentContext }))
-          .workspace;
+        return (
+          await this.createOttoWorktreeWorkspace({
+            cwd: config.cwd,
+            firstAgentContext,
+            hidden: true,
+          })
+        ).workspace;
     }
   }
 
@@ -1161,6 +1255,12 @@ function buildScheduleAgentConfig(
   config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
 ): AgentSessionConfig {
   return {
+    // Schedule agents are internal (see the createAgent call) but observable, like
+    // the artifact generator: they stay out of listings/sidebar, yet their live
+    // stream still forwards to a client that opens their timeline — so a revealed
+    // (errored or kept) run can be watched. Without observable the daemon's global
+    // subscription drops the stream events.
+    observable: true,
     provider: config.provider,
     cwd: config.cwd,
     modeId: config.modeId,

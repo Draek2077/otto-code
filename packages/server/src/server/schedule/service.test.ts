@@ -70,6 +70,7 @@ type TestScheduleServiceOptions = Omit<
   | "createLocalCheckoutWorkspace"
   | "createOttoWorktreeWorkspace"
   | "archiveWorkspace"
+  | "revealWorkspace"
 > & {
   agentManager: AgentManager;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
@@ -77,6 +78,7 @@ type TestScheduleServiceOptions = Omit<
   createLocalCheckoutWorkspace?: ScheduleServiceOptions["createLocalCheckoutWorkspace"];
   createOttoWorktreeWorkspace?: ScheduleServiceOptions["createOttoWorktreeWorkspace"];
   archiveWorkspace?: ScheduleServiceOptions["archiveWorkspace"];
+  revealWorkspace?: ScheduleServiceOptions["revealWorkspace"];
 };
 
 function createScheduleService(options: TestScheduleServiceOptions): ScheduleService {
@@ -97,12 +99,21 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
       title: input.firstAgentContext.prompt,
       branch: null,
       baseBranch: null,
+      // Mirror the host: schedule runs pass hidden:true, so the created record is
+      // hidden until the run reveals it.
+      hidden: input.hidden,
       createdAt: timestamp,
       updatedAt: timestamp,
       archivedAt: null,
     };
     workspaces.set(workspaceId, workspace);
     return workspace;
+  };
+  const revealDefaultWorkspace: ScheduleServiceOptions["revealWorkspace"] = async (workspaceId) => {
+    const workspace = workspaces.get(workspaceId);
+    if (workspace) {
+      workspaces.set(workspaceId, { ...workspace, hidden: false });
+    }
   };
   const listActiveWorkspaces = async (): Promise<ActiveWorkspaceRef[]> =>
     Array.from(workspaces.values())
@@ -177,12 +188,14 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
         };
       }),
     archiveWorkspace: options.archiveWorkspace ?? archiveDefaultWorkspace,
+    revealWorkspace: options.revealWorkspace ?? revealDefaultWorkspace,
   });
 }
 
 async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promise<{
   workspaceRegistry: FileBackedWorkspaceRegistry;
   createLocalCheckoutWorkspace: ScheduleServiceOptions["createLocalCheckoutWorkspace"];
+  revealWorkspace: ScheduleServiceOptions["revealWorkspace"];
   createArchiveWorkspace: (input: {
     agentManager: AgentManager;
     agentStorage: AgentStorage;
@@ -204,9 +217,20 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
     workspaceRegistry,
     createLocalCheckoutWorkspace: async (input) => {
       return createLocalCheckoutWorkspace(
-        { cwd: input.cwd, title: input.firstAgentContext.prompt },
+        { cwd: input.cwd, title: input.firstAgentContext.prompt, hidden: input.hidden },
         { projectRegistry, workspaceRegistry, workspaceGitService },
       );
+    },
+    revealWorkspace: async (workspaceId) => {
+      const existing = await workspaceRegistry.get(workspaceId);
+      if (!existing || !existing.hidden || existing.archivedAt) {
+        return;
+      }
+      await workspaceRegistry.upsert({
+        ...existing,
+        hidden: false,
+        updatedAt: new Date().toISOString(),
+      });
     },
     createArchiveWorkspace:
       ({ agentManager, agentStorage, logger = createTestLogger() }) =>
@@ -249,6 +273,103 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
         }
       },
   };
+}
+
+// Builds a schedule service with fully stubbed agent + workspace deps that
+// record what the run did, so the finish-time outcome matrix (hidden create,
+// archive vs reveal, internal agent) can be asserted directly. `outcome`
+// controls whether the run's wait result is a clean idle or an error.
+function buildOutcomeRecordingScheduleService(params: {
+  agentStorage: AgentStorage;
+  tempDir: string;
+  now: () => Date;
+  outcome: "success" | "error";
+}): {
+  service: ScheduleService;
+  createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][];
+  workspaceCreateInputs: Parameters<ScheduleServiceOptions["createLocalCheckoutWorkspace"]>[0][];
+  archiveCalls: string[];
+  revealCalls: string[];
+} {
+  const manager = new AgentManager({
+    logger: createTestLogger(),
+    clients: createTestAgentClients(),
+    registry: params.agentStorage,
+  });
+  manager.runAgent = async () => ({
+    sessionId: "stub-outcome-session",
+    finalText: "done",
+    timeline: [{ type: "assistant_message", text: "done" }],
+  });
+  manager.waitForAgentEvent = async () =>
+    params.outcome === "error"
+      ? { status: "error", permission: null, lastMessage: "boom" }
+      : { status: "idle", permission: null, lastMessage: "ok" };
+  const createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
+  const workspaceCreateInputs: Parameters<
+    ScheduleServiceOptions["createLocalCheckoutWorkspace"]
+  >[0][] = [];
+  const archiveCalls: string[] = [];
+  const revealCalls: string[] = [];
+  let workspaceCounter = 0;
+  const service = createScheduleService({
+    ottoHome: params.tempDir,
+    logger: createTestLogger(),
+    agentManager: manager,
+    agentStorage: params.agentStorage,
+    providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+    createAgent: async (input) => {
+      createAgentInputs.push(input);
+      const timestamp = params.now().toISOString();
+      const snapshot = {
+        id: `00000000-0000-4000-8000-00000000000${++workspaceCounter}`,
+        provider: "claude",
+        cwd: input.cwd ?? params.tempDir,
+        workspaceId: input.workspaceId,
+        status: "idle",
+        lifecycle: "idle",
+        updatedAt: timestamp,
+      };
+      return {
+        snapshot: snapshot as Awaited<
+          ReturnType<ScheduleServiceOptions["createAgent"]>
+        >["snapshot"],
+        liveSnapshot: snapshot as Awaited<
+          ReturnType<ScheduleServiceOptions["createAgent"]>
+        >["liveSnapshot"],
+        background: true,
+        initialPromptStarted: true,
+        initialPromptError: null,
+      };
+    },
+    createLocalCheckoutWorkspace: async (input) => {
+      workspaceCreateInputs.push(input);
+      const timestamp = params.now().toISOString();
+      const workspace: PersistedWorkspaceRecord = {
+        workspaceId: `wks_outcome_${++workspaceCounter}`,
+        projectId: "test-project",
+        cwd: input.cwd,
+        kind: "directory",
+        displayName: "test-project",
+        title: input.firstAgentContext.prompt,
+        branch: null,
+        baseBranch: null,
+        hidden: input.hidden,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        archivedAt: null,
+      };
+      return workspace;
+    },
+    archiveWorkspace: async (workspaceId) => {
+      archiveCalls.push(workspaceId);
+    },
+    revealWorkspace: async (workspaceId) => {
+      revealCalls.push(workspaceId);
+    },
+    now: params.now,
+  });
+  return { service, createAgentInputs, workspaceCreateInputs, archiveCalls, revealCalls };
 }
 
 function buildAgentRecord(params: {
@@ -484,12 +605,27 @@ describe("ScheduleService", () => {
       clients: createTestAgentClients(),
       registry: agentStorage,
     });
+    // Schedule agents are internal (ephemeral, never persisted), so the title is
+    // asserted on the createAgent input rather than a persisted record.
+    const createdInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
     const service = createScheduleService({
       ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      createAgent: async (input) => {
+        createdInputs.push(input);
+        return createAgentCommand(
+          {
+            agentManager: manager,
+            agentStorage,
+            logger: createTestLogger(),
+            providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY as ProviderSnapshotManager,
+          },
+          input,
+        );
+      },
       now: () => now,
     });
 
@@ -511,11 +647,12 @@ describe("ScheduleService", () => {
     now = new Date("2026-01-01T00:01:00.000Z");
     await service.tick();
 
-    const inspected = await service.inspect(created.id);
-    const agentId = inspected.runs[0]?.agentId;
-    expect(agentId).toMatch(/^[0-9a-f-]{36}$/);
-    const storedAgent = await agentStorage.get(agentId!);
-    expect(storedAgent?.title).toBe("Audit flaky checkout flow");
+    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
+    expect(createdInputs).toHaveLength(1);
+    expect(createdInputs[0]).toMatchObject({
+      title: "Audit flaky checkout flow",
+      internal: true,
+    });
   });
 
   test("new-agent schedule records create no workspace until run time", async () => {
@@ -558,6 +695,7 @@ describe("ScheduleService", () => {
     const {
       workspaceRegistry,
       createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      revealWorkspace,
       createArchiveWorkspace,
     } = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const manager = new AgentManager({
@@ -572,6 +710,7 @@ describe("ScheduleService", () => {
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      revealWorkspace,
       archiveWorkspace: createArchiveWorkspace({
         agentManager: manager,
         agentStorage,
@@ -601,23 +740,27 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     expect(inspected.runs).toHaveLength(2);
-    const firstAgent = await agentStorage.get(inspected.runs[0]!.agentId!);
-    const secondAgent = await agentStorage.get(inspected.runs[1]!.agentId!);
-    expect(firstAgent?.workspaceId).toMatch(/^wks_/);
-    expect(secondAgent?.workspaceId).toMatch(/^wks_/);
-    expect(firstAgent?.workspaceId).not.toBe(secondAgent?.workspaceId);
-    expect(firstAgent?.archivedAt ?? null).toBeNull();
-    expect(secondAgent?.archivedAt ?? null).toBeNull();
+    // Schedule agents are internal (ephemeral, unpersisted); the run's own record
+    // carries the per-run workspace, which is what "kept" preserves.
+    const firstWorkspaceId = inspected.runs[0]!.workspaceId;
+    const secondWorkspaceId = inspected.runs[1]!.workspaceId;
+    expect(firstWorkspaceId).toMatch(/^wks_/);
+    expect(secondWorkspaceId).toMatch(/^wks_/);
+    expect(firstWorkspaceId).not.toBe(secondWorkspaceId);
+    // Kept runs (archiveOnFinish=false) are revealed at finish: not archived and
+    // no longer hidden, so the user sees the result in the sidebar.
     expect(await workspaceRegistry.list()).toEqual([
       expect.objectContaining({
-        workspaceId: firstAgent?.workspaceId,
+        workspaceId: firstWorkspaceId,
         cwd: tempDir,
         archivedAt: null,
+        hidden: false,
       }),
       expect.objectContaining({
-        workspaceId: secondAgent?.workspaceId,
+        workspaceId: secondWorkspaceId,
         cwd: tempDir,
         archivedAt: null,
+        hidden: false,
       }),
     ]);
   });
@@ -673,23 +816,24 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     expect(inspected.runs[0]?.status).toBe("succeeded");
-    const agentId = inspected.runs[0]?.agentId;
-    expect(agentId).toMatch(/^[0-9a-f-]{36}$/);
-    const storedAgent = await agentStorage.get(agentId!);
-    expect(storedAgent?.workspaceId).toMatch(/^wks_/);
-    expect(storedAgent?.archivedAt).toEqual(expect.any(String));
-    expect(await workspaceRegistry.get(storedAgent!.workspaceId!)).toEqual(
+    // The schedule agent is internal/ephemeral (closed after the run, never
+    // persisted); a successful archiveOnFinish run archives the workspace RECORD
+    // through the workspace-archive path.
+    const workspaceId = inspected.runs[0]?.workspaceId;
+    expect(workspaceId).toMatch(/^wks_/);
+    expect(await workspaceRegistry.get(workspaceId!)).toEqual(
       expect.objectContaining({
-        workspaceId: storedAgent?.workspaceId,
+        workspaceId,
         archivedAt: expect.any(String),
       }),
     );
   });
 
-  test("archives the run workspace when scheduled agent creation fails before archive opt-out can preserve an agent", async () => {
+  test("reveals the run workspace when scheduled agent creation fails so the error surfaces", async () => {
     const {
       workspaceRegistry,
       createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      revealWorkspace,
       createArchiveWorkspace,
     } = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const manager = new AgentManager({
@@ -698,6 +842,8 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const createError = new Error("provider misconfigured");
+    const archiveCalls: string[] = [];
+    const archive = createArchiveWorkspace({ agentManager: manager, agentStorage });
     const service = createScheduleService({
       ottoHome: tempDir,
       logger: createTestLogger(),
@@ -705,10 +851,11 @@ describe("ScheduleService", () => {
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
-      archiveWorkspace: createArchiveWorkspace({
-        agentManager: manager,
-        agentStorage,
-      }),
+      revealWorkspace,
+      archiveWorkspace: async (workspaceId, repoRoot) => {
+        archiveCalls.push(workspaceId);
+        await archive(workspaceId, repoRoot);
+      },
       createAgent: async () => {
         throw createError;
       },
@@ -735,12 +882,134 @@ describe("ScheduleService", () => {
       (service as unknown as ScheduleServiceInternals).executeSchedule(created, "run-create-fails"),
     ).rejects.toThrow("provider misconfigured");
 
+    // An errored run reveals (never archives) its workspace so the failure is
+    // visible, even though archiveOnFinish would archive a successful run.
+    expect(archiveCalls).toEqual([]);
     expect(await workspaceRegistry.list()).toEqual([
       expect.objectContaining({
         cwd: tempDir,
-        archivedAt: expect.any(String),
+        archivedAt: null,
+        hidden: false,
       }),
     ]);
+  });
+
+  test("schedule runs create their workspace hidden and their agent internal + unattended", async () => {
+    const { service, createAgentInputs, workspaceCreateInputs } =
+      buildOutcomeRecordingScheduleService({
+        agentStorage,
+        tempDir,
+        now: () => now,
+        outcome: "success",
+      });
+
+    const created = await service.create({
+      prompt: "quiet nightly run",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
+    // (a) the workspace is created hidden — it never flashes into the sidebar.
+    expect(workspaceCreateInputs).toHaveLength(1);
+    expect(workspaceCreateInputs[0].hidden).toBe(true);
+    // (e) the agent is internal (no attention broadcasts, clean run fully
+    // silent), observable (its stream is watchable once revealed), unattended.
+    expect(createAgentInputs).toHaveLength(1);
+    expect(createAgentInputs[0]).toMatchObject({
+      internal: true,
+      unattended: true,
+      notifyOnFinish: false,
+    });
+    expect(
+      (createAgentInputs[0] as Extract<(typeof createAgentInputs)[0], { kind: "mcp" }>).config
+        ?.observable,
+    ).toBe(true);
+  });
+
+  test("success + archiveOnFinish archives the hidden workspace and never reveals it", async () => {
+    const { service, archiveCalls, revealCalls, workspaceCreateInputs } =
+      buildOutcomeRecordingScheduleService({
+        agentStorage,
+        tempDir,
+        now: () => now,
+        outcome: "success",
+      });
+
+    const created = await service.create({
+      prompt: "archive on finish",
+      cadence: { type: "every", everyMs: 60_000 },
+      // archiveOnFinish defaults to true; state it explicitly for the matrix.
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
+    expect(workspaceCreateInputs[0].hidden).toBe(true);
+    // (b) archived while still hidden — the user never sees the transient row.
+    expect(archiveCalls).toHaveLength(1);
+    expect(revealCalls).toEqual([]);
+  });
+
+  test("success + archiveOnFinish=false reveals the workspace at finish", async () => {
+    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
+      agentStorage,
+      tempDir,
+      now: () => now,
+      outcome: "success",
+    });
+
+    const created = await service.create({
+      prompt: "keep the result",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, archiveOnFinish: false },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
+    // (c) kept run: revealed so the user gets the result, never archived.
+    expect(revealCalls).toHaveLength(1);
+    expect(archiveCalls).toEqual([]);
+  });
+
+  test("errored runs reveal the workspace and never archive it, even with archiveOnFinish=true", async () => {
+    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
+      agentStorage,
+      tempDir,
+      now: () => now,
+      outcome: "error",
+    });
+
+    const created = await service.create({
+      prompt: "this run errors",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    const inspected = await service.inspect(created.id);
+    // (d) the run failed (agent error status), the workspace is promoted to the
+    // sidebar (revealed) and NOT archived — archiving would hide the problem.
+    expect(inspected.runs[0]).toMatchObject({
+      status: "failed",
+      error: "boom",
+    });
+    expect(revealCalls).toHaveLength(1);
+    expect(archiveCalls).toEqual([]);
   });
 
   test("new-agent cwd existence is checked at run time, not when editing the schedule", async () => {
@@ -1064,12 +1333,15 @@ describe("ScheduleService", () => {
     });
   });
 
-  test("failed new-agent run keeps run error when workspace archive also fails", async () => {
+  test("failed new-agent run keeps run error when workspace reveal also fails", async () => {
     const logger = createTestLogger();
     const warn = vi.fn();
     logger.warn = warn as typeof logger.warn;
     logger.child = (() => logger) as typeof logger.child;
-    const archiveError = new Error("archive exploded");
+    // A failed run reveals (never archives) its hidden workspace so the failure
+    // surfaces. If that reveal cleanup itself fails, the run's own error must
+    // still stand.
+    const revealError = new Error("reveal exploded");
     const manager = new AgentManager({
       logger: createTestLogger(),
       clients: createTestAgentClients(),
@@ -1079,6 +1351,7 @@ describe("ScheduleService", () => {
       throw new Error("run exploded");
     };
     const agentId = "00000000-0000-0000-0000-000000000326";
+    const archiveCalls: string[] = [];
     const service = createScheduleService({
       ottoHome: tempDir,
       logger,
@@ -1106,8 +1379,11 @@ describe("ScheduleService", () => {
           initialPromptError: null,
         };
       },
-      archiveWorkspace: async () => {
-        throw archiveError;
+      archiveWorkspace: async (workspaceId) => {
+        archiveCalls.push(workspaceId);
+      },
+      revealWorkspace: async () => {
+        throw revealError;
       },
       now: () => now,
     });
@@ -1126,15 +1402,18 @@ describe("ScheduleService", () => {
       error: "run exploded",
       agentId,
     });
+    // An errored run must never archive — that would hide the problem.
+    expect(archiveCalls).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({
-        err: archiveError,
+        err: revealError,
         agentId,
         workspaceId: expect.stringMatching(/^wks_/),
         scheduleId: created.id,
         runId: expect.any(String),
+        succeeded: false,
       }),
-      expect.stringContaining("Failed to archive scheduled workspace"),
+      expect.stringContaining("Failed to reveal scheduled workspace"),
     );
   });
 
@@ -1499,13 +1778,14 @@ describe("ScheduleService", () => {
     const agentId = inspected.runs[0]?.agentId;
     expect(agentId).toBeTruthy();
     expect(client.sessions).toHaveLength(1);
+    // The internal schedule agent is torn down (session closed, removed from the
+    // manager) and — being internal — was never persisted.
     expect(client.sessions[0]?.closed).toBe(true);
     expect(manager.getAgent(agentId!)).toBeNull();
-    const storedAgent = await agentStorage.get(agentId!);
-    expect(storedAgent?.archivedAt).toBeTruthy();
+    expect(await agentStorage.get(agentId!)).toBeNull();
   });
 
-  test("records prompt-start failures as failed and archives the scheduled agent", async () => {
+  test("records prompt-start failures as failed and tears down the scheduled agent", async () => {
     class StartFailureScheduleSession implements AgentSession {
       readonly provider = "claude";
       readonly capabilities = SCHEDULE_TEST_CAPABILITIES;
@@ -1612,12 +1892,10 @@ describe("ScheduleService", () => {
       agentId: expect.any(String),
       error: expect.stringContaining("start turn exploded"),
     });
-    const storedAgents = await agentStorage.list();
-    expect(storedAgents).toHaveLength(1);
-    expect(inspected.runs[0]?.agentId).toBe(storedAgents[0]?.id);
-    expect(storedAgents[0]).toMatchObject({
-      archivedAt: expect.any(String),
-    });
+    // The schedule agent is internal, so nothing is persisted; the failure is
+    // recorded on the run and the ephemeral agent is torn down.
+    expect(await agentStorage.list()).toEqual([]);
+    expect(manager.getAgent(inspected.runs[0]!.agentId!)).toBeNull();
   });
 
   test("defaults new-agent modeId to provider's unattended mode", async () => {
@@ -1626,23 +1904,40 @@ describe("ScheduleService", () => {
       clients: createTestAgentClients(),
       registry: agentStorage,
     });
+    const providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig"> = {
+      async resolveCreateConfig(input) {
+        expect(input).toMatchObject({
+          parent: null,
+          unattended: true,
+          requestedMode: undefined,
+        });
+        return {
+          modeId: input.unattended ? "bypassPermissions" : "interactive",
+          featureValues: input.featureValues,
+        };
+      },
+    };
+    // Schedule agents are internal (never persisted), so the resolved mode is
+    // captured from the created agent snapshot rather than a stored record.
+    const createdModes: (string | undefined)[] = [];
     const service = createScheduleService({
       ottoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
-      providerSnapshotManager: {
-        async resolveCreateConfig(input) {
-          expect(input).toMatchObject({
-            parent: null,
-            unattended: true,
-            requestedMode: undefined,
-          });
-          return {
-            modeId: input.unattended ? "bypassPermissions" : "interactive",
-            featureValues: input.featureValues,
-          };
-        },
+      providerSnapshotManager,
+      createAgent: async (input) => {
+        const result = await createAgentCommand(
+          {
+            agentManager: manager,
+            agentStorage,
+            logger: createTestLogger(),
+            providerSnapshotManager: providerSnapshotManager as ProviderSnapshotManager,
+          },
+          input,
+        );
+        createdModes.push(result.snapshot.config.modeId);
+        return result;
       },
       now: () => now,
     });
@@ -1666,11 +1961,8 @@ describe("ScheduleService", () => {
     await service.tick();
 
     const inspected = await service.inspect(created.id);
-    const agentId = inspected.runs[0]?.agentId;
-    expect(agentId).toBeTruthy();
-    const agent = await agentStorage.get(agentId!);
-    expect(agent?.lastModeId).toBe("bypassPermissions");
-    expect(agent?.archivedAt).toBeTruthy();
+    expect(inspected.runs[0]?.status).toBe("succeeded");
+    expect(createdModes).toEqual(["bypassPermissions"]);
   });
 
   test("defaults OpenCode new-agent schedules to build plus auto accept", async () => {
