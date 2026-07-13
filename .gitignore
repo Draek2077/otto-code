@@ -8,6 +8,11 @@ dist/
 out/
 result
 
+# ...but packages/desktop/build/ is electron-builder SOURCE config (mac
+# entitlements, linux postinst/postrm scripts, the AppArmor profile), not build
+# output. Keep it tracked so new files there aren't silently ignored.
+!packages/desktop/build/
+
 # graphify — knowledge graph outputs are personal/derived; .graphifyignore stays tracked
 graphify-out/
 
