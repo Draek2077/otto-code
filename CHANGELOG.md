@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.2 - 2026-07-13
+
+### Added
+
+- Guided first-time setup that detects your providers, picks an interface style, and sets up a starter set of agent personalities and teams
+- Agent teams — group personalities into switchable operating templates and flip between them from the sidebar
+- User mode — a simplified interface that hides developer panels, with a Files-only explorer you can switch out of anytime
+
+### Improved
+
+- Scheduled and background runs now deny anything not pre-approved instead of running with full permissions
+- Stop or archive a subagent straight from its row in the subagents track
+- Finished subagents collapse into their own group, and you can clear them all at once
+- Subagent rows show their running time and token cost at a glance
+- Clearer notifications
+
 ## 0.5.1 - 2026-07-12
 
 ### Added
