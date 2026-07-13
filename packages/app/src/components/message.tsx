@@ -73,6 +73,9 @@ import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import { formatDuration } from "@/utils/time";
+// Re-exported so existing importers (turn-footer) keep resolving it from here;
+// the implementation now lives in its own module for lighter reuse.
+export { LiveElapsed } from "@/components/live-elapsed";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -654,45 +657,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         <Text style={assistantTurnFooterStylesheet.detailsLabel}>{detailsLabel}</Text>
       ) : null}
     </View>
-  );
-});
-
-interface LiveElapsedProps {
-  startedAt: Date;
-  active?: boolean;
-  style?: StyleProp<TextStyle>;
-  testID?: string;
-}
-
-/**
- * Ticks every second to render an elapsed duration. Isolated from parents so
- * only this component re-renders on each tick.
- */
-export const LiveElapsed = memo(function LiveElapsed({
-  startedAt,
-  active = true,
-  style,
-  testID,
-}: LiveElapsedProps) {
-  const startedAtMs = startedAt.getTime();
-  const [elapsedMs, setElapsedMs] = useState(() => Math.max(0, Date.now() - startedAtMs));
-  const visibleElapsedMs = active ? Math.max(0, Date.now() - startedAtMs) : elapsedMs;
-
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    setElapsedMs(Math.max(0, Date.now() - startedAtMs));
-    const handle = setInterval(() => {
-      setElapsedMs(Math.max(0, Date.now() - startedAtMs));
-    }, 1000);
-    return () => clearInterval(handle);
-  }, [active, startedAtMs]);
-
-  return (
-    <Text style={style} testID={testID}>
-      {formatDuration(visibleElapsedMs)}
-    </Text>
   );
 });
 

@@ -1,5 +1,6 @@
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { formatDuration } from "@/utils/time";
 import type { SubagentRow } from "./select";
 
 export interface SubagentRowPresentationData {
@@ -141,6 +142,27 @@ export function formatHeaderLabel(rows: readonly SubagentRow[]): string {
     parts.push(`${tokens} tokens`);
   }
   return parts.join(" · ");
+}
+
+/**
+ * True while the subagent is still doing work — the row live-ticks its elapsed
+ * time. Mirrors the running set used by {@link resolveSubagentRowAction}.
+ */
+export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
+  return status === "initializing" || status === "running";
+}
+
+/**
+ * Frozen run duration (createdAt → updatedAt) for a terminal row, e.g. "3m 12s".
+ * Returns null while the row is still running — the track renders a live ticker
+ * for those instead. See projects/subagents-cleanup/ (Phase 6, liveness signals).
+ */
+export function formatSubagentElapsed(row: SubagentRow): string | null {
+  if (isSubagentRowRunning(row.status)) {
+    return null;
+  }
+  const ms = row.updatedAt.getTime() - row.createdAt.getTime();
+  return formatDuration(Math.max(0, ms));
 }
 
 export function resolveRowLabel(title: SubagentRow["title"]): string | null {

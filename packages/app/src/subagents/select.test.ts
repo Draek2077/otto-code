@@ -201,6 +201,7 @@ describe("selectSubagentsForParent", () => {
         status: "running",
         requiresAttention: true,
         createdAt,
+        updatedAt: AGENT_TIMESTAMP,
         attend: "observed",
       },
     ]);
@@ -213,6 +214,7 @@ describe("selectSubagentsForParent", () => {
       "requiresAttention",
       "status",
       "title",
+      "updatedAt",
     ]);
     expect(rows[0]).not.toHaveProperty("onOpen");
     expect(rows[0]).not.toHaveProperty("model");

@@ -10,6 +10,7 @@ import {
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
+import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
@@ -24,6 +25,8 @@ import {
   buildSubagentRowPresentationData,
   formatCompactTokenCount,
   formatHeaderLabel,
+  formatSubagentElapsed,
+  isSubagentRowRunning,
   partitionSubagentRows,
   resolveSubagentRowAction,
   type SubagentRowAction,
@@ -286,6 +289,8 @@ function SubagentsTrackRow({
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
   const rowAction = resolveSubagentRowAction(row.status);
   const tokenLabel = formatCompactTokenCount(row.cumulativeTokens);
+  const isRunning = isSubagentRowRunning(row.status);
+  const frozenElapsed = formatSubagentElapsed(row);
   const handlePress = useCallback(() => {
     onOpenSubagent(row.id);
   }, [onOpenSubagent, row.id]);
@@ -322,6 +327,12 @@ function SubagentsTrackRow({
             <Text style={styles.rowLabel} numberOfLines={1}>
               {displayLabel}
             </Text>
+            <SubagentElapsed
+              rowId={row.id}
+              startedAt={row.createdAt}
+              isRunning={isRunning}
+              frozenElapsed={frozenElapsed}
+            />
             {tokenLabel ? (
               <Text
                 style={styles.rowTokens}
@@ -344,6 +355,41 @@ function SubagentsTrackRow({
         )}
       </Pressable>
     </View>
+  );
+}
+
+// Elapsed run time — a live ticker while the subagent works, then frozen at its
+// createdAt→updatedAt duration once terminal. The Claude background-task panel's
+// clearest liveness signal; here it complements the token readout.
+// See projects/subagents-cleanup/ (Phase 6, liveness signals).
+function SubagentElapsed({
+  rowId,
+  startedAt,
+  isRunning,
+  frozenElapsed,
+}: {
+  rowId: string;
+  startedAt: Date;
+  isRunning: boolean;
+  frozenElapsed: string | null;
+}): ReactElement | null {
+  if (isRunning) {
+    return (
+      <LiveElapsed
+        startedAt={startedAt}
+        active
+        style={styles.rowMeta}
+        testID={`subagents-track-elapsed-${rowId}`}
+      />
+    );
+  }
+  if (!frozenElapsed) {
+    return null;
+  }
+  return (
+    <Text style={styles.rowMeta} numberOfLines={1} testID={`subagents-track-elapsed-${rowId}`}>
+      {frozenElapsed}
+    </Text>
   );
 }
 
@@ -528,6 +574,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   rowTokens: {
+    flexShrink: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    fontVariant: ["tabular-nums"],
+  },
+  rowMeta: {
     flexShrink: 0,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,

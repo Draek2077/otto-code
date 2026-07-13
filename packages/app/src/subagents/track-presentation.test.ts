@@ -4,6 +4,8 @@ import {
   buildSubagentRowPresentationData,
   formatCompactTokenCount,
   formatHeaderLabel,
+  formatSubagentElapsed,
+  isSubagentRowRunning,
   isSubagentRowTidyEligible,
   partitionSubagentRows,
   resolveRowLabel,
@@ -19,6 +21,7 @@ function row(overrides: Partial<SubagentRow> & Pick<SubagentRow, "id">): Subagen
     status: overrides.status ?? "idle",
     requiresAttention: overrides.requiresAttention ?? false,
     createdAt: overrides.createdAt ?? new Date("2026-04-20T00:00:00.000Z"),
+    updatedAt: overrides.updatedAt ?? new Date("2026-04-20T00:00:00.000Z"),
     attend: overrides.attend,
     cumulativeTokens: overrides.cumulativeTokens,
   };
@@ -206,6 +209,52 @@ describe("resolveSubagentRowAction", () => {
     expect(resolveSubagentRowAction("idle")).toBe("archive");
     expect(resolveSubagentRowAction("error")).toBe("archive");
     expect(resolveSubagentRowAction("closed")).toBe("archive");
+  });
+});
+
+describe("isSubagentRowRunning", () => {
+  it("is true while initializing or running", () => {
+    expect(isSubagentRowRunning("initializing")).toBe(true);
+    expect(isSubagentRowRunning("running")).toBe(true);
+  });
+
+  it("is false for terminal states", () => {
+    expect(isSubagentRowRunning("idle")).toBe(false);
+    expect(isSubagentRowRunning("error")).toBe(false);
+    expect(isSubagentRowRunning("closed")).toBe(false);
+  });
+});
+
+describe("formatSubagentElapsed", () => {
+  it("returns null while the row is still running (the track live-ticks instead)", () => {
+    expect(formatSubagentElapsed(row({ id: "a", status: "running" }))).toBe(null);
+    expect(formatSubagentElapsed(row({ id: "b", status: "initializing" }))).toBe(null);
+  });
+
+  it("freezes a terminal row's run duration from createdAt → updatedAt", () => {
+    expect(
+      formatSubagentElapsed(
+        row({
+          id: "a",
+          status: "closed",
+          createdAt: new Date("2026-04-20T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-20T00:03:12.000Z"),
+        }),
+      ),
+    ).toBe("3m 12s");
+  });
+
+  it("clamps a non-monotonic updatedAt to 0s rather than a negative duration", () => {
+    expect(
+      formatSubagentElapsed(
+        row({
+          id: "a",
+          status: "error",
+          createdAt: new Date("2026-04-20T00:00:05.000Z"),
+          updatedAt: new Date("2026-04-20T00:00:00.000Z"),
+        }),
+      ),
+    ).toBe("0s");
   });
 });
 
