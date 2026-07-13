@@ -1190,6 +1190,9 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     ...(submission.model ? { model: submission.model } : {}),
     ...(submission.thinkingOptionId ? { thinkingOptionId: submission.thinkingOptionId } : {}),
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
+    ...(composerState.agentControls.selectedPersonalityId
+      ? { personality: composerState.agentControls.selectedPersonalityId }
+      : {}),
     allowEmptyText: true,
   });
   navigateToPreparedWorkspaceTab({

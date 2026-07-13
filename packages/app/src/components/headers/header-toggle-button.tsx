@@ -1,4 +1,4 @@
-import { useCallback, type ReactElement, type ReactNode } from "react";
+import { useCallback, type ReactElement, type ReactNode, type Ref } from "react";
 import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -18,6 +18,8 @@ interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPres
   tooltipSide: "left" | "right" | "top" | "bottom";
   tooltipDelayDuration?: number;
   style?: StyleProp<ViewStyle>;
+  // Composed onto the underlying trigger Pressable (e.g. a tutorial anchor).
+  anchorRef?: Ref<View>;
   children: ReactNode | ((state: HeaderToggleButtonState) => ReactNode);
 }
 
@@ -29,6 +31,7 @@ export function HeaderToggleButton({
   tooltipDelayDuration = 0,
   style,
   disabled,
+  anchorRef,
   children,
   ...props
 }: HeaderToggleButtonProps): ReactElement {
@@ -56,6 +59,7 @@ export function HeaderToggleButton({
       <TooltipTrigger
         {...props}
         {...ariaExpandedProps}
+        anchorRef={anchorRef}
         disabled={disabled}
         onPress={onPress}
         style={combinedStyle}

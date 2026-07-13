@@ -41,7 +41,11 @@ import { useSessionStore } from "@/stores/session-store";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { formatTimeAgo } from "@/utils/time";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
-import type { AgentModelDefinition, AgentProvider } from "@otto-code/protocol/agent-types";
+import type {
+  AgentModelDefinition,
+  AgentProvider,
+  ModelTier,
+} from "@otto-code/protocol/agent-types";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import {
@@ -163,7 +167,78 @@ function rankModels<T>(items: T[], query: string, fields: (item: T) => string[])
   return scored.map((entry) => entry.item);
 }
 
-function DiscoveredModelRow({ model }: { model: AgentModelDefinition }) {
+// A model's tier as shown in the dropdown. "unknown" is the sentinel for "no
+// tier" — picking it clears any user override (reverting to the catalog value if
+// we know one, else genuinely Unknown). See model-tiers.ts.
+// TODO(i18n): inline English, translated in a later pass.
+const MODEL_TIER_OPTIONS: SelectFieldOption<ModelTier | "unknown">[] = [
+  { id: "deep", value: "deep", label: "Deep" },
+  { id: "standard", value: "standard", label: "Standard" },
+  { id: "fast", value: "fast", label: "Fast" },
+  { id: "unknown", value: "unknown", label: "Unknown" },
+];
+
+function modelTierLabel(tier: ModelTier | undefined): string {
+  switch (tier) {
+    case "deep":
+      return "Deep";
+    case "standard":
+      return "Standard";
+    case "fast":
+      return "Fast";
+    default:
+      return "Unknown";
+  }
+}
+
+// Compact per-model tier picker. `tier` is the daemon-stamped effective tier
+// (user override → catalog, else undefined = Unknown). Selecting a tier sets an
+// override; selecting "Unknown" clears it.
+function ModelTierSelect({
+  modelId,
+  tier,
+  disabled,
+  onChange,
+}: {
+  modelId: string;
+  tier: ModelTier | undefined;
+  disabled: boolean;
+  onChange: (modelId: string, tier: ModelTier | null) => void;
+}) {
+  const display = useMemo(() => ({ label: modelTierLabel(tier) }), [tier]);
+  const handleChange = useCallback(
+    (next: ModelTier | "unknown") => {
+      onChange(modelId, next === "unknown" ? null : next);
+    },
+    [modelId, onChange],
+  );
+  return (
+    <SelectField<ModelTier | "unknown">
+      field={false}
+      size="sm"
+      label="Model tier"
+      value={tier ?? "unknown"}
+      selectedDisplay={display}
+      options={MODEL_TIER_OPTIONS}
+      onChange={handleChange}
+      placeholder="Unknown"
+      emptyText="Unknown"
+      disabled={disabled}
+      testID={`model-tier-${modelId}`}
+      triggerTestID={`model-tier-trigger-${modelId}`}
+    />
+  );
+}
+
+function DiscoveredModelRow({
+  model,
+  showTier,
+  onSetTier,
+}: {
+  model: AgentModelDefinition;
+  showTier: boolean;
+  onSetTier: (modelId: string, tier: ModelTier | null) => void;
+}) {
   return (
     <View style={sheetStyles.modelRow}>
       <Text style={sheetStyles.modelTitle} numberOfLines={1}>
@@ -181,6 +256,16 @@ function DiscoveredModelRow({ model }: { model: AgentModelDefinition }) {
         <Text style={sheetStyles.descriptionInline} numberOfLines={1}>
           {model.description}
         </Text>
+      ) : (
+        <View style={sheetStyles.modelRowFiller} />
+      )}
+      {showTier ? (
+        <ModelTierSelect
+          modelId={model.id}
+          tier={model.tier}
+          disabled={false}
+          onChange={onSetTier}
+        />
       ) : null}
     </View>
   );
@@ -1075,6 +1160,8 @@ interface ProviderModalBodyProps {
   filteredDiscovered: AgentModelDefinition[];
   filteredCustom: ProviderProfileModel[];
   deletingModelId: string | null;
+  showTier: boolean;
+  onSetTier: (modelId: string, tier: ModelTier | null) => void;
   onRefresh: () => void;
   onDeleteCustom: (modelId: string) => void;
   theme: { iconSize: { md: number }; colors: { foregroundMuted: string } };
@@ -1189,6 +1276,8 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
     filteredDiscovered,
     filteredCustom,
     deletingModelId,
+    showTier,
+    onSetTier,
     onRefresh,
     onDeleteCustom,
     theme,
@@ -1239,7 +1328,12 @@ function ProviderModalBody(props: ProviderModalBodyProps) {
           />
           <View style={settingsStyles.card}>
             {filteredDiscovered.map((model) => (
-              <DiscoveredModelRow key={model.id} model={model} />
+              <DiscoveredModelRow
+                key={model.id}
+                model={model}
+                showTier={showTier}
+                onSetTier={onSetTier}
+              />
             ))}
           </View>
         </View>
@@ -1303,6 +1397,10 @@ export function ProviderDiagnosticSheet({
   );
   const supportsArtifactsToolGroup = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.artifactsToolGroup === true,
+  );
+  // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
+  const supportsModelTierOverrides = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.modelTierOverrides === true,
   );
   const handleRemoved = useCallback(() => {
     onClose();
@@ -1394,6 +1492,24 @@ export function ProviderDiagnosticSheet({
     [additionalModels, patchConfig, provider, refresh],
   );
 
+  const handleSetModelTier = useCallback(
+    (modelId: string, tier: ModelTier | null) => {
+      // Wholesale-replace the array (patch semantics): drop any existing tag for
+      // this model, then add the new one unless clearing back to Unknown.
+      const current = config?.modelTierOverrides ?? [];
+      const next = current.filter(
+        (entry) => !(entry.provider === provider && entry.modelId === modelId),
+      );
+      if (tier !== null) {
+        next.push({ provider, modelId, tier });
+      }
+      // No refresh needed: the daemon re-stamps loaded models and pushes a
+      // providers_snapshot_update when the config changes.
+      void patchConfig({ modelTierOverrides: next });
+    },
+    [config?.modelTierOverrides, patchConfig, provider],
+  );
+
   const sheetHeader = useMemo<SheetHeader>(() => ({ title: providerLabel }), [providerLabel]);
 
   // Pinned sheet footer, visible on every tab. Only custom providers (config
@@ -1454,6 +1570,8 @@ export function ProviderDiagnosticSheet({
                 filteredDiscovered={filteredDiscovered}
                 filteredCustom={filteredCustom}
                 deletingModelId={deletingModelId}
+                showTier={supportsModelTierOverrides}
+                onSetTier={handleSetModelTier}
                 onRefresh={handleRefreshModels}
                 onDeleteCustom={handleDeleteCustom}
                 theme={theme}

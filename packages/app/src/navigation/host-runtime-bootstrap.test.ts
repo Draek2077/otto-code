@@ -204,6 +204,10 @@ describe("resolveStartupRoute", () => {
     workspaceSelectionStatus: "unknown" as const,
     isWorkspaceSelectionLoaded: true,
     hasGivenUpWaitingForHost: false,
+    // Default to a device that already finished the wizard (the backfilled state
+    // for every existing device), so the cases below assert today's routing.
+    hasCompletedSetupWizard: true,
+    isSetupWizardStateLoaded: true,
   };
   const baseHostInput = {
     route: { kind: "host" as const, serverId: "server-saved" },
@@ -322,6 +326,70 @@ describe("resolveStartupRoute", () => {
         hasGivenUpWaitingForHost: true,
       }),
     ).toEqual({ kind: "redirect", href: "/welcome" });
+  });
+
+  it("sends a fresh device to the setup wizard once an online host appears", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        anyOnlineHostServerId: "srv-desktop",
+      }),
+    ).toEqual({ kind: "redirect", href: "/setup" });
+  });
+
+  it("sends a fresh device to the setup wizard when only a saved (offline) host exists", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        hosts: [{ serverId: "server-saved" }],
+        hasGivenUpWaitingForHost: true,
+      }),
+    ).toEqual({ kind: "redirect", href: "/setup" });
+  });
+
+  it("runs the wizard before restoring a saved workspace on a fresh device", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        hosts: [{ serverId: "server-1" }],
+        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "exists",
+      }),
+    ).toEqual({ kind: "redirect", href: "/setup" });
+  });
+
+  it("does not run the wizard when there is no host to configure yet", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        hasGivenUpWaitingForHost: true,
+      }),
+    ).toEqual({ kind: "redirect", href: "/welcome" });
+  });
+
+  it("waits on the splash until the wizard flag has loaded", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        isSetupWizardStateLoaded: false,
+        anyOnlineHostServerId: "srv-desktop",
+      }),
+    ).toEqual({ kind: "splash" });
+  });
+
+  it("skips the wizard for a device that already completed it", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: true,
+        anyOnlineHostServerId: "srv-desktop",
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/srv-desktop" });
   });
 
   it("keeps host routes mounted while the host registry is loading", () => {

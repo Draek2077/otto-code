@@ -225,6 +225,8 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     providers,
     metadataGeneration: { providers: [] },
     agentPersonalities: { personalities: [] },
+    agentTeams: { teams: [] },
+    modelTierOverrides: [],
     autoArchiveAfterMerge: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",

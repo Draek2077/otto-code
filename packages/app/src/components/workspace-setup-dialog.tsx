@@ -122,6 +122,9 @@ function buildCreateAgentOptions({
     selectedMode: string;
     effectiveModelId: string | null;
     effectiveThinkingOptionId: string | null;
+    agentControls: {
+      selectedPersonalityId?: string | null;
+    };
   };
   text: string;
   attachments: NonNullable<CreateAgentRequestOptions["attachments"]>;
@@ -140,6 +143,9 @@ function buildCreateAgentOptions({
     ...(composerState.effectiveModelId ? { model: composerState.effectiveModelId } : {}),
     ...(composerState.effectiveThinkingOptionId
       ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
+      : {}),
+    ...(composerState.agentControls.selectedPersonalityId
+      ? { personality: composerState.agentControls.selectedPersonalityId }
       : {}),
     ...(text.trim() ? { initialPrompt: text.trim() } : {}),
     ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),

@@ -39,6 +39,7 @@ import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
@@ -445,6 +446,7 @@ function ProjectConfigForm({
   const queryClient = useQueryClient();
   const toast = useToast();
   const iconSize = useIconSize();
+  const isDeveloperMode = useIsDeveloperMode();
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
@@ -640,153 +642,157 @@ function ProjectConfigForm({
 
   return (
     <View>
-      <SettingsGroup
-        title={t("settings.project.worktree.title")}
-        info={t("settings.project.worktree.info")}
-        testID="worktree-group"
-      >
-        <SettingsSection
-          title={t("settings.project.worktree.setup")}
-          testID="worktree-setup-section"
-          trailing={setupDocsLink}
-        >
-          <SettingsTextAreaCard
-            testID="worktree-setup-input"
-            accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
-            value={draft.setupText}
-            onChangeText={handleSetupChange}
-            placeholder="npm install"
-          />
-        </SettingsSection>
-
-        <SettingsSection
-          title={t("settings.project.worktree.teardown")}
-          testID="worktree-teardown-section"
-          trailing={teardownDocsLink}
-          flush
-        >
-          <SettingsTextAreaCard
-            testID="worktree-teardown-input"
-            accessibilityLabel={t("settings.project.worktree.teardownAccessibility")}
-            value={draft.teardownText}
-            onChangeText={handleTeardownChange}
-            placeholder="docker compose down"
-          />
-        </SettingsSection>
-      </SettingsGroup>
-
-      <SettingsGroup
-        title={t("settings.project.scripts.title")}
-        info={t("settings.project.scripts.info")}
-        trailing={scriptsTrailing}
-        testID="scripts-group"
-      >
-        <View style={settingsStyles.card} testID="scripts-list">
-          {draft.scripts.length === 0 ? (
-            <View style={settingsStyles.row}>
-              <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
-            </View>
-          ) : (
-            draft.scripts.map((script, index) => (
-              <ScriptRow
-                key={script.id}
-                script={script}
-                isFirst={index === 0}
-                onEdit={handleEditScript}
-                onRemove={handleRemoveScript}
+      {isDeveloperMode ? (
+        <>
+          <SettingsGroup
+            title={t("settings.project.worktree.title")}
+            info={t("settings.project.worktree.info")}
+            testID="worktree-group"
+          >
+            <SettingsSection
+              title={t("settings.project.worktree.setup")}
+              testID="worktree-setup-section"
+              trailing={setupDocsLink}
+            >
+              <SettingsTextAreaCard
+                testID="worktree-setup-input"
+                accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
+                value={draft.setupText}
+                onChangeText={handleSetupChange}
+                placeholder="npm install"
               />
-            ))
-          )}
-        </View>
-      </SettingsGroup>
+            </SettingsSection>
 
-      <SettingsGroup
-        title={t("settings.project.metadata.title")}
-        info={t("settings.project.metadata.info")}
-        testID="metadata-group"
-      >
-        {METADATA_PROMPT_KEYS.map((key, index) => (
-          <MetadataPromptSection
-            key={key}
-            promptKey={key}
-            value={draft.metadataPrompts[key]}
-            onChange={handleMetadataPromptChange}
-            flush={index === METADATA_PROMPT_KEYS.length - 1}
-          />
-        ))}
-      </SettingsGroup>
-
-      {isStale ? (
-        <View style={styles.calloutWrap}>
-          <Alert
-            testID="stale-callout"
-            variant="error"
-            title={t("settings.project.writeFailures.staleTitle")}
-            description={t("settings.project.writeFailures.staleDescription")}
-          >
-            <Button
-              testID="stale-callout-action-0"
-              onPress={handleReload}
-              variant="outline"
-              size="sm"
+            <SettingsSection
+              title={t("settings.project.worktree.teardown")}
+              testID="worktree-teardown-section"
+              trailing={teardownDocsLink}
+              flush
             >
-              {t("settings.project.actions.reload")}
-            </Button>
-          </Alert>
-        </View>
-      ) : null}
+              <SettingsTextAreaCard
+                testID="worktree-teardown-input"
+                accessibilityLabel={t("settings.project.worktree.teardownAccessibility")}
+                value={draft.teardownText}
+                onChangeText={handleTeardownChange}
+                placeholder="docker compose down"
+              />
+            </SettingsSection>
+          </SettingsGroup>
 
-      {isWriteFailed ? (
-        <View style={styles.calloutWrap}>
-          <Alert
-            testID="write-failed-callout"
-            variant="error"
-            title={t("settings.project.writeFailures.failedTitle")}
-            description={t("settings.project.writeFailures.failedDescription")}
+          <SettingsGroup
+            title={t("settings.project.scripts.title")}
+            info={t("settings.project.scripts.info")}
+            trailing={scriptsTrailing}
+            testID="scripts-group"
           >
+            <View style={settingsStyles.card} testID="scripts-list">
+              {draft.scripts.length === 0 ? (
+                <View style={settingsStyles.row}>
+                  <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
+                </View>
+              ) : (
+                draft.scripts.map((script, index) => (
+                  <ScriptRow
+                    key={script.id}
+                    script={script}
+                    isFirst={index === 0}
+                    onEdit={handleEditScript}
+                    onRemove={handleRemoveScript}
+                  />
+                ))
+              )}
+            </View>
+          </SettingsGroup>
+
+          <SettingsGroup
+            title={t("settings.project.metadata.title")}
+            info={t("settings.project.metadata.info")}
+            testID="metadata-group"
+          >
+            {METADATA_PROMPT_KEYS.map((key, index) => (
+              <MetadataPromptSection
+                key={key}
+                promptKey={key}
+                value={draft.metadataPrompts[key]}
+                onChange={handleMetadataPromptChange}
+                flush={index === METADATA_PROMPT_KEYS.length - 1}
+              />
+            ))}
+          </SettingsGroup>
+
+          {isStale ? (
+            <View style={styles.calloutWrap}>
+              <Alert
+                testID="stale-callout"
+                variant="error"
+                title={t("settings.project.writeFailures.staleTitle")}
+                description={t("settings.project.writeFailures.staleDescription")}
+              >
+                <Button
+                  testID="stale-callout-action-0"
+                  onPress={handleReload}
+                  variant="outline"
+                  size="sm"
+                >
+                  {t("settings.project.actions.reload")}
+                </Button>
+              </Alert>
+            </View>
+          ) : null}
+
+          {isWriteFailed ? (
+            <View style={styles.calloutWrap}>
+              <Alert
+                testID="write-failed-callout"
+                variant="error"
+                title={t("settings.project.writeFailures.failedTitle")}
+                description={t("settings.project.writeFailures.failedDescription")}
+              >
+                <Button
+                  testID="write-failed-callout-action-0"
+                  onPress={handleSave}
+                  variant="outline"
+                  size="sm"
+                >
+                  {t("settings.project.actions.tryAgain")}
+                </Button>
+                <Button
+                  testID="write-failed-callout-action-1"
+                  onPress={handleReload}
+                  variant="outline"
+                  size="sm"
+                >
+                  {t("settings.project.actions.reload")}
+                </Button>
+              </Alert>
+            </View>
+          ) : null}
+
+          <View style={styles.footer}>
             <Button
-              testID="write-failed-callout-action-0"
+              testID="save-button"
+              accessibilityLabel={t("settings.project.actions.save")}
+              variant="default"
+              size="md"
+              disabled={saveDisabled}
+              loading={saveMutation.isPending}
               onPress={handleSave}
-              variant="outline"
-              size="sm"
             >
-              {t("settings.project.actions.tryAgain")}
+              {saveMutation.isPending
+                ? t("settings.project.actions.saving")
+                : t("settings.project.actions.save")}
             </Button>
-            <Button
-              testID="write-failed-callout-action-1"
-              onPress={handleReload}
-              variant="outline"
-              size="sm"
-            >
-              {t("settings.project.actions.reload")}
-            </Button>
-          </Alert>
-        </View>
-      ) : null}
+          </View>
 
-      <View style={styles.footer}>
-        <Button
-          testID="save-button"
-          accessibilityLabel={t("settings.project.actions.save")}
-          variant="default"
-          size="md"
-          disabled={saveDisabled}
-          loading={saveMutation.isPending}
-          onPress={handleSave}
-        >
-          {saveMutation.isPending
-            ? t("settings.project.actions.saving")
-            : t("settings.project.actions.save")}
-        </Button>
-      </View>
-
-      {editingScript ? (
-        <ScriptEditModal
-          script={editingScript}
-          onChange={handleEditingDraftChange}
-          onCancel={handleCancelEditing}
-          onSave={handleSaveEditing}
-        />
+          {editingScript ? (
+            <ScriptEditModal
+              script={editingScript}
+              onChange={handleEditingDraftChange}
+              onCancel={handleCancelEditing}
+              onSave={handleSaveEditing}
+            />
+          ) : null}
+        </>
       ) : null}
     </View>
   );

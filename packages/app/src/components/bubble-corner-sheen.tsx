@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import { View } from "react-native";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 
 // Peak alpha of the white sheen at its anchor corner. The bubble surfaces are
@@ -32,17 +33,27 @@ interface BubbleCornerSheenProps {
 interface SheenOverlayProps extends BubbleCornerSheenProps {
   /** Whole-overlay opacity, resolved from the active theme's color scheme. */
   sheenOpacity: number;
+  /**
+   * Black chat background is on. The chat pane is scoped to the `black` theme
+   * (always a dark surface) regardless of the app-wide light/dark mode, but
+   * `withUnistyles`/`uniProps` below resolves against the app theme — not the
+   * `ScopedTheme`, which silently unwinds for self-re-rendering descendants on
+   * web (docs/unistyles.md, black-chat-scope.ts). So when this is set we ignore
+   * the resolved `sheenOpacity` and force the dark-surface strength.
+   */
+  forceDark: boolean;
 }
 
-function SheenOverlay({ corner, sheenOpacity }: SheenOverlayProps) {
+function SheenOverlay({ corner, sheenOpacity, forceDark }: SheenOverlayProps) {
+  const effectiveOpacity = forceDark ? DARK_MODE_SHEEN_OPACITY : sheenOpacity;
   const gradientIdRef = useRef(`bubble-sheen-${Math.random().toString(36).substring(2, 9)}`);
   const gradientId = gradientIdRef.current;
   const fillStyle = useMemo(
     () => [
       corner === "right" ? sheenStylesheet.fillMirrored : sheenStylesheet.fill,
-      { opacity: sheenOpacity },
+      { opacity: effectiveOpacity },
     ],
-    [corner, sheenOpacity],
+    [corner, effectiveOpacity],
   );
   return (
     <View pointerEvents="none" style={fillStyle}>
@@ -113,7 +124,14 @@ const sheenOpacityMapping = (theme: Theme) => ({
  * needs overflow: "hidden" so the square clips to the rounded corners.
  */
 export function BubbleCornerSheen({ corner }: BubbleCornerSheenProps) {
-  return <ThemedSheenOverlay corner={corner} uniProps={sheenOpacityMapping} />;
+  const { settings } = useAppSettings();
+  return (
+    <ThemedSheenOverlay
+      corner={corner}
+      forceDark={settings.blackTabBackground}
+      uniProps={sheenOpacityMapping}
+    />
+  );
 }
 
 const sheenStylesheet = StyleSheet.create({

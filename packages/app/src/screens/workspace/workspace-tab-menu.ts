@@ -66,6 +66,9 @@ interface BuildWorkspaceTabMenuEntriesInput {
   index: number;
   tabCount: number;
   menuTestIDBase: string;
+  // User mode omits the developer-only entries (copy resume command, copy agent
+  // id, copy file path, reload agent); tab-management entries stay.
+  isDeveloperMode: boolean;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -82,6 +85,7 @@ interface BuildWorkspaceDesktopTabActionsInput {
   tab: WorkspaceTabDescriptor;
   index: number;
   tabCount: number;
+  isDeveloperMode: boolean;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -156,6 +160,7 @@ export function buildWorkspaceTabMenuEntries(
     index,
     tabCount,
     menuTestIDBase,
+    isDeveloperMode,
     onCopyResumeCommand,
     onCopyAgentId,
     onCopyFilePath,
@@ -172,7 +177,7 @@ export function buildWorkspaceTabMenuEntries(
   const isOnlyTab = tabCount <= 1;
   const entries: WorkspaceTabMenuEntry[] = [];
 
-  if (tab.target.kind === "agent") {
+  if (isDeveloperMode && tab.target.kind === "agent") {
     const { agentId } = tab.target;
     entries.push({
       kind: "item",
@@ -197,7 +202,7 @@ export function buildWorkspaceTabMenuEntries(
     });
   }
 
-  if (tab.target.kind === "file") {
+  if (isDeveloperMode && tab.target.kind === "file") {
     const filePath = tab.target.path;
     entries.push({
       kind: "item",
@@ -261,7 +266,7 @@ export function buildWorkspaceTabMenuEntries(
       void onCloseOtherTabs(tab.tabId);
     },
   });
-  if (tab.target.kind === "agent") {
+  if (isDeveloperMode && tab.target.kind === "agent") {
     const { agentId } = tab.target;
     entries.push({
       kind: "item",
@@ -301,6 +306,7 @@ export function buildWorkspaceDesktopTabActions(
       index: input.index,
       tabCount: input.tabCount,
       menuTestIDBase: contextMenuTestId,
+      isDeveloperMode: input.isDeveloperMode,
       onCopyResumeCommand: input.onCopyResumeCommand,
       onCopyAgentId: input.onCopyAgentId,
       onCopyFilePath: input.onCopyFilePath,

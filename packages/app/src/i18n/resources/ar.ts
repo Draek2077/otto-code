@@ -1223,6 +1223,7 @@ export const ar: TranslationResources = {
     },
   },
   openProject: {
+    setupWizard: "Set up Otto",
     quotes: [
       {
         text: "أنت سيد كونك، ومع ذلك فأنت تقطر بدماء الفئران والبراز. عقلك الهائل يتلاشى حرفيًا بيدك أنت.",
@@ -1890,6 +1891,17 @@ export const ar: TranslationResources = {
           queue: "طابور",
         },
       },
+      interfaceMode: {
+        label: "Interface mode",
+        descriptions: {
+          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          developer: "The full development environment: files, diffs, terminals, git, and search.",
+        },
+        options: {
+          user: "User",
+          developer: "Developer",
+        },
+      },
       serviceUrls: {
         label: "عناوين URL للخدمة",
         description: "مكان فتح عناوين URL من تشغيل البرامج النصية",
@@ -1963,6 +1975,11 @@ export const ar: TranslationResources = {
       title: "عن",
       appVersion: "نسخة التطبيق",
       thisDevice: "هذا الجهاز",
+      resetWizard: {
+        label: "Reset First Time Wizard",
+        description: "Re-open the guided setup. It never deletes your agents or teams.",
+        action: "Open",
+      },
       connectedHosts: "المضيفين المتصلين",
       offline: "غير متصل",
       versionDiffers: "الإصدار يختلف عن هذا الجهاز",
@@ -2604,6 +2621,36 @@ export const ar: TranslationResources = {
   artifacts: {
     errors: {
       hostDisconnected: "Host غير متصل",
+    },
+  },
+  tutorial: {
+    exit: "Exit tutorial",
+    launch: "Tutorial",
+    steps: {
+      settings: {
+        title: "Find your Settings",
+        body: "Themes, providers, agents and everything else live in Settings.",
+        hint: "Tap the gear to open Settings.",
+      },
+      createProject: {
+        title: "Create a project",
+        body: "A project is just a folder on your machine. Add one to start working.",
+        hint: "Tap to pick a folder and create your first workspace.",
+      },
+      workspaces: {
+        title: "Your workspaces",
+        body: "Each project's workspaces live here — switch between them anytime.",
+      },
+      explorer: {
+        title: "Explore your files",
+        body: "Open the Explorer to browse files, search, and review changes.",
+        hint: "Tap to open the Explorer.",
+      },
+      chat: {
+        title: "Chat with your agents",
+        body: "This is where you talk to your AI agents. Type a message to get started.",
+        hint: "Tap to finish — you're all set.",
+      },
     },
   },
 };

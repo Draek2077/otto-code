@@ -79,6 +79,9 @@ export const ScheduleRunOnceRequestSchema = z.object({
 
 const ScheduleUpdateNewAgentConfigSchema = z.object({
   provider: z.string().trim().min(1).optional(),
+  // Personality binding by name — or the "@team-scheduler" sentinel. Explicit
+  // null clears a stored binding; omission leaves it untouched.
+  personality: z.string().trim().min(1).nullable().optional(),
   model: z.string().trim().min(1).nullable().optional(),
   modeId: z.string().trim().min(1).nullable().optional(),
   thinkingOptionId: z.string().trim().min(1).nullable().optional(),

@@ -11,6 +11,7 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type Ref,
 } from "react";
 import {
   Dimensions,
@@ -30,6 +31,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
+import { mergeRefs } from "@/utils/merge-refs";
 
 type Side = "top" | "bottom" | "left" | "right";
 type Align = "start" | "center" | "end";
@@ -275,10 +277,15 @@ export function TooltipTrigger({
   onPress,
   asChild = false,
   triggerRefProp = "ref",
+  anchorRef,
   ...props
 }: PressableProps & {
   asChild?: boolean;
   triggerRefProp?: string;
+  // Extra ref composed with the tooltip's own trigger ref on the non-asChild
+  // Pressable (e.g. the tutorial anchor registry). asChild callers compose their
+  // ref through the child's `triggerRefProp` instead.
+  anchorRef?: Ref<View>;
 }): ReactElement {
   const ctx = useTooltipContext("TooltipTrigger");
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -423,7 +430,11 @@ export function TooltipTrigger({
   }
 
   return (
-    <Pressable {...triggerProps} ref={ctx.triggerRef} collapsable={false}>
+    <Pressable
+      {...triggerProps}
+      ref={anchorRef ? mergeRefs(ctx.triggerRef, anchorRef) : ctx.triggerRef}
+      collapsable={false}
+    >
       {children}
     </Pressable>
   );

@@ -382,6 +382,123 @@ test("concurrent personality mutations on one agent serialize", async () => {
   }
 });
 
+test("a live switch recomposes against the frozen born team, not the current one", async () => {
+  const harness = createHarness();
+  try {
+    // Spawned as an active-team member: systemPrompt is the composed stack and
+    // teamSnapshot is frozen onto the config (as the spawn paths do).
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
+        systemPrompt: "Team frame.\n\nYou are Vera.",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    // Switching personalities — even to one outside the born team — keeps the
+    // frozen team prompt ahead of the incoming personality prompt.
+    await harness.manager.setAgentPersonality(
+      agent.id,
+      buildSnapshot({
+        personalityId: "personality-dash",
+        name: "Dash",
+        systemPrompt: "You are Dash.",
+      }),
+    );
+    expect(agent.config.systemPrompt).toBe("Team frame.\n\nYou are Dash.");
+    expect(agent.config.teamSnapshot?.teamId).toBe("team-crew");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("clearing the personality keeps the born team prompt and drops the personality prompt", async () => {
+  const harness = createHarness();
+  try {
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
+        systemPrompt: "Team frame.\n\nYou are Vera.",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await harness.manager.setAgentPersonality(agent.id, null);
+
+    expect(agent.config.personalitySnapshot).toBeUndefined();
+    expect(agent.config.systemPrompt).toBe("Team frame.");
+    expect(agent.config.teamSnapshot?.teamId).toBe("team-crew");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("a caller-authored prompt survives switches on a team-born agent", async () => {
+  const harness = createHarness();
+  try {
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        teamSnapshot: { teamId: "team-crew", name: "Shipping crew", teamPrompt: "Team frame." },
+        systemPrompt: "caller prompt",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await harness.manager.setAgentPersonality(
+      agent.id,
+      buildSnapshot({ personalityId: "personality-dash", name: "Dash" }),
+    );
+    expect(agent.config.systemPrompt).toBe("caller prompt");
+
+    await harness.manager.setAgentPersonality(agent.id, null);
+    expect(agent.config.systemPrompt).toBe("caller prompt");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("a pre-teams agent (bare personality prompt) still reads as personality-owned", async () => {
+  const harness = createHarness();
+  try {
+    // Simulates an agent spawned before teams shipped: personality-owned prompt
+    // with no teamSnapshot. The switch must recognize ownership and swap it.
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        systemPrompt: "You are Vera.",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await harness.manager.setAgentPersonality(
+      agent.id,
+      buildSnapshot({
+        personalityId: "personality-dash",
+        name: "Dash",
+        systemPrompt: "You are Dash.",
+      }),
+    );
+    expect(agent.config.systemPrompt).toBe("You are Dash.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test("onPersonalitySpawn fires once per personality-bound createAgent", async () => {
   const harness = createHarness();
   try {

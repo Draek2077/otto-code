@@ -15,8 +15,14 @@ export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
+// Where the Active Team switcher lives: the sidebar menu above "New workspace"
+// (default) or the workspace title bar ahead of the other tools.
+export type TeamSwitcherPlacement = "sidebar" | "titlebar";
 export type ColorSchemeMode = "light" | "dark" | "system";
 export type ChatTimestampDisplay = "absolute" | "relative";
+// Device-local display depth chosen in the setup wizard's first step. Presentation
+// only — never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
+export type InterfaceMode = "user" | "developer";
 
 const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
   "daylight",
@@ -44,8 +50,10 @@ const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
   "workspaceList",
 ]);
+const VALID_TEAM_SWITCHER_PLACEMENTS = new Set<TeamSwitcherPlacement>(["sidebar", "titlebar"]);
 const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
 const VALID_CHAT_TIMESTAMP_DISPLAYS = new Set<ChatTimestampDisplay>(["absolute", "relative"]);
+const VALID_INTERFACE_MODES = new Set<InterfaceMode>(["user", "developer"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -79,6 +87,9 @@ export interface AppSettings {
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
   workspaceToolsPlacement: WorkspaceToolsPlacement;
+  // Where the Agent Teams "Active Team" switcher renders. Device-local
+  // presentation only; the active team itself is host-scoped daemon config.
+  teamSwitcherPlacement: TeamSwitcherPlacement;
   chatWidth: ChatWidth;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
@@ -97,6 +108,22 @@ export interface AppSettings {
   hideChatMessageDetails: boolean;
   // Chat message timestamps render as exact clock time or relative "5m ago".
   chatTimestampDisplay: ChatTimestampDisplay;
+  // One-time onboarding tour. `false` on a genuinely fresh install (the tour
+  // runs once); backfilled to `true` for any device that already has persisted
+  // settings, so upgraders never suddenly see the tour. See migrateTutorialFlag.
+  hasCompletedTutorial: boolean;
+  // Device-local interface mode (display depth). `null` = not yet chosen, which
+  // drives the first-run wizard's Mode step; the useInterfaceMode() hook resolves
+  // `null` → "developer" so undecided/legacy devices behave exactly like today.
+  // Presentation only: never synced to the daemon, never per-workspace.
+  interfaceMode: InterfaceMode | null;
+  // One-time first-run setup wizard (Mode → Providers → Agents → Teams → Done).
+  // `false` on a genuinely fresh install (the wizard runs once on first host
+  // connection); backfilled to `true` for any device that already has persisted
+  // settings, so upgraders never land in the wizard. Distinct from the in-app
+  // spotlight tour (hasCompletedTutorial), which the wizard's final step launches.
+  // See migrateSetupWizardFlag.
+  hasCompletedSetupWizard: boolean;
 }
 
 export interface Settings extends AppSettings {
@@ -124,12 +151,16 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
+  teamSwitcherPlacement: "sidebar",
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
+  hasCompletedTutorial: false,
+  interfaceMode: null,
+  hasCompletedSetupWizard: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -169,23 +200,53 @@ export async function saveAppSettings(input: {
   await input.deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
 
+// Parses a persisted settings blob, returning a plain object or `null` when the
+// stored string is unreadable — corrupt JSON, or a non-object (array/primitive).
+// Corruption is a real field condition: an interrupted write during a version
+// upgrade can leave a truncated blob, which is exactly the 0.5.0→0.5.1 profile
+// (a Settings crash that only "clearing data" resolved). Callers treat `null` as
+// "no usable settings" and self-heal to defaults rather than throwing.
+function parseSettingsRecord(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through to null
+  }
+  return null;
+}
+
 export async function loadAppSettingsFromStorage(deps: SettingsDeps): Promise<AppSettings> {
   try {
     const stored = await deps.storage.getItem(APP_SETTINGS_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Record<string, unknown>;
-      return {
-        ...DEFAULT_CLIENT_SETTINGS,
-        ...migrateLegacyThemeField(parsed),
-        ...pickAppSettings(parsed as Partial<AppSettings>),
-      };
+      const parsed = parseSettingsRecord(stored);
+      if (parsed) {
+        return {
+          ...DEFAULT_CLIENT_SETTINGS,
+          ...migrateLegacyThemeField(parsed),
+          ...migrateTutorialFlag(parsed),
+          ...migrateSetupWizardFlag(parsed),
+          ...pickAppSettings(parsed as Partial<AppSettings>),
+        };
+      }
+      // Unreadable blob: reset to defaults and persist so we don't re-hit the bad
+      // value on every launch. The previous code threw here, which left the
+      // settings query permanently in error (recoverable only by clearing data).
+      console.warn("[AppSettings] Unreadable settings blob; resetting to defaults");
+      await deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(DEFAULT_CLIENT_SETTINGS));
+      return DEFAULT_CLIENT_SETTINGS;
     }
 
     const legacyStored = await deps.storage.getItem(LEGACY_SETTINGS_KEY);
-    if (legacyStored) {
-      const legacyParsed = JSON.parse(legacyStored) as Record<string, unknown>;
+    const legacyParsed = legacyStored ? parseSettingsRecord(legacyStored) : null;
+    if (legacyParsed) {
       const next = {
         ...DEFAULT_CLIENT_SETTINGS,
+        ...migrateTutorialFlag(legacyParsed),
+        ...migrateSetupWizardFlag(legacyParsed),
         ...pickAppSettingsFromLegacy(legacyParsed),
       } satisfies AppSettings;
       await deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
@@ -249,6 +310,33 @@ function migrateLegacyThemeField(stored: Record<string, unknown>): Partial<AppSe
   }
   if (VALID_DARK_THEMES.has(legacyTheme)) {
     return { colorSchemeMode: "dark", darkTheme: legacyTheme as DarkThemeName };
+  }
+  return {};
+}
+
+// Backfills the one-time tour flag for existing devices. When a settings blob
+// already exists but predates the flag, the device is an upgrader (not a fresh
+// install) and must be treated as having "completed" the tour so it never
+// surfaces mid-session. Only fires when the field is entirely absent, so it
+// never overrides an explicitly persisted value. The fresh-install seed path in
+// loadAppSettingsFromStorage skips this and keeps the `false` default.
+function migrateTutorialFlag(stored: Record<string, unknown>): Partial<AppSettings> {
+  if (stored.hasCompletedTutorial === undefined) {
+    return { hasCompletedTutorial: true };
+  }
+  return {};
+}
+
+// Backfills the one-time setup-wizard flag for existing devices, mirroring
+// migrateTutorialFlag: a settings blob that predates the flag belongs to an
+// upgrader, who must never be dropped into the first-run wizard. Only fires when
+// the field is absent, so it never overrides an explicitly persisted value. The
+// fresh-install seed path keeps the `false` default. `interfaceMode` needs no
+// such migration — its absent → null → "developer" resolution already keeps
+// legacy devices in today's full app (see useInterfaceMode).
+function migrateSetupWizardFlag(stored: Record<string, unknown>): Partial<AppSettings> {
+  if (stored.hasCompletedSetupWizard === undefined) {
+    return { hasCompletedSetupWizard: true };
   }
   return {};
 }
@@ -341,6 +429,12 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
     result.workspaceToolsPlacement = stored.workspaceToolsPlacement as WorkspaceToolsPlacement;
   }
   if (
+    typeof stored.teamSwitcherPlacement === "string" &&
+    VALID_TEAM_SWITCHER_PLACEMENTS.has(stored.teamSwitcherPlacement as TeamSwitcherPlacement)
+  ) {
+    result.teamSwitcherPlacement = stored.teamSwitcherPlacement as TeamSwitcherPlacement;
+  }
+  if (
     typeof stored.chatWidth === "string" &&
     VALID_CHAT_WIDTHS.has(stored.chatWidth as ChatWidth)
   ) {
@@ -364,6 +458,25 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   ) {
     result.chatTimestampDisplay = stored.chatTimestampDisplay as ChatTimestampDisplay;
   }
+  if (typeof stored.hasCompletedTutorial === "boolean") {
+    result.hasCompletedTutorial = stored.hasCompletedTutorial;
+  }
+  return result;
+}
+
+// Onboarding + interface-depth fields, kept out of pickWorkspaceLayoutSettings to
+// stay under the cyclomatic-complexity ceiling. See the setup-wizard charter.
+function pickOnboardingSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (
+    typeof stored.interfaceMode === "string" &&
+    VALID_INTERFACE_MODES.has(stored.interfaceMode as InterfaceMode)
+  ) {
+    result.interfaceMode = stored.interfaceMode as InterfaceMode;
+  }
+  if (typeof stored.hasCompletedSetupWizard === "boolean") {
+    result.hasCompletedSetupWizard = stored.hasCompletedSetupWizard;
+  }
   return result;
 }
 
@@ -386,6 +499,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
     ...pickWorkspaceLayoutSettings(stored),
+    ...pickOnboardingSettings(stored),
     ...pickPreviewSettings(stored),
   };
 }
@@ -484,12 +598,12 @@ async function loadRendererSettingsPayload(
 ): Promise<Record<string, unknown> | null> {
   const current = await storage.getItem(APP_SETTINGS_KEY);
   if (current) {
-    return JSON.parse(current) as Record<string, unknown>;
+    return parseSettingsRecord(current);
   }
 
   const legacy = await storage.getItem(LEGACY_SETTINGS_KEY);
   if (!legacy) {
     return null;
   }
-  return JSON.parse(legacy) as Record<string, unknown>;
+  return parseSettingsRecord(legacy);
 }

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -49,6 +50,8 @@ import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton, headerIconSlotStyle } from "@/components/headers/header-toggle-button";
+import { HeaderActiveTeamSwitchers } from "@/components/active-team-switcher";
+import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -99,6 +102,8 @@ import {
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useSettings } from "@/hooks/use-settings";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { hideDeveloperTabs } from "@/screens/workspace/interface-mode-tabs";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import {
@@ -672,6 +677,7 @@ function MobileWorkspaceTabOption({
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
@@ -696,6 +702,7 @@ function MobileWorkspaceTabOption({
     index: tabIndex,
     tabCount,
     menuTestIDBase,
+    isDeveloperMode,
     onCopyResumeCommand,
     onCopyAgentId,
     onCopyFilePath,
@@ -1124,6 +1131,149 @@ function compactHeaderActionTriggerStyle({
   ];
 }
 
+// The git-checkout variant of the explorer toggle (with its diff-stat badge and
+// tooltip). Extracted from the workspace header so the header's JSX stays under
+// the nesting-depth cap; it's developer-only, gated at the mount site.
+function GitCheckoutExplorerToggle({
+  anchorRef,
+  onPress,
+  accessibilityLabel,
+  accessibilityState,
+  style,
+  isExplorerOpen,
+  diffStat,
+  showDiffStat,
+}: {
+  anchorRef: ComponentProps<typeof Pressable>["ref"];
+  onPress: () => void;
+  accessibilityLabel: string;
+  accessibilityState: { expanded: boolean };
+  style: ComponentProps<typeof Pressable>["style"];
+  isExplorerOpen: boolean;
+  diffStat: { additions: number; deletions: number } | null | undefined;
+  showDiffStat: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Pressable
+          ref={anchorRef}
+          testID="workspace-explorer-toggle"
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityState={accessibilityState}
+          style={style}
+        >
+          {({ hovered, pressed }) => {
+            const inactiveMapping = hovered || pressed ? foregroundMdMapping : mutedMdMapping;
+            return (
+              <>
+                {isExplorerOpen ? (
+                  <ThemedExplore uniProps={accentMdMapping} />
+                ) : (
+                  <ThemedExplore uniProps={inactiveMapping} />
+                )}
+                {diffStat && showDiffStat ? (
+                  <DiffStat
+                    additions={diffStat.additions}
+                    deletions={diffStat.deletions}
+                    style={styles.sourceControlDiffStat}
+                  />
+                ) : null}
+              </>
+            );
+          }}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent
+        testID="workspace-explorer-toggle-tooltip"
+        side="left"
+        align="center"
+        offset={8}
+      >
+        <View style={styles.explorerTooltipRow}>
+          <Text style={styles.explorerTooltipText}>{t("workspace.tabs.explorer.toggle")}</Text>
+          <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
+        </View>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// The plain Explore toggle (no git-aware diff badge) used to open/close the
+// explorer sidebar. Developer mode uses it for non-git checkouts; User interface
+// mode always uses it, since that mode shows a Files-only explorer.
+function PlainExplorerToggle({
+  isMobile,
+  anchorRef,
+  onPress,
+  isExplorerOpen,
+  accessibilityLabel,
+  accessibilityState,
+}: {
+  isMobile: boolean;
+  anchorRef: ComponentProps<typeof HeaderToggleButton>["anchorRef"];
+  onPress: () => void;
+  isExplorerOpen: boolean;
+  accessibilityLabel: string;
+  accessibilityState: { expanded: boolean };
+}) {
+  const { t } = useTranslation();
+  const headerActionIconSize = useIconSize(1.5);
+  if (isMobile) {
+    return (
+      <HeaderToggleButton
+        anchorRef={anchorRef}
+        testID="workspace-explorer-toggle"
+        onPress={onPress}
+        tooltipLabel={t("workspace.tabs.explorer.toggle")}
+        tooltipKeys={EXPLORER_TOGGLE_KEYS}
+        tooltipSide="left"
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={accessibilityState}
+      >
+        {({ hovered }) =>
+          isExplorerOpen ? (
+            <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+          ) : (
+            <ThemedExplore
+              size={headerActionIconSize.lg}
+              uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
+            />
+          )
+        }
+      </HeaderToggleButton>
+    );
+  }
+  return (
+    <HeaderToggleButton
+      anchorRef={anchorRef}
+      testID="workspace-explorer-toggle"
+      onPress={onPress}
+      tooltipLabel={t("workspace.tabs.explorer.toggle")}
+      tooltipKeys={EXPLORER_TOGGLE_KEYS}
+      tooltipSide="left"
+      style={styles.compactHeaderActionButton}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={accessibilityState}
+    >
+      {({ hovered }) =>
+        isExplorerOpen ? (
+          <ThemedExplore uniProps={accentMdMapping} />
+        ) : (
+          <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
+        )
+      }
+    </HeaderToggleButton>
+  );
+}
+
 function WorkspaceHeaderMenu({
   normalizedServerId,
   normalizedWorkspaceId,
@@ -1151,6 +1301,9 @@ function WorkspaceHeaderMenu({
 }: WorkspaceHeaderMenuProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  // User mode hides the developer affordances in this menu (filesystem path /
+  // branch copy, and the whole terminal-profiles section).
+  const isDeveloperMode = useIsDeveloperMode();
   const { config } = useDaemonConfig(normalizedServerId);
   const profiles = useMemo(
     () => resolveTerminalProfiles(config?.terminalProfiles),
@@ -1237,15 +1390,17 @@ function WorkspaceHeaderMenu({
           >
             {t("workspace.header.actions.importSession")}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            testID="workspace-header-copy-path"
-            leading={menuCopyIcon}
-            disabled={copyPathDisabled}
-            onSelect={onCopyWorkspacePath}
-          >
-            {t("workspace.header.actions.copyPath")}
-          </DropdownMenuItem>
-          {currentBranchName ? (
+          {isDeveloperMode ? (
+            <DropdownMenuItem
+              testID="workspace-header-copy-path"
+              leading={menuCopyIcon}
+              disabled={copyPathDisabled}
+              onSelect={onCopyWorkspacePath}
+            >
+              {t("workspace.header.actions.copyPath")}
+            </DropdownMenuItem>
+          ) : null}
+          {isDeveloperMode && currentBranchName ? (
             <DropdownMenuItem
               testID="workspace-header-copy-branch-name"
               leading={menuCopyIcon}
@@ -1266,31 +1421,37 @@ function WorkspaceHeaderMenu({
               </DropdownMenuItem>
             </>
           ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
-          <DropdownMenuItem
-            testID="workspace-header-new-terminal"
-            leading={menuNewTerminalIcon}
-            disabled={createTerminalDisabled}
-            onSelect={onCreateTerminal}
-          >
-            {t("workspace.header.actions.newTerminal")}
-          </DropdownMenuItem>
-          {profiles.map((profile) => (
-            <HeaderMenuProfileItem
-              key={profile.id}
-              profile={profile}
-              disabled={createTerminalDisabled}
-              onCreateTerminalWithProfile={onCreateTerminalWithProfile}
-            />
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            testID="workspace-header-edit-terminal-profiles"
-            onSelect={handleEditProfiles}
-          >
-            {t("workspace.tabs.actions.editTerminalProfiles")}
-          </DropdownMenuItem>
+          {isDeveloperMode ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>
+                {t("workspace.tabs.actions.terminalProfilesMenu")}
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                testID="workspace-header-new-terminal"
+                leading={menuNewTerminalIcon}
+                disabled={createTerminalDisabled}
+                onSelect={onCreateTerminal}
+              >
+                {t("workspace.header.actions.newTerminal")}
+              </DropdownMenuItem>
+              {profiles.map((profile) => (
+                <HeaderMenuProfileItem
+                  key={profile.id}
+                  profile={profile}
+                  disabled={createTerminalDisabled}
+                  onCreateTerminalWithProfile={onCreateTerminalWithProfile}
+                />
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                testID="workspace-header-edit-terminal-profiles"
+                onSelect={handleEditProfiles}
+              >
+                {t("workspace.tabs.actions.editTerminalProfiles")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             testID="workspace-header-open-settings"
@@ -1395,6 +1556,9 @@ function WorkspaceHeaderTitleBar({
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
+  // User mode hides the developer surfaces (scripts run in terminals; the menu's
+  // terminal/copy-path items are developer affordances).
+  const isDeveloperMode = useIsDeveloperMode();
   // Match the Explorer toggle's icon sizing so the mobile Play button beside the
   // "..." menu shares the same chrome and glyph size.
   const headerActionIconSize = useIconSize(1.5);
@@ -1444,7 +1608,7 @@ function WorkspaceHeaderTitleBar({
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
         />
-        {isMobile && workspaceScripts.length > 0 ? (
+        {isDeveloperMode && isMobile && workspaceScripts.length > 0 ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}
@@ -1744,6 +1908,8 @@ function shouldShowWorkspaceExplorerSidebar(input: {
   isFocusModeEnabled: boolean;
   isMobile: boolean;
 }): boolean {
+  // Shown in both interface modes. User mode gets a Files-only explorer (the
+  // sidebar itself filters Changes / Search / PR); see interface-modes.md.
   return !input.isMobile && input.isRouteFocused && shouldShowWorkspaceScreenHeader(input);
 }
 
@@ -1835,6 +2001,10 @@ function WorkspaceScreenContent({
   const _insets = useSafeAreaInsets();
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
+  // User interface mode hides the developer surfaces (explorer, terminals, file
+  // tabs, git actions, scripts). Presentation only — the stores/daemon are
+  // untouched (see projects/first-time-wizard/interface-modes.md).
+  const isDeveloperMode = useIsDeveloperMode();
   // The mobile diff/explorer toggle sits in the menu button's auto-sized chrome,
   // so its icon scales at 1.5x instead of the usual compact doubling.
   const headerActionIconSize = useIconSize(1.5);
@@ -2050,6 +2220,8 @@ function WorkspaceScreenContent({
     };
   }, [isGitCheckout, normalizedServerId, workspaceDirectory]);
 
+  const explorerToggleAnchorRef = useTutorialAnchor("explorer-toggle");
+
   const handleToggleExplorer = useCallback(() => {
     if (!activeExplorerCheckout) {
       return;
@@ -2123,6 +2295,14 @@ function WorkspaceScreenContent({
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
   );
+  // What actually renders (tab strip + pane content). In User mode the
+  // developer-only tab kinds (terminal, file) are filtered out; the unfiltered
+  // `uiTabs` still drives store reconciliation and file-open, so nothing is
+  // closed or mutated — switching back to Developer restores everything.
+  const visibleUiTabs = useMemo(
+    () => hideDeveloperTabs(uiTabs, isDeveloperMode),
+    [uiTabs, isDeveloperMode],
+  );
   useSyncWorkspaceActiveBrowser({
     workspaceLayout,
     isRouteFocused,
@@ -2195,9 +2375,9 @@ function WorkspaceScreenContent({
     () =>
       deriveWorkspacePaneState({
         layout: workspaceLayout,
-        tabs: uiTabs,
+        tabs: visibleUiTabs,
       }),
-    [uiTabs, workspaceLayout],
+    [visibleUiTabs, workspaceLayout],
   );
   const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
   const setFocusedTerminalId = useSessionStore((state) => state.setFocusedTerminalId);
@@ -3582,140 +3762,136 @@ function WorkspaceScreenContent({
   const headerRight = useMemo(
     () => (
       <View style={styles.headerRight}>
-        {!isMobile &&
-        workspaceDescriptor &&
-        workspaceDescriptor.scripts.length > 0 &&
-        settings.workspaceToolsPlacement !== "workspaceList" ? (
-          <WorkspaceScriptsButton
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
-            scripts={workspaceDescriptor.scripts}
-            liveTerminalIds={liveTerminalIds}
-            onScriptTerminalStarted={handleScriptTerminalStarted}
-            onViewTerminal={handleViewScriptTerminal}
-            onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-            hideLabels
-          />
-        ) : null}
-        {!isMobile && workspaceDirectory && settings.workspaceToolsPlacement !== "workspaceList" ? (
-          <WorkspaceOpenInEditorButton
-            serverId={normalizedServerId}
-            cwd={workspaceDirectory}
-            activeFile={activeFileLocation}
-            hideLabels
-          />
-        ) : null}
-        {!isMobile && workspaceDirectory ? (
+        {/* Appearance-relocated Active Team switcher: first in the tools
+            cluster, before every other tool (renders null unless the setting
+            moved it here). */}
+        {!isMobile ? <HeaderActiveTeamSwitchers /> : null}
+        {/* Everything below is developer-only; User mode keeps just the team
+            switcher above. Presentation only (see interface-modes.md). */}
+        {isDeveloperMode ? (
           <>
-            {workspaceDirectory && settings.workspaceToolsPlacement !== "workspaceList" ? (
-              <WorkspaceActions
+            {!isMobile &&
+            workspaceDescriptor &&
+            workspaceDescriptor.scripts.length > 0 &&
+            settings.workspaceToolsPlacement !== "workspaceList" ? (
+              <WorkspaceScriptsButton
                 serverId={normalizedServerId}
-                cwd={workspaceDirectory}
-                hideLabels={showCompactButtonLabels}
+                workspaceId={normalizedWorkspaceId}
+                scripts={workspaceDescriptor.scripts}
+                liveTerminalIds={liveTerminalIds}
+                onScriptTerminalStarted={handleScriptTerminalStarted}
+                onViewTerminal={handleViewScriptTerminal}
+                onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
+                hideLabels
               />
             ) : null}
-            {isGitCheckout ? (
-              <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-                <TooltipTrigger asChild>
-                  <Pressable
-                    testID="workspace-explorer-toggle"
+            {!isMobile &&
+            workspaceDirectory &&
+            settings.workspaceToolsPlacement !== "workspaceList" ? (
+              <WorkspaceOpenInEditorButton
+                serverId={normalizedServerId}
+                cwd={workspaceDirectory}
+                activeFile={activeFileLocation}
+                hideLabels
+              />
+            ) : null}
+            {!isMobile && workspaceDirectory ? (
+              <>
+                {workspaceDirectory && settings.workspaceToolsPlacement !== "workspaceList" ? (
+                  <WorkspaceActions
+                    serverId={normalizedServerId}
+                    cwd={workspaceDirectory}
+                    hideLabels={showCompactButtonLabels}
+                  />
+                ) : null}
+                {isGitCheckout ? (
+                  <GitCheckoutExplorerToggle
+                    anchorRef={explorerToggleAnchorRef}
                     onPress={handleToggleExplorer}
-                    accessibilityRole="button"
                     accessibilityLabel={explorerToggleLabel}
                     accessibilityState={explorerToggleAccessibilityState}
                     style={explorerToggleStyle}
-                  >
-                    {({ hovered, pressed }) => {
-                      const inactiveMapping =
-                        hovered || pressed ? foregroundMdMapping : mutedMdMapping;
-                      return (
-                        <>
-                          {isExplorerOpen ? (
-                            <ThemedExplore uniProps={accentMdMapping} />
-                          ) : (
-                            <ThemedExplore uniProps={inactiveMapping} />
-                          )}
-                          {workspaceDescriptor?.diffStat && showExplorerDiffStat ? (
-                            <DiffStat
-                              additions={workspaceDescriptor.diffStat.additions}
-                              deletions={workspaceDescriptor.diffStat.deletions}
-                              style={styles.sourceControlDiffStat}
-                            />
-                          ) : null}
-                        </>
-                      );
-                    }}
-                  </Pressable>
-                </TooltipTrigger>
-                <TooltipContent
-                  testID="workspace-explorer-toggle-tooltip"
-                  side="left"
-                  align="center"
-                  offset={8}
-                >
-                  <View style={styles.explorerTooltipRow}>
-                    <Text style={styles.explorerTooltipText}>
-                      {t("workspace.tabs.explorer.toggle")}
-                    </Text>
-                    <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
-                  </View>
-                </TooltipContent>
-              </Tooltip>
+                    isExplorerOpen={isExplorerOpen}
+                    diffStat={workspaceDescriptor?.diffStat}
+                    showDiffStat={showExplorerDiffStat}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            {!isMobile && !isGitCheckout ? (
+              <HeaderToggleButton
+                anchorRef={explorerToggleAnchorRef}
+                testID="workspace-explorer-toggle"
+                onPress={handleToggleExplorer}
+                tooltipLabel={t("workspace.tabs.explorer.toggle")}
+                tooltipKeys={EXPLORER_TOGGLE_KEYS}
+                tooltipSide="left"
+                style={styles.compactHeaderActionButton}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={explorerToggleLabel}
+                accessibilityState={explorerToggleAccessibilityState}
+              >
+                {({ hovered }) => {
+                  if (isExplorerOpen) {
+                    return <ThemedExplore uniProps={accentMdMapping} />;
+                  }
+                  return (
+                    <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />
+                  );
+                }}
+              </HeaderToggleButton>
+            ) : null}
+            {isMobile ? (
+              <HeaderToggleButton
+                anchorRef={explorerToggleAnchorRef}
+                testID="workspace-explorer-toggle"
+                onPress={handleToggleExplorer}
+                tooltipLabel={t("workspace.tabs.explorer.toggle")}
+                tooltipKeys={EXPLORER_TOGGLE_KEYS}
+                tooltipSide="left"
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={explorerToggleLabel}
+                accessibilityState={explorerToggleAccessibilityState}
+              >
+                {({ hovered }) => {
+                  if (isExplorerOpen) {
+                    return (
+                      <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
+                    );
+                  }
+                  return (
+                    <ThemedExplore
+                      size={headerActionIconSize.lg}
+                      uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
+                    />
+                  );
+                }}
+              </HeaderToggleButton>
             ) : null}
           </>
-        ) : null}
-        {!isMobile && !isGitCheckout ? (
-          <HeaderToggleButton
-            testID="workspace-explorer-toggle"
-            onPress={handleToggleExplorer}
-            tooltipLabel={t("workspace.tabs.explorer.toggle")}
-            tooltipKeys={EXPLORER_TOGGLE_KEYS}
-            tooltipSide="left"
-            style={styles.compactHeaderActionButton}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={explorerToggleLabel}
-            accessibilityState={explorerToggleAccessibilityState}
-          >
-            {({ hovered }) => {
-              if (isExplorerOpen) {
-                return <ThemedExplore uniProps={accentMdMapping} />;
-              }
-              return <ThemedExplore uniProps={hovered ? foregroundMdMapping : mutedMdMapping} />;
-            }}
-          </HeaderToggleButton>
-        ) : null}
-        {isMobile ? (
-          <HeaderToggleButton
-            testID="workspace-explorer-toggle"
-            onPress={handleToggleExplorer}
-            tooltipLabel={t("workspace.tabs.explorer.toggle")}
-            tooltipKeys={EXPLORER_TOGGLE_KEYS}
-            tooltipSide="left"
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={explorerToggleLabel}
-            accessibilityState={explorerToggleAccessibilityState}
-          >
-            {({ hovered }) => {
-              if (isExplorerOpen) {
-                return (
-                  <ThemedExplore size={headerActionIconSize.lg} uniProps={accentColorMapping} />
-                );
-              }
-              return (
-                <ThemedExplore
-                  size={headerActionIconSize.lg}
-                  uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
-                />
-              );
-            }}
-          </HeaderToggleButton>
-        ) : null}
+        ) : (
+          <>
+            {/* User interface mode: a plain Explore toggle for the Files-only
+                explorer (no git-aware diff badge). Desktop + mobile. */}
+            {workspaceDirectory ? (
+              <PlainExplorerToggle
+                isMobile={isMobile}
+                anchorRef={explorerToggleAnchorRef}
+                onPress={handleToggleExplorer}
+                isExplorerOpen={isExplorerOpen}
+                accessibilityLabel={explorerToggleLabel}
+                accessibilityState={explorerToggleAccessibilityState}
+              />
+            ) : null}
+          </>
+        )}
       </View>
     ),
     [
       isMobile,
+      isDeveloperMode,
       workspaceDescriptor,
       normalizedServerId,
       normalizedWorkspaceId,
@@ -3728,6 +3904,7 @@ function WorkspaceScreenContent({
       showCompactButtonLabels,
       isGitCheckout,
       handleToggleExplorer,
+      explorerToggleAnchorRef,
       isExplorerOpen,
       explorerToggleLabel,
       explorerToggleAccessibilityState,
@@ -3744,7 +3921,12 @@ function WorkspaceScreenContent({
     [isFocusModeEnabled, isMobile],
   );
   const showExplorerSidebar = useMemo(
-    () => shouldShowWorkspaceExplorerSidebar({ isRouteFocused, isFocusModeEnabled, isMobile }),
+    () =>
+      shouldShowWorkspaceExplorerSidebar({
+        isRouteFocused,
+        isFocusModeEnabled,
+        isMobile,
+      }),
     [isRouteFocused, isFocusModeEnabled, isMobile],
   );
 
@@ -3785,7 +3967,7 @@ function WorkspaceScreenContent({
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
         isWorkspaceFocused={isRouteFocused}
-        uiTabs={uiTabs}
+        uiTabs={visibleUiTabs}
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
         closingTabIds={closingTabIds}
@@ -3821,7 +4003,7 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     isRouteFocused,
-    uiTabs,
+    visibleUiTabs,
     hoveredCloseTabKey,
     closingTabIds,
     navigateToTabId,

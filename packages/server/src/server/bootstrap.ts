@@ -145,7 +145,10 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@otto-code/protocol/messages";
-import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
+import {
+  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_TEAMS,
+} from "@otto-code/protocol/default-personalities";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
@@ -154,6 +157,8 @@ import {
   loadPersistedConfig,
   type PersistedConfig,
   type PersistedAgentPersonality,
+  type PersistedAgentTeam,
+  type PersistedModelTierOverride,
 } from "./persisted-config.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import {
@@ -400,6 +405,11 @@ export interface OttoDaemonConfig {
   agentPersonalities?: {
     personalities?: PersistedAgentPersonality[];
   };
+  agentTeams?: {
+    teams?: PersistedAgentTeam[];
+    activeTeamId?: string | null;
+  };
+  modelTierOverrides?: PersistedModelTierOverride[];
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -624,6 +634,25 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
           ? [...DEFAULT_AGENT_PERSONALITIES]
           : (config.agentPersonalities.personalities ?? []),
     },
+    agentTeams: {
+      // A host that has never carried a teams section is seeded with the
+      // starter team (NOT active — activating a prompt-bearing team on install
+      // would change spawn behavior out from under existing users). Recorded
+      // on disk right after the store is built (seedDefaultTeamsIfAbsent) so
+      // deleting it sticks.
+      teams:
+        config.agentTeams === undefined
+          ? [...DEFAULT_AGENT_TEAMS]
+          : (config.agentTeams.teams ?? []),
+      // null and absent both read as "no team active"; preserve what disk says
+      // so a round-trip never invents a value.
+      ...(config.agentTeams?.activeTeamId !== undefined
+        ? { activeTeamId: config.agentTeams.activeTeamId }
+        : {}),
+    },
+    // User per-model tier tags round-trip config.json ⇄ mutable config; absent
+    // on disk reads as an empty tag set (all tiers inferred at ingest).
+    modelTierOverrides: config.modelTierOverrides ?? [],
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -649,6 +678,7 @@ export async function createOttoDaemon(
   // Record the first-run seed on disk so the shipped starter team survives a
   // restart AND a subsequent "delete every personality" stays deleted.
   daemonConfigStore.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+  daemonConfigStore.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
   const previewDevServers = new DevServerManager({ logger });
@@ -938,6 +968,7 @@ export async function createOttoDaemon(
     managedProcesses,
     isDev: config.isDev === true,
     extraClients: config.agentClients,
+    modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const agentManager = new AgentManager({
@@ -1106,6 +1137,7 @@ export async function createOttoDaemon(
     readDaemonConfig: () => ({
       metadataGeneration: daemonConfigStore.get().metadataGeneration,
       agentPersonalities: daemonConfigStore.get().agentPersonalities,
+      agentTeams: daemonConfigStore.get().agentTeams,
     }),
     gitMutation: createGitMutationService({
       workspaceGitService,
@@ -1281,6 +1313,7 @@ export async function createOttoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    readAgentTeams: () => daemonConfigStore.get().agentTeams,
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
@@ -1312,6 +1345,7 @@ export async function createOttoDaemon(
     scheduleService,
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    readAgentTeams: () => daemonConfigStore.get().agentTeams,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,

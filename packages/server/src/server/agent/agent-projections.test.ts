@@ -210,6 +210,23 @@ describe("toStoredAgentRecord", () => {
     expect(parsed.config?.personalitySnapshot).toEqual(snapshot);
   });
 
+  it("round-trips a team snapshot through storage", () => {
+    const teamSnapshot = {
+      teamId: "team-crew",
+      name: "Shipping crew",
+      avatarColor: "#4ec4ff",
+      teamPrompt: "Work as a coordinated crew.",
+    };
+    const agent = createManagedAgent({ config: { teamSnapshot } });
+
+    const record = toStoredAgentRecord(agent, { title: "Crew agent" });
+    expect(record.config?.teamSnapshot).toEqual(teamSnapshot);
+
+    // Survives the storage zod parse (the on-disk read path).
+    const parsed = parseStoredAgentRecord(record);
+    expect(parsed.config?.teamSnapshot).toEqual(teamSnapshot);
+  });
+
   it("falls back to config mode when current mode is null and handles null title", () => {
     const agent = createManagedAgent({
       currentModeId: null,

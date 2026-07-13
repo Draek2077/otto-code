@@ -333,6 +333,87 @@ const MutableAgentPersonalitiesConfigSchema = z
   })
   .passthrough();
 
+// Patch shape declared explicitly rather than via .partial(): partial() keeps
+// the personalities .default([]), so a patch touching the section without an
+// explicit personalities array would have an empty array injected and
+// deep-merge would wipe the stored roster.
+const MutableAgentPersonalitiesConfigPatchSchema = z
+  .object({
+    personalities: z.array(AgentPersonalitySchema).optional(),
+  })
+  .passthrough();
+
+// A team's avatar. v1 ships only `color` (hex, validated at the editor like
+// spinner colors); `imageId` is reserved for the future themed avatar set —
+// when present it wins over color, and color stays the fallback so an old
+// client that doesn't know `imageId` keeps rendering the swatch. Plain
+// strings for forward compat.
+const AgentTeamAvatarSchema = z
+  .object({
+    color: z.string().min(1).optional(),
+    imageId: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+// A named, per-host grouping of agent personalities that acts as an operating
+// template: which personalities are on deck, plus a shared team prompt stacked
+// directly ahead of the member's personality prompt at spawn. `id` is the
+// stable identity everything binds to; `name` is a freely-renamable label.
+// `memberIds` bind personality ids (order = display order) — an entry pointing
+// at a deleted personality is tolerated and ignored everywhere, then pruned on
+// the next save of that team. Membership is many-to-many.
+export const AgentTeamSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    avatar: AgentTeamAvatarSchema.optional(),
+    teamPrompt: z.string().optional(),
+    memberIds: z.array(z.string().min(1)).optional(),
+  })
+  .passthrough();
+
+export type AgentTeam = z.infer<typeof AgentTeamSchema>;
+export type AgentTeamAvatar = z.infer<typeof AgentTeamAvatarSchema>;
+
+const MutableAgentTeamsConfigSchema = z
+  .object({
+    teams: z.array(AgentTeamSchema).default([]),
+    // The host's active team id; null/absent = no team active (exactly legacy
+    // behavior). Host-scoped daemon config rather than device-local: the team
+    // prompt is applied daemon-side at spawn, so headless spawns (MCP
+    // create_agent, schedule runs) must see it, and a patch from any client
+    // hot-reloads the switch to every connected client.
+    activeTeamId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+// Patch shape declared explicitly rather than via .partial(): partial() keeps
+// the teams .default([]), so a patch that only touches activeTeamId would have
+// an empty array injected and deep-merge would wipe the stored teams.
+const MutableAgentTeamsConfigPatchSchema = z
+  .object({
+    teams: z.array(AgentTeamSchema).optional(),
+    activeTeamId: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const ModelTierSchema: z.ZodType<ModelTier> = z.enum(["deep", "standard", "fast"]);
+
+// A user's explicit tier tag for one model of one provider. The daemon stamps
+// `model.tier` at ingest, preferring a matching override here over inference
+// (see model-tiers.ts). Stored as an array (not a nested record) so a patch
+// replaces it wholesale — that's how a tag gets cleared, since deep-merge can't
+// delete a record key.
+export const ModelTierOverrideSchema = z
+  .object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+    tier: ModelTierSchema,
+  })
+  .passthrough();
+
+export type ModelTierOverride = z.infer<typeof ModelTierOverrideSchema>;
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -355,6 +436,14 @@ export const MutableDaemonConfigSchema = z
     // feature; defaults to an empty roster so a new client parsing an old
     // daemon's config still sees a well-formed section.
     agentPersonalities: MutableAgentPersonalitiesConfigSchema.default({ personalities: [] }),
+    // Per-host agent teams + the active team id. Gated by the agentTeams
+    // feature; defaults to an empty section so a new client parsing an old
+    // daemon's config still sees a well-formed shape.
+    agentTeams: MutableAgentTeamsConfigSchema.default({ teams: [] }),
+    // Per-host user overrides of model tiers, keyed by provider + model id.
+    // Gated by the modelTierOverrides feature; defaults empty so a new client
+    // parsing an old daemon's config still sees a well-formed array.
+    modelTierOverrides: z.array(ModelTierOverrideSchema).default([]),
   })
   .passthrough();
 
@@ -381,7 +470,14 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.agentPersonalities. A patch replaces the
     // full roster (read-modify-write the array), matching how terminalProfiles
     // and metadataGeneration.providers patch.
-    agentPersonalities: MutableAgentPersonalitiesConfigSchema.partial().optional(),
+    agentPersonalities: MutableAgentPersonalitiesConfigPatchSchema.optional(),
+    // Gated by server_info features.agentTeams. A `teams` patch replaces the
+    // full array (read-modify-write), matching agentPersonalities;
+    // `activeTeamId: null` deactivates the team without touching the array.
+    agentTeams: MutableAgentTeamsConfigPatchSchema.optional(),
+    // Gated by server_info features.modelTierOverrides. Replaces the full array
+    // (read-modify-write), so removing an entry clears that model's tag.
+    modelTierOverrides: z.array(ModelTierOverrideSchema).optional(),
   })
   .partial()
   .passthrough();
@@ -395,6 +491,7 @@ import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPersistenceHandle,
+  ModelTier,
   ProviderStatus,
   AgentRuntimeInfo,
   AgentTimelineItem,
@@ -471,6 +568,9 @@ const AgentModelDefinitionSchema: z.ZodType<AgentModelDefinition> = z.object({
   contextWindowMaxTokens: z.number().optional(),
   thinkingOptions: z.array(AgentSelectOptionSchema).optional(),
   defaultThinkingOptionId: z.string().optional(),
+  // Daemon-stamped capability tier (deep/standard/fast). Optional: absent on old
+  // daemons and on models neither classified nor user-tagged.
+  tier: ModelTierSchema.optional(),
 });
 
 export const ProviderSnapshotEntrySchema = z.object({
@@ -2992,6 +3092,10 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutGitRollback: z.boolean().optional(),
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: z.boolean().optional(),
+        // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
+        agentTeams: z.boolean().optional(),
+        // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
+        modelTierOverrides: z.boolean().optional(),
       })
       .optional(),
   })

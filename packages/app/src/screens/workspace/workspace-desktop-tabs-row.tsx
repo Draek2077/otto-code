@@ -86,6 +86,7 @@ import type { Theme } from "@/styles/theme";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
@@ -938,6 +939,7 @@ function WorkspaceToolsCatalogMenuItems({
   onPreview,
   showArtifactsRow,
   onArtifacts,
+  showTerminalRow,
   terminalDisabled,
   onCreateTerminal,
   showBrowserRow,
@@ -951,6 +953,7 @@ function WorkspaceToolsCatalogMenuItems({
   onPreview: () => void;
   showArtifactsRow: boolean;
   onArtifacts: () => void;
+  showTerminalRow: boolean;
   terminalDisabled: boolean;
   onCreateTerminal: () => void;
   showBrowserRow: boolean;
@@ -981,14 +984,16 @@ function WorkspaceToolsCatalogMenuItems({
           onSelect={onArtifacts}
         />
       ) : null}
-      <PinnableMenuItem
-        testID="workspace-new-tab-menu-terminal"
-        target={TERMINAL_TARGET}
-        label={t("workspace.tabs.actions.newTerminal")}
-        leading={MENU_TERMINAL_ICON}
-        disabled={terminalDisabled}
-        onSelect={terminalDisabled ? undefined : onCreateTerminal}
-      />
+      {showTerminalRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-terminal"
+          target={TERMINAL_TARGET}
+          label={t("workspace.tabs.actions.newTerminal")}
+          leading={MENU_TERMINAL_ICON}
+          disabled={terminalDisabled}
+          onSelect={terminalDisabled ? undefined : onCreateTerminal}
+        />
+      ) : null}
       {showBrowserRow ? (
         <PinnableMenuItem
           testID="workspace-new-tab-menu-browser"
@@ -1017,6 +1022,46 @@ function WorkspaceToolsCatalogMenuItems({
           />
         </>
       ) : null}
+    </>
+  );
+}
+
+// The catalog's terminal-profiles section (New-terminal profiles + Edit
+// profiles). Developer-only — extracted so its gate lives at one mount site and
+// the tab-row extras stay under the complexity cap. Renders nothing when hidden.
+function TerminalProfilesCatalogSection({
+  visible,
+  profiles,
+  terminalDisabled,
+  onLaunch,
+  onEditProfiles,
+}: {
+  visible: boolean;
+  profiles: readonly PinnableProfileMenuItemProps["profile"][];
+  terminalDisabled: boolean;
+  onLaunch: (target: PinnedTabTarget) => void;
+  onEditProfiles: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!visible) {
+    return null;
+  }
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
+      {profiles.map((profile) => (
+        <PinnableProfileMenuItem
+          key={profile.id}
+          profile={profile}
+          disabled={terminalDisabled}
+          onLaunch={onLaunch}
+        />
+      ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem testID="workspace-new-tab-menu-edit-profiles" onSelect={onEditProfiles}>
+        {t("workspace.tabs.actions.editTerminalProfiles")}
+      </DropdownMenuItem>
     </>
   );
 }
@@ -1062,6 +1107,10 @@ function WorkspaceTabRowExtras({
   const { config } = useDaemonConfig(normalizedServerId);
   const { settings } = useAppSettings();
   const isCompact = useIsCompactFormFactor();
+  // User mode hides the developer catalog items (preview, terminals + profiles,
+  // pane splits) and the pinned dev-tool strip. Keep New agent / Add artifact /
+  // New browser. Presentation only — see interface-modes.md surface inventory.
+  const isDeveloperMode = useIsDeveloperMode();
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const supportsArtifacts = useHostFeature(normalizedServerId, "artifacts");
@@ -1154,7 +1203,9 @@ function WorkspaceTabRowExtras({
   return (
     <View style={TABS_ACTIONS_STYLE} onLayout={onStripLayout}>
       <View style={toolsRevealed ? styles.tabsTools : TABS_TOOLS_HIDDEN_STYLE}>
-        {showPreviewInline ? <WorkspacePreviewButton controller={previewController} /> : null}
+        {showPreviewInline && isDeveloperMode ? (
+          <WorkspacePreviewButton controller={previewController} />
+        ) : null}
         {showArtifactsInline ? (
           <ArtifactOpenMenu
             serverId={normalizedServerId}
@@ -1163,25 +1214,29 @@ function WorkspaceTabRowExtras({
             onOpenChange={setArtifactsOpen}
           />
         ) : null}
-        <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
-        {showSplitRightInline ? (
-          <SplitActionButton
-            icon="split-right"
-            onPress={onSplitRight}
-            label={t("workspace.tabs.actions.splitRight")}
-            shortcutKeys={splitRightKeys}
-          />
-        ) : null}
-        {showSplitDownInline ? (
-          <SplitActionButton
-            icon="split-down"
-            onPress={onSplitDown}
-            label={t("workspace.tabs.actions.splitDown")}
-            shortcutKeys={splitDownKeys}
-          />
+        {isDeveloperMode ? (
+          <>
+            <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
+            {showSplitRightInline ? (
+              <SplitActionButton
+                icon="split-right"
+                onPress={onSplitRight}
+                label={t("workspace.tabs.actions.splitRight")}
+                shortcutKeys={splitRightKeys}
+              />
+            ) : null}
+            {showSplitDownInline ? (
+              <SplitActionButton
+                icon="split-down"
+                onPress={onSplitDown}
+                label={t("workspace.tabs.actions.splitDown")}
+                shortcutKeys={splitDownKeys}
+              />
+            ) : null}
+          </>
         ) : null}
       </View>
-      {previewButtonAbsent ? (
+      {previewButtonAbsent && isDeveloperMode ? (
         <WorkspacePreviewCollapsedAnchor controller={previewController} />
       ) : null}
       {artifactsButtonAbsent ? (
@@ -1211,33 +1266,27 @@ function WorkspaceTabRowExtras({
         </Tooltip>
         <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
           <WorkspaceToolsCatalogMenuItems
-            showPreviewRow={showPreviewButton}
+            showPreviewRow={showPreviewButton && isDeveloperMode}
             previewDisabled={previewController.disabled}
             onPreview={handlePreviewFromMenu}
             showArtifactsRow={supportsArtifacts}
             onArtifacts={handleArtifactsFromMenu}
+            showTerminalRow={isDeveloperMode}
             terminalDisabled={terminalDisabled}
             onCreateTerminal={onCreateTerminal}
             showBrowserRow={showCreateBrowserTab}
             onCreateBrowser={onCreateBrowser}
-            showSplitRows={showPaneSplitActions}
+            showSplitRows={showPaneSplitActions && isDeveloperMode}
             onSplitRight={onSplitRight}
             onSplitDown={onSplitDown}
           />
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("workspace.tabs.actions.terminalProfilesMenu")}</DropdownMenuLabel>
-          {profiles.map((profile) => (
-            <PinnableProfileMenuItem
-              key={profile.id}
-              profile={profile}
-              disabled={terminalDisabled}
-              onLaunch={onLaunch}
-            />
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem testID="workspace-new-tab-menu-edit-profiles" onSelect={onEditProfiles}>
-            {t("workspace.tabs.actions.editTerminalProfiles")}
-          </DropdownMenuItem>
+          <TerminalProfilesCatalogSection
+            visible={isDeveloperMode}
+            profiles={profiles}
+            terminalDisabled={terminalDisabled}
+            onLaunch={onLaunch}
+            onEditProfiles={onEditProfiles}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
     </View>
@@ -2065,12 +2114,14 @@ function ResolvedDesktopTabChip({
   showDropIndicatorAfter: boolean;
 }) {
   const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
         tab: item.tab,
         index,
         tabCount,
+        isDeveloperMode,
         onCopyResumeCommand,
         onCopyAgentId,
         onCopyFilePath,
@@ -2085,6 +2136,7 @@ function ResolvedDesktopTabChip({
     [
       index,
       item.tab,
+      isDeveloperMode,
       onCloseOtherTabs,
       onCloseTab,
       onCloseTabsToLeft,

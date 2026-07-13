@@ -29,8 +29,11 @@ import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
+  resolveAutoSubmitConfig,
+  resolveDraftPersonality,
   shouldAllowEmptyDraftText,
   validateDraftSubmission,
+  type DraftAutoSubmitConfig,
 } from "@/composer/draft/workspace-tab-core";
 import type { AgentCapabilityFlags } from "@otto-code/protocol/agent-types";
 import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
@@ -58,32 +61,7 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsToolInvocations: false,
 };
 
-interface AutoSubmitConfig {
-  provider: string;
-  modeId: string | null;
-  model: string | null;
-  thinkingOptionId: string | null;
-  featureValues: Record<string, unknown>;
-}
-
-function resolveAutoSubmitConfig(
-  pending: {
-    provider: string;
-    modeId?: string | null;
-    model?: string | null;
-    thinkingOptionId?: string | null;
-    featureValues?: Record<string, unknown>;
-  } | null,
-): AutoSubmitConfig | null {
-  if (!pending) return null;
-  return {
-    provider: pending.provider,
-    modeId: pending.modeId ?? null,
-    model: pending.model ?? null,
-    thinkingOptionId: pending.thinkingOptionId ?? null,
-    featureValues: pending.featureValues ?? {},
-  };
-}
+type AutoSubmitConfig = DraftAutoSubmitConfig;
 
 function resolveDraftModeIdOverride(input: {
   autoSubmitConfig: AutoSubmitConfig | null;
@@ -113,35 +91,6 @@ function resolveDraftModeId(input: {
     return selectedMode;
   }
   return null;
-}
-
-/**
- * Personality identity carried through the draft send. Only the composer
- * (non-auto-submit) path selects a personality; the daemon re-resolves the id
- * to the authoritative snapshot, but we also read the picker's spinner colors
- * here so the optimistic draft agent shows the personality's spinner instantly,
- * before the created-agent payload arrives.
- */
-function resolveDraftPersonality(input: {
-  autoSubmitConfig: AutoSubmitConfig | null;
-  agentControls: {
-    selectedPersonalityId?: string | null;
-    personalities?: SelectorPersonality[];
-  };
-}): { id: string; spinner: { glowA: string; glowB: string } | null } | null {
-  if (input.autoSubmitConfig) {
-    return null;
-  }
-  const id = input.agentControls.selectedPersonalityId;
-  if (!id) {
-    return null;
-  }
-  const personality = input.agentControls.personalities?.find((entry) => entry.id === id);
-  const spinner =
-    personality?.glowA && personality.glowB
-      ? { glowA: personality.glowA, glowB: personality.glowB }
-      : null;
-  return { id, spinner };
 }
 
 async function submitDraftCreateRequest(input: {

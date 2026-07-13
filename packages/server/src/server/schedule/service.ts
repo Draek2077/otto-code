@@ -9,6 +9,16 @@ import {
   resolvePersonality,
   type ResolvedPersonalitySnapshot,
 } from "../agent/agent-personalities.js";
+import {
+  composeTeamAndPersonalityPrompt,
+  resolveTeamSchedulerSnapshot,
+  resolveTeamSnapshotForPersonality,
+  type ResolvedTeamSnapshot,
+} from "../agent/agent-teams.js";
+import {
+  TEAM_SCHEDULER_PERSONALITY_SENTINEL,
+  type AgentTeamsConfigView,
+} from "@otto-code/protocol/agent-teams";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
 import { formatSystemNotificationPrompt } from "../agent/agent-prompt.js";
@@ -82,6 +92,14 @@ function applyNewAgentConfig(
       throw new Error("cwd cannot be empty");
     }
     config.cwd = trimmed;
+  }
+  if (patch.personality !== undefined) {
+    const trimmed = patch.personality?.trim();
+    if (trimmed) {
+      config.personality = trimmed;
+    } else {
+      delete config.personality;
+    }
   }
   if (patch.model !== undefined) {
     const trimmed = patch.model?.trim();
@@ -234,6 +252,14 @@ export interface ScheduleServiceOptions {
   providerSnapshotManager?: ScheduleProviderLister;
   /** Optional — reads the live personality roster for personality-bound schedules. */
   readAgentPersonalities?: () => AgentPersonality[];
+  /**
+   * Optional — reads the live Agent Teams section. A schedule resolves the
+   * ACTIVE team at run time (the active team is "how this host operates right
+   * now"): a run under Team B carries Team B's frame iff the bound personality
+   * is a member; otherwise it runs teamless — never a hard-fail, unlike
+   * personality unavailability, because teamlessness is a valid state.
+   */
+  readAgentTeams?: () => AgentTeamsConfigView | undefined;
   createLocalCheckoutWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<PersistedWorkspaceRecord>;
@@ -260,6 +286,7 @@ export class ScheduleService {
   private readonly archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
   private readonly providerSnapshotManager: ScheduleProviderLister | null;
   private readonly readAgentPersonalities: (() => AgentPersonality[]) | null;
+  private readonly readAgentTeams: (() => AgentTeamsConfigView | undefined) | null;
   private readonly now: () => Date;
   private readonly runner: (
     schedule: StoredSchedule,
@@ -279,6 +306,7 @@ export class ScheduleService {
     this.archiveWorkspace = options.archiveWorkspace;
     this.providerSnapshotManager = options.providerSnapshotManager ?? null;
     this.readAgentPersonalities = options.readAgentPersonalities ?? null;
+    this.readAgentTeams = options.readAgentTeams ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -1027,29 +1055,55 @@ export class ScheduleService {
       );
     }
     const roster = this.readAgentPersonalities();
+    const entries = await this.providerSnapshotManager.listProviders({
+      cwd: config.cwd,
+      wait: true,
+    });
+
+    // The dynamic "Team's Scheduler" binding resolves the active team's
+    // Scheduler at RUN time — the schedule follows whoever holds the role in
+    // the operating team when it fires.
+    if (name === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
+      return this.buildScheduleBrain(
+        resolveTeamSchedulerSnapshot({
+          agentTeams: this.readAgentTeams?.(),
+          roster,
+          entries,
+        }),
+      );
+    }
+
     const personality =
       roster.find((entry) => entry.name === name) ??
       roster.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
     if (!personality) {
       throw new Error(`Personality "${name}" not found; the scheduled run cannot proceed.`);
     }
-    const entries = await this.providerSnapshotManager.listProviders({
-      cwd: config.cwd,
-      wait: true,
-    });
     const resolution = resolvePersonality(personality, entries);
     if (resolution.status === "unavailable") {
       throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
     }
-    const snapshot = resolution.snapshot;
+    return this.buildScheduleBrain(resolution.snapshot);
+  }
+
+  // Shared tail for both binding kinds: run-time team framing (iff the resolved
+  // personality is a member of the team active NOW — teamless runs are valid,
+  // never an error) plus the concrete brain fields.
+  private buildScheduleBrain(snapshot: ResolvedPersonalitySnapshot): ScheduleBrain {
+    const teamSnapshot = resolveTeamSnapshotForPersonality(
+      this.readAgentTeams?.(),
+      snapshot.personalityId,
+    );
+    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
     return {
       providerModel: snapshot.model ? `${snapshot.provider}/${snapshot.model}` : snapshot.provider,
       ...(snapshot.modeId !== undefined ? { modeId: snapshot.modeId } : {}),
       ...(snapshot.thinkingOptionId !== undefined
         ? { thinkingOptionId: snapshot.thinkingOptionId }
         : {}),
-      ...(snapshot.systemPrompt !== undefined ? { systemPrompt: snapshot.systemPrompt } : {}),
+      ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
       snapshot,
+      ...(teamSnapshot ? { teamSnapshot } : {}),
     };
   }
 }
@@ -1060,6 +1114,7 @@ interface ScheduleBrain {
   thinkingOptionId?: string;
   systemPrompt?: string;
   snapshot: ResolvedPersonalitySnapshot;
+  teamSnapshot?: ResolvedTeamSnapshot;
 }
 
 // Fold a resolved personality brain (or its absence) into the createAgent
@@ -1088,6 +1143,9 @@ function applyScheduleBrain(input: {
     };
   }
   const config: AgentSessionConfig = { ...baseAgentConfig, personalitySnapshot: brain.snapshot };
+  if (brain.teamSnapshot !== undefined) {
+    config.teamSnapshot = brain.teamSnapshot;
+  }
   if (brain.systemPrompt !== undefined) {
     config.systemPrompt = brain.systemPrompt;
   }

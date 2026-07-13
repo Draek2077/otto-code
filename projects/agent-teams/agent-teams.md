@@ -1,6 +1,6 @@
 # Agent Teams — charter
 
-Status: **PLANNED** (design drafted 2026-07-12, not yet locked). Builds directly on the shipped Agent Personalities system ([docs/agent-personalities.md](../../docs/agent-personalities.md)); read that first — Teams reuses its invariants (stable ids, snapshot-at-spawn, availability, no-fallback hard-fails) rather than inventing new ones.
+Status: **BUILT — steps 1–6 implemented 2026-07-12, uncommitted** (needs `npm run build:server` + daemon restart to serve; UI awaits on-device visual verification; step 7 themed avatars remains future work). Design locked with the user 2026-07-12 — see "Locked decisions" at the bottom. Builds directly on the shipped Agent Personalities system ([docs/agent-personalities.md](../../docs/agent-personalities.md)); read that first — Teams reuses its invariants (stable ids, snapshot-at-spawn, availability, no-fallback hard-fails) rather than inventing new ones.
 
 ## What this is
 
@@ -84,13 +84,21 @@ All three resolve through the daemon, so the logic lives in one place (the resol
 
 1. **Interactive create** — `session.ts` `applyPersonalityIdentityToConfig` (the composer's `personality` field on `CreateAgentRequestMessageSchema`).
 2. **MCP `create_agent`** — `resolveCreateAgentBrain` in `otto-tools.ts`.
-3. **Schedule runs** — `schedule/service.ts` `executeSchedule` / `resolveSchedulePersonalityBrain`. A schedule **resolves the active team at run time**, not at authoring time: the active team is "how this host operates right now," and a schedule that fires under Team B runs with Team B's framing (iff its bound personality is a member; otherwise no team layer — never a hard-fail, unlike personality unavailability, because teamlessness is a valid state). Flagged as an open decision below since snapshot-at-authoring is defensible too.
+3. **Schedule runs** — `schedule/service.ts` `executeSchedule` / `resolveSchedulePersonalityBrain`. A schedule **resolves the active team at run time**, not at authoring time (LOCKED): the active team is "how this host operates right now," and a schedule that fires under Team B runs with Team B's framing (iff its bound personality is a member; otherwise no team layer — never a hard-fail, unlike personality unavailability, because teamlessness is a valid state).
+
+### "Team's Scheduler" dynamic schedule binding (LOCKED addition)
+
+The schedule form's personality picker gains a synthetic **"Team's Scheduler"** entry alongside concrete personalities:
+
+- **Binding semantics:** a schedule bound to Team's Scheduler stores a sentinel (not a personality id). At **run time** it resolves to the active team's first available member carrying the **Scheduler** role (member order = `memberIds` order). No active team, or no available Scheduler member → **hard-fail with a named error**, same loud semantics as a bound personality being out of commission.
+- **Form affordance:** the picker entry shows who it resolves to _right now_ ("Team's Scheduler — currently Dash") with the caveat that it changes when the active team changes.
+- **Precedence unchanged:** an explicitly picked personality is used verbatim; a raw provider/model pick is used verbatim; Team's Scheduler is just a third, dynamic option.
 
 Mini-tasks (Writer routing) do **not** get the team prompt — they are structured one-shot generations with purpose-built prompts, not conversational agents. The team affects only _which_ Writer is preferred (below).
 
 ## What the active team gates (beyond the prompt)
 
-- **Pickers** (`usePersonalitySelection` / `CombinedModelSelector`): with a team active, the personalities section shows only members (role- and availability-filtered as today). Selected-but-now-filtered edge: a remembered `lastPersonalityByRole` id outside the team simply fails the existing match-gate and doesn't restore. The running-agent switcher (`useRunningChatPersonality`) also filters its pinned roster to team members — but the synthesized display-only entry for the _current_ personality keeps working when it's off-team, so the trigger never lies.
+- **Pickers** (`usePersonalitySelection` / `CombinedModelSelector`): with a team active, the personalities section shows only members (role- and availability-filtered as today) — **strict, no off-team group** (LOCKED; team switching is expected to be infrequent, not constant). One exception: a **schedule form editing a schedule already bound to an off-team personality keeps that bound entry selectable** (it was valid when authored; the form must not break), while the rest of the list stays members-only. Selected-but-now-filtered edge: a remembered `lastPersonalityByRole` id outside the team simply fails the existing match-gate and doesn't restore. The running-agent switcher (`useRunningChatPersonality`) also filters its pinned roster to team members — but the synthesized display-only entry for the _current_ personality keeps working when it's off-team, so the trigger never lies.
 - **Writer mini-task routing** (`resolveStructuredGenerationProviders`): available Writer **team members** are prepended ahead of available non-team Writers, which stay ahead of the legacy chain. Routing is a preference ladder, not an availability gate — an all-out-of-commission team must not break commit-message generation. (This is the one place "no fallback" doesn't apply: it never applied to mini-task routing, which is explicitly a preference chain.)
 - **MCP `list_personalities`**: with a team active, returns members only, plus a note naming the active team (so an Orchestrator knows its bench). `create_agent` by explicit personality name still resolves the full roster — the Orchestrator can pull in an off-team specialist deliberately, it just won't carry the team prompt.
 - **Commit-agent resolution and every other role-matched daemon lookup** added since (e.g. `checkout.git.commit_agent`): prefer team members with the role, fall back to the full roster — same ladder as Writer routing.
@@ -121,12 +129,12 @@ Follow [docs/forms.md](../../docs/forms.md), [docs/floating-panels.md](../../doc
 
 ## Main-window team switcher
 
-The "switch instantly from the main UI" surface. Proposed shape (final placement to confirm at build time with a mock):
+The "switch instantly from the main UI" surface (placement LOCKED):
 
-- a compact **team chip** (avatar + team name; "No team" state shows a neutral glyph) in the main window header region, visible whenever the host advertises `features.agentTeams` and has ≥ 1 team,
-- tapping opens an anchored popover (per [docs/floating-panels.md](../../docs/floating-panels.md)) listing all teams — avatar, name, role-pill strip, member dots — plus a **"No team"** entry, current selection checked,
-- selecting patches `activeAgentTeamId` via the existing daemon-config patch RPC; the popover shows an in-flight spinner until `status:daemon_config_changed` echoes back. No client-side selection state — the chip renders from the hot-reloaded config, so all clients agree instantly,
-- an "Edit teams…" footer row deep-links to Host settings → Agents.
+- an **"Active Team" dropdown row in the top-left menu, directly above "New Workspace"** — avatar + team name ("No active team" neutral state), rendered whenever the host advertises `features.agentTeams` and has ≥ 1 team,
+- opening it lists all teams — avatar, name, role-pill strip, member dots — plus a **"No active team"** entry, current selection checked, and an "Edit teams…" footer deep-linking to Host settings → Agents,
+- an **appearance setting** optionally relocates the switcher into the **title bar, to the right of the "…" menu but before the other tools**, using the same visual language and height as the existing tool dropdowns — no taller,
+- selecting patches `activeAgentTeamId` via the existing daemon-config patch RPC; the control shows an in-flight spinner until `status:daemon_config_changed` echoes back. No client-side selection state — it renders from the hot-reloaded config, so all clients agree instantly.
 
 Switching is deliberately **unceremonious** — no confirm dialog. It affects only future spawns (snapshot semantics protect everything running), so it's as safe as changing a default.
 
@@ -150,17 +158,21 @@ Extend the existing starter-roster seeding: `DEFAULT_AGENT_TEAMS` next to `DEFAU
 1. **Schema + persistence + capability flag.** `agentTeams`/`activeAgentTeamId` on config (protocol + store merge whitelist + hot reload), `features.agentTeams` emitted with COMPAT tag, shared helpers module. Round-trips to disk, survives restart, delete-active clears the id. Tests: config-store round-trip, absent-vs-empty, active-id healing. No UI yet.
 2. **Resolution + prompt composition.** `server/agent/agent-teams.ts`: active-team resolution, `teamSnapshot` on `AgentSessionConfig` (+ `SERIALIZABLE_CONFIG_SCHEMA`, round-trip test), the one composition helper, wired into all three spawn paths + the live personality-switch recomposition. Unit tests: member/non-member/raw spawns, empty prompt, respect-global-append interplay, caller-authored prompt wins, snapshot frozen across team switch.
 3. **Teams editor card.** Cards (avatar, name, member dots, role-pill union, Active badge, set-active/deactivate, delete-clears-active) + `TeamEditModal` with the full personality-modal invariant set. English-only strings.
-4. **Active-team gating.** Picker filtering (all three surfaces + running-agent switcher pinning), Writer/mini-task team preference, `list_personalities` scoping + active-team note. Tests on the routing ladder.
-5. **Main-window switcher.** Chip + popover, config-patch activation, in-flight state, "No team" entry, settings deep-link. Placement confirmed with the user against a quick mock first.
+4. **Active-team gating.** Picker filtering (all three surfaces + running-agent switcher pinning, with the schedule-form bound-off-team exception), the **"Team's Scheduler"** dynamic binding (form entry + run-time resolution + hard-fail), Writer/mini-task team preference, `list_personalities` scoping + active-team note. Tests on the routing ladder + team-scheduler resolution.
+5. **Main-window switcher.** "Active Team" dropdown in the top-left menu above "New Workspace", config-patch activation, in-flight state, "No active team" entry, settings deep-link, plus the appearance option relocating it into the title bar (right of "…", tool-dropdown visuals/height).
 6. **Starter team seed + restore.** `DEFAULT_AGENT_TEAMS`, seeding, restore affordances, guardrail test.
 7. **(Later, separate)** Themed avatar image set: ~2 dozen app-bundled images + `avatar.imageId` catalog + picker grid in the edit modal. Purely additive.
 
 Steps 1–2 are daemon work (rebuild + restart to serve); 3–5 are mostly client. 4 has small daemon pieces. Each step lands typecheck/lint/format green with its tests.
 
-## Open decisions (to confirm before or during build)
+## Locked decisions (confirmed with the user 2026-07-12)
 
-1. **Schedule team resolution: run-time vs authoring-time.** Plan says run-time (active team = current host operating mode). Alternative: snapshot the team onto the schedule at authoring for reproducibility. Run-time is the default unless the user prefers frozen schedules.
-2. **Switcher placement.** "Main UI window somewhere" — header chip proposed; confirm against the actual header density (desktop vs compact form factor may want different homes, e.g. chip on desktop, entry in the workspace menu on phones).
-3. **Picker escape hatch.** Strict member-filter proposed (switch/deactivate to see everyone). Alternative: a collapsed "Not on this team" group in pickers. Start strict; add the group only if real usage misses off-team personalities mid-flow.
-4. **Off-team live personality switch keeps the team prompt** (born-team-is-frozen rule). Confirm this reads right in practice; the alternative (dropping the team layer when switching off-team) makes prompt state depend on switch history, which is worse.
-5. **Ghost pills for missing roles** on team cards — polish; include in step 3 only if cheap.
+1. **UI home:** the existing **Host settings → Agents page** is the dedicated management surface — the Teams section mounts there alongside Personalities, and the page stays the home for future "general agent stuff." No new route/screen.
+2. **Schedule team resolution: run-time.** Plus the **"Team's Scheduler"** dynamic binding (section above): sentinel stored on the schedule, resolved to the active team's Scheduler at run time, form shows the current resolution. Explicit personality pick > used verbatim; raw model pick > used verbatim.
+3. **Switcher placement:** "Active Team" dropdown in the **top-left menu above "New Workspace"**, with an appearance option to relocate it into the **title bar right of the "…" menu, before the other tools**, matching the tool dropdowns' visuals and height.
+4. **Picker scope: strict members-only.** No "Not on this team" group. Exception: a schedule form keeps an already-bound off-team personality selectable so the form never breaks. Rationale: team switching is expected to be occasional, not constant.
+
+## Remaining open items (decide during build)
+
+1. **Off-team live personality switch keeps the team prompt** (born-team-is-frozen rule). Confirm this reads right in practice; the alternative (dropping the team layer when switching off-team) makes prompt state depend on switch history, which is worse.
+2. **Ghost pills for missing roles** on team cards — polish; include in step 3 only if cheap.

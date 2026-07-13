@@ -55,6 +55,7 @@ import {
   useSettings,
   parseTerminalScrollbackLines,
   type AppSettings,
+  type InterfaceMode,
   type PreviewServerCloseBehavior,
   type SendBehavior,
   type ServiceUrlBehavior,
@@ -70,6 +71,7 @@ import { SIDEBAR_TOP_SPACER_TRIM } from "@/components/left-sidebar";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { BackHeader } from "@/components/headers/back-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
+import { SettingsContentErrorBoundary } from "@/components/settings-content-error-boundary";
 import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
@@ -121,6 +123,7 @@ import {
   buildProjectsSettingsRoute,
   buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
+  buildSetupRoute,
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
@@ -140,6 +143,21 @@ export type SettingsView =
   | { kind: "host"; serverId: string; section: HostSectionSlug }
   | { kind: "projects" }
   | { kind: "project"; projectKey: string };
+
+// Stable string identity for a settings view, used as the content error
+// boundary's reset key (navigating to a different view clears a caught error).
+function settingsViewKey(view: SettingsView): string {
+  switch (view.kind) {
+    case "section":
+      return `section:${view.section}`;
+    case "host":
+      return `host:${view.serverId}:${view.section}`;
+    case "project":
+      return `project:${view.projectKey}`;
+    default:
+      return view.kind;
+  }
+}
 
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
@@ -172,6 +190,9 @@ interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
   icon: ComponentType<{ size: number; color: string }>;
+  // Developer-only host sections — hidden from the sidebar and their content
+  // gated to null in User mode (see renderHostSettingsContent).
+  developerOnly?: boolean;
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
@@ -180,15 +201,28 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
-  { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
+  // Everything in that page (PR auto-archive, Git providers) is developer-only,
+  // so the whole category is developer-only too.
+  {
+    id: "workspaces",
+    labelKey: "settings.hostSections.workspaces",
+    icon: FolderGit2,
+    developerOnly: true,
+  },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
-  { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
+  {
+    id: "terminals",
+    labelKey: "settings.hostSections.terminals",
+    icon: SquareTerminal,
+    developerOnly: true,
+  },
 ];
 
 function renderHostSettingsContent(
   view: Extract<SettingsView, { kind: "host" }>,
   onHostRemoved: () => void,
+  isDeveloperMode: boolean,
 ): ReactNode {
   switch (view.section) {
     case "connections":
@@ -196,13 +230,13 @@ function renderHostSettingsContent(
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
     case "workspaces":
-      return <HostWorkspacesPage serverId={view.serverId} />;
+      return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":
-      return <HostTerminalsPage serverId={view.serverId} />;
+      return isDeveloperMode ? <HostTerminalsPage serverId={view.serverId} /> : null;
     case "host":
       return <HostSettingsPage serverId={view.serverId} onHostRemoved={onHostRemoved} />;
   }
@@ -237,6 +271,13 @@ function getSendBehaviorOptions(t: TFunction) {
   return [
     { value: "interrupt" as const, label: t("settings.general.defaultSend.options.interrupt") },
     { value: "queue" as const, label: t("settings.general.defaultSend.options.queue") },
+  ];
+}
+
+function getInterfaceModeOptions(t: TFunction) {
+  return [
+    { value: "user" as const, label: t("settings.general.interfaceMode.options.user") },
+    { value: "developer" as const, label: t("settings.general.interfaceMode.options.developer") },
   ];
 }
 
@@ -276,6 +317,7 @@ const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "ext
 interface GeneralSectionProps {
   settings: AppSettings;
   isDesktopApp: boolean;
+  handleInterfaceModeChange: (mode: InterfaceMode) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
@@ -334,6 +376,7 @@ function LanguageMenuItem({ value, activeLocale, selected, onChange }: LanguageM
 function GeneralSection({
   settings,
   isDesktopApp,
+  handleInterfaceModeChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLanguageChange,
@@ -344,6 +387,13 @@ function GeneralSection({
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
   const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
+  const interfaceModeOptions = useMemo(() => getInterfaceModeOptions(t), [t]);
+  // `null` (unchosen / legacy device) resolves to Developer, matching useInterfaceMode.
+  const interfaceModeValue: InterfaceMode = settings.interfaceMode ?? "developer";
+  const interfaceModeDescriptionKey =
+    interfaceModeValue === "user"
+      ? "settings.general.interfaceMode.descriptions.user"
+      : "settings.general.interfaceMode.descriptions.developer";
   const previewServerCloseBehaviorOptions = useMemo(
     () => getPreviewServerCloseBehaviorOptions(t),
     [t],
@@ -392,6 +442,20 @@ function GeneralSection({
       <SettingsSection title={t("settings.general.title")}>
         <View style={settingsStyles.card}>
           <View style={settingsStyles.rowResponsive}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.interfaceMode.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>{t(interfaceModeDescriptionKey)}</Text>
+            </View>
+            <SegmentedControl
+              size="sm"
+              value={interfaceModeValue}
+              onValueChange={handleInterfaceModeChange}
+              options={interfaceModeOptions}
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
               <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
@@ -461,65 +525,69 @@ function GeneralSection({
               </DropdownMenu>
             </View>
           ) : null}
-          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
-                {t("settings.general.terminalScrollback.label")}
-              </Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.general.terminalScrollback.description")}
-              </Text>
+          {interfaceModeValue === "developer" ? (
+            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.general.terminalScrollback.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.general.terminalScrollback.description")}
+                </Text>
+              </View>
+              <TextInput
+                value={terminalScrollbackValue}
+                onChangeText={handleTerminalScrollbackChangeText}
+                onBlur={commitTerminalScrollback}
+                onSubmitEditing={commitTerminalScrollback}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                selectTextOnFocus
+                style={styles.terminalScrollbackInput}
+                accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
+              />
             </View>
-            <TextInput
-              value={terminalScrollbackValue}
-              onChangeText={handleTerminalScrollbackChangeText}
-              onBlur={commitTerminalScrollback}
-              onSubmitEditing={commitTerminalScrollback}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              selectTextOnFocus
-              style={styles.terminalScrollbackInput}
-              accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
-            />
-          </View>
+          ) : null}
         </View>
       </SettingsSection>
-      <SettingsSection title={t("settings.preview.title")}>
-        <View style={settingsStyles.card}>
-          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
-                {t("settings.general.previewServerCloseBehavior.label")}
-              </Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.general.previewServerCloseBehavior.description")}
-              </Text>
+      {interfaceModeValue === "developer" ? (
+        <SettingsSection title={t("settings.preview.title")}>
+          <View style={settingsStyles.card}>
+            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.general.previewServerCloseBehavior.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.general.previewServerCloseBehavior.description")}
+                </Text>
+              </View>
+              <SegmentedControl
+                size="sm"
+                value={settings.previewServerCloseBehavior}
+                onValueChange={handlePreviewServerCloseBehaviorChange}
+                options={previewServerCloseBehaviorOptions}
+              />
             </View>
-            <SegmentedControl
-              size="sm"
-              value={settings.previewServerCloseBehavior}
-              onValueChange={handlePreviewServerCloseBehaviorChange}
-              options={previewServerCloseBehaviorOptions}
-            />
-          </View>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
-                {t("settings.preview.autoStartOnRestore.label")}
-              </Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.preview.autoStartOnRestore.description")}
-              </Text>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>
+                  {t("settings.preview.autoStartOnRestore.label")}
+                </Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.preview.autoStartOnRestore.description")}
+                </Text>
+              </View>
+              <Switch
+                value={settings.previewAutoStartOnRestore}
+                onValueChange={handlePreviewAutoStartOnRestoreChange}
+                accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
+                testID="settings-preview-auto-start-on-restore-switch"
+              />
             </View>
-            <Switch
-              value={settings.previewAutoStartOnRestore}
-              onValueChange={handlePreviewAutoStartOnRestoreChange}
-              accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
-              testID="settings-preview-auto-start-on-restore-switch"
-            />
           </View>
-        </View>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
       <DesktopWindowBehaviorSection />
     </Fragment>
   );
@@ -618,6 +686,7 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
             </View>
           </View>
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
+          <SetupWizardRerunRow />
         </View>
       </SettingsSection>
       <ConnectedHostsSection clientVersion={appVersion} />
@@ -625,6 +694,28 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
         <CommunityLinks />
       </View>
     </>
+  );
+}
+
+// Re-enters the first-run setup wizard from About. The wizard is idempotent —
+// it loads the current mode/roster/teams and only ever adds — so this "resets"
+// the intro, never any data. The completion flag stays true.
+function SetupWizardRerunRow() {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const handlePress = useCallback(() => {
+    router.push(buildSetupRoute());
+  }, [router]);
+  return (
+    <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.about.resetWizard.label")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.about.resetWizard.description")}</Text>
+      </View>
+      <Button variant="secondary" size="sm" onPress={handlePress} testID="settings-reset-wizard">
+        {t("settings.about.resetWizard.action")}
+      </Button>
+    </View>
   );
 }
 
@@ -1100,6 +1191,8 @@ function SettingsSidebar({
   const insets = useSafeAreaInsets();
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
+  const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
+  const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
   // Shared with the workspace left sidebar: both read/write the same
@@ -1193,7 +1286,7 @@ function SettingsSidebar({
             onAddHost={onAddHost}
             enableBuiltInDaemonOption={enableBuiltInDaemonOption}
           />
-          {HOST_SECTION_ITEMS.map((item) => (
+          {hostItems.map((item) => (
             <SidebarHostSectionButton
               key={item.id}
               itemId={item.id}
@@ -1288,6 +1381,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const { t } = useTranslation();
   const voiceAudioEngine = useVoiceAudioEngineOptional();
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
+  const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
@@ -1337,6 +1431,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     if (view.kind === "host") return view.serverId;
     return knownSelectedSettingsHostServerId ?? localServerId ?? sortedHosts[0]?.serverId ?? null;
   }, [view, knownSelectedSettingsHostServerId, localServerId, sortedHosts]);
+
+  const handleInterfaceModeChange = useCallback(
+    (mode: InterfaceMode) => {
+      void updateSettings({ interfaceMode: mode });
+    },
+    [updateSettings],
+  );
 
   const handleSendBehaviorChange = useCallback(
     (behavior: SendBehavior) => {
@@ -1564,9 +1665,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     return null;
   })();
 
-  const content = (() => {
+  const renderedContent = (() => {
     if (view.kind === "host") {
-      return renderHostSettingsContent(view, handleHostRemoved);
+      return renderHostSettingsContent(view, handleHostRemoved, isDeveloperMode);
     }
     if (view.kind === "projects") {
       return <ProjectsScreen view={view} />;
@@ -1581,6 +1682,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
             <GeneralSection
               settings={settings}
               isDesktopApp={isDesktopApp}
+              handleInterfaceModeChange={handleInterfaceModeChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLanguageChange={handleLanguageChange}
@@ -1620,6 +1722,16 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
     return null;
   })();
+
+  // Scope render failures to the content pane so the settings header/back stays
+  // usable instead of the whole screen dropping to the root fallback. The reset
+  // key is the active view's stable identity, so switching sections clears a
+  // caught error and re-attempts the render.
+  const content = (
+    <SettingsContentErrorBoundary resetKey={settingsViewKey(view)}>
+      {renderedContent}
+    </SettingsContentErrorBoundary>
+  );
 
   if (settingsLoading) {
     return (

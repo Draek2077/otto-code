@@ -31,6 +31,7 @@ import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { ConfirmDialogHost } from "@/components/confirm-dialog-host";
+import { TutorialController } from "@/tutorial/controller";
 import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
@@ -528,6 +529,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <ConfirmDialogHost />
       <QuitConfirmListener />
       <QuittingOverlay />
+      <TutorialController />
     </View>
   );
 
@@ -876,6 +878,7 @@ function RootStack() {
       <Stack.Screen name="index" />
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
+        <Stack.Screen name="setup" />
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="settings/projects/index" />
@@ -888,8 +891,10 @@ function RootStack() {
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen name="h/[serverId]" />
-      <Stack.Screen name="settings/hosts/[serverId]/index" />
-      <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
+      {/* The `settings/hosts/[serverId]` layout owns its own `index`/`[hostSection]`
+          leaves so the `[serverId]` segment matches before a leaf mounts (native
+          blank-screen guard — see docs/expo-router.md and its `_layout.tsx`). */}
+      <Stack.Screen name="settings/hosts/[serverId]" />
     </ThemedStack>
   );
 }

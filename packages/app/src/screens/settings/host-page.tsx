@@ -52,8 +52,10 @@ import {
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { AgentPersonalitiesSection } from "@/screens/settings/agent-personalities-section";
+import { AgentTeamsSection } from "@/screens/settings/agent-teams-section";
 import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
 import { GitProvidersSettingsCards } from "@/screens/settings/git-providers-settings-cards";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
@@ -288,6 +290,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
             <AppendSystemPromptCard serverId={serverId} />
           </SettingsSection>
           <AgentPersonalitiesSection serverId={serverId} />
+          <AgentTeamsSection serverId={serverId} />
           <SettingsSection title={t("settings.host.speech.sectionTitle")}>
             <SpeechSettingsCards serverId={serverId} />
           </SettingsSection>
@@ -307,6 +310,8 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  // Git hosting is a developer feature family; hide its host-config card in User mode.
+  const isDeveloperMode = useIsDeveloperMode();
 
   if (!host) {
     return <HostNotFound />;
@@ -319,9 +324,11 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
           <SettingsSection title={t("settings.hostSections.workspaces")}>
             <AutoArchiveMergedWorkspacesCard serverId={serverId} />
           </SettingsSection>
-          <SettingsSection title={t("settings.hostSections.gitProviders")}>
-            <GitProvidersSettingsCards serverId={serverId} />
-          </SettingsSection>
+          {isDeveloperMode ? (
+            <SettingsSection title={t("settings.hostSections.gitProviders")}>
+              <GitProvidersSettingsCards serverId={serverId} />
+            </SettingsSection>
+          ) : null}
         </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>

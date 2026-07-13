@@ -71,6 +71,14 @@ export interface AgentMode {
 
 export type ProviderStatus = "ready" | "loading" | "error" | "unavailable";
 
+/**
+ * A model's capability tier, used to bind personality "brains" provider-
+ * agnostically (deep = flagship reasoning, standard = everyday, fast = cheap/
+ * high-volume). Assigned by the daemon at ingest (catalog → name pattern), with
+ * a user per-model override winning; see model-tiers.ts.
+ */
+export type ModelTier = "deep" | "standard" | "fast";
+
 export interface AgentModelDefinition {
   provider: AgentProvider;
   id: string;
@@ -81,6 +89,12 @@ export interface AgentModelDefinition {
   contextWindowMaxTokens?: number;
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
+  /**
+   * Capability tier, stamped by the daemon when it ingests the provider's model
+   * list. Optional: absent from old daemons, and from models we can't classify
+   * and the user hasn't tagged. Consumers fall back to their own inference.
+   */
+  tier?: ModelTier;
 }
 
 export interface AgentSelectOption {

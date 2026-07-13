@@ -10,7 +10,10 @@ import {
   redactDaemonConfigForClient,
 } from "./daemon-config-store.js";
 import { loadPersistedConfig } from "./persisted-config.js";
-import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
+import {
+  DEFAULT_AGENT_PERSONALITIES,
+  DEFAULT_AGENT_TEAMS,
+} from "@otto-code/protocol/default-personalities";
 
 describe("applyMutableProviderConfigToOverrides", () => {
   test("merges mutable provider fields onto provider overrides", () => {
@@ -334,6 +337,48 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
   });
 
+  test("patch persists model tier overrides into config.json and clears them", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [] },
+      },
+      undefined,
+    );
+
+    store.patch({
+      modelTierOverrides: [
+        { provider: "openai-compat", modelId: "my-local-70b", tier: "deep" },
+        { provider: "openai-compat", modelId: "my-local-3b", tier: "fast" },
+      ],
+    });
+
+    // In memory and on disk after a full reload.
+    expect(store.get().modelTierOverrides).toEqual([
+      { provider: "openai-compat", modelId: "my-local-70b", tier: "deep" },
+      { provider: "openai-compat", modelId: "my-local-3b", tier: "fast" },
+    ]);
+    expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([
+      { provider: "openai-compat", modelId: "my-local-70b", tier: "deep" },
+      { provider: "openai-compat", modelId: "my-local-3b", tier: "fast" },
+    ]);
+
+    // Clearing the last tag empties the array on disk rather than leaving stale
+    // entries behind (wholesale-replace semantics).
+    store.patch({ modelTierOverrides: [] });
+    expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([]);
+  });
+
   test("seeds the shipped starter team onto a fresh host", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
@@ -425,6 +470,209 @@ describe("DaemonConfigStore", () => {
     // Next boot must NOT resurrect the deleted team.
     store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
     expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toEqual([]);
+  });
+
+  test("a personalities patch without the array leaves the stored roster intact", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentPersonalities: { personalities: [...DEFAULT_AGENT_PERSONALITIES] },
+      },
+      undefined,
+    );
+    store.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
+
+    // The patch schema must not inject `personalities: []` into a patch that
+    // touches the section without the array — the injected default would
+    // deep-merge over the stored roster and silently wipe every personality.
+    const next = store.patch({ agentPersonalities: {} });
+    expect(next.agentPersonalities.personalities).toHaveLength(DEFAULT_AGENT_PERSONALITIES.length);
+    expect(loadPersistedConfig(ottoHome).agents?.agentPersonalities?.personalities).toHaveLength(
+      DEFAULT_AGENT_PERSONALITIES.length,
+    );
+  });
+
+  test("seeds the starter team on a fresh host without activating it, and never re-seeds", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentTeams: { teams: [...DEFAULT_AGENT_TEAMS] },
+      },
+      undefined,
+    );
+
+    store.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
+
+    const persisted = loadPersistedConfig(ottoHome).agents?.agentTeams;
+    expect(persisted?.teams?.map((entry) => entry.id)).toEqual(
+      DEFAULT_AGENT_TEAMS.map((entry) => entry.id),
+    );
+    // Seeded but NOT active: a fresh host behaves exactly like today until the
+    // user opts in via the switcher.
+    expect(persisted?.activeTeamId).toBeUndefined();
+
+    // The user deletes the starter team; the next boot must not resurrect it.
+    store.patch({ agentTeams: { teams: [] } });
+    store.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.teams).toEqual([]);
+  });
+
+  test("patch persists agent teams and the active team id into config.json", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    store.patch({
+      agentTeams: {
+        teams: [
+          {
+            id: "team-crew",
+            name: "Shipping crew",
+            avatar: { color: "#4ec4ff" },
+            teamPrompt: "Work as a coordinated crew.",
+            memberIds: ["p-atlas", "p-dash"],
+          },
+        ],
+        activeTeamId: "team-crew",
+      },
+    });
+
+    // Survives a full reload from disk — the merge whitelist must persist the
+    // section, not just hold it in memory.
+    const persisted = loadPersistedConfig(ottoHome).agents?.agentTeams;
+    expect(persisted?.teams).toEqual([
+      {
+        id: "team-crew",
+        name: "Shipping crew",
+        avatar: { color: "#4ec4ff" },
+        teamPrompt: "Work as a coordinated crew.",
+        memberIds: ["p-atlas", "p-dash"],
+      },
+    ]);
+    expect(persisted?.activeTeamId).toBe("team-crew");
+
+    // Deactivating persists as an omitted key, never a stale id on disk.
+    store.patch({ agentTeams: { activeTeamId: null } });
+    const deactivated = loadPersistedConfig(ottoHome).agents?.agentTeams;
+    expect(deactivated?.teams).toHaveLength(1);
+    expect(deactivated?.activeTeamId).toBeUndefined();
+
+    // Deleting the last team clears the array on disk rather than leaving the
+    // stale entry behind.
+    store.patch({ agentTeams: { teams: [] } });
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.teams).toEqual([]);
+  });
+
+  test("an absent teams section stays absent until the first teams write", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    // Unrelated patches must not materialize an empty teams section — its
+    // absence is the "never initialized" marker future seeding keys off.
+    store.patch({ appendSystemPrompt: "hello" });
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams).toBeUndefined();
+  });
+
+  test("deleting the active team heals the dangling active id", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentTeams: {
+          teams: [
+            { id: "team-a", name: "A" },
+            { id: "team-b", name: "B" },
+          ],
+          activeTeamId: "team-a",
+        },
+      },
+      undefined,
+    );
+
+    // A client that deletes team-a without clearing the active id in the same
+    // patch must not leave a dangling reference behind.
+    const next = store.patch({ agentTeams: { teams: [{ id: "team-b", name: "B" }] } });
+    expect(next.agentTeams?.activeTeamId).toBeNull();
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.activeTeamId).toBeUndefined();
+  });
+
+  test("activating an unknown team id heals to no active team", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentTeams: { teams: [{ id: "team-a", name: "A" }] },
+      },
+      undefined,
+    );
+
+    const next = store.patch({ agentTeams: { activeTeamId: "team-gone" } });
+    expect(next.agentTeams?.activeTeamId).toBeNull();
   });
 
   test("patch persists browser tools opt-in into config.json", () => {

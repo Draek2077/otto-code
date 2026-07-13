@@ -63,6 +63,8 @@ import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
+import { mergeRefs } from "@/utils/merge-refs";
+import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
@@ -1330,6 +1332,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
     const [isInputFocused, setIsInputFocused] = useState(false);
     const rootRef = useRef<View | null>(null);
+    const tutorialAnchorRef = useTutorialAnchor("chat-input");
+    const rootMergedRef = useMemo(() => mergeRefs(rootRef, tutorialAnchorRef), [tutorialAnchorRef]);
     const inputWrapperRef = useRef<View | null>(null);
     const textInputRef = useRef<TextInput | (TextInput & { getNativeRef?: () => unknown }) | null>(
       null,
@@ -1898,7 +1902,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     return (
-      <View ref={rootRef} style={styles.container} testID="message-input-root">
+      <View ref={rootMergedRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
         <Animated.View ref={inputWrapperRef} style={inputWrapperCombinedStyle}>
           {attachmentSlot}

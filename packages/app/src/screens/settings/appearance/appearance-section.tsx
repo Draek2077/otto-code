@@ -642,6 +642,15 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleTeamSwitcherPlacementChange = useCallback(
+    (showInTitlebar: boolean) => {
+      void updateSettings({
+        teamSwitcherPlacement: showInTitlebar ? "titlebar" : "sidebar",
+      });
+    },
+    [updateSettings],
+  );
+
   const handleChatWidthChange = useCallback(
     (chatWidth: AppSettings["chatWidth"]) => {
       void updateSettings({ chatWidth });
@@ -810,6 +819,16 @@ export function AppearanceSection() {
               withBorder
               onValueChange={handleWorkspaceToolsPlacementChange}
               testID="settings-workspace-tools-placement-switch"
+            />
+            {/* i18n: English-only pending a translation pass (Agent Teams). */}
+            <LayoutToggleRow
+              title="Team switcher in title bar"
+              hint="Move the Active Team switcher from the sidebar menu into the workspace title bar, ahead of the other tools."
+              accessibilityLabel="Team switcher in title bar"
+              value={settings.teamSwitcherPlacement === "titlebar"}
+              withBorder
+              onValueChange={handleTeamSwitcherPlacementChange}
+              testID="settings-team-switcher-placement-switch"
             />
             <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
             <LayoutToggleRow

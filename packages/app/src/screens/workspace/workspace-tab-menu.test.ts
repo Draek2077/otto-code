@@ -29,6 +29,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 1,
       tabCount: 3,
       menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: true,
       onCopyResumeCommand,
       onCopyAgentId,
       onCopyFilePath,
@@ -52,6 +53,36 @@ describe("buildWorkspaceTabMenuEntries", () => {
     ]);
   });
 
+  it("omits the developer-only entries in User interface mode", () => {
+    const entries = buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: createAgentTab(),
+      index: 1,
+      tabCount: 3,
+      menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: false,
+      onCopyResumeCommand: vi.fn(),
+      onCopyAgentId: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onReloadAgent: vi.fn(),
+      onRenameTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseTabsBefore: vi.fn(),
+      onCloseTabsAfter: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    });
+
+    // Copy resume command / copy agent id / reload agent are developer surfaces;
+    // the tab-management entries (close variants) remain.
+    expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
+      "Rename",
+      "Close to the left",
+      "Close to the right",
+      "Close other tabs",
+      "Close",
+    ]);
+  });
+
   it("uses stacked ordering labels for mobile menus", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "mobile",
@@ -59,6 +90,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 1,
       tabCount: 3,
       menuTestIDBase: "workspace-tab-menu-agent_123",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
@@ -94,6 +126,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-menu-draft_123",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
@@ -122,6 +155,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
@@ -151,6 +185,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-agent_123",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
@@ -185,6 +220,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-terminal_abc",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
@@ -225,6 +261,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase: "workspace-tab-context-file_abc",
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath,
@@ -266,6 +303,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       index: 0,
       tabCount: 1,
       menuTestIDBase,
+      isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),

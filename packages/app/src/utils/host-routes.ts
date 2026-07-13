@@ -427,6 +427,10 @@ export function buildOpenProjectRoute() {
   return "/open-project" as const;
 }
 
+export function buildSetupRoute() {
+  return "/setup" as const;
+}
+
 interface NewWorkspaceRouteOptions {
   serverId?: string;
   sourceDirectory?: string;

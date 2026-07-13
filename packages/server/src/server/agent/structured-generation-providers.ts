@@ -2,6 +2,7 @@ import {
   checkPersonalityAvailability,
   personalityHasRole,
 } from "@otto-code/protocol/agent-personalities";
+import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
 import type { AgentPersonality, PersonalityRole } from "@otto-code/protocol/messages";
 import type {
   AgentModelDefinition,
@@ -25,6 +26,11 @@ export interface StructuredGenerationDaemonConfig {
   agentPersonalities?: {
     personalities?: readonly AgentPersonality[];
   };
+  // The host's Agent Teams section. With a team active, its role-matched
+  // members are preferred ahead of non-member personalities — a preference
+  // ladder, never an availability gate (an all-out-of-commission team must not
+  // break commit-message generation).
+  agentTeams?: AgentTeamsConfigView;
 }
 
 export interface StructuredGenerationProviderIdentifier {
@@ -472,7 +478,32 @@ function readConfiguredPersonalities(
   daemonConfig: ResolveStructuredGenerationProvidersOptions["daemonConfig"],
 ): readonly AgentPersonality[] {
   const personalities = daemonConfig?.agentPersonalities?.personalities;
-  return Array.isArray(personalities) ? personalities : [];
+  const roster = Array.isArray(personalities) ? personalities : [];
+  return orderPersonalitiesByTeamPreference(roster, daemonConfig?.agentTeams);
+}
+
+/**
+ * The team rung of the routing ladder: with a team active, its members come
+ * first (roster order within each group), then everyone else, then the legacy
+ * chain that follows the personalities. Pure re-ordering — nothing is ever
+ * excluded, so an unavailable or empty team degrades to exactly the
+ * pre-teams behavior.
+ */
+function orderPersonalitiesByTeamPreference(
+  personalities: readonly AgentPersonality[],
+  agentTeams: AgentTeamsConfigView | undefined,
+): readonly AgentPersonality[] {
+  const team = getActiveAgentTeam(agentTeams);
+  if (!team) {
+    return personalities;
+  }
+  const memberIds = new Set(team.memberIds ?? []);
+  if (memberIds.size === 0) {
+    return personalities;
+  }
+  const members = personalities.filter((personality) => memberIds.has(personality.id));
+  const rest = personalities.filter((personality) => !memberIds.has(personality.id));
+  return [...members, ...rest];
 }
 
 /**

@@ -794,6 +794,8 @@ export interface CreateScheduleOptions {
         config: {
           provider: AgentProvider;
           cwd: string;
+          /** Personality binding by name, or the "@team-scheduler" sentinel. */
+          personality?: string;
           modeId?: string;
           model?: string;
           thinkingOptionId?: string;
@@ -820,6 +822,11 @@ export interface InspectScheduleOptions {
 }
 export interface UpdateScheduleNewAgentConfig {
   provider?: string;
+  /**
+   * Personality binding by name, or the "@team-scheduler" sentinel. Explicit
+   * null clears a stored binding; omission leaves it untouched.
+   */
+  personality?: string | null;
   model?: string | null;
   modeId?: string | null;
   thinkingOptionId?: string | null;
