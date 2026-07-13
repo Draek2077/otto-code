@@ -1832,6 +1832,12 @@ export const fr: TranslationResources = {
     detachTooltip: "Detacher le sous-agent",
     archiveAction: "Archiver{{label}}",
     archiveTooltip: "Sous-agent d'archivage",
+    stopAction: "Arrêter {{label}}",
+    stopTooltip: "Arrêter le sous-agent",
+    completedGroup: "Terminés ({{count}})",
+    clearCompleted: "Tout effacer",
+    clearCompletedTooltip: "Archiver tous les sous-agents terminés",
+    stopNothingRunning: "Le sous-agent n'est pas en cours d'exécution — rien à arrêter.",
   },
   panels: {
     draft: {

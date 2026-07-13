@@ -184,4 +184,71 @@ describe("resolveAndValidateCreateAgentMode", () => {
     });
     expect(resolved).toBe("auto");
   });
+
+  it("coerces an explicit attended mode to the unattended mode for an unattended run", () => {
+    // A schedule/loop hands its personality's default (attended) mode down as an
+    // explicit request; an unattended run must never honor it or it stalls on
+    // the first approval prompt.
+    const resolved = resolveAndValidateCreateAgentMode({
+      requestedMode: "default",
+      targetProvider: "claude",
+      parent: null,
+      unattended: true,
+      availableModes: CLAUDE_MODES,
+      targetUnattendedMode: "bypassPermissions",
+      unattendedModeIds: ["bypassPermissions"],
+    });
+    expect(resolved).toBe("bypassPermissions");
+  });
+
+  it("keeps an explicit unattended mode for an unattended run", () => {
+    const resolved = resolveAndValidateCreateAgentMode({
+      requestedMode: "bypassPermissions",
+      targetProvider: "claude",
+      parent: null,
+      unattended: true,
+      availableModes: CLAUDE_MODES,
+      targetUnattendedMode: "bypassPermissions",
+      unattendedModeIds: ["bypassPermissions"],
+    });
+    expect(resolved).toBe("bypassPermissions");
+  });
+
+  it("keeps an explicit attended mode for an attended (client-watched) run", () => {
+    const resolved = resolveAndValidateCreateAgentMode({
+      requestedMode: "default",
+      targetProvider: "claude",
+      parent: null,
+      unattended: false,
+      availableModes: CLAUDE_MODES,
+      targetUnattendedMode: "bypassPermissions",
+      unattendedModeIds: ["bypassPermissions"],
+    });
+    expect(resolved).toBe("default");
+  });
+
+  it("does not coerce for an unattended run when the provider has no unattended mode", () => {
+    const resolved = resolveAndValidateCreateAgentMode({
+      requestedMode: "plan",
+      targetProvider: "opencode",
+      parent: null,
+      unattended: true,
+      availableModes: OPENCODE_MODES,
+      targetUnattendedMode: undefined,
+    });
+    expect(resolved).toBe("plan");
+  });
+
+  it("preserves a second unattended mode via unattendedModeIds", () => {
+    const resolved = resolveAndValidateCreateAgentMode({
+      requestedMode: "full-access",
+      targetProvider: "codex",
+      parent: null,
+      unattended: true,
+      availableModes: [...CODEX_MODES, "danger-full-access"],
+      targetUnattendedMode: "full-access",
+      unattendedModeIds: ["full-access", "danger-full-access"],
+    });
+    expect(resolved).toBe("full-access");
+  });
 });

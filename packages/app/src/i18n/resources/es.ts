@@ -1829,6 +1829,12 @@ export const es: TranslationResources = {
     detachTooltip: "Separar subagente",
     archiveAction: "Archivo{{label}}",
     archiveTooltip: "Subagente de archivo",
+    stopAction: "Detener {{label}}",
+    stopTooltip: "Detener subagente",
+    completedGroup: "Completados ({{count}})",
+    clearCompleted: "Borrar todo",
+    clearCompletedTooltip: "Archivar todos los subagentes completados",
+    stopNothingRunning: "El subagente no está en ejecución; no hay nada que detener.",
   },
   panels: {
     draft: {

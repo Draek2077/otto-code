@@ -51,6 +51,44 @@ describe("buildAgentAttentionNotificationPayload", () => {
     });
   });
 
+  it("summarizes a bare tool permission request without dumping raw JSON", () => {
+    const payload = buildAgentAttentionNotificationPayload({
+      reason: "permission",
+      serverId: "srv-4",
+      agentId: "agent-4",
+      permissionRequest: {
+        id: "perm-2",
+        provider: "claude",
+        name: "Bash",
+        kind: "tool",
+        input: {
+          command: "git status packages/*/dist 2>/dev/null | head -20",
+          description: "Check if dist folders are tracked or have changes",
+        },
+      },
+    });
+
+    expect(payload.title).toBe("Agent needs permission");
+    expect(payload.body).toBe("Run command: git status packages/*/dist 2>/dev/null | head -20");
+    expect(payload.body).not.toContain("{");
+  });
+
+  it("falls back to a friendly tool name when there is no legible input", () => {
+    const payload = buildAgentAttentionNotificationPayload({
+      reason: "permission",
+      serverId: "srv-5",
+      agentId: "agent-5",
+      permissionRequest: {
+        id: "perm-3",
+        provider: "claude",
+        name: "external_directory",
+        kind: "tool",
+      },
+    });
+
+    expect(payload.body).toBe("Access directory");
+  });
+
   it("uses error-specific defaults when reason is error", () => {
     const payload = buildAgentAttentionNotificationPayload({
       reason: "error",

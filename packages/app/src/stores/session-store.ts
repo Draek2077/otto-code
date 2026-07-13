@@ -108,6 +108,12 @@ export interface Agent {
   persistence: AgentPersistenceHandle | null;
   runtimeInfo?: AgentRuntimeInfo;
   lastUsage?: AgentUsage;
+  /**
+   * Honest cumulative token total (Σ across the whole run) from the provider,
+   * for the subagents-track cost readout. Absent ⇒ no readout (old daemon or a
+   * provider that doesn't report it). See projects/subagents-cleanup/.
+   */
+  cumulativeTokens?: number;
   lastError?: string | null;
   title: string | null;
   cwd: string;

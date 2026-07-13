@@ -24,6 +24,8 @@ export function useRevealActiveWorkspace(): void {
       return;
     }
     lastKeyRef.current = key;
+    // Temporary diagnostic (see use-sidebar-reveal-controller). Remove once verified.
+    console.warn("[SidebarReveal] producer requesting", key);
     requestSidebarReveal(key);
   }, [serverId, workspaceId]);
 }

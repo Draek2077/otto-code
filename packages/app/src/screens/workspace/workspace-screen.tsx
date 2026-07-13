@@ -2985,8 +2985,13 @@ function WorkspaceScreenContent({
           return;
         }
 
-        const agent =
-          useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
+        // Consult both maps: an opened observed subagent is an ephemeral
+        // projection that lives in agentDetails (fetched, no projectPlacement),
+        // not agents. Reading only `agents` would miss its parentAgentId and
+        // wrongly fall through to archive-on-close — cancelling a run the user
+        // only meant to close. See projects/subagents-cleanup/subagents-cleanup.md (Item 5).
+        const session = useSessionStore.getState().sessions[normalizedServerId];
+        const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
         const closePolicy = resolveCloseAgentTabPolicy(agent);
         const isRunning = agent?.status === "running";
 

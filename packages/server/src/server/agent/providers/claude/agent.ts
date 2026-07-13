@@ -3914,6 +3914,7 @@ class ClaudeAgentSession implements AgentSession {
         subAgentType: message.subagent_type,
         description: message.summary ?? message.description,
         status: "running",
+        cumulativeTokens: message.usage?.total_tokens,
       });
       return;
     }
@@ -3944,6 +3945,7 @@ class ClaudeAgentSession implements AgentSession {
       description?: string | undefined;
       status: "running" | "idle" | "error" | "closed";
       requiresAttention?: boolean;
+      cumulativeTokens?: number | undefined;
     },
   ): void {
     void message;
@@ -3974,6 +3976,9 @@ class ClaudeAgentSession implements AgentSession {
           : {}),
         ...(readObservedSubagentText(input.description)
           ? { description: readObservedSubagentText(input.description) }
+          : {}),
+        ...(typeof input.cumulativeTokens === "number" && Number.isFinite(input.cumulativeTokens)
+          ? { cumulativeTokens: input.cumulativeTokens }
           : {}),
       },
     });
@@ -4006,6 +4011,7 @@ class ClaudeAgentSession implements AgentSession {
         description: message.summary,
         status,
         requiresAttention: message.status === "failed",
+        cumulativeTokens: message.usage?.total_tokens,
       });
       return;
     }

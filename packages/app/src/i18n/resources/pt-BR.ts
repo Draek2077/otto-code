@@ -1815,6 +1815,12 @@ export const ptBR: TranslationResources = {
     detachTooltip: "Desanexar subagente",
     archiveAction: "Arquivar {{label}}",
     archiveTooltip: "Arquivar subagente",
+    stopAction: "Parar {{label}}",
+    stopTooltip: "Parar subagente",
+    completedGroup: "Concluídos ({{count}})",
+    clearCompleted: "Limpar tudo",
+    clearCompletedTooltip: "Arquivar todos os subagentes concluídos",
+    stopNothingRunning: "O subagente não está em execução — nada para parar.",
   },
   panels: {
     draft: {

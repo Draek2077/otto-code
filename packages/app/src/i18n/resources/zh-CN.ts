@@ -1773,6 +1773,12 @@ export const zhCN: TranslationResources = {
     detachTooltip: "分离 subagent",
     archiveAction: "归档 {{label}}",
     archiveTooltip: "归档 subagent",
+    stopAction: "停止 {{label}}",
+    stopTooltip: "停止 subagent",
+    completedGroup: "已完成 ({{count}})",
+    clearCompleted: "全部清除",
+    clearCompletedTooltip: "归档所有已完成的 subagent",
+    stopNothingRunning: "子代理未在运行——没有可停止的任务。",
   },
   panels: {
     draft: {

@@ -92,12 +92,62 @@ const buildNotificationPreview = (text: string | null | undefined): string | nul
   return truncateNotificationText(normalized, NOTIFICATION_PREVIEW_LIMIT);
 };
 
-const safeStringify = (value: unknown): string | null => {
-  try {
-    return JSON.stringify(value);
-  } catch {
+// Human-readable labels for common tool names, so a permission notification reads
+// like a request ("Run command: …") instead of dumping the raw tool identifier.
+const TOOL_NAME_LABELS: Record<string, string> = {
+  bash: "Run command",
+  exec: "Run command",
+  shell: "Run command",
+  read: "Read file",
+  write: "Write file",
+  edit: "Edit file",
+  multiedit: "Edit file",
+  grep: "Search",
+  glob: "Find files",
+  webfetch: "Fetch page",
+  websearch: "Web search",
+  task: "Start subagent",
+  external_directory: "Access directory",
+};
+
+const humanizeToolName = (name: string): string => {
+  const trimmed = name.trim();
+  return TOOL_NAME_LABELS[trimmed.toLowerCase()] ?? trimmed;
+};
+
+// Input fields that carry the meaningful, user-legible part of a tool call, in
+// priority order. The first non-empty string wins.
+const PERMISSION_INPUT_DESCRIPTION_KEYS = [
+  "command",
+  "description",
+  "file_path",
+  "path",
+  "url",
+  "pattern",
+  "query",
+  "prompt",
+] as const;
+
+// Deterministic field extraction — NOT an AI summary. Picks an existing string
+// field out of the tool's input (by the priority list, then any string field)
+// so the notification can show it verbatim instead of raw JSON.
+const describePermissionInput = (input: Record<string, unknown> | undefined): string | null => {
+  if (!input) {
     return null;
   }
+  for (const key of PERMISSION_INPUT_DESCRIPTION_KEYS) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  // Fall back to the first string-valued field rather than raw JSON.
+  for (const value of Object.values(input)) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
 };
 
 const buildPermissionDetails = (
@@ -121,17 +171,18 @@ const buildPermissionDetails = (
     return details.join(" - ");
   }
 
-  const inputPreview = request.input ? safeStringify(request.input) : null;
-  if (inputPreview) {
-    return inputPreview;
+  // No provider-supplied title/description: build a legible line from the tool
+  // name and a meaningful input field instead of stringifying the payload.
+  const name = request.name?.trim();
+  const inputDescription = describePermissionInput(request.input);
+  if (name && inputDescription) {
+    return `${humanizeToolName(name)}: ${inputDescription}`;
+  }
+  if (inputDescription) {
+    return inputDescription;
   }
 
-  const metadataPreview = request.metadata ? safeStringify(request.metadata) : null;
-  if (metadataPreview) {
-    return metadataPreview;
-  }
-
-  return request.name?.trim() || request.kind;
+  return name ? humanizeToolName(name) : request.kind;
 };
 
 export function findLatestAssistantMessageFromTimeline(

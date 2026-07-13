@@ -11,6 +11,7 @@ export interface SubagentRow {
   requiresAttention: Agent["requiresAttention"];
   createdAt: Agent["createdAt"];
   attend?: Agent["attend"];
+  cumulativeTokens?: Agent["cumulativeTokens"];
 }
 
 type SessionStoreSnapshot = ReturnType<typeof useSessionStore.getState>;
@@ -31,6 +32,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
     requiresAttention: agent.requiresAttention,
     createdAt: agent.createdAt,
     attend: agent.attend,
+    cumulativeTokens: agent.cumulativeTokens,
   };
 }
 

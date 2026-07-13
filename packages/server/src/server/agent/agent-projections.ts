@@ -302,6 +302,52 @@ const OBSERVED_SUBAGENT_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindBoth: false,
 };
 
+// A row is a tab label: a short, stable name set at birth, never the agent's
+// latest output. Hard-cap length and collapse to a single line so no provider
+// summary can produce a wall-of-text label.
+// See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+const OBSERVED_SUBAGENT_TITLE_MAX = 60;
+
+function normalizeObservedTitleSource(value: string | undefined | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length > 0 ? collapsed : null;
+}
+
+/**
+ * Derive the frozen row name for an observed subagent. Prefer the stable
+ * `subAgentType` (e.g. "code-explorer") over the description — a `task_progress`
+ * description is the ever-changing AI summary, which must never become the
+ * label. Callers freeze the result at the first named update.
+ * See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+ */
+export function deriveObservedSubagentTitle(update: {
+  subAgentType?: string;
+  description?: string;
+}): string {
+  const base =
+    normalizeObservedTitleSource(update.subAgentType) ??
+    normalizeObservedTitleSource(update.description) ??
+    "Subagent";
+  if (base.length <= OBSERVED_SUBAGENT_TITLE_MAX) {
+    return base;
+  }
+  return `${base.slice(0, OBSERVED_SUBAGENT_TITLE_MAX - 1).trimEnd()}…`;
+}
+
+/** True when this update carries a real name source we can freeze the title on. */
+export function observedUpdateHasTitleSource(update: {
+  subAgentType?: string;
+  description?: string;
+}): boolean {
+  return (
+    normalizeObservedTitleSource(update.subAgentType) !== null ||
+    normalizeObservedTitleSource(update.description) !== null
+  );
+}
+
 export function toObservedSubagentPayload(input: {
   id: string;
   parentAgentId: string;
@@ -309,10 +355,12 @@ export function toObservedSubagentPayload(input: {
   cwd: string;
   workspaceId?: string;
   createdAt: string;
+  title: string;
+  cumulativeTokens?: number;
   update: ObservedSubagentUpdate;
 }): AgentSnapshotPayload {
   const { update } = input;
-  const title = update.description ?? update.subAgentType ?? "Subagent";
+  const title = input.title;
   const nowIso = new Date().toISOString();
   const isError = update.status === "error";
   const requiresAttention = update.requiresAttention ?? isError;
@@ -349,6 +397,10 @@ export function toObservedSubagentPayload(input: {
   const usage = sanitizeUsage(update.usage);
   if (usage !== undefined) {
     payload.lastUsage = usage;
+  }
+
+  if (typeof input.cumulativeTokens === "number" && Number.isFinite(input.cumulativeTokens)) {
+    payload.cumulativeTokens = input.cumulativeTokens;
   }
 
   return payload;

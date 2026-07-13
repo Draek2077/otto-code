@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-manager.js";
 import {
+  deriveObservedSubagentTitle,
+  observedUpdateHasTitleSource,
   toAgentPayload,
+  toObservedSubagentPayload,
   toRecentProviderSessionDescriptorPayload,
   toStoredAgentRecord,
   type ManagedAgent,
@@ -498,5 +501,98 @@ describe("toRecentProviderSessionDescriptorPayload", () => {
       firstPromptPreview: null,
       lastPromptPreview: null,
     });
+  });
+});
+
+describe("deriveObservedSubagentTitle", () => {
+  it("prefers the stable subAgentType over a progress summary", () => {
+    expect(
+      deriveObservedSubagentTitle({
+        subAgentType: "code-explorer",
+        description: "I have now read 14 files and am tracing the auth middleware…",
+      }),
+    ).toBe("code-explorer");
+  });
+
+  it("falls back to the description when no subAgentType is present", () => {
+    expect(deriveObservedSubagentTitle({ description: "Explore the auth flow" })).toBe(
+      "Explore the auth flow",
+    );
+  });
+
+  it("uses a generic placeholder when nothing names the subagent", () => {
+    expect(deriveObservedSubagentTitle({})).toBe("Subagent");
+  });
+
+  it("collapses whitespace and hard-caps a wall-of-text label", () => {
+    const wall =
+      "line one\n  line two   with    lots\tof\nwhitespace that runs on and on and on forever";
+    const title = deriveObservedSubagentTitle({ description: wall });
+    expect(title.length).toBeLessThanOrEqual(60);
+    expect(title).not.toContain("\n");
+    expect(title.endsWith("…")).toBe(true);
+  });
+});
+
+describe("observedUpdateHasTitleSource", () => {
+  it("is true when a subAgentType or description is present", () => {
+    expect(observedUpdateHasTitleSource({ subAgentType: "code-explorer" })).toBe(true);
+    expect(observedUpdateHasTitleSource({ description: "do the thing" })).toBe(true);
+  });
+
+  it("is false when neither is a usable name source", () => {
+    expect(observedUpdateHasTitleSource({})).toBe(false);
+    expect(observedUpdateHasTitleSource({ subAgentType: "   ", description: "" })).toBe(false);
+  });
+});
+
+describe("toObservedSubagentPayload", () => {
+  it("uses the provided frozen title, ignoring the update's live description", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      update: {
+        key: "task-1",
+        status: "running",
+        subAgentType: "code-explorer",
+        description: "an ever-changing progress summary that should not become the label",
+      },
+    });
+
+    expect(payload.title).toBe("code-explorer");
+    expect(payload.attend).toBe("observed");
+  });
+
+  it("projects the cumulative token total when provided", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      cumulativeTokens: 12_345,
+      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
+    });
+
+    expect(payload.cumulativeTokens).toBe(12_345);
+  });
+
+  it("omits the token total when none is provided", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
+    });
+
+    expect(payload.cumulativeTokens).toBeUndefined();
   });
 });

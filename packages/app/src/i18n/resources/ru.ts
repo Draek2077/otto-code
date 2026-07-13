@@ -1820,6 +1820,12 @@ export const ru: TranslationResources = {
     detachTooltip: "Отсоединить субагент",
     archiveAction: "Архив{{label}}",
     archiveTooltip: "Архивный субагент",
+    stopAction: "Остановить {{label}}",
+    stopTooltip: "Остановить субагент",
+    completedGroup: "Завершено ({{count}})",
+    clearCompleted: "Очистить все",
+    clearCompletedTooltip: "Архивировать все завершённые субагенты",
+    stopNothingRunning: "Субагент не запущен — нечего останавливать.",
   },
   panels: {
     draft: {

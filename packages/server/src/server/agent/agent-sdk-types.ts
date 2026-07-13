@@ -468,6 +468,11 @@ export interface ObservedSubagentUpdate {
   status: "initializing" | "running" | "idle" | "error" | "closed";
   requiresAttention?: boolean;
   usage?: AgentUsage;
+  // Cumulative token total for this subagent's run so far, from the provider's
+  // per-task usage (Claude: task_progress/task_notification `usage.total_tokens`,
+  // which is already cumulative-per-subagent). Honest cost for the track readout.
+  // See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+  cumulativeTokens?: number;
 }
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {

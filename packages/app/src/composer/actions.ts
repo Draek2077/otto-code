@@ -64,7 +64,7 @@ export interface ComposerSendClient {
 }
 
 export interface ComposerCancelClient {
-  cancelAgent: (agentId: string) => Promise<void> | void;
+  cancelAgent: (agentId: string) => Promise<unknown> | void;
 }
 
 export interface AgentStreamWriter {
