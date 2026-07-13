@@ -1,0 +1,24 @@
+# AppArmor profile for Otto.
+#
+# Ubuntu 23.10+ (and 24.04 by default) restrict the unprivileged user
+# namespaces that Chromium/Electron's sandbox relies on. Without a profile that
+# grants `userns`, the sandboxed renderer and GPU helper processes fail to
+# start, and the app shows a blank window or exits on launch. Chrome, VS Code,
+# and other Electron apps ship the same kind of profile. It is otherwise
+# unconfined — its only job is to re-enable the namespace the sandbox needs, so
+# we keep the SUID sandbox on (matching the .deb/.rpm packaging) instead of
+# resorting to --no-sandbox.
+#
+# Installed to /etc/apparmor.d/otto by the package's after-install script and
+# loaded with apparmor_parser. On systems without AppArmor (most .rpm targets
+# use SELinux, and older releases don't restrict userns) loading is skipped
+# gracefully and this file has no effect.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile otto /opt/Otto/Otto flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/otto>
+}
