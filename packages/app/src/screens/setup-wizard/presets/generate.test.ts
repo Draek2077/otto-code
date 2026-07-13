@@ -6,8 +6,19 @@ import { VARIATIONS } from "./variations";
 import { generateTeam, makeRng, resolveTierModels } from "./generate";
 
 const CLAUDE_MODELS: AgentModelDefinition[] = [
+  {
+    provider: "claude",
+    id: "claude-opus-4-8[1m]",
+    label: "Opus 4.8 1M",
+    contextWindowMaxTokens: 1_000_000,
+  },
   { provider: "claude", id: "claude-opus-4-8", label: "Opus 4.8", contextWindowMaxTokens: 200_000 },
-  { provider: "claude", id: "claude-sonnet-5", label: "Sonnet 5", contextWindowMaxTokens: 200_000 },
+  {
+    provider: "claude",
+    id: "claude-sonnet-5",
+    label: "Sonnet 5",
+    contextWindowMaxTokens: 1_000_000,
+  },
   {
     provider: "claude",
     id: "claude-haiku-4-5",
@@ -51,8 +62,10 @@ describe("themed-preset content integrity", () => {
 
 describe("resolveTierModels", () => {
   it("uses the shipped catalog for known models", () => {
+    // 1M Opus is the deep brain; non-1M Opus and Sonnet are standard (Sonnet
+    // wins standard on largest context); Haiku is fast.
     expect(resolveTierModels(CLAUDE_MODELS)).toEqual({
-      deep: "claude-opus-4-8",
+      deep: "claude-opus-4-8[1m]",
       standard: "claude-sonnet-5",
       fast: "claude-haiku-4-5",
     });
@@ -155,9 +168,9 @@ describe("generateTeam", () => {
     const names = personalities.map((p) => p.name);
     expect(new Set(names).size).toBe(names.length);
 
-    // The lead resolves to the deep (opus) brain and an advertised mode.
+    // The lead resolves to the deep (1M opus) brain and an advertised mode.
     const lead = personalities[0];
-    expect(lead.model).toBe("claude-opus-4-8");
+    expect(lead.model).toBe("claude-opus-4-8[1m]");
     expect(lead.modeId && CLAUDE_MODES.some((mode) => mode.id === lead.modeId)).toBeTruthy();
   });
 

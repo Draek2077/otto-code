@@ -23,10 +23,19 @@ import type { AgentModelDefinition, ModelTier } from "./agent-types.js";
 // case-insensitively against the exact model id; decorated ids that miss here
 // fall through to patterns.
 export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
-  // Anthropic (Claude)
-  "claude-opus-4-8": "deep",
-  "claude-opus-4-7": "deep",
+  // Anthropic (Claude) — the full Claude Code manifest. Tiering rule: 1M-context
+  // Opus variants are "deep", non-1M Opus and Sonnet are "standard", Haiku is
+  // "fast". Fable (1M, most powerful) is "deep".
+  "claude-fable-5": "deep",
+  "claude-opus-4-8[1m]": "deep",
+  "claude-opus-4-8": "standard",
+  "claude-opus-4-7[1m]": "deep",
+  "claude-opus-4-7": "standard",
+  "claude-opus-4-6[1m]": "deep",
+  "claude-opus-4-6": "standard",
   "claude-sonnet-5": "standard",
+  "claude-sonnet-4-6[1m]": "standard",
+  "claude-sonnet-4-6": "standard",
   "claude-haiku-4-5": "fast",
   "claude-haiku-4-5-20251001": "fast",
   // OpenAI (GPT / o-series)
