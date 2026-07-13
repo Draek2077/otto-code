@@ -20,7 +20,10 @@ import type {
   AgentSessionConfig,
 } from "../agent-sdk-types.js";
 import type { AgentStorage } from "../agent-storage.js";
-import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
+import type {
+  ProviderSnapshotManager,
+  ResolvedProviderCreateConfig,
+} from "../provider-snapshot-manager.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { normalizeClientMessageId, resolveClientMessageId } from "../../client-message-id.js";
@@ -309,6 +312,7 @@ async function resolveMcpCreateAgent(
       trimmedPrompt,
       resolvedMode: resolvedCreateConfig.modeId,
       resolvedFeatures: resolvedCreateConfig.featureValues,
+      resolvedUnattended: resolvedCreateConfig.unattended,
     }),
     createOptions: {
       ...(labels ? { labels } : {}),
@@ -371,7 +375,7 @@ async function resolveMcpProviderCreateConfig(params: {
   resolvedCwd: string;
   parentAgent: ManagedAgent | null;
   model: string | null | undefined;
-}): Promise<{ modeId?: string; featureValues?: Record<string, unknown> }> {
+}): Promise<ResolvedProviderCreateConfig> {
   const passthroughConfig = params.input.config;
   return params.dependencies.providerSnapshotManager.resolveCreateConfig({
     cwd: params.resolvedCwd,
@@ -394,6 +398,10 @@ function buildMcpSessionConfig(params: {
   trimmedPrompt: string;
   resolvedMode?: string;
   resolvedFeatures?: Record<string, unknown>;
+  // Effective unattended after OR-ing in an unattended parent (from the
+  // resolver), so a child of an unattended parent arms the deny-responder even
+  // though the MCP create_agent input never sets `unattended` itself.
+  resolvedUnattended: boolean;
 }): AgentSessionConfig {
   const passthroughConfig = params.input.config;
   const { provisionalTitle } = resolveCreateAgentTitles({
@@ -411,8 +419,11 @@ function buildMcpSessionConfig(params: {
     internal: params.input.internal ?? passthroughConfig?.internal,
     // Stamp the creation-time unattended signal onto the config so the daemon's
     // guardrail deny-responder can auto-deny permission escalations for runs
-    // nobody is watching. See projects/safe-unattended/safe-unattended.md.
-    unattended: params.input.unattended ?? passthroughConfig?.unattended,
+    // nobody is watching. Uses the resolver's effective value (input OR an
+    // unattended parent), falling back to an explicit passthrough flag, so a
+    // child spawned by an unattended parent is guarded too — matching the mode
+    // coercion. See projects/safe-unattended/safe-unattended.md.
+    unattended: params.resolvedUnattended || passthroughConfig?.unattended === true,
   };
   if (provisionalTitle) {
     config.title = provisionalTitle;

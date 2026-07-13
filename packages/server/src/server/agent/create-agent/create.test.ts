@@ -242,6 +242,70 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
   }
 });
 
+// Regression (safe-unattended): an MCP create_agent input never sets
+// `unattended`, but the resolver OR's in an unattended parent and returns the
+// effective flag. The session config must stamp that resolved value — otherwise
+// a child of an unattended parent runs with `unattended:false` and its
+// deny-responder never arms, so a coerced-Auto escalation hangs forever.
+test("mcp create stamps the resolver's effective unattended onto the child config", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "create-agent-unattended-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const agentManager = createRealAgentManager(storage);
+  const snapshotStub = createProviderSnapshotManagerStub();
+  // Simulate the resolver reporting an effective-unattended run (input.unattended
+  // false, but parent.isUnattended true → true), which is what the real
+  // provider-snapshot-manager returns for a child of an unattended parent.
+  snapshotStub.resolveCreateConfig.mockResolvedValue({
+    modeId: undefined,
+    featureValues: undefined,
+    unattended: true,
+  });
+
+  try {
+    const { snapshot: parent } = await createAgentCommand(
+      {
+        agentManager,
+        agentStorage: storage,
+        logger,
+        providerSnapshotManager: snapshotStub.manager,
+      },
+      {
+        kind: "session",
+        config: { provider: "codex", cwd: workdir },
+        workspaceId: "ws-parent",
+        labels: {},
+        provisionalTitle: null,
+        firstAgentContext: { attachments: [] },
+        buildSessionConfig: async (config) => ({ sessionConfig: config }),
+      },
+    );
+
+    const { snapshot: child } = await createAgentCommand(
+      {
+        agentManager,
+        agentStorage: storage,
+        logger,
+        providerSnapshotManager: snapshotStub.manager,
+      },
+      {
+        kind: "mcp",
+        provider: "codex/gpt-5.4",
+        title: "child",
+        initialPrompt: "do the thing",
+        background: true,
+        notifyOnFinish: false,
+        callerAgentId: parent.id,
+        // Note: no `unattended` field — the input never carries it.
+      },
+    );
+
+    const storedChild = await storage.get(child.id);
+    expect(storedChild?.unattended).toBe(true);
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("session create keeps the prompt title after the initial prompt settles", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "create-agent-title-test-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);

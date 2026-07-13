@@ -24,8 +24,11 @@ export function useRevealActiveWorkspace(): void {
       return;
     }
     lastKeyRef.current = key;
-    // Temporary diagnostic (see use-sidebar-reveal-controller). Remove once verified.
-    console.warn("[SidebarReveal] producer requesting", key);
+    // Reveal diagnostics, dev builds only — Metro dead-code-strips this when
+    // `__DEV__` is false, matching use-sidebar-reveal-controller.
+    if (__DEV__) {
+      console.warn("[SidebarReveal] producer requesting", key);
+    }
     requestSidebarReveal(key);
   }, [serverId, workspaceId]);
 }

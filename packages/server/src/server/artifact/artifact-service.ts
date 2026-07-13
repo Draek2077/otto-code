@@ -449,7 +449,10 @@ export class ArtifactService {
           wait: true,
         })
       ).some((mode) => mode.id === input.modeId && mode.isUnattended === true);
-    const resolved = requestedModeIsUnattended
+    const resolved: {
+      modeId: string | undefined;
+      featureValues: Record<string, unknown> | undefined;
+    } = requestedModeIsUnattended
       ? { modeId: input.modeId, featureValues: undefined }
       : await this.providerSnapshotManager.resolveCreateConfig({
           provider: input.provider,
@@ -472,6 +475,10 @@ export class ArtifactService {
       systemPrompt: ARTIFACT_SYSTEM_PROMPT,
       cwd: this.projectCwd,
       internal: true,
+      // The generator always runs unattended (nobody need be watching), so arm
+      // the deny-responder to auto-deny any permission escalation the coerced
+      // mode surfaces (e.g. Auto's classifier). See safe-unattended.md.
+      unattended: true,
       // Keep the agent out of listings/sidebar (internal) but let a client that
       // opens the generation log watch its stream live (observable). Without
       // this, the daemon's global subscription drops the agent's stream events
