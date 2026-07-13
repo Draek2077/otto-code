@@ -49,7 +49,11 @@ import {
   type ObservedSubagentUpdate,
 } from "./agent-sdk-types.js";
 import type { AgentSnapshotPayload } from "../messages.js";
-import { toObservedSubagentPayload } from "./agent-projections.js";
+import {
+  deriveObservedSubagentTitle,
+  observedUpdateHasTitleSource,
+  toObservedSubagentPayload,
+} from "./agent-projections.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import {
@@ -297,6 +301,39 @@ function resolveInitialAttention(input: AttentionState | undefined): AttentionSt
     requiresAttention: true,
     attentionReason: input.attentionReason,
     attentionTimestamp: new Date(input.attentionTimestamp),
+  };
+}
+
+interface ObservedSubagentDerivedState {
+  title: string;
+  titleFrozen: boolean;
+  cumulativeTokens?: number;
+}
+
+/**
+ * Derive the frozen label + monotonic token total for an observed subagent from
+ * its prior registry state and the incoming update. The title freezes at the
+ * first update carrying a real name source (task_started's subAgentType) so
+ * later progress summaries never mutate it; the token total never decreases.
+ * See projects/subagents-cleanup/subagents-cleanup.md (Items 3 + 4).
+ */
+function resolveObservedSubagentDerivedState(
+  existing: ObservedSubagentDerivedState | undefined,
+  update: ObservedSubagentUpdate,
+): ObservedSubagentDerivedState {
+  const shouldFreeze = !existing?.titleFrozen && observedUpdateHasTitleSource(update);
+  const title = shouldFreeze
+    ? deriveObservedSubagentTitle(update)
+    : (existing?.title ?? deriveObservedSubagentTitle(update));
+  const updateTokens = update.cumulativeTokens;
+  const cumulativeTokens =
+    typeof updateTokens === "number" && Number.isFinite(updateTokens)
+      ? Math.max(existing?.cumulativeTokens ?? 0, updateTokens)
+      : existing?.cumulativeTokens;
+  return {
+    title,
+    titleFrozen: existing?.titleFrozen || shouldFreeze,
+    ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
   };
 }
 
@@ -592,6 +629,20 @@ export class AgentManager {
       taskId?: string;
       provider: AgentProvider;
       createdAt: string;
+      // Frozen row label. Set once from the first named update (task_started)
+      // and never mutated by later progress summaries — a row is a tab label,
+      // not the agent's latest output. See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+      title: string;
+      titleFrozen: boolean;
+      // Highest cumulative token total seen from the provider's per-task usage.
+      // Kept monotonic so a final notification without usage can't drop the
+      // readout. See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+      cumulativeTokens?: number;
+      // Set when the user archives the row. The entry is retired, not deleted:
+      // a late provider update (final task_notification after an archive-while-
+      // running) must not resurrect the row, so every subsequent emission keeps
+      // carrying this stamp. See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+      archivedAt?: string;
       lastPayload?: AgentSnapshotPayload;
     }
   >();
@@ -3761,10 +3812,17 @@ export class AgentManager {
     cwd: string;
     workspaceId?: string;
     createdAt: string;
+    title: string;
+    cumulativeTokens?: number;
     update: ObservedSubagentUpdate;
   }): void {
     const payload = toObservedSubagentPayload(input);
     const entry = this.observedSubagents.get(input.id);
+    if (entry?.archivedAt) {
+      // Archived rows stay archived: a late provider update must not undo the
+      // user's archive on connected clients.
+      payload.archivedAt = entry.archivedAt;
+    }
     if (entry) {
       entry.lastPayload = payload;
     }
@@ -3781,11 +3839,20 @@ export class AgentManager {
     const id = this.observedSubagentId(agent.id, event.update.key);
     const existing = this.observedSubagents.get(id);
     const createdAt = existing?.createdAt ?? new Date().toISOString();
+    const { title, titleFrozen, cumulativeTokens } = resolveObservedSubagentDerivedState(
+      existing,
+      event.update,
+    );
     this.observedSubagents.set(id, {
       parentAgentId: agent.id,
       taskId: event.update.taskId ?? existing?.taskId,
       provider: event.provider,
       createdAt,
+      title,
+      titleFrozen,
+      ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
+      ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
+      lastPayload: existing?.lastPayload,
     });
     this.emitObservedSubagentState({
       id,
@@ -3794,6 +3861,8 @@ export class AgentManager {
       cwd: agent.cwd,
       ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
       createdAt,
+      title,
+      ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
       update: event.update,
     });
   }
@@ -3807,10 +3876,16 @@ export class AgentManager {
     // observed subagent so its pane can open.
     if (!this.observedSubagents.has(id)) {
       const createdAt = new Date().toISOString();
+      // Timeline arrived before any lifecycle update, so there's no name source
+      // yet — use a provisional label and leave it unfrozen so the first real
+      // task_started can set the stable name.
+      const title = deriveObservedSubagentTitle({});
       this.observedSubagents.set(id, {
         parentAgentId: agent.id,
         provider: event.provider,
         createdAt,
+        title,
+        titleFrozen: false,
       });
       this.emitObservedSubagentState({
         id,
@@ -3819,6 +3894,7 @@ export class AgentManager {
         cwd: agent.cwd,
         ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
         createdAt,
+        title,
         update: { key: event.key, status: "running" },
       });
     }
@@ -3851,6 +3927,56 @@ export class AgentManager {
       throw new Error(`Parent session cannot stop observed subagents: ${observedId}`);
     }
     await session.stopTask(entry.taskId);
+  }
+
+  /**
+   * Archive an observed subagent. These are ephemeral registry projections with
+   * no ManagedAgent and no stored record, so the normal archive path
+   * (`archiveAgentCommand`) can't resolve them — this is its observed
+   * counterpart, mirroring how fetch (`getObservedSubagentPayload`) and stop
+   * (`stopObservedSubagent`) already special-case the registry. A still-live
+   * subagent is stopped best-effort first; the entry is then retired in place
+   * (kept, stamped `archivedAt`) so late provider updates can't resurrect the
+   * row and open panes can still hydrate it.
+   * See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+   */
+  async archiveObservedSubagent(observedId: string): Promise<{ archivedAt: string }> {
+    const entry = this.observedSubagents.get(observedId);
+    if (!entry) {
+      throw new Error(`Observed subagent not found: ${observedId}`);
+    }
+    if (entry.archivedAt) {
+      return { archivedAt: entry.archivedAt };
+    }
+    const last = entry.lastPayload;
+    const wasLive = last?.status === "running" || last?.status === "initializing";
+    if (wasLive) {
+      try {
+        await this.stopObservedSubagent(observedId);
+      } catch (error) {
+        // Best-effort: the archive proceeds even if the provider task can't be
+        // reached (parent gone, no task id) — the projection retires either way.
+        this.logger.debug({ err: error, observedId }, "agent.manager.observed.archive.stop_failed");
+      }
+    }
+    const archivedAt = new Date().toISOString();
+    entry.archivedAt = archivedAt;
+    if (last) {
+      const payload: AgentSnapshotPayload = {
+        ...last,
+        status: wasLive ? "closed" : last.status,
+        requiresAttention: false,
+        attentionReason: null,
+        updatedAt: archivedAt,
+        archivedAt,
+      };
+      entry.lastPayload = payload;
+      this.dispatch({
+        type: "observed_agent_state",
+        payload,
+      });
+    }
+    return { archivedAt };
   }
 
   private recordAndDispatchTimelineItem(

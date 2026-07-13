@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { SquarePen } from "@/components/icons/material-icons";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -73,7 +73,13 @@ import { type Agent, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
-import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
+import {
+  useArchiveSubagent,
+  useClearCompletedSubagents,
+  useDetachSubagent,
+  useStopSubagent,
+  useSubagentsForParent,
+} from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
@@ -589,6 +595,15 @@ function AgentPanelBody({
     setLookupState({ tag: "idle" });
   }, [agentId, serverId]);
 
+  // A track row can outlive its record in the store (observed subagents are
+  // ephemeral projections; a placement remove or reconnect drops them). The
+  // fetch now resolves those from the daemon registry, so a not_found is
+  // recoverable — let the user re-run the lookup instead of dead-ending.
+  const handleRetryLookup = useCallback(() => {
+    lookupAttemptTokenRef.current += 1;
+    setLookupState({ tag: "idle" });
+  }, []);
+
   useEffect(() => {
     if (!agentId) {
       return;
@@ -645,6 +660,14 @@ function AgentPanelBody({
       <View style={styles.container} testID="agent-not-found">
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{t("agentPanel.states.notFound")}</Text>
+          <Pressable
+            accessibilityRole="button"
+            testID="agent-not-found-retry"
+            onPress={handleRetryLookup}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonText}>{t("common.actions.retry")}</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -1417,6 +1440,8 @@ function ActiveAgentComposer({
     [serverId],
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
+  const handleStopSubagent = useStopSubagent({ serverId });
+  const handleClearCompletedSubagents = useClearCompletedSubagents({ serverId });
   const handleDetachSubagent = useDetachSubagent({ serverId });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
@@ -1555,6 +1580,8 @@ function ActiveAgentComposer({
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}
         onArchiveSubagent={handleArchiveSubagent}
+        onStopSubagent={handleStopSubagent}
+        onClearCompleted={handleClearCompletedSubagents}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
       <Composer
@@ -1731,6 +1758,19 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.lg,
     color: theme.colors.foregroundMuted,
     textAlign: "center",
+  },
+  retryButton: {
+    marginTop: theme.spacing[4],
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[4],
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  retryButtonText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
   },
   statusText: {
     marginTop: theme.spacing[2],

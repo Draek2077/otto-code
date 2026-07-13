@@ -1806,6 +1806,12 @@ export const ja: TranslationResources = {
     detachTooltip: "サブエージェントを切り離す",
     archiveAction: "{{label}}をアーカイブ",
     archiveTooltip: "サブエージェントをアーカイブ",
+    stopAction: "{{label}} を停止",
+    stopTooltip: "サブエージェントを停止",
+    completedGroup: "完了 ({{count}})",
+    clearCompleted: "すべてクリア",
+    clearCompletedTooltip: "完了したサブエージェントをすべてアーカイブ",
+    stopNothingRunning: "サブエージェントは実行されていないため、停止するものがありません。",
   },
   panels: {
     draft: {

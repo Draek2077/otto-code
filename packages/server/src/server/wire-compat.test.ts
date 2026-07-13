@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import {
+  type AgentSnapshotPayload,
   AgentSnapshotPayloadSchema,
   AgentTimelineItemPayloadSchema,
   FetchAgentTimelineResponseMessageSchema,
@@ -11,6 +12,7 @@ import {
   type SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
 import { Session, type SessionOptions } from "./session.js";
+import { toObservedSubagentPayload } from "./agent/agent-projections.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
 import { handleCreateOttoWorktreeRequest } from "./worktree-session.js";
@@ -80,12 +82,22 @@ interface SessionInternals {
       { type: "fetch_agent_timeline_request" }
     >,
   ) => Promise<void>;
+  handleFetchAgent: (agentIdOrIdentifier: string, requestId: string) => Promise<void>;
+  handleArchiveAgentRequest: (agentId: string, requestId: string) => Promise<void>;
 }
 
 class InMemoryAgentManager {
-  constructor(private readonly rows: AgentTimelineRow[]) {}
+  constructor(
+    private readonly rows: AgentTimelineRow[],
+    private readonly observedPayloads: Map<string, AgentSnapshotPayload> = new Map(),
+  ) {}
 
-  getAgent() {
+  getAgent(id?: string) {
+    // Only the live root agent resolves as a ManagedAgent; observed subagents
+    // deliberately have none so the fetch path falls through to the registry.
+    if (id !== undefined && id !== "agent-1") {
+      return undefined;
+    }
     return {
       id: "agent-1",
       provider: "codex",
@@ -142,8 +154,18 @@ class InMemoryAgentManager {
     };
   }
 
-  getObservedSubagentPayload() {
-    return null;
+  getObservedSubagentPayload(id: string) {
+    return this.observedPayloads.get(id) ?? null;
+  }
+
+  readonly archivedObservedIds: string[] = [];
+
+  async archiveObservedSubagent(id: string) {
+    if (!this.observedPayloads.has(id)) {
+      throw new Error(`Observed subagent not found: ${id}`);
+    }
+    this.archivedObservedIds.push(id);
+    return { archivedAt: "2026-05-02T01:23:45.000Z" };
   }
 
   listAgents() {
@@ -218,6 +240,7 @@ class InMemoryWorktreeWorkflow {
 function createSessionForWireCompatTest(options?: {
   clientCapabilities?: Record<string, unknown> | null;
   messages?: SessionOutboundMessage[];
+  observedPayloads?: Map<string, AgentSnapshotPayload>;
 }): Session {
   const messages = options?.messages ?? [];
   const rows: AgentTimelineRow[] = [
@@ -246,7 +269,10 @@ function createSessionForWireCompatTest(options?: {
     downloadTokenStore: {} as SessionOptions["downloadTokenStore"],
     pushTokenStore: {} as SessionOptions["pushTokenStore"],
     ottoHome: "/tmp/otto-home",
-    agentManager: new InMemoryAgentManager(rows) as unknown as SessionOptions["agentManager"],
+    agentManager: new InMemoryAgentManager(
+      rows,
+      options?.observedPayloads,
+    ) as unknown as SessionOptions["agentManager"],
     agentStorage: new EmptyAgentStorage() as unknown as SessionOptions["agentStorage"],
     projectRegistry: new EmptyProjectRegistry() as unknown as SessionOptions["projectRegistry"],
     workspaceRegistry:
@@ -559,5 +585,107 @@ describe("wire compatibility", () => {
       runSetup: false,
       ottoHome: "/tmp/otto-home",
     });
+  });
+
+  test("fetch_agent resolves an observed subagent from the registry projection", async () => {
+    // An observed subagent (Claude Task / ultracode fan-out) has no live
+    // ManagedAgent and is never persisted, so the fetch must fall through to
+    // the registry — otherwise a still-visible track row 404s.
+    // See projects/subagents-cleanup/subagents-cleanup.md (Item 1).
+    const observedId = "agent-1::sub::task-42";
+    const observedPayload = toObservedSubagentPayload({
+      id: observedId,
+      parentAgentId: "agent-1",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      update: {
+        key: "task-42",
+        status: "running",
+        subAgentType: "code-explorer",
+        description: "Explore the auth flow",
+      },
+    });
+
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForWireCompatTest({
+      messages,
+      observedPayloads: new Map([[observedId, observedPayload]]),
+    });
+    const internals = session as unknown as SessionInternals;
+
+    await internals.handleFetchAgent(observedId, "req-observed");
+
+    const response = messages.find((message) => message.type === "fetch_agent_response");
+    expect(response?.type).toBe("fetch_agent_response");
+    if (!response || response.type !== "fetch_agent_response") {
+      throw new Error("Expected fetch_agent_response");
+    }
+    expect(response.payload.error).toBeNull();
+    expect(response.payload.agent?.id).toBe(observedId);
+    expect(response.payload.agent?.attend).toBe("observed");
+  });
+
+  test("archive_agent resolves an observed subagent through the registry archive path", async () => {
+    // Observed subagents have no ManagedAgent and no stored record, so the
+    // normal archive command would throw "Agent not found" — the session must
+    // route them to AgentManager.archiveObservedSubagent instead. This is the
+    // path behind the terminal-row Archive action and "Clear all completed".
+    // See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+    const observedId = "agent-1::sub::task-42";
+    const observedPayload = toObservedSubagentPayload({
+      id: observedId,
+      parentAgentId: "agent-1",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      update: { key: "task-42", status: "idle", subAgentType: "code-explorer" },
+    });
+
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForWireCompatTest({
+      messages,
+      observedPayloads: new Map([[observedId, observedPayload]]),
+    });
+    const internals = session as unknown as SessionInternals;
+
+    await internals.handleArchiveAgentRequest(observedId, "req-archive-observed");
+
+    const response = messages.find((message) => message.type === "agent_archived");
+    if (!response || response.type !== "agent_archived") {
+      throw new Error("Expected agent_archived");
+    }
+    expect(response.payload.agentId).toBe(observedId);
+    // This timestamp can only come from archiveObservedSubagent's stub — proof
+    // the observed branch handled it rather than the stored-record command.
+    expect(response.payload.archivedAt).toBe("2026-05-02T01:23:45.000Z");
+  });
+
+  test("archive_agent still rejects a genuinely-missing agent", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForWireCompatTest({ messages });
+    const internals = session as unknown as SessionInternals;
+
+    await expect(
+      internals.handleArchiveAgentRequest("agent-1::sub::gone", "req-archive-missing"),
+    ).rejects.toThrow("not found");
+    expect(messages.find((message) => message.type === "agent_archived")).toBeUndefined();
+  });
+
+  test("fetch_agent still reports genuinely-missing agents as not found", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForWireCompatTest({ messages });
+    const internals = session as unknown as SessionInternals;
+
+    await internals.handleFetchAgent("agent-1::sub::gone", "req-missing");
+
+    const response = messages.find((message) => message.type === "fetch_agent_response");
+    if (!response || response.type !== "fetch_agent_response") {
+      throw new Error("Expected fetch_agent_response");
+    }
+    expect(response.payload.agent).toBeNull();
+    expect(response.payload.error).toContain("not found");
   });
 });

@@ -9,6 +9,15 @@ const REVEAL_PADDING = 16;
 // request (navigation + virtualization). Poll a short while for it to appear.
 const MAX_ATTEMPTS = 30;
 
+// Temporary reveal diagnostics. Forced ON (not gated on __DEV__) so it prints in
+// production-style desktop bundles too. Remove once verified on-device.
+const DEBUG_REVEAL = true;
+function debugReveal(...args: unknown[]): void {
+  if (DEBUG_REVEAL) {
+    console.warn("[SidebarReveal]", ...args);
+  }
+}
+
 export interface ScrollToCapable {
   scrollTo(options: { x?: number; y?: number; animated?: boolean }): void;
 }
@@ -43,6 +52,7 @@ export function useSidebarRevealController(
     if (!request) {
       return;
     }
+    debugReveal("request", request.key, "token", request.token);
     let cancelled = false;
     let attempts = 0;
 
@@ -56,7 +66,14 @@ export function useSidebarRevealController(
       if (!node || !container || !scroll) {
         if (attempts++ < MAX_ATTEMPTS) {
           requestAnimationFrame(() => void attempt());
+          return;
         }
+        debugReveal("gave up", request.key, {
+          node: Boolean(node),
+          container: Boolean(container),
+          scroll: Boolean(scroll),
+          scrollToType: typeof scroll?.scrollTo,
+        });
         return;
       }
 
@@ -79,6 +96,16 @@ export function useSidebarRevealController(
       } else if (relativeBottom > viewport.height - REVEAL_PADDING) {
         target = current + relativeBottom - (viewport.height - REVEAL_PADDING);
       }
+
+      debugReveal("measured", request.key, {
+        row,
+        viewport,
+        relativeTop,
+        relativeBottom,
+        currentOffset: current,
+        target,
+        scrollToType: typeof scroll.scrollTo,
+      });
 
       if (target !== null) {
         scroll.scrollTo({ y: Math.max(0, target), animated: true });

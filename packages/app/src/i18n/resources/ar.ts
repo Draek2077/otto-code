@@ -1789,6 +1789,12 @@ export const ar: TranslationResources = {
     detachTooltip: "فصل الوكيل الفرعي",
     archiveAction: "أرشيف{{label}}",
     archiveTooltip: "أرشفة الوكيل الفرعي",
+    stopAction: "إيقاف {{label}}",
+    stopTooltip: "إيقاف الوكيل الفرعي",
+    completedGroup: "مكتمل ({{count}})",
+    clearCompleted: "مسح الكل",
+    clearCompletedTooltip: "أرشفة جميع الوكلاء الفرعيين المكتملين",
+    stopNothingRunning: "الوكيل الفرعي غير قيد التشغيل — لا يوجد ما يمكن إيقافه.",
   },
   panels: {
     draft: {

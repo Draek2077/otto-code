@@ -1,12 +1,10 @@
 /**
  * DoneStep — the wizard's closing bookend. Mirrors the Welcome cover (same
  * WizardBrandBackdrop + blurred plasma ring), shows a short summary of what was
- * set up, and hosts the tutorial hand-off:
- *   - "Start the tour" launches the in-app spotlight tutorial.
- *   - "Skip for now" goes straight home.
- * Both first mark the wizard complete (the shell owns that on the callbacks).
+ * set up, and a single "Get started" button that marks the wizard complete and
+ * goes home (the shell owns that on the callback).
  *
- * Presentational only — `onStartTour` / `onSkipTour` are wired by the shell.
+ * Presentational only — `onFinish` is wired by the shell.
  * TODO(i18n): inline English, translated in a later pass.
  */
 
@@ -29,8 +27,7 @@ interface DoneStepProps {
   primaryProviderLabel: string | null;
   rosterCount: number;
   activeTeamName: string | null;
-  onStartTour: () => void;
-  onSkipTour: () => void;
+  onFinish: () => void;
 }
 
 export function DoneStep({
@@ -38,8 +35,7 @@ export function DoneStep({
   primaryProviderLabel,
   rosterCount,
   activeTeamName,
-  onStartTour,
-  onSkipTour,
+  onFinish,
 }: DoneStepProps) {
   const isCompact = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
@@ -109,13 +105,9 @@ export function DoneStep({
         </View>
 
         <View style={styles.actions}>
-          <Button variant="default" size="lg" onPress={onStartTour}>
+          <Button variant="default" size="lg" onPress={onFinish}>
             {/* TODO(i18n): extract */}
-            Start the tour
-          </Button>
-          <Button variant="ghost" size="md" onPress={onSkipTour}>
-            {/* TODO(i18n): extract */}
-            Skip for now
+            Get started
           </Button>
         </View>
       </View>

@@ -1683,6 +1683,12 @@ export const en = {
     detachTooltip: "Detach subagent",
     archiveAction: "Archive {{label}}",
     archiveTooltip: "Archive subagent",
+    stopAction: "Stop {{label}}",
+    stopTooltip: "Stop subagent",
+    completedGroup: "Completed ({{count}})",
+    clearCompleted: "Clear all",
+    clearCompletedTooltip: "Archive all completed subagents",
+    stopNothingRunning: "Subagent isn't running — nothing to stop.",
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",

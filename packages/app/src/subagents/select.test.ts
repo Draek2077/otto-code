@@ -207,6 +207,7 @@ describe("selectSubagentsForParent", () => {
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
       "attend",
       "createdAt",
+      "cumulativeTokens",
       "id",
       "provider",
       "requiresAttention",

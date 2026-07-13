@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Archive, ChevronDown, ChevronRight, Unlink } from "@/components/icons/material-icons";
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  Stop,
+  Unlink,
+} from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -14,11 +20,19 @@ import {
 } from "@/screens/workspace/workspace-tab-presentation";
 import type { Theme } from "@/styles/theme";
 import type { SubagentRow } from "./select";
-import { buildSubagentRowPresentationData, formatHeaderLabel } from "./track-presentation";
+import {
+  buildSubagentRowPresentationData,
+  formatCompactTokenCount,
+  formatHeaderLabel,
+  partitionSubagentRows,
+  resolveSubagentRowAction,
+  type SubagentRowAction,
+} from "./track-presentation";
 
 const ThemedArchive = withUnistyles(Archive);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedStop = withUnistyles(Stop);
 const ThemedUnlink = withUnistyles(Unlink);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -30,6 +44,8 @@ export interface SubagentsTrackProps {
   rows: SubagentRow[];
   onOpenSubagent: (id: string) => void;
   onArchiveSubagent: (id: string) => void;
+  onStopSubagent: (id: string) => void;
+  onClearCompleted: (ids: readonly string[]) => void;
   onDetachSubagent?: (id: string) => void;
 }
 
@@ -46,13 +62,48 @@ export function SubagentsTrack({
   rows,
   onOpenSubagent,
   onArchiveSubagent,
+  onStopSubagent,
+  onClearCompleted,
   onDetachSubagent,
 }: SubagentsTrackProps): ReactElement | null {
   const [expanded, setExpanded] = useState(false);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
+  // Rows the user just stopped stay pinned in the active list instead of
+  // instantly tidying into the collapsed Completed group under their pointer.
+  // Toggling the track open/closed is the natural boundary that unpins them.
+  const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const toggleExpanded = useCallback(() => {
     setExpanded((current) => !current);
+    setPinnedIds((pins) => (pins.size > 0 ? new Set<string>() : pins));
   }, []);
+  const toggleCompletedExpanded = useCallback(() => {
+    setCompletedExpanded((current) => !current);
+  }, []);
+
+  const handleStopSubagent = useCallback(
+    (id: string) => {
+      setPinnedIds((pins) => {
+        if (pins.has(id)) {
+          return pins;
+        }
+        const next = new Set(pins);
+        next.add(id);
+        return next;
+      });
+      onStopSubagent(id);
+    },
+    [onStopSubagent],
+  );
+
+  const { active, completed } = useMemo(
+    () => partitionSubagentRows(rows, pinnedIds),
+    [rows, pinnedIds],
+  );
+  const completedIds = useMemo(() => completed.map((row) => row.id), [completed]);
+  const handleClearCompleted = useCallback(() => {
+    onClearCompleted(completedIds);
+  }, [onClearCompleted, completedIds]);
 
   const surfaceStyle = useMemo(
     () => [styles.surface, expanded && styles.surfaceExpanded],
@@ -101,15 +152,28 @@ export function SubagentsTrack({
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled
             >
-              {rows.map((row) => (
+              {active.map((row) => (
                 <SubagentsTrackRow
                   key={row.id}
                   row={row}
                   onOpenSubagent={onOpenSubagent}
                   onArchiveSubagent={onArchiveSubagent}
+                  onStopSubagent={handleStopSubagent}
                   onDetachSubagent={onDetachSubagent}
                 />
               ))}
+              {completed.length > 0 ? (
+                <CompletedSubagentsGroup
+                  rows={completed}
+                  expanded={completedExpanded}
+                  onToggle={toggleCompletedExpanded}
+                  onClear={handleClearCompleted}
+                  onOpenSubagent={onOpenSubagent}
+                  onArchiveSubagent={onArchiveSubagent}
+                  onStopSubagent={handleStopSubagent}
+                  onDetachSubagent={onDetachSubagent}
+                />
+              ) : null}
             </ScrollView>
           ) : null}
         </View>
@@ -118,10 +182,92 @@ export function SubagentsTrack({
   );
 }
 
+interface CompletedSubagentsGroupProps {
+  rows: SubagentRow[];
+  expanded: boolean;
+  onToggle: () => void;
+  onClear: () => void;
+  onOpenSubagent: (id: string) => void;
+  onArchiveSubagent: (id: string) => void;
+  onStopSubagent: (id: string) => void;
+  onDetachSubagent?: (id: string) => void;
+}
+
+// Finished work tidies itself but stays reachable: terminal, non-attention rows
+// collapse into a "Completed (N)" group (collapsed by default) with a bulk
+// "Clear all completed". See projects/subagents-cleanup/subagents-cleanup.md (Item 6).
+function CompletedSubagentsGroup({
+  rows,
+  expanded,
+  onToggle,
+  onClear,
+  onOpenSubagent,
+  onArchiveSubagent,
+  onStopSubagent,
+  onDetachSubagent,
+}: CompletedSubagentsGroupProps): ReactElement {
+  const { t } = useTranslation();
+  const headerLabel = t("subagents.completedGroup", { count: rows.length });
+  const clearLabel = t("subagents.clearCompleted");
+
+  return (
+    <View style={styles.completedGroup} testID="subagents-track-completed-group">
+      <View style={styles.completedHeaderRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={headerLabel}
+          testID="subagents-track-completed-toggle"
+          onPress={onToggle}
+          style={styles.completedToggle}
+        >
+          {expanded ? (
+            <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+          ) : (
+            <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+          )}
+          <Text style={styles.completedLabel} numberOfLines={1}>
+            {headerLabel}
+          </Text>
+        </Pressable>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={clearLabel}
+              testID="subagents-track-clear-completed"
+              onPress={onClear}
+              style={styles.clearButton}
+              hitSlop={8}
+            >
+              <Text style={styles.clearButtonText}>{clearLabel}</Text>
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>{t("subagents.clearCompletedTooltip")}</Text>
+          </TooltipContent>
+        </Tooltip>
+      </View>
+      {expanded
+        ? rows.map((row) => (
+            <SubagentsTrackRow
+              key={row.id}
+              row={row}
+              onOpenSubagent={onOpenSubagent}
+              onArchiveSubagent={onArchiveSubagent}
+              onStopSubagent={onStopSubagent}
+              onDetachSubagent={onDetachSubagent}
+            />
+          ))
+        : null}
+    </View>
+  );
+}
+
 interface SubagentsTrackRowProps {
   row: SubagentRow;
   onOpenSubagent: (id: string) => void;
   onArchiveSubagent: (id: string) => void;
+  onStopSubagent: (id: string) => void;
   onDetachSubagent?: (id: string) => void;
 }
 
@@ -129,6 +275,7 @@ function SubagentsTrackRow({
   row,
   onOpenSubagent,
   onArchiveSubagent,
+  onStopSubagent,
   onDetachSubagent,
 }: SubagentsTrackRowProps): ReactElement {
   const { t } = useTranslation();
@@ -137,12 +284,17 @@ function SubagentsTrackRow({
   const presentation = useMemo(() => buildRowPresentation(row), [row]);
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
+  const rowAction = resolveSubagentRowAction(row.status);
+  const tokenLabel = formatCompactTokenCount(row.cumulativeTokens);
   const handlePress = useCallback(() => {
     onOpenSubagent(row.id);
   }, [onOpenSubagent, row.id]);
   const handleArchivePress = useCallback(() => {
     onArchiveSubagent(row.id);
   }, [onArchiveSubagent, row.id]);
+  const handleStopPress = useCallback(() => {
+    onStopSubagent(row.id);
+  }, [onStopSubagent, row.id]);
   const handleDetachPress = useCallback(() => {
     onDetachSubagent?.(row.id);
   }, [onDetachSubagent, row.id]);
@@ -170,12 +322,23 @@ function SubagentsTrackRow({
             <Text style={styles.rowLabel} numberOfLines={1}>
               {displayLabel}
             </Text>
+            {tokenLabel ? (
+              <Text
+                style={styles.rowTokens}
+                numberOfLines={1}
+                testID={`subagents-track-tokens-${row.id}`}
+              >
+                {tokenLabel}
+              </Text>
+            ) : null}
             <SubagentRowActions
               rowId={row.id}
               displayLabel={displayLabel}
               visible={actionsVisible}
+              rowAction={rowAction}
               onDetachPress={detachHandler ? handleDetachPress : undefined}
               onArchivePress={handleArchivePress}
+              onStopPress={handleStopPress}
             />
           </View>
         )}
@@ -188,14 +351,18 @@ function SubagentRowActions({
   rowId,
   displayLabel,
   visible,
+  rowAction,
   onDetachPress,
   onArchivePress,
+  onStopPress,
 }: {
   rowId: string;
   displayLabel: string;
   visible: boolean;
+  rowAction: SubagentRowAction;
   onDetachPress?: () => void;
   onArchivePress: () => void;
+  onStopPress: () => void;
 }): ReactElement {
   const { t } = useTranslation();
   return (
@@ -213,24 +380,40 @@ function SubagentRowActions({
           onPress={onDetachPress}
         />
       ) : null}
-      <SubagentActionButton
-        accessibilityLabel={t("subagents.archiveAction", { label: displayLabel })}
-        testID={`subagents-track-archive-${rowId}`}
-        tooltipLabel={t("subagents.archiveTooltip")}
-        icon="archive"
-        visible={visible}
-        onPress={onArchivePress}
-      />
+      {rowAction === "stop" ? (
+        // Running/initializing: Stop transitions to terminal, keeps the row.
+        <SubagentActionButton
+          accessibilityLabel={t("subagents.stopAction", { label: displayLabel })}
+          testID={`subagents-track-stop-${rowId}`}
+          tooltipLabel={t("subagents.stopTooltip")}
+          icon="stop"
+          visible={visible}
+          onPress={onStopPress}
+        />
+      ) : (
+        // Terminal: Archive drops the row from the track.
+        <SubagentActionButton
+          accessibilityLabel={t("subagents.archiveAction", { label: displayLabel })}
+          testID={`subagents-track-archive-${rowId}`}
+          tooltipLabel={t("subagents.archiveTooltip")}
+          icon="archive"
+          visible={visible}
+          onPress={onArchivePress}
+        />
+      )}
     </View>
   );
 }
 
-type SubagentActionIcon = "archive" | "detach";
+type SubagentActionIcon = "archive" | "detach" | "stop";
 
 function renderSubagentActionIcon(icon: SubagentActionIcon, isActive: boolean): ReactElement {
   const uniProps = isActive ? foregroundColorMapping : foregroundMutedColorMapping;
   if (icon === "detach") {
     return <ThemedUnlink size={14} uniProps={uniProps} />;
+  }
+  if (icon === "stop") {
+    return <ThemedStop size={14} uniProps={uniProps} />;
   }
   return <ThemedArchive size={14} uniProps={uniProps} />;
 }
@@ -343,6 +526,47 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
+  },
+  rowTokens: {
+    flexShrink: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    fontVariant: ["tabular-nums"],
+  },
+  completedGroup: {
+    marginTop: theme.spacing[1],
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
+  },
+  completedHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  completedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  completedLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+  },
+  clearButton: {
+    flexShrink: 0,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  clearButtonText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   actionClusterVisible: {
     flexDirection: "row",

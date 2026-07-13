@@ -40,6 +40,7 @@ import {
   type ThemeVariantName,
 } from "@/styles/theme";
 import { isNative } from "@/constants/platform";
+import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
 import { AppearancePreview } from "./appearance-preview";
 
@@ -535,6 +536,7 @@ export function AppearanceSection() {
   const { settings, updateSettings } = useAppSettings();
   const showFontFamilyRows = !isNative;
   const showLayoutSection = !isNative;
+  const isDeveloperMode = useIsDeveloperMode();
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
@@ -809,17 +811,19 @@ export function AppearanceSection() {
               onValueChange={handleCompactSidebarTopSpacingChange}
               testID="settings-compact-sidebar-top-spacing-switch"
             />
-            <LayoutToggleRow
-              title={t("settings.appearance.layout.workspaceToolsInList.title")}
-              hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
-              accessibilityLabel={t(
-                "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
-              )}
-              value={settings.workspaceToolsPlacement === "workspaceList"}
-              withBorder
-              onValueChange={handleWorkspaceToolsPlacementChange}
-              testID="settings-workspace-tools-placement-switch"
-            />
+            {isDeveloperMode ? (
+              <LayoutToggleRow
+                title={t("settings.appearance.layout.workspaceToolsInList.title")}
+                hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
+                accessibilityLabel={t(
+                  "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
+                )}
+                value={settings.workspaceToolsPlacement === "workspaceList"}
+                withBorder
+                onValueChange={handleWorkspaceToolsPlacementChange}
+                testID="settings-workspace-tools-placement-switch"
+              />
+            ) : null}
             {/* i18n: English-only pending a translation pass (Agent Teams). */}
             <LayoutToggleRow
               title="Team switcher in title bar"

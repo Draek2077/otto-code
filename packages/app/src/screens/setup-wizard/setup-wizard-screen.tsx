@@ -1,8 +1,8 @@
 /**
  * SetupWizardScreen — the first-run wizard shell. Full-screen, no app chrome
  * (the `/setup` route sits outside `shouldShowAppChrome`). Owns step state and
- * the wizard's side effects (persisting `interfaceMode`, the completion flag,
- * and the tutorial hand-off); the individual steps are presentational.
+ * the wizard's side effects (persisting `interfaceMode` and the completion
+ * flag); the individual steps are presentational.
  *
  * Step order (charter): Welcome → Mode → Providers → Done. The Agents (Phase 3
  * personality presets) and Teams (Phase 4, owned by the Agentic Teams agent)
@@ -22,12 +22,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import {
-  persistAppSettings,
-  useAppSettings,
-  type AppSettings,
-  type InterfaceMode,
-} from "@/hooks/use-settings";
+import { persistAppSettings, useAppSettings, type InterfaceMode } from "@/hooks/use-settings";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
@@ -35,7 +30,6 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useEarliestOnlineHostServerId } from "@/app/_layout";
 import { useHosts } from "@/runtime/host-runtime";
-import { useTutorialStore } from "@/tutorial/store";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { Button } from "@/components/ui/button";
@@ -118,31 +112,15 @@ export function SetupWizardScreen() {
     setStepIndex((index) => Math.max(index - 1, 0));
   }, []);
 
-  // Finish the wizard and go home. `tutorial` decides the tour hand-off:
-  //   "start"    — launch the spotlight tour explicitly (also works on a
-  //                re-run from About, where the auto-launch fallback wouldn't).
-  //   "skip"     — mark the tour done too, so nothing auto-launches at home.
-  //   "fallback" — leave the tour flag alone; a fresh device's home-screen
-  //                auto-launch (useLaunchTutorial) then runs it. Used when the
-  //                whole wizard is skipped — the tour is that path's fallback.
-  const completeWizard = useCallback(
-    (tutorial: "start" | "skip" | "fallback") => {
-      const updates: Partial<AppSettings> = { hasCompletedSetupWizard: true };
-      if (tutorial === "skip") {
-        updates.hasCompletedTutorial = true;
-      }
-      void persistAppSettings(updates);
-      router.replace(buildOpenProjectRoute());
-      if (tutorial === "start") {
-        useTutorialStore.getState().start();
-      }
-    },
-    [router],
-  );
+  // Finish the wizard and go home. The in-app tutorial is disabled for now, so we
+  // also mark it complete to keep the home-screen auto-launch from firing.
+  const completeWizard = useCallback(() => {
+    void persistAppSettings({ hasCompletedSetupWizard: true, hasCompletedTutorial: true });
+    router.replace(buildOpenProjectRoute());
+  }, [router]);
 
-  const skipWizard = useCallback(() => completeWizard("fallback"), [completeWizard]);
-  const finishWithTour = useCallback(() => completeWizard("start"), [completeWizard]);
-  const finishSkipTour = useCallback(() => completeWizard("skip"), [completeWizard]);
+  const skipWizard = completeWizard;
+  const finishWizard = completeWizard;
 
   const handleSelectMode = useCallback((mode: InterfaceMode) => {
     // Persist immediately so the rest of the wizard renders at the chosen depth.
@@ -192,8 +170,7 @@ export function SetupWizardScreen() {
             primaryProviderLabel={primaryProviderLabel}
             rosterCount={rosterCount}
             activeTeamName={activeTeamName}
-            onStartTour={finishWithTour}
-            onSkipTour={finishSkipTour}
+            onFinish={finishWizard}
           />
         );
     }

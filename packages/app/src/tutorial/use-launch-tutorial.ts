@@ -25,6 +25,13 @@ export function useLaunchTutorial(): void {
   const hasHost = hosts.length > 0;
 
   useEffect(() => {
+    // The in-app tutorial is disabled for now (not ready). Keep the gating logic
+    // below for when it returns, but never auto-start it. To re-enable, drop this
+    // early return.
+    const TUTORIAL_ENABLED = false;
+    if (!TUTORIAL_ENABLED) {
+      return;
+    }
     if (startedRef.current) {
       return;
     }

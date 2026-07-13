@@ -991,6 +991,13 @@ export const AgentSnapshotPayloadSchema = z.object({
   persistence: AgentPersistenceHandleSchema.nullable(),
   runtimeInfo: AgentRuntimeInfoSchema.optional(),
   lastUsage: AgentUsageSchema.optional(),
+  // Honest cumulative token total (Σ across the whole run) from the provider,
+  // for the subagents-track cost readout — the only currency that works for
+  // cost-less local models. Observed subagents source it from the provider's
+  // per-task usage.total_tokens (already cumulative-per-subagent). Purely
+  // additive; absent ⇒ no readout. Old clients ignore it.
+  // See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+  cumulativeTokens: z.number().optional(),
   lastError: z.string().optional(),
   title: z.string().nullable(),
   labels: z.record(z.string(), z.string()).default({}),
@@ -3712,6 +3719,11 @@ export const CancelAgentResponseMessageSchema = z.object({
     requestId: z.string(),
     agentId: z.string(),
     agent: AgentSnapshotPayloadSchema.nullable(),
+    // Whether an in-flight run was actually interrupted. False when the agent
+    // had nothing running (already finished, still initializing), so clients
+    // can say "nothing to stop" instead of silently no-oping. Purely additive;
+    // absent ⇒ unknown (old daemon). See projects/subagents-cleanup/subagents-cleanup.md (Item 2).
+    cancelled: z.boolean().optional(),
   }),
 });
 

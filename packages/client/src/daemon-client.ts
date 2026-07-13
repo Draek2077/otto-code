@@ -2707,14 +2707,14 @@ export class DaemonClient {
     return payload;
   }
 
-  async cancelAgent(agentId: string): Promise<void> {
+  async cancelAgent(agentId: string): Promise<{ cancelled?: boolean }> {
     const requestId = this.createRequestId();
     const message = SessionInboundMessageSchema.parse({
       type: "cancel_agent_request",
       agentId,
       requestId,
     });
-    await this.sendRequest({
+    const payload = await this.sendRequest({
       requestId,
       message,
       options: { skipQueue: true },
@@ -2728,6 +2728,8 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+    // Absent ⇒ old daemon that doesn't report whether a run was interrupted.
+    return payload.cancelled !== undefined ? { cancelled: payload.cancelled } : {};
   }
 
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
