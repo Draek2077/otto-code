@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.3 - 2026-07-14
+
+### Added
+
+- Teams can orchestrate multi-phase work on their own, with a new Runs view to watch each orchestration
+- New Stats screen surfaces at-a-glance activity counters for your host
+- Agents can start background tasks you can monitor, stop, or clear without leaving the chat
+- Optional vertical tab rail for each pane, switchable in Appearance settings
+
+### Improved
+
+- Spawning a personality is now frictionless, with role tiers applied on every spawn path
+- The daemon reaches Windows clients automatically when running under WSL, with no manual network setup
+- More resilient Linux desktop startup with a software-rendering fallback, AppArmor profile, and crash dialog
+
 ## 0.5.2 - 2026-07-13
 
 ### Added
