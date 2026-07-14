@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
+import { RunSchema } from "./orchestration.js";
 import { ArtifactMetadataSchema } from "./artifacts/types.js";
 import {
   ArtifactListRequestSchema,
@@ -265,13 +266,20 @@ export type MutableGitHostingConfig = z.infer<typeof MutableGitHostingConfigSche
 // agent-personalities.ts) so personalities persisted before the split keep their
 // role rather than silently losing it.
 export const PERSONALITY_ROLES = [
+  // Surfaces — the interactive / host-facing entry points.
   "chatter",
   "artificer",
   "scheduler",
-  "writer",
-  "coder",
+  // Thinking workers — read-only, return structured findings, never edit.
+  "researcher",
+  "planner",
   "judger",
   "advisor",
+  // Making workers — produce code, design, or short text.
+  "coder",
+  "designer",
+  "writer",
+  // Conductor — the sole role whose whole job is planning and driving a team.
   "orchestrator",
 ] as const;
 export type PersonalityRole = (typeof PERSONALITY_ROLES)[number];
@@ -1616,6 +1624,41 @@ export const ProviderUsageListRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+// Daemon-wide "fun stats" counters — see docs/data-model.md ActivityStatsStore.
+// Every field defaults to 0 so old and new daemons/clients stay compatible as
+// counters are added later.
+export const ActivityCountersSchema = z.object({
+  messagesSent: z.number().default(0),
+  messagesReceived: z.number().default(0),
+  tokensSent: z.number().default(0),
+  tokensReceived: z.number().default(0),
+  agentsCreated: z.number().default(0),
+  runsOrchestrated: z.number().default(0),
+  subagentsInvoked: z.number().default(0),
+  backgroundTasksInvoked: z.number().default(0),
+  thoughts: z.number().default(0),
+  toolsCalled: z.number().default(0),
+  artifactsCreated: z.number().default(0),
+  schedulesExecuted: z.number().default(0),
+});
+
+export const StatsActivityGetRequestMessageSchema = z.object({
+  type: z.literal("stats.activity.get.request"),
+  requestId: z.string(),
+});
+
+export const StatsActivityGetResponseMessageSchema = z.object({
+  type: z.literal("stats.activity.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    today: ActivityCountersSchema,
+    yesterday: ActivityCountersSchema,
+    last7Days: ActivityCountersSchema,
+    last30Days: ActivityCountersSchema,
+    allTime: ActivityCountersSchema,
+  }),
+});
+
 export const AgentContextGetUsageRequestMessageSchema = z.object({
   type: z.literal("agent.context.get_usage.request"),
   agentId: z.string(),
@@ -1772,6 +1815,62 @@ export const AgentSubagentStopRequestMessageSchema = z.object({
 
 export const AgentSubagentStopResponseMessageSchema = z.object({
   type: z.literal("agent.subagent.stop.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+// A background shell task launched by a provider's own Bash tool (Claude:
+// run_in_background). Not an agent, not a subagent — a plain shell process
+// the daemon tracks for the parent agent's Background Tasks track.
+// COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+export const BackgroundShellTaskInfoSchema = z.object({
+  id: z.string(),
+  parentAgentId: z.string(),
+  provider: z.string(),
+  command: z.string().optional(),
+  description: z.string().optional(),
+  status: z.enum(["running", "idle", "error", "closed"]),
+  requiresAttention: z.boolean().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  archivedAt: z.string().optional(),
+});
+
+// Pushed with the full current set of background shell tasks for a parent
+// agent whenever any of them changes (start/progress/settle/clear) — same
+// full-list reconciliation shape as TerminalsChangedSchema.
+export const BackgroundShellTasksChangedSchema = z.object({
+  type: z.literal("background_shell_tasks_changed"),
+  payload: z.object({
+    parentAgentId: z.string(),
+    tasks: z.array(BackgroundShellTaskInfoSchema),
+  }),
+});
+
+// Stop a running background shell task. The daemon resolves it to the owning
+// provider session's task and calls stopTask, same as agent.subagent.stop.
+export const AgentBackgroundTaskStopRequestMessageSchema = z.object({
+  type: z.literal("agent.background_task.stop.request"),
+  parentAgentId: z.string(),
+  taskId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentBackgroundTaskStopResponseMessageSchema = z.object({
+  type: z.literal("agent.background_task.stop.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+// Clear one or more terminal background shell tasks from the track. Still-live
+// tasks are stopped best-effort first.
+export const AgentBackgroundTaskClearRequestMessageSchema = z.object({
+  type: z.literal("agent.background_task.clear.request"),
+  parentAgentId: z.string(),
+  taskIds: z.array(z.string()),
+  requestId: z.string(),
+});
+
+export const AgentBackgroundTaskClearResponseMessageSchema = z.object({
+  type: z.literal("agent.background_task.clear.response"),
   payload: AgentActionResponsePayloadSchema,
 });
 
@@ -1965,6 +2064,97 @@ export const CheckoutGitLogAppendedNotificationSchema = z.object({
     entries: z.array(GitOperationLogEntrySchema),
   }),
 });
+
+// ── Orchestration runs (agent-orchestration) ────────────────────────────────
+// Daemon-owned multi-agent Run projection + control. Gated by
+// server_info.features.agentOrchestration. See projects/agent-orchestration.
+export const RunsGetSnapshotRequestSchema = z.object({
+  type: z.literal("runs.get_snapshot.request"),
+  requestId: z.string(),
+});
+export const RunsGetSnapshotResponseSchema = z.object({
+  type: z.literal("runs.get_snapshot.response"),
+  payload: z.object({
+    runs: z.array(RunSchema),
+    requestId: z.string(),
+  }),
+});
+
+// Single-run push, broadcast on every phase/status change. Clients merge by id.
+export const RunsUpdatedNotificationSchema = z.object({
+  type: z.literal("runs.updated.notification"),
+  payload: z.object({
+    run: RunSchema,
+  }),
+});
+
+// Answer an attended run's `gate` phase (approve or reject, with an optional
+// note). `accepted` is false when the run wasn't awaiting a gate.
+export const RunsGateRespondRequestSchema = z.object({
+  type: z.literal("runs.gate_respond.request"),
+  runId: z.string(),
+  phaseId: z.string(),
+  approved: z.boolean(),
+  note: z.string().optional(),
+  requestId: z.string(),
+});
+export const RunsGateRespondResponseSchema = z.object({
+  type: z.literal("runs.gate_respond.response"),
+  payload: z.object({
+    runId: z.string(),
+    accepted: z.boolean(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsCancelRequestSchema = z.object({
+  type: z.literal("runs.cancel.request"),
+  runId: z.string(),
+  requestId: z.string(),
+});
+export const RunsCancelResponseSchema = z.object({
+  type: z.literal("runs.cancel.response"),
+  payload: z.object({
+    runId: z.string(),
+    canceled: z.boolean(),
+    requestId: z.string(),
+  }),
+});
+
+// Delete every finished (done/failed/canceled) run from disk and memory.
+// Active/paused runs are left untouched. Gated by
+// server_info.features.runsClear.
+export const RunsClearRequestSchema = z.object({
+  type: z.literal("runs.clear.request"),
+  requestId: z.string(),
+});
+export const RunsClearResponseSchema = z.object({
+  type: z.literal("runs.clear.response"),
+  payload: z.object({
+    runIds: z.array(z.string()),
+    requestId: z.string(),
+  }),
+});
+
+// Broadcast to every connected client (including the requester) so all
+// caches drop the same runs, mirroring runs.updated.notification's upsert.
+export const RunsClearedNotificationSchema = z.object({
+  type: z.literal("runs.cleared.notification"),
+  payload: z.object({
+    runIds: z.array(z.string()),
+  }),
+});
+
+export type RunsGetSnapshotRequest = z.infer<typeof RunsGetSnapshotRequestSchema>;
+export type RunsGetSnapshotResponse = z.infer<typeof RunsGetSnapshotResponseSchema>;
+export type RunsUpdatedNotification = z.infer<typeof RunsUpdatedNotificationSchema>;
+export type RunsGateRespondRequest = z.infer<typeof RunsGateRespondRequestSchema>;
+export type RunsGateRespondResponse = z.infer<typeof RunsGateRespondResponseSchema>;
+export type RunsCancelRequest = z.infer<typeof RunsCancelRequestSchema>;
+export type RunsCancelResponse = z.infer<typeof RunsCancelResponseSchema>;
+export type RunsClearRequest = z.infer<typeof RunsClearRequestSchema>;
+export type RunsClearResponse = z.infer<typeof RunsClearResponseSchema>;
+export type RunsClearedNotification = z.infer<typeof RunsClearedNotificationSchema>;
 
 // Namespaced successor to checkout_commit_request: per-file selection and
 // structured errors. Gated by server_info.features.checkoutGitCommit; the flat
@@ -2752,6 +2942,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotRequestMessageSchema,
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
+  StatsActivityGetRequestMessageSchema,
   AgentContextGetUsageRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
@@ -2768,6 +2959,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureRequestMessageSchema,
   AgentDetachRequestMessageSchema,
   AgentSubagentStopRequestMessageSchema,
+  AgentBackgroundTaskStopRequestMessageSchema,
+  AgentBackgroundTaskClearRequestMessageSchema,
   AgentPersonalitySetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
@@ -2779,6 +2972,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGitCommitAgentRequestSchema,
   CheckoutGitRollbackRequestSchema,
   CheckoutGitGetOperationLogRequestSchema,
+  RunsGetSnapshotRequestSchema,
+  RunsGateRespondRequestSchema,
+  RunsCancelRequestSchema,
+  RunsClearRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
   CheckoutPullRequestSchema,
@@ -3076,6 +3273,8 @@ export const ServerInfoStatusPayloadSchema = z
         artifacts: z.boolean().optional(),
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: z.boolean().optional(),
+        // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        backgroundShellTasks: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -3106,6 +3305,12 @@ export const ServerInfoStatusPayloadSchema = z
         agentTeams: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: z.boolean().optional(),
+        // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        agentOrchestration: z.boolean().optional(),
+        // COMPAT(activityStats): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        activityStats: z.boolean().optional(),
+        // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        runsClear: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5494,6 +5699,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
   AgentSubagentStopResponseMessageSchema,
+  AgentBackgroundTaskStopResponseMessageSchema,
+  AgentBackgroundTaskClearResponseMessageSchema,
+  BackgroundShellTasksChangedSchema,
   AgentPersonalitySetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
@@ -5516,6 +5724,12 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGitRollbackResponseSchema,
   CheckoutGitGetOperationLogResponseSchema,
   CheckoutGitLogAppendedNotificationSchema,
+  RunsGetSnapshotResponseSchema,
+  RunsUpdatedNotificationSchema,
+  RunsGateRespondResponseSchema,
+  RunsCancelResponseSchema,
+  RunsClearResponseSchema,
+  RunsClearedNotificationSchema,
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
@@ -5568,6 +5782,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RefreshProvidersSnapshotResponseMessageSchema,
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
+  StatsActivityGetResponseMessageSchema,
   AgentContextGetUsageResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
@@ -5688,6 +5903,14 @@ export type AgentPersonalitySetResponseMessage = z.infer<
 export type AgentSubagentStopResponseMessage = z.infer<
   typeof AgentSubagentStopResponseMessageSchema
 >;
+export type BackgroundShellTaskInfo = z.infer<typeof BackgroundShellTaskInfoSchema>;
+export type BackgroundShellTasksChanged = z.infer<typeof BackgroundShellTasksChangedSchema>;
+export type AgentBackgroundTaskStopResponseMessage = z.infer<
+  typeof AgentBackgroundTaskStopResponseMessageSchema
+>;
+export type AgentBackgroundTaskClearResponseMessage = z.infer<
+  typeof AgentBackgroundTaskClearResponseMessageSchema
+>;
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
@@ -5741,6 +5964,8 @@ export type AgentContextGetUsageResponseMessage = z.infer<
 export type ProviderUsageListResponseMessage = z.infer<
   typeof ProviderUsageListResponseMessageSchema
 >;
+export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
+export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;
@@ -5839,6 +6064,12 @@ export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequ
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
 export type AgentSubagentStopRequestMessage = z.infer<typeof AgentSubagentStopRequestMessageSchema>;
+export type AgentBackgroundTaskStopRequestMessage = z.infer<
+  typeof AgentBackgroundTaskStopRequestMessageSchema
+>;
+export type AgentBackgroundTaskClearRequestMessage = z.infer<
+  typeof AgentBackgroundTaskClearRequestMessageSchema
+>;
 export type AgentPersonalitySetRequestMessage = z.infer<
   typeof AgentPersonalitySetRequestMessageSchema
 >;

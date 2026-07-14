@@ -56,6 +56,7 @@ import {
   parseTerminalScrollbackLines,
   type AppSettings,
   type InterfaceMode,
+  type AppStartScreen,
   type PreviewServerCloseBehavior,
   type SendBehavior,
   type ServiceUrlBehavior,
@@ -281,6 +282,26 @@ function getInterfaceModeOptions(t: TFunction) {
   ];
 }
 
+function getAppStartScreenOptions(t: TFunction) {
+  return [
+    {
+      value: "workspaces" as const,
+      label: t("settings.general.appStartScreen.options.workspaces"),
+    },
+    { value: "home" as const, label: t("settings.general.appStartScreen.options.home") },
+    {
+      value: "dashboard" as const,
+      label: t("settings.general.appStartScreen.options.dashboard"),
+    },
+  ];
+}
+
+const APP_START_SCREEN_DESCRIPTION_KEYS = {
+  workspaces: "settings.general.appStartScreen.descriptions.workspaces",
+  home: "settings.general.appStartScreen.descriptions.home",
+  dashboard: "settings.general.appStartScreen.descriptions.dashboard",
+} as const satisfies Record<AppStartScreen, string>;
+
 function getPreviewServerCloseBehaviorOptions(t: TFunction) {
   return [
     {
@@ -318,6 +339,7 @@ interface GeneralSectionProps {
   settings: AppSettings;
   isDesktopApp: boolean;
   handleInterfaceModeChange: (mode: InterfaceMode) => void;
+  handleAppStartScreenChange: (screen: AppStartScreen) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
@@ -377,6 +399,7 @@ function GeneralSection({
   settings,
   isDesktopApp,
   handleInterfaceModeChange,
+  handleAppStartScreenChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLanguageChange,
@@ -394,6 +417,8 @@ function GeneralSection({
     interfaceModeValue === "user"
       ? "settings.general.interfaceMode.descriptions.user"
       : "settings.general.interfaceMode.descriptions.developer";
+  const appStartScreenOptions = useMemo(() => getAppStartScreenOptions(t), [t]);
+  const appStartScreenDescriptionKey = APP_START_SCREEN_DESCRIPTION_KEYS[settings.appStartScreen];
   const previewServerCloseBehaviorOptions = useMemo(
     () => getPreviewServerCloseBehaviorOptions(t),
     [t],
@@ -453,6 +478,21 @@ function GeneralSection({
               value={interfaceModeValue}
               onValueChange={handleInterfaceModeChange}
               options={interfaceModeOptions}
+            />
+          </View>
+          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.appStartScreen.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>{t(appStartScreenDescriptionKey)}</Text>
+            </View>
+            <SegmentedControl
+              size="sm"
+              value={settings.appStartScreen}
+              onValueChange={handleAppStartScreenChange}
+              options={appStartScreenOptions}
+              testID="settings-app-start-screen"
             />
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
@@ -1439,6 +1479,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleAppStartScreenChange = useCallback(
+    (screen: AppStartScreen) => {
+      void updateSettings({ appStartScreen: screen });
+    },
+    [updateSettings],
+  );
+
   const handleSendBehaviorChange = useCallback(
     (behavior: SendBehavior) => {
       void updateSettings({ sendBehavior: behavior });
@@ -1683,6 +1730,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               settings={settings}
               isDesktopApp={isDesktopApp}
               handleInterfaceModeChange={handleInterfaceModeChange}
+              handleAppStartScreenChange={handleAppStartScreenChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLanguageChange={handleLanguageChange}

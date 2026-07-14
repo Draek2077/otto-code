@@ -1819,6 +1819,14 @@ function isClaudeSubagentToolName(name: string | undefined): boolean {
   return name === "Task" || name === "Agent";
 }
 
+// Claude's Bash tool used with run_in_background: true reports its lifecycle
+// through the same task_started/task_progress/task_notification stream as
+// subagents. See projects/observed-subagents/observed-subagents.md's note
+// that Otto today ignores shell/monitor/workflow task events.
+function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
+  return name === "Bash";
+}
+
 function readObservedSubagentText(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -2009,6 +2017,10 @@ class ClaudeAgentSession implements AgentSession {
   private readonly announcedObservedSubagents = new Set<string>();
   private readonly observedKeyByTaskId = new Map<string, string>();
   private pendingObservedEvents: AgentStreamEvent[] = [];
+  // Background-shell-task bookkeeping, same shape as the observed-subagent
+  // maps above but for Bash run_in_background tasks (not AI subagents).
+  private readonly announcedBackgroundShellTasks = new Set<string>();
+  private readonly backgroundShellKeyByTaskId = new Map<string, string>();
   private persistedHistory: PersistedTimelineEntry[] = [];
   private historyPending = false;
   private turnState: TurnState = "idle";
@@ -2563,6 +2575,8 @@ class ClaudeAgentSession implements AgentSession {
     this.announcedObservedSubagents.clear();
     this.observedKeyByTaskId.clear();
     this.pendingObservedEvents = [];
+    this.announcedBackgroundShellTasks.clear();
+    this.backgroundShellKeyByTaskId.clear();
     this.input?.end();
     this.query?.close?.();
     // interrupt() issues a control-plane request that writes to the CLI's stdin.
@@ -4050,6 +4064,15 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_progress") {
+      if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
+        this.appendBackgroundShellTaskEvent(events, {
+          taskId: message.task_id,
+          toolUseId: message.tool_use_id,
+          description: message.summary ?? message.description,
+          status: "running",
+        });
+        return;
+      }
       this.appendObservedSubagentTaskEvent(message, events, {
         taskId: message.task_id,
         toolUseId: message.tool_use_id,
@@ -4061,6 +4084,15 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_started") {
+      if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
+        this.appendBackgroundShellTaskEvent(events, {
+          taskId: message.task_id,
+          toolUseId: message.tool_use_id,
+          description: message.description,
+          status: "running",
+        });
+        return;
+      }
       this.appendObservedSubagentTaskEvent(message, events, {
         taskId: message.task_id,
         toolUseId: message.tool_use_id,
@@ -4070,6 +4102,20 @@ class ClaudeAgentSession implements AgentSession {
       });
       return;
     }
+  }
+
+  /**
+   * True when a task_* system message belongs to a Bash run_in_background
+   * call rather than a Task-tool subagent. See
+   * isClaudeBackgroundShellToolName and projects/observed-subagents/observed-subagents.md's
+   * note that Otto previously ignored shell task events entirely.
+   */
+  private isBackgroundShellTask(toolUseId: string | undefined, taskId: string): boolean {
+    const cachedTool = toolUseId ? this.toolUseCache.get(toolUseId) : undefined;
+    return (
+      isClaudeBackgroundShellToolName(cachedTool?.name) ||
+      this.backgroundShellKeyByTaskId.has(taskId)
+    );
   }
 
   /**
@@ -4126,6 +4172,47 @@ class ClaudeAgentSession implements AgentSession {
     });
   }
 
+  /**
+   * Map a task_* system message onto a background shell task's lifecycle
+   * (Bash run_in_background). Sibling of appendObservedSubagentTaskEvent for
+   * the non-AI shell case — see projects/observed-subagents/observed-subagents.md's
+   * note that Otto previously ignored these entirely.
+   */
+  private appendBackgroundShellTaskEvent(
+    events: AgentStreamEvent[],
+    input: {
+      taskId: string;
+      toolUseId: string | undefined;
+      description?: string | undefined;
+      status: "running" | "idle" | "error" | "closed";
+      requiresAttention?: boolean;
+    },
+  ): void {
+    const key =
+      input.toolUseId ??
+      this.backgroundShellKeyByTaskId.get(input.taskId) ??
+      `task:${input.taskId}`;
+    this.backgroundShellKeyByTaskId.set(input.taskId, key);
+    this.announcedBackgroundShellTasks.add(key);
+    const description = readObservedSubagentText(input.description);
+    events.push({
+      type: "background_shell_task_updated",
+      provider: "claude",
+      update: {
+        key,
+        taskId: input.taskId,
+        status: input.status,
+        ...(input.requiresAttention !== undefined
+          ? { requiresAttention: input.requiresAttention }
+          : {}),
+        // `description` on task_started/task_progress is the closest available
+        // field to the shell command text; verify with a live run before
+        // treating it as authoritative. See projects/ (Background Tasks plan).
+        ...(description ? { command: description, description } : {}),
+      },
+    });
+  }
+
   private appendTaskNotificationEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
@@ -4137,6 +4224,25 @@ class ClaudeAgentSession implements AgentSession {
     // visible. See projects/observed-subagents/observed-subagents.md.
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
+    if (
+      isClaudeBackgroundShellToolName(cachedTool?.name) ||
+      this.backgroundShellKeyByTaskId.has(message.task_id)
+    ) {
+      let status: "idle" | "error" | "closed" = "idle";
+      if (message.status === "failed") {
+        status = "error";
+      } else if (message.status === "stopped") {
+        status = "closed";
+      }
+      this.appendBackgroundShellTaskEvent(events, {
+        taskId: message.task_id,
+        toolUseId: taskUseId,
+        description: message.summary,
+        status,
+        requiresAttention: message.status === "failed",
+      });
+      return;
+    }
     if (
       isClaudeSubagentToolName(cachedTool?.name) ||
       this.observedKeyByTaskId.has(message.task_id)
@@ -4536,6 +4642,19 @@ class ClaudeAgentSession implements AgentSession {
             update: { key: id, status: "closed" },
           });
         }
+        // Same teardown for an in-flight background shell task — the process
+        // dies with the interrupted turn, so settle its row instead of
+        // leaving it stuck "running".
+        if (
+          isClaudeBackgroundShellToolName(entry.name) &&
+          this.announcedBackgroundShellTasks.has(id)
+        ) {
+          this.pushEvent({
+            type: "background_shell_task_updated",
+            provider: "claude",
+            update: { key: id, status: "closed" },
+          });
+        }
       }
     }
     this.toolUseCache.clear();
@@ -4915,6 +5034,12 @@ class ClaudeAgentSession implements AgentSession {
    * announced live can enqueue — history replay stays inert. Queued instead of
    * pushed because tool_result mapping runs inside item mapping, not event
    * building; translateMessageToEvents drains the queue.
+   *
+   * Deliberately NOT mirrored for background shell tasks: a backgrounded Bash
+   * call's tool_result fires immediately with a "running in the background"
+   * ack, not real completion — treating that as "settled" would mark a still
+   * -running shell task idle. Real completion for those arrives via
+   * task_notification (see appendBackgroundShellTaskEvent).
    */
   private enqueueObservedSubagentSettled(
     toolName: string,

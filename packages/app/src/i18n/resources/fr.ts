@@ -1718,6 +1718,17 @@ export const fr: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "Arrêter {{label}}",
+    stopTooltip: "Arrêter la tâche en arrière-plan",
+    clearAction: "Effacer {{label}}",
+    clearTooltip: "Effacer la tâche en arrière-plan",
+    completedGroup: "Terminées ({{count}})",
+    clearCompleted: "Tout effacer",
+    clearCompletedTooltip: "Effacer toutes les tâches en arrière-plan terminées",
+    fallbackLabel: "Commande shell",
+    daemonUnavailable: "Démon indisponible",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1838,6 +1849,7 @@ export const fr: TranslationResources = {
     clearCompleted: "Tout effacer",
     clearCompletedTooltip: "Archiver tous les sous-agents terminés",
     stopNothingRunning: "Le sous-agent n'est pas en cours d'exécution — rien à arrêter.",
+    daemonUnavailable: "Démon indisponible",
   },
   panels: {
     draft: {
@@ -1950,6 +1962,19 @@ export const fr: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

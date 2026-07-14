@@ -47,8 +47,9 @@ import {
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
   type ObservedSubagentUpdate,
+  type BackgroundShellTaskUpdate,
 } from "./agent-sdk-types.js";
-import type { AgentSnapshotPayload } from "../messages.js";
+import type { AgentSnapshotPayload, BackgroundShellTaskInfo } from "../messages.js";
 import {
   deriveObservedSubagentTitle,
   observedUpdateHasTitleSource,
@@ -56,6 +57,7 @@ import {
 } from "./agent-projections.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
+import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
 import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
@@ -170,6 +172,13 @@ export type AgentManagerEvent =
   // A synthetic snapshot for an observed subagent (no ManagedAgent runtime).
   // Forwarded to clients like a normal agent update. See projects/observed-subagents/observed-subagents.md.
   | { type: "observed_agent_state"; payload: AgentSnapshotPayload }
+  // The full current set of background shell tasks for a parent agent
+  // changed. Not Agent-shaped — forwarded to clients as background_shell_tasks_changed.
+  | {
+      type: "background_shell_task_state";
+      parentAgentId: string;
+      tasks: BackgroundShellTaskInfo[];
+    }
   | {
       type: "agent_stream";
       agentId: string;
@@ -258,6 +267,8 @@ export interface AgentManagerOptions {
    * create_agent, and schedule spawns all count.
    */
   onPersonalitySpawn?: (personalityId: string) => void;
+  /** Fun-stats counters — see packages/server/src/server/activity-stats. */
+  onActivity?: ActivityIncrementFn;
   durableTimelineStore?: AgentTimelineStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
@@ -337,6 +348,109 @@ function resolveObservedSubagentDerivedState(
   };
 }
 
+interface BackgroundShellTaskEntry {
+  parentAgentId: string;
+  taskId?: string;
+  provider: AgentProvider;
+  command?: string;
+  description?: string;
+  status: "running" | "idle" | "error" | "closed";
+  requiresAttention?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+/**
+ * Merge a background_shell_task_updated event onto the existing registry
+ * entry (or create one). Split out of onBackgroundShellTaskUpdated to keep
+ * that method's cyclomatic complexity down — the provider only ever sends
+ * fresher values, so a new field wins when present, otherwise the existing
+ * value carries forward.
+ */
+function mergeBackgroundShellTaskEntry(input: {
+  parentAgentId: string;
+  provider: AgentProvider;
+  createdAt: string;
+  existing: BackgroundShellTaskEntry | undefined;
+  update: BackgroundShellTaskUpdate;
+}): BackgroundShellTaskEntry {
+  const { parentAgentId, provider, createdAt, existing, update } = input;
+  const command = update.command ?? existing?.command;
+  const description = update.description ?? existing?.description;
+  const requiresAttention = update.requiresAttention ?? existing?.requiresAttention;
+  return {
+    parentAgentId,
+    taskId: update.taskId ?? existing?.taskId,
+    provider,
+    ...(command ? { command } : {}),
+    ...(description ? { description } : {}),
+    status: update.status,
+    ...(requiresAttention !== undefined ? { requiresAttention } : {}),
+    createdAt,
+    updatedAt: new Date().toISOString(),
+    ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
+  };
+}
+
+type ProjectionStreamEvent = Extract<
+  AgentStreamEvent,
+  {
+    type:
+      | "observed_subagent_updated"
+      | "observed_subagent_timeline"
+      | "background_shell_task_updated";
+  }
+>;
+
+// Narrows to the subagent/background-task projection events dispatchStreamEventByType
+// routes to dispatchProjectionStreamEvent instead of its main switch — kept as a
+// standalone predicate (own complexity budget) rather than an inline `||` chain.
+function isProjectionStreamEvent(event: AgentStreamEvent): event is ProjectionStreamEvent {
+  return (
+    event.type === "observed_subagent_updated" ||
+    event.type === "observed_subagent_timeline" ||
+    event.type === "background_shell_task_updated"
+  );
+}
+
+/** Sum of a single turn's spend — undefined when the provider reported nothing. */
+function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
+  if (!usage) {
+    return undefined;
+  }
+  const total =
+    (usage.inputTokens ?? 0) + (usage.cachedInputTokens ?? 0) + (usage.outputTokens ?? 0);
+  return total > 0 ? total : undefined;
+}
+
+/**
+ * Roll a completed turn's usage into the agent's lifetime token total — the
+ * same rollup native agents (any provider, any spawn path) and observed
+ * subagents (resolveObservedSubagentDerivedState above) both feed into the
+ * identical wire field, so the subagent track shows every row the same way.
+ *
+ * Most providers report `usage` as just-this-turn spend (Claude, Codex, ACP,
+ * OpenCode, openai-compat), so each turn adds on top of the running total.
+ * Pi's own session stats are already a lifetime total, so for Pi we take the
+ * reported number directly (monotonic max, same idiom used for observed
+ * subagents) instead of adding it a second time.
+ */
+function accumulateAgentTokens(
+  existing: number | undefined,
+  usage: AgentUsage | undefined,
+  provider: AgentProvider,
+): number | undefined {
+  const turnTokens = sumTurnUsageTokens(usage);
+  if (turnTokens === undefined) {
+    return existing;
+  }
+  if (provider === "pi") {
+    return Math.max(existing ?? 0, turnTokens);
+  }
+  return (existing ?? 0) + turnTokens;
+}
+
 interface StreamEventFlags {
   shouldDispatchEvent: boolean;
   shouldNotifyWaiters: boolean;
@@ -375,6 +489,14 @@ interface ManagedAgentBase {
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
   lastUsage?: AgentUsage;
+  /**
+   * Lifetime token total for this agent, tracked the same way regardless of
+   * how it was spawned (create_agent, personality/team spawn, schedule run,
+   * or Run orchestration) or which provider runs it. See
+   * `accumulateAgentTokens` for the per-provider rollup rule. Ephemeral like
+   * `lastUsage` — not persisted, resets on daemon restart.
+   */
+  cumulativeTokens?: number;
   lastError?: string;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
@@ -663,6 +785,11 @@ export class AgentManager {
       lastPayload?: AgentSnapshotPayload;
     }
   >();
+  // Background shell tasks (Claude Bash tool run_in_background): id -> current
+  // state for the Background Tasks track. Not AI subagents — plain shell
+  // processes, so unlike observedSubagents there's no Agent-shaped payload;
+  // the daemon pushes the full per-parent list on every change.
+  private readonly backgroundShellTasks = new Map<string, BackgroundShellTaskEntry>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
@@ -675,6 +802,7 @@ export class AgentManager {
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private onPersonalitySpawn?: (personalityId: string) => void;
+  private onActivity?: ActivityIncrementFn;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private acceptingAgentRegistrations = true;
@@ -686,6 +814,7 @@ export class AgentManager {
     this.onAgentAttention = options?.onAgentAttention;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.onPersonalitySpawn = options?.onPersonalitySpawn;
+    this.onActivity = options.onActivity;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
     this.configureOttoTools(options);
@@ -1116,6 +1245,10 @@ export class AgentManager {
     const spawnedPersonalityId = storedConfig.personalitySnapshot?.personalityId;
     if (spawnedPersonalityId) {
       this.onPersonalitySpawn?.(spawnedPersonalityId);
+    }
+    this.onActivity?.("agentsCreated");
+    if (options.labels?.[PARENT_AGENT_ID_LABEL]) {
+      this.onActivity?.("subagentsInvoked");
     }
     return managed;
   }
@@ -2884,6 +3017,122 @@ export class AgentManager {
     });
   }
 
+  /**
+   * Wait for an agent AND its whole descendant tree to fully settle — not just
+   * the agent's first idle. A worker that spawns background sub-agents goes idle
+   * with an interim message ("waiting on my helpers…"); `setupFinishNotification`
+   * then re-invokes it when a child finishes, so it gets more turns. `awaitAgent`
+   * on the run engine must not capture that interim idle, or it grades a half-done
+   * answer. This waits until the agent has reached its first idle (via
+   * waitForAgentEvent) and then the entire subtree (the agent + every descendant
+   * spawned under it, by parent-id label) has stayed non-busy for `quietMs`, or a
+   * hard `timeoutMs` cap trips (so a hung child can't stall a run forever).
+   */
+  async waitForAgentFullySettled(
+    agentId: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number; quietMs?: number },
+  ): Promise<WaitForAgentResult> {
+    const first = await this.waitForAgentEvent(agentId, {
+      ...(options?.signal ? { signal: options.signal } : {}),
+      waitForActive: true,
+    });
+    // Blocked on permission or errored: nothing more will happen unattended.
+    if (first.permission || first.status === "error") {
+      return first;
+    }
+    return this.waitForSubtreeQuiet(agentId, first.status, options);
+  }
+
+  // Poll until the agent's whole subtree stays non-busy for `quietMs` (each burst
+  // of re-invocation resets the timer), a pending permission surfaces, or the
+  // `timeoutMs` cap trips. Split out of waitForAgentFullySettled for complexity.
+  private async waitForSubtreeQuiet(
+    agentId: string,
+    fallbackStatus: AgentLifecycleStatus,
+    options?: { signal?: AbortSignal; timeoutMs?: number; quietMs?: number },
+  ): Promise<WaitForAgentResult> {
+    const quietMs = options?.quietMs ?? 2500;
+    const pollMs = 400;
+    const deadline = Date.now() + (options?.timeoutMs ?? 20 * 60 * 1000);
+    let quietSince: number | null = null;
+
+    for (;;) {
+      if (options?.signal?.aborted) {
+        throw createAbortError(options.signal, "wait_for_agent_settled aborted");
+      }
+      const permission = this.peekPendingPermissionById(agentId);
+      if (permission) {
+        return this.settledResult(agentId, fallbackStatus, permission);
+      }
+      if (this.isAgentSubtreeBusy(agentId)) {
+        quietSince = null;
+      } else {
+        quietSince ??= Date.now();
+        if (Date.now() - quietSince >= quietMs) {
+          break;
+        }
+      }
+      if (Date.now() >= deadline) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+    return this.settledResult(agentId, fallbackStatus, null);
+  }
+
+  private async settledResult(
+    agentId: string,
+    fallbackStatus: AgentLifecycleStatus,
+    permission: AgentPermissionRequest | null,
+  ): Promise<WaitForAgentResult> {
+    return {
+      status: this.getAgent(agentId)?.lifecycle ?? fallbackStatus,
+      permission,
+      lastMessage: await this.getLastAssistantMessage(agentId),
+    };
+  }
+
+  private peekPendingPermissionById(agentId: string): AgentPermissionRequest | null {
+    const snapshot = this.getAgent(agentId);
+    return snapshot ? this.peekPendingPermission(snapshot) : null;
+  }
+
+  // True if the agent or any descendant (by parent-id label, transitively) is
+  // busy, mid-foreground-turn, or has a pending run — i.e. more work is coming.
+  private isAgentSubtreeBusy(rootId: string): boolean {
+    for (const id of this.collectAgentSubtree(rootId)) {
+      const agent = this.agents.get(id);
+      if (!agent) {
+        continue;
+      }
+      if (
+        isAgentBusy(agent.lifecycle) ||
+        Boolean(agent.activeForegroundTurnId) ||
+        Boolean(this.foregroundRuns.getPendingRun(id))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // The root plus every agent reachable from it through PARENT_AGENT_ID_LABEL.
+  private collectAgentSubtree(rootId: string): Set<string> {
+    const result = new Set<string>([rootId]);
+    const all = Array.from(this.agents.values());
+    const frontier = [rootId];
+    while (frontier.length > 0) {
+      const parent = frontier.pop()!;
+      for (const agent of all) {
+        if (agent.labels?.[PARENT_AGENT_ID_LABEL] === parent && !result.has(agent.id)) {
+          result.add(agent.id);
+          frontier.push(agent.id);
+        }
+      }
+    }
+    return result;
+  }
+
   private async registerSession(
     session: AgentSession,
     config: AgentSessionConfig,
@@ -3530,6 +3779,11 @@ export class AgentManager {
     flags: StreamEventFlags;
   }): Promise<void> | undefined {
     const { agent, event, options, isForegroundEvent, eventTurnId, flags } = params;
+    if (isProjectionStreamEvent(event)) {
+      this.dispatchProjectionStreamEvent(agent, event);
+      flags.shouldDispatchEvent = false;
+      return undefined;
+    }
     switch (event.type) {
       case "thread_started":
         this.onStreamThreadStarted(agent);
@@ -3571,14 +3825,6 @@ export class AgentManager {
         return undefined;
       case "timeline":
         return this.onStreamTimelineEvent({ agent, event, options, isForegroundEvent, flags });
-      case "observed_subagent_updated":
-        this.onObservedSubagentUpdated(agent, event);
-        flags.shouldDispatchEvent = false;
-        return undefined;
-      case "observed_subagent_timeline":
-        this.onObservedSubagentTimeline(agent, event);
-        flags.shouldDispatchEvent = false;
-        return undefined;
       case "turn_completed":
         this.onStreamTurnCompleted({ agent, event, eventTurnId, isForegroundEvent });
         return undefined;
@@ -3604,6 +3850,26 @@ export class AgentManager {
         return undefined;
       default:
         return undefined;
+    }
+  }
+
+  // Subagent/background-task projections (no ManagedAgent runtime of their
+  // own) share no state with the main event switch above — split out to keep
+  // dispatchStreamEventByType's cyclomatic complexity down.
+  private dispatchProjectionStreamEvent(
+    agent: ActiveManagedAgent,
+    event: ProjectionStreamEvent,
+  ): void {
+    switch (event.type) {
+      case "observed_subagent_updated":
+        this.onObservedSubagentUpdated(agent, event);
+        return;
+      case "observed_subagent_timeline":
+        this.onObservedSubagentTimeline(agent, event);
+        return;
+      case "background_shell_task_updated":
+        this.onBackgroundShellTaskUpdated(agent, event);
+        return;
     }
   }
 
@@ -3673,6 +3939,16 @@ export class AgentManager {
       "agent.manager.turn.completed",
     );
     agent.lastUsage = event.usage;
+    agent.cumulativeTokens = accumulateAgentTokens(
+      agent.cumulativeTokens,
+      event.usage,
+      event.provider,
+    );
+    if (event.usage) {
+      const inputTokens = (event.usage.inputTokens ?? 0) + (event.usage.cachedInputTokens ?? 0);
+      this.onActivity?.("tokensSent", inputTokens);
+      this.onActivity?.("tokensReceived", event.usage.outputTokens ?? 0);
+    }
     agent.lastError = undefined;
     if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
@@ -3911,6 +4187,9 @@ export class AgentManager {
   ): void {
     const id = this.observedSubagentId(agent.id, event.update.key);
     const existing = this.observedSubagents.get(id);
+    if (!existing) {
+      this.onActivity?.("subagentsInvoked");
+    }
     const createdAt = existing?.createdAt ?? new Date().toISOString();
     const { title, titleFrozen, cumulativeTokens } = resolveObservedSubagentDerivedState(
       existing,
@@ -4052,6 +4331,120 @@ export class AgentManager {
     return { archivedAt };
   }
 
+  private backgroundShellTaskId(parentAgentId: string, key: string): string {
+    return `${parentAgentId}::bg::${key}`;
+  }
+
+  private currentBackgroundShellTasksFor(parentAgentId: string): BackgroundShellTaskInfo[] {
+    const tasks: BackgroundShellTaskInfo[] = [];
+    for (const [id, entry] of this.backgroundShellTasks) {
+      if (entry.parentAgentId !== parentAgentId || entry.archivedAt) {
+        continue;
+      }
+      tasks.push({
+        id,
+        parentAgentId: entry.parentAgentId,
+        provider: entry.provider,
+        status: entry.status,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        ...(entry.command ? { command: entry.command } : {}),
+        ...(entry.description ? { description: entry.description } : {}),
+        ...(entry.requiresAttention !== undefined
+          ? { requiresAttention: entry.requiresAttention }
+          : {}),
+      });
+    }
+    return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  private emitBackgroundShellTaskState(parentAgentId: string): void {
+    this.dispatch({
+      type: "background_shell_task_state",
+      parentAgentId,
+      tasks: this.currentBackgroundShellTasksFor(parentAgentId),
+    });
+  }
+
+  private onBackgroundShellTaskUpdated(
+    agent: ActiveManagedAgent,
+    event: Extract<AgentStreamEvent, { type: "background_shell_task_updated" }>,
+  ): void {
+    const id = this.backgroundShellTaskId(agent.id, event.update.key);
+    const existing = this.backgroundShellTasks.get(id);
+    this.backgroundShellTasks.set(
+      id,
+      mergeBackgroundShellTaskEntry({
+        parentAgentId: agent.id,
+        provider: event.provider,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        existing,
+        update: event.update,
+      }),
+    );
+    this.emitBackgroundShellTaskState(agent.id);
+  }
+
+  /**
+   * Stop a running background shell task (Claude Bash run_in_background) by
+   * resolving it to its owning provider session's task. See
+   * projects/observed-subagents/observed-subagents.md (the sibling flow this
+   * mirrors) for the shape stopObservedSubagent already established.
+   */
+  async stopBackgroundShellTask(id: string): Promise<void> {
+    const entry = this.backgroundShellTasks.get(id);
+    if (!entry) {
+      throw new Error(`Background shell task not found: ${id}`);
+    }
+    if (!entry.taskId) {
+      throw new Error(`Background shell task has no task id to stop: ${id}`);
+    }
+    const parent = this.agents.get(entry.parentAgentId);
+    const session = parent && "session" in parent ? parent.session : undefined;
+    if (!session?.stopTask) {
+      throw new Error(`Parent session cannot stop background shell tasks: ${id}`);
+    }
+    await session.stopTask(entry.taskId);
+  }
+
+  /**
+   * Clear one or more background shell tasks from the track (single-row
+   * dismiss and bulk "Clear all completed" both call this). Still-live tasks
+   * are stopped best-effort first; entries are retired in place (archivedAt
+   * stamped, never deleted) so a late provider update can't resurrect a
+   * cleared row — same invariant as archiveObservedSubagent.
+   */
+  async clearBackgroundShellTasks(ids: readonly string[]): Promise<void> {
+    const parentIds = new Set<string>();
+    for (const id of ids) {
+      const entry = this.backgroundShellTasks.get(id);
+      if (!entry || entry.archivedAt) {
+        continue;
+      }
+      const wasLive = entry.status === "running";
+      if (wasLive) {
+        try {
+          await this.stopBackgroundShellTask(id);
+        } catch (error) {
+          this.logger.debug(
+            { err: error, id },
+            "agent.manager.background_shell_task.clear.stop_failed",
+          );
+        }
+      }
+      const archivedAt = new Date().toISOString();
+      entry.archivedAt = archivedAt;
+      entry.updatedAt = archivedAt;
+      if (wasLive) {
+        entry.status = "closed";
+      }
+      parentIds.add(entry.parentAgentId);
+    }
+    for (const parentId of parentIds) {
+      this.emitBackgroundShellTaskState(parentId);
+    }
+  }
+
   private recordAndDispatchTimelineItem(
     agentId: string,
     item: AgentTimelineItem,
@@ -4059,6 +4452,7 @@ export class AgentManager {
     turnId?: string,
   ): AgentStreamEvent {
     const row = this.recordTimeline(agentId, item);
+    this.recordTimelineActivity(item);
     const event: AgentStreamEvent = {
       type: "timeline",
       item,
@@ -4084,6 +4478,30 @@ export class AgentManager {
     }
 
     return event;
+  }
+
+  /** Fun-stats counters derived from timeline items — see activity-stats. */
+  private recordTimelineActivity(item: AgentTimelineItem): void {
+    switch (item.type) {
+      case "user_message":
+        this.onActivity?.("messagesSent");
+        break;
+      case "assistant_message":
+        this.onActivity?.("messagesReceived");
+        break;
+      case "reasoning":
+        this.onActivity?.("thoughts");
+        break;
+      case "tool_call":
+        // Count once per call, at the moment it starts — not on every
+        // running -> completed/failed/canceled status update.
+        if (item.status === "running") {
+          this.onActivity?.("toolsCalled");
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   private async appendSystemErrorTimelineMessage(

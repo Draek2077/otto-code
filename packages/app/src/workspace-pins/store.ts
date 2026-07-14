@@ -9,7 +9,11 @@ interface PinnedTargetsState {
   isPinned: (target: PinnedTabTarget) => boolean;
 }
 
-const DEFAULT_PINNED_TARGETS: PinnedTabTarget[] = [{ kind: "preview" }, { kind: "terminal" }];
+const DEFAULT_PINNED_TARGETS: PinnedTabTarget[] = [
+  { kind: "draft" },
+  { kind: "preview" },
+  { kind: "terminal" },
+];
 
 function applyDefaultPinnedTargets(pinned: PinnedTabTarget[]): PinnedTabTarget[] {
   const next = [...DEFAULT_PINNED_TARGETS];
@@ -30,7 +34,7 @@ export const usePinnedTargetsStore = create<PinnedTargetsState>()(
     }),
     {
       name: "pinned-tab-targets",
-      version: 1,
+      version: 2,
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<PinnedTargetsState> | null;
         return {
@@ -42,11 +46,17 @@ export const usePinnedTargetsStore = create<PinnedTargetsState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ pinned: state.pinned }),
       migrate: (persistedState, version) => {
+        let pinned = (persistedState as { pinned?: PinnedTabTarget[] } | null)?.pinned ?? [];
         if (version === 0) {
-          const pinned = (persistedState as { pinned?: PinnedTabTarget[] } | null)?.pinned ?? [];
-          return { pinned: applyDefaultPinnedTargets(pinned) };
+          pinned = applyDefaultPinnedTargets(pinned);
         }
-        return persistedState as PinnedTargetsState;
+        // v2 moved "New agent" from a dedicated inline button into a pinnable
+        // launcher alongside Terminal/Browser — back-fill it for anyone
+        // upgrading so the button doesn't silently disappear.
+        if (version < 2 && !isTargetPinned(pinned, { kind: "draft" })) {
+          pinned = [{ kind: "draft" }, ...pinned];
+        }
+        return { pinned };
       },
     },
   ),

@@ -22,6 +22,7 @@ import {
   normalizePersonalityRoles,
 } from "@otto-code/protocol/agent-personalities";
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
+import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
 import { ChevronDown, Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { BlobLoader } from "@/components/blob-loader";
@@ -42,6 +43,12 @@ import {
   useSpeechSettingsOptions,
 } from "@/screens/settings/speech-settings-cards";
 import { useTtsPreviewFeature, VoicePreviewButton } from "@/screens/settings/voice-preview-button";
+import {
+  coerceModeForModel,
+  filterModesForModel,
+  findModelDefinition,
+} from "@/provider-selection/mode-support";
+import { ROLE_HINTS, ROLE_LABELS } from "@/provider-selection/role-labels";
 import { useIsExtraCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
@@ -86,28 +93,6 @@ const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-
 function isHexColor(value: string): boolean {
   return HEX_COLOR_PATTERN.test(value.trim());
 }
-
-const ROLE_LABELS: Record<PersonalityRole, string> = {
-  chatter: "Chatter",
-  artificer: "Artificer",
-  scheduler: "Scheduler",
-  writer: "Writer",
-  coder: "Coder",
-  judger: "Judger",
-  advisor: "Advisor",
-  orchestrator: "Orchestrator",
-};
-
-const ROLE_HINTS: Record<PersonalityRole, string> = {
-  chatter: "Interactive agent chats",
-  artificer: "Creating & managing artifacts",
-  scheduler: "Creating & managing schedules",
-  writer: "Fast small-text generation (commit messages, summaries, names)",
-  coder: "Spawned as a coding sub-agent",
-  judger: "Judging / review passes",
-  advisor: "Planning / second opinion (read-only)",
-  orchestrator: "Drives multi-agent workflows",
-};
 
 interface PersonalityDraft {
   name: string;
@@ -781,10 +766,28 @@ function PersonalityEditModal({
   onSave,
 }: PersonalityEditModalProps): ReactElement {
   const canPreviewVoice = useTtsPreviewFeature(serverId);
-  const [draft, setDraft] = useState<PersonalityDraft>(initialDraft);
+  // Normalize the seed so an existing personality whose stored mode can't run on
+  // its model (Claude "auto" on Haiku) opens already coerced (→ "dontAsk") rather
+  // than showing a phantom "auto" the picker no longer offers. The dirty check
+  // below compares against this seed so an untouched open isn't treated as edited.
+  const seedDraft = useMemo<PersonalityDraft>(() => {
+    const entry = entries.find((candidate) => candidate.provider === initialDraft.provider);
+    const modeId = coerceModeForModel(
+      initialDraft.modeId,
+      findModelDefinition(entry?.models, initialDraft.model),
+    );
+    return modeId === initialDraft.modeId ? initialDraft : { ...initialDraft, modeId };
+  }, [entries, initialDraft]);
+  const [draft, setDraft] = useState<PersonalityDraft>(seedDraft);
   const [isSaving, setIsSaving] = useState(false);
 
   const providerEntry = entries.find((entry) => entry.provider === draft.provider);
+  // Auto support is per-model (daemon-stamped supportsAutoMode:false, e.g. Claude
+  // Auto on Haiku); the mode list is per-provider, so intersect the two.
+  const selectedModel = useMemo(
+    () => findModelDefinition(providerEntry?.models, draft.model),
+    [providerEntry, draft.model],
+  );
 
   const providerOptions = useMemo<ComboboxOption[]>(
     () =>
@@ -805,13 +808,23 @@ function PersonalityEditModal({
   const modeOptions = useMemo<ComboboxOption[]>(
     () => [
       { id: "", label: "Provider default" },
-      ...(providerEntry?.modes ?? []).map((mode) => ({
-        id: mode.id,
-        label: mode.label ?? mode.id,
-      })),
+      ...filterModesForModel(providerEntry?.modes ?? [], selectedModel)
+        // Drop system-assigned modes (Claude "dontAsk") — never a user pick.
+        .filter((mode) => isUserSelectableMode(draft.provider, mode.id))
+        .map((mode) => ({
+          id: mode.id,
+          label: mode.label ?? mode.id,
+        })),
     ],
-    [providerEntry],
+    [providerEntry, selectedModel, draft.provider],
   );
+  // A stored mode can be one the dropdown hides (a coerced "dontAsk"); resolve its
+  // real label from the full provider mode set so the trigger shows it read-only
+  // rather than the raw id.
+  const modeDisplayLabel = useMemo(() => {
+    if (!draft.modeId) return undefined;
+    return providerEntry?.modes?.find((mode) => mode.id === draft.modeId)?.label;
+  }, [providerEntry, draft.modeId]);
   const effortOptions = useMemo<ComboboxOption[]>(
     () => [
       { id: "", label: "None" },
@@ -855,9 +868,21 @@ function PersonalityEditModal({
   const setName = useCallback((value: string) => {
     setDraft((current) => ({ ...current, name: sanitizePersonalityName(value) }));
   }, []);
-  const setModel = useCallback((value: string) => {
-    setDraft((current) => ({ ...current, model: value }));
-  }, []);
+  const setModel = useCallback(
+    (value: string) => {
+      // A stored "auto" can become unrunnable on the newly-picked model (Claude
+      // Auto on Haiku); coerce it so a broken mode is never saved.
+      setDraft((current) => ({
+        ...current,
+        model: value,
+        modeId: coerceModeForModel(
+          current.modeId,
+          findModelDefinition(providerEntry?.models, value),
+        ),
+      }));
+    },
+    [providerEntry],
+  );
   const setMode = useCallback((value: string) => {
     setDraft((current) => ({ ...current, modeId: value }));
   }, []);
@@ -922,7 +947,7 @@ function PersonalityEditModal({
   // is plain JSON-safe data seeded from initialDraft, so a stringify comparison
   // is an exact dirty check.
   const handleClose = useCallback(() => {
-    if (JSON.stringify(draft) === JSON.stringify(initialDraft)) {
+    if (JSON.stringify(draft) === JSON.stringify(seedDraft)) {
       onClose();
       return;
     }
@@ -936,7 +961,7 @@ function PersonalityEditModal({
       });
       if (confirmed) onClose();
     })();
-  }, [draft, initialDraft, onClose]);
+  }, [draft, seedDraft, onClose]);
 
   return (
     <AdaptiveModalSheet
@@ -987,6 +1012,7 @@ function PersonalityEditModal({
           value={draft.modeId}
           options={modeOptions}
           onChange={setMode}
+          displayLabel={modeDisplayLabel}
           testID="agent-personality-mode-picker"
         />
         <PickerRow
@@ -1074,6 +1100,9 @@ interface PickerRowProps {
   testID: string;
   // Optional control rendered just left of the dropdown (e.g. a preview button).
   trailing?: ReactNode;
+  // Overrides the trigger label — used when the current value is intentionally
+  // absent from `options` (a hidden mode) but must still display its real name.
+  displayLabel?: string;
 }
 
 function PickerRow({
@@ -1083,12 +1112,13 @@ function PickerRow({
   onChange,
   testID,
   trailing,
+  displayLabel,
 }: PickerRowProps): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
 
   const selected = options.find((option) => option.id === value);
-  const triggerLabel = selected?.label ?? value;
+  const triggerLabel = displayLabel ?? selected?.label ?? value;
 
   const handlePress = useCallback(() => setOpen((current) => !current), []);
   const handleSelect = useCallback(

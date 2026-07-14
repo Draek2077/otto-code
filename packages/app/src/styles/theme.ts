@@ -101,6 +101,8 @@ export const baseColors = {
   // Yellow scale
   yellow: {
     400: "#fbbf24",
+    800: "#854d0e",
+    900: "#713f12",
   },
 
   // Purple scale

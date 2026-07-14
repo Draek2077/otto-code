@@ -9,6 +9,7 @@ import { reconcileCheckoutStatusWithUncommittedDiff } from "@/git/checkout-statu
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
+import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
 
 type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
@@ -26,7 +27,9 @@ type ServerDataEventType =
   | "checkout_diff_update"
   | "subscribe_checkout_diff_response"
   | "status"
-  | "terminals_changed";
+  | "terminals_changed"
+  | "runs.updated.notification"
+  | "runs.cleared.notification";
 type CheckoutDiffResponsePayload = SubscribeCheckoutDiffResponseMessage["payload"];
 type CheckoutDiffCachePayload = Omit<CheckoutDiffResponsePayload, "subscriptionId">;
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
@@ -298,6 +301,20 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       message,
     });
   });
+  const unsubscribeRunUpdate = input.client.on("runs.updated.notification", (message) => {
+    applyRunUpdate({
+      queryClient: input.queryClient,
+      serverId: input.serverId,
+      run: message.payload.run,
+    });
+  });
+  const unsubscribeRunsCleared = input.client.on("runs.cleared.notification", (message) => {
+    applyRunsCleared({
+      queryClient: input.queryClient,
+      serverId: input.serverId,
+      runIds: message.payload.runIds,
+    });
+  });
   let reconnectSubscriptionRepairs = reconnectSubscriptionRepairsByServerId.get(input.serverId);
   if (!reconnectSubscriptionRepairs) {
     reconnectSubscriptionRepairs = new Set();
@@ -319,6 +336,8 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     unsubscribeCheckoutDiffUpdate();
     unsubscribeCheckoutDiffResponse();
     unsubscribeTerminalsChanged();
+    unsubscribeRunUpdate();
+    unsubscribeRunsCleared();
     for (const subscriptionId of activeCheckoutDiffSubscriptions.keys()) {
       unsubscribeCheckoutDiff(input.client, subscriptionId);
     }

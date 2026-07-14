@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentMode } from "@otto-code/protocol/agent-types";
-import { resolveAgentControlsMode, resolveNextAgentModeId } from "./mode";
+import { resolveAgentControlsMode, resolveModeSelection, resolveNextAgentModeId } from "./mode";
 
 const PLAN_MODE = { id: "plan", label: "Plan" } satisfies AgentMode;
 
@@ -65,5 +65,72 @@ describe("resolveNextAgentModeId", () => {
   it("returns null when there are fewer than two modes", () => {
     expect(resolveNextAgentModeId({ modeOptions: [], selectedMode: "" })).toBeNull();
     expect(resolveNextAgentModeId({ modeOptions: [PLAN_MODE], selectedMode: "plan" })).toBeNull();
+  });
+});
+
+// Claude's mode set, where "dontAsk" is flagged userSelectable:false in the manifest.
+const CLAUDE_MODES = [
+  { id: "default", label: "Always Ask" },
+  { id: "auto", label: "Auto mode" },
+  { id: "dontAsk", label: "Don't Ask" },
+  { id: "bypassPermissions", label: "Bypass" },
+] satisfies AgentMode[];
+
+describe("resolveModeSelection", () => {
+  it("excludes non-user-selectable modes from the selectable set", () => {
+    const { selectableModes } = resolveModeSelection({
+      provider: "claude",
+      modeOptions: CLAUDE_MODES,
+      selectedModeId: "default",
+      lockNonSelectable: true,
+    });
+    expect(selectableModes.map((m) => m.id)).toEqual(["default", "auto", "bypassPermissions"]);
+  });
+
+  it("resolves a hidden active mode from the full set and locks it when locking is on", () => {
+    const { selectedMode, isLocked } = resolveModeSelection({
+      provider: "claude",
+      modeOptions: CLAUDE_MODES,
+      selectedModeId: "dontAsk",
+      lockNonSelectable: true,
+    });
+    expect(selectedMode?.id).toBe("dontAsk");
+    expect(isLocked).toBe(true);
+  });
+
+  it("shows a hidden active mode without locking on a non-locking surface", () => {
+    const { selectedMode, isLocked } = resolveModeSelection({
+      provider: "claude",
+      modeOptions: CLAUDE_MODES,
+      selectedModeId: "dontAsk",
+      lockNonSelectable: false,
+    });
+    expect(selectedMode?.id).toBe("dontAsk");
+    expect(isLocked).toBe(false);
+  });
+
+  it("falls back to the first selectable mode for an unknown selection (never a hidden one)", () => {
+    const { selectedMode, isLocked } = resolveModeSelection({
+      provider: "claude",
+      modeOptions: [
+        { id: "dontAsk", label: "Don't Ask" },
+        { id: "default", label: "Always Ask" },
+      ],
+      selectedModeId: "ghost",
+      lockNonSelectable: true,
+    });
+    expect(selectedMode?.id).toBe("default");
+    expect(isLocked).toBe(false);
+  });
+
+  it("returns no selected mode for an empty set", () => {
+    const selection = resolveModeSelection({
+      provider: "claude",
+      modeOptions: [],
+      selectedModeId: "default",
+      lockNonSelectable: true,
+    });
+    expect(selection.selectedMode).toBeNull();
+    expect(selection.isLocked).toBe(false);
   });
 });

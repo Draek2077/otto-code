@@ -1,6 +1,6 @@
 # Computer use
 
-**Status:** Charter — not yet started. Design locked 2026-07-11. Phase 0 (openai-compat vision) is independently valuable and should land first.
+**Status:** Charter — not yet started. Design locked 2026-07-11; extended 2026-07-13 by [computer-control-library.md](computer-control-library.md) (shared `@otto-code/computer-control` package, daemon/frontend executor abstraction, OpenDesk prior-art adoptions, per-OS scaling/Wayland strategy — read it together with this charter). Phase 0 (openai-compat vision) is independently valuable and should land first.
 
 Give Otto agents **eyes and hands on the real desktop**: a screenshot → reason → click/type → screenshot loop against the machine the daemon runs on, like Claude Desktop's computer-use mode — but provider-agnostic, supervised from any Otto client, and with the phone as the remote kill switch. This is the fork's mission applied to the OS itself: the same `computer_*` tools for Claude, Codex, OpenCode, and a vision-capable local model in LM Studio.
 
@@ -76,15 +76,15 @@ Browser-tools route commands over WebSocket to a registered _client_ host (the E
 - No client can inject global input. Electron's `sendInputEvent` only reaches its own webContents; web and mobile clients obviously can't move the OS cursor.
 - The screen belongs to the daemon's machine, and the user may be supervising from a phone with no desktop client running at all.
 
-So the subsystem is a **`ComputerController` inside the daemon process**, sibling to the preview subsystem:
+So the subsystem is a **`ComputerController` inside the daemon process**, sibling to the preview subsystem. One refinement since lock (2026-07-13, detailed in [computer-control-library.md](computer-control-library.md)): the low-level capture/inject/scale layer lives in a shared workspace package **`@otto-code/computer-control`** behind a `ComputerExecutor` interface, because the "controlled machine" is the front-end machine — usually the daemon's own (LocalExecutor, v1), but for remote hosts the Electron client itself (ClientExecutor, later phase, browser-tools-broker registration pattern). The daemon subsystem keeps all judgment:
 
 ```
 packages/server/src/server/computer-use/
-├── controller.ts      # capture, input injection, availability probe, pause state
-├── scaling.ts         # physical ↔ model coordinate mapping (pure, unit-tested)
-├── policy.ts          # arming, auto-pause, action vetting (pure, unit-tested)
+├── controller.ts      # orchestration over a ComputerExecutor, pause state
+├── policy.ts          # arming, auto-pause, action vetting, region allowlist (pure, unit-tested)
 ├── tools.ts           # registerComputerTools() — schemas + guardrail descriptions
 └── *.test.ts
+packages/computer-control/           # shared library: executors, probe, scaling.ts, marks.ts, keys.ts
 ```
 
 `otto-tools.ts` gains `computerUseEnabled?: boolean` + `computerController?: ComputerController | null` options, mirroring `browserToolsEnabled`/`browserToolsBroker` (L138–139).
@@ -93,11 +93,14 @@ packages/server/src/server/computer-use/
 
 Input injection and capture need a native module. Candidates, to be settled by a **Phase 1 spike on all three OSes before any other Phase 1 work**:
 
-| Option                          | Capture | Inject | Notes                                                                                                                        |
-| ------------------------------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `@nut-tree-fork/nut-js`         | ✅      | ✅     | Community fork of nut.js (upstream went commercial at v4). One dep covers both halves. Maintenance risk — pin exact version. |
-| `@jitsi/robotjs`                | ✅      | ✅     | Jitsi-maintained robotjs fork, prebuilds for common platforms. Older API, no window enumeration.                             |
-| `screenshot-desktop` + injector | ✅      | ❌     | Pure-binary capture (no compile), pair with an injector for input. Fallback if the all-in-one deps disappoint.               |
+| Option                            | Capture | Inject | Notes                                                                                                                                                          |
+| --------------------------------- | ------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@nut-tree-fork/nut-js`           | ✅      | ✅     | Community fork of nut.js (upstream went commercial at v4). Field-validated by opendesk-sdk, but maintenance has stalled (~1yr) — pin exact, be fork-ready.     |
+| `@jitsi/robotjs`                  | ✅      | ✅     | Jitsi-maintained robotjs fork, prebuilds for common platforms. Older API, no window enumeration.                                                               |
+| `zavora-ai/computer-use-mcp` core | ✅      | ✅     | Rust NAPI addon, in-process in Node, MIT; modern per-OS APIs (SendInput/DXGI, CGEvent/AX, XTest). Tiny community — treat as fork-ready, pin exact.             |
+| `screenshot-desktop` + injector   | ✅      | ❌     | Pure-binary capture (no compile), pair with an injector for input. Fallback if the all-in-one deps disappoint. Linux capture needs ImageMagick — probe checks. |
+
+Spike gates (full protocol in [computer-control-library.md](computer-control-library.md)): Windows click accuracy at 125/150/200% scaling and mixed-DPI multi-monitor, Electron ABI loadability (so the ClientExecutor phase never forces a re-decision), optionalDependencies packaging on all three OSes, detectable macOS permission failures.
 
 Rules regardless of choice:
 
@@ -182,7 +185,7 @@ Honest limits (documented, not hidden): auto-pause can't distinguish a user keys
 
 ## Build sequence
 
-Each phase lands typecheck/lint/test-green and independently shippable. TDD per [docs/testing.md](../../docs/testing.md); `scaling.ts` and `policy.ts` are pure functions designed for exhaustive unit tests.
+Each phase lands typecheck/lint/test-green and independently shippable. TDD per [docs/testing.md](../../docs/testing.md); `scaling.ts` and `policy.ts` are pure functions designed for exhaustive unit tests. **Sequencing note (2026-07-13):** the library work is broken into CL-phases in [computer-control-library.md](computer-control-library.md) — CL1 (package bootstrap + spike) and CL2 (scaling + LocalExecutor) subsume steps 1–3 below; this charter's Phases 1–4 otherwise stand, and CL5–CL7 add ClientExecutor, Set-of-Marks, and native Wayland after them.
 
 Every phase re-verifies the binding constraints before merging: (a) `rg -i computeruse packages/server/src/server/agent/providers/` is empty; (b) with `daemon.computerUse.enabled` false, no `computer-use/` module loads (assert via an import-side-effect test) and the daemon behaves byte-identically on the wire; (c) any new import of `computer-use/` outside the five enumerated touchpoints is a defect.
 
@@ -226,6 +229,10 @@ Verify MCP image content + computer tools on Codex, OpenCode, Copilot, ACP famil
 Live-view pane (streaming frames outside the timeline), sandboxed virtual-desktop mode (Docker + virtual display — the unattended-run answer; see [docs/docker.md](../../docs/docker.md)), window-scoped capture/enumeration, global-hotkey kill switch (needs uiohook-class global listeners — revisit after the native-dep spike), continuous/watch mode (rejected for v1 on token economy), keystroke-level auto-pause.
 
 ---
+
+## Prior art: `@vitalops/opendesk-sdk` (evaluated 2026-07-13 — decision: do not vendor)
+
+Source teardown of v0.2.0: ~858 lines of tool glue over `@nut-tree-fork/nut-js` + `screenshot-desktop`; **no coordinate scaling** (delegates the DPI math to the model — mis-clicks on scaled displays); accessibility `ui` tool complete only on macOS (Windows/Linux ports partial and partly broken, via PowerShell/xdotool shell-outs); remote control of other machines requires the Python opendesk on the target (the JS package ships only the controller side — no dispatcher, no `serve`). Two releases, both May 2026, single maintainer. Adopted ideas (MIT): Set-of-Marks screenshot overlay, region/app allowlists, audit JSONL, and the dependency-pair validation for the spike. Rejected: its peering (Otto multi-host is better), scheduler (Otto has one), OCR, and mega-tool schemas. Full record in [computer-control-library.md](computer-control-library.md).
 
 ## Open decisions
 

@@ -954,29 +954,18 @@ class FakeAgentSession implements AgentSession {
       return `CWD: ${cwd}`;
     }
 
+    const judge = orchestrationJudgeReply(prompt, lower);
+    if (judge !== null) {
+      return judge;
+    }
+
     const respondExactlyMatch =
       /respond with exactly:\s*([^\n\r]+)\s*$/i.exec(prompt) ??
       /respond with exactly:\s*([^\n\r]+)/i.exec(prompt);
     if (respondExactlyMatch) {
       return (respondExactlyMatch[1] ?? "").trim();
     }
-    if (lower.includes("state saved")) return "state saved";
-    if (lower.includes("timeline test")) return "timeline test";
-    if (lower.includes("quick brown fox") && lower.includes("lazy dog")) {
-      return "The quick brown fox jumps over the lazy dog. Then the fox ran away.";
-    }
-    if (lower.includes("what did i ask you to say earlier"))
-      return "You asked me to say state saved.";
-    if (lower.includes("say 'timeline test'")) return "timeline test";
-    if (lower.includes("say 'state saved'")) return "state saved";
-    if (lower.includes("return schema-valid json") || lower.includes("schema-valid json")) {
-      return JSON.stringify({ ok: true });
-    }
-    if (lower.includes("what was the marker") || lower.includes("what was the project name")) {
-      return this.memoryMarker ?? "unknown";
-    }
-    if (lower.includes("stop")) return "Stopped.";
-    return "Hello world";
+    return keywordReply(lower, this.memoryMarker ?? null) ?? "Hello world";
   }
 
   private async applyReadToolSideEffect(toolInput: Record<string, unknown>): Promise<void> {
@@ -1163,6 +1152,41 @@ class FakeAgentSession implements AgentSession {
     // Default/read-only/etc: ask for everything.
     return isAskMode(this.config);
   }
+}
+
+// Orchestration judge phases: buildJudgeTask hands the judger a prompt asking
+// for ONLY a verdict JSON. Grade pass/fail off a "PASS" marker in the prompt so
+// integration tests script outcomes deterministically. Called before the
+// "respond with exactly" branch because the judge prompt embeds the maker's task
+// (which may itself carry a "respond with exactly" directive).
+function orchestrationJudgeReply(prompt: string, lower: string): string | null {
+  if (lower.includes("return only a json object") && lower.includes("verdict")) {
+    const pass = prompt.includes("PASS");
+    return JSON.stringify({ verdict: pass ? "pass" : "fail", score: pass ? 1 : 0 });
+  }
+  return null;
+}
+
+// The keyword-driven fallback replies the fake produces for various test prompts.
+// Extracted from buildAssistantText to keep that method under the complexity cap.
+function keywordReply(lower: string, memoryMarker: string | null): string | null {
+  if (lower.includes("state saved")) return "state saved";
+  if (lower.includes("timeline test")) return "timeline test";
+  if (lower.includes("quick brown fox") && lower.includes("lazy dog")) {
+    return "The quick brown fox jumps over the lazy dog. Then the fox ran away.";
+  }
+  if (lower.includes("what did i ask you to say earlier"))
+    return "You asked me to say state saved.";
+  if (lower.includes("say 'timeline test'")) return "timeline test";
+  if (lower.includes("say 'state saved'")) return "state saved";
+  if (lower.includes("return schema-valid json") || lower.includes("schema-valid json")) {
+    return JSON.stringify({ ok: true });
+  }
+  if (lower.includes("what was the marker") || lower.includes("what was the project name")) {
+    return memoryMarker ?? "unknown";
+  }
+  if (lower.includes("stop")) return "Stopped.";
+  return null;
 }
 
 class FakeAgentClient implements AgentClient {

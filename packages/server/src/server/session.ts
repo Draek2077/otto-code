@@ -65,7 +65,10 @@ import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
-import { normalizeGitHostingProviderId } from "@otto-code/protocol/messages";
+import {
+  normalizeGitHostingProviderId,
+  ActivityCountersSchema,
+} from "@otto-code/protocol/messages";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -74,6 +77,10 @@ import {
 
 import { AgentManager } from "./agent/agent-manager.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import type {
+  ActivityIncrementFn,
+  ActivityRollups,
+} from "./activity-stats/activity-stats-store.js";
 import type {
   AgentManagerEvent,
   AgentTimelineCursor,
@@ -202,6 +209,7 @@ import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
+import type { RunService } from "./orchestration/run-service.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
@@ -445,6 +453,7 @@ export interface SessionOptions {
   filesystem?: SessionFileSystem;
   chatService: FileBackedChatService;
   scheduleService: ScheduleService;
+  runService?: RunService | null;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
@@ -464,6 +473,8 @@ export interface SessionOptions {
   previewDevServers?: DevServerManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  onActivity?: ActivityIncrementFn;
+  getActivityRollups?: () => Promise<ActivityRollups>;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -574,6 +585,7 @@ export class Session {
   private readonly worktreesRoot: string | undefined;
 
   private agentManager: AgentManager;
+  private readonly runService: RunService | null | undefined;
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
@@ -613,6 +625,7 @@ export class Session {
   private readonly terminalManager: TerminalManager | null;
   private readonly previewDevServers: DevServerManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
+  private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
@@ -658,6 +671,7 @@ export class Session {
       filesystem,
       chatService,
       scheduleService,
+      runService,
       loopService,
       checkoutDiffManager,
       github,
@@ -673,6 +687,8 @@ export class Session {
       previewDevServers,
       providerSnapshotManager,
       providerUsageService,
+      onActivity,
+      getActivityRollups,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -722,6 +738,7 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.agentManager = agentManager;
+    this.runService = runService;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
@@ -872,6 +889,7 @@ export class Session {
           payload: { artifact: metadata },
         });
       },
+      onActivity,
     });
     this.artifactSession = new ArtifactSession({
       host: {
@@ -931,6 +949,7 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.providerSnapshotManager = providerSnapshotManager;
+    this.getActivityRollups = getActivityRollups;
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
@@ -1263,6 +1282,17 @@ export class Session {
           return;
         }
 
+        if (event.type === "background_shell_task_state") {
+          // Not Agent-shaped (no ManagedAgent, no tab/pane) — push the full
+          // current list for this parent directly instead of routing through
+          // the live-agent forwarding path.
+          this.emit({
+            type: "background_shell_tasks_changed",
+            payload: { parentAgentId: event.parentAgentId, tasks: event.tasks },
+          });
+          return;
+        }
+
         if (
           this.voiceSession.isActiveForAgent(event.agentId) &&
           event.event.type === "permission_requested" &&
@@ -1556,6 +1586,18 @@ export class Session {
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
       case "agent.subagent.stop.request":
         return this.handleStopObservedSubagentRequest(msg.agentId, msg.requestId);
+      case "agent.background_task.stop.request":
+        return this.handleStopBackgroundShellTaskRequest(
+          msg.parentAgentId,
+          msg.taskId,
+          msg.requestId,
+        );
+      case "agent.background_task.clear.request":
+        return this.handleClearBackgroundShellTasksRequest(
+          msg.parentAgentId,
+          msg.taskIds,
+          msg.requestId,
+        );
       default:
         return undefined;
     }
@@ -1590,6 +1632,54 @@ export class Session {
           accepted: false,
           error: message,
         },
+      });
+    }
+  }
+
+  private async handleStopBackgroundShellTaskRequest(
+    parentAgentId: string,
+    taskId: string,
+    requestId: string,
+  ): Promise<void> {
+    try {
+      await this.agentManager.stopBackgroundShellTask(taskId);
+      this.emit({
+        type: "agent.background_task.stop.response",
+        payload: { requestId, agentId: taskId, accepted: true, error: null },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to stop background shell task");
+      this.sessionLogger.error(
+        { err: error, parentAgentId, taskId, requestId },
+        "Failed to stop background shell task",
+      );
+      this.emit({
+        type: "agent.background_task.stop.response",
+        payload: { requestId, agentId: taskId, accepted: false, error: message },
+      });
+    }
+  }
+
+  private async handleClearBackgroundShellTasksRequest(
+    parentAgentId: string,
+    taskIds: readonly string[],
+    requestId: string,
+  ): Promise<void> {
+    try {
+      await this.agentManager.clearBackgroundShellTasks(taskIds);
+      this.emit({
+        type: "agent.background_task.clear.response",
+        payload: { requestId, agentId: parentAgentId, accepted: true, error: null },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to clear background shell tasks");
+      this.sessionLogger.error(
+        { err: error, parentAgentId, taskIds, requestId },
+        "Failed to clear background shell tasks",
+      );
+      this.emit({
+        type: "agent.background_task.clear.response",
+        payload: { requestId, agentId: parentAgentId, accepted: false, error: message },
       });
     }
   }
@@ -1798,6 +1888,20 @@ export class Session {
         return this.checkoutSession.handleCheckoutGitRollbackRequest(msg);
       case "checkout.git.get_operation_log.request":
         return this.checkoutSession.handleCheckoutGitGetOperationLogRequest(msg);
+      case "runs.get_snapshot.request": {
+        this.handleRunsGetSnapshotRequest(msg);
+        return undefined;
+      }
+      case "runs.gate_respond.request": {
+        this.handleRunsGateRespondRequest(msg);
+        return undefined;
+      }
+      case "runs.cancel.request": {
+        this.handleRunsCancelRequest(msg);
+        return undefined;
+      }
+      case "runs.clear.request":
+        return this.handleRunsClearRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":
@@ -1990,8 +2094,44 @@ export class Session {
         return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
       case "provider.usage.list.request":
         return this.providerCatalogSession.handleProviderUsageListRequest(msg);
+      case "stats.activity.get.request":
+        return this.handleStatsActivityGetRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleStatsActivityGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "stats.activity.get.request" }>,
+  ): Promise<void> {
+    const zero = ActivityCountersSchema.parse({});
+    try {
+      const rollups = (await this.getActivityRollups?.()) ?? {
+        today: zero,
+        yesterday: zero,
+        last7Days: zero,
+        last30Days: zero,
+        allTime: zero,
+      };
+      this.emit({
+        type: "stats.activity.get.response",
+        payload: {
+          requestId: msg.requestId,
+          ...rollups,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to get activity stats");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to get activity stats: ${err.message}`,
+          code: "stats_activity_get_failed",
+        },
+      });
     }
   }
 
@@ -6207,6 +6347,50 @@ export class Session {
   /**
    * Emit a message to the client
    */
+  private handleRunsGetSnapshotRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.get_snapshot.request" }>,
+  ): void {
+    const runs = this.runService?.listRuns() ?? [];
+    this.emit({
+      type: "runs.get_snapshot.response",
+      payload: { runs, requestId: msg.requestId },
+    });
+  }
+
+  private handleRunsGateRespondRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.gate_respond.request" }>,
+  ): void {
+    const accepted =
+      this.runService?.respondToGate(msg.runId, {
+        approved: msg.approved,
+        ...(msg.note !== undefined ? { note: msg.note } : {}),
+      }) ?? false;
+    this.emit({
+      type: "runs.gate_respond.response",
+      payload: { runId: msg.runId, accepted, requestId: msg.requestId },
+    });
+  }
+
+  private handleRunsCancelRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.cancel.request" }>,
+  ): void {
+    const canceled = this.runService?.cancelRun(msg.runId) ?? false;
+    this.emit({
+      type: "runs.cancel.response",
+      payload: { runId: msg.runId, canceled, requestId: msg.requestId },
+    });
+  }
+
+  private async handleRunsClearRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.clear.request" }>,
+  ): Promise<void> {
+    const runIds = (await this.runService?.clearFinishedRuns()) ?? [];
+    this.emit({
+      type: "runs.clear.response",
+      payload: { runIds, requestId: msg.requestId },
+    });
+  }
+
   private emit(msg: SessionOutboundMessage): void {
     // JSON.stringify(msg) is only computed when trace is enabled — it runs for
     // every outbound message otherwise, and trace is disabled by default.

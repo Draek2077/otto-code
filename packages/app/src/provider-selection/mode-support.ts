@@ -1,4 +1,5 @@
 import type { AgentMode, AgentModelDefinition } from "@otto-code/protocol/agent-types";
+import { getUnattendedModeId } from "@otto-code/protocol/provider-manifest";
 
 // Per-model permission-mode support. The daemon stamps `supportsAutoMode:
 // false` on catalog models that cannot run the provider's "auto" permission
@@ -21,13 +22,19 @@ export function filterModesForModel(
   return modes.filter((mode) => mode.id !== "auto");
 }
 
-/** "" (provider default) when the selected mode is auto but the model can't run it. */
+// When "auto" can't run on the selected model (Claude Haiku), we don't drop to
+// the provider default ("Always Ask") — Auto is a low-friction safety classifier,
+// so its closest safe analog is the provider's guardrailed no-prompt mode (Claude
+// "dontAsk": runs without prompting, denies anything not pre-approved). `model` is
+// a concrete definition in this branch (supportsAutoMode is only ever stamped
+// false on a real model), so `model.provider` resolves the target; a provider with
+// no unattended mode falls back to "" (provider default).
 export function coerceModeForModel(
   modeId: string,
   model: AgentModelDefinition | null | undefined,
 ): string {
   if (modeId === "auto" && !modelSupportsAutoMode(model)) {
-    return "";
+    return (model ? getUnattendedModeId(model.provider) : undefined) ?? "";
   }
   return modeId;
 }

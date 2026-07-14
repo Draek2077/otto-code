@@ -436,6 +436,14 @@ export type AgentStreamEvent =
       item: AgentTimelineItem;
       turnId?: string;
       timestamp?: string;
+    }
+  // A background shell task launched by the provider's own Bash tool (Claude:
+  // run_in_background) changed lifecycle state. Not an AI subagent — a plain
+  // shell process the daemon tracks for the Background Tasks track.
+  | {
+      type: "background_shell_task_updated";
+      provider: AgentProvider;
+      update: BackgroundShellTaskUpdate;
     };
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
@@ -457,6 +465,24 @@ export interface ObservedSubagentUpdate {
   subAgentType?: string;
   description?: string;
   status: "initializing" | "running" | "idle" | "error" | "closed";
+  requiresAttention?: boolean;
+  usage?: AgentUsage;
+}
+
+/**
+ * A background shell task reported by a provider's own Bash tool (Claude:
+ * `run_in_background`). `key` is a provider-local stable identifier (Claude:
+ * the Bash tool_use id); the daemon namespaces it under the owning agent.
+ * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane — it's a
+ * plain status row (command, status, elapsed) in the Background Tasks track.
+ */
+export interface BackgroundShellTaskUpdate {
+  key: string;
+  /** Provider task id, used to stop the task (Claude: `task_id`). */
+  taskId?: string;
+  command?: string;
+  description?: string;
+  status: "running" | "idle" | "error" | "closed";
   requiresAttention?: boolean;
   usage?: AgentUsage;
 }

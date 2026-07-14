@@ -444,6 +444,47 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Default tab orientation (Horizontal / Vertical) — same SegmentedControl
+// shape as ChatWidthRow above, but raw English strings rather than t() calls:
+// this repo does i18n last, matching the "Team switcher in title bar" row
+// precedent below rather than threading a new key through every locale file.
+// ---------------------------------------------------------------------------
+
+interface TabOrientationRowProps {
+  value: AppSettings["defaultTabOrientation"];
+  onChange: (value: AppSettings["defaultTabOrientation"]) => void;
+}
+
+function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
+  const options = useMemo<SegmentedControlOption<AppSettings["defaultTabOrientation"]>[]>(
+    () => [
+      { value: "horizontal", label: "Horizontal" },
+      { value: "vertical", label: "Vertical" },
+    ],
+    [],
+  );
+  return (
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+      <View style={settingsStyles.rowContent}>
+        {/* i18n: English-only pending a translation pass (Vertical tabs). */}
+        <Text style={settingsStyles.rowTitle}>Default tab orientation</Text>
+        <Text style={settingsStyles.rowHint}>
+          Sets the tab-strip layout for new panes — a horizontal row at the top, or a vertical rail
+          on the left. Any pane can override this individually.
+        </Text>
+      </View>
+      <SegmentedControl
+        size="sm"
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        testID="settings-default-tab-orientation"
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Message timestamp display (Clock time / Time ago)
 // ---------------------------------------------------------------------------
 
@@ -660,6 +701,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleDefaultTabOrientationChange = useCallback(
+    (defaultTabOrientation: AppSettings["defaultTabOrientation"]) => {
+      void updateSettings({ defaultTabOrientation });
+    },
+    [updateSettings],
+  );
+
   const handleHidePinnedToolbarOptionsChange = useCallback(
     (hidePinnedToolbarOptions: boolean) => {
       void updateSettings({ hidePinnedToolbarOptions });
@@ -835,6 +883,10 @@ export function AppearanceSection() {
               testID="settings-team-switcher-placement-switch"
             />
             <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
+            <TabOrientationRow
+              value={settings.defaultTabOrientation}
+              onChange={handleDefaultTabOrientationChange}
+            />
             <LayoutToggleRow
               title={t("settings.appearance.layout.hidePinnedToolbarOptions.title")}
               hint={t("settings.appearance.layout.hidePinnedToolbarOptions.hint")}

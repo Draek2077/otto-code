@@ -489,4 +489,37 @@ describe("resolveHostIndexRoute", () => {
       }),
     ).toEqual("/open-project");
   });
+
+  it("with appStartScreen 'home' always opens global project selection, even with a restorable workspace", () => {
+    expect(
+      resolveHostIndexRoute({
+        serverId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "exists",
+        appStartScreen: "home",
+      }),
+    ).toEqual("/open-project");
+  });
+
+  it("with appStartScreen 'dashboard' always opens the stats screen, even with a restorable workspace", () => {
+    expect(
+      resolveHostIndexRoute({
+        serverId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "exists",
+        appStartScreen: "dashboard",
+      }),
+    ).toEqual("/stats");
+  });
+
+  it("with appStartScreen 'workspaces' (or omitted) preserves the default restore behavior", () => {
+    expect(
+      resolveHostIndexRoute({
+        serverId: "server-saved",
+        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "exists",
+        appStartScreen: "workspaces",
+      }),
+    ).toEqual("/h/server-saved/workspace/workspace-a");
+  });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeWorkspaceTabLayout } from "@/screens/workspace/workspace-tab-layout";
+import {
+  computeWorkspaceTabLayout,
+  computeWorkspaceTabRailWidth,
+} from "@/screens/workspace/workspace-tab-layout";
 
 const metrics = {
   rowHorizontalInset: 0,
@@ -94,5 +97,52 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toEqual([]);
+  });
+});
+
+describe("computeWorkspaceTabRailWidth", () => {
+  const railMetrics = {
+    tabIconWidth: 14,
+    tabHorizontalPadding: 12,
+    estimatedCharWidth: 7,
+    closeButtonWidth: 22,
+    maxTabWidth: 200,
+    minTabWidth: 120,
+  };
+
+  it("floors short labels at minTabWidth instead of shrinking further", () => {
+    const width = computeWorkspaceTabRailWidth({
+      tabLabelLengths: [1, 2],
+      metrics: railMetrics,
+    });
+
+    expect(width).toBe(120);
+  });
+
+  it("sizes to the widest current label between the floor and the ceiling", () => {
+    const width = computeWorkspaceTabRailWidth({
+      tabLabelLengths: [9, 12],
+      metrics: railMetrics,
+    });
+
+    expect(width).toBe(144);
+  });
+
+  it("clamps at maxTabWidth for long labels, matching today's horizontal cap", () => {
+    const width = computeWorkspaceTabRailWidth({
+      tabLabelLengths: [5, 40],
+      metrics: railMetrics,
+    });
+
+    expect(width).toBe(200);
+  });
+
+  it("falls back to minTabWidth when there are no tabs", () => {
+    const width = computeWorkspaceTabRailWidth({
+      tabLabelLengths: [],
+      metrics: railMetrics,
+    });
+
+    expect(width).toBe(120);
   });
 });

@@ -35,9 +35,11 @@ export function useStopSubagent(input: UseStopSubagentInput): (subagentId: strin
           stopObservedSubagent: (id) =>
             client
               ? client.stopObservedSubagent(id)
-              : Promise.reject(new Error("Daemon unavailable")),
+              : Promise.reject(new Error(t("subagents.daemonUnavailable"))),
           cancelAgent: (id) =>
-            client ? client.cancelAgent(id) : Promise.reject(new Error("Daemon unavailable")),
+            client
+              ? client.cancelAgent(id)
+              : Promise.reject(new Error(t("subagents.daemonUnavailable"))),
           reportError: (error) => {
             toast.error(toErrorMessage(error));
           },

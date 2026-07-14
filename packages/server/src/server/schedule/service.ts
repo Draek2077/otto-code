@@ -5,6 +5,7 @@ import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
+import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
 import {
   resolvePersonality,
   type ResolvedPersonalitySnapshot,
@@ -278,6 +279,7 @@ export interface ScheduleServiceOptions {
   revealWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
+  onActivity?: ActivityIncrementFn;
 }
 
 export class ScheduleService {
@@ -303,6 +305,7 @@ export class ScheduleService {
     runId: string,
   ) => Promise<ScheduleExecutionResult>;
   private readonly runningScheduleIds = new Set<string>();
+  private readonly onActivity: ActivityIncrementFn | undefined;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ScheduleServiceOptions) {
@@ -320,6 +323,7 @@ export class ScheduleService {
     this.readAgentTeams = options.readAgentTeams ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
+    this.onActivity = options.onActivity;
   }
 
   async start(): Promise<void> {
@@ -761,6 +765,7 @@ export class ScheduleService {
   ): Promise<void> {
     const manual = options?.manual === true;
     this.runningScheduleIds.add(schedule.id);
+    this.onActivity?.("schedulesExecuted");
     const runId = randomUUID();
     const runningRun: ScheduleRun = {
       id: runId,

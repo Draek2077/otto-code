@@ -7662,3 +7662,95 @@ test("onWorkspaceStateMayHaveChanged is not called for running shell tool calls"
 
   expect(onWorkspaceStateMayHaveChanged).not.toHaveBeenCalled();
 });
+
+test("cumulativeTokens sums each turn's usage across turns, the same way for every agent", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-cumulative-tokens-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000201",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBeUndefined();
+
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-1",
+    usage: { inputTokens: 100, outputTokens: 50 },
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(150);
+
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-2",
+    usage: { inputTokens: 20, cachedInputTokens: 10, outputTokens: 5 },
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(185);
+
+  // A turn reporting no usage leaves the running total untouched rather than
+  // resetting it — some providers omit usage on some turn_completed events.
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "codex",
+    turnId: "turn-3",
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(185);
+});
+
+test("cumulativeTokens takes Pi's already-cumulative session usage directly instead of summing it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-cumulative-tokens-pi-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000202",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  // Pi's own session stats already report the agent's lifetime total, so each
+  // turn's number replaces (via monotonic max) rather than adds to the last.
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "pi",
+    turnId: "turn-1",
+    usage: { inputTokens: 100, outputTokens: 50 },
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(150);
+
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "pi",
+    turnId: "turn-2",
+    usage: { inputTokens: 130, outputTokens: 70 },
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(200);
+});

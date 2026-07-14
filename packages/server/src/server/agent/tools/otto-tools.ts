@@ -46,6 +46,10 @@ import {
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
 import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
+import { RunPlanSchema } from "@otto-code/protocol/orchestration";
+import { summarizeRunOutput } from "../../orchestration/run-engine.js";
+import type { RunService, RunSpawnPort } from "../../orchestration/run-service.js";
+import { resolveTeamRoleMember } from "../../orchestration/resolve-team-role.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../../path-utils.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
@@ -97,6 +101,7 @@ import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import { registerPreviewTools } from "../../preview/preview-tools.js";
 import type { DevServerManager } from "../../preview/dev-server-manager.js";
 import type { ArtifactService } from "../../artifact/artifact-service.js";
+import type { ActivityIncrementFn } from "../../activity-stats/activity-stats-store.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import { StoredArtifactSchema } from "@otto-code/protocol/artifacts/types";
 import type {
@@ -113,6 +118,12 @@ export interface OttoToolHostDependencies {
   terminalManager?: TerminalManager | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
+  /**
+   * Daemon-owned orchestration runtime. Enables the start_run / get_run_status /
+   * wait_for_agents tools so an orchestrator agent can declare a multi-agent
+   * plan the daemon executes. Absent on hosts that don't wire orchestration.
+   */
+  runService?: RunService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   /**
    * Reads the live Agent Personalities roster from the daemon config. Enables
@@ -178,6 +189,8 @@ export interface OttoToolHostDependencies {
   resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
+  /** Fun-stats counters — see packages/server/src/server/activity-stats. */
+  onActivity?: ActivityIncrementFn;
   logger: Logger;
 }
 
@@ -827,12 +840,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     agentStorage,
     terminalManager,
     scheduleService,
+    runService,
     providerSnapshotManager,
     readAgentPersonalities,
     readAgentTeams,
     callerAgentId,
     resolveSpeakHandler,
     resolveCallerContext,
+    onActivity,
     logger,
   } = options;
   const childLogger = logger.child({ module: "agent", component: "otto-tool-catalog" });
@@ -1665,6 +1680,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           worktree,
         },
       );
+      onActivity?.("backgroundTasksInvoked", Number(createdInBackground));
 
       try {
         if (!createdInBackground && initialPromptStarted) {
@@ -2123,6 +2139,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       notifyOnFinish = Boolean(callerAgentId),
     }) => {
       const shouldNotifyOnFinish = Boolean(callerAgentId && notifyOnFinish && background);
+      onActivity?.("backgroundTasksInvoked", Number(background));
 
       await sendPromptToAgent({
         agentManager,
@@ -3862,6 +3879,245 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       };
     },
   );
+
+  // ── Orchestration runtime tools ───────────────────────────────────────────
+  // wait_for_agents: the multi-agent gather barrier the daemon lacked. Useful on
+  // its own (a conductor hand-tracking children) and reused by the run runtime.
+  registerTool(
+    "wait_for_agents",
+    {
+      title: "Wait for agents",
+      description:
+        "Block until every listed agent reaches a terminal state (idle/error) or needs permission, then return each one's final message. The gather barrier for fan-out work.",
+      inputSchema: {
+        agentIds: z.array(z.string()).min(1).max(32),
+        timeoutSeconds: z
+          .number()
+          .int()
+          .positive()
+          .max(30 * 60)
+          .optional(),
+      },
+      outputSchema: {
+        results: z.array(
+          z.object({
+            agentId: z.string(),
+            status: AgentStatusEnum,
+            lastMessage: z.string().nullable(),
+          }),
+        ),
+      },
+    },
+    async ({ agentIds, timeoutSeconds }: { agentIds: string[]; timeoutSeconds?: number }) => {
+      const controller = new AbortController();
+      const timer = timeoutSeconds
+        ? setTimeout(() => controller.abort(new Error("wait timeout")), timeoutSeconds * 1000)
+        : null;
+      try {
+        const results = await Promise.all(
+          agentIds.map(async (id) => {
+            try {
+              const result = await agentManager.waitForAgentEvent(id, {
+                signal: controller.signal,
+                waitForActive: true,
+              });
+              const lastMessage =
+                result.lastMessage ?? (await agentManager.getLastAssistantMessage(id));
+              return { agentId: id, status: result.status, lastMessage: lastMessage ?? null };
+            } catch {
+              const snapshot = agentManager.getAgent(id);
+              return { agentId: id, status: snapshot?.lifecycle ?? "idle", lastMessage: null };
+            }
+          }),
+        );
+        return { content: [], structuredContent: ensureValidJson({ results }) };
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      }
+    },
+  );
+
+  if (runService) {
+    const activeRunService = runService;
+
+    // Resolve (and cache) which active-team member fills a role for this run.
+    const roleMemberCache = new Map<string, AgentPersonality | null>();
+    const resolveRoleMember = (role: string): AgentPersonality | null => {
+      const cached = roleMemberCache.get(role);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const member = resolveTeamRoleMember({
+        team: getActiveAgentTeam(readAgentTeams?.()),
+        roster: getPersonalityRoster(),
+        role,
+      });
+      roleMemberCache.set(role, member);
+      return member;
+    };
+
+    // Spawn one candidate child agent from a personality, parented to the
+    // conductor, in the conductor's workspace. Mirrors the create_agent spawn.
+    const spawnRunChild = async (input: {
+      personalityName: string;
+      task: string;
+      title: string;
+      cwd: string;
+      workspaceId?: string;
+    }): Promise<string> => {
+      const brain = await resolveCreateAgentBrain({
+        personalityName: input.personalityName,
+        providerOverride: undefined,
+        modeOverride: undefined,
+        thinkingOverride: undefined,
+        cwd: input.cwd,
+      });
+      const personalityConfig = buildPersonalityAgentConfig(brain);
+      const { snapshot } = await createAgentCommand(
+        {
+          agentManager,
+          agentStorage,
+          logger: childLogger,
+          ottoHome: options.ottoHome,
+          worktreesRoot: options.worktreesRoot,
+          terminalManager,
+          providerSnapshotManager,
+          createOttoWorktree: options.createOttoWorktree,
+          ...(options.ensureWorkspaceForCreate
+            ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
+            : {}),
+        },
+        {
+          kind: "mcp",
+          provider: brain.providerModel,
+          ...(personalityConfig ? { config: personalityConfig } : {}),
+          title: input.title,
+          initialPrompt: input.task,
+          cwd: input.cwd,
+          ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+          thinking: brain.thinkingOptionId,
+          mode: brain.modeId,
+          background: true,
+          notifyOnFinish: false,
+          detached: false,
+          ...(callerAgentId ? { callerAgentId } : {}),
+          callerContext,
+        },
+      );
+      return snapshot.id;
+    };
+
+    registerTool(
+      "start_run",
+      {
+        title: "Start orchestration run",
+        description:
+          "Declare a multi-agent plan the daemon executes as a Run: typed phases (research/plan/implement/design/verify/gate/deliver), fanning out candidates, judging them, looping until enough pass, and pausing at gates for approval. Each phase dispatches to the active team's member for its role — fails loudly if the team lacks one. Blocks until the run finishes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Prefer this over hand-spawning and tracking agents yourself.",
+        inputSchema: RunPlanSchema,
+        outputSchema: {
+          runId: z.string(),
+          status: z.string(),
+          title: z.string(),
+          phaseCount: z.number(),
+          result: z.string().optional(),
+          note: z.string().optional(),
+          error: z.string().optional(),
+        },
+      },
+      async (plan: unknown) => {
+        const parsedPlan = RunPlanSchema.parse(plan);
+        const conductor = resolveCallerAgent();
+        const cwd = resolveScopedCwd(undefined);
+        const workspaceId = conductor?.workspaceId;
+
+        const spawnPort: RunSpawnPort = {
+          resolveRole: async (role) => {
+            const member = resolveRoleMember(role);
+            return member ? { personalityId: member.id } : null;
+          },
+          spawn: async (spawnInput) => {
+            const member = spawnInput.role ? resolveRoleMember(spawnInput.role) : null;
+            if (!member) {
+              throw new Error(`No active-team member fills role "${spawnInput.role ?? "?"}"`);
+            }
+            const agentId = await spawnRunChild({
+              personalityName: member.name,
+              task: spawnInput.task,
+              title: `${spawnInput.role ?? spawnInput.phaseType}: ${spawnInput.phaseId}`,
+              cwd,
+              ...(workspaceId ? { workspaceId } : {}),
+            });
+            return { agentId, personalityId: member.id };
+          },
+          awaitAgent: async ({ agentId, signal }) => {
+            try {
+              // Wait for the whole subtree to settle, not just the worker's first
+              // idle — a worker that spawns its own helpers gets re-invoked when
+              // they finish and writes its real answer in a later turn.
+              const result = await agentManager.waitForAgentFullySettled(agentId, { signal });
+              const finalMessage =
+                result.lastMessage ?? (await agentManager.getLastAssistantMessage(agentId));
+              return { finalMessage: finalMessage ?? null, failed: result.status === "error" };
+            } catch {
+              return { finalMessage: null, failed: true };
+            }
+          },
+        };
+
+        // Record the active team on the run so the Runs display can filter by it.
+        const activeTeam = getActiveAgentTeam(readAgentTeams?.());
+        const { run, settled } = activeRunService.startRun({
+          plan: parsedPlan,
+          spawnPort,
+          ...(callerAgentId ? { conductorAgentId: callerAgentId } : {}),
+          cwd,
+          ...(workspaceId ? { workspaceId } : {}),
+          ...(activeTeam ? { teamId: activeTeam.id, teamName: activeTeam.name } : {}),
+        });
+        // Block until the run settles or parks at a gate, so the conductor comes
+        // back with the actual deliverable to relay — not just a fire-and-forget id.
+        const outcome = await activeRunService.settleOrPause({ runId: run.id, settled });
+        const result = summarizeRunOutput(outcome);
+        return {
+          content: [],
+          structuredContent: ensureValidJson({
+            runId: outcome.id,
+            status: outcome.status,
+            title: outcome.title,
+            phaseCount: outcome.phases.length,
+            ...(result ? { result } : {}),
+            ...(outcome.status === "paused"
+              ? {
+                  note: "A gate is awaiting approval. Approve or reject it in the Runs screen, then the run continues.",
+                }
+              : {}),
+            ...(outcome.error ? { error: outcome.error } : {}),
+          }),
+        };
+      },
+    );
+
+    registerTool(
+      "get_run_status",
+      {
+        title: "Get run status",
+        description:
+          "Return the current projection of an orchestration run — its phases, statuses, and structured judge verdicts.",
+        inputSchema: {
+          runId: z.string(),
+        },
+      },
+      async ({ runId }: { runId: string }) => {
+        const run = activeRunService.getRun(runId);
+        if (!run) {
+          throw new Error(`Run ${runId} not found`);
+        }
+        return { content: [], structuredContent: ensureValidJson({ run }) };
+      },
+    );
+  }
 
   return toCatalog();
 }

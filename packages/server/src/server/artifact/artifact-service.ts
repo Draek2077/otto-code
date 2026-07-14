@@ -5,6 +5,7 @@ import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import type { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
+import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
 import type {
   ArtifactMetadata,
   ArtifactRunTrigger,
@@ -48,6 +49,7 @@ interface ArtifactServiceOptions {
   agentManager: AgentManager;
   providerSnapshotManager: ProviderSnapshotManager;
   broadcastArtifactUpdate: (metadata: ArtifactMetadata) => void;
+  onActivity?: ActivityIncrementFn;
 }
 
 class ArtifactNotFoundError extends Error {
@@ -65,6 +67,7 @@ export class ArtifactService {
   private readonly agentManager: AgentManager;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly broadcastArtifactUpdate: (metadata: ArtifactMetadata) => void;
+  private readonly onActivity?: ActivityIncrementFn;
   // artifactId -> generation agentId, for the lifetime of an active run. Lets
   // cancel() interrupt the agent even before generationAgentId is persisted.
   private readonly runningGenerations = new Map<string, string>();
@@ -82,6 +85,7 @@ export class ArtifactService {
     this.agentManager = options.agentManager;
     this.providerSnapshotManager = options.providerSnapshotManager;
     this.broadcastArtifactUpdate = options.broadcastArtifactUpdate;
+    this.onActivity = options.onActivity;
     this.watcher = new ArtifactWatcher({
       store: this.store,
       logger: this.logger,
@@ -216,6 +220,7 @@ export class ArtifactService {
     };
 
     await this.store.create(metadata);
+    this.onActivity?.("artifactsCreated");
     await this.startRun(
       artifactId,
       "create",

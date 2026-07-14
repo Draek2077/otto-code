@@ -438,6 +438,22 @@ describe("toAgentPayload", () => {
     });
   });
 
+  it("surfaces cumulativeTokens the same way toObservedSubagentPayload does", () => {
+    const agent = createManagedAgent({ cumulativeTokens: 4_200 });
+
+    const payload = toAgentPayload(agent);
+
+    expect(payload.cumulativeTokens).toBe(4_200);
+  });
+
+  it("omits cumulativeTokens when not tracked", () => {
+    const agent = createManagedAgent({ cumulativeTokens: undefined });
+
+    const payload = toAgentPayload(agent);
+
+    expect(payload).not.toHaveProperty("cumulativeTokens");
+  });
+
   it("includes features in the snapshot payload", () => {
     const features = [createFeature()];
     const agent = createManagedAgent({ features });

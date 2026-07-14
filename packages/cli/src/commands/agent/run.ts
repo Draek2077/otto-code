@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
-import { resolveProviderAndModel } from "../../utils/provider-model.js";
+import { resolveProviderAndModel, type ResolvedProviderModel } from "../../utils/provider-model.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
 
@@ -34,6 +34,10 @@ export function addRunOptions(cmd: Command): Command {
     )
     .option("--thinking <id>", "Thinking option ID to use for this run")
     .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
+    .option(
+      "--personality <name>",
+      "Spawn as a host personality (name or id): applies its provider/model/mode and identity/prompt. Explicit --provider/--model/--mode override.",
+    )
     .option("--worktree <name>", "Create agent in a new git worktree")
     .option("--base <branch>", "Base branch for worktree (default: current branch)")
     .option(
@@ -98,6 +102,7 @@ export interface AgentRunOptions extends CommandOptions {
   model?: string;
   thinking?: string;
   mode?: string;
+  personality?: string;
   worktree?: string;
   base?: string;
   workspace?: string;
@@ -217,6 +222,72 @@ async function fetchStructuredOutput(
 }
 
 type ConnectedDaemonClient = Awaited<ReturnType<typeof connectToDaemon>>;
+
+interface ResolvedRunPersonality {
+  id: string;
+  provider: string;
+  model: string;
+  modeId?: string;
+}
+
+// Resolve --personality (name or id) against the host roster. Returns the
+// personality's brain (provider/model/mode) to seed the run config and its id so
+// the daemon overlays the personality's identity + system prompt (e.g. the
+// orchestrator directive). Explicit --provider/--model/--mode still override.
+async function resolveRunPersonality(
+  client: ConnectedDaemonClient,
+  nameOrId: string | undefined,
+): Promise<ResolvedRunPersonality | undefined> {
+  if (!nameOrId) {
+    return undefined;
+  }
+  const query = nameOrId.trim();
+  const { config } = await client.getDaemonConfig();
+  const roster = config.agentPersonalities?.personalities ?? [];
+  const match =
+    roster.find((p) => p.id === query) ??
+    roster.find((p) => p.name.toLowerCase() === query.toLowerCase());
+  if (!match) {
+    const available = roster.map((p) => p.name).join(", ") || "none configured";
+    throw {
+      code: "PERSONALITY_NOT_FOUND",
+      message: `No personality matches "${query}"`,
+      details: `Available personalities: ${available}`,
+    } satisfies CommandError;
+  }
+  return {
+    id: match.id,
+    provider: match.provider,
+    model: match.model,
+    ...(match.modeId ? { modeId: match.modeId } : {}),
+  };
+}
+
+interface ResolvedRunBrain {
+  providerModel: ResolvedProviderModel;
+  modeId: string | undefined;
+  personalityId: string | undefined;
+}
+
+// Resolve the agent's brain for a run: a --personality (if any) seeds
+// provider/model/mode + identity; explicit --provider/--model/--mode override.
+// Without a personality, provider stays required (resolveProviderAndModel throws).
+async function resolveRunBrain(
+  client: ConnectedDaemonClient,
+  options: AgentRunOptions,
+): Promise<ResolvedRunBrain> {
+  const personality = await resolveRunPersonality(client, options.personality);
+  const providerModel = resolveProviderAndModel({
+    provider: options.provider,
+    model: options.model,
+    ...(personality ? { defaultProvider: `${personality.provider}/${personality.model}` } : {}),
+  });
+  return {
+    providerModel,
+    modeId: options.mode ?? personality?.modeId,
+    personalityId: personality?.id,
+  };
+}
 
 export interface StructuredResponseTimelineClient {
   fetchAgentTimeline: ConnectedDaemonClient["fetchAgentTimeline"];
@@ -476,12 +547,16 @@ export async function runRunCommand(
   validateRunOptions(prompt, options, outputSchema);
   const waitTimeoutMs = parseWaitTimeoutOption(options.waitTimeout);
 
-  const resolvedProviderModel = resolveProviderAndModel(options);
   const resolvedTitle = options.title ?? options.name;
 
   const client = await connectToDaemonOrThrow(options.host, host);
 
   try {
+    const {
+      providerModel: resolvedProviderModel,
+      modeId: resolvedMode,
+      personalityId,
+    } = await resolveRunBrain(client, options);
     // Resolve working directory
     const cwd = options.cwd ?? process.cwd();
     const thinkingOptionId = options.thinking?.trim();
@@ -515,9 +590,10 @@ export async function runRunCommand(
             cwd: runCwd,
             workspaceId,
             title: resolvedTitle,
-            modeId: options.mode,
+            modeId: resolvedMode,
             model: resolvedProviderModel.model,
             thinkingOptionId,
+            personality: personalityId,
             initialPrompt: structuredPrompt,
             outputSchema,
             images,
@@ -585,9 +661,10 @@ export async function runRunCommand(
       cwd: runCwd,
       workspaceId,
       title: resolvedTitle,
-      modeId: options.mode,
+      modeId: resolvedMode,
       model: resolvedProviderModel.model,
       thinkingOptionId,
+      personality: personalityId,
       initialPrompt: prompt,
       images,
       env: requestEnv,

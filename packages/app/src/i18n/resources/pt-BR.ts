@@ -1701,6 +1701,17 @@ export const ptBR: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "Parar {{label}}",
+    stopTooltip: "Parar tarefa em segundo plano",
+    clearAction: "Limpar {{label}}",
+    clearTooltip: "Limpar tarefa em segundo plano",
+    completedGroup: "Concluídas ({{count}})",
+    clearCompleted: "Limpar tudo",
+    clearCompletedTooltip: "Limpar todas as tarefas em segundo plano concluídas",
+    fallbackLabel: "Comando de shell",
+    daemonUnavailable: "Daemon indisponível",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1821,6 +1832,7 @@ export const ptBR: TranslationResources = {
     clearCompleted: "Limpar tudo",
     clearCompletedTooltip: "Arquivar todos os subagentes concluídos",
     stopNothingRunning: "O subagente não está em execução — nada para parar.",
+    daemonUnavailable: "Daemon indisponível",
   },
   panels: {
     draft: {
@@ -1932,6 +1944,19 @@ export const ptBR: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

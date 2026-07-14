@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
 import { ProjectRow } from "@/components/project-row";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -75,10 +76,12 @@ function formatDate(iso: string): string {
   if (Number.isNaN(parsed)) {
     return "";
   }
-  return new Date(parsed).toLocaleDateString(undefined, {
+  return new Date(parsed).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
@@ -176,6 +179,15 @@ function ArtifactCardComponent({
         </View>
 
         <ProjectRow provider={artifact.generationProvider} projectName={projectName} />
+
+        {artifact.status === "error" ? (
+          <View style={styles.statusRow}>
+            <TriangleAlert size={14} color={styles.errorText.color} />
+            <Text style={styles.errorText} numberOfLines={2}>
+              {artifact.errorMessage ?? "Generation failed"}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Spacer pins the footer to the bottom of the card. */}
         <View style={styles.spacer} />
@@ -285,6 +297,8 @@ function headerActionStyle({
   ];
 }
 
+/** Left slot of the footer row: always the state pill (same shape as
+ * Schedules/Orchestrations), so every card reads the same way at a glance. */
 function ArtifactStatusBadge({ artifact }: { artifact: AggregatedArtifact }) {
   if (artifact.status === "generating") {
     // Render in the generating personality's spinner identity when it was
@@ -297,21 +311,14 @@ function ArtifactStatusBadge({ artifact }: { artifact: AggregatedArtifact }) {
         ) : (
           <ThemedBlobLoader size={16} />
         )}
-        <Text style={styles.metaText}>Generating…</Text>
+        <StatusBadge label="Generating" variant="warning" />
       </View>
     );
   }
   if (artifact.status === "error") {
-    return (
-      <View style={styles.statusRow}>
-        <TriangleAlert size={14} color={styles.errorText.color} />
-        <Text style={styles.errorText} numberOfLines={2}>
-          {artifact.errorMessage ?? "Generation failed"}
-        </Text>
-      </View>
-    );
+    return <StatusBadge label="Failed" variant="error" />;
   }
-  return <Text style={styles.readyText}>Ready</Text>;
+  return <StatusBadge label="Ready" variant="success" />;
 }
 
 export const ArtifactCard = memo(ArtifactCardComponent);
@@ -375,11 +382,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 1,
-  },
-  readyText: {
-    color: theme.colors.palette.green[400],
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
   },
   metaText: {
     color: theme.colors.foregroundMuted,
