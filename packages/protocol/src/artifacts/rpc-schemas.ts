@@ -24,6 +24,9 @@ export const ArtifactCreateRequestSchema = z.object({
   systemPrompt: z.string().optional(),
   // Snapshotted spinner colors of the chosen Agent Personality (optional).
   spinner: ArtifactSpinnerSchema.optional(),
+  // Snapshotted human name of the chosen Agent Personality (optional) — shown
+  // on the artifact card's identity line as the "who generated it".
+  personalityName: z.string().optional(),
   requestId: z.string(),
 });
 

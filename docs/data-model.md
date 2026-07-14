@@ -34,7 +34,8 @@ $OTTO_HOME/
 ├── runtime/
 │   └── managed-processes/
 │       └── {recordId}.json              # Helper processes owned by Otto; reconciled on daemon bootstrap
-└── push-tokens.json                     # Expo push notification tokens
+├── push-tokens.json                     # Expo push notification tokens
+└── activity-stats.json                  # Daemon-wide usage counters (see docs/activity-stats.md)
 ```
 
 The `agents/{sanitized-cwd}/` directory name is derived from the agent's `cwd` by stripping the filesystem root and replacing path separators with `-` (Windows drive letters become a `C-` style prefix). Persistent server stores write atomically by writing a temp file in the target directory and then renaming it into place.
@@ -246,24 +247,27 @@ Otto uses these paths under the configured OpenAI base URL:
 
 One file per schedule. ID is 8 hex characters.
 
-| Field           | Type                                  | Description                      |
-| --------------- | ------------------------------------- | -------------------------------- |
-| `id`            | `string`                              | 8-char hex ID                    |
-| `name`          | `string?`                             | Human-readable name              |
-| `prompt`        | `string`                              | The prompt to send               |
-| `cadence`       | `ScheduleCadence`                     | Timing (see below)               |
-| `target`        | `ScheduleTarget`                      | What to run (see below)          |
-| `status`        | `"active" \| "paused" \| "completed"` | Current state                    |
-| `createdAt`     | `string` (ISO 8601)                   |                                  |
-| `updatedAt`     | `string` (ISO 8601)                   |                                  |
-| `nextRunAt`     | `string?` (ISO 8601)                  | Next scheduled execution         |
-| `lastRunAt`     | `string?` (ISO 8601)                  | Last execution time              |
-| `lastRunStatus` | `"succeeded" \| "failed"?`            | Outcome of the last run          |
-| `lastRunError`  | `string?`                             | Error message from the last run  |
-| `pausedAt`      | `string?` (ISO 8601)                  | When paused                      |
-| `expiresAt`     | `string?` (ISO 8601)                  | Auto-expire time                 |
-| `maxRuns`       | `number?`                             | Max executions before completing |
-| `runs`          | `ScheduleRun[]`                       | Execution history                |
+| Field                    | Type                                  | Description                                                                                                                                         |
+| ------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | `string`                              | 8-char hex ID                                                                                                                                       |
+| `name`                   | `string?`                             | Human-readable name                                                                                                                                 |
+| `prompt`                 | `string`                              | The prompt to send                                                                                                                                  |
+| `cadence`                | `ScheduleCadence`                     | Timing (see below)                                                                                                                                  |
+| `target`                 | `ScheduleTarget`                      | What to run (see below)                                                                                                                             |
+| `status`                 | `"active" \| "paused" \| "completed"` | Current state                                                                                                                                       |
+| `createdAt`              | `string` (ISO 8601)                   |                                                                                                                                                     |
+| `updatedAt`              | `string` (ISO 8601)                   |                                                                                                                                                     |
+| `nextRunAt`              | `string?` (ISO 8601)                  | Next scheduled execution                                                                                                                            |
+| `lastRunAt`              | `string?` (ISO 8601)                  | Last execution time                                                                                                                                 |
+| `lastRunStatus`          | `"succeeded" \| "failed"?`            | Outcome of the last run                                                                                                                             |
+| `lastRunError`           | `string?`                             | Error message from the last run                                                                                                                     |
+| `lastRunPersonalityName` | `string?` (nullable)                  | Personality that executed the last run (null = none); mirrors the run-level field so `ScheduleSummary` can show the executor without loading `runs` |
+| `lastRunProvider`        | `string?` (nullable)                  | Provider that executed the last run                                                                                                                 |
+| `lastRunModel`           | `string?` (nullable)                  | Model that executed the last run                                                                                                                    |
+| `pausedAt`               | `string?` (ISO 8601)                  | When paused                                                                                                                                         |
+| `expiresAt`              | `string?` (ISO 8601)                  | Auto-expire time                                                                                                                                    |
+| `maxRuns`                | `number?`                             | Max executions before completing                                                                                                                    |
+| `runs`                   | `ScheduleRun[]`                       | Execution history                                                                                                                                   |
 
 ### Nested: ScheduleCadence (discriminated union on `type`)
 
@@ -277,16 +281,19 @@ One file per schedule. ID is 8 hex characters.
 
 ### Nested: ScheduleRun
 
-| Field          | Type                                   | Description             |
-| -------------- | -------------------------------------- | ----------------------- |
-| `id`           | `string`                               | Run ID                  |
-| `scheduledFor` | `string` (ISO 8601)                    | Intended execution time |
-| `startedAt`    | `string` (ISO 8601)                    |                         |
-| `endedAt`      | `string?` (ISO 8601)                   |                         |
-| `status`       | `"running" \| "succeeded" \| "failed"` |                         |
-| `agentId`      | `string?` (UUID)                       | Agent used for this run |
-| `output`       | `string?`                              | Agent output text       |
-| `error`        | `string?`                              | Error message if failed |
+| Field             | Type                                   | Description                                      |
+| ----------------- | -------------------------------------- | ------------------------------------------------ |
+| `id`              | `string`                               | Run ID                                           |
+| `scheduledFor`    | `string` (ISO 8601)                    | Intended execution time                          |
+| `startedAt`       | `string` (ISO 8601)                    |                                                  |
+| `endedAt`         | `string?` (ISO 8601)                   |                                                  |
+| `status`          | `"running" \| "succeeded" \| "failed"` |                                                  |
+| `agentId`         | `string?` (UUID)                       | Agent used for this run                          |
+| `personalityName` | `string?` (nullable)                   | Personality that executed this run (null = none) |
+| `provider`        | `string?` (nullable)                   | Provider that executed this run                  |
+| `model`           | `string?` (nullable)                   | Model that executed this run                     |
+| `output`          | `string?`                              | Agent output text                                |
+| `error`           | `string?`                              | Error message if failed                          |
 
 ---
 
@@ -479,18 +486,19 @@ Agents can create artifacts too, via the `create_artifact` Otto tool (`packages/
 
 Metadata (`ArtifactMetadataSchema`, `packages/protocol/src/artifacts/types.ts`):
 
-| Field                                                        | Type                                 | Description                            |
-| ------------------------------------------------------------ | ------------------------------------ | -------------------------------------- |
-| `id`                                                         | `string`                             | Primary key; also the file basename    |
-| `name`, `description`                                        | `string`                             | User/agent-supplied                    |
-| `projectId`                                                  | `string`                             | Owning project                         |
-| `filePath`                                                   | `string`                             | Path of the HTML file                  |
-| `kind`                                                       | `"html"`                             | Only kind today                        |
-| `starred`                                                    | `boolean`                            |                                        |
-| `status`                                                     | `"generating" \| "ready" \| "error"` | Generation lifecycle                   |
-| `createdAt`, `updatedAt`                                     | `string` (ISO 8601)                  |                                        |
-| `generationAgentId`, `generationProvider`, `generationModel` | `string \| null`                     | Provenance of the generating agent run |
-| `errorMessage`                                               | `string \| null`                     | Set when `status === "error"`          |
+| Field                                                        | Type                                 | Description                                                                                                                                 |
+| ------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                                         | `string`                             | Primary key; also the file basename                                                                                                         |
+| `name`, `description`                                        | `string`                             | User/agent-supplied                                                                                                                         |
+| `projectId`                                                  | `string`                             | Owning project                                                                                                                              |
+| `filePath`                                                   | `string`                             | Path of the HTML file                                                                                                                       |
+| `kind`                                                       | `"html"`                             | Only kind today                                                                                                                             |
+| `starred`                                                    | `boolean`                            |                                                                                                                                             |
+| `status`                                                     | `"generating" \| "ready" \| "error"` | Generation lifecycle                                                                                                                        |
+| `createdAt`, `updatedAt`                                     | `string` (ISO 8601)                  |                                                                                                                                             |
+| `generationAgentId`, `generationProvider`, `generationModel` | `string \| null`                     | Provenance of the generating agent run                                                                                                      |
+| `generationPersonalityName`                                  | `string \| null` (optional)          | Personality that generated (last generated) the artifact; null/absent when none. Shown on the card's executor line alongside provider/model |
+| `errorMessage`                                               | `string \| null`                     | Set when `status === "error"`                                                                                                               |
 
 Availability is gated by the `artifacts` capability flag in `server_info.features.*` (COMPAT(artifacts), added v0.4.1).
 

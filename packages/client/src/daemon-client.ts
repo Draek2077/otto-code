@@ -5255,6 +5255,7 @@ export class DaemonClient {
     thinkingOptionId?: string;
     systemPrompt?: string;
     spinner?: { glowA: string; glowB: string };
+    personalityName?: string;
     requestId?: string;
   }): Promise<ArtifactCreatePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -5270,6 +5271,7 @@ export class DaemonClient {
         ...(options.thinkingOptionId ? { thinkingOptionId: options.thinkingOptionId } : {}),
         ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
         ...(options.spinner ? { spinner: options.spinner } : {}),
+        ...(options.personalityName ? { personalityName: options.personalityName } : {}),
       },
       responseType: "artifact.create.response",
     });

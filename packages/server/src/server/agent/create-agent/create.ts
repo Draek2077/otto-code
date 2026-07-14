@@ -422,7 +422,7 @@ function buildMcpSessionConfig(params: {
     // nobody is watching. Uses the resolver's effective value (input OR an
     // unattended parent), falling back to an explicit passthrough flag, so a
     // child spawned by an unattended parent is guarded too — matching the mode
-    // coercion. See projects/safe-unattended/safe-unattended.md.
+    // coercion. See docs/safe-unattended.md.
     unattended: params.resolvedUnattended || passthroughConfig?.unattended === true,
   };
   if (provisionalTitle) {

@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, MessageSquare, SquareTerminal } from "@/components/icons/material-icons";
+import { Globe, SquarePen, SquareTerminal } from "@/components/icons/material-icons";
 import { withUnistyles } from "react-native-unistyles";
 import {
   getTerminalProfileIcon,
@@ -29,7 +29,7 @@ const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMut
 
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
-const ThemedMessageSquare = withUnistyles(MessageSquare);
+const ThemedSquarePen = withUnistyles(SquarePen);
 
 function ProviderPinIcon({
   iconKey,
@@ -70,7 +70,7 @@ export function usePinnedLaunchers({ serverId, onLaunch }: UsePinnedLaunchersInp
           key: pinnedTargetKey(target),
           target,
           label: t("workspace.tabs.actions.newAgent"),
-          icon: <ThemedMessageSquare size={14} uniProps={mutedColorMapping} />,
+          icon: <ThemedSquarePen size={14} uniProps={mutedColorMapping} />,
           onPress: () => onLaunch(target),
         });
         continue;

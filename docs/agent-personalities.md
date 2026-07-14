@@ -2,7 +2,7 @@
 
 An **agent personality** (UI label: "Agent personalities", Host settings → Agents) is a named, reusable agent template stored per-host in the daemon config. It is the primary way a user picks "who does the work": instead of choosing a raw provider + model + effort + mode every time, they pick a personality once and it fills all of that in — on a local LM Studio model just as much as a frontier API. This is the provider-agnostic leveling-up pattern from [CLAUDE.md](../CLAUDE.md): a personality bound to a local model is as capable a Chatter or Judger as one bound to a hosted API.
 
-Personalities shipped in 0.5.0. This doc is the durable architecture; the build history and open product decisions live in [projects/agent-personalities/agent-personalities.md](../projects/agent-personalities/agent-personalities.md).
+Personalities shipped in 0.5.0. This doc is the durable architecture. The one open product decision — persisting a client schedule-form personality binding — is tracked in [projects/todos/schedule-form-personality-binding.md](../projects/todos/schedule-form-personality-binding.md).
 
 ## What a personality binds
 

@@ -7,6 +7,7 @@ import {
   resolvePersonalityForForm,
   type PersonalityFormValues,
 } from "@/provider-selection/personality-form";
+import { ROLE_ICONS } from "@/provider-selection/role-icons";
 
 // A synthetic "Team's <Role>" picker entry — a dynamic binding that resolves to
 // the active team's member holding a given role, rather than a concrete
@@ -45,6 +46,9 @@ export interface BuildTeamRoleEntryInput {
  * active team.
  */
 export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntry {
+  // Neutral role glyph — the row represents a role whose holder changes with the
+  // team, so it never wears a concrete personality's colored provider icon.
+  const roleIcon = ROLE_ICONS[input.role];
   const members = resolveTeamMembers(input.team, input.roster).filter((member) =>
     personalityHasRole(member, input.role),
   );
@@ -54,6 +58,7 @@ export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntr
         id: input.entryId,
         name: input.label,
         provider: "",
+        roleIcon,
         subtitle: `Team "${input.team.name}" has no ${input.roleLabel}`,
         available: false,
         unavailableReason: `No member of "${input.team.name}" has the ${input.roleLabel} role.`,
@@ -66,12 +71,20 @@ export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntr
   for (const member of members) {
     const resolution = resolvePersonalityForForm(member, input.entries);
     if (resolution.available) {
+      // Show the current holder as "Currently: <Agent> · <Provider> · <Model>",
+      // resolving the human-readable provider/model names from the live snapshot
+      // (fall back to the raw ids when the snapshot has no match).
+      const entry = input.entries.find((candidate) => candidate.provider === member.provider);
+      const providerLabel = entry?.label ?? member.provider;
+      const modelLabel =
+        entry?.models?.find((candidate) => candidate.id === member.model)?.label ?? member.model;
       return {
         selector: {
           id: input.entryId,
           name: input.label,
           provider: member.provider,
-          subtitle: `currently ${member.name} — changes with the active team`,
+          roleIcon,
+          subtitle: `Currently: ${member.name} · ${providerLabel} · ${modelLabel}`,
           glowA: member.spinner?.glowA,
           glowB: member.spinner?.glowB,
           available: true,
@@ -87,6 +100,7 @@ export function buildTeamRoleEntry(input: BuildTeamRoleEntryInput): TeamRoleEntr
       id: input.entryId,
       name: input.label,
       provider: members[0]?.provider ?? "",
+      roleIcon,
       subtitle: `No ${input.roleLabel} available right now`,
       available: false,
       unavailableReason: firstReason,

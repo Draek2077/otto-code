@@ -141,18 +141,26 @@ export function usePersonalitySelection(
     () =>
       roster.map((personality) => {
         const resolution = resolutions.get(personality.id);
+        // Show the human-readable provider/model names from the live snapshot
+        // rather than the raw ids; fall back to the id when the snapshot has no
+        // matching entry (provider unavailable, model since removed).
+        const entry = entries.find((candidate) => candidate.provider === personality.provider);
+        const providerLabel = entry?.label ?? personality.provider;
+        const modelLabel =
+          entry?.models?.find((candidate) => candidate.id === personality.model)?.label ??
+          personality.model;
         return {
           id: personality.id,
           name: personality.name,
           provider: personality.provider,
-          subtitle: `${personality.provider} · ${personality.model}`,
+          subtitle: `${providerLabel} · ${modelLabel}`,
           glowA: personality.spinner?.glowA,
           glowB: personality.spinner?.glowB,
           available: resolution?.available ?? false,
           unavailableReason: resolution && !resolution.available ? resolution.reason : undefined,
         };
       }),
-    [roster, resolutions],
+    [roster, resolutions, entries],
   );
 
   const persistLastPersonality = useCallback(

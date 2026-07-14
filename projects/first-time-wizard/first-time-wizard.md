@@ -7,7 +7,7 @@ Otto currently drops a new user onto the Welcome/pairing screen and then straigh
 Two sibling charters feed this one:
 
 - **Interface modes** — absorbed into this project. The former `projects/interface-modes/` charter now lives at [interface-modes.md](interface-modes.md) as a sub-plan of this project; its first-run picker **is wizard step 1** (Mode is chosen first), and its surface-gating work is a phase of this project's build sequence. Read it for the binding constraints (lens-not-lock, one gate, developer-mode-identical) — those all still hold.
-- **Agent Teams** ([projects/agent-teams/agent-teams.md](../agent-teams/agent-teams.md)) — a hard dependency. The wizard's step 4 creates and activates teams, so agent-teams build steps 1–2 (schema + persistence + prompt composition) must ship first. The teams editor card and main-window switcher (its steps 3–5) are not wizard-blocking but should land in the same release so wizard-created teams are manageable afterwards.
+- **Agent Teams** ([docs/agent-teams.md](../../docs/agent-teams.md)) — a hard dependency. The wizard's step 4 creates and activates teams, so agent-teams build steps 1–2 (schema + persistence + prompt composition) must ship first. The teams editor card and main-window switcher (its steps 3–5) are not wizard-blocking but should land in the same release so wizard-created teams are manageable afterwards.
 
 North-star fit ([CLAUDE.md](../../CLAUDE.md)): the wizard is provider-agnostic from day one. Preset personalities resolve against whatever providers the host actually detected — an LM Studio-only host gets the same themed roster as a Claude host, bound to its own models.
 

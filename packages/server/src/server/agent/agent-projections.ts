@@ -316,7 +316,7 @@ const OBSERVED_SUBAGENT_CAPABILITIES: AgentCapabilityFlags = {
 // A row is a tab label: a short, stable name set at birth, never the agent's
 // latest output. Hard-cap length and collapse to a single line so no provider
 // summary can produce a wall-of-text label.
-// See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+// See docs/agent-lifecycle.md (Item 4).
 const OBSERVED_SUBAGENT_TITLE_MAX = 60;
 
 function normalizeObservedTitleSource(value: string | undefined | null): string | null {
@@ -332,7 +332,7 @@ function normalizeObservedTitleSource(value: string | undefined | null): string 
  * `subAgentType` (e.g. "code-explorer") over the description — a `task_progress`
  * description is the ever-changing AI summary, which must never become the
  * label. Callers freeze the result at the first named update.
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+ * See docs/agent-lifecycle.md (Item 4).
  */
 export function deriveObservedSubagentTitle(update: {
   subAgentType?: string;

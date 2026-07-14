@@ -599,6 +599,52 @@ describe("ScheduleService", () => {
     );
   });
 
+  test("records the run executor (provider/model, no personality) on run and lastRun fields", async () => {
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: createTestAgentClients(),
+      registry: agentStorage,
+    });
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "Respond with exactly hello",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          model: "test-model",
+          cwd: tempDir,
+          approvalPolicy: "never",
+        },
+      },
+      maxRuns: 1,
+    });
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+
+    const inspected = await service.inspect(created.id);
+    // No personality bound → provider/model recorded, personality null.
+    expect(inspected.runs[0]).toMatchObject({
+      provider: "claude",
+      model: "test-model",
+      personalityName: null,
+    });
+    // Summary lastRun* mirror the run so the card reads them without run history.
+    expect(inspected.lastRunProvider).toBe("claude");
+    expect(inspected.lastRunModel).toBe("test-model");
+    expect(inspected.lastRunPersonalityName).toBeNull();
+  });
+
   test("titles scheduled new agents from the schedule prompt", async () => {
     const manager = new AgentManager({
       logger: createTestLogger(),

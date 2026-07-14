@@ -198,7 +198,7 @@ interface CompletedSubagentsGroupProps {
 
 // Finished work tidies itself but stays reachable: terminal, non-attention rows
 // collapse into a "Completed (N)" group (collapsed by default) with a bulk
-// "Clear all completed". See projects/subagents-cleanup/subagents-cleanup.md (Item 6).
+// "Clear all completed". See docs/agent-lifecycle.md (Item 6).
 function CompletedSubagentsGroup({
   rows,
   expanded,
@@ -361,7 +361,7 @@ function SubagentsTrackRow({
 // Elapsed run time — a live ticker while the subagent works, then frozen at its
 // createdAt→updatedAt duration once terminal. The Claude background-task panel's
 // clearest liveness signal; here it complements the token readout.
-// See projects/subagents-cleanup/ (Phase 6, liveness signals).
+// See projects/subagent-liveness/subagent-liveness.md (liveness signals).
 function SubagentElapsed({
   rowId,
   startedAt,

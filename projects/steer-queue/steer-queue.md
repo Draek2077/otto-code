@@ -3,9 +3,9 @@
 **Status:** Not started — charter drafted 2026-07-13.
 **Lineage:** Extends the existing agent-coordination surface (`send_agent_prompt`, `cancel_agent`) in
 [otto-tools.ts](../../packages/server/src/server/agent/tools/otto-tools.ts) and the turn lifecycle in
-[agent-manager.ts](../../packages/server/src/server/agent/agent-manager.ts). Sibling in spirit to
-[subagents-cleanup](../subagents-cleanup/subagents-cleanup.md) — legibility + control over agents you're
-supervising, not new agent kinds.
+[agent-manager.ts](../../packages/server/src/server/agent/agent-manager.ts). Sibling in spirit to the
+shipped subagents-cleanup work (folded into [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md#the-subagents-track))
+— legibility + control over agents you're supervising, not new agent kinds.
 
 ## Why
 

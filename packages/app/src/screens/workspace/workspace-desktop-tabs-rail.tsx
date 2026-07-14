@@ -81,7 +81,7 @@ function noopStripLayout() {}
 
 // The rail's column-shaped counterpart to WorkspaceDesktopTabsRow. It reuses
 // the exact same tab-item chip (ResolvedDesktopTabChip, see step 2 of
-// projects/vertical-tabs/vertical-tabs.md) rather than duplicating tab
+// docs/design.md) rather than duplicating tab
 // rendering, context-menu wiring, or drag-and-drop plumbing. Unlike the row,
 // there is no viewport-driven shrink-to-fit algorithm: overflow is handled by
 // plain vertical scroll, and the rail's width is content-driven instead

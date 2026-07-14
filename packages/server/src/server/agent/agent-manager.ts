@@ -326,7 +326,7 @@ interface ObservedSubagentDerivedState {
  * its prior registry state and the incoming update. The title freezes at the
  * first update carrying a real name source (task_started's subAgentType) so
  * later progress summaries never mutate it; the token total never decreases.
- * See projects/subagents-cleanup/subagents-cleanup.md (Items 3 + 4).
+ * See docs/agent-lifecycle.md (Items 3 + 4).
  */
 function resolveObservedSubagentDerivedState(
   existing: ObservedSubagentDerivedState | undefined,
@@ -508,14 +508,14 @@ interface ManagedAgentBase {
    * true)`). Creation-time signal, NOT derived from the permission mode. The
    * guardrail deny-responder (onStreamPermissionRequested) uses it to auto-deny
    * permission escalations instead of stalling on a prompt nobody can answer.
-   * See projects/safe-unattended/safe-unattended.md (Phase 2).
+   * See docs/safe-unattended.md (Phase 2).
    */
   unattended?: boolean;
   /**
    * Count of permission escalations the guardrail deny-responder auto-denied on
    * this (unattended) agent, plus when the last one happened. Queryable hook a
    * later phase uses to surface "this run hit a guardrail and may need
-   * attention". See projects/safe-unattended/safe-unattended.md (Phase 3).
+   * attention". See docs/safe-unattended.md (Phase 3).
    */
   guardrailDenials?: number;
   lastGuardrailDenialAt?: string;
@@ -770,17 +770,17 @@ export class AgentManager {
       createdAt: string;
       // Frozen row label. Set once from the first named update (task_started)
       // and never mutated by later progress summaries — a row is a tab label,
-      // not the agent's latest output. See projects/subagents-cleanup/subagents-cleanup.md (Item 4).
+      // not the agent's latest output. See docs/agent-lifecycle.md (Item 4).
       title: string;
       titleFrozen: boolean;
       // Highest cumulative token total seen from the provider's per-task usage.
       // Kept monotonic so a final notification without usage can't drop the
-      // readout. See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+      // readout. See docs/agent-lifecycle.md (Item 3).
       cumulativeTokens?: number;
       // Set when the user archives the row. The entry is retired, not deleted:
       // a late provider update (final task_notification after an archive-while-
       // running) must not resurrect the row, so every subsequent emission keeps
-      // carrying this stamp. See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+      // carrying this stamp. See docs/agent-lifecycle.md (Items 2 + 6).
       archivedAt?: string;
       lastPayload?: AgentSnapshotPayload;
     }
@@ -4068,7 +4068,7 @@ export class AgentManager {
     // no notification — and let the model adapt. Keyed on the creation-time
     // `unattended` flag, never the permission mode (an attended user in auto
     // mode still wants the prompt). This is Phase 4 parity for the prompt path.
-    // See projects/safe-unattended/safe-unattended.md (Phase 2).
+    // See docs/safe-unattended.md (Phase 2).
     if (agent.unattended) {
       this.autoDenyUnattendedPermissionRequest(agent, request);
       return;
@@ -4108,7 +4108,7 @@ export class AgentManager {
     // TODO(safe-unattended Phase 3): surface this to the owning service
     // (schedule/artifact) as a promote-on-problem trigger so a guarded run that
     // hit a guardrail denial gets revealed alongside hard failures.
-    // See projects/safe-unattended/safe-unattended.md (Phase 3).
+    // See docs/safe-unattended.md (Phase 3).
     this.logger.info(
       { agentId: agent.id, tool, guardrailDenials: agent.guardrailDenials },
       "safe-unattended: denied unattended permission request by policy",
@@ -4290,7 +4290,7 @@ export class AgentManager {
    * subagent is stopped best-effort first; the entry is then retired in place
    * (kept, stamped `archivedAt`) so late provider updates can't resurrect the
    * row and open panes can still hydrate it.
-   * See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+   * See docs/agent-lifecycle.md (Items 2 + 6).
    */
   async archiveObservedSubagent(observedId: string): Promise<{ archivedAt: string }> {
     const entry = this.observedSubagents.get(observedId);

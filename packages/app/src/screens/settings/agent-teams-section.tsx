@@ -2,7 +2,7 @@
 // act as switchable operating templates: which personalities are on deck plus
 // a shared team prompt stacked ahead of each member's personality prompt at
 // spawn. Lives in the host settings "Agents" section, directly under the
-// Agent Personalities editor. See projects/agent-teams/agent-teams.md.
+// Agent Personalities editor. See docs/agent-teams.md.
 //
 // i18n: copy here is English-only pending a translation pass (build-first,
 // translate-last). Do not add keys to the locale resources for this surface yet.

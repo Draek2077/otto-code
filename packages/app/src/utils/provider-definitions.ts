@@ -40,6 +40,18 @@ export function resolveProviderLabel(
   return snapshotEntries?.find((entry) => entry.provider === provider)?.label ?? provider;
 }
 
+/** The friendly display name for a model id (e.g. "Opus 4.8" for
+ * "claude-opus-4-8"), resolved from the provider's snapshot model list. Falls
+ * back to the raw id when the snapshot is absent or the model isn't listed. */
+export function resolveModelLabel(
+  provider: string,
+  model: string,
+  snapshotEntries: ProviderSnapshotEntry[] | undefined,
+): string {
+  const entry = snapshotEntries?.find((candidate) => candidate.provider === provider);
+  return entry?.models?.find((candidate) => candidate.id === model)?.label ?? model;
+}
+
 export function resolveProviderDefinition(
   provider: string,
   snapshotEntries: ProviderSnapshotEntry[] | undefined,

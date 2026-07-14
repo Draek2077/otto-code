@@ -1007,7 +1007,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   // cost-less local models. Observed subagents source it from the provider's
   // per-task usage.total_tokens (already cumulative-per-subagent). Purely
   // additive; absent ⇒ no readout. Old clients ignore it.
-  // See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+  // See docs/agent-lifecycle.md (Item 3).
   cumulativeTokens: z.number().optional(),
   lastError: z.string().optional(),
   title: z.string().nullable(),
@@ -1026,17 +1026,17 @@ export const AgentSnapshotPayloadSchema = z.object({
   // Spinner colors from the Agent Personality this agent was spawned from, so
   // its live thinking indicator renders in the personality's identity. Absent ⇒
   // the client falls back to the theme's default spinner colors. Purely additive
-  // (no daemon floor needed). See projects/agent-personalities/.
+  // (no daemon floor needed). See docs/agent-personalities.md.
   personalitySpinner: AgentPersonalitySpinnerSchema.optional(),
   // Name of the Agent Personality this agent was spawned from, so the running
   // agent's controls keep showing the personality identity (trigger label +
   // effort hidden) instead of reverting to the raw model. Absent ⇒ no bound
-  // personality. Purely additive. See projects/agent-personalities/.
+  // personality. Purely additive. See docs/agent-personalities.md.
   personalityName: z.string().optional(),
   // Stable id of the bound Agent Personality. The client keys roster selection
   // on this (names can be renamed/duplicated); personalityName remains for
   // display and as the selection fallback against daemons that predate this
-  // field. Purely additive. See projects/agent-personalities/.
+  // field. Purely additive. See docs/agent-personalities.md.
   personalityId: z.string().optional(),
 });
 
@@ -3930,7 +3930,7 @@ export const CancelAgentResponseMessageSchema = z.object({
     // Whether an in-flight run was actually interrupted. False when the agent
     // had nothing running (already finished, still initializing), so clients
     // can say "nothing to stop" instead of silently no-oping. Purely additive;
-    // absent ⇒ unknown (old daemon). See projects/subagents-cleanup/subagents-cleanup.md (Item 2).
+    // absent ⇒ unknown (old daemon). See docs/agent-lifecycle.md (Item 2).
     cancelled: z.boolean().optional(),
   }),
 });

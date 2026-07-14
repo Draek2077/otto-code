@@ -123,6 +123,7 @@ export class ArtifactService {
     trigger: ArtifactRunTrigger,
     provider: string | null,
     model: string | null,
+    personalityName: string | null,
   ): Promise<void> {
     await this.store.appendRun(artifactId, {
       id: generateArtifactId(),
@@ -133,6 +134,7 @@ export class ArtifactService {
       agentId: null,
       provider,
       model,
+      personalityName,
       error: null,
     });
   }
@@ -216,6 +218,7 @@ export class ArtifactService {
       generationModeId: input.modeId ?? null,
       generationThinkingOptionId: input.thinkingOptionId ?? null,
       generationSpinner: input.spinner ?? null,
+      generationPersonalityName: input.personalityName ?? null,
       errorMessage: null,
     };
 
@@ -226,6 +229,7 @@ export class ArtifactService {
       "create",
       metadata.generationProvider,
       metadata.generationModel,
+      metadata.generationPersonalityName ?? null,
     );
     this.watcher.watch(artifactId, filePath, () => this.handleGenerationReady(artifactId));
     void this.spawnArtifactAgent(artifactId, metadata, input).catch((error) => {
@@ -298,7 +302,13 @@ export class ArtifactService {
     // before the new agent writes anything. Keeping it as a backup lets a
     // failed regeneration restore the last successful version instead of
     // losing it outright.
-    await this.startRun(artifactId, "regenerate", provider, model ?? null);
+    await this.startRun(
+      artifactId,
+      "regenerate",
+      provider,
+      model ?? null,
+      existing.generationPersonalityName ?? null,
+    );
     await this.backupBeforeRegenerate(artifactId, updated.filePath);
     this.watcher.watch(artifactId, updated.filePath, () => this.handleGenerationReady(artifactId));
     void this.spawnArtifactAgent(artifactId, updated, {

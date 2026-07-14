@@ -81,6 +81,16 @@ Archived subagents disappear from the track, by design. To remove a subagent fro
 
 To keep the agent alive but remove it from the parent's track, use **detach**. The daemon clears the parent label, emits the normal agent update, and every client reclassifies the agent from subagent to root/sibling from that updated snapshot.
 
+### Row actions, names, and cost
+
+Row actions are **status-aware** — the primary action matches the row's state. A running or initializing subagent shows **Stop** (transitions it to a terminal state without removing the row); a terminal subagent (`idle` after completion, `error`, or `closed`) shows **Archive** (drops it from the track). Archive is never offered on a running agent. Stop and the pane's stop control are the _only_ callers of the stop path — tab lifecycle can never reach it, so closing a tab is always layout-only (see [Tabs vs archive](#tabs-vs-archive)). Detach stays a native-subagent-only affordance.
+
+Row names are **frozen labels**, not summaries. A short, stable name is derived once when the subagent starts (from its type, plus an optional truncated slice of the initial task) and never mutates afterward — a provider's streaming progress summary updates the pane's live subtitle, never the row's title, and the projection enforces a hard single-line length cap. This keeps the track readable like a list of tabs.
+
+Each row shows **honest cumulative token cost** right of the name — the running Σ(input + output) the daemon accumulates across the subagent's turns (not a last-turn or estimated number), plus `totalCostUsd` when the provider reports one. The accumulator is universal: it works for any provider and any spawn path, including cost-less local models. The collapsed track header sums the total across all rows, so a fan-out's cost is legible at a glance.
+
+Completed subagents **tidy themselves without being destroyed**: terminal rows move into a collapsed **"Completed (N)"** group at the bottom of the track, keeping their frozen name and final token total, while the active list shows only in-flight subagents. A manual **"Clear all completed"** gesture archives every terminal row at once (never a running one). Nothing is destroyed until the user clears it or the parent is archived (which cascades), so cost and transcript survive the tidy.
+
 ## The Background Tasks track
 
 A sibling track (`packages/app/src/background-tasks/track.tsx`), also above the composer, that lists **background shell processes** a provider launched itself — Claude's own `Bash` tool used with `run_in_background: true` — never AI subagents. It renders independently of the subagents track: each is `null` when empty, so either, both, or neither can show at once.
@@ -102,10 +112,6 @@ The decision was to **decouple "close tab" from "archive" only for subagents**, 
 We considered universal decoupling (no tab close ever archives, archive is always explicit) but rejected it: it changes a behavior root-agent users rely on.
 
 ## Limitations
-
-### Subagent accumulation under long-lived parents
-
-A parent that spawns many subagents will see the track grow. There's no automatic cleanup for completed subagents — the user prunes via the archive button on each row. A bulk gesture (e.g. "archive all idle children") could land later if this becomes a real problem.
 
 ### Cross-client tab dismissal
 

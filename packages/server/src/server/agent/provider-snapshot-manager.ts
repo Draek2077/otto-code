@@ -142,7 +142,7 @@ export interface ResolvedProviderCreateConfig {
   // The effective unattended signal after OR-ing in an unattended parent — the
   // same value that drove mode coercion. Callers stamp this onto the session
   // config so the deny-responder arms for children of unattended parents, not
-  // just directly-unattended runs. See projects/safe-unattended/safe-unattended.md.
+  // just directly-unattended runs. See docs/safe-unattended.md.
   unattended: boolean;
 }
 

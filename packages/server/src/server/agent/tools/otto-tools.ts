@@ -515,6 +515,32 @@ function resolveArtifactProviderModel(params: {
   return { provider: resolved.provider, model };
 }
 
+interface InheritedArtifactIdentity {
+  personalityName?: string;
+  spinner?: { glowA: string; glowB: string };
+}
+
+/**
+ * The personality identity an MCP-created artifact inherits from its caller —
+ * the caller's personality name and spinner colors — so its card shows who
+ * generated it and its spinner renders in the personality's colors. Only
+ * inherited when the artifact runs on the caller's own brain: an explicit
+ * provider override detaches it, mirroring how the model/effort inherit.
+ */
+function resolveInheritedArtifactIdentity(params: {
+  providerOverridden: boolean;
+  snapshot: ResolvedPersonalitySnapshot | undefined;
+}): InheritedArtifactIdentity {
+  const snapshot = params.providerOverridden ? undefined : params.snapshot;
+  if (!snapshot) {
+    return {};
+  }
+  return {
+    ...(snapshot.name ? { personalityName: snapshot.name } : {}),
+    ...(snapshot.spinner ? { spinner: snapshot.spinner } : {}),
+  };
+}
+
 /**
  * Thinking options and modes are provider-scoped, so the caller's own effort
  * level and permission mode only carry over when the caller's provider is the
@@ -2633,6 +2659,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         projectRegistry: options.projectRegistry,
       });
 
+      // When the artifact inherits the caller's brain (no explicit provider
+      // override), it also inherits the caller's personality identity so the
+      // card shows who generated it, matching the create sheet.
+      const inheritedIdentity = resolveInheritedArtifactIdentity({
+        providerOverridden: input.provider !== undefined,
+        snapshot: callerAgent?.config.personalitySnapshot,
+      });
+
       const artifact = await artifactService.create({
         name,
         description: input.description,
@@ -2641,6 +2675,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         ...(model ? { model } : {}),
         ...(resolvedThinkingOptionId ? { thinkingOptionId: resolvedThinkingOptionId } : {}),
         ...(modeId ? { modeId } : {}),
+        ...inheritedIdentity,
       });
       options.emitArtifactCreated?.(artifact);
 

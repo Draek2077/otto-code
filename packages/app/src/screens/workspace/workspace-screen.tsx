@@ -2990,7 +2990,7 @@ function WorkspaceScreenContent({
         // projection that lives in agentDetails (fetched, no projectPlacement),
         // not agents. Reading only `agents` would miss its parentAgentId and
         // wrongly fall through to archive-on-close — cancelling a run the user
-        // only meant to close. See projects/subagents-cleanup/subagents-cleanup.md (Item 5).
+        // only meant to close. See docs/agent-lifecycle.md (Item 5).
         const session = useSessionStore.getState().sessions[normalizedServerId];
         const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
         const closePolicy = resolveCloseAgentTabPolicy(agent);

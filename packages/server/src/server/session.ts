@@ -2369,7 +2369,7 @@ export class Session {
     // and no stored record, so `archiveAgentCommand` would 404 them — the same
     // root cause the fetch path special-cases above. Archive them through the
     // registry instead (best-effort stop + retire the projection).
-    // See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+    // See docs/agent-lifecycle.md (Items 2 + 6).
     if (this.agentManager.getObservedSubagentPayload(agentId)) {
       const { archivedAt } = await this.agentManager.archiveObservedSubagent(agentId);
       return { agentId, archivedAt };
@@ -4055,7 +4055,7 @@ export class Session {
     // storage. A track row can still reference one after the client store
     // dropped it (placement remove, reconnect), so resolve the synthetic id
     // straight from the registry — otherwise fetch_agent 404s a run that is
-    // fine. See projects/subagents-cleanup/subagents-cleanup.md (Item 1).
+    // fine. See docs/agent-lifecycle.md (Item 1).
     if (this.agentManager.getObservedSubagentPayload(trimmed)) {
       return { ok: true, agentId: trimmed };
     }
@@ -4120,7 +4120,7 @@ export class Session {
 
     // Observed subagents have no live ManagedAgent and no stored record; serve
     // the registry projection so the pane hydrates instead of dead-ending on a
-    // 404. See projects/subagents-cleanup/subagents-cleanup.md (Item 1).
+    // 404. See docs/agent-lifecycle.md (Item 1).
     const observed = this.agentManager.getObservedSubagentPayload(agentId);
     if (observed && this.isProviderVisibleToClient(observed.provider)) {
       return observed;
