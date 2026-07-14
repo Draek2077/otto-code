@@ -874,9 +874,18 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       if (!this.isActiveObservedWorkspaceTarget(target) || target.latestSnapshot) {
         return;
       }
+      // Git-only: the initial snapshot must NOT block on an inline GitHub PR
+      // fetch. `registerWorkspace` runs for every workspace listed in the
+      // sidebar (fetch_workspaces -> syncObservers), so an inline `gh` round-trip
+      // here (a) fans out one slow subprocess per listed workspace and (b) leaves
+      // this refresh in-flight, so a client's `checkout_status_request` on open
+      // piggybacks on it and waits 3-4s (see `ws_slow_request` daemon logs). The
+      // checkout status response carries no PR data anyway. GitHub PR status is
+      // delivered asynchronously by `updateGitHubPollForTarget`, which starts the
+      // per-branch poll (immediate first fetch on retention) once git facts land.
       void this.refreshWorkspaceTarget(target, {
         force: false,
-        includeGitHub: true,
+        includeGitHub: false,
         reason: "initial",
         notify: true,
       });

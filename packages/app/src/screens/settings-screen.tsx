@@ -1458,6 +1458,18 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       ? selectedSettingsHostServerId
       : null;
   }, [hosts, selectedSettingsHostServerId]);
+  // The cached local-daemon serverId can outlive the daemon identity it points at
+  // (e.g. the WSL daemon restarts with a new serverId): the ["desktop-daemon-server-id"]
+  // query never refetches, so it keeps serving a stale id that is absent from the live
+  // host registry. Validate it against `hosts` — same as the selected id above — so we
+  // fall through to a real host instead of scoping every section to a ghost host
+  // ("Host not found").
+  const knownLocalServerId = useMemo(() => {
+    if (!localServerId) {
+      return null;
+    }
+    return hosts.some((host) => host.serverId === localServerId) ? localServerId : null;
+  }, [hosts, localServerId]);
 
   useEffect(() => {
     if (view.kind === "host") {
@@ -1469,8 +1481,10 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // the picker choice, otherwise the local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
     if (view.kind === "host") return view.serverId;
-    return knownSelectedSettingsHostServerId ?? localServerId ?? sortedHosts[0]?.serverId ?? null;
-  }, [view, knownSelectedSettingsHostServerId, localServerId, sortedHosts]);
+    return (
+      knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
+    );
+  }, [view, knownSelectedSettingsHostServerId, knownLocalServerId, sortedHosts]);
 
   const handleInterfaceModeChange = useCallback(
     (mode: InterfaceMode) => {

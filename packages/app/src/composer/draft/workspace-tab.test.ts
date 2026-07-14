@@ -80,16 +80,18 @@ describe("draft personality resolution", () => {
     const draftPersonality = resolveDraftPersonality({
       autoSubmitConfig: null,
       agentControls: {
-        selectedPersonalityId: "sage",
-        personalities: [
-          {
-            id: "sage",
-            name: "Sage",
-            provider: "codewhale",
-            subtitle: "codewhale",
-            available: true,
-          },
-        ],
+        personality: {
+          selectedPersonalityId: "sage",
+          personalities: [
+            {
+              id: "sage",
+              name: "Sage",
+              provider: "codewhale",
+              subtitle: "codewhale",
+              available: true,
+            },
+          ],
+        },
       },
     });
     expect(draftPersonality?.id).toBe("sage");
@@ -110,16 +112,18 @@ describe("draft personality resolution", () => {
       agentControls: {
         // The tab's own composer never selected anything — the personality
         // came from the originating new-workspace composer instead.
-        selectedPersonalityId: null,
-        personalities: [
-          {
-            id: "sage",
-            name: "Sage",
-            provider: "codewhale",
-            subtitle: "codewhale",
-            available: true,
-          },
-        ],
+        personality: {
+          selectedPersonalityId: null,
+          personalities: [
+            {
+              id: "sage",
+              name: "Sage",
+              provider: "codewhale",
+              subtitle: "codewhale",
+              available: true,
+            },
+          ],
+        },
       },
     });
     expect(draftPersonality?.id).toBe("sage");
@@ -135,16 +139,18 @@ describe("draft personality resolution", () => {
       // Even if this tab's own (unrelated) composer state has a stale
       // selection, an auto-submit with no personality must not pick it up.
       agentControls: {
-        selectedPersonalityId: "sage",
-        personalities: [
-          {
-            id: "sage",
-            name: "Sage",
-            provider: "codewhale",
-            subtitle: "codewhale",
-            available: true,
-          },
-        ],
+        personality: {
+          selectedPersonalityId: "sage",
+          personalities: [
+            {
+              id: "sage",
+              name: "Sage",
+              provider: "codewhale",
+              subtitle: "codewhale",
+              available: true,
+            },
+          ],
+        },
       },
     });
     expect(draftPersonality).toBeNull();

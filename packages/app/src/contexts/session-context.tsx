@@ -534,6 +534,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setBackgroundShellTasksForParent = useSessionStore(
     (state) => state.setBackgroundShellTasksForParent,
   );
+  const setSuggestedTasksForParent = useSessionStore((state) => state.setSuggestedTasksForParent);
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const setEmptyProjects = useSessionStore((state) => state.setEmptyProjects);
   const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
@@ -1745,6 +1746,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       },
     );
 
+    const unsubSuggestedTasksChanged = client.on("suggested_tasks_changed", (message) => {
+      if (message.type !== "suggested_tasks_changed") {
+        return;
+      }
+      const { parentAgentId, tasks } = message.payload;
+      setSuggestedTasksForParent(serverId, parentAgentId, tasks);
+    });
+
     const unsubTerminalAttention = client.on("terminal_attention_required", (message) => {
       if (message.type !== "terminal_attention_required") {
         return;
@@ -1771,6 +1780,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentStream();
       unsubAgentTimeline();
       unsubBackgroundShellTasksChanged();
+      unsubSuggestedTasksChanged();
       unsubWorkspaceUpdate();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
@@ -1802,6 +1812,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setAgentStreamState,
     clearAgentStreamHead,
     setBackgroundShellTasksForParent,
+    setSuggestedTasksForParent,
     setAgentTimelineCursor,
     setInitializingAgents,
     setAgents,

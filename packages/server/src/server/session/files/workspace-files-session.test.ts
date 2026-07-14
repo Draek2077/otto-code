@@ -41,7 +41,7 @@ function makeDir(prefix: string): string {
   return dir;
 }
 
-function makeSubsystem(options: { hasBinaryChannel?: boolean } = {}) {
+function makeSubsystem(options: { hasBinaryChannel?: boolean; allowedRoots?: string[] } = {}) {
   const emitted: SessionOutboundMessage[] = [];
   const binary: Uint8Array[] = [];
   let hasBinary = options.hasBinaryChannel ?? false;
@@ -51,11 +51,16 @@ function makeSubsystem(options: { hasBinaryChannel?: boolean } = {}) {
     hasBinaryChannel: () => hasBinary,
   };
   const ottoHome = makeDir("workspace-files-home-");
+  // Every per-test cwd lives under the OS temp root, so treating that root as
+  // the sole known workspace lets the boundary guard pass for the happy-path
+  // specs while still exercising it. Boundary-rejection specs pass a tighter set.
+  const allowedRoots = options.allowedRoots ?? [realpathSync(tmpdir())];
   const subsystem = new WorkspaceFilesSession({
     host,
     downloadTokenStore: new DownloadTokenStore({ ttlMs: 60_000 }),
     ottoHome,
     logger: pino({ level: "silent" }),
+    resolveAllowedRoots: async () => allowedRoots,
     // Tight watcher timing so the watch specs stay fast and rely on the
     // deterministic polling path rather than platform fs.watch latency.
     watchOptions: { pollIntervalMs: 40, debounceMs: 10 },
@@ -930,5 +935,114 @@ describe("WorkspaceFilesSession code navigation", () => {
     const kinds = message.payload.symbols.map((symbol) => `${symbol.kind}:${symbol.name}`);
     expect(kinds).toContain("class:Alpha");
     expect(kinds).toContain("function:beta");
+  });
+});
+
+describe("WorkspaceFilesSession known-workspace boundary", () => {
+  test("opens files from any known workspace, not just the first", async () => {
+    // Two distinct, unrelated workspace roots: the client may open files from
+    // either. This is the cross-workspace access the feature enables.
+    const workspaceA = makeDir("workspace-files-known-a-");
+    const workspaceB = makeDir("workspace-files-known-b-");
+    writeFileSync(join(workspaceA, "a.txt"), "alpha");
+    writeFileSync(join(workspaceB, "b.txt"), "beta");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [workspaceA, workspaceB] });
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd: workspaceB,
+      path: "b.txt",
+      mode: "file",
+      requestId: "req-known-b",
+    });
+
+    const message = emitted.at(-1);
+    if (message?.type !== "file_explorer_response") {
+      throw new Error(`expected file_explorer_response, got ${message?.type}`);
+    }
+    expect(message.payload.error).toBeNull();
+    expect(message.payload.file?.content).toBe("beta");
+  });
+
+  test("opens files inside a subdirectory of a known workspace root", async () => {
+    const workspace = makeDir("workspace-files-known-sub-");
+    mkdirSync(join(workspace, "pkg"));
+    // A caller may address a nested checkout with the nested cwd; it is still
+    // inside a known workspace, so it is allowed.
+    writeFileSync(join(workspace, "pkg", "nested.txt"), "nested");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [workspace] });
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd: join(workspace, "pkg"),
+      path: "nested.txt",
+      mode: "file",
+      requestId: "req-known-nested",
+    });
+
+    const message = emitted.at(-1);
+    if (message?.type !== "file_explorer_response") {
+      throw new Error(`expected file_explorer_response, got ${message?.type}`);
+    }
+    expect(message.payload.error).toBeNull();
+    expect(message.payload.file?.content).toBe("nested");
+  });
+
+  test("refuses a cwd that is not a known workspace", async () => {
+    const known = makeDir("workspace-files-known-only-");
+    const stranger = makeDir("workspace-files-stranger-");
+    writeFileSync(join(stranger, "secret.txt"), "secret");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd: stranger,
+      path: "secret.txt",
+      mode: "file",
+      requestId: "req-stranger",
+    });
+
+    const message = emitted.at(-1);
+    if (message?.type !== "file_explorer_response") {
+      throw new Error(`expected file_explorer_response, got ${message?.type}`);
+    }
+    expect(message.payload.error).toBe("Access outside of known workspaces is not allowed");
+    expect(message.payload.file).toBeNull();
+  });
+
+  test("refuses writes to a cwd outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-write-");
+    const stranger = makeDir("workspace-files-stranger-write-");
+    const victim = join(stranger, "victim.txt");
+    writeFileSync(victim, "safe");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileWriteRequest({
+      type: "file.write.request",
+      requestId: "req-stranger-write",
+      cwd: stranger,
+      path: "victim.txt",
+      content: "pwned",
+      expectedModifiedAt: mtimeIso(victim),
+    });
+
+    const result = lastWriteResult(emitted);
+    if (result.status !== "error") {
+      throw new Error(`expected error, got ${result.status}`);
+    }
+    expect(result.message).toBe("Access outside of known workspaces is not allowed");
+    expect(readFileSync(victim, "utf8")).toBe("safe");
+  });
+
+  test("refuses watch subscriptions for a cwd outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-watch-");
+    const stranger = makeDir("workspace-files-stranger-watch-");
+    writeFileSync(join(stranger, "a.txt"), "alpha\n");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    const result = await subscribeWatch(subsystem, emitted, { cwd: stranger, path: "a.txt" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Access outside of known workspaces is not allowed");
+    subsystem.dispose();
   });
 });

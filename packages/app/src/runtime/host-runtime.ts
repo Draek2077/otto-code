@@ -25,6 +25,7 @@ import {
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@otto-code/protocol/connection-offer";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { DESKTOP_DAEMON_SERVER_ID_QUERY_KEY } from "@/hooks/use-is-local-daemon";
 import { isWeb } from "@/constants/platform";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { getOrCreateClientId } from "@/utils/client-id";
@@ -1993,6 +1994,19 @@ export class HostRuntimeStore {
       void invalidateCheckoutGitQueriesForServer(queryClient, serverId);
       invalidateServerDataQueriesAfterReconnect({ queryClient, serverId });
       void queryClient.invalidateQueries({ queryKey: schedulesQueryBaseKey });
+      // The cached local desktop-daemon serverId (["desktop-daemon-server-id"]) never
+      // refetches on its own — staleTime: Infinity, refetchOnMount/Reconnect false. If the
+      // local daemon restarts with a new serverId it would keep serving the stale id,
+      // stranding Settings on a ghost host ("Host not found"). Force a re-read on any
+      // reconnect so it self-heals. refetchType "all" is required: marking it stale alone
+      // wouldn't heal it while unobserved, since refetchOnMount is false. The query is
+      // global and enabled only on desktop, so gate on that.
+      if (shouldUseDesktopDaemon()) {
+        void queryClient.invalidateQueries({
+          queryKey: DESKTOP_DAEMON_SERVER_ID_QUERY_KEY,
+          refetchType: "all",
+        });
+      }
     }
     const didTransitionOffline =
       snapshot.connectionStatus !== "online" && previousStatus === "online";

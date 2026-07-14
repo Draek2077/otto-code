@@ -1035,11 +1035,14 @@ export function FileTabPane({
   workspaceId,
   workspaceRoot,
   location,
+  outOfProjectName = null,
 }: {
   serverId: string;
   workspaceId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  /** Owning project name when this file belongs to another, linked project. */
+  outOfProjectName?: string | null;
 }) {
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   // Rendered formats (markdown, images, binaries) open in preview; plain
@@ -1095,8 +1098,8 @@ export function FileTabPane({
     [editorAllowed, effectiveMode, handleModeChange, splitAllowed],
   );
 
-  if (effectiveMode === "preview") {
-    return (
+  const content =
+    effectiveMode === "preview" ? (
       <PreviewOnlyView
         serverId={serverId}
         workspaceId={workspaceId}
@@ -1105,20 +1108,41 @@ export function FileTabPane({
         modeBarProps={modeBarProps}
         onFileInfo={setFileInfo}
       />
+    ) : (
+      <EditorModeView
+        serverId={serverId}
+        workspaceId={workspaceId}
+        workspaceRoot={workspaceRoot}
+        location={location}
+        split={effectiveMode === "split"}
+        modeBarProps={modeBarProps}
+        controllerRef={controllerRef}
+        onFileInfo={setFileInfo}
+      />
     );
-  }
 
+  if (!outOfProjectName) {
+    return content;
+  }
   return (
-    <EditorModeView
-      serverId={serverId}
-      workspaceId={workspaceId}
-      workspaceRoot={workspaceRoot}
-      location={location}
-      split={effectiveMode === "split"}
-      modeBarProps={modeBarProps}
-      controllerRef={controllerRef}
-      onFileInfo={setFileInfo}
-    />
+    <View style={styles.outOfProjectWrap}>
+      <OutOfProjectBanner projectName={outOfProjectName} />
+      {content}
+    </View>
+  );
+}
+
+// A file opened from another (linked) project shows a persistent, centered
+// banner naming the owner — a constant reminder that edits here won't be part
+// of this project's commit (gated-multi-root).
+function OutOfProjectBanner({ projectName }: { projectName: string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.outOfProjectBanner} testID="file-out-of-project-banner">
+      <Text style={styles.outOfProjectText} numberOfLines={1}>
+        {t("editor.outOfProject.badge", { project: projectName })}
+      </Text>
+    </View>
   );
 }
 
@@ -1133,6 +1157,24 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       minHeight: 0,
       backgroundColor: theme.colors.surface0,
+    },
+    outOfProjectWrap: {
+      flex: 1,
+      minHeight: 0,
+    },
+    outOfProjectBanner: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing[2],
+      paddingVertical: theme.spacing[1],
+      backgroundColor: theme.colors.surface2,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    outOfProjectText: {
+      color: theme.colors.statusWarning,
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
     },
     centerState: {
       flex: 1,

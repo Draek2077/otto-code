@@ -1,6 +1,7 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type {
   CheckoutGitCommitError,
+  CheckoutGitRollbackError,
   CheckoutPrMergeMethod,
   CommitMessageAgent,
 } from "@otto-code/protocol/messages";
@@ -96,6 +97,18 @@ export class CheckoutGitCommitFailedError extends Error {
   constructor(public readonly commitError: CheckoutGitCommitError) {
     super(`Commit failed: ${commitError.kind}`);
     this.name = "CheckoutGitCommitFailedError";
+  }
+}
+
+/**
+ * A rollback the daemon refused or that failed, carrying the structured reason
+ * (running agents, git failure) so the changes panel can offer the same
+ * confirm/override the commit flow uses for "agents_running".
+ */
+export class CheckoutGitRollbackFailedError extends Error {
+  constructor(public readonly rollbackError: CheckoutGitRollbackError) {
+    super(`Rollback failed: ${rollbackError.kind}`);
+    this.name = "CheckoutGitRollbackFailedError";
   }
 }
 
@@ -272,7 +285,12 @@ interface CheckoutGitActionsStoreState {
     paths: string[];
     allowWithRunningAgents?: boolean;
   }) => Promise<void>;
-  rollbackPaths: (params: { serverId: string; cwd: string; paths: string[] }) => Promise<void>;
+  rollbackPaths: (params: {
+    serverId: string;
+    cwd: string;
+    paths: string[];
+    allowWithRunningAgents?: boolean;
+  }) => Promise<void>;
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -399,7 +417,7 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     });
   },
 
-  rollbackPaths: async ({ serverId, cwd, paths }) => {
+  rollbackPaths: async ({ serverId, cwd, paths, allowWithRunningAgents }) => {
     assertCheckoutGitRollbackSupported(serverId);
     await runCheckoutAction({
       serverId,
@@ -407,13 +425,12 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
       actionId: "rollback",
       run: async () => {
         const client = resolveClient(serverId);
-        const payload = await client.checkoutGitRollback(cwd, { paths });
+        const payload = await client.checkoutGitRollback(cwd, {
+          paths,
+          ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+        });
         if (payload.error) {
-          const message =
-            payload.error.kind === "git_failed"
-              ? payload.error.detail
-              : i18n.t("workspace.git.rollback.failed");
-          throw new Error(message);
+          throw new CheckoutGitRollbackFailedError(payload.error);
         }
       },
     });

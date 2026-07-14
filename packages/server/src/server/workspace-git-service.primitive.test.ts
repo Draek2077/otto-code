@@ -353,8 +353,14 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     checkoutStatusDeferred.resolve(createCheckoutStatus(REPO_CWD));
 
-    await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(createSnapshot(REPO_CWD));
-    expect(service.peekSnapshot(REPO_CWD)).toEqual(createSnapshot(REPO_CWD));
+    // The initial (register-triggered) refresh is git-only — GitHub PR status is
+    // delivered by the poll, which this stub does not implement — so the warmed
+    // snapshot reports GitHub as unavailable until a poll fills it in.
+    const gitOnlySnapshot = createSnapshot(REPO_CWD, {
+      github: { featuresEnabled: false, pullRequest: null },
+    });
+    await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(gitOnlySnapshot);
+    expect(service.peekSnapshot(REPO_CWD)).toEqual(gitOnlySnapshot);
 
     subscription.unsubscribe();
     service.dispose();
@@ -691,7 +697,13 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.dispose();
   });
 
-  test("self-heal timer refreshes git without refreshing GitHub", async () => {
+  test("initial and self-heal refreshes fetch git without an inline GitHub read", async () => {
+    // GitHub PR status is delivered by the per-branch poll
+    // (retainCurrentPullRequestStatusPoll), NOT inline in the snapshot refresh.
+    // Registering a workspace (via the sidebar listing) must not block on a `gh`
+    // round-trip, so neither the initial refresh nor the self-heal refresh calls
+    // getPullRequestStatus. (This github stub omits the poll, so the only path
+    // that could call getPullRequestStatus is the removed inline fetch.)
     let nowMs = 0;
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());
@@ -708,13 +720,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await flushPromises();
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
-    expect(getPullRequestStatus).toHaveBeenCalledTimes(1);
-    expect(getPullRequestStatus).toHaveBeenCalledWith(
-      REPO_CWD,
-      expect.anything(),
-      { force: false, reason: "initial" },
-      expect.anything(),
-    );
+    expect(getPullRequestStatus).not.toHaveBeenCalled();
 
     subscription.unsubscribe();
     service.dispose();
@@ -1111,7 +1117,11 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await flushPromises();
 
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
-    await expect(directRead).resolves.toEqual(createSnapshot(REPO_CWD));
+    // Initial refresh is git-only (GitHub arrives via the poll, unimplemented in
+    // this stub), so the current snapshot reports GitHub as unavailable.
+    await expect(directRead).resolves.toEqual(
+      createSnapshot(REPO_CWD, { github: { featuresEnabled: false, pullRequest: null } }),
+    );
 
     selfHealRefresh.resolve(createCheckoutStatus(REPO_CWD));
     await flushPromises();

@@ -40,6 +40,13 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { useHostFeature } from "@/runtime/host-features";
+import { useSessionStore } from "@/stores/session-store";
+import {
+  canonicalLinkKey,
+  projectLinksQueryKey,
+  useProjectLinkSet,
+} from "@/projects/project-links";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
@@ -253,6 +260,12 @@ function ProjectSettingsBody({
         </View>
         <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
+
+      <ProjectLinksSection
+        serverId={selectedHost.serverId}
+        projectId={project.projectKey}
+        client={client}
+      />
 
       {renderContent({
         readQuery,
@@ -800,6 +813,139 @@ function ProjectConfigForm({
 
 function ResolveSpinnerColor(): string {
   return styles.spinnerColor.color;
+}
+
+interface ProjectLinksSectionProps {
+  serverId: string;
+  projectId: string;
+  client: DaemonClient;
+}
+
+interface LinkableProject {
+  projectId: string;
+  projectName: string;
+}
+
+// The gated-multi-root link manager: link this project to others on the same
+// host so their files can be opened/edited in place. Links are bidirectional —
+// linking here also links the other side.
+function ProjectLinksSection({ serverId, projectId, client }: ProjectLinksSectionProps) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const supported = useHostFeature(serverId, "projectLinks");
+  const { linkSet } = useProjectLinkSet(serverId);
+  const workspacesMap = useSessionStore((state) => state.sessions[serverId]?.workspaces ?? null);
+
+  const others = useMemo<LinkableProject[]>(() => {
+    if (!workspacesMap) {
+      return [];
+    }
+    const byId = new Map<string, string>();
+    for (const descriptor of workspacesMap.values()) {
+      if (descriptor.projectId === projectId) {
+        continue;
+      }
+      byId.set(descriptor.projectId, descriptor.projectCustomName ?? descriptor.projectDisplayName);
+    }
+    return Array.from(byId, ([id, projectName]) => ({ projectId: id, projectName })).sort((a, b) =>
+      a.projectName.localeCompare(b.projectName),
+    );
+  }, [workspacesMap, projectId]);
+
+  const mutation = useMutation({
+    mutationFn: async (input: { otherProjectId: string; link: boolean }) => {
+      if (input.link) {
+        await client.linkProjects(projectId, input.otherProjectId);
+      } else {
+        await client.unlinkProjects(projectId, input.otherProjectId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectLinksQueryKey(serverId) });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : t("settings.project.links.error");
+      toast.error(message);
+    },
+  });
+
+  const handleToggle = useCallback(
+    (otherProjectId: string, link: boolean) => mutation.mutate({ otherProjectId, link }),
+    [mutation],
+  );
+
+  if (!supported) {
+    return null;
+  }
+
+  return (
+    <SettingsGroup
+      title={t("settings.project.links.title")}
+      info={t("settings.project.links.info")}
+      testID="project-links-group"
+    >
+      <View style={settingsStyles.card} testID="project-links-list">
+        {others.length === 0 ? (
+          <View style={settingsStyles.row}>
+            <Text style={styles.emptyScripts}>{t("settings.project.links.empty")}</Text>
+          </View>
+        ) : (
+          others.map((other, index) => (
+            <ProjectLinkRow
+              key={other.projectId}
+              project={other}
+              isFirst={index === 0}
+              linked={linkSet.has(canonicalLinkKey(projectId, other.projectId))}
+              disabled={mutation.isPending}
+              onToggle={handleToggle}
+            />
+          ))
+        )}
+      </View>
+    </SettingsGroup>
+  );
+}
+
+function ProjectLinkRow({
+  project,
+  isFirst,
+  linked,
+  disabled,
+  onToggle,
+}: {
+  project: LinkableProject;
+  isFirst: boolean;
+  linked: boolean;
+  disabled: boolean;
+  onToggle: (otherProjectId: string, link: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const handleValueChange = useCallback(
+    (link: boolean) => onToggle(project.projectId, link),
+    [onToggle, project.projectId],
+  );
+  return (
+    <View
+      style={isFirst ? styles.scriptRow : styles.scriptRowWithBorder}
+      testID={`project-link-row-${project.projectId}`}
+    >
+      <View style={styles.scriptRowMain}>
+        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+          {project.projectName}
+        </Text>
+      </View>
+      <Switch
+        value={linked}
+        onValueChange={handleValueChange}
+        disabled={disabled}
+        accessibilityLabel={t("settings.project.links.toggleAccessibility", {
+          project: project.projectName,
+        })}
+        testID={`project-link-toggle-${project.projectId}`}
+      />
+    </View>
+  );
 }
 
 interface ProjectNameEditorProps {

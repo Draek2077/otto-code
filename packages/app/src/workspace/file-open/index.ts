@@ -8,7 +8,23 @@ export interface WorkspaceFileLocation {
   lineEnd?: number;
 }
 
-export type WorkspaceFileTabTarget = { kind: "file" } & WorkspaceFileLocation;
+/**
+ * When a file tab shows a file that belongs to a DIFFERENT project than the
+ * workspace hosting the tab (gated-multi-root), `origin` records the owning
+ * workspace so the panel resolves its cwd/buffer against that workspace instead
+ * of the host pane's. Absent for ordinary in-project file tabs.
+ */
+export interface WorkspaceFileOrigin {
+  workspaceId: string;
+  cwd: string;
+  projectId: string;
+  projectName?: string;
+}
+
+export type WorkspaceFileTabTarget = {
+  kind: "file";
+  origin?: WorkspaceFileOrigin;
+} & WorkspaceFileLocation;
 
 export interface WorkspaceFileOpenRequest {
   location: WorkspaceFileLocation;
@@ -47,11 +63,29 @@ export function workspaceFileLocationsEqual(
 
 export function createWorkspaceFileTabTarget(
   location: WorkspaceFileLocation,
+  origin?: WorkspaceFileOrigin,
 ): WorkspaceFileTabTarget {
   return {
     kind: "file",
     ...location,
+    ...(origin ? { origin } : {}),
   };
+}
+
+/**
+ * Two file tab targets are the same tab when they point at the same location
+ * AND the same origin workspace — so an out-of-project file never collides with
+ * an in-project file that happens to share a relative path, nor with the same
+ * path from a different linked project.
+ */
+export function workspaceFileTabTargetsEqual(
+  left: WorkspaceFileTabTarget,
+  right: WorkspaceFileTabTarget,
+): boolean {
+  return (
+    workspaceFileLocationsEqual(left, right) &&
+    (left.origin?.workspaceId ?? null) === (right.origin?.workspaceId ?? null)
+  );
 }
 
 function normalizeLineNumber(value: number | null | undefined): number | undefined {

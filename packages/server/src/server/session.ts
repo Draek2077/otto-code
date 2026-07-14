@@ -88,7 +88,7 @@ import type {
   AgentTimelineFetchResult,
   ManagedAgent,
 } from "./agent/agent-manager.js";
-import { createAgentCommand } from "./agent/create-agent/create.js";
+import { createAgentCommand, formatProviderModel } from "./agent/create-agent/create.js";
 import {
   archiveAgentCommand,
   cancelAgentRunCommand,
@@ -153,6 +153,7 @@ import {
   type ProjectRegistry,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
+import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import { wrapSpokenInput } from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import { VoiceSession } from "./session/voice/voice-session.js";
@@ -433,6 +434,12 @@ const nodeSessionFileSystem: SessionFileSystem = {
 // Stub types for features under development (modules not yet available)
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
+// Kept out of the constructor so the noop fallback for test harnesses (which
+// omit the store) does not add a branch to the already max-complexity ctor.
+function resolveProjectLinkStore(store: ProjectLinkStore | undefined): ProjectLinkStore {
+  return store ?? createNoopProjectLinkStore();
+}
+
 export interface SessionOptions {
   clientId: string;
   appVersion?: string | null;
@@ -450,6 +457,9 @@ export interface SessionOptions {
   agentStorage: AgentStorage;
   projectRegistry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
+  // Optional so the many test harnesses need not construct one; production
+  // (websocket-server) always supplies the real store. Falls back to a noop.
+  projectLinkStore?: ProjectLinkStore;
   filesystem?: SessionFileSystem;
   chatService: FileBackedChatService;
   scheduleService: ScheduleService;
@@ -589,6 +599,7 @@ export class Session {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly projectLinkStore: ProjectLinkStore;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -668,6 +679,7 @@ export class Session {
       agentStorage,
       projectRegistry,
       workspaceRegistry,
+      projectLinkStore,
       filesystem,
       chatService,
       scheduleService,
@@ -736,12 +748,26 @@ export class Session {
       downloadTokenStore,
       ottoHome,
       logger: this.sessionLogger,
+      // Cross-workspace file access is bounded to the distinct paths of every
+      // known Otto workspace (and its project root) — the client may open files
+      // from any of them, not just the active one, but nothing outside them.
+      resolveAllowedRoots: async () => {
+        const [workspaces, projects] = await Promise.all([
+          workspaceRegistry.list(),
+          projectRegistry.list(),
+        ]);
+        return [
+          ...workspaces.map((workspace) => workspace.cwd),
+          ...projects.map((project) => project.rootPath),
+        ];
+      },
     });
     this.agentManager = agentManager;
     this.runService = runService;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
+    this.projectLinkStore = resolveProjectLinkStore(projectLinkStore);
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
     this.gitHostingResolver = gitHostingResolver ?? null;
@@ -1293,6 +1319,16 @@ export class Session {
           return;
         }
 
+        if (event.type === "suggested_task_state") {
+          // Suggested-task chips (spawn_task) — push the full current pending
+          // list for this parent, same direct path as background shell tasks.
+          this.emit({
+            type: "suggested_tasks_changed",
+            payload: { parentAgentId: event.parentAgentId, tasks: event.tasks },
+          });
+          return;
+        }
+
         if (
           this.voiceSession.isActiveForAgent(event.agentId) &&
           event.event.type === "permission_requested" &&
@@ -1598,6 +1634,10 @@ export class Session {
           msg.taskIds,
           msg.requestId,
         );
+      case "tasks.suggested.start.request":
+        return this.handleStartSuggestedTaskRequest(msg);
+      case "tasks.suggested.dismiss.request":
+        return this.handleDismissSuggestedTaskRequest(msg);
       default:
         return undefined;
     }
@@ -1682,6 +1722,175 @@ export class Session {
         payload: { requestId, agentId: parentAgentId, accepted: false, error: message },
       });
     }
+  }
+
+  private async handleStartSuggestedTaskRequest(
+    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
+  ): Promise<void> {
+    const { parentAgentId, taskIds, mode, requestId } = msg;
+    const parent = this.agentManager.getAgent(parentAgentId);
+    if (!parent) {
+      this.emit({
+        type: "tasks.suggested.start.response",
+        payload: {
+          requestId,
+          parentAgentId,
+          accepted: false,
+          succeeded: 0,
+          failed: taskIds.length,
+          error: "Parent agent not found",
+        },
+      });
+      return;
+    }
+
+    // Apply the same mode to each task independently — one agent/chat each, no
+    // combining. Failures are collected so a partial success still starts the
+    // rest; each failed task's chip stays pending.
+    let succeeded = 0;
+    const errors: string[] = [];
+    for (const taskId of taskIds) {
+      const task = this.agentManager.getSuggestedTaskEntry(taskId);
+      // Never act on a task that belongs to a different parent — treat a
+      // mismatched (or missing) id as not found rather than starting it.
+      if (!task || task.parentAgentId !== parentAgentId) {
+        errors.push(`${taskId}: suggested task not found`);
+        continue;
+      }
+      // Atomically claim the start. A second concurrent request for the same id
+      // (double-click during slow worktree provisioning) fails this gate
+      // immediately instead of also passing the pending check and double-spawning.
+      if (!this.agentManager.beginSuggestedTaskStart(taskId)) {
+        errors.push(`${task.title}: already ${task.state}`);
+        continue;
+      }
+      try {
+        let startedAgentId: string | undefined;
+        if (mode === "in_session") {
+          await sendPromptToAgent({
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            agentId: parentAgentId,
+            prompt: this.buildAgentPrompt(task.prompt),
+            logger: this.sessionLogger,
+          });
+        } else {
+          startedAgentId = await this.createAgentForSuggestedTask({
+            parent,
+            mode,
+            title: task.title,
+            prompt: task.prompt,
+            ...(task.cwd ? { cwd: task.cwd } : {}),
+          });
+        }
+        this.agentManager.markSuggestedTaskStarted({
+          taskId,
+          mode,
+          ...(startedAgentId ? { startedAgentId } : {}),
+        });
+        succeeded += 1;
+      } catch (error) {
+        const message = getErrorMessageOr(error, "failed to start");
+        this.sessionLogger.error(
+          { err: error, parentAgentId, taskId, mode },
+          "Failed to start suggested task",
+        );
+        errors.push(`${task.title}: ${message}`);
+      } finally {
+        this.agentManager.endSuggestedTaskStart(taskId);
+      }
+    }
+
+    this.emit({
+      type: "tasks.suggested.start.response",
+      payload: {
+        requestId,
+        parentAgentId,
+        accepted: succeeded > 0 || taskIds.length === 0,
+        succeeded,
+        failed: errors.length,
+        error: errors.length > 0 ? errors.join("; ") : null,
+      },
+    });
+  }
+
+  /**
+   * Create a new agent for a started suggested task, reusing the MCP branch of
+   * createAgentCommand (worktree provisioning + workspace resolution baked in).
+   * The new agent inherits the parent agent's brain — provider/model plus its
+   * full config (personality snapshot, mode, features) minus the parent's
+   * title — so a started task reads as a continuation of the suggesting agent.
+   */
+  private async createAgentForSuggestedTask(params: {
+    parent: ManagedAgent;
+    mode: "worktree" | "local";
+    title: string;
+    prompt: string;
+    cwd?: string;
+  }): Promise<string> {
+    const { parent, mode } = params;
+    const passthroughConfig: Partial<AgentSessionConfig> = { ...parent.config };
+    // The parent's title would win over the task title in buildMcpSessionConfig.
+    delete passthroughConfig.title;
+    const result = await createAgentCommand(
+      {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+        ottoHome: this.ottoHome,
+        worktreesRoot: this.worktreesRoot,
+        terminalManager: this.terminalManager,
+        providerSnapshotManager: this.providerSnapshotManager,
+        createOttoWorktree: (input, options) => this.createOttoWorktreeWorkflow(input, options),
+      },
+      {
+        kind: "mcp",
+        provider: formatProviderModel(parent.provider, parent.config.model),
+        config: passthroughConfig,
+        title: params.title,
+        initialPrompt: params.prompt,
+        cwd: params.cwd ?? parent.cwd,
+        callerAgentId: parent.id,
+        background: true,
+        notifyOnFinish: false,
+        ...(mode === "worktree" ? { worktree: { action: "branch-off" as const } } : {}),
+      },
+    );
+    await this.agentUpdates.forwardLiveAgent(result.snapshot);
+    return result.snapshot.id;
+  }
+
+  private async handleDismissSuggestedTaskRequest(
+    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.dismiss.request" }>,
+  ): Promise<void> {
+    const { parentAgentId, taskIds, requestId } = msg;
+    // Idempotent for the user: chips already gone are a no-op. Individual and
+    // "Dismiss all" both flow through here — one id or the whole queue.
+    let succeeded = 0;
+    for (const taskId of taskIds) {
+      // Only dismiss tasks that belong to this parent. A mismatched (or unknown)
+      // id is a silent no-op counted as not-succeeded, matching the idempotent
+      // "chip already gone" behaviour.
+      const entry = this.agentManager.getSuggestedTaskEntry(taskId);
+      if (!entry || entry.parentAgentId !== parentAgentId) {
+        continue;
+      }
+      const result = this.agentManager.dismissSuggestedTask(taskId);
+      if (result.dismissed) {
+        succeeded += 1;
+      }
+    }
+    this.emit({
+      type: "tasks.suggested.dismiss.response",
+      payload: {
+        requestId,
+        parentAgentId,
+        accepted: true,
+        succeeded,
+        failed: taskIds.length - succeeded,
+        error: null,
+      },
+    });
   }
 
   private dispatchAgentTimelineMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -2032,6 +2241,12 @@ export class Session {
         return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
+      case "project.links.list.request":
+        return this.handleProjectLinksListRequest(msg);
+      case "project.links.set.request":
+        return this.handleProjectLinksSetRequest(msg);
+      case "project.links.unset.request":
+        return this.handleProjectLinksUnsetRequest(msg);
       case "workspace.create.request":
         return this.handleWorkspaceCreateRequest(msg);
       case "workspace.clear_attention.request":
@@ -2691,6 +2906,8 @@ export class Session {
         }
 
         await this.projectRegistry.remove(projectId);
+        // Cascade: a removed project's links disappear (gated-multi-root).
+        await this.projectLinkStore.removeAllForProject(projectId);
       } finally {
         if (activeWorkspaceIds.length > 0) {
           this.clearWorkspaceArchiving(activeWorkspaceIds);
@@ -2716,6 +2933,9 @@ export class Session {
           error: null,
         },
       });
+
+      // The dropped links may have been visible to this client; refresh.
+      await this.emitProjectLinksChanged();
     } catch (error) {
       this.sessionLogger.error(
         { err: error, projectId, requestId },
@@ -2738,6 +2958,131 @@ export class Session {
           accepted: false,
           removedWorkspaceIds: [],
           error: getErrorMessageOr(error, "Failed to remove project"),
+        },
+      });
+    }
+  }
+
+  /**
+   * The link set, filtered to pairs whose both endpoints are still live
+   * projects — so a link "disappears" the moment either project is removed or
+   * archived, without needing the cascade to have run yet (gated-multi-root).
+   */
+  private async buildLiveProjectLinks(): Promise<{ projectAId: string; projectBId: string }[]> {
+    const [links, projects] = await Promise.all([
+      this.projectLinkStore.list(),
+      this.projectRegistry.list(),
+    ]);
+    const liveIds = new Set(
+      projects.filter((project) => !project.archivedAt).map((project) => project.projectId),
+    );
+    return links
+      .filter((link) => liveIds.has(link.projectAId) && liveIds.has(link.projectBId))
+      .map((link) => ({ projectAId: link.projectAId, projectBId: link.projectBId }));
+  }
+
+  private async emitProjectLinksChanged(): Promise<void> {
+    this.emit({
+      type: "project.links.changed",
+      payload: { links: await this.buildLiveProjectLinks() },
+    });
+  }
+
+  private async handleProjectLinksListRequest(
+    request: Extract<SessionInboundMessage, { type: "project.links.list.request" }>,
+  ): Promise<void> {
+    try {
+      this.emit({
+        type: "project.links.list.response",
+        payload: {
+          requestId: request.requestId,
+          links: await this.buildLiveProjectLinks(),
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "project.links.list.response",
+        payload: {
+          requestId: request.requestId,
+          links: [],
+          error: getErrorMessageOr(error, "Failed to list project links"),
+        },
+      });
+    }
+  }
+
+  private async handleProjectLinksSetRequest(
+    request: Extract<SessionInboundMessage, { type: "project.links.set.request" }>,
+  ): Promise<void> {
+    const { projectId, otherProjectId, requestId } = request;
+    const respondError = (error: string): void => {
+      this.emit({
+        type: "project.links.set.response",
+        payload: { requestId, accepted: false, links: [], error },
+      });
+    };
+    try {
+      if (projectId === otherProjectId) {
+        respondError("A project cannot be linked to itself");
+        return;
+      }
+      const [a, b] = await Promise.all([
+        this.projectRegistry.get(projectId),
+        this.projectRegistry.get(otherProjectId),
+      ]);
+      if (!a || a.archivedAt || !b || b.archivedAt) {
+        respondError("One or both projects no longer exist");
+        return;
+      }
+      await this.projectLinkStore.link(projectId, otherProjectId, new Date().toISOString());
+      this.emit({
+        type: "project.links.set.response",
+        payload: {
+          requestId,
+          accepted: true,
+          links: await this.buildLiveProjectLinks(),
+          error: null,
+        },
+      });
+      await this.emitProjectLinksChanged();
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, projectId, otherProjectId, requestId },
+        "session: project.links.set.request error",
+      );
+      respondError(getErrorMessageOr(error, "Failed to link projects"));
+    }
+  }
+
+  private async handleProjectLinksUnsetRequest(
+    request: Extract<SessionInboundMessage, { type: "project.links.unset.request" }>,
+  ): Promise<void> {
+    const { projectId, otherProjectId, requestId } = request;
+    try {
+      await this.projectLinkStore.unlink(projectId, otherProjectId);
+      this.emit({
+        type: "project.links.unset.response",
+        payload: {
+          requestId,
+          accepted: true,
+          links: await this.buildLiveProjectLinks(),
+          error: null,
+        },
+      });
+      await this.emitProjectLinksChanged();
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, projectId, otherProjectId, requestId },
+        "session: project.links.unset.request error",
+      );
+      this.emit({
+        type: "project.links.unset.response",
+        payload: {
+          requestId,
+          accepted: false,
+          links: [],
+          error: getErrorMessageOr(error, "Failed to unlink projects"),
         },
       });
     }

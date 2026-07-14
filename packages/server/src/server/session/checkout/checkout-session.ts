@@ -165,7 +165,15 @@ export class CheckoutSession {
     const resolvedCwd = expandTilde(cwd);
 
     try {
-      const snapshot = await this.workspaceGitService.getSnapshot(resolvedCwd);
+      // Git-only: `checkout_status_response` is built purely from `snapshot.git`
+      // (buildCheckoutStatusPayloadFromSnapshot never reads `snapshot.github`), so
+      // fetching GitHub PR status inline here is wasted work that blocks the
+      // workspace-open critical path by 3-4s on a cold snapshot. PR status has its
+      // own request (`checkout_pr_status_request`) and push channel.
+      const snapshot = await this.workspaceGitService.getSnapshot(resolvedCwd, {
+        includeGitHub: false,
+        reason: "checkout-status-request",
+      });
       this.host.emit({
         type: "checkout_status_response",
         payload: buildCheckoutStatusPayloadFromSnapshot({
@@ -687,6 +695,25 @@ export class CheckoutSession {
   ): Promise<void> {
     const { cwd, requestId } = msg;
     try {
+      // Rollback discards uncommitted edits, so — like commit — refuse while an
+      // agent is working in this cwd unless the client confirmed the override.
+      if (!msg.allowWithRunningAgents) {
+        const busyAgents = this.listBusyAgentsForCwd(cwd);
+        if (busyAgents.length > 0) {
+          this.host.emit({
+            type: "checkout.git.rollback.response",
+            payload: {
+              cwd,
+              success: false,
+              rolledBackPaths: [],
+              error: { kind: "agents_running", agents: busyAgents },
+              requestId,
+            },
+          });
+          return;
+        }
+      }
+
       const result = await this.gitOperationLog.runOperation(
         { cwd, operation: "rollback", label: "git rollback" },
         () => rollbackPaths(cwd, { paths: msg.paths }),

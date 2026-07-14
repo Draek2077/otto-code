@@ -1,6 +1,7 @@
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { UseAgentFormStateResult } from "@/hooks/use-agent-form-state";
+import type { RolePersonality } from "@/provider-selection/role-model-personality";
 
 export interface DraftKeyContext {
   selectedServerId: string | null;
@@ -18,19 +19,12 @@ export function resolveDraftKey(input: {
   return input.draftKey;
 }
 
-export interface DraftPersonalityControls {
-  personalities: DraftAgentControlsProps["personalities"];
-  selectedPersonalityId: DraftAgentControlsProps["selectedPersonalityId"];
-  onSelectPersonality: DraftAgentControlsProps["onSelectPersonality"];
-  onClearPersonality: DraftAgentControlsProps["onClearPersonality"];
-}
-
 export function buildDraftAgentControls(input: {
   formState: UseAgentFormStateResult;
   features?: DraftAgentControlsProps["features"];
   onSetFeature?: DraftAgentControlsProps["onSetFeature"];
   onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
-  personality?: DraftPersonalityControls;
+  personality?: RolePersonality | null;
 }): DraftAgentControlsProps {
   const { formState, features, onSetFeature, onDropdownClose, personality } = input;
   return {
@@ -57,10 +51,7 @@ export function buildDraftAgentControls(input: {
     onRetryModelProvider: formState.refreshProviderModels,
     isRetryingModelProvider: formState.isProviderModelsRefreshing,
     modelSelectorServerId: formState.selectedServerId,
-    personalities: personality?.personalities,
-    selectedPersonalityId: personality?.selectedPersonalityId,
-    onSelectPersonality: personality?.onSelectPersonality,
-    onClearPersonality: personality?.onClearPersonality,
+    personality: personality ?? null,
   };
 }
 

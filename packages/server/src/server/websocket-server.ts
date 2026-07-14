@@ -10,6 +10,7 @@ import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
+import { createNoopProjectLinkStore, type ProjectLinkStore } from "./project-links.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
@@ -428,6 +429,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly projectLinkStore: ProjectLinkStore;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
@@ -541,6 +543,7 @@ export class VoiceAssistantWebSocketServer {
     runService?: RunService | null,
     onActivity?: ActivityIncrementFn,
     getActivityRollups?: () => Promise<ActivityRollups>,
+    projectLinkStore?: ProjectLinkStore,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -555,6 +558,7 @@ export class VoiceAssistantWebSocketServer {
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
+    this.projectLinkStore = projectLinkStore ?? createNoopProjectLinkStore();
     const requiredServices = requireWebSocketServices({
       chatService,
       loopService,
@@ -1076,6 +1080,7 @@ export class VoiceAssistantWebSocketServer {
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
+      projectLinkStore: this.projectLinkStore,
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
@@ -1351,6 +1356,10 @@ export class VoiceAssistantWebSocketServer {
         activityStats: this.getActivityRollups !== undefined,
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: this.runService !== null,
+        // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
+        suggestedTasks: true,
+        // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
+        projectLinks: true,
       },
     };
   }

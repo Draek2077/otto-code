@@ -5,7 +5,7 @@ import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
-import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
+import type { WorkspaceFileOrigin, WorkspaceFileTabTarget } from "@/workspace/file-open";
 
 export interface WorkspaceDraftTabSetup {
   provider: AgentProvider;
@@ -541,12 +541,41 @@ function coerceFileLikeTabTarget(raw: Record<string, unknown>): WorkspaceTabTarg
   if (typeof raw.path !== "string") {
     return null;
   }
+  const origin = coerceWorkspaceFileOrigin(raw.origin);
   return normalizeWorkspaceTabTarget({
     kind: "file",
     path: raw.path,
     lineStart: typeof raw.lineStart === "number" ? raw.lineStart : undefined,
     lineEnd: typeof raw.lineEnd === "number" ? raw.lineEnd : undefined,
+    ...(origin ? { origin } : {}),
   });
+}
+
+// Rebuilds a persisted out-of-project origin (gated-multi-root) from stored
+// tab state. Only returns an origin when every required field is a non-empty
+// string; otherwise the file falls back to an ordinary in-project tab.
+function coerceWorkspaceFileOrigin(raw: unknown): WorkspaceFileOrigin | undefined {
+  const record = toObjectRecord(raw);
+  if (!record) {
+    return undefined;
+  }
+  const workspaceId = trimNonEmpty(
+    typeof record.workspaceId === "string" ? record.workspaceId : null,
+  );
+  const cwd = trimNonEmpty(typeof record.cwd === "string" ? record.cwd : null);
+  const projectId = trimNonEmpty(typeof record.projectId === "string" ? record.projectId : null);
+  if (!workspaceId || !cwd || !projectId) {
+    return undefined;
+  }
+  const projectName = trimNonEmpty(
+    typeof record.projectName === "string" ? record.projectName : null,
+  );
+  return {
+    workspaceId,
+    cwd,
+    projectId,
+    ...(projectName ? { projectName } : {}),
+  };
 }
 
 function migrateSingleTab(rawTab: unknown, now: number): WorkspaceTab | null {

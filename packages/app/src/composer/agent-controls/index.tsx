@@ -35,10 +35,12 @@ import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { type SelectorPersonality } from "@/components/combined-model-selector";
+import { RoleModelSelector } from "@/components/role-model-selector";
 import {
-  CombinedModelSelector,
-  type SelectorPersonality,
-} from "@/components/combined-model-selector";
+  toRolePersonality,
+  type RolePersonality,
+} from "@/provider-selection/role-model-personality";
 import {
   buildProviderSelectorProviders,
   buildSelectableProviderSelectorProviders,
@@ -117,11 +119,20 @@ function buildRunningChatPersonalities(input: {
   const { roster, entries } = input;
   return roster.map((personality) => {
     const resolution = resolvePersonalityForForm(personality, entries);
+    // Show the human-readable provider/model names from the live snapshot rather
+    // than the raw ids — matches usePersonalitySelection / buildTeamRoleEntry so
+    // the running-agent picker reads the same as the schedule/artifact/draft
+    // pickers. Fall back to the id when the snapshot has no matching entry.
+    const entry = entries.find((candidate) => candidate.provider === personality.provider);
+    const providerLabel = entry?.label ?? personality.provider;
+    const modelLabel =
+      entry?.models?.find((candidate) => candidate.id === personality.model)?.label ??
+      personality.model;
     return {
       id: personality.id,
       name: personality.name,
       provider: personality.provider,
-      subtitle: `${personality.provider} · ${personality.model}`,
+      subtitle: `${providerLabel} · ${modelLabel}`,
       glowA: personality.spinner?.glowA,
       glowB: personality.spinner?.glowB,
       available: resolution.available,
@@ -515,18 +526,13 @@ type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `featur
  * running surface passes a read-only roster (identity display, no handlers).
  */
 interface AgentControlsPersonalityProps {
-  personalities?: SelectorPersonality[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
   /**
-   * Picking a raw model while a personality is bound. When set, the picker
-   * routes the model pick here INSTEAD of onSelect + onClearPersonality, so
-   * the owner can confirm once and apply "clear personality + set model" as a
-   * single flow (running agents). Absent ⇒ the picker falls back to
-   * onSelect + onClearPersonality (draft surfaces, instant client-state).
+   * The unified personality selection for the model picker, from a producer hook
+   * (useFormRolePersonality for the draft/new-chat surface, toRolePersonality
+   * over useRunningChatPersonality for the running agent). Null ⇒ a plain model
+   * picker with no personalities section.
    */
-  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
+  personality?: RolePersonality | null;
 }
 
 interface ControlledAgentControlsProps extends AgentControlsPersonalityProps {
@@ -918,11 +924,7 @@ function ControlledAgentControls({
   modelSelectorServerId = null,
   isCompactLayout,
   isPersonalitySwitching = false,
-  personalities,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
-  onSelectModelOverPersonality,
+  personality,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1134,11 +1136,7 @@ function ControlledAgentControls({
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
           isPersonalitySwitching={isPersonalitySwitching}
-          personalities={personalities}
-          selectedPersonalityId={selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
-          onSelectModelOverPersonality={onSelectModelOverPersonality}
+          personality={personality}
         />
       ) : (
         <SheetAgentControlsContent
@@ -1172,11 +1170,7 @@ function ControlledAgentControls({
           extras={desktopExtras}
           modelSelectorServerId={modelSelectorServerId}
           isPersonalitySwitching={isPersonalitySwitching}
-          personalities={personalities}
-          selectedPersonalityId={selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
-          onSelectModelOverPersonality={onSelectModelOverPersonality}
+          personality={personality}
         />
       )}
     </View>
@@ -1233,15 +1227,10 @@ interface DesktopAgentControlsContentProps {
   modelSelectorServerId: string | null;
   isPersonalitySwitching?: boolean;
   /**
-   * Personality roster + selection for the model picker's family menu. Selectable
-   * when onSelectPersonality is wired (running chat agent); a bare roster with no
-   * handlers just labels the trigger.
+   * Personality selection for the model picker's family menu. Selectable when its
+   * handlers are wired (running chat agent / draft); null just labels the trigger.
    */
-  personalities?: SelectorPersonality[];
-  selectedPersonalityId?: string | null;
-  onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
-  onSelectModelOverPersonality?: (provider: string, modelId: string) => void;
+  personality?: RolePersonality | null;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
@@ -1292,11 +1281,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     extras,
     modelSelectorServerId,
     isPersonalitySwitching = false,
-    personalities,
-    selectedPersonalityId,
-    onSelectPersonality,
-    onClearPersonality,
-    onSelectModelOverPersonality,
+    personality,
   } = props;
 
   return (
@@ -1334,7 +1319,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild triggerRefProp="ref">
             <View>
-              <CombinedModelSelector
+              <RoleModelSelector
                 providers={modelSelectorProviders}
                 selectedProvider={provider}
                 selectedModel={selectedModelId ?? ""}
@@ -1351,11 +1336,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 desktopPlacement="top-start"
                 desktopMinWidth={360}
                 triggerLoading={isPersonalitySwitching}
-                personalities={personalities}
-                selectedPersonalityId={selectedPersonalityId}
-                onSelectPersonality={onSelectPersonality}
-                onClearPersonality={onClearPersonality}
-                onSelectModelOverPersonality={onSelectModelOverPersonality}
+                personality={personality ?? null}
               />
             </View>
           </TooltipTrigger>
@@ -1493,11 +1474,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     extras,
     modelSelectorServerId,
     isPersonalitySwitching = false,
-    personalities,
-    selectedPersonalityId,
-    onSelectPersonality,
-    onClearPersonality,
-    onSelectModelOverPersonality,
+    personality,
   } = props;
 
   const thinkingAnchorRef = useRef<View | null>(null);
@@ -1523,8 +1500,10 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   );
 
   const selectedPersonality = useMemo(
-    () => personalities?.find((entry) => entry.id === selectedPersonalityId) ?? null,
-    [personalities, selectedPersonalityId],
+    () =>
+      personality?.personalities?.find((entry) => entry.id === personality.selectedPersonalityId) ??
+      null,
+    [personality?.personalities, personality?.selectedPersonalityId],
   );
 
   // Icon-only on mobile — the label rarely fits next to the mode chip and the
@@ -1573,7 +1552,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   return (
     <>
       {canSelectModel ? (
-        <CombinedModelSelector
+        <RoleModelSelector
           providers={modelSelectorProviders}
           selectedProvider={provider}
           selectedModel={selectedModelId ?? ""}
@@ -1590,11 +1569,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           serverId={modelSelectorServerId}
           desktopPlacement="top-start"
           desktopMinWidth={360}
-          personalities={personalities}
-          selectedPersonalityId={selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
-          onSelectModelOverPersonality={onSelectModelOverPersonality}
+          personality={personality ?? null}
         />
       ) : null}
 
@@ -2149,14 +2124,16 @@ export const AgentControls = memo(function AgentControls({
   // + model/mode/effort atomically and restarts the provider query — behind a
   // suppressible warning dialog. While the RPC is in flight the whole controls
   // row locks and the model trigger spins (30s cap, then it unlocks for retry).
-  const chatPersonality = useRunningChatPersonality({
-    agentId,
-    serverId,
-    agent,
-    entries: snapshotEntries,
-    client,
-    toast,
-  });
+  const chatPersonality = toRolePersonality(
+    useRunningChatPersonality({
+      agentId,
+      serverId,
+      agent,
+      entries: snapshotEntries,
+      client,
+      toast,
+    }),
+  );
   const isSwitchingPersonality = chatPersonality.isSwitching;
 
   useEffect(() => {
@@ -2211,11 +2188,7 @@ export const AgentControls = memo(function AgentControls({
       modelSelectorServerId={serverId}
       isCompactLayout={isCompactLayout}
       isPersonalitySwitching={isSwitchingPersonality}
-      personalities={chatPersonality.personalities}
-      selectedPersonalityId={chatPersonality.selectedPersonalityId}
-      onSelectPersonality={chatPersonality.onSelectPersonality}
-      onClearPersonality={chatPersonality.onClearPersonality}
-      onSelectModelOverPersonality={chatPersonality.onSelectModelOverPersonality}
+      personality={chatPersonality}
     />
   );
 });
@@ -2246,11 +2219,7 @@ export function DraftAgentControls({
   disabled = false,
   modelSelectorServerId = null,
   isCompactLayout,
-  personalities,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
-  onSelectModelOverPersonality,
+  personality,
 }: DraftAgentControlsProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -2274,7 +2243,9 @@ export function DraftAgentControls({
   // chip while one is chosen — mirrors the artifact/schedule sheets, where the
   // whole point is not having to pick effort by hand.
   const thinkingOptionsForControls =
-    selectedPersonalityId || mappedThinkingOptions.length === 0 ? undefined : mappedThinkingOptions;
+    personality?.selectedPersonalityId || mappedThinkingOptions.length === 0
+      ? undefined
+      : mappedThinkingOptions;
 
   const modelOptions = useMemo<AgentControlOption[]>(
     () =>
@@ -2322,7 +2293,7 @@ export function DraftAgentControls({
   if (!isCompact) {
     return (
       <View style={styles.container}>
-        <CombinedModelSelector
+        <RoleModelSelector
           providers={modelSelectorProviders}
           selectedProvider={selectedProvider ?? ""}
           selectedModel={selectedModel}
@@ -2338,11 +2309,7 @@ export function DraftAgentControls({
           serverId={modelSelectorServerId}
           desktopPlacement="top-start"
           desktopMinWidth={360}
-          personalities={personalities}
-          selectedPersonalityId={selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={onClearPersonality}
-          onSelectModelOverPersonality={onSelectModelOverPersonality}
+          personality={personality ?? null}
         />
         {selectedProvider ? (
           <ControlledAgentControls
@@ -2387,10 +2354,7 @@ export function DraftAgentControls({
       desktopExtras={draftModeChip}
       modelSelectorServerId={modelSelectorServerId}
       isCompactLayout={isCompactLayout}
-      personalities={personalities}
-      selectedPersonalityId={selectedPersonalityId}
-      onSelectPersonality={onSelectPersonality}
-      onClearPersonality={onClearPersonality}
+      personality={personality}
     />
   );
 }

@@ -8,7 +8,7 @@ import {
   type CreateAgentInitialValues,
   type UseAgentFormStateResult,
 } from "@/hooks/use-agent-form-state";
-import { usePersonalitySelection } from "@/hooks/use-personality-selection";
+import { useFormRolePersonality } from "@/provider-selection/role-model-personality";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
@@ -63,6 +63,13 @@ export interface AgentInputDraft {
   composerState: DraftComposerState | null;
 }
 
+// The synthetic "Team's Chatter" picker entry — the composer's binding of the
+// shared team-role picker pattern (mirrors the artifact sheet's "Team's
+// Artificer"). New chat runs immediately, so there is no persisted sentinel;
+// selecting it resolves the active team's Chatter NOW and applies its values.
+// Its id never leaves the draft form.
+const TEAM_CHATTER_ENTRY_ID = "__team-chatter__";
+
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
   const composerOptions = input.composer ?? null;
   const formState = useAgentFormState({
@@ -107,12 +114,17 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       formState.selectedThinkingOptionId,
     ],
   );
-  const personalitySelection = usePersonalitySelection({
+  const personalitySelection = useFormRolePersonality({
     serverId: formState.selectedServerId,
     role: "chatter",
     entries: formState.allProviderEntries ?? [],
     onApply: applyPersonality,
     currentSelection: personalityCurrentSelection,
+    team: {
+      entryId: TEAM_CHATTER_ENTRY_ID,
+      label: "Team's Chatter",
+      roleLabel: "Chatter",
+    },
   });
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
@@ -319,12 +331,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         formState,
         features: draftFeatures,
         onSetFeature: setDraftFeatureValue,
-        personality: {
-          personalities: personalitySelection.personalities,
-          selectedPersonalityId: personalitySelection.selectedPersonalityId,
-          onSelectPersonality: personalitySelection.selectPersonality,
-          onClearPersonality: personalitySelection.clearPersonality,
-        },
+        personality: personalitySelection,
       }),
       commandDraftConfig,
     };

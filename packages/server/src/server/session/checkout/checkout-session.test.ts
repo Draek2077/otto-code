@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -857,6 +857,85 @@ describe("CheckoutSession", () => {
           },
         },
       ]);
+    });
+  });
+
+  describe("git rollback (checkout.git.rollback)", () => {
+    function initRollbackRepo(): string {
+      const repoDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-rollback-")));
+      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.email", "test@test.dev"], { cwd: repoDir });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
+      writeFileSync(join(repoDir, "seed.txt"), "seed\n");
+      execFileSync("git", ["add", "."], { cwd: repoDir });
+      execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir });
+      return repoDir;
+    }
+
+    it("refuses while agents are busy in the cwd", async () => {
+      const busyAgents = [{ id: "agent-1", title: "Refactor auth" }];
+      const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({ busyAgents });
+
+      await checkout.handleCheckoutGitRollbackRequest({
+        type: "checkout.git.rollback.request",
+        cwd: "/repo",
+        paths: ["a.txt"],
+        requestId: "gr1",
+      });
+
+      expect(gitMutationCalls.notifyGitMutation).toEqual([]);
+      expect(emitted).toEqual([
+        {
+          type: "checkout.git.rollback.response",
+          payload: {
+            cwd: "/repo",
+            success: false,
+            rolledBackPaths: [],
+            error: { kind: "agents_running", agents: busyAgents },
+            requestId: "gr1",
+          },
+        },
+      ]);
+    });
+
+    it("rolls back selected paths after the user confirms despite busy agents", async () => {
+      const repoDir = initRollbackRepo();
+      try {
+        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
+        const { subscriber } = createFakeDiffSubscriber({ cwd: "", files: [], error: null });
+        const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
+          busyAgents: [{ id: "agent-1", title: null }],
+          diff: subscriber,
+        });
+
+        await checkout.handleCheckoutGitRollbackRequest({
+          type: "checkout.git.rollback.request",
+          cwd: repoDir,
+          paths: ["seed.txt"],
+          allowWithRunningAgents: true,
+          requestId: "gr2",
+        });
+
+        expect(gitMutationCalls.notifyGitMutation).toEqual([
+          { cwd: repoDir, reason: "rollback-changes", options: undefined },
+        ]);
+        // Line-ending tolerant: git may restore with CRLF under autocrlf on Windows.
+        expect(readFileSync(join(repoDir, "seed.txt"), "utf8").trim()).toBe("seed");
+        expect(emitted).toEqual([
+          {
+            type: "checkout.git.rollback.response",
+            payload: {
+              cwd: repoDir,
+              success: true,
+              rolledBackPaths: ["seed.txt"],
+              error: null,
+              requestId: "gr2",
+            },
+          },
+        ]);
+      } finally {
+        rmSync(repoDir, { recursive: true, force: true });
+      }
     });
   });
 

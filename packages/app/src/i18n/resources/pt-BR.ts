@@ -867,6 +867,11 @@ export const ptBR: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1724,6 +1729,16 @@ export const ptBR: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "Fora do projeto · {{project}}",
+      blocked:
+        "Este arquivo pertence a {{project}}, que não está vinculado a este projeto. Vincule-os nas configurações do projeto para abri-lo.",
+      warnTitle: "Abrir arquivo de outro projeto?",
+      warnMessage:
+        "Este arquivo pertence a {{project}}. As alterações feitas aqui não farão parte do commit deste projeto.",
+      warnConfirm: "Abrir",
+      warnSuppress: "Não mostrar novamente",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2607,6 +2622,13 @@ export const ptBR: TranslationResources = {
         saveLabel: "Salvar nome do projeto",
         cancelLabel: "Cancelar renomeação",
         reset: "Redefinir",
+      },
+      links: {
+        title: "Projetos vinculados",
+        info: "Projetos vinculados podem abrir e editar os arquivos uns dos outros no local. Os arquivos que você abrir de um projeto vinculado não farão parte do commit deste projeto. Os vínculos são bidirecionais.",
+        empty: "Não há outros projetos neste host para vincular.",
+        error: "Não foi possível atualizar o vínculo do projeto",
+        toggleAccessibility: "Vincular {{project}}",
       },
       readFailures: {
         invalidTitle: "Não foi possível analisar otto.json",

@@ -1,5 +1,8 @@
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
-import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
+import {
+  normalizeWorkspaceFileLocation,
+  workspaceFileTabTargetsEqual,
+} from "@/workspace/file-open";
 
 type WorkspaceDraftTabSetup = NonNullable<Extract<WorkspaceTabTarget, { kind: "draft" }>["setup"]>;
 
@@ -91,7 +94,7 @@ export function workspaceTabTargetsEqual(
     return left.browserId === right.browserId;
   }
   if (left.kind === "file" && right.kind === "file") {
-    return workspaceFileLocationsEqual(left, right);
+    return workspaceFileTabTargetsEqual(left, right);
   }
   if (left.kind === "setup" && right.kind === "setup") {
     return left.workspaceId === right.workspaceId;
@@ -160,6 +163,11 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "gitLog") {
     return `gitlog_${target.operation}`;
   }
+  // Out-of-project files are namespaced by their origin workspace so they never
+  // collide with an in-project file of the same relative path (gated-multi-root).
+  if (target.origin) {
+    return `file_${target.origin.workspaceId}_${target.path}`;
+  }
   return `file_${target.path}`;
 }
 
@@ -175,7 +183,12 @@ function normalizeFileTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "file" }>,
 ): WorkspaceTabTarget | null {
   const location = normalizeWorkspaceFileLocation(value);
-  return location ? { kind: "file", ...location } : null;
+  if (!location) {
+    return null;
+  }
+  // Preserve the out-of-project origin (gated-multi-root) so the panel resolves
+  // the file against its owning workspace instead of the host pane's root.
+  return { kind: "file", ...location, ...(value.origin ? { origin: value.origin } : {}) };
 }
 
 function trimOptionalString(value: string | null | undefined): string | null {

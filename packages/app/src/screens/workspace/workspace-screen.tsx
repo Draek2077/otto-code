@@ -218,6 +218,7 @@ import {
   type WorkspaceFileLocation,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { useCrossProjectFileOpenGate } from "@/projects/use-cross-project-file-open";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 
@@ -2059,6 +2060,10 @@ function WorkspaceScreenContent({
       }),
     [normalizedServerId, normalizedWorkspaceId],
   );
+  const crossProjectFileOpenGate = useCrossProjectFileOpenGate(
+    normalizedServerId,
+    getWorkspaceProjectId(workspaceDescriptor),
+  );
   const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
   const openWorkspaceChildTabFocused = useWorkspaceLayoutStore(
     (state) => state.openChildTabFocused,
@@ -2674,15 +2679,25 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      const target = createWorkspaceFileTabTarget(normalizedLocation);
-      const tabId = options?.parentTabId
-        ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
-        : openWorkspaceTabFocused(persistenceKey, target);
-      if (tabId) {
-        navigateToTabId(tabId);
-      }
+      // Gate cross-project opens (gated-multi-root): linked → open in place with
+      // an origin discriminator; unlinked → blocked with a toast; else normal.
+      const openGated = async () => {
+        const resolved = await crossProjectFileOpenGate(normalizedLocation);
+        if (!resolved.open) {
+          return;
+        }
+        const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
+        const tabId = options?.parentTabId
+          ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
+          : openWorkspaceTabFocused(persistenceKey, target);
+        if (tabId) {
+          navigateToTabId(tabId);
+        }
+      };
+      void openGated();
     },
     [
+      crossProjectFileOpenGate,
       isMobile,
       navigateToTabId,
       openWorkspaceChildTabFocused,

@@ -123,7 +123,7 @@ function buildCreateAgentOptions({
     effectiveModelId: string | null;
     effectiveThinkingOptionId: string | null;
     agentControls: {
-      selectedPersonalityId?: string | null;
+      personality?: { selectedPersonalityId?: string | null } | null;
     };
   };
   text: string;
@@ -144,8 +144,8 @@ function buildCreateAgentOptions({
     ...(composerState.effectiveThinkingOptionId
       ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
       : {}),
-    ...(composerState.agentControls.selectedPersonalityId
-      ? { personality: composerState.agentControls.selectedPersonalityId }
+    ...(composerState.agentControls.personality?.selectedPersonalityId
+      ? { personality: composerState.agentControls.personality.selectedPersonalityId }
       : {}),
     ...(text.trim() ? { initialPrompt: text.trim() } : {}),
     ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
