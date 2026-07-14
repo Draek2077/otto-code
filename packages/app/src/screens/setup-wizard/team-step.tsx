@@ -25,7 +25,7 @@ import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from 
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { AgentPersonality, PersonalityRole } from "@otto-code/protocol/messages";
+import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
 import type { InterfaceMode } from "@/hooks/use-settings";
@@ -34,20 +34,10 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useAgentPersonalitiesFeature } from "@/screens/settings/agent-personalities-section";
 import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
+import { ROLE_LABELS } from "@/provider-selection/role-labels";
 import { blueprintsForLens } from "./presets/blueprints";
 import { generateTeam, type GeneratedTeam } from "./presets/generate";
 import type { TeamBlueprint } from "./presets/types";
-
-const ROLE_LABELS: Record<PersonalityRole, string> = {
-  chatter: "Chatter",
-  artificer: "Artificer",
-  scheduler: "Scheduler",
-  writer: "Writer",
-  coder: "Coder",
-  judger: "Judger",
-  advisor: "Advisor",
-  orchestrator: "Orchestrator",
-};
 
 const DEFAULT_TEAM_COLOR = "#4F46E5";
 

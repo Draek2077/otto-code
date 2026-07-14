@@ -89,6 +89,7 @@ import type {
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
+  StatsActivityGetResponseMessage,
   AgentContextGetUsageResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
@@ -117,6 +118,7 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@otto-code/protocol/agent-types";
+import type { Run } from "@otto-code/protocol/orchestration";
 import type {
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
@@ -2372,6 +2374,93 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Stop a running background shell task (Claude Bash tool run_in_background).
+   * Not an AI subagent — the daemon resolves it to its owning provider task and
+   * calls the provider's stopTask, same mechanism as stopObservedSubagent.
+   */
+  async stopBackgroundShellTask(parentAgentId: string, taskId: string): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.background_task.stop.response">({
+        message: {
+          type: "agent.background_task.stop.request",
+          parentAgentId,
+          taskId,
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "stopBackgroundShellTask rejected");
+    }
+  }
+
+  /**
+   * Clear one or more terminal background shell tasks from the Background
+   * Tasks track. Still-live tasks are stopped best-effort first.
+   */
+  async clearBackgroundShellTasks(
+    parentAgentId: string,
+    taskIds: readonly string[],
+  ): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.background_task.clear.response">({
+        message: {
+          type: "agent.background_task.clear.request",
+          parentAgentId,
+          taskIds: [...taskIds],
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "clearBackgroundShellTasks rejected");
+    }
+  }
+
+  /** Orchestration: fetch the current snapshot of all runs on this host. */
+  async getRunsSnapshot(): Promise<Run[]> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.get_snapshot.response">(
+      {
+        message: { type: "runs.get_snapshot.request" },
+      },
+    );
+    return payload.runs;
+  }
+
+  /** Orchestration: approve or reject a run's attended gate. */
+  async respondToRunGate(input: {
+    runId: string;
+    phaseId: string;
+    approved: boolean;
+    note?: string;
+  }): Promise<boolean> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.gate_respond.response">(
+      {
+        message: {
+          type: "runs.gate_respond.request",
+          runId: input.runId,
+          phaseId: input.phaseId,
+          approved: input.approved,
+          ...(input.note !== undefined ? { note: input.note } : {}),
+        },
+      },
+    );
+    return payload.accepted;
+  }
+
+  /** Orchestration: cancel a run. */
+  async cancelRun(runId: string): Promise<boolean> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.cancel.response">({
+      message: { type: "runs.cancel.request", runId },
+    });
+    return payload.canceled;
+  }
+
+  /** Orchestration: delete every finished (done/failed/canceled) run. */
+  async clearFinishedRuns(): Promise<string[]> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.clear.response">({
+      message: { type: "runs.clear.request" },
+    });
+    return payload.runIds;
+  }
+
   async updateAgent(
     agentId: string,
     updates: { name?: string; labels?: Record<string, string> },
@@ -4517,6 +4606,18 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "provider.usage.list.request",
+      },
+    });
+  }
+
+  /** Daemon-wide "fun stats" — see docs/data-model.md ActivityStatsStore. */
+  async getActivityStats(options?: {
+    requestId?: string;
+  }): Promise<StatsActivityGetResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "stats.activity.get.request",
       },
     });
   }

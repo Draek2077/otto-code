@@ -28,6 +28,15 @@ const VIEWBOX_SIZE = 100;
 interface BubbleCornerSheenProps {
   /** Top corner the sheen anchors to: "left" for assistant bubbles, "right" for user bubbles. */
   corner: "left" | "right";
+  /**
+   * Distance in px between this bubble segment's top edge and the top of the
+   * visual bubble group it belongs to (agent-stream/bubble-group-offsets.ts).
+   * The gradient square shifts up by this amount so consecutive segments of a
+   * split streamed reply paint slices of one continuous group-spanning sheen
+   * instead of each restarting it. Defaults to 0 (standalone bubble or the
+   * segment that owns the group's top edge).
+   */
+  offsetTop?: number;
 }
 
 interface SheenOverlayProps extends BubbleCornerSheenProps {
@@ -44,7 +53,7 @@ interface SheenOverlayProps extends BubbleCornerSheenProps {
   forceDark: boolean;
 }
 
-function SheenOverlay({ corner, sheenOpacity, forceDark }: SheenOverlayProps) {
+function SheenOverlay({ corner, sheenOpacity, forceDark, offsetTop = 0 }: SheenOverlayProps) {
   const effectiveOpacity = forceDark ? DARK_MODE_SHEEN_OPACITY : sheenOpacity;
   const gradientIdRef = useRef(`bubble-sheen-${Math.random().toString(36).substring(2, 9)}`);
   const gradientId = gradientIdRef.current;
@@ -55,13 +64,18 @@ function SheenOverlay({ corner, sheenOpacity, forceDark }: SheenOverlayProps) {
     ],
     [corner, effectiveOpacity],
   );
+  const squareStyle = useMemo(
+    () => [sheenStylesheet.square, offsetTop !== 0 && { top: -offsetTop }],
+    [offsetTop],
+  );
   return (
     <View pointerEvents="none" style={fillStyle}>
-      <View style={sheenStylesheet.square}>
-        {/* "slice" scales the square viewBox uniformly to cover the whole
-            bubble (background-size: cover semantics), anchored top-left: the
-            gradient stays 1:1 with its side at max(bubbleWidth, bubbleHeight),
-            overflow cropped by the Svg bounds. */}
+      <View style={squareStyle}>
+        {/* The wrapper is a bubbleWidth-sided square, so the square viewBox
+            maps onto it 1:1 — no measurement needed for the gradient's own
+            size, and the sheen's extent is anchored to the bubble's width
+            (identical for every segment of a group) rather than any one
+            segment's height. */}
         <Svg
           width="100%"
           height="100%"
@@ -110,10 +124,16 @@ const sheenOpacityMapping = (theme: Theme) => ({
 /**
  * Diagonal white sheen pinned to a chat bubble's top corner — white at the
  * anchor corner fading to fully transparent by the diagonal midpoint.
- * The gradient is always square (1:1) and always covers the whole bubble:
- * preserveAspectRatio="slice" scales the square viewBox uniformly to cover
- * (its side lands at max(bubbleWidth, bubbleHeight), the overhang cropped).
- * Pure layout — no measurement — so it tracks the bubble as it grows.
+ * The gradient is always square (1:1) with its side pinned to the bubble's
+ * width: the wrapper sizes itself with `width: 100%` + `aspectRatio: 1`, so
+ * the square viewBox maps 1:1 with no measurement, the overhang below a short
+ * bubble cropped by the bubble's overflow: "hidden". Pure layout — it tracks
+ * the bubble as it grows, and its extent doesn't change with message length.
+ *
+ * A streamed reply split into several butted segments (blockGroupId) passes
+ * `offsetTop` on each continuation segment: the same width-sided square is
+ * shifted up by the height of the segments above, so the whole group paints
+ * one continuous sheen anchored at the group's top edge.
  *
  * Both corners render the identical top-left layout and gradient; the "right"
  * corner mirrors the whole overlay with scaleX(-1). Pinning the clamp view at
@@ -123,11 +143,12 @@ const sheenOpacityMapping = (theme: Theme) => ({
  * Render as the bubble's first child so content paints over it. The bubble
  * needs overflow: "hidden" so the square clips to the rounded corners.
  */
-export function BubbleCornerSheen({ corner }: BubbleCornerSheenProps) {
+export function BubbleCornerSheen({ corner, offsetTop }: BubbleCornerSheenProps) {
   const { settings } = useAppSettings();
   return (
     <ThemedSheenOverlay
       corner={corner}
+      offsetTop={offsetTop}
       forceDark={settings.blackTabBackground}
       uniProps={sheenOpacityMapping}
     />
@@ -152,13 +173,14 @@ const sheenStylesheet = StyleSheet.create({
     bottom: 0,
     transform: [{ scaleX: -1 }],
   },
-  // Fills the bubble; the Svg's preserveAspectRatio="slice" owns keeping the
-  // gradient square while covering the full area.
+  // A bubbleWidth-sided square anchored at the bubble's top-left; the part
+  // extending past a shorter bubble is clipped by the bubble's overflow.
+  // Grouped continuation segments override `top` to shift it into group space.
   square: {
     position: "absolute",
     top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
+    width: "100%",
+    aspectRatio: 1,
   },
 });

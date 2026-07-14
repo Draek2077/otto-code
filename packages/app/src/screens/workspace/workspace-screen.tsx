@@ -94,6 +94,7 @@ import {
 import {
   buildWorkspaceTabPersistenceKey,
   collectAllTabs,
+  findPaneById,
   getFocusedBrowserId,
   type WorkspaceLayout,
   useWorkspaceLayoutStore,
@@ -3951,6 +3952,29 @@ function WorkspaceScreenContent({
   );
   const showCreateBrowserTab = getIsElectron();
   const focusedPaneIdOrUndefined = useMemo(() => focusedPaneId ?? undefined, [focusedPaneId]);
+  // The non-split desktop fallback (shouldRenderDesktopPaneFallback, below)
+  // still resolves and persists a per-pane orientation override so the
+  // preference survives a later move to a pane-split-capable surface, even
+  // though this narrow fallback always renders the horizontal row.
+  const fallbackTabOrientation = useMemo(
+    () =>
+      (focusedPaneId && workspaceLayout
+        ? findPaneById(workspaceLayout.root, focusedPaneId)?.tabOrientation
+        : undefined) ?? settings.defaultTabOrientation,
+    [focusedPaneId, settings.defaultTabOrientation, workspaceLayout],
+  );
+  const handleToggleFallbackTabOrientation = useCallback(() => {
+    if (!persistenceKey || !focusedPaneId) {
+      return;
+    }
+    useWorkspaceLayoutStore
+      .getState()
+      .setPaneTabOrientation(
+        persistenceKey,
+        focusedPaneId,
+        fallbackTabOrientation === "vertical" ? "horizontal" : "vertical",
+      );
+  }, [fallbackTabOrientation, focusedPaneId, persistenceKey]);
   const desktopFocusModeEnabled = useMemo(
     () => isFocusModeEnabled && !isMobile,
     [isFocusModeEnabled, isMobile],
@@ -4134,6 +4158,8 @@ function WorkspaceScreenContent({
           onSplitRight={noop}
           onSplitDown={noop}
           showPaneSplitActions={false}
+          tabOrientation={fallbackTabOrientation}
+          onToggleTabOrientation={handleToggleFallbackTabOrientation}
         />
       ) : null}
 

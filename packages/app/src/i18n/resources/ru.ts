@@ -1706,6 +1706,17 @@ export const ru: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "Остановить {{label}}",
+    stopTooltip: "Остановить фоновую задачу",
+    clearAction: "Очистить {{label}}",
+    clearTooltip: "Очистить фоновую задачу",
+    completedGroup: "Завершено ({{count}})",
+    clearCompleted: "Очистить все",
+    clearCompletedTooltip: "Очистить все завершённые фоновые задачи",
+    fallbackLabel: "Команда оболочки",
+    daemonUnavailable: "Демон недоступен",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1826,6 +1837,7 @@ export const ru: TranslationResources = {
     clearCompleted: "Очистить все",
     clearCompletedTooltip: "Архивировать все завершённые субагенты",
     stopNothingRunning: "Субагент не запущен — нечего останавливать.",
+    daemonUnavailable: "Демон недоступен",
   },
   panels: {
     draft: {
@@ -1936,6 +1948,19 @@ export const ru: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

@@ -107,6 +107,10 @@ import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
+import {
+  ActivityStatsStore,
+  type ActivityIncrementFn,
+} from "./activity-stats/activity-stats-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
@@ -121,6 +125,10 @@ import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
+import { RunService } from "./orchestration/run-service.js";
+import { RunStore } from "./orchestration/run-store.js";
+import { buildRunSummaryPrompt } from "./orchestration/run-engine.js";
+import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
@@ -918,6 +926,13 @@ export async function createOttoDaemon(
     path.join(config.ottoHome, "stats", "personality-usage.json"),
     logger,
   );
+  const activityStatsStore = new ActivityStatsStore(
+    path.join(config.ottoHome, "activity-stats.json"),
+    logger,
+  );
+  const recordActivity: ActivityIncrementFn = (field, by) => {
+    void activityStatsStore.increment(field, by);
+  };
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.ottoHome, "projects", "projects.json"),
     logger,
@@ -986,6 +1001,7 @@ export async function createOttoDaemon(
     onPersonalitySpawn: (personalityId) => {
       void personalityStatsStore.increment(personalityId);
     },
+    onActivity: recordActivity,
     mcpAuthToken: agentMcpAuthToken,
     logger,
   });
@@ -1130,6 +1146,7 @@ export async function createOttoDaemon(
         payload: { artifact: metadata },
       });
     },
+    onActivity: recordActivity,
   });
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager,
@@ -1341,6 +1358,7 @@ export async function createOttoDaemon(
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
+    onActivity: recordActivity,
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
@@ -1351,6 +1369,48 @@ export async function createOttoDaemon(
     }
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
+
+  // Orchestration runtime — owns multi-agent Runs and drives the engine. Run
+  // updates broadcast to every connected client so the UI can watch live.
+  // A terminal run is summarized by a Writer (same one-shot, internal-agent path
+  // as commit messages) so the Runs display shows a plain-language recap.
+  const runSummaryGeneration = createAgentStructuredTextGeneration({
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => {
+      const cfg = daemonConfigStore.get();
+      return {
+        metadataGeneration: cfg.metadataGeneration,
+        agentPersonalities: cfg.agentPersonalities,
+        agentTeams: cfg.agentTeams,
+      };
+    },
+    getFocusedSelection: () => undefined,
+  });
+  const runSummarySchema = z.object({ summary: z.string().min(1) });
+  const runService = new RunService({
+    store: new RunStore(path.join(config.ottoHome, "runs")),
+    logger,
+    onActivity: recordActivity,
+    summarize: async (run) => {
+      const result = await runSummaryGeneration.generate({
+        cwd: run.cwd ?? config.ottoHome,
+        prompt: buildRunSummaryPrompt(run),
+        schema: runSummarySchema,
+        schemaName: "RunSummary",
+        agentTitle: "Run summary",
+      });
+      return result.summary;
+    },
+  });
+  await runService.init();
+  runService.onChange((run) => {
+    emitExternalSessionMessage({ type: "runs.updated.notification", payload: { run } });
+  });
+  runService.onRemove((runIds) => {
+    emitExternalSessionMessage({ type: "runs.cleared.notification", payload: { runIds } });
+  });
+  logger.info({ elapsed: elapsed() }, "Run service initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
   const persistedRecords = await agentStorage.list();
   logger.info(
@@ -1370,6 +1430,7 @@ export async function createOttoDaemon(
     terminalManager,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
+    runService,
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
@@ -1408,6 +1469,7 @@ export async function createOttoDaemon(
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+    onActivity: recordActivity,
     logger,
   });
   const createAgentToolCatalog = (runtime: OttoToolRuntimeContext) =>
@@ -1703,6 +1765,9 @@ export async function createOttoDaemon(
               browserToolsBroker,
               previewDevServers,
               gitHostingResolver,
+              runService,
+              recordActivity,
+              () => activityStatsStore.getRollups(),
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());

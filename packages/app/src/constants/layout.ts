@@ -10,6 +10,12 @@ export const HEADER_INNER_HEIGHT = 46;
 export const HEADER_INNER_HEIGHT_MOBILE = 56;
 export const WORKSPACE_SECONDARY_HEADER_HEIGHT = 36;
 export const HEADER_TOP_PADDING_MOBILE = 8;
+// A pane's vertical tab rail (left edge) sizes itself to its widest current
+// tab label, clamped between this floor and RAIL_TAB_MAX_WIDTH (see
+// computeWorkspaceTabRailWidth in workspace-tab-layout.ts) — every tab in the
+// rail shares that one computed width. Not user-resizable in v1 — see
+// projects/vertical-tabs/vertical-tabs.md.
+export const WORKSPACE_TABS_RAIL_MIN_WIDTH = 180;
 
 // Max width for chat content (stream view, input area, new agent form)
 export const MAX_CONTENT_WIDTH = 820;

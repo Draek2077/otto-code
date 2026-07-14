@@ -81,6 +81,12 @@ import {
   useSubagentsForParent,
 } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
+import {
+  useBackgroundShellTasksForParent,
+  useClearCompletedBackgroundTasks,
+  useStopBackgroundTask,
+} from "@/background-tasks";
+import { BackgroundTasksTrack } from "@/background-tasks/track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1443,6 +1449,18 @@ function ActiveAgentComposer({
   const handleStopSubagent = useStopSubagent({ serverId });
   const handleClearCompletedSubagents = useClearCompletedSubagents({ serverId });
   const handleDetachSubagent = useDetachSubagent({ serverId });
+  const backgroundTaskRows = useBackgroundShellTasksForParent({
+    serverId,
+    parentAgentId: agentId,
+  });
+  const hasBackgroundShellTasks = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.backgroundShellTasks === true,
+  );
+  const handleStopBackgroundTask = useStopBackgroundTask({ serverId, parentAgentId: agentId });
+  const handleClearCompletedBackgroundTasks = useClearCompletedBackgroundTasks({
+    serverId,
+    parentAgentId: agentId,
+  });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1584,6 +1602,13 @@ function ActiveAgentComposer({
         onClearCompleted={handleClearCompletedSubagents}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
       />
+      {hasBackgroundShellTasks ? (
+        <BackgroundTasksTrack
+          rows={backgroundTaskRows}
+          onStopTask={handleStopBackgroundTask}
+          onClearCompleted={handleClearCompletedBackgroundTasks}
+        />
+      ) : null}
       <Composer
         agentId={agentId}
         serverId={serverId}

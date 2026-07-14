@@ -24,6 +24,12 @@ export type AgentProviderModeDefinition = Omit<AgentMode, "icon" | "colorTier"> 
   AgentModeVisuals & {
     // Marks the provider's most-permissioned no-prompt mode. Selecting it means tools run without approval; the runtime mechanism is provider-specific.
     isUnattended?: boolean;
+    // False = a mode the runtime can put an agent INTO (unattended runs, or the
+    // auto→dontAsk coercion for models that can't run Auto) but that a user may
+    // never pick themselves. It is hidden from every mode dropdown and, on a live
+    // agent, locks the mode control (the agent is stuck in it). Absent = a normal
+    // user-selectable mode. See isUserSelectableMode.
+    userSelectable?: boolean;
   };
 
 // TODO: `modes` should not be static. Providers (especially ACP) report their
@@ -82,6 +88,10 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     icon: "ShieldCheck",
     colorTier: "moderate",
     isUnattended: true,
+    // System-assigned only: the coercion target for unattended runs and for Auto
+    // on models that can't run it (Haiku). Users never pick it — it's hidden from
+    // mode dropdowns and locks the control when it's an agent's active mode.
+    userSelectable: false,
   },
   {
     id: "bypassPermissions",
@@ -294,6 +304,22 @@ export function getUnattendedModeId(
 ): string | undefined {
   const definition = definitions.find((entry) => entry.id === provider);
   return definition?.modes.find((mode) => mode.isUnattended)?.id;
+}
+
+/**
+ * Whether a user may pick this mode themselves. False only for modes explicitly
+ * flagged `userSelectable: false` in the static manifest (Claude "dontAsk") — a
+ * system-assigned mode that agents can run in but no one selects by hand. Unknown
+ * modes (dynamic/ACP, custom providers) default to selectable. The flag is a
+ * static property of the mode, so this always consults the built-in manifest
+ * rather than snapshot-derived definitions (which don't carry it).
+ */
+export function isUserSelectableMode(provider: string, modeId: string): boolean {
+  const definition = [...AGENT_PROVIDER_DEFINITIONS, ...DEV_AGENT_PROVIDER_DEFINITIONS].find(
+    (entry) => entry.id === provider,
+  );
+  const mode = definition?.modes.find((entry) => entry.id === modeId);
+  return mode?.userSelectable !== false;
 }
 
 export function getModeVisuals(

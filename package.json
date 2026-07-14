@@ -34,6 +34,7 @@
   ],
   "scripts": {
     "dev": "npm run dev:server",
+    "live:orchestration": "tsx packages/server/scripts/live-orchestration.ts",
     "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
     "dev:server": "cross-env OTTO_LISTEN=127.0.0.1:6868 ./scripts/dev-daemon.sh",
     "dev:server:watch": "concurrently --kill-others --names protocol,client,server --prefix-colors yellow,blue,cyan \"npm run watch:protocol\" \"npm run watch:client\" \"npm run dev:server:raw\"",

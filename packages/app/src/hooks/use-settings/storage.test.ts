@@ -139,6 +139,38 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatWidth).toBe("default");
   });
 
+  it("defaults tab orientation to horizontal when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.defaultTabOrientation).toBe("horizontal");
+  });
+
+  it("loads configured default tab orientation from app settings", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ defaultTabOrientation: "vertical" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.defaultTabOrientation).toBe("vertical");
+  });
+
+  it("drops an unknown default tab orientation back to horizontal", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ defaultTabOrientation: "diagonal" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.defaultTabOrientation).toBe("horizontal");
+  });
+
   it("normalizes terminal scrollback lines from storage", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -756,6 +788,34 @@ describe("interface mode", () => {
     });
 
     expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBeNull();
+  });
+});
+
+describe("app start screen", () => {
+  it("defaults appStartScreen to 'workspaces' on a fresh install", async () => {
+    const deps = makeDeps();
+
+    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("workspaces");
+  });
+
+  it("loads a persisted app start screen", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ appStartScreen: "dashboard" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("dashboard");
+  });
+
+  it("drops an unknown app start screen back to the 'workspaces' default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ appStartScreen: "everywhere" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("workspaces");
   });
 });
 

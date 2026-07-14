@@ -27,6 +27,7 @@ import {
   getFocusedBrowserId,
   getTreeDepth,
   insertSplit,
+  normalizeLayout,
   removePaneFromTree,
   removeTabFromTree,
   type SplitNode,
@@ -300,6 +301,48 @@ describe("workspace-layout-store tree transforms", () => {
     const singlePaneRoot = createPane({ id: "main", tabIds: ["tab-a"] });
     const emptied = removeTabFromTree(singlePaneRoot, "tab-a");
     expect(emptied).toEqual(createPane({ id: "main", tabIds: [], focusedTabId: null }));
+  });
+});
+
+describe("SplitPane.tabOrientation persistence", () => {
+  it("round-trips a persisted per-pane tabOrientation through normalizeLayout", () => {
+    const layout = normalizeLayout({
+      root: createPane({ id: "main", tabIds: ["tab-a"] }),
+      focusedPaneId: "main",
+    });
+    const withOrientation = normalizeLayout({
+      ...layout,
+      root: {
+        kind: "pane",
+        pane: {
+          ...(layout.root as Extract<SplitNode, { kind: "pane" }>).pane,
+          tabOrientation: "vertical",
+        },
+      },
+    });
+
+    expect(findPaneById(withOrientation.root, "main")?.tabOrientation).toBe("vertical");
+  });
+
+  it("drops an invalid persisted tabOrientation value rather than propagating it", () => {
+    const layout = normalizeLayout({
+      root: {
+        kind: "pane",
+        pane: { id: "main", tabIds: ["tab-a"], focusedTabId: "tab-a", tabOrientation: "diagonal" },
+      },
+      focusedPaneId: "main",
+    });
+
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBeUndefined();
+  });
+
+  it("an old persisted layout with no tabOrientation field round-trips unchanged", () => {
+    const layout = normalizeLayout({
+      root: createPane({ id: "main", tabIds: ["tab-a"] }),
+      focusedPaneId: "main",
+    });
+
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBeUndefined();
   });
 });
 
@@ -897,6 +940,63 @@ describe("workspace-layout-store actions", () => {
         },
       ],
     });
+  });
+
+  it("setPaneTabOrientation sets and clears a pane's tab-orientation override", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.openTabFocused(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+
+    store.setPaneTabOrientation(workspaceKey, "main", "vertical");
+    let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBe("vertical");
+
+    store.setPaneTabOrientation(workspaceKey, "main", null);
+    layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBeUndefined();
+  });
+
+  it("setPaneTabOrientation survives tab open/close/reorder on the same pane", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    const firstTabId = store.openTabFocused(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/a.ts",
+    });
+    store.setPaneTabOrientation(workspaceKey, "main", "vertical");
+
+    const secondTabId = store.openTabFocused(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/b.ts",
+    });
+    store.reorderTabsInPane(workspaceKey, "main", [secondTabId!, firstTabId!]);
+    store.closeTab(workspaceKey, firstTabId!);
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBe("vertical");
+  });
+
+  it("a pane created by splitPane leaves tabOrientation unset (inherits the default)", () => {
+    useWorkspaceLayoutIds("78787878-7878-7878-7878-787878787878");
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.setPaneTabOrientation(workspaceKey, "main", "vertical");
+    const secondTabId = store.openTabFocused(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/b.ts",
+    });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(findPaneById(layout.root, "main")?.tabOrientation).toBe("vertical");
+    expect(findPaneById(layout.root, splitPaneId)?.tabOrientation).toBeUndefined();
   });
 
   it("focusPane switches workspace focus to a different pane", () => {

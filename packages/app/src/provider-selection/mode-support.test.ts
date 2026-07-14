@@ -35,8 +35,10 @@ describe("filterModesForModel", () => {
 });
 
 describe("coerceModeForModel", () => {
-  it("drops auto to the provider default for unsupported models", () => {
-    expect(coerceModeForModel("auto", model({ supportsAutoMode: false }))).toBe("");
+  it("drops auto to the provider's guardrailed unattended mode for unsupported models", () => {
+    // Claude Auto → dontAsk (runs without prompting, denies non-pre-approved),
+    // not the provider default "Always Ask".
+    expect(coerceModeForModel("auto", model({ supportsAutoMode: false }))).toBe("dontAsk");
   });
 
   it("leaves other modes and supported models alone", () => {

@@ -96,7 +96,7 @@ const DEV_APPLICATION: TeamBlueprint = {
     {
       slot: "maker",
       label: "Interface Maker",
-      roles: ["artificer"],
+      roles: ["artificer", "designer"],
       ...MAKER,
       functionalCore:
         "You build the polished artifacts and interfaces this product ships — real hierarchy, " +
@@ -172,7 +172,7 @@ const DEV_GAME: TeamBlueprint = {
     {
       slot: "maker",
       label: "Asset & Juice Maker",
-      roles: ["artificer", "chatter"],
+      roles: ["artificer", "designer", "chatter"],
       ...MAKER,
       functionalCore:
         "You make the things players see and feel — sprites, effects, UI, the juice that sells an " +
@@ -248,7 +248,7 @@ const DEV_WEB: TeamBlueprint = {
     {
       slot: "maker",
       label: "UI Maker",
-      roles: ["artificer"],
+      roles: ["artificer", "designer"],
       ...MAKER,
       functionalCore:
         "You build the polished, responsive interfaces this site ships — real hierarchy, deliberate " +
@@ -324,7 +324,7 @@ const USER_CREATIVE: TeamBlueprint = {
     {
       slot: "maker",
       label: "Maker",
-      roles: ["artificer", "chatter"],
+      roles: ["artificer", "designer", "chatter"],
       ...MAKER,
       functionalCore:
         "You make the finished pieces — documents, visuals, layouts, polished artifacts. Sweat the " +
@@ -456,7 +456,7 @@ const USER_PLANNING: TeamBlueprint = {
     {
       slot: "thinker",
       label: "Strategist",
-      roles: ["advisor"],
+      roles: ["advisor", "planner"],
       ...THINKER,
       functionalCore:
         "You are the strategist and read-only advisor. Step back, frame the real problem, weigh the " +
@@ -496,12 +496,12 @@ const USER_PLANNING: TeamBlueprint = {
     {
       slot: "worker",
       label: "Researcher",
-      roles: ["advisor", "chatter"],
+      roles: ["researcher"],
       ...CRITIC,
       functionalCore:
-        "You are the researcher, a second read-only thinker. Go find what's actually known — sources, " +
+        "You are the researcher, a read-only surveyor. Go find what's actually known — sources, " +
         "prior art, constraints — and bring back the grounded facts the plan needs, clearly separating " +
-        "what you verified from what you're inferring.",
+        "what you verified from what you're inferring. Report facts, not solutions.",
     },
   ],
 };

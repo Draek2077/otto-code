@@ -689,6 +689,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           serverId: resolvedServerId,
           client,
           spacing: layoutItem.assistantSpacing,
+          blockGroupId: item.blockGroupId,
+          blockIndex: item.blockIndex,
         };
         return (
           <AssistantFileLinkResolverProvider

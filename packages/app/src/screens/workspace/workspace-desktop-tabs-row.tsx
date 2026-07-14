@@ -24,13 +24,14 @@ import {
   Columns2,
   Copy,
   FileText,
+  MessageSquare,
   Pencil,
   RotateCw,
   Rows2,
   Globe,
   PlayFilled,
-  Plus,
   SquareTerminal,
+  Tabs,
   X,
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -64,6 +65,13 @@ import { useNonClientHover } from "@/hooks/use-non-client-hover";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
+import {
+  TAB_CLOSE_BUTTON_WIDTH,
+  TAB_ESTIMATED_CHAR_WIDTH,
+  TAB_HORIZONTAL_PADDING,
+  TAB_ICON_WIDTH,
+  TAB_MAX_WIDTH,
+} from "@/screens/workspace/workspace-tab-layout";
 import {
   computeVisibleTabActionKeys,
   type WorkspaceTabActionDescriptor,
@@ -118,8 +126,6 @@ const DROPDOWN_WIDTH = 220;
 const ON_BLACK_FOREGROUND = "#e4e4e4"; // neutral off-white — matches dark themes' foreground ink
 const ON_BLACK_MUTED = "#a1a1aa";
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
-const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
-const TAB_MAX_WIDTH = 200;
 // Width math for the trailing-tools overflow. These mirror the style constants
 // below (newTabActionButton / pin buttons / the artifact trigger are 22,
 // tabsContent pads 4 per side, tabsActions pads 8 per side). The collapse
@@ -128,6 +134,13 @@ const TAB_MAX_WIDTH = 200;
 const SMALL_TOOL_WIDTH = 22;
 const TABS_CONTENT_PADDING_TOTAL = 8;
 const TOOLS_STRIP_PADDING_TOTAL = 16;
+// The orientation toggle sits to the LEFT of the tabs (so it occupies the
+// same top-left spot in both orientations and never moves under the pointer
+// when toggled) — its button (22) plus the slot's left padding (8, matching
+// the rail's styles.header paddingLeft in workspace-desktop-tabs-rail.tsx so
+// the toggle lands in the same spot in both orientations) must be reserved
+// out of the row width before tabs divide the rest.
+const ORIENTATION_TOGGLE_RESERVED_WIDTH = SMALL_TOOL_WIDTH + 8;
 // Background refresh so the Preview icon reflects real server state without
 // requiring the user to open the picker first.
 const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
@@ -146,7 +159,8 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedPlayFilled = withUnistyles(PlayFilled);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
-const ThemedPlus = withUnistyles(Plus);
+const ThemedTabs = withUnistyles(Tabs);
+const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedFileText = withUnistyles(FileText);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -154,6 +168,7 @@ const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destruc
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
 
 // Leading icons for the more-actions catalog menu rows.
+const MENU_AGENT_ICON = <ThemedMessageSquare size={14} uniProps={mutedColorMapping} />;
 const MENU_PREVIEW_ICON = <ThemedPlayFilled size={14} uniProps={mutedColorMapping} />;
 const MENU_ARTIFACTS_ICON = <ThemedFileText size={14} uniProps={mutedColorMapping} />;
 const MENU_TERMINAL_ICON = <ThemedSquareTerminal size={14} uniProps={mutedColorMapping} />;
@@ -163,6 +178,7 @@ const MENU_SPLIT_DOWN_ICON = <ThemedRows2 size={14} uniProps={mutedColorMapping}
 
 // Pin targets for the catalog rows. Launcher pins get strip buttons; tool
 // pins exempt the tool's button from overflow collapse.
+const DRAFT_TARGET: PinnedTabTarget = { kind: "draft" };
 const TERMINAL_TARGET: PinnedTabTarget = { kind: "terminal" };
 const BROWSER_TARGET: PinnedTabTarget = { kind: "browser" };
 const PREVIEW_TARGET: PinnedTabTarget = { kind: "preview" };
@@ -176,10 +192,6 @@ const PREVIEW_BOOTSTRAP_PROMPT =
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
-}
-
-function inlineAddActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
-  return [styles.inlineAddActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
 }
 
 function previewServerStopButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
@@ -259,45 +271,6 @@ function PinnableProfileMenuItem({ profile, disabled, onLaunch }: PinnableProfil
       disabled={disabled}
       onSelect={handleSelect}
     />
-  );
-}
-
-interface WorkspaceInlineAddTabButtonProps {
-  shortcutKeys: ShortcutKey[][] | null;
-  onCreateAgentTab: () => void;
-  onLayout: (event: LayoutChangeEvent) => void;
-}
-
-function WorkspaceInlineAddTabButton({
-  shortcutKeys,
-  onCreateAgentTab,
-  onLayout,
-}: WorkspaceInlineAddTabButtonProps) {
-  const { t } = useTranslation();
-  const tooltipText = t("workspace.tabs.actions.newAgent");
-
-  return (
-    <View style={styles.inlineAddButton} onLayout={onLayout}>
-      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger
-          testID="workspace-new-agent-tab-inline"
-          onPress={onCreateAgentTab}
-          accessibilityRole="button"
-          accessibilityLabel={tooltipText}
-          style={inlineAddActionButtonStyle}
-        >
-          <ThemedPlus size={14} uniProps={mutedColorMapping} />
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="center" offset={8}>
-          <View style={styles.newTabTooltipRow}>
-            <Text style={styles.newTabTooltipText}>{tooltipText}</Text>
-            {shortcutKeys ? (
-              <Shortcut chord={shortcutKeys} style={styles.newTabTooltipShortcut} />
-            ) : null}
-          </View>
-        </TooltipContent>
-      </Tooltip>
-    </View>
   );
 }
 
@@ -789,7 +762,7 @@ function PreviewServerMenuItem({
   );
 }
 
-interface WorkspaceTabRowExtrasProps {
+export interface WorkspaceTabRowExtrasProps {
   onCreateAgentTab: () => void;
   onCreateTerminal: () => void;
   onCreateBrowser: () => void;
@@ -804,11 +777,16 @@ interface WorkspaceTabRowExtrasProps {
   terminalDisabled: boolean;
   tabsContainerWidth: number;
   tabCount: number;
-  inlineAddButtonWidth: number;
   onSplitRight: () => void;
   onSplitDown: () => void;
   showPaneSplitActions: boolean;
   onStripLayout: (event: LayoutChangeEvent) => void;
+  /**
+   * When set, this exact width is what the pinned tool buttons must fit into,
+   * bypassing the row's tabs-share-the-strip math — used by the vertical rail,
+   * whose tools sit in a header above the tabs instead of beside them.
+   */
+  toolsAvailableWidth?: number | null;
   /**
    * True while the pointer is over the tab bar row — tab chips and the drag
    * gutter included. Tracked by the row (the reveal region is wider than this
@@ -846,7 +824,7 @@ function useWorkspaceTabToolsOverflow(input: {
   launchers: ResolvedPin[];
   tabsContainerWidth: number;
   tabCount: number;
-  inlineAddButtonWidth: number;
+  availableWidthOverride?: number | null;
 }): WorkspaceTabToolsOverflow {
   const {
     showPreviewButton,
@@ -859,7 +837,7 @@ function useWorkspaceTabToolsOverflow(input: {
     launchers,
     tabsContainerWidth,
     tabCount,
-    inlineAddButtonWidth,
+    availableWidthOverride = null,
   } = input;
 
   const pinnedButtons = useMemo(() => {
@@ -892,19 +870,24 @@ function useWorkspaceTabToolsOverflow(input: {
   ]);
 
   const visibleToolKeys = useMemo(() => {
+    if (availableWidthOverride != null) {
+      // Caller-supplied budget (the vertical rail's header) — already net of
+      // that surface's fixed chrome, so fit the pinned buttons into it as-is.
+      return computeVisibleTabActionKeys({
+        actions: pinnedButtons,
+        availableWidth: availableWidthOverride,
+      });
+    }
     if (tabsContainerWidth <= 0) {
       // Not measured yet — keep everything; the strip is invisible until
       // hovered anyway, so a one-frame correction can't flash.
       return new Set(pinnedButtons.map((tool) => tool.key));
     }
-    const desiredTabsWidth =
-      tabCount * TAB_MAX_WIDTH +
-      TABS_CONTENT_PADDING_TOTAL +
-      (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH);
+    const desiredTabsWidth = tabCount * TAB_MAX_WIDTH + TABS_CONTENT_PADDING_TOTAL;
     const availableWidth =
       tabsContainerWidth - desiredTabsWidth - TOOLS_STRIP_PADDING_TOTAL - SMALL_TOOL_WIDTH;
     return computeVisibleTabActionKeys({ actions: pinnedButtons, availableWidth });
-  }, [inlineAddButtonWidth, pinnedButtons, tabCount, tabsContainerWidth]);
+  }, [availableWidthOverride, pinnedButtons, tabCount, tabsContainerWidth]);
 
   const visibleLaunchers = useMemo(
     () => launchers.filter((launcher) => visibleToolKeys.has(`pin:${launcher.key}`)),
@@ -934,6 +917,7 @@ function useWorkspaceTabToolsOverflow(input: {
  * stable surface where every tool can be launched, pinned, or unpinned.
  */
 function WorkspaceToolsCatalogMenuItems({
+  onCreateAgentTab,
   showPreviewRow,
   previewDisabled,
   onPreview,
@@ -948,6 +932,7 @@ function WorkspaceToolsCatalogMenuItems({
   onSplitRight,
   onSplitDown,
 }: {
+  onCreateAgentTab: () => void;
   showPreviewRow: boolean;
   previewDisabled: boolean;
   onPreview: () => void;
@@ -965,25 +950,13 @@ function WorkspaceToolsCatalogMenuItems({
   const { t } = useTranslation();
   return (
     <>
-      {showPreviewRow ? (
-        <PinnableMenuItem
-          testID="workspace-new-tab-menu-preview"
-          target={PREVIEW_TARGET}
-          label={t("workspace.tabs.actions.preview")}
-          leading={MENU_PREVIEW_ICON}
-          disabled={previewDisabled}
-          onSelect={previewDisabled ? undefined : onPreview}
-        />
-      ) : null}
-      {showArtifactsRow ? (
-        <PinnableMenuItem
-          testID="workspace-new-tab-menu-artifacts"
-          target={ARTIFACT_TARGET}
-          label="Add artifact"
-          leading={MENU_ARTIFACTS_ICON}
-          onSelect={onArtifacts}
-        />
-      ) : null}
+      <PinnableMenuItem
+        testID="workspace-new-tab-menu-agent"
+        target={DRAFT_TARGET}
+        label={t("workspace.tabs.actions.newAgent")}
+        leading={MENU_AGENT_ICON}
+        onSelect={onCreateAgentTab}
+      />
       {showTerminalRow ? (
         <PinnableMenuItem
           testID="workspace-new-tab-menu-terminal"
@@ -1001,6 +974,25 @@ function WorkspaceToolsCatalogMenuItems({
           label={t("workspace.tabs.actions.newBrowser")}
           leading={MENU_BROWSER_ICON}
           onSelect={onCreateBrowser}
+        />
+      ) : null}
+      {showPreviewRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-preview"
+          target={PREVIEW_TARGET}
+          label={t("workspace.tabs.actions.preview")}
+          leading={MENU_PREVIEW_ICON}
+          disabled={previewDisabled}
+          onSelect={previewDisabled ? undefined : onPreview}
+        />
+      ) : null}
+      {showArtifactsRow ? (
+        <PinnableMenuItem
+          testID="workspace-new-tab-menu-artifacts"
+          target={ARTIFACT_TARGET}
+          label="Add artifact"
+          leading={MENU_ARTIFACTS_ICON}
+          onSelect={onArtifacts}
         />
       ) : null}
       {showSplitRows ? (
@@ -1067,10 +1059,88 @@ function TerminalProfilesCatalogSection({
 }
 
 /**
+ * The pinned buttons inside the trailing tools strip, in the fixed order:
+ * new-agent/terminal/browser launchers, preview, artifacts, split right,
+ * split down. Pulled out of `WorkspaceTabRowExtras` purely to keep that
+ * function's complexity under the lint cap — no logic lives here beyond
+ * ordering the same conditionals it used to inline.
+ */
+function WorkspaceToolsStrip({
+  isDeveloperMode,
+  visibleLaunchers,
+  showPreviewInline,
+  previewController,
+  showArtifactsInline,
+  normalizedServerId,
+  normalizedWorkspaceId,
+  artifactsOpen,
+  onArtifactsOpenChange,
+  showSplitRightInline,
+  showSplitDownInline,
+  onSplitRight,
+  onSplitDown,
+  splitRightKeys,
+  splitDownKeys,
+}: {
+  isDeveloperMode: boolean;
+  visibleLaunchers: ResolvedPin[];
+  showPreviewInline: boolean;
+  previewController: WorkspacePreviewController;
+  showArtifactsInline: boolean;
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  artifactsOpen: boolean;
+  onArtifactsOpenChange: (open: boolean) => void;
+  showSplitRightInline: boolean;
+  showSplitDownInline: boolean;
+  onSplitRight: () => void;
+  onSplitDown: () => void;
+  splitRightKeys: ShortcutKey[][] | null;
+  splitDownKeys: ShortcutKey[][] | null;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {isDeveloperMode ? (
+        <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
+      ) : null}
+      {showPreviewInline && isDeveloperMode ? (
+        <WorkspacePreviewButton controller={previewController} />
+      ) : null}
+      {showArtifactsInline ? (
+        <ArtifactOpenMenu
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          open={artifactsOpen}
+          onOpenChange={onArtifactsOpenChange}
+        />
+      ) : null}
+      {isDeveloperMode && showSplitRightInline ? (
+        <SplitActionButton
+          icon="split-right"
+          onPress={onSplitRight}
+          label={t("workspace.tabs.actions.splitRight")}
+          shortcutKeys={splitRightKeys}
+        />
+      ) : null}
+      {isDeveloperMode && showSplitDownInline ? (
+        <SplitActionButton
+          icon="split-down"
+          onPress={onSplitDown}
+          label={t("workspace.tabs.actions.splitDown")}
+          shortcutKeys={splitDownKeys}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
  * The trailing tools strip of a pane's tab bar. Tool order is fixed —
- * preview, artifacts, pinned launchers, split right, split down — with the
- * more-actions chevron always last. The ▾ menu is the full tool catalog:
- * every tool is always listed there with a pin toggle. Three behaviors:
+ * pinned agent/terminal/browser launchers, preview, artifacts, split right,
+ * split down — with the more-actions chevron always last. The ▾ menu is the
+ * full tool catalog: every tool is always listed there with a pin toggle.
+ * Three behaviors:
  *
  * - Pinning: only pinned tools/launchers have strip buttons; unpinned tools
  *   live solely in the catalog until pinned.
@@ -1080,8 +1150,12 @@ function TerminalProfilesCatalogSection({
  * - Hover reveal: every button except the chevron is invisible until the
  *   pointer is over the tab-bar gutter or a strip-owned menu is open. Hidden
  *   via opacity so the geometry never changes — see docs/hover.md.
+ *
+ * Exported for the vertical rail (workspace-desktop-tabs-rail.tsx), which
+ * mounts the same strip in its header with a `toolsAvailableWidth` budget in
+ * place of the row's tabs-share-the-strip overflow math.
  */
-function WorkspaceTabRowExtras({
+export function WorkspaceTabRowExtras({
   onCreateAgentTab,
   onCreateTerminal,
   onCreateBrowser,
@@ -1096,11 +1170,11 @@ function WorkspaceTabRowExtras({
   terminalDisabled,
   tabsContainerWidth,
   tabCount,
-  inlineAddButtonWidth,
   onSplitRight,
   onSplitDown,
   showPaneSplitActions,
   onStripLayout,
+  toolsAvailableWidth = null,
   rowHovered,
 }: WorkspaceTabRowExtrasProps) {
   const { t } = useTranslation();
@@ -1180,7 +1254,7 @@ function WorkspaceTabRowExtras({
     launchers,
     tabsContainerWidth,
     tabCount,
-    inlineAddButtonWidth,
+    availableWidthOverride: toolsAvailableWidth,
   });
 
   // Keep the tools revealed while one of their menus is open — the pointer is
@@ -1203,38 +1277,23 @@ function WorkspaceTabRowExtras({
   return (
     <View style={TABS_ACTIONS_STYLE} onLayout={onStripLayout}>
       <View style={toolsRevealed ? styles.tabsTools : TABS_TOOLS_HIDDEN_STYLE}>
-        {showPreviewInline && isDeveloperMode ? (
-          <WorkspacePreviewButton controller={previewController} />
-        ) : null}
-        {showArtifactsInline ? (
-          <ArtifactOpenMenu
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
-            open={artifactsOpen}
-            onOpenChange={setArtifactsOpen}
-          />
-        ) : null}
-        {isDeveloperMode ? (
-          <>
-            <PinnedTargetsRow launchers={visibleLaunchers} testIdPrefix="workspace-pinned-target" />
-            {showSplitRightInline ? (
-              <SplitActionButton
-                icon="split-right"
-                onPress={onSplitRight}
-                label={t("workspace.tabs.actions.splitRight")}
-                shortcutKeys={splitRightKeys}
-              />
-            ) : null}
-            {showSplitDownInline ? (
-              <SplitActionButton
-                icon="split-down"
-                onPress={onSplitDown}
-                label={t("workspace.tabs.actions.splitDown")}
-                shortcutKeys={splitDownKeys}
-              />
-            ) : null}
-          </>
-        ) : null}
+        <WorkspaceToolsStrip
+          isDeveloperMode={isDeveloperMode}
+          visibleLaunchers={visibleLaunchers}
+          showPreviewInline={showPreviewInline}
+          previewController={previewController}
+          showArtifactsInline={showArtifactsInline}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          artifactsOpen={artifactsOpen}
+          onArtifactsOpenChange={setArtifactsOpen}
+          showSplitRightInline={showSplitRightInline}
+          showSplitDownInline={showSplitDownInline}
+          onSplitRight={onSplitRight}
+          onSplitDown={onSplitDown}
+          splitRightKeys={splitRightKeys}
+          splitDownKeys={splitDownKeys}
+        />
       </View>
       {previewButtonAbsent && isDeveloperMode ? (
         <WorkspacePreviewCollapsedAnchor controller={previewController} />
@@ -1266,6 +1325,7 @@ function WorkspaceTabRowExtras({
         </Tooltip>
         <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={200}>
           <WorkspaceToolsCatalogMenuItems
+            onCreateAgentTab={onCreateAgentTab}
             showPreviewRow={showPreviewButton && isDeveloperMode}
             previewDisabled={previewController.disabled}
             onPreview={handlePreviewFromMenu}
@@ -1337,8 +1397,55 @@ function TabContextMenuItem({
   );
 }
 
-function tabKeyExtractor(tab: WorkspaceDesktopTabRowItem) {
+// Exported so a sibling tab-item consumer (the vertical rail) can share the
+// exact same key derivation without duplicating it.
+export function tabKeyExtractor(tab: WorkspaceDesktopTabRowItem) {
   return `${tab.tab.key}:${tab.tab.kind}`;
+}
+
+/**
+ * Facts about a pane's tabs that gate the tools strip — shared by the row and
+ * the vertical rail so both feed WorkspaceTabRowExtras identical inputs.
+ * Preview works by prompting a parent agent, so only attended agents count:
+ * observed subagent tabs are read-only and can't be prompted (an agent
+ * missing from the store is treated as attended, mirroring session-store's
+ * absent-attend default).
+ */
+export function usePaneTabAgentFacts({
+  tabs,
+  focusedTab,
+  normalizedServerId,
+}: {
+  tabs: WorkspaceDesktopTabRowItem[];
+  focusedTab: WorkspaceTabDescriptor | null;
+  normalizedServerId: string;
+}) {
+  const focusedTabAgentId = focusedTab?.target.kind === "agent" ? focusedTab.target.agentId : null;
+  const focusedAgentId = useSessionStore((state) =>
+    focusedTabAgentId &&
+    state.sessions[normalizedServerId]?.agents.get(focusedTabAgentId)?.attend !== "observed"
+      ? focusedTabAgentId
+      : null,
+  );
+  const paneHasEditableAgentTab = useSessionStore((state) => {
+    const agents = state.sessions[normalizedServerId]?.agents;
+    return tabs.some(
+      (item) =>
+        item.tab.target.kind === "agent" &&
+        agents?.get(item.tab.target.agentId)?.attend !== "observed",
+    );
+  });
+  const browsersById = useBrowserStore((state) => state.browsersById);
+  const paneHasPreviewTab = useMemo(
+    () =>
+      tabs.some(
+        (item) =>
+          item.tab.target.kind === "browser" &&
+          browsersById[item.tab.target.browserId]?.isPreview === true,
+      ),
+    [browsersById, tabs],
+  );
+  return { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab };
 }
 
 export interface WorkspaceDesktopTabRowItem {
@@ -1382,6 +1489,61 @@ function SplitActionButton({ onPress, label, shortcutKeys, icon }: SplitActionBu
   );
 }
 
+export interface TabOrientationToggleButtonProps {
+  orientation: "horizontal" | "vertical";
+  onToggle: () => void;
+}
+
+// Shared by the row and the vertical rail (workspace-desktop-tabs-rail.tsx) so
+// both surfaces expose the identical flip control. Uses the dedicated Tabs
+// glyph (not Columns2/Rows2 — those are already the split-right/split-down
+// icons, and reusing them here made the two unrelated actions look identical).
+// Vertical rotates the same glyph 90° rather than switching to a different icon,
+// so the control still reads as "tabs" in either orientation.
+// Rotate the glyph 90° in vertical mode. In both orientations, nudge the
+// whole button 1px left/1px down so it optically centers against its
+// neighbor. Cross-mode alignment (same top-left spot in both orientations)
+// is handled at the container level — see the row's
+// ORIENTATION_TOGGLE_SLOT_STYLE paddingLeft vs the rail's styles.header
+// paddingLeft in workspace-desktop-tabs-rail.tsx, which are kept equal on
+// purpose. Don't try to re-align via button-level padding or margin here —
+// that fights the container fix instead of matching it.
+const verticalTabsIconStyle = { transform: [{ rotate: "90deg" as const }] };
+const toggleButtonNudgeStyle = { transform: [{ translateX: -1 }, { translateY: 1 }] };
+
+function toggleButtonStyle(state: PressableStateCallbackType) {
+  return [newTabActionButtonStyle(state), toggleButtonNudgeStyle];
+}
+
+export function TabOrientationToggleButton({
+  orientation,
+  onToggle,
+}: TabOrientationToggleButtonProps) {
+  // i18n: English-only pending a translation pass (Vertical tabs).
+  const label =
+    orientation === "vertical" ? "Switch to horizontal tabs" : "Switch to vertical tabs";
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger
+        testID="workspace-tab-orientation-toggle"
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={toggleButtonStyle}
+      >
+        <ThemedTabs
+          size={14}
+          uniProps={mutedColorMapping}
+          style={orientation === "vertical" ? verticalTabsIconStyle : undefined}
+        />
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="center" offset={8}>
+        <Text style={styles.newTabTooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 interface WorkspaceDesktopTabsRowProps {
   paneId?: string;
   isFocused?: boolean;
@@ -1413,9 +1575,11 @@ interface WorkspaceDesktopTabsRowProps {
   activeDragTabId?: string | null;
   tabDropPreviewIndex?: number | null;
   showPaneSplitActions?: boolean;
+  tabOrientation: "horizontal" | "vertical";
+  onToggleTabOrientation: () => void;
 }
 
-function getFallbackTabLabel(
+export function getFallbackTabLabel(
   tab: WorkspaceTabDescriptor,
   labels: { newAgent: string; setup: string; terminal: string; agent: string },
 ): string {
@@ -1510,6 +1674,7 @@ function TabChip({
   onNavigateTab,
   onCloseTab,
   dragHandleProps,
+  orientation = "horizontal",
 }: {
   tab: WorkspaceTabDescriptor;
   isActive: boolean;
@@ -1527,6 +1692,7 @@ function TabChip({
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   dragHandleProps: DraggableListDragHandleProps | undefined;
+  orientation?: "horizontal" | "vertical";
 }) {
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const middleClickRef = useMiddleClickClose(
@@ -1551,11 +1717,13 @@ function TabChip({
       } as const)
     : undefined;
 
+  const vertical = orientation === "vertical";
   const tabChipStyle = useCallback(
     () => [
       styles.tab,
-      isActive && styles.tabActive,
-      onBlack && styles.tabActiveBlack,
+      vertical && styles.tabVertical,
+      isActive && (vertical ? styles.tabActiveVertical : styles.tabActive),
+      onBlack && (vertical ? styles.tabActiveBlackVertical : styles.tabActiveBlack),
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       {
         minWidth: resolvedTabWidth,
@@ -1563,7 +1731,7 @@ function TabChip({
         maxWidth: resolvedTabWidth,
       },
     ],
-    [isActive, isDragging, onBlack, resolvedTabWidth],
+    [isActive, isDragging, onBlack, resolvedTabWidth, vertical],
   );
 
   const handleTabHoverIn = useCallback(() => {
@@ -1645,9 +1813,19 @@ function TabChip({
               aria-selected={isActive}
             >
               {hovered && !isActive ? (
-                <View style={styles.tabHoverUnderlay} pointerEvents="none" />
+                <View
+                  style={vertical ? styles.tabHoverUnderlayVertical : styles.tabHoverUnderlay}
+                  pointerEvents="none"
+                />
               ) : null}
-              {isActive ? <View style={styles.tabActiveInnerAccent} pointerEvents="none" /> : null}
+              {isActive ? (
+                <View
+                  style={
+                    vertical ? styles.tabActiveInnerAccentVertical : styles.tabActiveInnerAccent
+                  }
+                  pointerEvents="none"
+                />
+              ) : null}
               <TabHandleContent
                 presentation={presentation}
                 isHighlighted={isHighlighted}
@@ -1751,13 +1929,13 @@ export function WorkspaceDesktopTabsRow({
   activeDragTabId = null,
   tabDropPreviewIndex = null,
   showPaneSplitActions = true,
+  tabOrientation,
+  onToggleTabOrientation,
 }: WorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const newTabKeys = useShortcutKeys("workspace-tab-new");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
-  const [inlineAddButtonWidth, setInlineAddButtonWidth] = useState<number>(0);
   // Tools reveal on hover anywhere over the tab bar row, tab chips included.
   // Two trackers cover it because in the Electron desktop app the row's empty
   // gutter is a titlebar drag region (TitlebarDragRegion in split-container),
@@ -1781,27 +1959,20 @@ export function WorkspaceDesktopTabsRow({
     updateMeasuredWidth(setTabsActionsWidth, event);
   }, []);
 
-  const handleInlineAddButtonLayout = useCallback((event: LayoutChangeEvent) => {
-    updateMeasuredWidth(setInlineAddButtonWidth, event);
-  }, []);
-
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
-      actionsReservedWidth: Math.max(
-        0,
-        tabsActionsWidth + (inlineAddButtonWidth || DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH),
-      ),
+      actionsReservedWidth: Math.max(0, tabsActionsWidth + ORIENTATION_TOGGLE_RESERVED_WIDTH),
       // Mirrors tabsContent's paddingHorizontal so width math stays exact.
       rowPaddingHorizontal: 4,
       tabGap: 0,
       maxTabWidth: TAB_MAX_WIDTH,
-      tabIconWidth: 14,
-      tabHorizontalPadding: 12,
-      estimatedCharWidth: 7,
-      closeButtonWidth: 22,
+      tabIconWidth: TAB_ICON_WIDTH,
+      tabHorizontalPadding: TAB_HORIZONTAL_PADDING,
+      estimatedCharWidth: TAB_ESTIMATED_CHAR_WIDTH,
+      closeButtonWidth: TAB_CLOSE_BUTTON_WIDTH,
     }),
-    [inlineAddButtonWidth, tabsActionsWidth],
+    [tabsActionsWidth],
   );
 
   const fallbackTabLabels = useMemo(
@@ -1838,16 +2009,11 @@ export function WorkspaceDesktopTabsRow({
       }),
     [fallbackTabLabels, tabs],
   );
-  const browsersById = useBrowserStore((state) => state.browsersById);
-  const paneHasPreviewTab = useMemo(
-    () =>
-      tabs.some(
-        (item) =>
-          item.tab.target.kind === "browser" &&
-          browsersById[item.tab.target.browserId]?.isPreview === true,
-      ),
-    [browsersById, tabs],
-  );
+  const { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab } = usePaneTabAgentFacts({
+    tabs,
+    focusedTab,
+    normalizedServerId,
+  });
 
   const { layout } = useWorkspaceTabLayout({
     tabLabelLengths,
@@ -1893,26 +2059,6 @@ export function WorkspaceDesktopTabsRow({
   const handleCreateBrowser = useCallback(() => {
     onCreateBrowserTab({ paneId });
   }, [onCreateBrowserTab, paneId]);
-
-  // Preview works by prompting a parent agent, so only attended agents count:
-  // observed subagent tabs are read-only and can't be prompted (an agent
-  // missing from the store is treated as attended, mirroring session-store's
-  // absent-attend default).
-  const focusedTabAgentId = focusedTab?.target.kind === "agent" ? focusedTab.target.agentId : null;
-  const focusedAgentId = useSessionStore((state) =>
-    focusedTabAgentId &&
-    state.sessions[normalizedServerId]?.agents.get(focusedTabAgentId)?.attend !== "observed"
-      ? focusedTabAgentId
-      : null,
-  );
-  const paneHasEditableAgentTab = useSessionStore((state) => {
-    const agents = state.sessions[normalizedServerId]?.agents;
-    return tabs.some(
-      (item) =>
-        item.tab.target.kind === "agent" &&
-        agents?.get(item.tab.target.agentId)?.attend !== "observed",
-    );
-  });
 
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
@@ -2008,6 +2154,12 @@ export function WorkspaceDesktopTabsRow({
       onPointerLeave={handleRowPointerLeave}
     >
       <View style={styles.tabsBottomHairline} pointerEvents="none" />
+      <View style={ORIENTATION_TOGGLE_SLOT_STYLE}>
+        <TabOrientationToggleButton
+          orientation={tabOrientation}
+          onToggle={onToggleTabOrientation}
+        />
+      </View>
       <ScrollView
         horizontal
         scrollEnabled={layout.requiresHorizontalScrollFallback}
@@ -2027,11 +2179,6 @@ export function WorkspaceDesktopTabsRow({
           getItemData={getTabDragData}
           renderItem={renderTab}
         />
-        <WorkspaceInlineAddTabButton
-          shortcutKeys={newTabKeys}
-          onCreateAgentTab={handleCreateAgentTab}
-          onLayout={handleInlineAddButtonLayout}
-        />
       </ScrollView>
       <WorkspaceTabRowExtras
         onCreateAgentTab={handleCreateAgentTab}
@@ -2048,7 +2195,6 @@ export function WorkspaceDesktopTabsRow({
         terminalDisabled={terminalDisabled}
         tabsContainerWidth={tabsContainerWidth}
         tabCount={tabs.length}
-        inlineAddButtonWidth={inlineAddButtonWidth}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
         showPaneSplitActions={showPaneSplitActions}
@@ -2060,33 +2206,10 @@ export function WorkspaceDesktopTabsRow({
 
   return <RenderProfile id="WorkspaceDesktopTabsRow">{row}</RenderProfile>;
 }
-function ResolvedDesktopTabChip({
-  item,
-  isFocused,
-  isDragging,
-  index,
-  tabCount,
-  normalizedServerId,
-  normalizedWorkspaceId,
-  onCopyResumeCommand,
-  onCopyAgentId,
-  onCopyFilePath,
-  onReloadAgent,
-  onRenameTab,
-  onCloseTabsToLeft,
-  onCloseTabsToRight,
-  onCloseOtherTabs,
-  resolvedTabWidth,
-  showLabel,
-  showCloseButton,
-  setHoveredCloseTabKey,
-  onNavigateTab,
-  onCloseTab,
-  labels,
-  dragHandleProps,
-  showDropIndicatorBefore,
-  showDropIndicatorAfter,
-}: {
+// Exported so a sibling tab-item consumer (the vertical rail) can render the
+// exact same chip (presentation resolution + context menu + TabChip) without
+// duplicating any of it.
+export interface ResolvedDesktopTabChipProps {
   item: WorkspaceDesktopTabRowItem;
   isFocused: boolean;
   isDragging: boolean;
@@ -2112,7 +2235,38 @@ function ResolvedDesktopTabChip({
   dragHandleProps: DraggableListDragHandleProps | undefined;
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
-}) {
+  /** Rotates the chip chrome 90° CCW for the vertical rail — see tabVertical. */
+  orientation?: "horizontal" | "vertical";
+}
+
+export function ResolvedDesktopTabChip({
+  item,
+  isFocused,
+  isDragging,
+  index,
+  tabCount,
+  normalizedServerId,
+  normalizedWorkspaceId,
+  onCopyResumeCommand,
+  onCopyAgentId,
+  onCopyFilePath,
+  onReloadAgent,
+  onRenameTab,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onCloseOtherTabs,
+  resolvedTabWidth,
+  showLabel,
+  showCloseButton,
+  setHoveredCloseTabKey,
+  onNavigateTab,
+  onCloseTab,
+  labels,
+  dragHandleProps,
+  showDropIndicatorBefore,
+  showDropIndicatorAfter,
+  orientation = "horizontal",
+}: ResolvedDesktopTabChipProps) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
   const resolvedTab = useMemo(
@@ -2183,6 +2337,7 @@ function ResolvedDesktopTabChip({
               onNavigateTab={onNavigateTab}
               onCloseTab={onCloseTab}
               dragHandleProps={dragHandleProps}
+              orientation={orientation}
             />
             {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
           </View>
@@ -2232,6 +2387,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[2],
   },
+  // Slot for the orientation toggle at the row's left edge — mirrored by the
+  // rail header's left group so the control doesn't move when the user
+  // toggles between modes. Width must stay in sync with
+  // ORIENTATION_TOGGLE_RESERVED_WIDTH.
+  orientationToggleSlot: {
+    alignSelf: "center",
+    paddingLeft: theme.spacing[2],
+  },
   // Hover-revealed tools group. Hidden via opacity (never conditional
   // rendering or width changes) so the strip's geometry — and therefore the
   // tab layout math — is identical whether or not the pointer is over it.
@@ -2259,17 +2422,13 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0,
     overflow: "hidden",
   },
-  inlineAddButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    paddingHorizontal: theme.spacing[1],
-  },
   // Chip is 1px shorter than the row minus its top inset so its bottom edge
   // lands exactly on the container edge, covering the hairline when active.
   tab: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT - theme.spacing[1],
-    paddingHorizontal: theme.spacing[3],
+    // Kept in sync with TAB_HORIZONTAL_PADDING (workspace-tab-layout.ts) so
+    // the width math matches what the chip actually renders.
+    paddingHorizontal: theme.spacing[2],
     borderTopLeftRadius: theme.borderRadius.lg,
     borderTopRightRadius: theme.borderRadius.lg,
     // Constant border widths on every tab (transparent when inactive) so the
@@ -2285,6 +2444,21 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     userSelect: "none",
   },
+  // Vertical-rail chrome: the horizontal chip's chrome turned 90° counter-
+  // clockwise while keeping the wide shape. The opening moves from the bottom
+  // edge to the right edge (where the chip meets the pane content), the
+  // rounded corners and the outline's cap to the left, and the remaining
+  // border sides to top/bottom. Same constant-border-width trick as the base
+  // style so labels don't shift when a tab activates.
+  tabVertical: {
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderBottomLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: "transparent",
+  },
   // Hover wash is an inset underlay rather than a background on the chip so
   // it sits 1px inside the chip bounds on top/left/right and 1px off the
   // bottom edge (the chip's transparent 1px borders provide the side inset).
@@ -2296,6 +2470,18 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 1,
     borderTopLeftRadius: theme.borderRadius.lg,
     borderTopRightRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface1,
+  },
+  // Vertical counterpart: the 1px inset moves from the bottom edge (pane seam
+  // below) to the right edge (pane seam to the right).
+  tabHoverUnderlayVertical: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 1,
+    bottom: 0,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderBottomLeftRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
   },
   // Active outline is an accent-to-border vertical gradient (accent at the tab
@@ -2323,6 +2509,24 @@ const styles = StyleSheet.create((theme) => ({
         borderTopColor: theme.colors.borderTabActive,
         borderLeftColor: theme.colors.borderTabActive,
         borderRightColor: theme.colors.borderTabActive,
+      },
+  // Vertical counterpart of tabActive: the accent-to-border fade runs left to
+  // right (accent at the outline's left cap, fusing with the pane border at
+  // the open right edge). Same two-layer gradient-border technique on web,
+  // solid accent ring fallback on native.
+  tabActiveVertical: isWeb
+    ? ({
+        backgroundImage:
+          `linear-gradient(${theme.colors.surface0}, ${theme.colors.surface0}), ` +
+          `linear-gradient(to right, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
+        backgroundOrigin: "border-box",
+        backgroundClip: "padding-box, border-box",
+      } as object)
+    : {
+        backgroundColor: theme.colors.surface0,
+        borderTopColor: theme.colors.borderTabActive,
+        borderLeftColor: theme.colors.borderTabActive,
+        borderBottomColor: theme.colors.borderTabActive,
       },
   // Inner highlight sheen on the active tab: an echo of the outline in the
   // outline's own accent, lightened and at 25% alpha (`borderTabActiveInner`),
@@ -2364,6 +2568,40 @@ const styles = StyleSheet.create((theme) => ({
           borderRightColor: theme.colors.borderTabActiveInner,
         }),
   },
+  // Vertical counterpart of tabActiveInnerAccent: the 1.5px cap moves to the
+  // left edge, the thin side lines to top/bottom (offset -1px to sit on the
+  // outline's sides), and the sheen fades to transparent toward the open
+  // right edge.
+  tabActiveInnerAccentVertical: {
+    position: "absolute",
+    top: -theme.borderWidth[1],
+    bottom: -theme.borderWidth[1],
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderBottomLeftRadius: theme.borderRadius.lg,
+    borderLeftWidth: 1.5,
+    borderTopWidth: theme.borderWidth[1],
+    borderBottomWidth: theme.borderWidth[1],
+    borderLeftColor: "transparent",
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    pointerEvents: "none",
+    ...(isWeb
+      ? ({
+          backgroundImage: `linear-gradient(to right, ${theme.colors.borderTabActiveInner}, transparent)`,
+          backgroundOrigin: "border-box",
+          backgroundClip: "border-box",
+          maskImage: "linear-gradient(#fff 0 0), linear-gradient(#fff 0 0)",
+          maskClip: "padding-box, border-box",
+          maskComposite: "exclude",
+        } as object)
+      : {
+          borderLeftColor: theme.colors.borderTabActiveInner,
+          borderTopColor: theme.colors.borderTabActiveInner,
+          borderBottomColor: theme.colors.borderTabActiveInner,
+        }),
+  },
   // Black tab background setting: the active chat tab's fill inside the border
   // goes pure black so it fuses with the black chat pane below (see the
   // `black` scoped theme in `panels/agent-panel.tsx`). On web the fill lives
@@ -2375,6 +2613,18 @@ const styles = StyleSheet.create((theme) => ({
           backgroundImage:
             "linear-gradient(#000000, #000000), " +
             `linear-gradient(to bottom, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
+        } as object)
+      : {}),
+  },
+  // Vertical counterpart of tabActiveBlack — same black fill, outline fade
+  // rotated to run left-to-right like tabActiveVertical.
+  tabActiveBlackVertical: {
+    backgroundColor: "#000000",
+    ...(isWeb
+      ? ({
+          backgroundImage:
+            "linear-gradient(#000000, #000000), " +
+            `linear-gradient(to right, ${theme.colors.borderTabActive}, ${theme.colors.border})`,
         } as object)
       : {}),
   },
@@ -2459,13 +2709,6 @@ const styles = StyleSheet.create((theme) => ({
   newTabActionButton: {
     width: 22,
     height: 22,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inlineAddActionButton: {
-    width: 28,
-    height: 28,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
@@ -2561,3 +2804,6 @@ const TABS_TOOLS_HIDDEN_STYLE = [styles.tabsTools, styles.tabsToolsHidden];
 // the no-drag holes the index.html backstop punches for the buttons themselves.
 const TABS_ACTIONS_NO_DRAG_STYLE = isWeb ? ({ WebkitAppRegion: "no-drag" } as object) : null;
 const TABS_ACTIONS_STYLE = [styles.tabsActions, TABS_ACTIONS_NO_DRAG_STYLE];
+// The toggle slot sits in the row's Electron drag gutter, so it needs the
+// same no-drag opt-out as the tools strip to receive clicks.
+const ORIENTATION_TOGGLE_SLOT_STYLE = [styles.orientationToggleSlot, TABS_ACTIONS_NO_DRAG_STYLE];

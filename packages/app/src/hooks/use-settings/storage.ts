@@ -18,11 +18,20 @@ export type WorkspaceToolsPlacement = "header" | "workspaceList";
 // Where the Active Team switcher lives: the sidebar menu above "New workspace"
 // (default) or the workspace title bar ahead of the other tools.
 export type TeamSwitcherPlacement = "sidebar" | "titlebar";
+// Default rendering mode for a pane's tab strip: the horizontal row at the top
+// (default) or a vertical rail on the left edge. Per-pane `tabOrientation` on
+// `SplitPane` overrides this for panes that explicitly set it.
+export type TabOrientation = "horizontal" | "vertical";
 export type ColorSchemeMode = "light" | "dark" | "system";
 export type ChatTimestampDisplay = "absolute" | "relative";
 // Device-local display depth chosen in the setup wizard's first step. Presentation
 // only — never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
 export type InterfaceMode = "user" | "developer";
+// What screen the app opens to. "workspaces" (default) restores the last
+// remembered workspace, matching today's behavior. "home" always opens the
+// project/workspace list. "dashboard" always opens the activity-stats screen.
+// Device-local presentation only — never synced to the daemon.
+export type AppStartScreen = "dashboard" | "home" | "workspaces";
 
 const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
   "daylight",
@@ -51,9 +60,11 @@ const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "workspaceList",
 ]);
 const VALID_TEAM_SWITCHER_PLACEMENTS = new Set<TeamSwitcherPlacement>(["sidebar", "titlebar"]);
+const VALID_TAB_ORIENTATIONS = new Set<TabOrientation>(["horizontal", "vertical"]);
 const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
 const VALID_CHAT_TIMESTAMP_DISPLAYS = new Set<ChatTimestampDisplay>(["absolute", "relative"]);
 const VALID_INTERFACE_MODES = new Set<InterfaceMode>(["user", "developer"]);
+const VALID_APP_START_SCREENS = new Set<AppStartScreen>(["dashboard", "home", "workspaces"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -90,6 +101,9 @@ export interface AppSettings {
   // Where the Agent Teams "Active Team" switcher renders. Device-local
   // presentation only; the active team itself is host-scoped daemon config.
   teamSwitcherPlacement: TeamSwitcherPlacement;
+  // Default tab-strip orientation for new panes (horizontal row vs. vertical
+  // rail). Per-pane `SplitPane.tabOrientation` overrides this individually.
+  defaultTabOrientation: TabOrientation;
   chatWidth: ChatWidth;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
@@ -124,6 +138,8 @@ export interface AppSettings {
   // spotlight tour (hasCompletedTutorial), which the wizard's final step launches.
   // See migrateSetupWizardFlag.
   hasCompletedSetupWizard: boolean;
+  // What screen the app opens to. See AppStartScreen.
+  appStartScreen: AppStartScreen;
 }
 
 export interface Settings extends AppSettings {
@@ -152,6 +168,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   compactSidebarTopSpacing: false,
   workspaceToolsPlacement: "header",
   teamSwitcherPlacement: "sidebar",
+  defaultTabOrientation: "horizontal",
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
@@ -161,6 +178,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   hasCompletedTutorial: false,
   interfaceMode: null,
   hasCompletedSetupWizard: false,
+  appStartScreen: "workspaces",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -477,6 +495,25 @@ function pickOnboardingSettings(stored: Partial<AppSettings>): Partial<AppSettin
   if (typeof stored.hasCompletedSetupWizard === "boolean") {
     result.hasCompletedSetupWizard = stored.hasCompletedSetupWizard;
   }
+  if (
+    typeof stored.appStartScreen === "string" &&
+    VALID_APP_START_SCREENS.has(stored.appStartScreen as AppStartScreen)
+  ) {
+    result.appStartScreen = stored.appStartScreen as AppStartScreen;
+  }
+  return result;
+}
+
+// Kept out of pickWorkspaceLayoutSettings to stay under the cyclomatic-
+// complexity ceiling, mirroring pickOnboardingSettings/pickPreviewSettings.
+function pickTabLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (
+    typeof stored.defaultTabOrientation === "string" &&
+    VALID_TAB_ORIENTATIONS.has(stored.defaultTabOrientation as TabOrientation)
+  ) {
+    result.defaultTabOrientation = stored.defaultTabOrientation as TabOrientation;
+  }
   return result;
 }
 
@@ -499,6 +536,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
     ...pickWorkspaceLayoutSettings(stored),
+    ...pickTabLayoutSettings(stored),
     ...pickOnboardingSettings(stored),
     ...pickPreviewSettings(stored),
   };

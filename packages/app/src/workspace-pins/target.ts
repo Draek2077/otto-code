@@ -1,6 +1,5 @@
 export type PinnedTabTarget =
-  // Tab launchers. "draft" is legacy — no longer offered in the catalog (the
-  // inline + button covers new-agent tabs) but kept so persisted pins parse.
+  // Tab launchers — creating a new tab of a given kind.
   | { kind: "draft" }
   | { kind: "terminal" }
   | { kind: "browser" }

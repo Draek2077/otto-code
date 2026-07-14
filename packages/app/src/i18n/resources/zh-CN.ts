@@ -1659,6 +1659,17 @@ export const zhCN: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "停止 {{label}}",
+    stopTooltip: "停止后台任务",
+    clearAction: "清除 {{label}}",
+    clearTooltip: "清除后台任务",
+    completedGroup: "已完成 ({{count}})",
+    clearCompleted: "全部清除",
+    clearCompletedTooltip: "清除所有已完成的后台任务",
+    fallbackLabel: "Shell 命令",
+    daemonUnavailable: "守护进程不可用",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1779,6 +1790,7 @@ export const zhCN: TranslationResources = {
     clearCompleted: "全部清除",
     clearCompletedTooltip: "归档所有已完成的 subagent",
     stopNothingRunning: "子代理未在运行——没有可停止的任务。",
+    daemonUnavailable: "守护进程不可用",
   },
   panels: {
     draft: {
@@ -1889,6 +1901,19 @@ export const zhCN: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

@@ -625,9 +625,9 @@ function maxFiniteNumber(left: number | undefined, right: number): number {
   return left === undefined ? right : Math.max(left, right);
 }
 
-function assignUsageNumber(usage: AgentUsage, key: keyof AgentUsage, value: number | undefined) {
+function addUsageNumber(usage: AgentUsage, key: keyof AgentUsage, value: number | undefined) {
   if (value !== undefined) {
-    usage[key] = value;
+    usage[key] = ((usage[key] as number | undefined) ?? 0) + value;
   }
 }
 
@@ -813,9 +813,13 @@ function mergeOpenCodeStepFinishUsage(
     (cacheWriteTokens ?? 0);
   const cost = readPositiveFiniteNumber(part.cost);
 
-  assignUsageNumber(usage, "inputTokens", inputTokens);
-  assignUsageNumber(usage, "cachedInputTokens", cacheReadTokens);
-  assignUsageNumber(usage, "outputTokens", outputTokens);
+  // A turn can involve several step-finish parts (one per tool-augmented model
+  // call); each carries only that step's tokens, so these must add up across
+  // the turn like cost already does below — a plain assign would keep only
+  // the last step's count and silently drop the rest of the turn's spend.
+  addUsageNumber(usage, "inputTokens", inputTokens);
+  addUsageNumber(usage, "cachedInputTokens", cacheReadTokens);
+  addUsageNumber(usage, "outputTokens", outputTokens);
   if (totalTokens > 0) {
     usage.contextWindowUsedTokens = totalTokens;
   }

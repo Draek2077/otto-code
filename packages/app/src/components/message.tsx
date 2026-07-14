@@ -89,6 +89,10 @@ import {
   type AssistantImageLoadState,
 } from "@/utils/assistant-image-metadata";
 import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
+import {
+  reportBubbleSegmentHeight,
+  useBubbleGroupOffset,
+} from "@/agent-stream/bubble-group-offsets";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 import {
   createPreviewAttachmentId,
@@ -675,6 +679,14 @@ interface AssistantMessageProps {
    * timing stay full-fidelity.
    */
   revealBudget?: number;
+  /**
+   * Identity of this segment within a split streamed reply (see
+   * agent-stream/spacing.ts). Grouped segments report their bubble height and
+   * read the summed height of the segments above them so the corner sheen
+   * paints once across the whole visual bubble instead of per segment.
+   */
+  blockGroupId?: string;
+  blockIndex?: number;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -1558,6 +1570,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   client,
   spacing = "default",
   revealBudget,
+  blockGroupId,
+  blockIndex,
 }: AssistantMessageProps) {
   const displayMessage =
     revealBudget === undefined || revealBudget >= message.length
@@ -1903,21 +1917,68 @@ export const AssistantMessage = memo(function AssistantMessage({
     [spacing],
   );
 
+  // Every grouped segment paints its slice of one sheen anchored at the
+  // group's top edge, shifted up by the measured height of the segments above
+  // it (agent-stream/bubble-group-offsets.ts).
+  const bubbleRef = useRef<View>(null);
+  const groupOffsetTop = useBubbleGroupOffset(blockGroupId, blockIndex);
+  const handleBubbleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (blockGroupId === undefined || blockIndex === undefined) {
+        return;
+      }
+      reportBubbleSegmentHeight({
+        groupId: blockGroupId,
+        blockIndex,
+        height: event.nativeEvent.layout.height,
+      });
+    },
+    [blockGroupId, blockIndex],
+  );
+  // RN-web fires onLayout only on mount/window-resize, so a segment that
+  // grows after mount (the live-turn reveal typing into it) would report a
+  // stale height to the group registry; re-measure whenever the displayed
+  // text changes. Native onLayout re-fires on every layout change already.
+  useEffect(() => {
+    if (!isWeb || blockGroupId === undefined || blockIndex === undefined) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const node = bubbleRef.current as unknown as HTMLElement | null;
+      const height = node?.getBoundingClientRect?.().height;
+      if (typeof height === "number") {
+        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [blockGroupId, blockIndex, displayMessage]);
+
   // Not yet reached by the live-turn reveal: take no space (not even the
   // container padding) until the typewriter arrives at this item.
   if (message.length > 0 && displayMessage.length === 0) {
     return null;
   }
 
+  // Continuation segments join mid-bubble: until the heights of the segments
+  // above are known (offset 0) they render no sheen rather than restarting it
+  // at their own top edge.
+  const isContinuationSegment = spacing === "compactTop" || spacing === "compactBoth";
+  let sheen: ReactNode = null;
+  if (!isContinuationSegment) {
+    sheen = <BubbleCornerSheen corner="left" />;
+  } else if (groupOffsetTop > 0) {
+    sheen = <BubbleCornerSheen corner="left" offsetTop={groupOffsetTop} />;
+  }
+
   return (
     <View testID="assistant-message" style={assistantContainerStyle}>
       {keyedBlocks.length > 0 ? (
-        <View style={bubbleStyle}>
-          {/* Only the segment that owns the group's top edge carries the sheen;
-              continuation segments joining mid-bubble would restart it. */}
-          {spacing === "compactTop" || spacing === "compactBoth" ? null : (
-            <BubbleCornerSheen corner="left" />
-          )}
+        <View
+          ref={bubbleRef}
+          style={bubbleStyle}
+          onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
+        >
+          {sheen}
           {keyedBlocks.map(({ key, block }) => (
             <AssistantMessageBlockContainer key={key} block={block}>
               <MemoizedMarkdownBlock

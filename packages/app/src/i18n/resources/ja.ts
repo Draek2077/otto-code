@@ -1692,6 +1692,17 @@ export const ja: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "{{label}} を停止",
+    stopTooltip: "バックグラウンドタスクを停止",
+    clearAction: "{{label}} をクリア",
+    clearTooltip: "バックグラウンドタスクをクリア",
+    completedGroup: "完了 ({{count}})",
+    clearCompleted: "すべてクリア",
+    clearCompletedTooltip: "完了したバックグラウンドタスクをすべてクリア",
+    fallbackLabel: "シェルコマンド",
+    daemonUnavailable: "デーモンが利用できません",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1812,6 +1823,7 @@ export const ja: TranslationResources = {
     clearCompleted: "すべてクリア",
     clearCompletedTooltip: "完了したサブエージェントをすべてアーカイブ",
     stopNothingRunning: "サブエージェントは実行されていないため、停止するものがありません。",
+    daemonUnavailable: "デーモンが利用できません",
   },
   panels: {
     draft: {
@@ -1922,6 +1934,19 @@ export const ja: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

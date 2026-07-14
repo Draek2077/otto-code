@@ -79,6 +79,42 @@ describe("resolvePersonalityForForm", () => {
     expect(result.available && result.values.thinkingOptionId).toBe("low");
   });
 
+  test("coerces auto to the guardrailed unattended mode on a model that can't run it", () => {
+    // Claude Haiku is stamped supportsAutoMode:false; an "auto" personality must
+    // resolve to "dontAsk" (runs without prompting, denies non-pre-approved), not
+    // the provider default "Always Ask", so the spawned chat doesn't stall/reject.
+    const claudeEntry: ProviderSnapshotEntry = {
+      provider: "claude",
+      status: "ready",
+      enabled: true,
+      models: [
+        {
+          provider: "claude",
+          id: "claude-haiku-4-5-20251001",
+          label: "Haiku 4.5",
+          supportsAutoMode: false,
+        },
+      ],
+      modes: [
+        { id: "default", label: "Always Ask" },
+        { id: "auto", label: "Auto mode" },
+        { id: "dontAsk", label: "Don't Ask" },
+        { id: "bypassPermissions", label: "Bypass" },
+      ],
+      defaultModeId: "default",
+    };
+    const result = resolvePersonalityForForm(
+      personality({
+        provider: "claude",
+        model: "claude-haiku-4-5-20251001",
+        modeId: "auto",
+        effortLevel: undefined,
+      }),
+      [claudeEntry],
+    );
+    expect(result.available && result.values.modeId).toBe("dontAsk");
+  });
+
   test("is unavailable when the provider is absent", () => {
     const result = resolvePersonalityForForm(personality(), []);
     expect(result.available).toBe(false);

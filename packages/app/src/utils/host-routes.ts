@@ -423,6 +423,14 @@ export function buildArtifactsRoute() {
   return "/artifacts" as const;
 }
 
+export function buildRunsRoute() {
+  return "/runs" as const;
+}
+
+export function buildStatsRoute() {
+  return "/stats" as const;
+}
+
 export function buildOpenProjectRoute() {
   return "/open-project" as const;
 }

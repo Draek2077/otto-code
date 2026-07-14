@@ -27,6 +27,7 @@ import type {
   ServerCapabilities,
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
+  BackgroundShellTaskInfo,
 } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
@@ -390,6 +391,10 @@ export interface SessionState {
   agents: Map<string, Agent>;
   workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
   agentDetails: Map<string, Agent>;
+  // Background shell tasks (Claude Bash tool run_in_background) keyed by task
+  // id — not AI agents/subagents, plain shell processes for the Background
+  // Tasks track. See packages/app/src/background-tasks/.
+  backgroundShellTasks: Map<string, BackgroundShellTaskInfo>;
   workspaces: Map<string, WorkspaceDescriptor>;
   // Project parents with no active workspaces, keyed by projectId. The
   // `emptyProjects` name is the existing protocol/store projection.
@@ -510,6 +515,14 @@ interface SessionStoreActions {
     serverId: string,
     agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>),
   ) => void;
+  // Replaces every background shell task belonging to `parentAgentId` with
+  // the pushed list — mirrors the full-list reconciliation the daemon sends
+  // on background_shell_tasks_changed.
+  setBackgroundShellTasksForParent: (
+    serverId: string,
+    parentAgentId: string,
+    tasks: readonly BackgroundShellTaskInfo[],
+  ) => void;
   setWorkspaces: (
     serverId: string,
     workspaces:
@@ -598,6 +611,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     agents: new Map(),
     workspaceAgentActivity: new Map(),
     agentDetails: new Map(),
+    backgroundShellTasks: new Map(),
     workspaces: new Map(),
     emptyProjects: new Map(),
     restoringWorkspaces: new Map(),
@@ -1239,6 +1253,31 @@ export const useSessionStore = create<SessionStore>()(
                   session.workspaceAgentActivity,
                 ),
               },
+            },
+          };
+        });
+      },
+
+      setBackgroundShellTasksForParent: (serverId, parentAgentId, tasks) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const next = new Map(session.backgroundShellTasks);
+          for (const [id, task] of next) {
+            if (task.parentAgentId === parentAgentId) {
+              next.delete(id);
+            }
+          }
+          for (const task of tasks) {
+            next.set(task.id, task);
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, backgroundShellTasks: next },
             },
           };
         });

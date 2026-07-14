@@ -1,11 +1,13 @@
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import type { DaemonStartResult } from "@/runtime/daemon-start-service";
+import type { AppStartScreen } from "@/hooks/use-settings/storage";
 import type { Href } from "expo-router";
 import {
   buildHostRootRoute,
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
   buildSetupRoute,
+  buildStatsRoute,
 } from "@/utils/host-routes";
 
 export interface HostRuntimeBootstrapStore {
@@ -186,7 +188,17 @@ export function resolveHostIndexRoute(input: {
   serverId: string;
   workspaceSelection: ActiveWorkspaceSelection | null;
   workspaceSelectionStatus: WorkspaceSelectionStatus;
+  // Device-local "how the app starts" preference. Defaults to "workspaces"
+  // (today's restore-last-workspace behavior) when omitted, so callers that
+  // haven't hydrated the setting yet behave exactly like before this existed.
+  appStartScreen?: AppStartScreen;
 }): Href {
+  if (input.appStartScreen === "dashboard") {
+    return buildStatsRoute();
+  }
+  if (input.appStartScreen === "home") {
+    return buildOpenProjectRoute();
+  }
   if (
     input.workspaceSelection?.serverId === input.serverId &&
     shouldRestoreWorkspaceSelection(input)

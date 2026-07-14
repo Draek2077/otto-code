@@ -1689,12 +1689,24 @@ export const en = {
     clearCompleted: "Clear all",
     clearCompletedTooltip: "Archive all completed subagents",
     stopNothingRunning: "Subagent isn't running — nothing to stop.",
+    daemonUnavailable: "Daemon unavailable",
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
     readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
+  },
+  backgroundTasks: {
+    stopAction: "Stop {{label}}",
+    stopTooltip: "Stop background task",
+    clearAction: "Clear {{label}}",
+    clearTooltip: "Clear background task",
+    completedGroup: "Completed ({{count}})",
+    clearCompleted: "Clear all",
+    clearCompletedTooltip: "Clear all completed background tasks",
+    fallbackLabel: "Shell command",
+    daemonUnavailable: "Daemon unavailable",
   },
   editor: {
     loading: "Loading file...",
@@ -1914,6 +1926,19 @@ export const en = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

@@ -13,6 +13,7 @@ import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
+import type { RunService } from "./orchestration/run-service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -34,6 +35,10 @@ import { isHostnameAllowed } from "./hostnames.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import type {
+  ActivityIncrementFn,
+  ActivityRollups,
+} from "./activity-stats/activity-stats-store.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { buildWorkspaceGitMetadataFromSnapshot } from "./workspace-git-metadata.js";
@@ -426,6 +431,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
+  private readonly runService: RunService | null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -472,6 +478,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private readonly previewDevServers: DevServerManager | null;
+  private readonly onActivity: ActivityIncrementFn | undefined;
+  private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
   private acceptingConnections = true;
 
   constructor(
@@ -530,6 +538,9 @@ export class VoiceAssistantWebSocketServer {
     browserToolsBroker?: BrowserToolsBroker | null,
     previewDevServers?: DevServerManager | null,
     gitHostingResolver?: GitHostingResolver | null,
+    runService?: RunService | null,
+    onActivity?: ActivityIncrementFn,
+    getActivityRollups?: () => Promise<ActivityRollups>,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -553,6 +564,9 @@ export class VoiceAssistantWebSocketServer {
     this.chatService = requiredServices.chatService;
     this.loopService = requiredServices.loopService;
     this.scheduleService = requiredServices.scheduleService;
+    this.runService = runService ?? null;
+    this.onActivity = onActivity;
+    this.getActivityRollups = getActivityRollups;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
     this.gitHostingResolver = gitHostingResolver ?? null;
@@ -1065,6 +1079,7 @@ export class VoiceAssistantWebSocketServer {
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
+      runService: this.runService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
@@ -1079,6 +1094,8 @@ export class VoiceAssistantWebSocketServer {
       previewDevServers: this.previewDevServers,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
+      onActivity: this.onActivity,
+      getActivityRollups: this.getActivityRollups,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1328,6 +1345,12 @@ export class VoiceAssistantWebSocketServer {
         agentTeams: true,
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: true,
+        // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        agentOrchestration: this.runService !== null,
+        // COMPAT(activityStats): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        activityStats: this.getActivityRollups !== undefined,
+        // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
+        runsClear: this.runService !== null,
       },
     };
   }

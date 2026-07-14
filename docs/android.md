@@ -42,6 +42,26 @@ rm -rf android
 
 Keep `react` and `react-dom` pinned to the React version embedded by the current `react-native` release. React Native `0.81.x` embeds `react-native-renderer` `19.1.0`, so `packages/app` must use React `19.1.0`. Bumping React to a newer patch can build successfully but crash at JS startup on Android with `Incompatible React versions`, leaving the app on the native splash screen.
 
+### Windows local builds: `Unable to resolve module ./index.ts`
+
+On Windows, the `:app:createBundleReleaseJsAndAssets` step fails with
+`Unable to resolve module ./index.ts from <monorepo root>`. Cause: the React
+Native gradle plugin's `Os.cliPath()` rewrites `--entry-file` to a path relative
+to the app dir **only on Windows** (to dodge Gradle's space-in-path issues), so
+Expo's `export:embed` receives a bare `index.ts`. Expo forwards that relative
+entry to Metro unchanged, and in this npm-workspace monorepo Metro resolves it
+against the workspace server root instead of `packages/app`. Linux/macOS (EAS)
+get an absolute path from `cliPath()`, so cloud builds never hit this.
+
+Fix (in tree): [`plugins/with-metro-embed-cli.js`](../packages/app/plugins/with-metro-embed-cli.js)
+points the gradle plugin's `cliFile` at
+[`scripts/metro-embed-cli.cjs`](../packages/app/scripts/metro-embed-cli.cjs), a
+wrapper that re-absolutizes `--entry-file` before delegating to `@expo/cli`. The
+plugin is gated to `win32` prebuilds, so EAS output is byte-for-byte unaffected.
+Note: a `metro.config.js` is **not** a viable fix here — its mere presence makes
+Expo take the `mergeConfig` path, which breaks the `.js`→`.ts` source-extension
+substitution that workspace packages (e.g. `@otto-code/relay`) rely on.
+
 ## Screenshots
 
 ```bash

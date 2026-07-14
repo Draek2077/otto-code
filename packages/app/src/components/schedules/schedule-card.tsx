@@ -83,17 +83,17 @@ interface ScheduleCardProps extends ScheduleCardActions {
 
 function stateBadge(state: ScheduleDerivedState): {
   label: string;
-  variant: "success" | "error" | "muted";
+  variant: "success" | "warning" | "error";
 } {
   switch (state) {
     case "active":
       return { label: "Active", variant: "success" };
-    case "paused":
-      return { label: "Paused", variant: "muted" };
-    case "expired":
-      return { label: "Expired", variant: "muted" };
     case "finished":
-      return { label: "Finished", variant: "muted" };
+      return { label: "Finished", variant: "success" };
+    case "paused":
+      return { label: "Paused", variant: "warning" };
+    case "expired":
+      return { label: "Expired", variant: "warning" };
     case "failed":
       return { label: "Failed", variant: "error" };
     case "targetGone":
@@ -127,28 +127,27 @@ function buildMeta(
   return parts.join(" · ");
 }
 
-/** Left slot of the footer row: the state badge, or — for a failed last run —
- * an error row matching Artifacts' error card, so the two grids read the same
- * way at a glance. */
-function ScheduleStatusIndicator({
-  state,
-  errorMessage,
-}: {
-  state: ScheduleDerivedState;
-  errorMessage: string | null | undefined;
-}): ReactElement {
-  if (state === "failed") {
-    return (
-      <View style={styles.statusRow}>
-        <TriangleAlert size={14} color={styles.errorText.color} />
-        <Text style={styles.errorText} numberOfLines={2}>
-          {errorMessage ?? "Last run failed"}
-        </Text>
-      </View>
-    );
-  }
+/** Left slot of the footer row: always the state pill, so every card across
+ * Artifacts/Schedules/Orchestrations reads the same way at a glance. */
+function ScheduleStatusIndicator({ state }: { state: ScheduleDerivedState }): ReactElement {
   const badge = stateBadge(state);
   return <StatusBadge label={badge.label} variant={badge.variant} />;
+}
+
+/** Failure detail, shown above the footer instead of replacing the pill. */
+function ScheduleFailureBanner({
+  errorMessage,
+}: {
+  errorMessage: string | null | undefined;
+}): ReactElement {
+  return (
+    <View style={styles.statusRow}>
+      <TriangleAlert size={14} color={styles.errorText.color} />
+      <Text style={styles.errorText} numberOfLines={2}>
+        {errorMessage ?? "Last run failed"}
+      </Text>
+    </View>
+  );
 }
 
 /**
@@ -237,12 +236,14 @@ export function ScheduleCard({
           </Text>
         ) : null}
 
+        {state === "failed" ? <ScheduleFailureBanner errorMessage={schedule.lastRunError} /> : null}
+
         {/* Spacer pins the footer to the bottom of the card regardless of how
             much detail sits above it, so cards in a row align. */}
         <View style={styles.spacer} />
 
         <View style={styles.footerRow}>
-          <ScheduleStatusIndicator state={state} errorMessage={schedule.lastRunError} />
+          <ScheduleStatusIndicator state={state} />
           <View style={styles.footerMeta}>
             <Text style={styles.metaText} numberOfLines={1}>
               {meta}

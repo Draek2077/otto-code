@@ -47,7 +47,7 @@ import {
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
-import { resolveNextAgentModeId } from "@/composer/agent-controls/mode";
+import { resolveModeSelection, resolveNextAgentModeId } from "@/composer/agent-controls/mode";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import type { AgentMode, AgentProvider } from "@otto-code/protocol/agent-types";
 import {
@@ -126,6 +126,112 @@ interface AgentModeControlViewProps {
   disabled?: boolean;
   /** Render as an icon-only badge (compact toolbar) instead of an icon + label chip. */
   iconOnly?: boolean;
+  /**
+   * When the active mode is one a user can't pick (Claude "dontAsk"), lock the
+   * control: show it as a static, non-interactive badge with no dropdown. Used on
+   * a live agent (it's stuck in that mode); left off for draft/config surfaces so
+   * the user can always switch to a selectable mode.
+   */
+  lockNonSelectable?: boolean;
+}
+
+interface ModeChipVisuals {
+  Icon: ComponentType<ModeIconProps> | undefined;
+  iconColor: string;
+  tierColor: string | undefined;
+  // Tier-tinted chip backgrounds: at-rest and hover/press/open. Non-neutral modes
+  // tint the whole chip so the active mode reads at a glance.
+  tierTint: string | undefined;
+  tierTintActive: string | undefined;
+  label: string;
+}
+
+// Pure derivation of the mode chip's icon, tier color, tints, and label from the
+// active mode. Returns neutral defaults when there is no active mode.
+function resolveModeChipVisuals({
+  selectedMode,
+  provider,
+  providerDefinitions,
+  tierColors,
+  mutedColor,
+}: {
+  selectedMode: AgentMode | null;
+  provider: string;
+  providerDefinitions: AgentProviderDefinition[];
+  tierColors: ModeTierColors;
+  mutedColor: string;
+}): ModeChipVisuals {
+  const visuals = selectedMode
+    ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
+    : undefined;
+  const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
+  return {
+    Icon: visuals?.icon ? MODE_ICONS[visuals.icon] : undefined,
+    iconColor: tierColor ?? mutedColor,
+    tierColor,
+    tierTint: tierColor ? hexColorWithAlpha(tierColor, 0.05) : undefined,
+    tierTintActive: tierColor ? hexColorWithAlpha(tierColor, 0.1) : undefined,
+    label: selectedMode ? formatAgentModeLabel(selectedMode) : "",
+  };
+}
+
+interface LockedAgentModeBadgeProps {
+  Icon: ComponentType<ModeIconProps> | undefined;
+  iconColor: string;
+  tierColor: string | undefined;
+  tierTint: string | undefined;
+  label: string;
+  iconOnly: boolean;
+}
+
+// Static, non-interactive rendering of a mode the user can't change (Claude
+// "dontAsk"): same chip footprint and tier tint, but no dropdown or hover/press.
+// (i18n: English-only pending a translation pass for this copy.)
+function LockedAgentModeBadge({
+  Icon,
+  iconColor,
+  tierColor,
+  tierTint,
+  label,
+  iconOnly,
+}: LockedAgentModeBadgeProps): ReactElement {
+  const { theme } = useUnistyles();
+  const badgeStyle = useMemo(
+    () => [
+      iconOnly ? styles.iconChip : styles.chip,
+      tierTint ? { backgroundColor: tierTint } : null,
+    ],
+    [iconOnly, tierTint],
+  );
+  const labelStyle = useMemo(
+    () => [styles.chipLabel, tierColor ? { color: tierColor } : null],
+    [tierColor],
+  );
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <View
+          collapsable={false}
+          style={badgeStyle}
+          accessibilityRole="text"
+          accessibilityLabel={`${label} (locked)`}
+          testID="mode-control-locked"
+        >
+          {Icon ? <Icon size={theme.iconSize.md} color={iconColor} /> : null}
+          {iconOnly ? null : (
+            <Text style={labelStyle} numberOfLines={1} ellipsizeMode="tail">
+              {label}
+            </Text>
+          )}
+        </View>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>
+          {`Runs in ${label} — this mode is locked and can't be changed.`}
+        </Text>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function AgentModeControlView({
@@ -136,6 +242,7 @@ function AgentModeControlView({
   onSelectMode,
   disabled = false,
   iconOnly = false,
+  lockNonSelectable = false,
 }: AgentModeControlViewProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -145,10 +252,10 @@ function AgentModeControlView({
   const keyboardHandlerIdRef = useRef(`mode-control:${Math.random().toString(36).slice(2)}`);
   const [open, setOpen] = useState(false);
 
-  const selectedMode = useMemo(() => {
-    if (modeOptions.length === 0) return null;
-    return modeOptions.find((m) => m.id === selectedModeId) ?? modeOptions[0];
-  }, [modeOptions, selectedModeId]);
+  const { selectableModes, selectedMode, isLocked } = useMemo(
+    () => resolveModeSelection({ provider, modeOptions, selectedModeId, lockNonSelectable }),
+    [provider, modeOptions, selectedModeId, lockNonSelectable],
+  );
 
   const tierColors = useMemo<ModeTierColors>(
     () => ({
@@ -165,18 +272,26 @@ function AgentModeControlView({
     ],
   );
 
-  const visuals = selectedMode
-    ? getModeVisuals(provider, selectedMode.id, providerDefinitions)
-    : undefined;
-  const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : undefined;
-  const tierColor = getModeTierColor(visuals?.colorTier, tierColors);
-  const iconColor = tierColor ?? theme.colors.foregroundMuted;
-  const selectedModeLabel = selectedMode ? formatAgentModeLabel(selectedMode) : "";
+  const {
+    Icon,
+    iconColor,
+    tierColor,
+    tierTint,
+    tierTintActive,
+    label: selectedModeLabel,
+  } = resolveModeChipVisuals({
+    selectedMode,
+    provider,
+    providerDefinitions,
+    tierColors,
+    mutedColor: theme.colors.foregroundMuted,
+  });
 
-  // Modes are a small finite set (like effort levels) — no search needed.
+  // Modes are a small finite set (like effort levels) — no search needed. Only
+  // user-selectable modes appear as options.
   const options = useMemo<ComboboxOption[]>(
-    () => modeOptions.map((m) => ({ id: m.id, label: formatAgentModeLabel(m) })),
-    [modeOptions],
+    () => selectableModes.map((m) => ({ id: m.id, label: formatAgentModeLabel(m) })),
+    [selectableModes],
   );
 
   const handleOpenChange = useCallback((next: boolean) => {
@@ -195,19 +310,23 @@ function AgentModeControlView({
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       if (action.id !== "message-input.mode-cycle") return false;
-      if (disabled || !isActiveComposer) return false;
-      const nextModeId = resolveNextAgentModeId({ modeOptions, selectedMode: selectedModeId });
+      if (disabled || isLocked || !isActiveComposer) return false;
+      // Cycle only through selectable modes (never lands on a hidden one).
+      const nextModeId = resolveNextAgentModeId({
+        modeOptions: selectableModes,
+        selectedMode: selectedModeId,
+      });
       if (!nextModeId) return false;
       onSelectMode(nextModeId);
       return true;
     },
-    [disabled, isActiveComposer, modeOptions, onSelectMode, selectedModeId],
+    [disabled, isLocked, isActiveComposer, selectableModes, onSelectMode, selectedModeId],
   );
 
   useKeyboardActionHandler({
     handlerId: keyboardHandlerIdRef.current,
     actions: ["message-input.mode-cycle"],
-    enabled: isActiveComposer && !disabled && modeOptions.length > 1,
+    enabled: isActiveComposer && !disabled && !isLocked && selectableModes.length > 1,
     priority: 200,
     handle: handleKeyboardAction,
   });
@@ -232,11 +351,6 @@ function AgentModeControlView({
     ),
     [provider, providerDefinitions, theme.colors.foreground, tierColors],
   );
-
-  // Non-neutral modes tint the whole chip with the tier color at half opacity
-  // so the active mode reads at a glance; hover/press nudge the tint stronger.
-  const tierTint = tierColor ? hexColorWithAlpha(tierColor, 0.05) : undefined;
-  const tierTintActive = tierColor ? hexColorWithAlpha(tierColor, 0.1) : undefined;
 
   const pressableStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType) => [
@@ -264,6 +378,22 @@ function AgentModeControlView({
   );
 
   if (!selectedMode) return null;
+
+  // Locked: the agent's active mode isn't user-selectable (Claude "dontAsk"). Show
+  // it as a static badge — visible but with no dropdown — so it's clear the agent
+  // is stuck in it.
+  if (isLocked) {
+    return (
+      <LockedAgentModeBadge
+        Icon={Icon}
+        iconColor={iconColor}
+        tierColor={tierColor}
+        tierTint={tierTint}
+        label={selectedModeLabel}
+        iconOnly={iconOnly}
+      />
+    );
+  }
 
   return (
     <>
@@ -398,6 +528,7 @@ export const AgentModeControl = memo(function AgentModeControl({
       onSelectMode={handleSelectMode}
       disabled={!client || disabled}
       iconOnly={isCompact}
+      lockNonSelectable
     />
   );
 });

@@ -81,6 +81,14 @@ Archived subagents disappear from the track, by design. To remove a subagent fro
 
 To keep the agent alive but remove it from the parent's track, use **detach**. The daemon clears the parent label, emits the normal agent update, and every client reclassifies the agent from subagent to root/sibling from that updated snapshot.
 
+## The Background Tasks track
+
+A sibling track (`packages/app/src/background-tasks/track.tsx`), also above the composer, that lists **background shell processes** a provider launched itself — Claude's own `Bash` tool used with `run_in_background: true` — never AI subagents. It renders independently of the subagents track: each is `null` when empty, so either, both, or neither can show at once.
+
+Unlike an observed subagent, a background shell task is **not** an `Agent` record — no tab, no pane, no transcript. The daemon (`AgentManager.backgroundShellTasks`, `packages/server/src/server/agent/agent-manager.ts`) projects it as a lightweight `{ id, command, status, ... }` row and pushes the full current list for a parent agent on every change (`background_shell_tasks_changed`, mirroring `terminals_changed`'s reconciliation shape). Row actions: **Stop** while running (resolves to the provider's `stopTask`), **Clear** once terminal (single row or bulk "Clear all"; entries are retired in place with `archivedAt`, never deleted, so a late provider update can't resurrect a cleared row).
+
+On the Claude adapter (`packages/server/src/server/agent/providers/claude/agent.ts`), background shell tasks ride the exact same `task_started`/`task_progress`/`task_notification` system-message stream as observed subagents — see [observed-subagents.md](../projects/observed-subagents/observed-subagents.md) — discriminated by the originating tool being `Bash` rather than `Task`/`Agent`. Gated behind `server_info.features.backgroundShellTasks`.
+
 ## Why this shape
 
 The decision was to **decouple "close tab" from "archive" only for subagents**, rather than universally:

@@ -1675,6 +1675,17 @@ export const ar: TranslationResources = {
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },
+  backgroundTasks: {
+    stopAction: "إيقاف {{label}}",
+    stopTooltip: "إيقاف المهمة الخلفية",
+    clearAction: "مسح {{label}}",
+    clearTooltip: "مسح المهمة الخلفية",
+    completedGroup: "مكتمل ({{count}})",
+    clearCompleted: "مسح الكل",
+    clearCompletedTooltip: "مسح جميع المهام الخلفية المكتملة",
+    fallbackLabel: "أمر shell",
+    daemonUnavailable: "الخادم الخلفي غير متاح",
+  },
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
@@ -1795,6 +1806,7 @@ export const ar: TranslationResources = {
     clearCompleted: "مسح الكل",
     clearCompletedTooltip: "أرشفة جميع الوكلاء الفرعيين المكتملين",
     stopNothingRunning: "الوكيل الفرعي غير قيد التشغيل — لا يوجد ما يمكن إيقافه.",
+    daemonUnavailable: "الخادم الخلفي غير متاح",
   },
   panels: {
     draft: {
@@ -1906,6 +1918,19 @@ export const ar: TranslationResources = {
         options: {
           user: "User",
           developer: "Developer",
+        },
+      },
+      appStartScreen: {
+        label: "App starts on",
+        descriptions: {
+          workspaces: "Restore the last workspace you were in.",
+          home: "Always open the project list.",
+          dashboard: "Always open the activity stats dashboard.",
+        },
+        options: {
+          workspaces: "Last workspace",
+          home: "Home",
+          dashboard: "Dashboard",
         },
       },
       serviceUrls: {

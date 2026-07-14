@@ -146,6 +146,14 @@ export function toAgentPayload(
     payload.lastUsage = usage;
   }
 
+  // Same lifetime-total field observed subagents use (toObservedSubagentPayload
+  // below) — populated here too so the subagent track shows every row the same
+  // way regardless of how the child was spawned. See accumulateAgentTokens in
+  // agent-manager.ts.
+  if (typeof agent.cumulativeTokens === "number" && Number.isFinite(agent.cumulativeTokens)) {
+    payload.cumulativeTokens = agent.cumulativeTokens;
+  }
+
   if (agent.lastError !== undefined) {
     payload.lastError = agent.lastError;
   }

@@ -13,6 +13,10 @@ export interface SplitPane {
   id: string;
   tabIds: string[];
   focusedTabId: string | null;
+  // Absent = inherits the live `defaultTabOrientation` appearance setting at
+  // render time. A pane created by `splitPane`/`splitPaneEmpty` leaves this
+  // unset rather than copying the parent pane's resolved orientation.
+  tabOrientation?: "horizontal" | "vertical";
 }
 
 export interface SplitGroup {
@@ -197,6 +201,13 @@ interface ReorderPaneTabsInLayoutInput {
   tabIds: string[];
 }
 
+interface SetPaneTabOrientationInLayoutInput {
+  layout: WorkspaceLayout;
+  paneId: string;
+  // null clears the override, reverting the pane to the inherited default.
+  tabOrientation: "horizontal" | "vertical" | null;
+}
+
 export interface WorkspaceTabReconcileState {
   layout: WorkspaceLayout;
   pinnedAgentIds?: ReadonlySet<string> | null;
@@ -245,6 +256,7 @@ function createPaneNode(input: {
   id: string;
   tabs?: WorkspaceTab[];
   focusedTabId?: string | null;
+  tabOrientation?: "horizontal" | "vertical";
 }): SplitNodeInternal {
   const normalizedTabs = normalizeWorkspaceTabs(input.tabs ?? []);
   const tabIds = normalizedTabs.map((tab) => tab.tabId);
@@ -259,6 +271,7 @@ function createPaneNode(input: {
       tabs: normalizedTabs,
       tabIds,
       focusedTabId,
+      tabOrientation: input.tabOrientation,
     },
   };
 }
@@ -562,7 +575,12 @@ function normalizePaneAfterTabChange(pane: SplitPaneInternal): SplitPaneInternal
     tabs,
     tabIds,
     focusedTabId,
+    tabOrientation: pane.tabOrientation,
   };
+}
+
+function normalizeTabOrientation(value: unknown): "horizontal" | "vertical" | undefined {
+  return value === "horizontal" || value === "vertical" ? value : undefined;
 }
 
 function normalizePaneNode(rawPane: SplitPaneInternal | undefined): SplitNodeInternal | null {
@@ -584,6 +602,7 @@ function normalizePaneNode(rawPane: SplitPaneInternal | undefined): SplitNodeInt
     id: paneId,
     tabs: mergedTabs,
     focusedTabId: trimNonEmpty(rawPane?.focusedTabId) ?? null,
+    tabOrientation: normalizeTabOrientation(rawPane?.tabOrientation),
   });
 }
 
@@ -665,7 +684,7 @@ function reorderTabsForPane(input: ReorderTabsForPaneInput): SplitPaneInternal {
 function removePaneByPath(root: SplitNodeInternal, path: number[]): SplitNodeInternal {
   if (path.length === 0) {
     invariant(root.kind === "pane", "Expected pane at root while removing pane");
-    return createPaneNode({ id: root.pane.id });
+    return createPaneNode({ id: root.pane.id, tabOrientation: root.pane.tabOrientation });
   }
 
   const parentPath = path.slice(0, -1);
@@ -1479,6 +1498,27 @@ export function reorderPaneTabsInLayout(
     root: updatePaneInTree(layout.root, {
       paneId: input.paneId,
       updater: (pane) => reorderTabsForPane({ pane, tabIds: input.tabIds }),
+    }),
+    focusedPaneId: layout.focusedPaneId,
+    parentTabIdByTabId: input.layout.parentTabIdByTabId,
+  });
+}
+
+export function setPaneTabOrientationInLayout(
+  input: SetPaneTabOrientationInLayoutInput,
+): WorkspaceLayout | null {
+  const layout = asInternalLayout(input.layout);
+  if (!findPaneById(layout.root, input.paneId)) {
+    return null;
+  }
+
+  return withNormalizedParentTabMap({
+    root: updatePaneInTree(layout.root, {
+      paneId: input.paneId,
+      updater: (pane) => ({
+        ...pane,
+        tabOrientation: input.tabOrientation ?? undefined,
+      }),
     }),
     focusedPaneId: layout.focusedPaneId,
     parentTabIdByTabId: input.layout.parentTabIdByTabId,

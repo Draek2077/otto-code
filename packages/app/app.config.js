@@ -139,6 +139,10 @@ export default {
           },
         },
       ],
+      // Windows-only: re-absolutize the Android bundle `--entry-file` so local
+      // release builds don't fail with "Unable to resolve module ./index.ts".
+      // No-op on Linux/macOS. See plugins/with-metro-embed-cli.js.
+      "./plugins/with-metro-embed-cli",
     ],
     experiments: {
       typedRoutes: true,

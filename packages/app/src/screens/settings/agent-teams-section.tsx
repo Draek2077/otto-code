@@ -29,6 +29,7 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { ROLE_LABELS } from "@/provider-selection/role-labels";
 import { useIsExtraCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
@@ -62,17 +63,6 @@ const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-
 function isHexColor(value: string): boolean {
   return HEX_COLOR_PATTERN.test(value.trim());
 }
-
-const ROLE_LABELS: Record<PersonalityRole, string> = {
-  chatter: "Chatter",
-  artificer: "Artificer",
-  scheduler: "Scheduler",
-  writer: "Writer",
-  coder: "Coder",
-  judger: "Judger",
-  advisor: "Advisor",
-  orchestrator: "Orchestrator",
-};
 
 function generateTeamId(): string {
   return `team_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;

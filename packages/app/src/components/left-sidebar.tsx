@@ -5,8 +5,10 @@ import {
   FolderPlus,
   History,
   Home,
+  Network,
   Plus,
   Search,
+  Gauge,
   Server,
   Settings,
   X,
@@ -68,10 +70,12 @@ import {
   buildOpenProjectRoute,
   buildArtifactsRoute,
   buildNewWorkspaceRoute,
+  buildRunsRoute,
   buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
+  buildStatsRoute,
   buildSettingsRoute,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -109,6 +113,7 @@ interface SidebarSharedProps {
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
+  handleStats: () => void;
   labels: SidebarLabels;
   newWorkspaceKeys: ShortcutKey[][] | null;
   handleAddHost: () => void;
@@ -120,11 +125,13 @@ interface SidebarLabels {
   newWorkspace: string;
   home: string;
   settings: string;
+  stats: string;
   switchHost: string;
   searchHosts: string;
   sessions: string;
   schedules: string;
   artifacts: string;
+  runs: string;
   closeSidebar: string;
 }
 
@@ -135,6 +142,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
   handleViewArtifactsNavigate: () => void;
+  handleViewRunsNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -143,6 +151,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   handleViewMore: () => void;
   handleViewSchedules: () => void;
   handleViewArtifacts: () => void;
+  handleViewRuns: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar() {
@@ -237,6 +246,15 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildOpenProjectRoute());
   }, []);
 
+  const handleStatsMobile = useCallback(() => {
+    showMobileAgent();
+    router.push(buildStatsRoute());
+  }, [showMobileAgent]);
+
+  const handleStatsDesktop = useCallback(() => {
+    router.push(buildStatsRoute());
+  }, []);
+
   const handleViewMoreNavigate = useCallback(() => {
     router.push(buildSessionsRoute());
   }, []);
@@ -249,6 +267,10 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildArtifactsRoute());
   }, []);
 
+  const handleViewRunsNavigate = useCallback(() => {
+    router.push(buildRunsRoute());
+  }, []);
+
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
     (): SidebarLabels => ({
@@ -256,11 +278,16 @@ export const LeftSidebar = memo(function LeftSidebar() {
       newWorkspace: t("sidebar.actions.newWorkspace"),
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
+      // Temporary label (English-only), same rationale as `runs` below.
+      stats: "Metrics",
       switchHost: t("sidebar.host.switchTitle"),
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
       artifacts: t("sidebar.sections.artifacts"),
+      // Temporary label (English-only) until Orchestrations get a permanent
+      // home; avoids adding a locale key for a dev-facing entry.
+      runs: "Orchestrations",
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -295,11 +322,13 @@ export const LeftSidebar = memo(function LeftSidebar() {
           handleOpenProject={handleOpenProjectMobile}
           handleHome={handleHomeMobile}
           handleSettings={handleSettingsMobile}
+          handleStats={handleStatsMobile}
           handleAddHost={handleAddHostMobile}
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
           handleViewArtifactsNavigate={handleViewArtifactsNavigate}
+          handleViewRunsNavigate={handleViewRunsNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -314,11 +343,13 @@ export const LeftSidebar = memo(function LeftSidebar() {
         handleOpenProject={handleOpenProjectDesktop}
         handleHome={handleHomeDesktop}
         handleSettings={handleSettingsDesktop}
+        handleStats={handleStatsDesktop}
         handleAddHost={handleAddHostDesktop}
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
         handleViewSchedules={handleViewSchedulesNavigate}
         handleViewArtifacts={handleViewArtifactsNavigate}
+        handleViewRuns={handleViewRunsNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -534,6 +565,7 @@ function SidebarFooter({
   handleOpenProject,
   handleHome,
   handleSettings,
+  handleStats,
   labels,
   handleAddHost,
   handleOpenHostSettings,
@@ -542,10 +574,12 @@ function SidebarFooter({
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
+  handleStats: () => void;
   labels: {
     addProject: string;
     home: string;
     settings: string;
+    stats: string;
     switchHost: string;
     searchHosts: string;
   };
@@ -585,6 +619,20 @@ function SidebarFooter({
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
             <HeaderIconTooltipContent label={labels.settings} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild triggerRefProp="buttonRef">
+            <FooterIconButton
+              onPress={handleStats}
+              testID="sidebar-stats"
+              accessibilityLabel={labels.stats}
+              icon={Gauge}
+              theme={theme}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <HeaderIconTooltipContent label={labels.stats} />
           </TooltipContent>
         </Tooltip>
       </View>
@@ -632,6 +680,7 @@ function MobileSidebar({
   handleOpenProject,
   handleHome,
   handleSettings,
+  handleStats,
   labels,
   handleAddHost,
   handleOpenHostSettings,
@@ -641,11 +690,13 @@ function MobileSidebar({
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
   handleViewArtifactsNavigate,
+  handleViewRunsNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
+  const isRunsActive = pathname.includes("/runs");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
 
   const handleViewMore = useCallback(() => {
@@ -662,6 +713,11 @@ function MobileSidebar({
     closeSidebar();
     handleViewArtifactsNavigate();
   }, [closeSidebar, handleViewArtifactsNavigate]);
+
+  const handleViewRuns = useCallback(() => {
+    closeSidebar();
+    handleViewRunsNavigate();
+  }, [closeSidebar, handleViewRunsNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -716,6 +772,14 @@ function MobileSidebar({
             testID="sidebar-artifacts"
             variant="compact"
           />
+          <SidebarHeaderRow
+            icon={Network}
+            label={labels.runs}
+            onPress={handleViewRuns}
+            isActive={isRunsActive}
+            testID="sidebar-runs"
+            variant="compact"
+          />
         </View>
         <WorkspacesSectionHeader />
         <Pressable
@@ -761,6 +825,7 @@ function MobileSidebar({
           handleOpenProject={handleOpenProject}
           handleHome={handleHome}
           handleSettings={handleSettings}
+          handleStats={handleStats}
           labels={labels}
           handleAddHost={handleAddHost}
           handleOpenHostSettings={handleOpenHostSettings}
@@ -788,6 +853,7 @@ function DesktopSidebar({
   handleOpenProject,
   handleHome,
   handleSettings,
+  handleStats,
   labels,
   handleAddHost,
   handleOpenHostSettings,
@@ -796,11 +862,13 @@ function DesktopSidebar({
   handleViewMore,
   handleViewSchedules,
   handleViewArtifacts,
+  handleViewRuns,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
   const isArtifactsActive = pathname.includes("/artifacts");
+  const isRunsActive = pathname.includes("/runs");
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
@@ -914,6 +982,14 @@ function DesktopSidebar({
               variant="compact"
             />
             <SidebarHeaderRow
+              icon={Network}
+              label={labels.runs}
+              onPress={handleViewRuns}
+              isActive={isRunsActive}
+              testID="sidebar-runs"
+              variant="compact"
+            />
+            <SidebarHeaderRow
               icon={FileText}
               label={labels.artifacts}
               onPress={handleViewArtifacts}
@@ -952,6 +1028,7 @@ function DesktopSidebar({
           handleOpenProject={handleOpenProject}
           handleHome={handleHome}
           handleSettings={handleSettings}
+          handleStats={handleStats}
           labels={labels}
           handleAddHost={handleAddHost}
           handleOpenHostSettings={handleOpenHostSettings}
