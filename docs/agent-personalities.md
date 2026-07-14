@@ -47,18 +47,32 @@ Two invariants:
 
 A personality carries one or more roles. Roles gate where a personality shows up. A new personality defaults to **all roles**; the editor has an All / None toggle.
 
-| Role             | Consumed by                                                                                    | App picker surface today                           |
-| ---------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| **Chatter**      | Interactive agent chats                                                                        | Composer agent-controls picker                     |
-| **Artificer**    | Creating & managing artifacts                                                                  | Artifact create sheet                              |
-| **Scheduler**    | Creating & managing schedules                                                                  | Schedule form sheet                                |
-| **Writer**       | Fast small-text generation — commit messages, PR text, branch/workspace names (mini-tasks)     | None (daemon-internal, see below)                  |
-| **Coder**        | Spawned as a coding sub-agent (incl. text-editor AI refactor)                                  | None yet — via skills / MCP                        |
-| **Judger**       | Judging / review passes                                                                        | None yet — via committee / review skills           |
-| **Advisor**      | Planning / second opinion; **read-only / advisory**                                            | None yet — via advisor / committee skills          |
-| **Orchestrator** | Drives multi-agent workflows; **only role permitted to enumerate & spawn other personalities** | None yet — via committee / panels / handoff / loop |
+| Role             | Consumed by                                                                                                         | App picker surface today                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **Chatter**      | Interactive agent chats                                                                                             | Composer agent-controls picker                     |
+| **Artificer**    | Creating & managing artifacts                                                                                       | Artifact create sheet                              |
+| **Scheduler**    | Creating & managing schedules                                                                                       | Schedule form sheet                                |
+| **Writer**       | Fast small-text generation — commit messages, PR text, branch/workspace names (mini-tasks)                          | None (daemon-internal, see below)                  |
+| **Coder**        | Spawned as a coding sub-agent (incl. text-editor AI refactor)                                                       | None yet — via skills / MCP                        |
+| **Judger**       | Judging / review passes                                                                                             | None yet — via committee / review skills           |
+| **Advisor**      | Planning / second opinion; **read-only / advisory**                                                                 | None yet — via advisor / committee skills          |
+| **Orchestrator** | Drives multi-agent workflows. **Semantic label only** — enumerating & spawning personalities is open to every agent | None yet — via committee / panels / handoff / loop |
 
 The role catalog lives in `PERSONALITY_ROLES` and the shared predicate/helpers in `packages/protocol/src/agent-personalities.ts` (used by both app pickers and the daemon).
+
+### Role tiers: coordinators vs focused workers
+
+Roles fall into two behavioral **tiers** (`PERSONALITY_ROLE_INFO` in `agent-personalities.ts`):
+
+- **Coordinators** — **Chatter, Artificer, Scheduler, Advisor, Orchestrator.** They converse, plan, and delegate; they're expected to enumerate the roster and launch other agents/personalities to get work done.
+- **Focused workers** — **Writer, Coder, Judger.** They lift a single thing someone is waiting on and should stay on task, not fan out into sub-agents.
+
+A personality that carries **any** coordinator role is a coordinator (`personalityCanLaunch` — a `chatter + coder` both codes and delegates); one whose roles are entirely focused (or roleless) is a focused worker.
+
+**This is guidance, not a gate.** Every agent keeps the same tools — `list_personalities` and personality-named spawns are open to all (that's the "see and understand each other" property). The tier only drives two in-context nudges:
+
+- **A spawn-time role directive** (`composeRoleFocusDirective`) folded into the personality's system prompt at spawn: coordinators are told "orchestration is yours"; focused workers are told "someone is waiting on this — stay on it, don't spawn sub-agents unless essential."
+- **`list_personalities` decision-aid fields** — every entry carries `tier`, `canLaunch`, and a `guidance` "why you'd choose me" blurb (joined from its roles' taglines), so a deciding agent self-selects the right teammate from the list alone.
 
 **Writer and Coder replaced the old single `Worker` role.** Worker split into the fast small-text tier (`writer`) and the coding sub-agent tier (`coder`). A personality persisted with the retired `worker` tag resolves to `coder` via `LEGACY_ROLE_ALIASES` in `agent-personalities.ts` — normalization maps it before filtering, so no personality silently loses its role. Roles still ride the wire as plain strings, so old peers keep parsing.
 
@@ -120,7 +134,7 @@ The RPC shares the per-agent config envelope in `AgentConfigSession` (`packages/
 Personalities are first-class in the agent-management MCP tools, so multi-agent skills can say "spawn a Worker and a Judger" without hardcoding providers:
 
 - **`create_agent`** gained an optional `personality` arg (by name; one of provider/personality required). It resolves against the caller cwd's provider snapshot and expands to provider/model/effort/mode/systemPrompt; explicit sibling fields override per-field. Hard-fails when the personality is missing or out of commission.
-- **`list_personalities`** enumerates the roster (name, roles, availability, resolved brain), **gated to callers born from an Orchestrator personality** (top-level user sessions always allowed). Advisor stays read-only and cannot enumerate/spawn.
+- **`list_personalities`** enumerates the roster (name, roles, availability, resolved brain, plus the `tier`/`canLaunch`/`guidance` decision-aid). **Open to every agent** — personalities are aware of each other, and any agent can enumerate the roster and spawn any personality by name (personality-named spawns are just another way to pick a provider/model/effort). No role gates this; the coordinator/focused tier only steers behavior in-context (see [Role tiers](#role-tiers-coordinators-vs-focused-workers)).
 - **`create_schedule` / `update_schedule`** accept a `personality` arg; a bound schedule re-resolves against the run's workspace each run and hard-fails on unavailability.
 
 Separately from the MCP tools, the **`agentPersonalities.get_stats`** WebSocket RPC serves per-personality spawn counts from a separate atomic-write stats file under `$OTTO_HOME/stats/` (not `config.json` — avoids spamming the config-changed broadcast). Spawns are counted at the `AgentManager.createAgent` choke point (`onPersonalitySpawn`), so composer, MCP `create_agent`, and schedule runs all increment. The editor surfaces "Used N times" per row.

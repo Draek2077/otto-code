@@ -31,18 +31,20 @@ You manage personalities in **Host settings → Agents → Agent personalities**
 
 Roles decide **where a personality shows up**. A personality can have as many roles as you like (the editor has an All / None toggle, and a new personality starts with all of them).
 
-| Role             | What it's for                                                                               | Where it appears                      |
-| ---------------- | ------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **Chatter**      | Interactive chats with an agent                                                             | The composer's model picker           |
-| **Artificer**    | Creating and managing artifacts                                                             | The artifact create sheet             |
-| **Scheduler**    | Creating and managing [schedules](/docs/schedules)                                          | The schedule form                     |
-| **Writer**       | Fast, cheap small-text generation — commit messages, summaries, branch and workspace names  | Automatically, for those mini-tasks   |
-| **Coder**        | Doing focused coding sub-tasks spawned by another agent                                     | Via skills and Otto tooling           |
-| **Judger**       | Reviewing and judging work                                                                  | Via review / committee skills         |
-| **Advisor**      | Giving a second opinion — read-only, never edits                                            | Via the advisor / committee skills    |
-| **Orchestrator** | Running multi-agent workflows — the only role allowed to list and spawn other personalities | Via committee / handoff / loop skills |
+| Role             | What it's for                                                                                      | Where it appears                      |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **Chatter**      | Interactive chats with an agent                                                                    | The composer's model picker           |
+| **Artificer**    | Creating and managing artifacts                                                                    | The artifact create sheet             |
+| **Scheduler**    | Creating and managing [schedules](/docs/schedules)                                                 | The schedule form                     |
+| **Writer**       | Fast, cheap small-text generation — commit messages, summaries, branch and workspace names         | Automatically, for those mini-tasks   |
+| **Coder**        | Doing focused coding sub-tasks spawned by another agent                                            | Via skills and Otto tooling           |
+| **Judger**       | Reviewing and judging work                                                                         | Via review / committee skills         |
+| **Advisor**      | Giving a second opinion — read-only, never edits                                                   | Via the advisor / committee skills    |
+| **Orchestrator** | Running multi-agent workflows — a semantic label; any agent can list and spawn other personalities | Via committee / handoff / loop skills |
 
 Chatter, Artificer, and Scheduler surface directly in the app's pickers. Coder, Judger, Advisor, and Orchestrator are used by [orchestration skills](/docs/skills): a skill can say "spawn a Coder and a Judger" and Otto resolves those to your personalities, so a multi-agent workflow never has to hardcode a provider. **Writer** is used automatically: when Otto needs a commit message, a summary, or a branch name, it routes that mini-task to an available Writer personality before falling back to a built-in default — so those little bits of text are written by the fast, cheap model you picked. (Writer and Coder replaced the old single **Worker** role; a personality you tagged Worker before still works and now counts as a Coder.)
+
+Roles also fall into two **tiers**. **Coordinators** — Chatter, Artificer, Scheduler, Advisor, Orchestrator — converse, plan, and delegate: they can see the whole roster and launch other agents. **Focused workers** — Writer, Coder, Judger — are spawned to finish one thing someone's waiting on and stay on that task. Every agent can still _see_ every personality; the tier just shapes whether an agent is expected to delegate or to keep its head down. When an agent lists the roster, each personality comes with a one-line "why you'd choose me" so agents can pick the right teammate on their own.
 
 ## The starter team
 
@@ -98,7 +100,7 @@ This needs an up-to-date host; older daemons simply don't offer the switcher.
 Personalities are first-class in Otto's agent-management tooling, so an orchestrating agent can build a team by role:
 
 - `create_agent` accepts a `personality` (by name) and expands it to the right provider, model, effort, mode, and prompt.
-- `list_personalities` enumerates the roster with roles and availability — this one is limited to agents running as an **Orchestrator**, so only an orchestrating agent can enumerate and spawn others.
+- `list_personalities` enumerates the roster with roles and availability — available to any agent, so every personality can see the others and spawn them by name.
 - Schedules can be bound to a personality and re-resolve it on every run, so edits land between runs.
 
 The bundled [orchestration skills](/docs/skills) already use this: `/otto-committee` prefers contrasting Advisor and Judger personalities, `/otto-advisor` prefers an Advisor, `/otto-handoff` prefers a Coder, and `/otto-loop` maps its worker and verifier to Coder and Judger roles.

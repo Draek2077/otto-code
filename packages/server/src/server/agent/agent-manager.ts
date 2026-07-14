@@ -1695,16 +1695,20 @@ export class AgentManager {
     // only the personality prompt.
     const teamSnapshot = agent.config.teamSnapshot;
     const outgoingPersonalityPrompt = agent.config.personalitySnapshot?.systemPrompt;
+    // Recompose the outgoing prompt with the SAME role directive it was born
+    // with (its snapshot's roles) so the ownership comparison still matches the
+    // stored systemPrompt; the incoming prompt takes the new personality's roles.
     const outgoingComposedPrompt = composeTeamAndPersonalityPrompt(
       teamSnapshot,
       outgoingPersonalityPrompt,
+      agent.config.personalitySnapshot?.roles,
     );
     const promptIsPersonalityOwned =
       agent.config.systemPrompt === undefined ||
       agent.config.systemPrompt === outgoingComposedPrompt ||
       agent.config.systemPrompt === outgoingPersonalityPrompt;
     const nextSystemPrompt = promptIsPersonalityOwned
-      ? composeTeamAndPersonalityPrompt(teamSnapshot, snapshot?.systemPrompt)
+      ? composeTeamAndPersonalityPrompt(teamSnapshot, snapshot?.systemPrompt, snapshot?.roles)
       : agent.config.systemPrompt;
 
     const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();

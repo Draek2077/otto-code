@@ -20,6 +20,7 @@ import {
   isPersonalityRole,
   normalizePersonalityRoles,
   personalityHasRole,
+  summarizePersonalityForSelection,
 } from "@otto-code/protocol/agent-personalities";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import {
@@ -529,6 +530,30 @@ function resolveArtifactGenerationSettings(params: {
 const EFFORT_INPUT_DESCRIPTION =
   "Effort: a canonical level (off, minimal, low, medium, high, xhigh, max), resolved to the nearest option the target model supports, or an exact option id from the model's thinkingOptions in list_models.";
 
+// Lets a caller start an agent with no task in hand — "just open a new chat".
+// When create_agent omits initialPrompt, the new agent gets this generic ask so
+// it immediately greets the user and asks what to work on, instead of the caller
+// having to invent a reason up front (which otherwise stalls the spawn while the
+// caller goes back to ask "what should it do?"). A missing title falls back the
+// same way, but only when there's no prompt to derive one from.
+const DEFAULT_BARE_AGENT_INITIAL_PROMPT =
+  "I've just started a new chat with you and haven't given you a task yet. Briefly introduce yourself and ask what I'd like to work on.";
+const DEFAULT_BARE_AGENT_TITLE = "New chat";
+
+// Fill the generic defaults for a bare "just open a new chat" spawn. A real
+// prompt with no title keeps deriving its title from the prompt (undefined here
+// → derived downstream); only a title-less AND prompt-less spawn gets the
+// placeholder title.
+function resolveBareSpawnTitleAndPrompt(input: {
+  title: string | undefined;
+  initialPrompt: string | undefined;
+}): { title: string | undefined; initialPrompt: string } {
+  return {
+    title: input.title ?? (input.initialPrompt ? undefined : DEFAULT_BARE_AGENT_TITLE),
+    initialPrompt: input.initialPrompt ?? DEFAULT_BARE_AGENT_INITIAL_PROMPT,
+  };
+}
+
 /**
  * Resolve a requested effort — canonical level or exact option id — against a
  * provider's advertised models. Levels clamp to the nearest supported option.
@@ -1027,22 +1052,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     );
   };
 
-  // Only Orchestrator personalities may enumerate or spawn other personalities.
-  // A top-level (non-agent) session is the user acting directly and is allowed;
-  // an agent-scoped session must have been born from an Orchestrator personality.
-  const assertPersonalityOrchestrationAllowed = (action: string): void => {
-    if (!callerAgentId) {
-      return;
-    }
-    const caller = agentManager.getAgent(callerAgentId);
-    const roles = caller?.config.personalitySnapshot?.roles ?? [];
-    if (!roles.includes("orchestrator")) {
-      throw new Error(
-        `Only agents spawned from an Orchestrator personality may ${action}. This agent is not an Orchestrator.`,
-      );
-    }
-  };
-
   interface ResolvedCreateAgentBrain {
     providerModel: string;
     modeId?: string;
@@ -1080,7 +1089,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     };
 
     if (input.personalityName) {
-      assertPersonalityOrchestrationAllowed("spawn agents from a personality");
       const personality = findPersonalityByName(input.personalityName);
       if (!personality) {
         const names = getPersonalityRoster()
@@ -1105,7 +1113,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         readAgentTeams?.(),
         snapshot.personalityId,
       );
-      const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
+      const composedPrompt = composeTeamAndPersonalityPrompt(
+        teamSnapshot,
+        snapshot.systemPrompt,
+        snapshot.roles,
+      );
       // Explicit args override the personality per-field.
       const snapshotProviderModel = snapshot.model
         ? `${snapshot.provider}/${snapshot.model}`
@@ -1336,9 +1348,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     title: z
       .string()
       .trim()
-      .min(1, "Title is required")
+      .min(1, "Title cannot be empty")
       .max(60, "Title must be 60 characters or fewer")
-      .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
+      .optional()
+      .describe(
+        "Short descriptive title (<= 60 chars) summarizing the agent's focus. Optional — omit to let Otto derive one from the prompt (or name a bare new chat).",
+      ),
     provider: ProviderModelInputSchema.optional().describe(
       "Provider/model pair, for example codex/gpt-5.4. Required unless `personality` is given; when both are given, this overrides the personality's provider/model.",
     ),
@@ -1348,7 +1363,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named Agent Personality configured on this host. Expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. Personality-bound spawns require the caller to be an Orchestrator personality (top-level user sessions are always allowed). Fails loudly if the personality is unavailable here — no fallback.",
+        "Spawn from a named Agent Personality configured on this host. Expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. Any agent may spawn by personality name (see list_personalities for each one's guidance and tier — coordinators delegate; focused writer/coder/judger personalities are spawned to finish one task). Fails loudly if the personality is unavailable here — no fallback.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -1357,8 +1372,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     initialPrompt: z
       .string()
       .trim()
-      .min(1, "initialPrompt is required")
-      .describe("Required first task to run immediately after creation."),
+      .min(1, "initialPrompt cannot be empty")
+      .optional()
+      .describe(
+        "First task to run immediately after creation. Optional — omit to just open a new chat; the agent then greets the user and asks what to work on. Don't refuse to spawn just because there's no task yet.",
+      ),
   };
   const agentToAgentInputSchema = {
     ...commonCreateAgentInputSchema,
@@ -1564,7 +1582,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create agent",
       description:
-        "Create an agent. Requires relationship, workspace, an initial prompt, and either a provider/model (for example codex/gpt-5.4) or a personality name. Prefer a personality when the host has them (call list_personalities). Do not guess; call list_providers and list_models first if uncertain.",
+        "Create an agent. Requires relationship, workspace, and either a provider/model (for example codex/gpt-5.4) or a personality name. Title and initialPrompt are optional — omit both to just open a new chat that greets the user and asks what to work on. Prefer a personality when the host has them (call list_personalities). Do not guess the provider; call list_providers and list_models first if uncertain.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -1605,6 +1623,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       // agent config (spread first in buildMcpSessionConfig, so nothing below
       // clobbers them).
       const personalityConfig = buildPersonalityAgentConfig(brain);
+      const bareSpawn = resolveBareSpawnTitleAndPrompt({
+        title: parsedArgs.title,
+        initialPrompt: parsedArgs.initialPrompt,
+      });
       const {
         snapshot,
         background: createdInBackground,
@@ -1627,8 +1649,8 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           kind: "mcp",
           provider: brain.providerModel,
           ...(personalityConfig ? { config: personalityConfig } : {}),
-          title: parsedArgs.title,
-          initialPrompt: parsedArgs.initialPrompt,
+          title: bareSpawn.title,
+          initialPrompt: bareSpawn.initialPrompt,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
           thinking: brain.thinkingOptionId,
@@ -1706,7 +1728,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the Agent Personalities configured on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Use a personality's name with create_agent's `personality` argument to spawn it. Availability is resolved against a workspace; unavailable personalities cannot be spawned there. Restricted to Orchestrator personalities (top-level user sessions are always allowed).",
+          "List the Agent Personalities configured on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Use a personality's name with create_agent's `personality` argument to spawn it. Availability is resolved against a workspace; unavailable personalities cannot be spawned there. Any agent may call this to see the roster and pick a teammate. Each entry carries `guidance` (why you'd choose it), a `tier` (`coordinator` = delegates/orchestrates, `focused` = a worker that stays on one task), and `canLaunch`.",
         inputSchema: {
           cwd: z
             .string()
@@ -1730,6 +1752,17 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               provider: z.string(),
               model: z.string(),
               available: z.boolean(),
+              tier: z
+                .string()
+                .describe("coordinator (delegates/orchestrates) or focused (worker)."),
+              canLaunch: z
+                .boolean()
+                .describe(
+                  "Whether this personality is meant to spawn other agents and orchestrate.",
+                ),
+              guidance: z
+                .string()
+                .describe("Why you'd choose this personality — its roles' intent."),
               unavailableReason: z.string().optional(),
               modeId: z.string().optional(),
               thinkingOptionId: z.string().optional(),
@@ -1745,7 +1778,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         },
       },
       async (args: { cwd?: string; role?: string }) => {
-        assertPersonalityOrchestrationAllowed("list personalities");
         const roleFilter = args.role?.trim();
         const caller = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
         const cwd = args.cwd?.trim() || caller?.cwd || undefined;
@@ -1764,6 +1796,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           )
           .map((personality) => {
             const resolution = resolvePersonality(personality, entries);
+            const selection = summarizePersonalityForSelection(personality);
             const entryOut: {
               id: string;
               name: string;
@@ -1771,6 +1804,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               provider: string;
               model: string;
               available: boolean;
+              tier: string;
+              canLaunch: boolean;
+              guidance: string;
               unavailableReason?: string;
               modeId?: string;
               thinkingOptionId?: string;
@@ -1782,6 +1818,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               provider: personality.provider,
               model: personality.model,
               available: resolution.status === "available",
+              tier: selection.tier,
+              canLaunch: selection.canLaunch,
+              guidance: selection.guidance,
             };
             if (resolution.status === "unavailable") {
               entryOut.unavailableReason = resolution.reason;

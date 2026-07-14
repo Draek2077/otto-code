@@ -22,7 +22,7 @@ In `branch-off`, `worktreeSlug` controls the worktree path slug and `branchName`
 
 ## Agents
 
-**`create_agent`** — required: `relationship`, `workspace`, `title`, `initialPrompt`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name — see [Personalities](#personalities)). Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
+**`create_agent`** — required: `relationship`, `workspace`, and **either** `provider` (`claude/opus`, `codex/gpt-5.4`, …) **or** `personality` (a host-configured personality name — see [Personalities](#personalities)). `title` and `initialPrompt` are **optional** — omit both to just open a new chat (the agent greets the user and asks what to work on); don't refuse to spawn merely because there's no task yet. Common: `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, … }`.
 
 Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
@@ -68,9 +68,9 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 
 Agent Personalities are named, host-configured templates that bind a provider→model, effort, permission mode, a personality prompt, one or more **roles**, and a visual/audio identity (spinner colors + a TTS voice). When the host has them, prefer them over hand-picking a raw provider/model — the user curated them for exactly this.
 
-**`list_personalities`** — enumerate the host's personalities: `{ id, name, roles, provider, model, available, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. This tool is **Orchestrator-gated**: it works for you when you are driving orchestration (a top-level session, or an agent spawned from an Orchestrator personality). If it isn't available, fall back to provider strings from orchestration preferences.
+**`list_personalities`** — enumerate the host's personalities: `{ id, name, roles, provider, model, available, tier, canLaunch, guidance, unavailableReason?, modeId?, thinkingOptionId?, effortLevel? }`. Filter with `role` (e.g. `worker`, `judger`, `advisor`) and pass `cwd` to resolve availability against a workspace. **Any agent may call this** — every personality can see the others and spawn them by name; the roster is shared, not orchestrator-only. Read each entry's `guidance` (why you'd choose it) and `tier` to pick the right teammate. Fall back to provider strings from orchestration preferences only when the host has no personalities.
 
-The eight roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `writer` (fast small-text: commit messages, summaries, names), `coder` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). Coder/Judger/Advisor are the ones you spawn.
+The eight roles: `chatter` (chat), `artificer` (artifacts), `scheduler` (schedules), `writer` (fast small-text: commit messages, summaries, names), `coder` (sub-agent/implementer), `judger` (review), `advisor` (read-only second opinion), `orchestrator` (drives multi-agent work). They split into two **tiers**: **coordinators** (chatter, artificer, scheduler, advisor, orchestrator) converse, plan, and delegate; **focused workers** (writer, coder, judger) lift one thing someone's waiting on and stay on task. If you're a focused worker, finish your task rather than spawning helpers; if you're a coordinator, delegate freely. Coder/Judger/Advisor are the ones you'll usually spawn.
 
 **Spawning by personality** — pass `personality: "<name>"` to `create_agent` instead of `provider`. It expands to that personality's provider/model/effort/mode/prompt. Explicit `provider`/`settings` still override per-field. If the named personality is missing or out of commission on the target host+cwd, the call **fails loudly** — there is no silent fallback, so surface the error rather than guessing a provider.
 

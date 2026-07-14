@@ -60,9 +60,9 @@ The MCP server itself is controlled by `daemon.mcp.enabled`. Existing agents may
 
 ### Personalities
 
-| Tool                 | Function                                                                                                                          |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `list_personalities` | List [agent personalities](/docs/personalities) with roles and availability. Restricted to agents running as an **Orchestrator**. |
+| Tool                 | Function                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `list_personalities` | List [agent personalities](/docs/personalities) with roles and availability. Available to any agent. |
 
 Personalities are also spawned through `create_agent` (its `personality` argument) and bound to schedules through `create_schedule` / `update_schedule`.
 
