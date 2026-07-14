@@ -50,6 +50,8 @@ Connected clients are trusted operators of the daemon user. File previews follow
 
 If you expose the daemon beyond loopback, such as by binding to `0.0.0.0`, forwarding it through a tunnel or reverse proxy, or publishing it from a Docker container, you are responsible for restricting and securing that access. Setting a password is strongly recommended in that case.
 
+**WSL exception:** Windows' localhost forwarding into WSL2 only proxies to services bound beyond the WSL VM's own loopback interface, so a daemon bound to `127.0.0.1` inside WSL is unreachable from a Windows-side client (the mobile/desktop app, browser) without manual configuration. When the daemon detects it's running under WSL and no `listen` address was explicitly configured, it defaults to `0.0.0.0` instead of `127.0.0.1` so the Windows host can reach it automatically. WSL2's NAT still keeps the daemon unreachable from other machines on the LAN, but it is now reachable from anything running on the same physical Windows host. If no password is configured, the daemon logs a one-time warning recommending `OTTO_PASSWORD`; set it if you don't fully trust other processes on that host.
+
 In Docker, the official image runs the daemon and agents as the non-root
 `otto` user by default. Mounted workspaces and credentials are still fully
 available to anything the agents run inside the container.

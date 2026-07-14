@@ -22,6 +22,7 @@ import { AgentProviderSchema } from "@otto-code/protocol/provider-manifest";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
+import { isRunningInWsl } from "./wsl-detect.js";
 
 const DEFAULT_PORT = 6868;
 const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.me:443";
@@ -369,18 +370,28 @@ function resolveTrustedProxiesConfig(
 // - host:port (TCP)
 // - /path/to/socket (Unix socket)
 // - unix:///path/to/socket (Unix socket)
-// Default is TCP at 127.0.0.1:6868
+// Default is TCP at 127.0.0.1:6868, except under WSL (see resolveListenAddress).
 function resolveListenAddress(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
   persisted: ReturnType<typeof loadPersistedConfig>,
-): string {
-  return (
-    cli?.listen ??
-    env.OTTO_LISTEN ??
-    persisted.daemon?.listen ??
-    `127.0.0.1:${env.PORT ?? DEFAULT_PORT}`
-  );
+): { listen: string; autoWidenedForWsl: boolean } {
+  const explicit = cli?.listen ?? env.OTTO_LISTEN ?? persisted.daemon?.listen;
+  if (explicit) {
+    return { listen: explicit, autoWidenedForWsl: false };
+  }
+
+  const port = env.PORT ?? DEFAULT_PORT;
+  // Windows' localhost forwarding into WSL2 only proxies to services bound
+  // beyond the WSL VM's own loopback, so a daemon bound to 127.0.0.1 inside
+  // WSL is unreachable from the Windows-side client without manual config.
+  // Default to 0.0.0.0 in that case; WSL2's NAT still keeps this unreachable
+  // from other machines on the LAN.
+  if (isRunningInWsl(env)) {
+    return { listen: `0.0.0.0:${port}`, autoWidenedForWsl: true };
+  }
+
+  return { listen: `127.0.0.1:${port}`, autoWidenedForWsl: false };
 }
 
 function resolveAuthConfig(
@@ -452,7 +463,11 @@ export function loadConfig(
   const env = options?.env ?? process.env;
   const persisted = loadPersistedConfig(ottoHome);
 
-  const listen = resolveListenAddress(env, options?.cli, persisted);
+  const { listen, autoWidenedForWsl: listenAutoWidenedForWsl } = resolveListenAddress(
+    env,
+    options?.cli,
+    persisted,
+  );
   const {
     mcpEnabled,
     mcpInjectIntoAgents,
@@ -487,6 +502,7 @@ export function loadConfig(
 
   return {
     listen,
+    listenAutoWidenedForWsl,
     ottoHome,
     worktreesRoot: resolveWorktreesRoot(ottoHome, persisted),
     corsAllowedOrigins: resolveCorsAllowedOrigins(env, persisted),
