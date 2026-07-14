@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.6 - 2026-07-14
+
+### Added
+
+- Open and edit a file from another project without leaving your current workspace, once you've linked the two projects
+- Agents can suggest follow-up tasks as chips, and you can start each one in its own chat, a local run, or a fresh worktree with a tap
+- Workflow fan-out now shows up as read-only subagent rows you can watch, alongside Task subagents
+
+### Improved
+
+- Opening a workspace is faster and no longer pauses to fetch pull-request status up front
+- Discarding file changes now warns and holds when an agent is working in that folder, matching how committing already behaves
+- The desktop app recovers on its own when your local host restarts, instead of getting stuck on a missing host
+- Personality picking now behaves consistently across the composer, artifacts, and schedules
+- Refreshed the bundled versions of several third-party coding agents
+
 ## 0.5.5 - 2026-07-14
 
 ### Added
