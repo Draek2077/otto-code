@@ -41,6 +41,20 @@ if (process.platform === "linux" && process.env.APPIMAGE) {
 }
 ```
 
+> **Gotcha — the custom `afterInstall` owns the `chrome-sandbox` chmod.**
+> electron-builder's stock deb/rpm postinst (`app-builder-lib/templates/linux/after-install.tpl`)
+> does three things: symlink the executable, set the `chrome-sandbox` SUID
+> permissions, and install the AppArmor profile. Setting `deb.afterInstall` /
+> `rpm.afterInstall` **replaces that template wholesale** — electron-builder does
+> not merge or append. Because we ship a custom [`after-install.sh`](../packages/desktop/build/linux/after-install.sh)
+> (to symlink the lowercase `otto` CLI and load our AppArmor profile), the
+> `chrome-sandbox` chmod is _ours to reproduce_. If it's missing, every `.deb`/`.rpm`
+> install ships `chrome-sandbox` without its SUID bit and Chromium aborts on launch
+> with _"The SUID sandbox helper binary was found, but is not configured correctly …
+> owned by root and has mode 4755"_ on any box that falls back to the SUID sandbox.
+> The script mirrors the stock template's userns check: `4755` only where user
+> namespaces are unavailable, `0755` otherwise. Don't drop it.
+
 ### Ubuntu 24.04 unprivileged-userns lockdown → AppArmor profile
 
 Ubuntu 23.10+ (default in 24.04) restrict the unprivileged **user namespaces**
