@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5 - 2026-07-14
+
+### Added
+
+- Schedules can now stop after a set number of runs, or keep running forever
+- Schedules remember and show which agent personality, provider, and model last ran them
+- Artifacts record the agent personality that generated them and show it on the card
+
+### Improved
+
+- "Team's Role" slots wear a neutral role glyph across the personality, model, artifact, and schedule pickers, so it's clear you're picking a role rather than a specific agent
+
 ## 0.5.4 - 2026-07-14
 
 ### Added
