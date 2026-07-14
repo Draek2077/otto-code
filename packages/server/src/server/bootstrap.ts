@@ -354,6 +354,8 @@ export type DaemonLifecycleIntent =
 
 export interface OttoDaemonConfig {
   listen: string;
+  /** True when `listen` was defaulted to 0.0.0.0 because the daemon detected it's running under WSL. */
+  listenAutoWidenedForWsl?: boolean;
   ottoHome: string;
   worktreesRoot?: string;
   corsAllowedOrigins: string[];
@@ -1634,6 +1636,13 @@ export async function createOttoDaemon(
             }
             if (config.auth?.password) {
               logger.info("Daemon password authentication enabled");
+            } else if (config.listenAutoWidenedForWsl) {
+              logger.warn(
+                "Detected WSL: binding to 0.0.0.0 so the Windows host can reach the daemon " +
+                  "without manual config. No password is set, so anything that can reach this " +
+                  "port controls the daemon. Consider setting OTTO_PASSWORD (or auth.password " +
+                  "in config.json) to require authentication.",
+              );
             }
 
             wsServer = new VoiceAssistantWebSocketServer(

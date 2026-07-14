@@ -448,10 +448,12 @@ export type PersistedConfig = Omit<PersistedConfigSchemaOutput, "agents"> & {
 };
 
 const CONFIG_FILENAME = "config.json";
+// `daemon.listen` is deliberately left unset here so a fresh install's
+// config.json doesn't freeze in a value — config.ts computes the effective
+// default at runtime (127.0.0.1, or 0.0.0.0 when it detects WSL) every start.
 const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   version: 1,
   daemon: {
-    listen: "127.0.0.1:6868",
     cors: {
       allowedOrigins: ["https://app.otto-code.me"],
     },

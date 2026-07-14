@@ -56,6 +56,8 @@ If you believe a pairing offer has been compromised, restart the daemon to gener
 
 By default, the daemon listens on `127.0.0.1:6868` (localhost only). This is safe for local CLI usage but not reachable from your phone or other devices.
 
+**Running under WSL:** Windows' localhost forwarding into WSL2 only reaches services bound beyond the WSL VM's own loopback interface, so a daemon bound to `127.0.0.1` inside WSL is not reachable from a Windows-side client without extra configuration. When Otto detects it's running under WSL and you haven't set `daemon.listen` yourself, it automatically binds to `0.0.0.0` instead, so the Windows host can reach it with no setup. This doesn't expose the daemon to your LAN, WSL2's NAT still blocks other machines, but it does mean anything on the same Windows host can reach it. Set a password (see below) if you don't fully trust other processes on that machine.
+
 ### Socket file (CLI only)
 
 For maximum isolation, you can configure the daemon to listen on a Unix socket file instead of a TCP port. This prevents any network access entirely, only processes on the same machine can connect. The CLI supports this mode, but the mobile app and web interface require a network connection.
