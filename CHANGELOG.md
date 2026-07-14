@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.7 - 2026-07-14
+
+### Fixed
+
+- The Linux desktop app failed to launch after installing the .deb or .rpm package, aborting with a Chromium sandbox error
+
 ## 0.5.6 - 2026-07-14
 
 ### Added
