@@ -5,7 +5,10 @@ import {
   resolveTeamMembers,
   type AgentTeamsConfigView,
 } from "@otto-code/protocol/agent-teams";
-import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
+import {
+  composeRoleFocusDirective,
+  personalityHasRole,
+} from "@otto-code/protocol/agent-personalities";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { resolvePersonality, type ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type { ProviderSnapshotEntry } from "./agent-sdk-types.js";
@@ -58,14 +61,6 @@ export function resolveTeamSnapshotForPersonality(
 }
 
 /**
- * Compose the personality-owned system prompt: team prompt stacked directly
- * ahead of the personality prompt (team frames the collective, personality
- * specializes within it). With no team layer the personality prompt passes
- * through verbatim — byte-identical to pre-teams behavior. A team prompt with
- * no personality prompt stands alone. Callers still apply the existing
- * ownership rule: a caller-authored systemPrompt wins and nothing composes.
- */
-/**
  * Resolve the dynamic "Team's Scheduler" schedule binding: the active team's
  * first AVAILABLE member carrying the Scheduler role, in memberIds order.
  * Every failure is a loud, named error — the same hard-fail semantics as a
@@ -103,11 +98,10 @@ export function resolveTeamSchedulerSnapshot(params: {
   );
 }
 
-export function composeTeamAndPersonalityPrompt(
-  teamSnapshot: Pick<ResolvedTeamSnapshot, "teamPrompt"> | null | undefined,
+function composeTeamPromptBase(
+  teamPrompt: string | undefined,
   personalityPrompt: string | undefined,
 ): string | undefined {
-  const teamPrompt = teamSnapshot?.teamPrompt;
   if (!teamPrompt) {
     return personalityPrompt;
   }
@@ -115,4 +109,31 @@ export function composeTeamAndPersonalityPrompt(
     return teamPrompt;
   }
   return `${teamPrompt}\n\n${personalityPrompt}`;
+}
+
+/**
+ * Compose the personality-owned system prompt, applied at EVERY spawn path
+ * (create_agent, the app composer, schedule runs, live personality switch) so a
+ * personality operates with its full context brief no matter how the chat
+ * started. The stack, top to bottom: team prompt (frames the collective) →
+ * personality prompt (specializes within it) → role-focus directive (tells a
+ * coordinator "orchestration is yours" or a focused worker "stay on task").
+ *
+ * `roles` are the resolved snapshot's roles; omit them (or pass none) and no
+ * directive is appended — with no team layer and no roles the personality prompt
+ * passes through verbatim, byte-identical to pre-teams behavior. A team prompt
+ * or directive with no personality prompt stands alone. Callers still apply the
+ * ownership rule: a caller-authored systemPrompt wins and nothing composes.
+ */
+export function composeTeamAndPersonalityPrompt(
+  teamSnapshot: Pick<ResolvedTeamSnapshot, "teamPrompt"> | null | undefined,
+  personalityPrompt: string | undefined,
+  roles?: readonly string[],
+): string | undefined {
+  const base = composeTeamPromptBase(teamSnapshot?.teamPrompt, personalityPrompt);
+  const directive = composeRoleFocusDirective(roles);
+  if (!directive) {
+    return base;
+  }
+  return base ? `${base}\n\n${directive}` : directive;
 }

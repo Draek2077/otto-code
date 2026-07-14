@@ -164,4 +164,33 @@ describe("composeTeamAndPersonalityPrompt", () => {
   test("an organizational team (no prompt) composes nothing", () => {
     expect(composeTeamAndPersonalityPrompt({}, "You are Vera.")).toBe("You are Vera.");
   });
+
+  test("omitting roles stays byte-identical (no directive appended)", () => {
+    expect(composeTeamAndPersonalityPrompt(null, "You are Vera.")).toBe("You are Vera.");
+    expect(composeTeamAndPersonalityPrompt(null, "You are Vera.", [])).toBe("You are Vera.");
+  });
+
+  test("a focused role appends the stay-on-task directive after the prompt", () => {
+    const composed = composeTeamAndPersonalityPrompt(null, "You are Vera.", ["judger"]);
+    expect(composed?.startsWith("You are Vera.\n\n")).toBe(true);
+    expect(composed).toContain("focused worker");
+  });
+
+  test("a coordinator role appends the orchestration directive, stacked after team + personality", () => {
+    const composed = composeTeamAndPersonalityPrompt(
+      { teamPrompt: "Team frame." },
+      "You are Atlas.",
+      ["orchestrator"],
+    );
+    expect(composed?.startsWith("Team frame.\n\nYou are Atlas.\n\n")).toBe(true);
+    expect(composed).toContain("coordinator");
+  });
+
+  test("a directive with no personality prompt stands alone (nothing stacked before it)", () => {
+    const composed = composeTeamAndPersonalityPrompt(null, undefined, ["coder"]);
+    expect(composed).toContain("focused worker");
+    // No team/personality prompt, so the directive is the whole thing — no
+    // "\n\n" join in front of it.
+    expect(composed?.includes("\n\n")).toBe(false);
+  });
 });

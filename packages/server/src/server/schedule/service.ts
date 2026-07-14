@@ -1188,7 +1188,11 @@ export class ScheduleService {
       this.readAgentTeams?.(),
       snapshot.personalityId,
     );
-    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
+    const composedPrompt = composeTeamAndPersonalityPrompt(
+      teamSnapshot,
+      snapshot.systemPrompt,
+      snapshot.roles,
+    );
     return {
       providerModel: snapshot.model ? `${snapshot.provider}/${snapshot.model}` : snapshot.provider,
       ...(snapshot.modeId !== undefined ? { modeId: snapshot.modeId } : {}),

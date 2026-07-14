@@ -47,6 +47,121 @@ export function personalityHasRole(
   return normalizePersonalityRoles(personality.roles).includes(role);
 }
 
+// Two behavioral tiers, not a hard gate. Coordinators delegate — they converse,
+// plan, and launch other agents/personalities. Focused workers lift a single
+// thing someone is waiting on and should stay on task. A personality that
+// carries ANY coordinator role counts as a coordinator (a chatter+coder can
+// both code and delegate). Every agent keeps the same tools; the tier only
+// drives the spawn-time role directive and the list_personalities decision aid.
+export type PersonalityRoleTier = "coordinator" | "focused";
+
+interface PersonalityRoleInfo {
+  tier: PersonalityRoleTier;
+  // "Why you'd choose me" — a one-line decision aid surfaced in
+  // list_personalities so a deciding agent can self-select a role by intent.
+  guidance: string;
+}
+
+export const PERSONALITY_ROLE_INFO: Readonly<Record<PersonalityRole, PersonalityRoleInfo>> = {
+  chatter: {
+    tier: "coordinator",
+    guidance:
+      "Interactive driver — converse, plan, and delegate. Pick to run a chat or coordinate work.",
+  },
+  artificer: {
+    tier: "coordinator",
+    guidance:
+      "Builds and manages artifacts; may run multi-step work to produce them. Pick for artifact creation.",
+  },
+  scheduler: {
+    tier: "coordinator",
+    guidance:
+      "Creates and manages schedules; may orchestrate recurring or multi-step jobs. Pick for scheduling.",
+  },
+  writer: {
+    tier: "focused",
+    guidance:
+      "Fast small-text specialist — commit messages, summaries, names. Pick for quick text; stays on the one task.",
+  },
+  coder: {
+    tier: "focused",
+    guidance:
+      "Focused implementer — writes code for one sub-task others are waiting on. Pick to get a coding job done; stays on task.",
+  },
+  judger: {
+    tier: "focused",
+    guidance:
+      "Review specialist — evaluates work and returns a verdict. Pick for a focused review; stays on task.",
+  },
+  advisor: {
+    tier: "coordinator",
+    guidance:
+      "Read-only second opinion or plan; may consult others but never edits. Pick for advice or planning.",
+  },
+  orchestrator: {
+    tier: "coordinator",
+    guidance:
+      "Drives multi-agent workflows — spawns and coordinates a team. Pick to run orchestration.",
+  },
+};
+
+/**
+ * A personality may launch/coordinate when it carries at least one coordinator
+ * role. A personality whose roles are entirely focused (writer/coder/judger),
+ * or that has no roles at all, is a "lifter": it should finish its task, not
+ * fan out.
+ */
+export function personalityCanLaunch(personality: Pick<AgentPersonality, "roles">): boolean {
+  return normalizePersonalityRoles(personality.roles).some(
+    (role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator",
+  );
+}
+
+export interface PersonalitySelectionSummary {
+  tier: PersonalityRoleTier;
+  canLaunch: boolean;
+  /** The "why you'd choose me" blurb — each of the personality's roles, joined. */
+  guidance: string;
+}
+
+/**
+ * Build the selection decision-aid for a personality from its roles: the tier
+ * (coordinator if any role coordinates), whether it may launch, and a short
+ * multi-role "why choose me" blurb. Surfaced by list_personalities so a
+ * deciding agent can pick the right teammate from the list alone.
+ */
+export function summarizePersonalityForSelection(
+  personality: Pick<AgentPersonality, "roles">,
+): PersonalitySelectionSummary {
+  const roles = normalizePersonalityRoles(personality.roles);
+  const canLaunch = roles.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator");
+  return {
+    tier: canLaunch ? "coordinator" : "focused",
+    canLaunch,
+    guidance: roles.map((role) => PERSONALITY_ROLE_INFO[role].guidance).join(" "),
+  };
+}
+
+/**
+ * The in-context "role directive" injected into a personality's system prompt at
+ * spawn. Coordinators are told orchestration is theirs; focused workers are told
+ * to stay on the task someone is waiting on. Roleless spawns get nothing. This
+ * is guidance, not a gate — the tools stay available to every agent either way.
+ */
+export function composeRoleFocusDirective(
+  roles: readonly string[] | undefined,
+): string | undefined {
+  const normalized = normalizePersonalityRoles(roles);
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  const roleList = normalized.join(", ");
+  if (normalized.some((role) => PERSONALITY_ROLE_INFO[role].tier === "coordinator")) {
+    return `You are a coordinator personality (roles: ${roleList}). Orchestration is yours: use list_personalities to see who else is available, and spawn other agents or personalities whenever delegating gets the work done faster or better.`;
+  }
+  return `You are a focused worker personality (roles: ${roleList}). Someone is waiting on this specific task — stay on it and finish it. You can still call list_personalities to see the roster, but don't spawn sub-agents or start side workflows unless it is genuinely essential to completing this job.`;
+}
+
 export type PersonalityUnavailableCode =
   | "provider-missing"
   | "provider-disabled"

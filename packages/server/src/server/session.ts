@@ -2958,7 +2958,11 @@ export class Session {
       this.daemonConfigStore.get().agentTeams,
       snapshot.personalityId,
     );
-    const composedPrompt = composeTeamAndPersonalityPrompt(teamSnapshot, snapshot.systemPrompt);
+    const composedPrompt = composeTeamAndPersonalityPrompt(
+      teamSnapshot,
+      snapshot.systemPrompt,
+      snapshot.roles,
+    );
     return {
       ...config,
       personalitySnapshot: snapshot,
