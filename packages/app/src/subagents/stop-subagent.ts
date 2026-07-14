@@ -6,7 +6,7 @@ import type { Agent } from "@/stores/session-store";
  * Observed subagents resolve to the provider `stopTask`; native subagents
  * cancel their run. Neither confirms — stopping is a benign, reversible-in-kind
  * gesture, matching the observed pane's Stop button.
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 2).
+ * See docs/agent-lifecycle.md (Item 2).
  */
 export interface StopSubagentTarget {
   attend?: Agent["attend"] | null;
@@ -21,7 +21,7 @@ export interface StopSubagentDeps {
   reportError: (error: unknown) => void;
   // Called when the daemon reports there was no run to interrupt (the row was
   // already finished, or still initializing) — otherwise Stop is a dead click
-  // with no feedback. See projects/subagents-cleanup/subagents-cleanup.md (Item 2).
+  // with no feedback. See docs/agent-lifecycle.md (Item 2).
   reportNothingToStop: () => void;
 }
 

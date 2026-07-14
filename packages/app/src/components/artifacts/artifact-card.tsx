@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
-import { ProjectRow } from "@/components/project-row";
+import { ExecutorRow, ProjectNameLine } from "@/components/project-row";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -178,7 +178,13 @@ function ArtifactCardComponent({
           />
         </View>
 
-        <ProjectRow provider={artifact.generationProvider} projectName={projectName} />
+        <ExecutorRow
+          serverId={artifact.serverId}
+          personalityName={artifact.generationPersonalityName ?? null}
+          provider={artifact.generationProvider}
+          model={artifact.generationModel}
+        />
+        <ProjectNameLine projectName={projectName} />
 
         {artifact.status === "error" ? (
           <View style={styles.statusRow}>

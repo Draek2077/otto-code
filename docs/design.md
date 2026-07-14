@@ -133,6 +133,8 @@ The branching is one `useIsCompactFormFactor()` check at the top of the screen c
 
 The workspace screen (`packages/app/src/screens/workspace/workspace-screen.tsx`) follows a different but parallel rule: tabs collapse on compact, panes split on desktop. The sidebar (`packages/app/src/components/left-sidebar.tsx`) is overlaid on compact and pinned on desktop.
 
+On desktop each pane draws its tab strip in one of two orientations: a horizontal row across the top (the default) or a vertical rail down the left edge (`packages/app/src/screens/workspace/workspace-desktop-tabs-rail.tsx`, mounted per pane in `packages/app/src/components/split-container.tsx`). Orientation is a per-pane property (`SplitPane.tabOrientation`), so a split layout can mix a rail on one pane with a row on a sibling; a pane that never sets it inherits the `defaultTabOrientation` Appearance setting (`packages/app/src/hooks/use-settings/storage.ts`, the `TabOrientationRow` in `packages/app/src/screens/settings/appearance/appearance-section.tsx`). This is desktop/web only — compact still routes tabs through `MobileWorkspaceTabSwitcher`, unchanged.
+
 A new list+detail feature copies the settings shell. A new workspace-shaped feature copies the workspace shell. Inventing a third shape happens in design review, not in a PR.
 
 ---

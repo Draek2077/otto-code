@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentSessionConfig, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
-import type { AgentStorage } from "../agent/agent-storage.js";
+import type { AgentStorage, StoredAgentRecord } from "../agent/agent-storage.js";
 import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
 import {
   resolvePersonality,
@@ -885,6 +885,36 @@ export class ScheduleService {
     requireSchedule(updatedSchedule, params.scheduleId);
   }
 
+  // Stamp the run's executor (personality/provider/model) onto the still-running
+  // run and mirror it to the schedule's lastRun* summary fields, so the card can
+  // show "who ran it last" without loading the run history. Called at run start
+  // so a later failure still records who was executing.
+  private async recordRunExecutor(params: {
+    scheduleId: string;
+    runId: string;
+    executor: ScheduleRunExecutor;
+  }): Promise<void> {
+    const { scheduleId, runId, executor } = params;
+    const updated = await this.store.update(scheduleId, (schedule) => ({
+      ...schedule,
+      updatedAt: this.now().toISOString(),
+      lastRunPersonalityName: executor.personalityName,
+      lastRunProvider: executor.provider,
+      lastRunModel: executor.model,
+      runs: schedule.runs.map((run) =>
+        run.id === runId && run.status === "running"
+          ? {
+              ...run,
+              personalityName: executor.personalityName,
+              provider: executor.provider,
+              model: executor.model,
+            }
+          : run,
+      ),
+    }));
+    requireSchedule(updated, scheduleId);
+  }
+
   private async recordRunWorkspace(params: {
     scheduleId: string;
     runId: string;
@@ -929,6 +959,14 @@ export class ScheduleService {
       if (this.agentManager.hasInFlightRun(agent.id)) {
         throw new Error(`Agent ${agent.id} already has an active run`);
       }
+      // Stamp who actually ran this: the existing agent's personality (if any),
+      // provider, and model. Recorded before the run so a failure still keeps
+      // the executor on the run + lastRun* summary fields.
+      await this.recordRunExecutor({
+        scheduleId: schedule.id,
+        runId,
+        executor: resolveAgentTargetExecutor(record),
+      });
       const result = await this.agentManager.runAgent(agent.id, wrappedPrompt);
       const timelineText = curateAgentActivity(result.timeline);
       return {
@@ -962,6 +1000,14 @@ export class ScheduleService {
       // run's cwd and hard-fails the run if it's unavailable (surfaced via the
       // run's failure path) — no silent fallback.
       const brain = await this.resolveSchedulePersonalityBrain(runConfig);
+      // Stamp who is running this: the resolved personality (if bound), else the
+      // configured provider/model. Recorded before the agent spawns so even a
+      // spawn/prompt failure keeps the executor on the run + lastRun* fields.
+      await this.recordRunExecutor({
+        scheduleId: schedule.id,
+        runId,
+        executor: resolveNewAgentExecutor(brain, config),
+      });
       const spawn = applyScheduleBrain({
         brain,
         baseAgentConfig: buildScheduleAgentConfig(runConfig),
@@ -1209,6 +1255,38 @@ export class ScheduleService {
       ...(teamSnapshot ? { teamSnapshot } : {}),
     };
   }
+}
+
+interface ScheduleRunExecutor {
+  personalityName: string | null;
+  provider: string | null;
+  model: string | null;
+}
+
+// The executor of an agent-target run: the existing agent's snapshotted
+// personality (if any), plus its live-or-configured provider/model.
+function resolveAgentTargetExecutor(record: StoredAgentRecord): ScheduleRunExecutor {
+  return {
+    personalityName: record.config?.personalitySnapshot?.name ?? null,
+    provider: record.runtimeInfo?.provider ?? record.provider,
+    model: record.runtimeInfo?.model ?? record.config?.model ?? null,
+  };
+}
+
+// The executor of a new-agent run: the resolved personality when the schedule
+// binds one, otherwise the configured provider/model.
+function resolveNewAgentExecutor(
+  brain: ScheduleBrain | undefined,
+  config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
+): ScheduleRunExecutor {
+  if (brain) {
+    return {
+      personalityName: brain.snapshot.name,
+      provider: brain.snapshot.provider,
+      model: brain.snapshot.model ?? null,
+    };
+  }
+  return { personalityName: null, provider: config.provider, model: config.model ?? null };
 }
 
 interface ScheduleBrain {

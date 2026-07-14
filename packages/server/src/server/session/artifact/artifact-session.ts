@@ -64,6 +64,7 @@ export class ArtifactSession {
         modeId: msg.modeId,
         thinkingOptionId: msg.thinkingOptionId,
         spinner: msg.spinner,
+        personalityName: msg.personalityName,
       };
       const artifact = await this.artifactService.create(input);
       this.host.emit({

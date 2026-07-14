@@ -123,6 +123,7 @@ function ScheduleGridCard({
   return (
     <ScheduleCard
       schedule={schedule}
+      serverId={serverId}
       targetLabel={row.targetLabel}
       provider={row.provider}
       projectName={row.projectName}

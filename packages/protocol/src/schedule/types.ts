@@ -64,6 +64,13 @@ export const ScheduleRunSchema = z.object({
   status: z.enum(["running", "succeeded", "failed"]),
   agentId: z.guid().nullable(),
   workspaceId: z.string().nullable().optional(),
+  // Who actually executed this run — the resolved personality (if any),
+  // provider, and model. Stamped when the run starts (so a failed run still
+  // records its executor). Optional for back-compat: runs written before these
+  // fields existed omit them.
+  personalityName: z.string().nullable().optional(),
+  provider: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
   output: z.string().nullable(),
   error: z.string().nullable(),
 });
@@ -82,6 +89,14 @@ export const StoredScheduleSchema = z.object({
   lastRunAt: z.string().nullable(),
   lastRunStatus: z.enum(["succeeded", "failed"]).nullable().optional(),
   lastRunError: z.string().nullable().optional(),
+  // Executor of the most recent run — mirrors the run-level fields above so the
+  // schedule card can show "who ran it last" (personality · provider · model)
+  // without loading the full run history (ScheduleSummary omits `runs`).
+  // Optional for back-compat: schedules that never ran, or predate these
+  // fields, omit them.
+  lastRunPersonalityName: z.string().nullable().optional(),
+  lastRunProvider: z.string().nullable().optional(),
+  lastRunModel: z.string().nullable().optional(),
   pausedAt: z.string().nullable(),
   expiresAt: z.string().nullable(),
   maxRuns: z.number().int().positive().nullable(),

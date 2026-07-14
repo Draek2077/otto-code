@@ -68,6 +68,17 @@ describe("ArtifactStore run history", () => {
     expect(listed).not.toHaveProperty("runs");
   });
 
+  it("round-trips the generation personality name on metadata and runs", async () => {
+    await store.create(metadataFixture({ generationPersonalityName: "Pixel" }));
+    await store.appendRun("art-1", runFixture({ personalityName: "Pixel" }));
+
+    const got = await store.get("art-1");
+    expect(got?.generationPersonalityName).toBe("Pixel");
+
+    const inspected = await store.inspect("art-1");
+    expect(inspected?.runs[0]?.personalityName).toBe("Pixel");
+  });
+
   it("appends runs, stamps the agent id, and closes out the current run", async () => {
     await store.create(metadataFixture());
     await store.appendRun("art-1", runFixture());

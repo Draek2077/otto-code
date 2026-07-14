@@ -117,7 +117,7 @@ requirements block, and a Notes log. Properties:
   adoption.
 - **Attended by default (LOCKED)** — a Run **pauses at `gate` phases** (plan approval, before
   deliver) for the user to approve/override; an explicit **autopilot** mode runs straight through.
-  Ties into the safe-unattended posture (`projects/safe-unattended`).
+  Ties into the safe-unattended posture ([docs/safe-unattended.md](../../docs/safe-unattended.md)).
 - **One grouped run in the UI** — the user watches the team work, approves at gates, and
   overrides. This is where "you feel in control" is delivered. Builds on the observed-subagents
   track.

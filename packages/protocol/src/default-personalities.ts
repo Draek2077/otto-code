@@ -7,7 +7,7 @@ import type { AgentPersonality, AgentTeam } from "./messages.js";
 // restore button) import this one list so the shipped set stays identical on
 // both sides.
 //
-// Design notes (see projects/agent-personalities/agent-personalities.md):
+// Design notes (see docs/agent-personalities.md):
 //  - Ids are STABLE and prefixed `personality_builtin_*`. Restore re-adds only
 //    the builtins whose id is missing, so a user who kept/renamed some never
 //    gets duplicates. Renaming a builtin keeps its id, so it is still "present".

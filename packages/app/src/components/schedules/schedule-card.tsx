@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ProjectRow } from "@/components/project-row";
+import { ExecutorRow, ProjectNameLine } from "@/components/project-row";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
@@ -66,6 +66,8 @@ export interface ScheduleCardActions {
 
 interface ScheduleCardProps extends ScheduleCardActions {
   schedule: ScheduleSummary;
+  /** Host the schedule lives on — used to resolve the provider's display label. */
+  serverId: string;
   /** Client-derived target line (agent title / project / shortened path). */
   targetLabel: string;
   /** Provider glyph, resolved from the schedule config or the target agent. */
@@ -161,6 +163,7 @@ function ScheduleFailureBanner({
  */
 export function ScheduleCard({
   schedule,
+  serverId,
   targetLabel,
   provider,
   projectName,
@@ -183,6 +186,15 @@ export function ScheduleCard({
   const meta = buildMeta(schedule, state, serverName, singleHost ?? false);
   const canRun = state === "active" || state === "paused" || state === "failed";
   const isErrorCard = state === "failed" || state === "targetGone";
+
+  // The last-run executor. Prefer the recorded last run (who actually ran it);
+  // before the first run, fall back to the configured provider/model so the
+  // line isn't empty. Personality only shows once a run has recorded one.
+  const executorProvider = schedule.lastRunProvider ?? provider;
+  const executorModel =
+    schedule.lastRunModel ??
+    (schedule.target.type === "new-agent" ? (schedule.target.config.model ?? null) : null);
+  const executorPersonality = schedule.lastRunPersonalityName ?? null;
 
   const cardStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
@@ -224,12 +236,18 @@ export function ScheduleCard({
           />
         </View>
 
-        <ProjectRow provider={provider} projectName={projectName} />
+        <ExecutorRow
+          serverId={serverId}
+          personalityName={executorPersonality}
+          provider={executorProvider}
+          model={executorModel}
+        />
+        <ProjectNameLine projectName={projectName} />
 
         {/* For "new agent" schedules the target line is just the project name
             again (see resolveTarget in schedule-derivation.ts) — skip it so it
-            doesn't repeat the ProjectRow above. Agent-targeted schedules show
-            the agent's title here, which is distinct info. */}
+            doesn't repeat the ProjectNameLine above. Agent-targeted schedules
+            show the agent's title here, which is distinct info. */}
         {targetLabel !== projectName ? (
           <Text style={styles.target} numberOfLines={2}>
             {targetLabel}

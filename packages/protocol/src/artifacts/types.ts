@@ -42,8 +42,14 @@ export const ArtifactMetadataSchema = z.object({
   // Spinner glow colors of the Agent Personality this artifact was generated
   // under, snapshotted at create time like the provider/model above. Absent ⇒
   // the card falls back to the theme's default spinner colors. Purely additive
-  // (no daemon floor needed). See projects/agent-personalities/.
+  // (no daemon floor needed). See docs/agent-personalities.md.
   generationSpinner: ArtifactSpinnerSchema.nullable().optional(),
+  // Human name of the Agent Personality that generated (last generated) this
+  // artifact, snapshotted at create/regenerate time like the provider/model
+  // above — the "who actually did it" the card's identity line shows alongside
+  // provider/model. Absent ⇒ no personality was used (plain provider/model
+  // selection). Purely additive (no daemon floor needed).
+  generationPersonalityName: z.string().nullable().optional(),
   errorMessage: z.string().nullable(),
 });
 export type ArtifactMetadata = z.infer<typeof ArtifactMetadataSchema>;
@@ -72,6 +78,10 @@ export const ArtifactRunSchema = z.object({
   agentId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
+  // Personality that ran this attempt. Optional (not just nullable): run
+  // records written before this field existed omit it entirely, so old on-disk
+  // runs still parse.
+  personalityName: z.string().nullable().optional(),
   error: z.string().nullable(),
 });
 export type ArtifactRun = z.infer<typeof ArtifactRunSchema>;
@@ -102,4 +112,8 @@ export interface CreateArtifactInput {
   /** Spinner colors of the chosen Agent Personality, snapshotted onto the
    * artifact so its generating card renders in the personality's identity. */
   spinner?: ArtifactSpinner;
+  /** Human name of the chosen Agent Personality, snapshotted onto the artifact
+   * so its card can show who generated it (persona · provider · model). Absent
+   * when no personality was used. */
+  personalityName?: string;
 }

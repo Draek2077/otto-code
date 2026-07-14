@@ -1,5 +1,5 @@
 // The Active Team switcher — the "switch instantly from the main UI" surface
-// for Agent Teams (projects/agent-teams/agent-teams.md). Default home: a row
+// for Agent Teams (docs/agent-teams.md). Default home: a row
 // in the top-left sidebar menu, directly above "New workspace". An appearance
 // setting (teamSwitcherPlacement) relocates it into the workspace title bar
 // ahead of the other tools, styled like the tool dropdowns.

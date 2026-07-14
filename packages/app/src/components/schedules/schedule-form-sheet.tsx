@@ -37,6 +37,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
+import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
@@ -81,9 +82,24 @@ export interface ScheduleFormSheetProps {
   schedule?: ScheduleSummary;
 }
 
+// A schedule that would run more than this many times may as well be unlimited,
+// so the picker caps here and 0 (empty) means "run forever".
+const MAX_SCHEDULE_RUNS = 9999;
+
 function parseMaxRuns(raw: string): number | null {
   const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.min(parsed, MAX_SCHEDULE_RUNS);
+}
+
+function formatMaxRunsHint(raw: string): string {
+  const parsed = parseMaxRuns(raw);
+  if (parsed == null) {
+    return "Runs forever";
+  }
+  return `Stops after ${parsed} ${parsed === 1 ? "run" : "runs"}`;
 }
 
 // The synthetic "Team's Scheduler" picker entry — a dynamic binding that
@@ -713,6 +729,7 @@ function ScheduleFormFields({
   onSelectPersonality,
   onClearPersonality,
 }: ScheduleFormFieldsProps): ReactElement {
+  const maxRunsHint = formatMaxRunsHint(state.maxRuns);
   return (
     <>
       <Field label="Name">
@@ -765,16 +782,19 @@ function ScheduleFormFields({
         size={controlSize}
       />
 
-      <Field label="Max runs">
-        <FormTextInput
+      <Field label="Max runs" hint={maxRunsHint}>
+        <NumberStepperField
           size={controlSize}
-          testID="schedule-max-runs-input"
+          testID="schedule-max-runs"
           accessibilityLabel="Max runs"
-          initialValue={state.maxRuns}
           value={state.maxRuns}
           onChangeText={model.setMaxRuns}
+          min={0}
+          max={MAX_SCHEDULE_RUNS}
+          unlimitedAtMin
           placeholder="Unlimited"
-          keyboardType="number-pad"
+          decrementLabel="Fewer runs"
+          incrementLabel="More runs"
         />
       </Field>
 
@@ -890,20 +910,26 @@ function ScheduleTargetFields({
     (input: SelectFieldRenderOptionInput<string>) => <ThinkingOptionItem {...input} />,
     [],
   );
-  const modelTriggerLeading = useMemo(
-    () =>
-      selectedPersonality ? (
+  const modelTriggerLeading = useMemo(() => {
+    // A role-slot entry (Team's <Role>) wears its neutral role glyph rather than
+    // the current holder's colored provider icon — picking it means "the role",
+    // not that specific personality.
+    if (selectedPersonality?.roleIcon) {
+      const RoleIcon = selectedPersonality.roleIcon;
+      return <RoleIcon size={16} color={styles.providerIcon.color} />;
+    }
+    if (selectedPersonality) {
+      return (
         <PersonalityProviderIcon
           provider={selectedPersonality.provider}
           size={16}
           glowA={selectedPersonality.glowA}
           glowB={selectedPersonality.glowB}
         />
-      ) : (
-        <ProviderGlyph provider={state.selectedProvider} />
-      ),
-    [selectedPersonality, state.selectedProvider],
-  );
+      );
+    }
+    return <ProviderGlyph provider={state.selectedProvider} />;
+  }, [selectedPersonality, state.selectedProvider]);
   const renderModelTrigger = useCallback(
     ({
       selectedModelLabel,

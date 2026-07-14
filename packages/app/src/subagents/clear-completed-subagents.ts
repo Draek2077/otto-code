@@ -5,7 +5,7 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * in one gesture. Only ever called with tidy-eligible ids (terminal, not
  * attention) — it never touches a running or errored row. Confirms once because
  * archiving many rows at once is more consequential than a single archive.
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 6).
+ * See docs/agent-lifecycle.md (Item 6).
  */
 export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
   const noun = count === 1 ? "completed subagent" : "completed subagents";

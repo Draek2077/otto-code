@@ -36,7 +36,7 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
  * a native `create_agent` subagent idles *between turns* and may still be
  * mid-conversation with its orchestrator — tidying it (and exposing it to
  * "Clear all") would archive an agent still in use.
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 6).
+ * See docs/agent-lifecycle.md (Item 6).
  */
 export function isSubagentRowTidyEligible(row: SubagentRow): boolean {
   if (row.requiresAttention) {
@@ -57,7 +57,7 @@ export interface PartitionedSubagentRows {
  * Split rows into the active list and the collapsed "Completed" group. Rows in
  * `pinnedIds` stay active even when tidy-eligible — the track pins a row the
  * user just stopped so it doesn't instantly vanish into the collapsed group
- * under their pointer. See projects/subagents-cleanup/subagents-cleanup.md (Items 2 + 6).
+ * under their pointer. See docs/agent-lifecycle.md (Items 2 + 6).
  */
 export function partitionSubagentRows(
   rows: readonly SubagentRow[],
@@ -81,7 +81,7 @@ export type SubagentRowAction = "stop" | "archive";
  * The row's primary action follows the agent's state: a live subagent gets
  * Stop (transition to terminal, keep the row); a terminal one gets Archive
  * (drop the row). Never offer Archive on something still running.
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 2).
+ * See docs/agent-lifecycle.md (Item 2).
  */
 export function resolveSubagentRowAction(status: SubagentRow["status"]): SubagentRowAction {
   if (status === "initializing" || status === "running") {
@@ -93,7 +93,7 @@ export function resolveSubagentRowAction(status: SubagentRow["status"]): Subagen
 /**
  * Compact, honest token readout (e.g. "934", "12.3k", "1.2M"). Returns null for
  * absent/zero so callers render nothing rather than a bare "0".
- * See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+ * See docs/agent-lifecycle.md (Item 3).
  */
 export function formatCompactTokenCount(tokens: number | null | undefined): string | null {
   if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens <= 0) {
@@ -155,7 +155,7 @@ export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
 /**
  * Frozen run duration (createdAt → updatedAt) for a terminal row, e.g. "3m 12s".
  * Returns null while the row is still running — the track renders a live ticker
- * for those instead. See projects/subagents-cleanup/ (Phase 6, liveness signals).
+ * for those instead. See projects/subagent-liveness/subagent-liveness.md (liveness signals).
  */
 export function formatSubagentElapsed(row: SubagentRow): string | null {
   if (isSubagentRowRunning(row.status)) {

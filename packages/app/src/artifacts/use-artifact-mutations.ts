@@ -84,6 +84,7 @@ export function useArtifactMutations(): UseArtifactMutationsResult {
         ...(input.thinkingOptionId ? { thinkingOptionId: input.thinkingOptionId } : {}),
         ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
         ...(input.spinner ? { spinner: input.spinner } : {}),
+        ...(input.personalityName ? { personalityName: input.personalityName } : {}),
       });
       if (!payload.success) {
         throw new Error(payload.error ?? "Failed to create artifact");

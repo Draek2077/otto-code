@@ -203,6 +203,7 @@ async function submitArtifactForm(input: {
   model: string;
   thinkingOptionId: string;
   spinner: { glowA: string; glowB: string } | undefined;
+  personalityName: string | null;
   createArtifact: ReturnType<typeof useArtifactMutations>["createArtifact"];
   updateArtifact: ReturnType<typeof useArtifactMutations>["updateArtifact"];
 }): Promise<{ serverId: string; artifact: ArtifactMetadata }> {
@@ -233,6 +234,7 @@ async function submitArtifactForm(input: {
       model: input.model || undefined,
       thinkingOptionId: input.thinkingOptionId || undefined,
       spinner: input.spinner,
+      personalityName: input.personalityName ?? undefined,
     },
   });
   return { serverId: input.createServerId, artifact };
@@ -266,6 +268,8 @@ interface ArtifactPersonalitySelection {
   clearPersonality: () => void;
   selectedPersonalityName: string | null;
   selectedPersonalitySpinner: { glowA: string; glowB: string } | undefined;
+  /** Neutral role glyph when the selection is a "Team's <Role>" slot. */
+  selectedPersonalityRoleIcon: SelectorPersonality["roleIcon"];
 }
 
 // Artifact model picker's personality selection: the role-filtered roster plus,
@@ -366,6 +370,7 @@ function useArtifactPersonalitySelection(input: {
     clearPersonality: handleClear,
     selectedPersonalityName: selectedEntry?.name ?? null,
     selectedPersonalitySpinner: selectedSpinner,
+    selectedPersonalityRoleIcon: selectedEntry?.roleIcon,
   };
 }
 
@@ -502,6 +507,7 @@ export function ArtifactCreateSheet({
     clearPersonality,
     selectedPersonalityName,
     selectedPersonalitySpinner,
+    selectedPersonalityRoleIcon,
   } = useArtifactPersonalitySelection({
     serverId: mutationServerId || null,
     entries: allProviderEntries ?? [],
@@ -545,12 +551,19 @@ export function ArtifactCreateSheet({
         provider={selectedProvider}
         hasPersonality={Boolean(selectedPersonalityName)}
         personalitySpinner={selectedPersonalitySpinner}
+        roleIcon={selectedPersonalityRoleIcon}
         disabled={disabled}
         active={hovered || pressed || isOpen}
         isPlaceholder={!selectedModel && !selectedPersonalityName}
       />
     ),
-    [selectedModel, selectedProvider, selectedPersonalityName, selectedPersonalitySpinner],
+    [
+      selectedModel,
+      selectedProvider,
+      selectedPersonalityName,
+      selectedPersonalitySpinner,
+      selectedPersonalityRoleIcon,
+    ],
   );
 
   const { createArtifact, updateArtifact, isCreating, isUpdating } = useArtifactMutations();
@@ -614,6 +627,7 @@ export function ArtifactCreateSheet({
         model: selectedModel,
         thinkingOptionId: selectedThinkingOptionId,
         spinner: selectedPersonalitySpinner,
+        personalityName: selectedPersonalityName,
         createArtifact,
         updateArtifact,
       });
@@ -637,6 +651,7 @@ export function ArtifactCreateSheet({
     selectedProvider,
     selectedThinkingOptionId,
     selectedPersonalitySpinner,
+    selectedPersonalityName,
     trimmedWorkingDir,
   ]);
 
@@ -1039,6 +1054,7 @@ function ModelTrigger({
   provider,
   hasPersonality,
   personalitySpinner,
+  roleIcon: RoleIcon,
   disabled,
   active,
   isPlaceholder,
@@ -1047,6 +1063,7 @@ function ModelTrigger({
   provider: string | null;
   hasPersonality: boolean;
   personalitySpinner?: { glowA: string; glowB: string };
+  roleIcon?: SelectorPersonality["roleIcon"];
   disabled: boolean;
   active: boolean;
   isPlaceholder: boolean;
@@ -1059,18 +1076,27 @@ function ModelTrigger({
     ],
     [active, disabled],
   );
+  // A role-slot entry (Team's <Role>) wears its neutral role glyph, not the
+  // current holder's colored provider icon; a concrete personality keeps its
+  // colored glyph; otherwise the plain provider glyph.
+  let leadingIcon: ReactElement | null;
+  if (RoleIcon) {
+    leadingIcon = <RoleIcon size={16} color={styles.providerIcon.color} />;
+  } else if (hasPersonality && provider) {
+    leadingIcon = (
+      <PersonalityProviderIcon
+        provider={provider}
+        size={16}
+        glowA={personalitySpinner?.glowA}
+        glowB={personalitySpinner?.glowB}
+      />
+    );
+  } else {
+    leadingIcon = <ProviderGlyph provider={provider} />;
+  }
   return (
     <View pointerEvents="none" style={containerStyle} testID="artifact-model-trigger">
-      {hasPersonality && provider ? (
-        <PersonalityProviderIcon
-          provider={provider}
-          size={16}
-          glowA={personalitySpinner?.glowA}
-          glowB={personalitySpinner?.glowB}
-        />
-      ) : (
-        <ProviderGlyph provider={provider} />
-      )}
+      {leadingIcon}
       <Text
         style={isPlaceholder ? styles.selectTriggerPlaceholder : styles.selectTriggerText}
         numberOfLines={1}

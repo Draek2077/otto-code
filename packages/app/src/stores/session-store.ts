@@ -112,7 +112,7 @@ export interface Agent {
   /**
    * Honest cumulative token total (Σ across the whole run) from the provider,
    * for the subagents-track cost readout. Absent ⇒ no readout (old daemon or a
-   * provider that doesn't report it). See projects/subagents-cleanup/.
+   * provider that doesn't report it). See docs/agent-lifecycle.md.
    */
   cumulativeTokens?: number;
   lastError?: string | null;
@@ -139,7 +139,7 @@ export interface Agent {
   /**
    * Spinner colors from the Agent Personality this agent was spawned from, so
    * its live thinking indicator shows the personality's identity. Absent/null ⇒
-   * the theme's default spinner colors. See projects/agent-personalities/.
+   * the theme's default spinner colors. See docs/agent-personalities.md.
    */
   personalitySpinner?: { glowA: string; glowB: string } | null;
   /**

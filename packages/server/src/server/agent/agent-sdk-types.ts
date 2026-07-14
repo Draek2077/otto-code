@@ -494,7 +494,7 @@ export interface ObservedSubagentUpdate {
   // Cumulative token total for this subagent's run so far, from the provider's
   // per-task usage (Claude: task_progress/task_notification `usage.total_tokens`,
   // which is already cumulative-per-subagent). Honest cost for the track readout.
-  // See projects/subagents-cleanup/subagents-cleanup.md (Item 3).
+  // See docs/agent-lifecycle.md (Item 3).
   cumulativeTokens?: number;
 }
 
@@ -683,7 +683,7 @@ export interface AgentSessionConfig {
    * permission mode: an attended user chatting in Claude auto mode still wants
    * the prompt. The daemon's guardrail deny-responder keys off this flag to
    * auto-deny permission escalations that would otherwise stall a run nobody is
-   * watching. See projects/safe-unattended/safe-unattended.md (Phase 2).
+   * watching. See docs/safe-unattended.md (Phase 2).
    */
   unattended?: boolean;
   /**

@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Check,
   ChevronRight,
+  type IconComponent,
   Search,
   Settings,
   Star,
@@ -107,6 +108,13 @@ export interface SelectorPersonality {
   glowB?: string;
   available: boolean;
   unavailableReason?: string;
+  /**
+   * A neutral leading glyph that REPLACES the colored provider icon — used by
+   * the synthetic "Team's <Role>" entry, whose concrete holder changes with the
+   * active team, so wearing any one personality's provider glyph would mislead.
+   * A plain role icon makes clear you're picking a role, not that personality.
+   */
+  roleIcon?: IconComponent;
 }
 
 const foregroundMutedMapping = (theme: Theme) => ({
@@ -162,6 +170,12 @@ function TriggerLeadingIcon({
   provider: string | null;
   size: number;
 }) {
+  // A role-slot entry (Team's <Role>) wears its neutral role glyph, not the
+  // current holder's colored provider icon.
+  if (personality?.roleIcon) {
+    const RoleIcon = personality.roleIcon;
+    return <RoleIcon size={size} color={styles.providerIconForeground.color} />;
+  }
   if (!provider) {
     return null;
   }
@@ -592,6 +606,23 @@ function ProviderErrorEmptyState({
   );
 }
 
+// A role-slot entry (Team's <Role>) shows a neutral role glyph so it reads as
+// picking a role; a concrete personality keeps its colored provider glyph.
+function PersonalityRowIcon({ personality }: { personality: SelectorPersonality }) {
+  if (personality.roleIcon) {
+    const RoleIcon = personality.roleIcon;
+    return <RoleIcon size={ICON_SIZE.md} color={styles.providerIconForeground.color} />;
+  }
+  return (
+    <PersonalityProviderIcon
+      provider={personality.provider}
+      size={ICON_SIZE.md}
+      glowA={personality.glowA}
+      glowB={personality.glowB}
+    />
+  );
+}
+
 function PersonalityRow({
   personality,
   isSelected,
@@ -635,12 +666,7 @@ function PersonalityRow({
       accessibilityState={a11yState}
       testID={`personality-row-${personality.id}`}
     >
-      <PersonalityProviderIcon
-        provider={personality.provider}
-        size={ICON_SIZE.md}
-        glowA={personality.glowA}
-        glowB={personality.glowB}
-      />
+      <PersonalityRowIcon personality={personality} />
       <View style={styles.personalityText}>
         <Text style={styles.personalityName} numberOfLines={1}>
           {personality.name}
