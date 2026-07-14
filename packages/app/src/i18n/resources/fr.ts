@@ -875,6 +875,11 @@ export const fr: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1741,6 +1746,16 @@ export const fr: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "Hors du projet · {{project}}",
+      blocked:
+        "Ce fichier appartient à {{project}}, qui n'est pas lié à ce projet. Liez-les dans les paramètres du projet pour l'ouvrir.",
+      warnTitle: "Ouvrir un fichier d'un autre projet ?",
+      warnMessage:
+        "Ce fichier appartient à {{project}}. Les modifications que vous faites ici ne feront pas partie du commit de ce projet.",
+      warnConfirm: "Ouvrir",
+      warnSuppress: "Ne plus afficher",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2627,6 +2642,13 @@ export const fr: TranslationResources = {
         saveLabel: "Enregistrer le nom du projet",
         cancelLabel: "Annuler le changement de nom",
         reset: "Réinitialiser",
+      },
+      links: {
+        title: "Projets liés",
+        info: "Les projets liés peuvent ouvrir et modifier leurs fichiers respectifs sur place. Les fichiers que vous ouvrez depuis un projet lié ne feront pas partie du commit de ce projet. Les liens sont bidirectionnels.",
+        empty: "Aucun autre projet sur cet hôte à lier.",
+        error: "Impossible de mettre à jour le lien du projet",
+        toggleAccessibility: "Lier {{project}}",
       },
       readFailures: {
         invalidTitle: "otto.json n'a pas pu être analysé",

@@ -108,7 +108,11 @@ import { ChangesToolbar, type ChangesToolbarItem } from "@/git/changes-toolbar/t
 import { toggleChangesToolbarItem, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import { BranchSwitcher } from "@/components/branch-switcher";
 import { useGitActions } from "@/git/use-actions";
-import { CheckoutGitCommitFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
+import {
+  CheckoutGitCommitFailedError,
+  CheckoutGitRollbackFailedError,
+  useCheckoutGitActionsStore,
+} from "@/git/actions-store";
 import type { CheckoutGitCommitError } from "@otto-code/protocol/messages";
 import { confirmDialog, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -1724,11 +1728,42 @@ function useDiffRollbackActions({
       if (!confirmed) {
         return;
       }
-      try {
-        await rollbackFiles({ serverId, cwd, paths });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : t("workspace.git.rollback.failed"));
-      }
+      const attempt = async (allowWithRunningAgents: boolean): Promise<void> => {
+        try {
+          await rollbackFiles({
+            serverId,
+            cwd,
+            paths,
+            ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
+          });
+        } catch (error) {
+          if (error instanceof CheckoutGitRollbackFailedError) {
+            if (error.rollbackError.kind === "agents_running") {
+              const agents = error.rollbackError.agents
+                .map((agent) => agent.title?.trim() || t("workspace.git.rollback.unnamedAgent"))
+                .join(", ");
+              const overrideConfirmed = await confirmDialog({
+                title: t("workspace.git.rollback.agentsRunningTitle"),
+                message: t("workspace.git.rollback.agentsRunningMessage", { agents }),
+                confirmLabel: t("workspace.git.rollback.agentsRunningConfirm"),
+                destructive: true,
+              });
+              if (overrideConfirmed) {
+                await attempt(true);
+              }
+              return;
+            }
+            const message =
+              error.rollbackError.kind === "git_failed"
+                ? error.rollbackError.detail
+                : t("workspace.git.rollback.failed");
+            toast.error(message);
+            return;
+          }
+          toast.error(error instanceof Error ? error.message : t("workspace.git.rollback.failed"));
+        }
+      };
+      await attempt(false);
     },
     [cwd, rollbackFiles, serverId, t, toast],
   );

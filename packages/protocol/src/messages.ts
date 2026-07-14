@@ -1152,6 +1152,34 @@ export const ProjectRemoveRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// An unordered pair of linked projects. The daemon stores the pair in a
+// canonical order, but clients treat it as undirected: a link between A and B
+// permits opening files across both projects. See the gated-multi-root project.
+export const ProjectLinkSchema = z.object({
+  projectAId: z.string(),
+  projectBId: z.string(),
+});
+
+export const ProjectLinksListRequestSchema = z.object({
+  type: z.literal("project.links.list.request"),
+  requestId: z.string(),
+});
+
+export const ProjectLinksSetRequestSchema = z.object({
+  type: z.literal("project.links.set.request"),
+  // Order is irrelevant; the daemon canonicalizes. Linking is idempotent.
+  projectId: z.string(),
+  otherProjectId: z.string(),
+  requestId: z.string(),
+});
+
+export const ProjectLinksUnsetRequestSchema = z.object({
+  type: z.literal("project.links.unset.request"),
+  projectId: z.string(),
+  otherProjectId: z.string(),
+  requestId: z.string(),
+});
+
 export const WorkspaceTitleSetRequestSchema = z.object({
   type: z.literal("workspace.title.set.request"),
   workspaceId: z.string(),
@@ -1874,6 +1902,80 @@ export const AgentBackgroundTaskClearResponseMessageSchema = z.object({
   payload: AgentActionResponsePayloadSchema,
 });
 
+// A suggested task an agent surfaced via the `spawn_task` tool (Claude Desktop
+// parity). Renders as a chip in the parent agent's session; the user starts it
+// (new worktree / local / this session) or dismisses it. The `prompt` is
+// deliberately NOT part of this wire shape — it stays server-side and is only
+// used when the task is started ("not shown directly" in Claude Desktop).
+// COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
+export const SuggestedTaskStateSchema = z.enum(["pending", "started", "dismissed"]);
+
+export const SuggestedTaskInfoSchema = z.object({
+  taskId: z.string(),
+  parentAgentId: z.string(),
+  title: z.string(),
+  tldr: z.string(),
+  cwd: z.string().optional(),
+  state: SuggestedTaskStateSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+// Pushed with the full current set of pending suggested tasks for a parent
+// agent whenever any of them changes (spawn/start/dismiss) — same full-list
+// reconciliation shape as BackgroundShellTasksChangedSchema.
+export const SuggestedTasksChangedSchema = z.object({
+  type: z.literal("suggested_tasks_changed"),
+  payload: z.object({
+    parentAgentId: z.string(),
+    tasks: z.array(SuggestedTaskInfoSchema),
+  }),
+});
+
+// Aggregate outcome for a start/dismiss over one or more tasks. `succeeded`/
+// `failed` count the tasks acted on so the client can report "Started 3 tasks";
+// `error` collects any per-task failure messages (the failed tasks' chips stay).
+const SuggestedTaskActionResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  parentAgentId: z.string(),
+  accepted: z.boolean(),
+  succeeded: z.number(),
+  failed: z.number(),
+  error: z.string().nullable(),
+});
+
+// Start one or more suggested tasks, applying the SAME mode to each — no
+// combining. `worktree` spins a new worktree-backed workspace per task, `local`
+// a new session in the same repo/cwd per task, `in_session` steers the parent
+// agent with the task prompt. The daemon resolves the parent agent's brain
+// (provider/model/personality) so a started task continues the suggesting agent.
+export const TasksSuggestedStartModeSchema = z.enum(["worktree", "local", "in_session"]);
+
+export const TasksSuggestedStartRequestMessageSchema = z.object({
+  type: z.literal("tasks.suggested.start.request"),
+  parentAgentId: z.string(),
+  taskIds: z.array(z.string()),
+  mode: TasksSuggestedStartModeSchema,
+  requestId: z.string(),
+});
+
+export const TasksSuggestedStartResponseMessageSchema = z.object({
+  type: z.literal("tasks.suggested.start.response"),
+  payload: SuggestedTaskActionResponsePayloadSchema,
+});
+
+export const TasksSuggestedDismissRequestMessageSchema = z.object({
+  type: z.literal("tasks.suggested.dismiss.request"),
+  parentAgentId: z.string(),
+  taskIds: z.array(z.string()),
+  requestId: z.string(),
+});
+
+export const TasksSuggestedDismissResponseMessageSchema = z.object({
+  type: z.literal("tasks.suggested.dismiss.response"),
+  payload: SuggestedTaskActionResponsePayloadSchema,
+});
+
 // Switch a running agent to an Agent Personality (or clear with null). The
 // daemon re-resolves the id against the roster + the agent's cwd provider
 // snapshot and applies the full personality live — system prompt, identity
@@ -1942,6 +2044,46 @@ export const ProjectRemoveResponsePayloadSchema = z.object({
 export const ProjectRemoveResponseSchema = z.object({
   type: z.literal("project.remove.response"),
   payload: ProjectRemoveResponsePayloadSchema,
+});
+
+export const ProjectLinksListResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  links: z.array(ProjectLinkSchema).default([]),
+  error: z.string().nullable(),
+});
+
+export const ProjectLinksListResponseSchema = z.object({
+  type: z.literal("project.links.list.response"),
+  payload: ProjectLinksListResponsePayloadSchema,
+});
+
+export const ProjectLinksMutationResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  accepted: z.boolean(),
+  // The full link set after the mutation, so the client refreshes in one hop.
+  links: z.array(ProjectLinkSchema).default([]),
+  error: z.string().nullable(),
+});
+
+export const ProjectLinksSetResponseSchema = z.object({
+  type: z.literal("project.links.set.response"),
+  payload: ProjectLinksMutationResponsePayloadSchema,
+});
+
+export const ProjectLinksUnsetResponseSchema = z.object({
+  type: z.literal("project.links.unset.response"),
+  payload: ProjectLinksMutationResponsePayloadSchema,
+});
+
+// Pushed to the session whenever the link set changes (mutation or cascade on
+// project removal) so open UIs re-evaluate cross-project access without polling.
+export const ProjectLinksChangedPayloadSchema = z.object({
+  links: z.array(ProjectLinkSchema).default([]),
+});
+
+export const ProjectLinksChangedSchema = z.object({
+  type: z.literal("project.links.changed"),
+  payload: ProjectLinksChangedPayloadSchema,
 });
 
 export const WorkspaceTitleSetResponsePayloadSchema = z.object({
@@ -2190,6 +2332,10 @@ export const CheckoutGitRollbackRequestSchema = z.object({
   cwd: z.string(),
   // Repo-relative paths whose uncommitted changes should be discarded.
   paths: z.array(z.string()),
+  // Set after the user confirms rolling back while agents are running in this
+  // workspace; without it the daemon refuses with kind "agents_running", since
+  // discarding a live agent's uncommitted edits mid-run can destroy its work.
+  allowWithRunningAgents: z.boolean().optional(),
   requestId: z.string(),
 });
 
@@ -2915,6 +3061,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
+  ProjectLinksListRequestSchema,
+  ProjectLinksSetRequestSchema,
+  ProjectLinksUnsetRequestSchema,
   WorkspaceTitleSetRequestSchema,
   SetVoiceModeMessageSchema,
   SendAgentMessageRequestSchema,
@@ -2961,6 +3110,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AgentSubagentStopRequestMessageSchema,
   AgentBackgroundTaskStopRequestMessageSchema,
   AgentBackgroundTaskClearRequestMessageSchema,
+  TasksSuggestedStartRequestMessageSchema,
+  TasksSuggestedDismissRequestMessageSchema,
   AgentPersonalitySetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
@@ -3275,6 +3426,8 @@ export const ServerInfoStatusPayloadSchema = z
         observedSubagents: z.boolean().optional(),
         // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         backgroundShellTasks: z.boolean().optional(),
+        // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
+        suggestedTasks: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -3311,6 +3464,8 @@ export const ServerInfoStatusPayloadSchema = z
         activityStats: z.boolean().optional(),
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: z.boolean().optional(),
+        // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
+        projectLinks: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4549,6 +4704,13 @@ export const CheckoutGitRollbackErrorSchema = z.discriminatedUnion("kind", [
     kind: z.literal("git_failed"),
     detail: z.string(),
   }),
+  // Refused because agents are running in this workspace; discarding their
+  // uncommitted edits mid-run risks destroying work. The client re-sends with
+  // allowWithRunningAgents after confirming, mirroring the commit flow.
+  z.object({
+    kind: z.literal("agents_running"),
+    agents: z.array(CheckoutGitCommitRunningAgentSchema),
+  }),
 ]);
 
 export const CheckoutGitRollbackResponseSchema = z.object({
@@ -5702,11 +5864,18 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentBackgroundTaskStopResponseMessageSchema,
   AgentBackgroundTaskClearResponseMessageSchema,
   BackgroundShellTasksChangedSchema,
+  TasksSuggestedStartResponseMessageSchema,
+  TasksSuggestedDismissResponseMessageSchema,
+  SuggestedTasksChangedSchema,
   AgentPersonalitySetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
   ProjectRemoveResponseSchema,
+  ProjectLinksListResponseSchema,
+  ProjectLinksSetResponseSchema,
+  ProjectLinksUnsetResponseSchema,
+  ProjectLinksChangedSchema,
   WorkspaceTitleSetResponseSchema,
   WaitForFinishResponseMessageSchema,
   AgentPermissionRequestMessageSchema,
@@ -5911,10 +6080,29 @@ export type AgentBackgroundTaskStopResponseMessage = z.infer<
 export type AgentBackgroundTaskClearResponseMessage = z.infer<
   typeof AgentBackgroundTaskClearResponseMessageSchema
 >;
+export type SuggestedTaskInfo = z.infer<typeof SuggestedTaskInfoSchema>;
+export type SuggestedTaskState = z.infer<typeof SuggestedTaskStateSchema>;
+export type SuggestedTasksChanged = z.infer<typeof SuggestedTasksChangedSchema>;
+export type TasksSuggestedStartMode = z.infer<typeof TasksSuggestedStartModeSchema>;
+export type TasksSuggestedStartResponseMessage = z.infer<
+  typeof TasksSuggestedStartResponseMessageSchema
+>;
+export type TasksSuggestedDismissResponseMessage = z.infer<
+  typeof TasksSuggestedDismissResponseMessageSchema
+>;
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
+export type ProjectLink = z.infer<typeof ProjectLinkSchema>;
+export type ProjectLinksListResponse = z.infer<typeof ProjectLinksListResponseSchema>;
+export type ProjectLinksListResponsePayload = z.infer<typeof ProjectLinksListResponsePayloadSchema>;
+export type ProjectLinksSetResponse = z.infer<typeof ProjectLinksSetResponseSchema>;
+export type ProjectLinksUnsetResponse = z.infer<typeof ProjectLinksUnsetResponseSchema>;
+export type ProjectLinksMutationResponsePayload = z.infer<
+  typeof ProjectLinksMutationResponsePayloadSchema
+>;
+export type ProjectLinksChanged = z.infer<typeof ProjectLinksChangedSchema>;
 export type WorkspaceTitleSetResponse = z.infer<typeof WorkspaceTitleSetResponseSchema>;
 export type WorkspaceTitleSetResponsePayload = z.infer<
   typeof WorkspaceTitleSetResponsePayloadSchema
@@ -6057,6 +6245,9 @@ export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessage
 export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
+export type ProjectLinksListRequest = z.infer<typeof ProjectLinksListRequestSchema>;
+export type ProjectLinksSetRequest = z.infer<typeof ProjectLinksSetRequestSchema>;
+export type ProjectLinksUnsetRequest = z.infer<typeof ProjectLinksUnsetRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
 export type SetAgentModeRequestMessage = z.infer<typeof SetAgentModeRequestMessageSchema>;
 export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMessageSchema>;
@@ -6069,6 +6260,12 @@ export type AgentBackgroundTaskStopRequestMessage = z.infer<
 >;
 export type AgentBackgroundTaskClearRequestMessage = z.infer<
   typeof AgentBackgroundTaskClearRequestMessageSchema
+>;
+export type TasksSuggestedStartRequestMessage = z.infer<
+  typeof TasksSuggestedStartRequestMessageSchema
+>;
+export type TasksSuggestedDismissRequestMessage = z.infer<
+  typeof TasksSuggestedDismissRequestMessageSchema
 >;
 export type AgentPersonalitySetRequestMessage = z.infer<
   typeof AgentPersonalitySetRequestMessageSchema

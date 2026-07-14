@@ -18,21 +18,13 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
-import { CombinedModelSelector } from "@/components/combined-model-selector";
-import {
-  usePersonalitySelection,
-  type SelectorPersonality,
-} from "@/hooks/use-personality-selection";
+import { RoleModelSelector } from "@/components/role-model-selector";
 import { type PersonalityFormValues } from "@/provider-selection/personality-form";
-import { buildTeamRoleEntry } from "@/provider-selection/team-role-entry";
-import type { AgentPersonality, AgentTeam } from "@otto-code/protocol/messages";
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import {
-  getActiveAgentTeam,
-  TEAM_SCHEDULER_PERSONALITY_SENTINEL,
-} from "@otto-code/protocol/agent-teams";
-import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
+  useFormRolePersonality,
+  type RolePersonality,
+} from "@/provider-selection/role-model-personality";
+import { TEAM_SCHEDULER_PERSONALITY_SENTINEL } from "@otto-code/protocol/agent-teams";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
@@ -105,29 +97,9 @@ function formatMaxRunsHint(raw: string): string {
 // The synthetic "Team's Scheduler" picker entry — a dynamic binding that
 // resolves to the active team's Scheduler at RUN time, not a concrete
 // personality. Its id never leaves the form; the submitted binding is the
-// protocol sentinel.
+// protocol sentinel. The entry itself is built by the shared form producer
+// (useFormRolePersonality → buildTeamRoleEntry); this const is the local id.
 const TEAM_SCHEDULER_ENTRY_ID = "__team-scheduler__";
-
-// Resolve who the active team's Scheduler is RIGHT NOW for the picker entry's
-// display + form auto-fill. The daemon re-resolves at every run, so this is a
-// preview, not a binding — the entry's subtitle says so. Shared builder in
-// team-role-entry.ts (mirrored by the artifact sheet's "Team's Artificer").
-function buildTeamSchedulerEntry(input: {
-  team: AgentTeam;
-  roster: readonly AgentPersonality[];
-  entries: readonly ProviderSnapshotEntry[];
-}): { selector: SelectorPersonality; values: PersonalityFormValues | null } {
-  const entry = buildTeamRoleEntry({
-    entryId: TEAM_SCHEDULER_ENTRY_ID,
-    role: "scheduler",
-    label: "Team's Scheduler",
-    roleLabel: "Scheduler",
-    team: input.team,
-    roster: input.roster,
-    entries: input.entries,
-  });
-  return { selector: entry.selector, values: entry.values };
-}
 
 function resolveCreateServerId(input: {
   mode: "create" | "edit";
@@ -321,13 +293,7 @@ function OpenScheduleFormSheet({
     serverId: mutationServerId,
   });
 
-  const {
-    personalities: displayPersonalities,
-    selectedPersonalityId: effectiveSelectedPersonalityId,
-    onSelectPersonality: handleSelectPersonality,
-    onClearPersonality: handleClearPersonality,
-    resolveSubmitPersonality,
-  } = useSchedulePersonalityBinding({
+  const personality = useSchedulePersonalityBinding({
     mutationServerId,
     schedule,
     state,
@@ -400,7 +366,7 @@ function OpenScheduleFormSheet({
 
     await persistPreferences();
     const maxRuns = parseMaxRuns(state.maxRuns);
-    const personalityBinding = resolveSubmitPersonality();
+    const personalityBinding = personality.resolveSubmitPersonality?.() ?? null;
     if (mode === "edit" && schedule) {
       await updateSchedule({
         id: schedule.id,
@@ -451,15 +417,7 @@ function OpenScheduleFormSheet({
       ...(maxRuns != null ? { maxRuns } : {}),
     });
     return true;
-  }, [
-    createSchedule,
-    mode,
-    persistPreferences,
-    resolveSubmitPersonality,
-    schedule,
-    state,
-    updateSchedule,
-  ]);
+  }, [createSchedule, mode, persistPreferences, personality, schedule, state, updateSchedule]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) {
@@ -530,39 +488,27 @@ function OpenScheduleFormSheet({
         controlSize={controlSize}
         cadenceError={cadenceError}
         mutationServerId={mutationServerId}
-        personalities={displayPersonalities}
-        selectedPersonalityId={effectiveSelectedPersonalityId}
-        onSelectPersonality={handleSelectPersonality}
-        onClearPersonality={handleClearPersonality}
+        personality={personality}
       />
     </AdaptiveModalSheet>
   );
-}
-
-interface SchedulePersonalityBinding {
-  personalities: SelectorPersonality[];
-  selectedPersonalityId: string | null;
-  onSelectPersonality: (id: string) => void;
-  onClearPersonality: () => void;
-  /** The name (or sentinel) to submit as the schedule's personality binding. */
-  resolveSubmitPersonality: () => string | null;
 }
 
 // The schedule form's personality binding: selecting a personality here BINDS
 // it onto the schedule — the daemon re-resolves the binding at every run (and
 // hard-fails loudly when it's out of commission). The synthetic "Team's
 // Scheduler" entry stores the protocol sentinel instead of a name and follows
-// whoever holds the Scheduler role in the active team at run time.
+// whoever holds the Scheduler role in the active team at run time. The binding
+// mechanics live in the shared form producer (useFormRolePersonality); this
+// hook just supplies the scheduler role, sentinel, and unattended apply.
 function useSchedulePersonalityBinding(input: {
   mutationServerId: string;
   schedule: ScheduleSummary | undefined;
   state: ScheduleFormState;
   model: ScheduleFormModel;
   providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
-}): SchedulePersonalityBinding {
+}): RolePersonality {
   const { mutationServerId, schedule, state, model, providerSnapshot } = input;
-  const { config: daemonConfig } = useDaemonConfig(mutationServerId || null);
-  const hasTeamsFeature = useAgentTeamsFeature(mutationServerId);
   const scheduleConfig = schedule?.target.type === "new-agent" ? schedule.target.config : null;
   const originalBinding = scheduleConfig?.personality?.trim() || null;
 
@@ -584,122 +530,24 @@ function useSchedulePersonalityBinding(input: {
     [state.selectedProvider, state.selectedModel, state.selectedThinkingOptionId],
   );
 
-  const rosterSource = daemonConfig?.agentPersonalities?.personalities;
-  // The already-bound personality stays selectable even when the active team's
-  // strict filter would hide it — the form must not break an existing binding.
-  const boundRosterId = useMemo(() => {
-    if (!originalBinding || originalBinding === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
-      return null;
-    }
-    const roster = rosterSource ?? [];
-    const match =
-      roster.find((entry) => entry.name === originalBinding) ??
-      roster.find((entry) => entry.name.toLowerCase() === originalBinding.toLowerCase());
-    return match?.id ?? null;
-  }, [originalBinding, rosterSource]);
-
-  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
-    usePersonalitySelection({
-      serverId: mutationServerId || null,
-      role: "scheduler",
-      entries: providerSnapshot.entries ?? [],
-      onApply: applyPersonality,
-      currentSelection: personalityCurrentSelection,
-      alwaysIncludePersonalityId: boundRosterId,
-    });
-
-  const activeTeam = useMemo(
-    () => getActiveAgentTeam(daemonConfig?.agentTeams),
-    [daemonConfig?.agentTeams],
-  );
-  const teamSchedulerEntry = useMemo(
-    () =>
-      hasTeamsFeature && activeTeam && state.targetKind === "new-agent"
-        ? buildTeamSchedulerEntry({
-            team: activeTeam,
-            roster: rosterSource ?? [],
-            entries: providerSnapshot.entries ?? [],
-          })
-        : null,
-    [hasTeamsFeature, activeTeam, state.targetKind, rosterSource, providerSnapshot.entries],
-  );
-
-  const [teamSchedulerSelected, setTeamSchedulerSelected] = useState(
-    originalBinding === TEAM_SCHEDULER_PERSONALITY_SENTINEL,
-  );
-  // True after any explicit personality select/clear — gates whether an edit
-  // rewrites or preserves the stored binding (a roster that hasn't loaded yet
-  // must not silently strip it).
-  const [bindingTouched, setBindingTouched] = useState(false);
-
-  const displayPersonalities = useMemo<SelectorPersonality[]>(
-    () => (teamSchedulerEntry ? [teamSchedulerEntry.selector, ...personalities] : personalities),
-    [teamSchedulerEntry, personalities],
-  );
-  let effectiveSelectedPersonalityId: string | null;
-  if (teamSchedulerSelected) {
-    effectiveSelectedPersonalityId = teamSchedulerEntry ? TEAM_SCHEDULER_ENTRY_ID : null;
-  } else {
-    effectiveSelectedPersonalityId =
-      selectedPersonalityId ?? (!bindingTouched ? boundRosterId : null);
-  }
-
-  const handleSelectPersonality = useCallback(
-    (id: string) => {
-      setBindingTouched(true);
-      if (id === TEAM_SCHEDULER_ENTRY_ID) {
-        if (!teamSchedulerEntry?.values) {
-          return;
-        }
-        setTeamSchedulerSelected(true);
-        applyPersonality(teamSchedulerEntry.values);
-        return;
-      }
-      setTeamSchedulerSelected(false);
-      selectPersonality(id);
+  return useFormRolePersonality({
+    serverId: mutationServerId || null,
+    role: "scheduler",
+    entries: providerSnapshot.entries ?? [],
+    onApply: applyPersonality,
+    currentSelection: personalityCurrentSelection,
+    team: {
+      entryId: TEAM_SCHEDULER_ENTRY_ID,
+      label: "Team's Scheduler",
+      roleLabel: "Scheduler",
+      // The synthetic entry only makes sense for a new-agent target.
+      enabled: state.targetKind === "new-agent",
     },
-    [teamSchedulerEntry, applyPersonality, selectPersonality],
-  );
-  const handleClearPersonality = useCallback(() => {
-    setBindingTouched(true);
-    setTeamSchedulerSelected(false);
-    clearPersonality();
-  }, [clearPersonality]);
-
-  // The name (or sentinel) submitted as the schedule's personality binding —
-  // exactly what the trigger shows, so display and persistence can't diverge.
-  const resolveSubmitPersonality = useCallback((): string | null => {
-    if (teamSchedulerSelected) {
-      if (teamSchedulerEntry) {
-        return TEAM_SCHEDULER_PERSONALITY_SENTINEL;
-      }
-      // Teams aren't visible right now (no active team / old daemon): an
-      // untouched edit must not silently clear the stored sentinel.
-      return bindingTouched ? null : originalBinding;
-    }
-    if (effectiveSelectedPersonalityId) {
-      const selected = personalities.find((entry) => entry.id === effectiveSelectedPersonalityId);
-      if (selected) {
-        return selected.name;
-      }
-    }
-    return bindingTouched ? null : originalBinding;
-  }, [
-    teamSchedulerSelected,
-    teamSchedulerEntry,
-    bindingTouched,
-    originalBinding,
-    effectiveSelectedPersonalityId,
-    personalities,
-  ]);
-
-  return {
-    personalities: displayPersonalities,
-    selectedPersonalityId: effectiveSelectedPersonalityId,
-    onSelectPersonality: handleSelectPersonality,
-    onClearPersonality: handleClearPersonality,
-    resolveSubmitPersonality,
-  };
+    binding: {
+      originalBinding,
+      teamSentinel: TEAM_SCHEDULER_PERSONALITY_SENTINEL,
+    },
+  });
 }
 
 interface ScheduleFormFieldsProps {
@@ -710,10 +558,7 @@ interface ScheduleFormFieldsProps {
   controlSize: FieldControlSize;
   cadenceError: string | null;
   mutationServerId: string;
-  personalities: SelectorPersonality[];
-  selectedPersonalityId: string | null;
-  onSelectPersonality: (id: string) => void;
-  onClearPersonality: () => void;
+  personality: RolePersonality;
 }
 
 function ScheduleFormFields({
@@ -724,10 +569,7 @@ function ScheduleFormFields({
   controlSize,
   cadenceError,
   mutationServerId,
-  personalities,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  personality,
 }: ScheduleFormFieldsProps): ReactElement {
   const maxRunsHint = formatMaxRunsHint(state.maxRuns);
   return (
@@ -769,10 +611,7 @@ function ScheduleFormFields({
         agentTargetLabel={agentTargetLabel}
         controlSize={controlSize}
         mutationServerId={mutationServerId}
-        personalities={personalities}
-        selectedPersonalityId={selectedPersonalityId}
-        onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
+        personality={personality}
       />
 
       <CadenceEditor
@@ -811,10 +650,7 @@ interface ScheduleTargetFieldsProps {
   controlSize: FieldControlSize;
   mutationServerId: string;
   // Personality binding selection, owned by the parent (which submits it).
-  personalities: SelectorPersonality[];
-  selectedPersonalityId: string | null;
-  onSelectPersonality: (id: string) => void;
-  onClearPersonality: () => void;
+  personality: RolePersonality;
 }
 
 function ScheduleTargetFields({
@@ -824,10 +660,7 @@ function ScheduleTargetFields({
   agentTargetLabel,
   controlSize,
   mutationServerId,
-  personalities,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  personality,
 }: ScheduleTargetFieldsProps): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -885,8 +718,10 @@ function ScheduleTargetFields({
     [model],
   );
   const selectedPersonality = useMemo(
-    () => personalities.find((entry) => entry.id === selectedPersonalityId) ?? null,
-    [personalities, selectedPersonalityId],
+    () =>
+      personality.personalities?.find((entry) => entry.id === personality.selectedPersonalityId) ??
+      null,
+    [personality.personalities, personality.selectedPersonalityId],
   );
   const selectedPersonalityName = selectedPersonality?.name ?? null;
   const handleModelOpen = useCallback(() => {
@@ -1015,7 +850,7 @@ function ScheduleTargetFields({
 
       {state.disclosure.showModelField ? (
         <Field label="Model">
-          <CombinedModelSelector
+          <RoleModelSelector
             providers={state.modelSelectorProviders}
             selectedProvider={state.selectedProvider ?? ""}
             selectedModel={state.selectedModel}
@@ -1028,17 +863,14 @@ function ScheduleTargetFields({
             onOpen={handleModelOpen}
             onRetryProvider={handleRetryProvider}
             isRetryingProvider={providerSnapshot.isRefreshing}
-            personalities={personalities}
-            selectedPersonalityId={selectedPersonalityId}
-            onSelectPersonality={onSelectPersonality}
-            onClearPersonality={onClearPersonality}
+            personality={personality}
           />
         </Field>
       ) : null}
 
       {/* A personality already fixes its own effort, so hide the picker while
           one is selected — the whole point is not having to choose it. */}
-      {!selectedPersonalityId && state.disclosure.showThinkingField ? (
+      {!personality.selectedPersonalityId && state.disclosure.showThinkingField ? (
         <SelectField
           label="Effort"
           value={state.selectedThinkingOptionId || null}

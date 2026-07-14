@@ -861,6 +861,11 @@ export const ja: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1715,6 +1720,16 @@ export const ja: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "プロジェクト外 · {{project}}",
+      blocked:
+        "このファイルは {{project}} に属しており、このプロジェクトとはリンクされていません。開くにはプロジェクト設定でリンクしてください。",
+      warnTitle: "別のプロジェクトのファイルを開きますか？",
+      warnMessage:
+        "このファイルは {{project}} に属しています。ここでの変更はこのプロジェクトのコミットには含まれません。",
+      warnConfirm: "開く",
+      warnSuppress: "今後表示しない",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2598,6 +2613,13 @@ export const ja: TranslationResources = {
         saveLabel: "プロジェクト名を保存",
         cancelLabel: "名前変更をキャンセル",
         reset: "リセット",
+      },
+      links: {
+        title: "リンクされたプロジェクト",
+        info: "リンクされたプロジェクトは互いのファイルをその場で開いて編集できます。リンクされたプロジェクトから開いたファイルは、このプロジェクトのコミットには含まれません。リンクは双方向です。",
+        empty: "このホストにリンクできる他のプロジェクトはありません。",
+        error: "プロジェクトのリンクを更新できませんでした",
+        toggleAccessibility: "{{project}} をリンク",
       },
       readFailures: {
         invalidTitle: "otto.jsonを解析できませんでした",

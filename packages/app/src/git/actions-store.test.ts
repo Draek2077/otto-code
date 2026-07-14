@@ -5,6 +5,7 @@ import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import {
   __resetCheckoutGitActionsStoreForTests,
+  CheckoutGitRollbackFailedError,
   isLocalWorktreeArchivePending,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
@@ -310,10 +311,68 @@ describe("checkout-git-actions-store", () => {
 
     await expect(
       useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
-    ).rejects.toThrow("boom");
+    ).rejects.toMatchObject({ rollbackError: { kind: "git_failed", detail: "boom" } });
     expect(
       useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
     ).toBe("idle");
+  });
+
+  it("throws a typed agents_running rollback error the panel can confirm", async () => {
+    const client = {
+      checkoutGitRollback: vi.fn(async () => ({
+        cwd,
+        success: false,
+        rolledBackPaths: [],
+        error: {
+          kind: "agents_running",
+          agents: [{ id: "agent-1", title: "Coder" }],
+        },
+        requestId: "req-agents",
+      })),
+    };
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: null,
+      features: { checkoutGitRollback: true },
+    });
+
+    await expect(
+      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
+    ).rejects.toBeInstanceOf(CheckoutGitRollbackFailedError);
+    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, { paths: ["a.txt"] });
+    expect(
+      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
+    ).toBe("idle");
+  });
+
+  it("forwards allowWithRunningAgents to the rollback RPC on override", async () => {
+    const client = {
+      checkoutGitRollback: vi.fn(async () => ({
+        cwd,
+        success: true,
+        rolledBackPaths: ["a.txt"],
+        error: null,
+        requestId: "req-override",
+      })),
+    };
+    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
+    useSessionStore.getState().updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: null,
+      features: { checkoutGitRollback: true },
+    });
+
+    await useCheckoutGitActionsStore
+      .getState()
+      .rollbackPaths({ serverId, cwd, paths: ["a.txt"], allowWithRunningAgents: true });
+
+    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, {
+      paths: ["a.txt"],
+      allowWithRunningAgents: true,
+    });
   });
 
   it("does not call the rollback RPC when the daemon lacks the feature flag", async () => {

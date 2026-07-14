@@ -139,6 +139,77 @@ function buildTailScenarioEvents(actionCount: number): unknown[] {
   ];
 }
 
+function buildWorkflowScenarioEvents(
+  notificationStatus: "completed" | "failed" | "stopped",
+): unknown[] {
+  return [
+    {
+      type: "system",
+      subtype: "init",
+      session_id: "workflow-session",
+      permissionMode: "default",
+      model: "opus",
+    },
+    // The Workflow tool call is a normal top-level tool_use, cached under its id
+    // so task_* system messages can be classified as a workflow run.
+    {
+      type: "stream_event",
+      parent_tool_use_id: null,
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "wf-call-1",
+          name: "Workflow",
+          input: { name: "spec" },
+        },
+      },
+    },
+    {
+      type: "system",
+      subtype: "task_started",
+      session_id: "workflow-session",
+      task_id: "wf-task-1",
+      tool_use_id: "wf-call-1",
+      task_type: "local_workflow",
+      workflow_name: "spec",
+      description: "Deep research workflow",
+    },
+    {
+      type: "system",
+      subtype: "task_progress",
+      session_id: "workflow-session",
+      task_id: "wf-task-1",
+      tool_use_id: "wf-call-1",
+      description: "Fanning out research agents",
+      summary: "Phase 1: gather sources",
+      usage: { total_tokens: 1200, tool_uses: 4, duration_ms: 5000 },
+    },
+    {
+      type: "system",
+      subtype: "task_notification",
+      session_id: "workflow-session",
+      task_id: "wf-task-1",
+      tool_use_id: "wf-call-1",
+      status: notificationStatus,
+      output_file: "/tmp/workflow-out.md",
+      summary: "Synthesis complete",
+      usage: { total_tokens: 4800, tool_uses: 12, duration_ms: 42000 },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      usage: {
+        input_tokens: 1,
+        cache_read_input_tokens: 0,
+        output_tokens: 1,
+      },
+      total_cost_usd: 0,
+    },
+  ];
+}
+
 describe("ClaudeAgentSession sub-agent sidechain updates", () => {
   const logger = createTestLogger();
 
@@ -428,5 +499,71 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     expect(latest.detail.log).not.toContain("[Read] file-5.md");
     expect(latest.detail.log).toContain("[Read] file-6.md");
     expect(latest.detail.log).toContain("[Read] file-205.md");
+  });
+
+  test("surfaces a Workflow orchestration run as an observed subagent", async () => {
+    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("completed")));
+
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
+    await session.close();
+
+    const updates = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated",
+    );
+    // task_started + task_progress + task_notification all route to the observed row.
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+
+    const first = updates[0];
+    expect(first?.update).toMatchObject({
+      key: "wf-call-1",
+      taskId: "wf-task-1",
+      status: "running",
+      // The workflow name becomes the frozen row label so it reads as a workflow.
+      subAgentType: "Workflow: spec",
+    });
+
+    // The completion notification settles the observed row and carries the run's
+    // cumulative token cost.
+    const last = updates[updates.length - 1];
+    expect(last?.update).toMatchObject({ key: "wf-call-1", status: "idle" });
+    expect(last?.update.cumulativeTokens).toBe(4800);
+  });
+
+  test("surfaces a failed Workflow run as an error requiring attention", async () => {
+    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("failed")));
+
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
+    await session.close();
+
+    const updates = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated",
+    );
+    // The previously-invisible failure signal must surface as error + attention.
+    const last = updates[updates.length - 1];
+    expect(last?.update).toMatchObject({
+      key: "wf-call-1",
+      status: "error",
+      requiresAttention: true,
+    });
   });
 });

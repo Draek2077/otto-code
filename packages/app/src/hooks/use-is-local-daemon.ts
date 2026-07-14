@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getDesktopDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
-const DESKTOP_DAEMON_SERVER_ID_QUERY_KEY = ["desktop-daemon-server-id"] as const;
+export const DESKTOP_DAEMON_SERVER_ID_QUERY_KEY = ["desktop-daemon-server-id"] as const;
 
 interface DesktopDaemonServerIdResult {
   serverId: string | null;

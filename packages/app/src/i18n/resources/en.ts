@@ -856,6 +856,11 @@ export const en = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1720,6 +1725,16 @@ export const en = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "Out of project · {{project}}",
+      blocked:
+        "This file belongs to {{project}}, which isn't linked to this project. Link them in project settings to open it.",
+      warnTitle: "Open file from another project?",
+      warnMessage:
+        "This file belongs to {{project}}. Changes you make here won't be part of this project's commit.",
+      warnConfirm: "Open",
+      warnSuppress: "Don't show this again",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2584,6 +2599,13 @@ export const en = {
         saveLabel: "Save project name",
         cancelLabel: "Cancel renaming",
         reset: "Reset",
+      },
+      links: {
+        title: "Linked projects",
+        info: "Linked projects can open and edit each other's files in place. Files you open from a linked project won't be part of this project's commit. Links are bidirectional.",
+        empty: "No other projects on this host to link.",
+        error: "Couldn't update project link",
+        toggleAccessibility: "Link {{project}}",
       },
       readFailures: {
         invalidTitle: "otto.json couldn't be parsed",

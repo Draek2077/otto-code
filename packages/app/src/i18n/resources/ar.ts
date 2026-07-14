@@ -849,6 +849,11 @@ export const ar: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1698,6 +1703,16 @@ export const ar: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "خارج المشروع · {{project}}",
+      blocked:
+        "ينتمي هذا الملف إلى {{project}}، وهو غير مرتبط بهذا المشروع. اربطهما من إعدادات المشروع لفتحه.",
+      warnTitle: "فتح ملف من مشروع آخر؟",
+      warnMessage:
+        "ينتمي هذا الملف إلى {{project}}. لن تكون التغييرات التي تجريها هنا جزءًا من التزام هذا المشروع.",
+      warnConfirm: "فتح",
+      warnSuppress: "عدم الإظهار مرة أخرى",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2575,6 +2590,13 @@ export const ar: TranslationResources = {
         saveLabel: "احفظ اسم المشروع",
         cancelLabel: "إلغاء إعادة التسمية",
         reset: "إعادة ضبط",
+      },
+      links: {
+        title: "المشاريع المرتبطة",
+        info: "يمكن للمشاريع المرتبطة فتح وتحرير ملفات بعضها البعض في مكانها. لن تكون الملفات التي تفتحها من مشروع مرتبط جزءًا من التزام هذا المشروع. الروابط ثنائية الاتجاه.",
+        empty: "لا توجد مشاريع أخرى على هذا المضيف لربطها.",
+        error: "تعذّر تحديث رابط المشروع",
+        toggleAccessibility: "ربط {{project}}",
       },
       readFailures: {
         invalidTitle: "تعذر تحليل otto.json",

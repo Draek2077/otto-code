@@ -87,6 +87,11 @@ import {
   useStopBackgroundTask,
 } from "@/background-tasks";
 import { BackgroundTasksTrack } from "@/background-tasks/track";
+import {
+  SuggestedTasksTrack,
+  useSuggestedTaskActions,
+  useSuggestedTasksForParent,
+} from "@/suggested-tasks";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1461,6 +1466,11 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
+  const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
+  const hasSuggestedTasks = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
+  );
+  const suggestedTaskActions = useSuggestedTaskActions({ serverId, parentAgentId: agentId });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1608,6 +1618,9 @@ function ActiveAgentComposer({
           onStopTask={handleStopBackgroundTask}
           onClearCompleted={handleClearCompletedBackgroundTasks}
         />
+      ) : null}
+      {hasSuggestedTasks ? (
+        <SuggestedTasksTrack rows={suggestedTaskRows} actions={suggestedTaskActions} />
       ) : null}
       <Composer
         agentId={agentId}

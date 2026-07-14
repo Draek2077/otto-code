@@ -111,8 +111,10 @@ async function submitDraftCreateRequest(input: {
     effectiveThinkingOptionId: string | null;
     featureValues: Record<string, unknown> | undefined;
     agentControls: {
-      selectedPersonalityId?: string | null;
-      personalities?: SelectorPersonality[];
+      personality?: {
+        selectedPersonalityId?: string | null;
+        personalities?: SelectorPersonality[];
+      } | null;
     };
   };
   hostDisconnectedMessage: string;
@@ -192,8 +194,10 @@ function buildDraftAgentSnapshot(input: {
     selectedProvider: string | null;
     agentControls: {
       features?: Agent["features"];
-      selectedPersonalityId?: string | null;
-      personalities?: SelectorPersonality[];
+      personality?: {
+        selectedPersonalityId?: string | null;
+        personalities?: SelectorPersonality[];
+      } | null;
     };
   };
   selectModelMessage: string;

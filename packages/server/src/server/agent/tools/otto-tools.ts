@@ -2367,6 +2367,98 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   );
 
   registerTool(
+    "spawn_task",
+    {
+      title: "Suggest a task",
+      description:
+        "Suggest a follow-up task as a chip the user can start in one click — in a new " +
+        "worktree workspace, locally, or in this session — or dismiss. A chip appears in the " +
+        "session; your current turn continues uninterrupted and the task is NOT started " +
+        "automatically. Returns a task_id you can later pass to dismiss_task.",
+      inputSchema: {
+        title: z
+          .string()
+          .describe(
+            "Imperative verb phrase, under 60 chars. Used as the chip label and the spawned " +
+              'session title, e.g. "Fix the flaky auth test".',
+          ),
+        prompt: z
+          .string()
+          .describe(
+            "Self-contained initial message for the spawned session. Not shown to the user " +
+              "directly — include all the context needed to do the task without this conversation.",
+          ),
+        tldr: z
+          .string()
+          .describe("1-2 sentence plain-English summary of the task, shown in the chip's tooltip."),
+        cwd: z
+          .string()
+          .optional()
+          .describe(
+            "Optional absolute path to a different project root. Defaults to the current project.",
+          ),
+      },
+      outputSchema: {
+        task_id: z.string(),
+      },
+    },
+    async ({ title, prompt, tldr, cwd }) => {
+      if (!callerAgentId) {
+        throw new Error("spawn_task must be called from an agent session");
+      }
+      const resolvedCwd = cwd ? resolveScopedCwd(cwd) : undefined;
+      const taskId = agentManager.spawnSuggestedTask({
+        parentAgentId: callerAgentId,
+        title,
+        prompt,
+        tldr,
+        ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
+      });
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ task_id: taskId }),
+      };
+    },
+  );
+
+  registerTool(
+    "dismiss_task",
+    {
+      title: "Dismiss a suggested task",
+      description:
+        "Withdraw a suggested-task chip the user hasn't acted on yet — e.g. it's now stale, " +
+        "superseded, or already handled. If the task was already started or dismissed, this " +
+        "reports that and does nothing.",
+      inputSchema: {
+        task_id: z.string(),
+        reason: z
+          .string()
+          .optional()
+          .describe("Optional short note on why the suggestion is no longer relevant."),
+      },
+      outputSchema: {
+        dismissed: z.boolean(),
+        status: z.string(),
+      },
+    },
+    async ({ task_id, reason }) => {
+      const result = agentManager.dismissSuggestedTask(task_id, reason);
+      let status: string;
+      if (!result.found) {
+        status = "not_found";
+      } else if (result.dismissed) {
+        status = "dismissed";
+      } else {
+        status = `already_${result.state ?? "resolved"}`;
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ dismissed: result.dismissed, status }),
+      };
+    },
+  );
+
+  registerTool(
     "archive_agent",
     {
       title: "Archive agent",

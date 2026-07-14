@@ -876,6 +876,11 @@ export const es: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1738,6 +1743,16 @@ export const es: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "Fuera del proyecto · {{project}}",
+      blocked:
+        "Este archivo pertenece a {{project}}, que no está vinculado a este proyecto. Vincúlalos en la configuración del proyecto para abrirlo.",
+      warnTitle: "¿Abrir un archivo de otro proyecto?",
+      warnMessage:
+        "Este archivo pertenece a {{project}}. Los cambios que hagas aquí no formarán parte del commit de este proyecto.",
+      warnConfirm: "Abrir",
+      warnSuppress: "No volver a mostrar",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2622,6 +2637,13 @@ export const es: TranslationResources = {
         saveLabel: "Guardar nombre del proyecto",
         cancelLabel: "Cancelar cambio de nombre",
         reset: "Reiniciar",
+      },
+      links: {
+        title: "Proyectos vinculados",
+        info: "Los proyectos vinculados pueden abrir y editar sus archivos entre sí en el lugar. Los archivos que abras de un proyecto vinculado no formarán parte del commit de este proyecto. Los vínculos son bidireccionales.",
+        empty: "No hay otros proyectos en este host para vincular.",
+        error: "No se pudo actualizar el vínculo del proyecto",
+        toggleAccessibility: "Vincular {{project}}",
       },
       readFailures: {
         invalidTitle: "otto.json no se pudo analizar",

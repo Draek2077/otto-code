@@ -28,6 +28,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
   BackgroundShellTaskInfo,
+  SuggestedTaskInfo,
 } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
@@ -395,6 +396,9 @@ export interface SessionState {
   // id — not AI agents/subagents, plain shell processes for the Background
   // Tasks track. See packages/app/src/background-tasks/.
   backgroundShellTasks: Map<string, BackgroundShellTaskInfo>;
+  // Suggested tasks (spawn_task chips) keyed by taskId. Full per-parent pending
+  // list, reconciled on suggested_tasks_changed. See packages/app/src/suggested-tasks/.
+  suggestedTasks: Map<string, SuggestedTaskInfo>;
   workspaces: Map<string, WorkspaceDescriptor>;
   // Project parents with no active workspaces, keyed by projectId. The
   // `emptyProjects` name is the existing protocol/store projection.
@@ -523,6 +527,14 @@ interface SessionStoreActions {
     parentAgentId: string,
     tasks: readonly BackgroundShellTaskInfo[],
   ) => void;
+  // Replace the pending suggested tasks for a parent agent with the pushed list
+  // — mirrors the full-list reconciliation the daemon sends on
+  // suggested_tasks_changed.
+  setSuggestedTasksForParent: (
+    serverId: string,
+    parentAgentId: string,
+    tasks: readonly SuggestedTaskInfo[],
+  ) => void;
   setWorkspaces: (
     serverId: string,
     workspaces:
@@ -612,6 +624,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     workspaceAgentActivity: new Map(),
     agentDetails: new Map(),
     backgroundShellTasks: new Map(),
+    suggestedTasks: new Map(),
     workspaces: new Map(),
     emptyProjects: new Map(),
     restoringWorkspaces: new Map(),
@@ -1278,6 +1291,31 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, backgroundShellTasks: next },
+            },
+          };
+        });
+      },
+
+      setSuggestedTasksForParent: (serverId, parentAgentId, tasks) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const next = new Map(session.suggestedTasks);
+          for (const [id, task] of next) {
+            if (task.parentAgentId === parentAgentId) {
+              next.delete(id);
+            }
+          }
+          for (const task of tasks) {
+            next.set(task.taskId, task);
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, suggestedTasks: next },
             },
           };
         });

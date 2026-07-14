@@ -10,13 +10,12 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
-  CircleAlert,
+  CircleAlertFilled,
+  CircleHelpFilled,
+  CircleNotificationsFilled,
   ExternalLink,
-  Folder,
-  FolderGit2,
   GitPullRequest,
   Globe,
-  Monitor,
   SquareTerminal,
 } from "@/components/icons/material-icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -27,26 +26,12 @@ import { usePrefetchWorkspaceCheckoutStatus } from "@/hooks/use-prefetch-workspa
 import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
-const DEFAULT_STATUS_DOT_SIZE = 7;
-const EMPHASIZED_STATUS_DOT_SIZE = 9;
-const DEFAULT_STATUS_DOT_OFFSET = 0;
-const EMPHASIZED_STATUS_DOT_OFFSET = -1;
-
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-// Folds the compact-aware icon size into the mapping — `uniProps` mappings read
-// the live theme, so this stays reactive to the mobile icon-doubling patch, unlike
-// a plain `size={14}` literal.
-const foregroundMutedSmMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
 const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
@@ -57,10 +42,9 @@ const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedMonitor = withUnistyles(Monitor);
-const ThemedFolder = withUnistyles(Folder);
-const ThemedFolderGit2 = withUnistyles(FolderGit2);
+const ThemedCircleAlertFilled = withUnistyles(CircleAlertFilled);
+const ThemedCircleHelpFilled = withUnistyles(CircleHelpFilled);
+const ThemedCircleNotificationsFilled = withUnistyles(CircleNotificationsFilled);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
@@ -138,11 +122,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        <WorkspaceStatusIndicator
-          bucket={workspace.statusBucket}
-          workspaceKind={workspace.workspaceKind}
-          loading={isLoading}
-        />
+        <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isLoading} />
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             <View style={styles.workspaceTitleLeft}>
@@ -193,11 +173,9 @@ function WorkspaceScriptIcon({ kind }: { kind: SidebarWorkspaceScriptIconKind })
 
 function WorkspaceStatusIndicator({
   bucket,
-  workspaceKind,
   loading = false,
 }: {
   bucket: SidebarWorkspaceEntry["statusBucket"];
-  workspaceKind: SidebarWorkspaceEntry["workspaceKind"];
   loading?: boolean;
 }) {
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket });
@@ -218,10 +196,21 @@ function WorkspaceStatusIndicator({
     );
   }
 
+  // Every actionable state renders the same unified badge shape: a filled circle
+  // with a symbol knocked out, color-coded by meaning. Running keeps its loader
+  // (above) and done/idle reserves the slot but draws nothing (below).
   if (bucket === "needs_input") {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-needs_input">
-        <ThemedCircleAlert size={14} uniProps={amberColorMapping} />
+        <ThemedCircleHelpFilled size={14} uniProps={amberColorMapping} />
+      </View>
+    );
+  }
+
+  if (bucket === "failed") {
+    return (
+      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-failed">
+        <ThemedCircleAlertFilled size={14} uniProps={redColorMapping} />
       </View>
     );
   }
@@ -229,65 +218,12 @@ function WorkspaceStatusIndicator({
   if (bucket === "attention") {
     return (
       <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-attention">
-        <View style={styles.standaloneStatusDot} />
+        <ThemedCircleNotificationsFilled size={14} uniProps={greenColorMapping} />
       </View>
     );
   }
 
-  if (bucket === "done") {
-    return <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done" />;
-  }
-
-  let KindIcon: typeof ThemedMonitor;
-  if (workspaceKind === "local_checkout") KindIcon = ThemedMonitor;
-  else if (workspaceKind === "worktree") KindIcon = ThemedFolderGit2;
-  else KindIcon = ThemedFolder;
-
-  const dotColorStyle = getStatusDotColorStyle(bucket);
-  const statusDotSize = isEmphasizedStatusDotBucket(bucket)
-    ? EMPHASIZED_STATUS_DOT_SIZE
-    : DEFAULT_STATUS_DOT_SIZE;
-  const statusDotOffset =
-    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
-      ? EMPHASIZED_STATUS_DOT_OFFSET
-      : DEFAULT_STATUS_DOT_OFFSET;
-  return (
-    <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
-      <KindIcon uniProps={foregroundMutedSmMapping} />
-      {dotColorStyle ? (
-        <StatusDotOverlay
-          dotColorStyle={dotColorStyle}
-          size={statusDotSize}
-          offset={statusDotOffset}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-function StatusDotOverlay({
-  dotColorStyle,
-  size,
-  offset,
-}: {
-  dotColorStyle: ViewStyle;
-  size: number;
-  offset: number;
-}) {
-  const overlayStyle = useMemo(
-    () => [
-      styles.statusDotOverlay,
-      dotColorStyle,
-      {
-        width: size,
-        height: size,
-        right: offset,
-        bottom: offset,
-      },
-    ],
-    [dotColorStyle, offset, size],
-  );
-  return <View style={overlayStyle} />;
+  return <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done" />;
 }
 
 function PrBadge({ hint }: { hint: PrHint }) {
@@ -357,21 +293,6 @@ function getPrIconUniMapping(state: PrHint["state"]) {
       return greenColorMapping;
     case "closed":
       return redColorMapping;
-  }
-}
-
-function getStatusDotColorStyle(bucket: SidebarStateBucket) {
-  switch (bucket) {
-    case "needs_input":
-      return styles.statusDotNeedsInput;
-    case "failed":
-      return styles.statusDotFailed;
-    case "running":
-      return styles.statusDotRunning;
-    case "attention":
-      return styles.statusDotAttention;
-    case "done":
-      return null;
   }
 }
 
@@ -534,17 +455,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  statusDotOverlay: {
-    position: "absolute",
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-  },
-  standaloneStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.palette.green[500],
-  },
   workspaceBranchText: {
     color: theme.colors.foreground,
     // Explicit compact bump (not left to the ambient theme-patch scale).
@@ -585,21 +495,5 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
-  },
-  statusDotNeedsInput: {
-    backgroundColor: theme.colors.palette.amber[500],
-    borderColor: theme.colors.surface0,
-  },
-  statusDotFailed: {
-    backgroundColor: theme.colors.palette.red[500],
-    borderColor: theme.colors.surface0,
-  },
-  statusDotRunning: {
-    backgroundColor: theme.colors.palette.blue[500],
-    borderColor: theme.colors.surface0,
-  },
-  statusDotAttention: {
-    backgroundColor: theme.colors.palette.green[500],
-    borderColor: theme.colors.surface0,
   },
 }));

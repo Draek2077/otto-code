@@ -844,6 +844,11 @@ export const zhCN: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -875,7 +880,7 @@ export const zhCN: TranslationResources = {
           draft: "Draft",
           merged: "已 merge",
           closed: "已关闭",
-          open: "Open",
+          open: "打开",
         },
         activity: {
           commented: "已评论",
@@ -1682,6 +1687,14 @@ export const zhCN: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "项目外 · {{project}}",
+      blocked: "此文件属于 {{project}}，它未与此项目关联。请在项目设置中关联它们以打开该文件。",
+      warnTitle: "打开另一个项目的文件？",
+      warnMessage: "此文件属于 {{project}}。你在此处所做的更改不会包含在此项目的提交中。",
+      warnConfirm: "Open",
+      warnSuppress: "不再显示",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2551,6 +2564,13 @@ export const zhCN: TranslationResources = {
         saveLabel: "保存 Project 名称",
         cancelLabel: "取消重命名",
         reset: "重置",
+      },
+      links: {
+        title: "关联的项目",
+        info: "关联的项目可以就地打开和编辑彼此的文件。你从关联项目打开的文件不会包含在此项目的提交中。关联是双向的。",
+        empty: "此主机上没有其他可关联的项目。",
+        error: "无法更新项目关联",
+        toggleAccessibility: "关联 {{project}}",
       },
       readFailures: {
         invalidTitle: "无法解析 otto.json",

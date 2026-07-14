@@ -23,16 +23,19 @@ const CENTERED_PADDED_STYLE = {
 } as const;
 
 function useFilePanelDescriptor(
-  target: { kind: "file"; path: string },
+  target: { kind: "file"; path: string; origin?: { workspaceId: string } },
   context: PanelDescriptorContext,
 ) {
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
+  // Out-of-project tabs key their buffer by the OWNING workspace, not the host
+  // pane's, so the dirty indicator must read the same key (gated-multi-root).
+  const bufferWorkspaceId = target.origin?.workspaceId ?? context.workspaceId;
   const dirty = useEditorBufferStore(
     (state) =>
       state.buffers[
         buildEditorBufferKey({
           serverId: context.serverId,
-          workspaceId: context.workspaceId,
+          workspaceId: bufferWorkspaceId,
           path: target.path,
         })
       ]?.dirty ?? false,
@@ -77,9 +80,15 @@ async function confirmDiscardEditorBuffer(bufferId: EditorBufferId): Promise<boo
 function FilePanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target } = usePaneContext();
-  const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
+  const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
-  if (!workspaceDirectory) {
+  // An out-of-project file (gated-multi-root) is served from its OWNING
+  // workspace: cwd, workspaceId, and editor buffer all resolve against origin,
+  // so the same daemon file RPCs work unchanged for a linked project's files.
+  const origin = target.origin;
+  const effectiveWorkspaceId = origin?.workspaceId ?? workspaceId;
+  const effectiveRoot = origin?.cwd ?? paneWorkspaceDirectory;
+  if (!effectiveRoot) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
         <Text>{t("panels.file.directoryMissing")}</Text>
@@ -89,9 +98,10 @@ function FilePanel() {
   return (
     <FileTabPane
       serverId={serverId}
-      workspaceId={workspaceId}
-      workspaceRoot={workspaceDirectory}
+      workspaceId={effectiveWorkspaceId}
+      workspaceRoot={effectiveRoot}
       location={target}
+      outOfProjectName={origin?.projectName ?? null}
     />
   );
 }
@@ -103,7 +113,8 @@ export const filePanelRegistration: PanelRegistration<"file"> = {
   confirmClose(target, context) {
     return confirmDiscardEditorBuffer({
       serverId: context.serverId,
-      workspaceId: context.workspaceId,
+      // Match the origin-aware buffer key used by the pane (gated-multi-root).
+      workspaceId: target.origin?.workspaceId ?? context.workspaceId,
       path: target.path,
     });
   },

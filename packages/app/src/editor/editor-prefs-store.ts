@@ -9,6 +9,10 @@ import { createJSONStorage, persist } from "zustand/middleware";
 interface EditorPrefsState {
   wordWrap: boolean;
   toggleWordWrap: () => void;
+  // When true, opening a file from another (linked) project no longer prompts —
+  // the "Don't show this again" choice on the cross-project warning (gated-multi-root).
+  suppressOutOfProjectWarning: boolean;
+  setSuppressOutOfProjectWarning: (value: boolean) => void;
 }
 
 export const useEditorPrefsStore = create<EditorPrefsState>()(
@@ -16,6 +20,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
     (set) => ({
       wordWrap: false,
       toggleWordWrap: () => set((state) => ({ wordWrap: !state.wordWrap })),
+      suppressOutOfProjectWarning: false,
+      setSuppressOutOfProjectWarning: (value: boolean) =>
+        set({ suppressOutOfProjectWarning: value }),
     }),
     {
       name: "editor-prefs",

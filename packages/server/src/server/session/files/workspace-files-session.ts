@@ -39,6 +39,22 @@ import {
   WorkspaceSymbolIndex,
 } from "../../file-explorer/code-index.js";
 import { getProjectIcon } from "../../../utils/project-icon.js";
+import { expandUserPath, isSameOrDescendantPath } from "../../path-utils.js";
+
+const ACCESS_OUTSIDE_WORKSPACES_MESSAGE = "Access outside of known workspaces is not allowed";
+
+/**
+ * Thrown when a file RPC targets a `cwd` that is not one of Otto's known
+ * workspace roots (nor a descendant of one). Carries the same message the
+ * handlers surface to the client so cross-workspace access stays bounded to
+ * paths Otto actually knows about.
+ */
+class WorkspaceAccessError extends Error {
+  constructor() {
+    super(ACCESS_OUTSIDE_WORKSPACES_MESSAGE);
+    this.name = "WorkspaceAccessError";
+  }
+}
 
 /**
  * What a workspace file-access request reaches outside its own domain: the
@@ -57,6 +73,17 @@ export interface WorkspaceFilesSessionOptions {
   downloadTokenStore: DownloadTokenStore;
   ottoHome: string;
   logger: pino.Logger;
+  /**
+   * Resolves the distinct absolute filesystem roots the client is allowed to
+   * reach through file RPCs — every known Otto workspace (and project) path.
+   * Evaluated per request so workspaces created or removed mid-session are
+   * reflected immediately. A requested `cwd` is honored only when it equals or
+   * sits inside one of these roots; anything else is refused, so the daemon
+   * serves files across every workspace Otto knows about while never exposing
+   * arbitrary filesystem paths outside them. Path-containment within the `cwd`
+   * is still enforced separately by the file-explorer service.
+   */
+  resolveAllowedRoots: () => Promise<string[]>;
   /** Test hook: tighten the watcher's timing so specs stay fast. */
   watchOptions?: { pollIntervalMs?: number; debounceMs?: number };
 }
@@ -72,6 +99,7 @@ export class WorkspaceFilesSession {
   private readonly host: WorkspaceFilesSessionHost;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly logger: pino.Logger;
+  private readonly resolveAllowedRoots: () => Promise<string[]>;
   private readonly fileUploads: FileUploadStore;
   private readonly fileWatcher: SessionFileWatcher;
   private readonly symbolIndex = new WorkspaceSymbolIndex();
@@ -81,6 +109,7 @@ export class WorkspaceFilesSession {
     this.host = options.host;
     this.downloadTokenStore = options.downloadTokenStore;
     this.logger = options.logger;
+    this.resolveAllowedRoots = options.resolveAllowedRoots;
     this.fileUploads = new FileUploadStore({ ottoHome: options.ottoHome });
     this.fileWatcher = new SessionFileWatcher({
       logger: options.logger,
@@ -93,6 +122,22 @@ export class WorkspaceFilesSession {
 
   dispose(): void {
     this.fileWatcher.dispose();
+  }
+
+  /**
+   * Boundary gate for every file RPC: the requested `cwd` must be one of Otto's
+   * known workspace roots or a descendant of one. This is what lets a client
+   * open files from any workspace — not just the active one — while keeping the
+   * daemon from serving arbitrary paths outside every workspace it knows about.
+   * WSL/Windows path forms are folded together by `isSameOrDescendantPath`.
+   */
+  private async assertCwdWithinKnownWorkspace(cwd: string): Promise<void> {
+    const expandedCwd = expandUserPath(cwd);
+    const roots = await this.resolveAllowedRoots();
+    const allowed = roots.some((root) => isSameOrDescendantPath(expandUserPath(root), expandedCwd));
+    if (!allowed) {
+      throw new WorkspaceAccessError();
+    }
   }
 
   async handleFileWatchSubscribeRequest(request: FileWatchSubscribeRequest): Promise<void> {
@@ -114,6 +159,7 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       await this.fileWatcher.subscribe({ cwd, path: request.path });
       respond(true, null);
     } catch (error) {
@@ -162,6 +208,7 @@ export class WorkspaceFilesSession {
     }
 
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       if (mode === "list") {
         const directory = await listDirectoryEntries({
           root: cwd,
@@ -273,6 +320,7 @@ export class WorkspaceFilesSession {
     }
 
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const outcome = await writeExplorerFile({
         root: cwd,
         relativePath: requestedPath,
@@ -316,6 +364,7 @@ export class WorkspaceFilesSession {
     const signal = { superseded: false };
     this.activeSearchSignal = signal;
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const outcome = await searchWorkspaceFiles({
         root: cwd,
         query: request.query,
@@ -372,6 +421,7 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const results = await replaceInWorkspaceFiles({
         root: cwd,
         replacement: request.replacement,
@@ -409,6 +459,7 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const { files, truncated } = await listWorkspaceFiles(cwd);
       this.host.emit({
         type: "code.list_files.response",
@@ -445,6 +496,7 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const locations = await this.symbolIndex.findSymbol(cwd, request.name);
       this.host.emit({
         type: "code.symbols.response",
@@ -484,6 +536,7 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const symbols = await getFileOutline(cwd, request.path);
       this.host.emit({
         type: "code.outline.response",
@@ -524,6 +577,7 @@ export class WorkspaceFilesSession {
     const { cwd, requestId } = request;
 
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd.trim());
       const icon = await getProjectIcon(cwd);
       this.host.emit({
         type: "project_icon_response",
@@ -573,6 +627,7 @@ export class WorkspaceFilesSession {
     );
 
     try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
       const info = await getDownloadableFileInfo({
         root: cwd,
         relativePath: requestedPath,

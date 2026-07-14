@@ -13,10 +13,11 @@ import { withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
   ChevronRight,
-  CircleAlert,
+  CircleAlertFilled,
   CircleCheck,
   CircleDot,
-  CircleX,
+  CircleHelpFilled,
+  CircleNotificationsFilled,
 } from "@/components/icons/material-icons";
 import { DiffStat } from "@/components/diff-stat";
 import { useToast } from "@/contexts/toast-context";
@@ -81,10 +82,11 @@ const SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION = { minIndexForVisib
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedCircleAlert = withUnistyles(CircleAlert);
+const ThemedCircleAlertFilled = withUnistyles(CircleAlertFilled);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
-const ThemedCircleX = withUnistyles(CircleX);
+const ThemedCircleHelpFilled = withUnistyles(CircleHelpFilled);
+const ThemedCircleNotificationsFilled = withUnistyles(CircleNotificationsFilled);
 interface StatusWorkspaceListProps {
   groups: StatusGroup[];
   projectNamesByKey: Map<string, string>;
@@ -306,11 +308,11 @@ function StatusGroupLeadingVisual({
 function StatusGroupIcon({ bucket }: { bucket: StatusGroup["bucket"] }) {
   switch (bucket) {
     case "needs_input":
-      return <ThemedCircleAlert size={14} uniProps={amberColorMapping} />;
+      return <ThemedCircleHelpFilled size={14} uniProps={amberColorMapping} />;
     case "failed":
-      return <ThemedCircleX size={14} uniProps={redColorMapping} />;
+      return <ThemedCircleAlertFilled size={14} uniProps={redColorMapping} />;
     case "attention":
-      return <ThemedCircleCheck size={14} uniProps={greenColorMapping} />;
+      return <ThemedCircleNotificationsFilled size={14} uniProps={greenColorMapping} />;
     case "running":
       return <ThemedCircleDot size={14} uniProps={blueColorMapping} />;
     case "done":

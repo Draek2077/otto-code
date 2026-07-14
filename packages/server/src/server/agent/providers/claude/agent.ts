@@ -1827,6 +1827,36 @@ function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
   return name === "Bash";
 }
 
+// Claude's Workflow tool (deterministic multi-agent orchestration —
+// agent()/parallel()/pipeline(), progress phases, task-completion notifications)
+// is a DIFFERENT spawn path than plain Task subagents, but it reports through the
+// same task_started/task_progress/task_notification stream. Unlike a Task
+// subagent it is backgrounded (its tool_result is an immediate "running" ack, real
+// completion arrives via task_notification), so it is settled like a background
+// shell task, not on tool_result. We surface the orchestration run as a read-only
+// observed subagent so it can be watched. See projects/observed-subagents/observed-subagents.md.
+function isClaudeWorkflowToolName(name: string | undefined): boolean {
+  return name === "Workflow";
+}
+
+// The SDK tags a workflow-orchestration task with task_type "local_workflow"
+// (the friendly BackgroundTaskSummary label is "workflow"). Only task_started
+// carries task_type/workflow_name; later task_progress/task_notification omit
+// them, so the classification is remembered via observedKeyByTaskId once the
+// run is announced.
+function isClaudeWorkflowTaskType(taskType: string | undefined): boolean {
+  return taskType === "local_workflow" || taskType === "workflow";
+}
+
+// Frozen row label for an observed workflow run. workflow_name is meta.name from
+// the script (e.g. "spec"); prefix it so the observed track reads it as a
+// workflow rather than a plain subagent. Fed through the subAgentType title
+// source, which deriveObservedSubagentTitle freezes at birth.
+function readClaudeWorkflowLabel(workflowName: unknown): string {
+  const name = readObservedSubagentText(workflowName);
+  return name ? `Workflow: ${name}` : "Workflow";
+}
+
 function readObservedSubagentText(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -4064,44 +4094,74 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "task_progress") {
-      if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
-        this.appendBackgroundShellTaskEvent(events, {
-          taskId: message.task_id,
-          toolUseId: message.tool_use_id,
-          description: message.summary ?? message.description,
-          status: "running",
-        });
-        return;
-      }
-      this.appendObservedSubagentTaskEvent(message, events, {
-        taskId: message.task_id,
-        toolUseId: message.tool_use_id,
-        subAgentType: message.subagent_type,
-        description: message.summary ?? message.description,
-        status: "running",
-        cumulativeTokens: message.usage?.total_tokens,
-      });
+      this.appendTaskProgressEvents(message, events);
       return;
     }
     if (message.subtype === "task_started") {
-      if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
-        this.appendBackgroundShellTaskEvent(events, {
-          taskId: message.task_id,
-          toolUseId: message.tool_use_id,
-          description: message.description,
-          status: "running",
-        });
-        return;
-      }
-      this.appendObservedSubagentTaskEvent(message, events, {
+      this.appendTaskStartedEvents(message, events);
+      return;
+    }
+  }
+
+  private appendTaskProgressEvents(
+    message: Extract<SDKMessage, { type: "system"; subtype: "task_progress" }>,
+    events: AgentStreamEvent[],
+  ): void {
+    if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
+      this.appendBackgroundShellTaskEvent(events, {
         taskId: message.task_id,
         toolUseId: message.tool_use_id,
-        subAgentType: message.subagent_type,
+        description: message.summary ?? message.description,
+        status: "running",
+      });
+      return;
+    }
+    // task_progress omits task_type; workflow runs are recognized by their
+    // remembered observed key or the still-cached Workflow tool call (in
+    // appendObservedSubagentTaskEvent's gate). subagent_type is absent for a
+    // workflow, so the description carries the live phase summary and the
+    // frozen title stays whatever task_started set.
+    this.appendObservedSubagentTaskEvent(message, events, {
+      taskId: message.task_id,
+      toolUseId: message.tool_use_id,
+      subAgentType: message.subagent_type,
+      description: message.summary ?? message.description,
+      status: "running",
+      cumulativeTokens: message.usage?.total_tokens,
+    });
+  }
+
+  private appendTaskStartedEvents(
+    message: Extract<SDKMessage, { type: "system"; subtype: "task_started" }>,
+    events: AgentStreamEvent[],
+  ): void {
+    if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
+      this.appendBackgroundShellTaskEvent(events, {
+        taskId: message.task_id,
+        toolUseId: message.tool_use_id,
         description: message.description,
         status: "running",
       });
       return;
     }
+    // A workflow orchestration run announces itself here with task_type
+    // "local_workflow" (+ workflow_name) or a cached Workflow tool call. Fold
+    // its name into the subAgentType title source so the observed row reads
+    // "Workflow: <name>"; the rest of the lifecycle flows through the shared
+    // observed-subagent path (keyed by the Workflow tool_use id, so its
+    // sidechain transcript lands on the same row).
+    const cachedTool = message.tool_use_id ? this.toolUseCache.get(message.tool_use_id) : undefined;
+    const isWorkflowStart =
+      isClaudeWorkflowTaskType(message.task_type) || isClaudeWorkflowToolName(cachedTool?.name);
+    this.appendObservedSubagentTaskEvent(message, events, {
+      taskId: message.task_id,
+      toolUseId: message.tool_use_id,
+      subAgentType: isWorkflowStart
+        ? readClaudeWorkflowLabel(message.workflow_name)
+        : message.subagent_type,
+      description: message.description,
+      status: "running",
+    });
   }
 
   /**
@@ -4141,6 +4201,10 @@ class ClaudeAgentSession implements AgentSession {
     const isSubagentTask =
       readObservedSubagentText(input.subAgentType) !== undefined ||
       isClaudeSubagentToolName(cachedTool?.name) ||
+      // A Workflow orchestration run is observable too — recognize it directly by
+      // its cached tool so a task_progress/task_notification seen before (or
+      // without) task_started still routes to the observed row.
+      isClaudeWorkflowToolName(cachedTool?.name) ||
       this.observedKeyByTaskId.has(input.taskId);
     if (!isSubagentTask) {
       return;
@@ -4243,8 +4307,14 @@ class ClaudeAgentSession implements AgentSession {
       });
       return;
     }
+    // A workflow run and a Task subagent settle the same way — the completion
+    // notification maps onto the observed row's terminal state (this is where a
+    // failed/stopped run finally becomes visible). Both go through the shared
+    // observed-subagent path; the gate below recognizes either a Task/Agent or a
+    // Workflow tool call, or any already-announced observed task.
     if (
       isClaudeSubagentToolName(cachedTool?.name) ||
+      isClaudeWorkflowToolName(cachedTool?.name) ||
       this.observedKeyByTaskId.has(message.task_id)
     ) {
       let status: "idle" | "error" | "closed" = "idle";
@@ -4633,9 +4703,15 @@ class ClaudeAgentSession implements AgentSession {
             output: null,
           }),
         );
-        // An interrupted turn takes its in-flight subagents down with it —
-        // settle their observed rows instead of leaving them "running".
-        if (isClaudeSubagentToolName(entry.name) && this.announcedObservedSubagents.has(id)) {
+        // An interrupted turn takes its in-flight subagents (and workflow runs)
+        // down with it — settle their observed rows instead of leaving them
+        // "running". Only tasks still in the cache are in-flight; a backgrounded
+        // workflow whose tool_result already evicted it is left for its own
+        // task_notification, matching the background-shell semantics below.
+        if (
+          (isClaudeSubagentToolName(entry.name) || isClaudeWorkflowToolName(entry.name)) &&
+          this.announcedObservedSubagents.has(id)
+        ) {
           this.pushEvent({
             type: "observed_subagent_updated",
             provider: "claude",

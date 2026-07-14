@@ -49,17 +49,21 @@ export function resolveAutoSubmitConfig(
 export function resolveDraftPersonality(input: {
   autoSubmitConfig: DraftAutoSubmitConfig | null;
   agentControls: {
-    selectedPersonalityId?: string | null;
-    personalities?: SelectorPersonality[];
+    personality?: {
+      selectedPersonalityId?: string | null;
+      personalities?: SelectorPersonality[];
+    } | null;
   };
 }): { id: string; spinner: { glowA: string; glowB: string } | null } | null {
   const id = input.autoSubmitConfig
     ? input.autoSubmitConfig.personality
-    : input.agentControls.selectedPersonalityId;
+    : input.agentControls.personality?.selectedPersonalityId;
   if (!id) {
     return null;
   }
-  const personality = input.agentControls.personalities?.find((entry) => entry.id === id);
+  const personality = input.agentControls.personality?.personalities?.find(
+    (entry) => entry.id === id,
+  );
   const spinner =
     personality?.glowA && personality.glowB
       ? { glowA: personality.glowA, glowB: personality.glowB }

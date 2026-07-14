@@ -49,7 +49,13 @@ import {
   type ObservedSubagentUpdate,
   type BackgroundShellTaskUpdate,
 } from "./agent-sdk-types.js";
-import type { AgentSnapshotPayload, BackgroundShellTaskInfo } from "../messages.js";
+import type {
+  AgentSnapshotPayload,
+  BackgroundShellTaskInfo,
+  SuggestedTaskInfo,
+  SuggestedTaskState,
+  TasksSuggestedStartMode,
+} from "../messages.js";
 import {
   deriveObservedSubagentTitle,
   observedUpdateHasTitleSource,
@@ -178,6 +184,14 @@ export type AgentManagerEvent =
       type: "background_shell_task_state";
       parentAgentId: string;
       tasks: BackgroundShellTaskInfo[];
+    }
+  // The full current set of pending suggested tasks for a parent agent changed
+  // (spawn/start/dismiss). Not Agent-shaped — forwarded to clients as
+  // suggested_tasks_changed.
+  | {
+      type: "suggested_task_state";
+      parentAgentId: string;
+      tasks: SuggestedTaskInfo[];
     }
   | {
       type: "agent_stream";
@@ -359,6 +373,41 @@ interface BackgroundShellTaskEntry {
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
+}
+
+// A suggested task an agent surfaced via the `spawn_task` tool. The `prompt` is
+// held here (never sent to clients) and used verbatim when the user starts the
+// task. Resolved (started/dismissed) entries are retained so `dismiss_task` and
+// the start RPC stay idempotent, but are filtered out of the emitted list so the
+// chip disappears on resolution — same "terminal entries leave the wire" rule as
+// backgroundShellTasks.
+interface SuggestedTaskEntry {
+  id: string;
+  parentAgentId: string;
+  title: string;
+  prompt: string;
+  tldr: string;
+  cwd?: string;
+  state: SuggestedTaskState;
+  createdAt: string;
+  updatedAt: string;
+  startMode?: TasksSuggestedStartMode;
+  startedAgentId?: string;
+  dismissReason?: string;
+}
+
+export interface SpawnSuggestedTaskInput {
+  parentAgentId: string;
+  title: string;
+  prompt: string;
+  tldr: string;
+  cwd?: string;
+}
+
+export interface DismissSuggestedTaskResult {
+  found: boolean;
+  dismissed: boolean;
+  state?: SuggestedTaskState;
 }
 
 /**
@@ -790,6 +839,14 @@ export class AgentManager {
   // processes, so unlike observedSubagents there's no Agent-shaped payload;
   // the daemon pushes the full per-parent list on every change.
   private readonly backgroundShellTasks = new Map<string, BackgroundShellTaskEntry>();
+  // Suggested tasks (spawn_task chips): taskId -> current state, keyed globally.
+  // Pushed as the full per-parent pending list on every change.
+  private readonly suggestedTasks = new Map<string, SuggestedTaskEntry>();
+  // Synchronous reservation for in-flight suggested-task starts: a start awaits
+  // multi-second agent/worktree creation before flipping state to "started", so
+  // a second concurrent start.request for the same id would pass the pending
+  // gate too. Ids claimed here are rejected until the start resolves or fails.
+  private readonly startingSuggestedTaskIds = new Set<string>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
@@ -4443,6 +4500,123 @@ export class AgentManager {
     for (const parentId of parentIds) {
       this.emitBackgroundShellTaskState(parentId);
     }
+  }
+
+  // --- Suggested tasks (spawn_task / dismiss_task chips) --------------------
+
+  private currentSuggestedTasksFor(parentAgentId: string): SuggestedTaskInfo[] {
+    const tasks: SuggestedTaskInfo[] = [];
+    for (const entry of this.suggestedTasks.values()) {
+      if (entry.parentAgentId !== parentAgentId || entry.state !== "pending") {
+        continue;
+      }
+      tasks.push({
+        taskId: entry.id,
+        parentAgentId: entry.parentAgentId,
+        title: entry.title,
+        tldr: entry.tldr,
+        state: entry.state,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        ...(entry.cwd ? { cwd: entry.cwd } : {}),
+      });
+    }
+    return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  private emitSuggestedTaskState(parentAgentId: string): void {
+    this.dispatch({
+      type: "suggested_task_state",
+      parentAgentId,
+      tasks: this.currentSuggestedTasksFor(parentAgentId),
+    });
+  }
+
+  /** Create a pending suggested task and surface its chip. Returns the id. */
+  spawnSuggestedTask(input: SpawnSuggestedTaskInput): string {
+    const id = this.idFactory();
+    const now = new Date().toISOString();
+    this.suggestedTasks.set(id, {
+      id,
+      parentAgentId: input.parentAgentId,
+      title: input.title,
+      prompt: input.prompt,
+      tldr: input.tldr,
+      state: "pending",
+      createdAt: now,
+      updatedAt: now,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+    });
+    this.emitSuggestedTaskState(input.parentAgentId);
+    return id;
+  }
+
+  /** The full entry (incl. the server-only prompt), for the start handler. */
+  getSuggestedTaskEntry(taskId: string): SuggestedTaskEntry | undefined {
+    return this.suggestedTasks.get(taskId);
+  }
+
+  /**
+   * Atomically claim a suggested task for starting. Returns false — leaving no
+   * claim — when the entry is missing, is not pending, or is already being
+   * started; otherwise records the claim and returns true. Synchronous so two
+   * concurrent start.requests can't both pass the pending gate before the
+   * (awaited) agent/worktree creation flips the state. The caller must pair a
+   * successful claim with `endSuggestedTaskStart` in a finally.
+   */
+  beginSuggestedTaskStart(taskId: string): boolean {
+    const entry = this.suggestedTasks.get(taskId);
+    if (!entry || entry.state !== "pending" || this.startingSuggestedTaskIds.has(taskId)) {
+      return false;
+    }
+    this.startingSuggestedTaskIds.add(taskId);
+    return true;
+  }
+
+  /** Release a claim made by `beginSuggestedTaskStart` (on success or failure). */
+  endSuggestedTaskStart(taskId: string): void {
+    this.startingSuggestedTaskIds.delete(taskId);
+  }
+
+  /**
+   * Dismiss a suggested task. Idempotent: a task that was already started or
+   * dismissed is reported via `state` with `dismissed: false`, and an unknown
+   * task returns `found: false` — the caller decides how to surface each.
+   */
+  dismissSuggestedTask(taskId: string, reason?: string): DismissSuggestedTaskResult {
+    const entry = this.suggestedTasks.get(taskId);
+    if (!entry) {
+      return { found: false, dismissed: false };
+    }
+    if (entry.state !== "pending") {
+      return { found: true, dismissed: false, state: entry.state };
+    }
+    entry.state = "dismissed";
+    entry.updatedAt = new Date().toISOString();
+    if (reason) {
+      entry.dismissReason = reason;
+    }
+    this.emitSuggestedTaskState(entry.parentAgentId);
+    return { found: true, dismissed: true, state: "dismissed" };
+  }
+
+  /** Flip a pending task to started once its agent/steer has been dispatched. */
+  markSuggestedTaskStarted(params: {
+    taskId: string;
+    mode: TasksSuggestedStartMode;
+    startedAgentId?: string;
+  }): void {
+    const entry = this.suggestedTasks.get(params.taskId);
+    if (!entry) {
+      return;
+    }
+    entry.state = "started";
+    entry.startMode = params.mode;
+    entry.updatedAt = new Date().toISOString();
+    if (params.startedAgentId) {
+      entry.startedAgentId = params.startedAgentId;
+    }
+    this.emitSuggestedTaskState(entry.parentAgentId);
   }
 
   private recordAndDispatchTimelineItem(

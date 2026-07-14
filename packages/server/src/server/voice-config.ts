@@ -39,6 +39,36 @@ export function stripVoiceModeSystemPrompt(existing?: string): string | undefine
   return stripped.length > 0 ? stripped : undefined;
 }
 
+/**
+ * The `<otto_voice_mode>…</otto_voice_mode>` block currently layered onto a
+ * system prompt, or undefined if none. Voice mode appends (and persists) this
+ * block onto `config.systemPrompt`; callers that rewrite the base prompt but
+ * must preserve voice state (e.g. the personality live-switch) extract the
+ * block first, then reattach it with `reattachVoiceModeSystemPrompt`.
+ */
+export function extractVoiceModeSystemPrompt(existing?: string): string | undefined {
+  const match = existing?.match(makeVoicePromptBlockRegex());
+  return match?.[0];
+}
+
+/**
+ * Reattach a previously extracted voice-mode block onto a (possibly rewritten)
+ * base prompt, mirroring how `buildVoiceModeSystemPrompt` joins them. Passing an
+ * undefined block returns the base unchanged; an undefined base with a block
+ * returns just the block.
+ */
+export function reattachVoiceModeSystemPrompt(
+  base: string | undefined,
+  block: string | undefined,
+): string | undefined {
+  if (!block) {
+    return base;
+  }
+  return [base, block]
+    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    .join("\n\n");
+}
+
 export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled: boolean): string {
   const basePrompt = stripVoiceModeSystemPrompt(existing);
   const voiceInstruction = enabled

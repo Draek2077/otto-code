@@ -121,6 +121,7 @@ import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
+import { FileBackedProjectLinkStore } from "./project-links.js";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
@@ -941,6 +942,10 @@ export async function createOttoDaemon(
     path.join(config.ottoHome, "projects", "workspaces.json"),
     logger,
   );
+  const projectLinkStore = new FileBackedProjectLinkStore(
+    path.join(config.ottoHome, "projects", "project-links.json"),
+    logger,
+  );
   const chatService = new FileBackedChatService({
     ottoHome: config.ottoHome,
     logger,
@@ -1022,6 +1027,7 @@ export async function createOttoDaemon(
     logger,
   });
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+  await projectLinkStore.initialize();
   const workspaceReconciliation = new WorkspaceReconciliationService({
     projectRegistry,
     workspaceRegistry,
@@ -1768,6 +1774,7 @@ export async function createOttoDaemon(
               runService,
               recordActivity,
               () => activityStatsStore.getRollups(),
+              projectLinkStore,
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());

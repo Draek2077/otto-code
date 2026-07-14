@@ -868,6 +868,11 @@ export const ru: TranslationResources = {
           "Discard all uncommitted changes to the {{count}} selected files? This can't be undone.",
         confirmButton: "Roll back",
         failed: "Failed to roll back changes",
+        agentsRunningTitle: "Agents are still working",
+        agentsRunningMessage:
+          "{{agents}} may still be writing to this workspace. Rolling back now can discard work in progress.",
+        agentsRunningConfirm: "Roll back anyway",
+        unnamedAgent: "Unnamed agent",
       },
       log: {
         titleCommit: "Git Commit",
@@ -1729,6 +1734,16 @@ export const ru: TranslationResources = {
     revert: "Revert",
     cancel: "Cancel",
     wordWrap: "Word wrap",
+    outOfProject: {
+      badge: "Вне проекта · {{project}}",
+      blocked:
+        "Этот файл принадлежит проекту {{project}}, который не связан с этим проектом. Свяжите их в настройках проекта, чтобы открыть его.",
+      warnTitle: "Открыть файл из другого проекта?",
+      warnMessage:
+        "Этот файл принадлежит проекту {{project}}. Внесённые здесь изменения не войдут в коммит этого проекта.",
+      warnConfirm: "Открыть",
+      warnSuppress: "Больше не показывать",
+    },
     goToLine: {
       title: "Go to line",
       placeholder: "Line number",
@@ -2612,6 +2627,13 @@ export const ru: TranslationResources = {
         saveLabel: "Сохранить название проекта",
         cancelLabel: "Отменить переименование",
         reset: "Перезагрузить",
+      },
+      links: {
+        title: "Связанные проекты",
+        info: "Связанные проекты могут открывать и редактировать файлы друг друга на месте. Файлы, открытые из связанного проекта, не войдут в коммит этого проекта. Связи двусторонние.",
+        empty: "На этом хосте нет других проектов для связывания.",
+        error: "Не удалось обновить связь проекта",
+        toggleAccessibility: "Связать {{project}}",
       },
       readFailures: {
         invalidTitle: "otto.json не удалось разобрать",

@@ -106,6 +106,7 @@ import type {
   SessionInboundMessage,
   SessionOutboundMessage,
   SendAgentMessageRequest,
+  TasksSuggestedStartMode,
   OttoConfigRaw,
   OttoConfigRevision,
   WorkspaceCreateRequest,
@@ -122,6 +123,7 @@ import type { Run } from "@otto-code/protocol/orchestration";
 import type {
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
+  ProjectLink,
   SpeechSettingsOptions,
   SpeechTtsPreviewResult,
 } from "@otto-code/protocol/messages";
@@ -2414,6 +2416,48 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Start one or more suggested tasks (from `spawn_task` chips), applying the
+   * same mode to each — a new worktree workspace per task, a new local session
+   * per task, or steering the parent's current session. Individual actions pass
+   * a single-element array; the "Start all" collective action passes the whole
+   * pending queue. Resolves to the count started; throws only if all failed.
+   */
+  async startSuggestedTasks(
+    parentAgentId: string,
+    taskIds: readonly string[],
+    mode: TasksSuggestedStartMode,
+  ): Promise<{ succeeded: number; failed: number }> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"tasks.suggested.start.response">({
+        message: {
+          type: "tasks.suggested.start.request",
+          parentAgentId,
+          taskIds: [...taskIds],
+          mode,
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "startSuggestedTasks rejected");
+    }
+    return { succeeded: payload.succeeded, failed: payload.failed };
+  }
+
+  /** Dismiss one or more suggested-task chips the user has not acted on. */
+  async dismissSuggestedTasks(parentAgentId: string, taskIds: readonly string[]): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"tasks.suggested.dismiss.response">({
+        message: {
+          type: "tasks.suggested.dismiss.request",
+          parentAgentId,
+          taskIds: [...taskIds],
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "dismissSuggestedTasks rejected");
+    }
+  }
+
   /** Orchestration: fetch the current snapshot of all runs on this host. */
   async getRunsSnapshot(): Promise<Run[]> {
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.get_snapshot.response">(
@@ -2549,6 +2593,51 @@ export class DaemonClient {
       throw new Error(payload.error ?? "setWorkspaceTitle rejected");
     }
     return { title: payload.title };
+  }
+
+  async listProjectLinks(requestId?: string): Promise<ProjectLink[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"project.links.list.response">({
+        requestId,
+        message: { type: "project.links.list.request" },
+      });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.links;
+  }
+
+  async linkProjects(
+    projectId: string,
+    otherProjectId: string,
+    requestId?: string,
+  ): Promise<ProjectLink[]> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"project.links.set.response">(
+      {
+        requestId,
+        message: { type: "project.links.set.request", projectId, otherProjectId },
+      },
+    );
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "linkProjects rejected");
+    }
+    return payload.links;
+  }
+
+  async unlinkProjects(
+    projectId: string,
+    otherProjectId: string,
+    requestId?: string,
+  ): Promise<ProjectLink[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"project.links.unset.response">({
+        requestId,
+        message: { type: "project.links.unset.request", projectId, otherProjectId },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "unlinkProjects rejected");
+    }
+    return payload.links;
   }
 
   async resumeAgent(
@@ -3509,7 +3598,7 @@ export class DaemonClient {
 
   async checkoutGitRollback(
     cwd: string,
-    input: { paths: string[] },
+    input: { paths: string[]; allowWithRunningAgents?: boolean },
     requestId?: string,
   ): Promise<CheckoutGitRollbackPayload> {
     return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.rollback.response">({
@@ -3518,6 +3607,7 @@ export class DaemonClient {
         type: "checkout.git.rollback.request",
         cwd,
         paths: input.paths,
+        ...(input.allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
       },
     });
   }
