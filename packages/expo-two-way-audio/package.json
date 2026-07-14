@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/expo-two-way-audio",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Native module for two way audio streaming",
   "keywords": [
     "ExpoTwoWayAudio",
