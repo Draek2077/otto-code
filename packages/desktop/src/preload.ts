@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
   window: {
     openNew: (options?: { pendingOpenProjectPath?: string | null }) =>
       ipcRenderer.invoke("otto:window:openNew", options),
+    signalReady: () => ipcRenderer.invoke("otto:window:signalReady"),
     getCurrentWindow: () => ({
       toggleMaximize: () => ipcRenderer.invoke("otto:window:toggleMaximize"),
       isFullscreen: () => ipcRenderer.invoke("otto:window:isFullscreen"),

@@ -84,6 +84,76 @@ export function clearStartupSentinel(userDataDir: string): void {
   rmSync(startupSentinelPath(userDataDir), { force: true });
 }
 
+// The recovery flags for a Linux guest with no 3D acceleration (VMware
+// "No 3D enabled"). app.disableHardwareAcceleration() (--disable-gpu) is NOT
+// a working fallback there: on a Wayland session presentation falls into the
+// X11 software-bitmap path while the window itself is a Wayland surface, so
+// no frame is ever committed and the window exists but is invisible
+// ("XGetWindowAttributes failed for window 1"). The combination below —
+// force the X11/XWayland backend and disable GL so frames go through the
+// software presenter — matches what VS Code ships on Linux and is the only
+// configuration verified to paint on a no-3D VMware guest.
+//
+// The flags must be real process argv: by the time this module runs, the
+// browser process has already chosen its Ozone platform, so
+// app.commandLine.appendSwitch() only reaches child processes — a
+// browser/GPU platform mismatch that presents Wayland surfaces through X11
+// and shows nothing. Hence app.relaunch() with args rather than appendSwitch().
+const LINUX_SOFTWARE_RENDERING_ARGS = ["--ozone-platform=x11", "--use-gl=disabled"];
+
+export function hasLinuxSoftwareRenderingArgs(argv: readonly string[]): boolean {
+  return LINUX_SOFTWARE_RENDERING_ARGS.every((arg) => argv.includes(arg));
+}
+
+// Relaunch into software rendering. Returns true when a relaunch was issued
+// (the caller should stop doing further startup work), false when the current
+// process is already running with the recovery flags (nothing left to do —
+// relaunching again would loop).
+function relaunchWithLinuxSoftwareRendering(): boolean {
+  if (hasLinuxSoftwareRenderingArgs(process.argv)) {
+    return false;
+  }
+  gpuRecoveryInProgress = true;
+  app.relaunch({ args: [...process.argv.slice(1), ...LINUX_SOFTWARE_RENDERING_ARGS] });
+  app.exit(0);
+  return true;
+}
+
+// A first launch on a no-3D guest doesn't crash — it hangs with no visible
+// window, and the sentinel-based recovery only helps on the NEXT launch.
+// Don't make the user relaunch: if the first window hasn't painted within
+// the timeout, treat it as the hang and relaunch into software rendering now.
+const STARTUP_PAINT_TIMEOUT_MS = 15_000;
+let startupPaintTimer: NodeJS.Timeout | null = null;
+
+export function armGpuStartupPaintWatchdog(): void {
+  if (process.platform !== "linux") {
+    return;
+  }
+  startupPaintTimer = setTimeout(() => {
+    if (hasLinuxSoftwareRenderingArgs(process.argv)) {
+      // Already on the recovery flags and still not painting — relaunching
+      // again would loop; leave the sentinel to tell the story.
+      log.error("[gpu-fallback] window never painted despite software rendering flags");
+      return;
+    }
+    log.warn(
+      "[gpu-fallback] window did not paint within 15s; relaunching with --ozone-platform=x11 --use-gl=disabled",
+    );
+    try {
+      writeSoftwareRenderingMarker(app.getPath("userData"), "startup-paint-timeout");
+    } catch (error) {
+      log.error("[gpu-fallback] failed to persist the marker; not relaunching", error);
+      return;
+    }
+    gpuRecoveryInProgress = true;
+    app.relaunch({ args: [...process.argv.slice(1), ...LINUX_SOFTWARE_RENDERING_ARGS] });
+    app.exit(0);
+  }, STARTUP_PAINT_TIMEOUT_MS);
+  // Don't let a pending watchdog keep the process alive on normal quit.
+  startupPaintTimer.unref?.();
+}
+
 // Must run before app.whenReady(): disableHardwareAcceleration() is a no-op once
 // the app is ready.
 export function applyPersistedHardwareAccelerationFallback(): void {
@@ -119,6 +189,18 @@ export function applyPersistedHardwareAccelerationFallback(): void {
   }
 
   if (isSoftwareRenderingMarked(userDataDir)) {
+    if (process.platform === "linux") {
+      if (relaunchWithLinuxSoftwareRendering()) {
+        log.warn(
+          "[gpu-fallback] prior GPU failure recorded; relaunching with --ozone-platform=x11 --use-gl=disabled",
+        );
+        return;
+      }
+      log.warn(
+        "[gpu-fallback] software rendering active (--ozone-platform=x11 --use-gl=disabled) — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
+      );
+      return;
+    }
     app.disableHardwareAcceleration();
     log.warn(
       "[gpu-fallback] software rendering active — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
@@ -141,6 +223,10 @@ export function armGpuStartupSentinel(): void {
 // Clear the startup watch once the first window has painted — the graphics path
 // is proven healthy for this launch.
 export function markGpuStartupHealthy(): void {
+  if (startupPaintTimer) {
+    clearTimeout(startupPaintTimer);
+    startupPaintTimer = null;
+  }
   try {
     clearStartupSentinel(app.getPath("userData"));
   } catch (error) {
@@ -171,7 +257,13 @@ export function registerGpuFallbackRecovery(): void {
       return;
     }
     gpuRecoveryInProgress = true;
-    app.relaunch();
+    if (process.platform === "linux") {
+      // Relaunch straight into the working configuration instead of relying
+      // on the marker + disableHardwareAcceleration() on the next boot.
+      app.relaunch({ args: [...process.argv.slice(1), ...LINUX_SOFTWARE_RENDERING_ARGS] });
+    } else {
+      app.relaunch();
+    }
     app.exit(0);
   });
 }

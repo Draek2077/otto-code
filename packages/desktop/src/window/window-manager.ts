@@ -20,6 +20,23 @@ import { setTrayAttention } from "../features/tray.js";
 
 const WINDOW_STATE_SAVE_DEBOUNCE_MS = 400;
 
+// Deferred window reveal. Main shows a window when its renderer signals the first
+// durable screen is ready (`otto:window:signalReady`) rather than on raw first
+// paint, so slow software rendering can't expose the boot transient (Workspaces →
+// splash → Workspaces). Keyed by webContents id so the one global IPC handler can
+// find the right window's reveal callback. createWindow (main.ts) registers a
+// callback here and also arms a fallback timer, so a renderer that never signals
+// still reveals. See docs/desktop-linux.md.
+const pendingWindowReveals = new Map<number, () => void>();
+
+export function registerPendingWindowReveal(webContentsId: number, reveal: () => void): void {
+  pendingWindowReveals.set(webContentsId, reveal);
+}
+
+export function clearPendingWindowReveal(webContentsId: number): void {
+  pendingWindowReveals.delete(webContentsId);
+}
+
 export function readBadgeCount(input: unknown): number {
   if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
     return 0;
@@ -241,6 +258,10 @@ export function getWindowControlsOverlayColors(
 }
 
 export function registerWindowManager(): void {
+  ipcMain.handle("otto:window:signalReady", (event) => {
+    pendingWindowReveals.get(event.sender.id)?.();
+  });
+
   ipcMain.handle("otto:window:toggleMaximize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;

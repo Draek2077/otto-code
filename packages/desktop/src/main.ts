@@ -27,6 +27,8 @@ import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
   registerWindowManager,
+  registerPendingWindowReveal,
+  clearPendingWindowReveal,
   getMainWindowChromeOptions,
   getWindowBackgroundColor,
   resolveSystemWindowTheme,
@@ -89,6 +91,7 @@ import {
 import { runDesktopStartup } from "./desktop-startup.js";
 import {
   applyPersistedHardwareAccelerationFallback,
+  armGpuStartupPaintWatchdog,
   armGpuStartupSentinel,
   isGpuRecoveryInProgress,
   markGpuStartupHealthy,
@@ -710,6 +713,7 @@ async function createWindow(
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
   mainWindow.on("closed", () => {
     pendingOpenProjectStore.delete(webContentsId);
+    clearPendingWindowReveal(webContentsId);
   });
 
   // Windows/Linux: hide the last visible window to the tray instead of letting it
@@ -862,11 +866,25 @@ async function createWindow(
     registerBrowserWebviewNavigationGuards(contents);
   });
 
-  mainWindow.once("ready-to-show", () => {
-    // The first window painted — the graphics path works this launch, so disarm
-    // the startup watch that would otherwise flip the next launch to software
-    // rendering. Fires even when the window stays hidden (start-minimized).
-    markGpuStartupHealthy();
+  // Deferred reveal: show the window when the renderer signals its first durable
+  // screen is ready (otto:window:signalReady), not on raw first paint. Under slow
+  // software rendering, first paint lands mid-boot and would expose the
+  // Workspaces → splash → Workspaces transient; hardware acceleration hides it
+  // only by accident of frame timing. A fallback timer guarantees the window
+  // still shows if the renderer never signals (older web bundle, hang).
+  const WINDOW_REVEAL_FALLBACK_MS = 4_000;
+  let revealFallbackTimer: NodeJS.Timeout | null = null;
+  let hasRevealed = false;
+  const revealWindow = (): void => {
+    if (hasRevealed || mainWindow.isDestroyed()) {
+      return;
+    }
+    hasRevealed = true;
+    if (revealFallbackTimer) {
+      clearTimeout(revealFallbackTimer);
+      revealFallbackTimer = null;
+    }
+    clearPendingWindowReveal(webContentsId);
     if (shouldStartMinimizedToTray) {
       // Window stays hidden (created with show: false); surface the tray icon
       // immediately instead of waiting for a hide/show transition to trigger it.
@@ -875,6 +893,25 @@ async function createWindow(
     }
     mainWindow.show();
     mainWindow.focus();
+  };
+  registerPendingWindowReveal(webContentsId, revealWindow);
+
+  mainWindow.once("ready-to-show", () => {
+    // The first window painted — the graphics path works this launch, so disarm
+    // the startup watch that would otherwise flip the next launch to software
+    // rendering. Fires even when the window stays hidden (start-minimized).
+    markGpuStartupHealthy();
+    if (shouldStartMinimizedToTray) {
+      // Not showing a window this launch — reveal now (surfaces the tray) rather
+      // than waiting on a renderer signal we don't need.
+      revealWindow();
+      return;
+    }
+    // Painted, but hold the reveal for the renderer's boot-settled signal so the
+    // startup transient isn't shown. Cap it so a renderer that never signals
+    // (older web bundle, hang) still reveals.
+    revealFallbackTimer = setTimeout(revealWindow, WINDOW_REVEAL_FALLBACK_MS);
+    revealFallbackTimer.unref?.();
   });
 
   if (!app.isPackaged) {
@@ -1091,6 +1128,7 @@ async function bootstrap(): Promise<void> {
   // paints; a launch that never paints leaves it set for the next boot to
   // recover from.
   armGpuStartupSentinel();
+  armGpuStartupPaintWatchdog();
 
   // The first window of the session restores and persists saved geometry.
   await createWindow({ pendingOpenProjectPath, restoreWindowState: true });

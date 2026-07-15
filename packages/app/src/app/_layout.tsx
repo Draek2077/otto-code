@@ -62,7 +62,7 @@ import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-rout
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
-import { updateDesktopWindowControls } from "@/desktop/electron/window";
+import { signalDesktopWindowReady, updateDesktopWindowControls } from "@/desktop/electron/window";
 import { getDesktopHost } from "@/desktop/host";
 import { loadDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
@@ -376,6 +376,27 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   const splashError =
     startupBlocker.kind === "managed-daemon-error" ? startupBlocker.message : null;
   const storeReady = resolveStartupNavigationReady({ startupBlocker });
+
+  // Desktop reveal signal: tell main the first *durable* screen is ready so it
+  // can show the window (main holds the reveal off raw first paint — see
+  // createWindow). "Durable" means we won't immediately swap what's on screen:
+  // the settling splash itself is fine to reveal on, the error splash must be
+  // shown, we've given up waiting, or real content is ready. We deliberately do
+  // NOT reveal on the premature Workspaces render that precedes the splash, so
+  // the user sees splash → Workspaces (the expected order) in every render mode.
+  const isPresentable =
+    startupBlocker.kind === "managed-daemon-starting" ||
+    splashError !== null ||
+    hasGivenUpWaitingForHost ||
+    (storeReady && anyOnlineHostServerId !== null);
+  const hasSignaledReady = useRef(false);
+  useEffect(() => {
+    if (!isPresentable || hasSignaledReady.current) {
+      return;
+    }
+    hasSignaledReady.current = true;
+    void signalDesktopWindowReady();
+  }, [isPresentable]);
 
   const state = useMemo<HostRuntimeBootstrapState>(
     () => ({ splashError, retry, hasGivenUpWaitingForHost, storeReady, startupBlocker }),
