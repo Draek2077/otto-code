@@ -176,6 +176,57 @@ function buildChildEnv(options: DaemonStartOptions): NodeJS.ProcessEnv {
   return childEnv;
 }
 
+interface DaemonSpawnInvocation {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+// A packaged desktop build runs this CLI on the Electron binary
+// (`process.execPath` is e.g. /opt/Otto/Otto). Spawning the daemon through that
+// binary then needs two things the plain-Node path doesn't:
+//   1. ELECTRON_RUN_AS_NODE=1 — otherwise the binary boots as the Otto GUI/CLI
+//      (commander) and rejects the daemon entry as an "unknown command".
+//   2. The unpacked node-entrypoint-runner — the supervisor entry resolves to a
+//      path inside app.asar, which can't be the direct entry under
+//      ELECTRON_RUN_AS_NODE, so it must be loaded via the runner (mirroring the
+//      desktop daemon-manager: `<runner> node-script <entry>`).
+// Outside a packaged Electron binary (dev, or a plain-node CLI), neither applies
+// and we spawn the entry directly. Returns null when not applicable.
+function resolvePackagedNodeEntrypointRunner(daemonRunnerEntry: string): string | null {
+  if (!process.versions.electron) {
+    return null;
+  }
+  const marker = `${path.sep}node_modules${path.sep}@otto-code${path.sep}server${path.sep}`;
+  const markerIndex = daemonRunnerEntry.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+  const appRoot = daemonRunnerEntry.slice(0, markerIndex);
+  const runnerPath = path.join(appRoot, "dist", "daemon", "node-entrypoint-runner.js");
+  return existsSync(runnerPath) ? runnerPath : null;
+}
+
+function buildDaemonSpawnInvocation(
+  daemonRunnerEntry: string,
+  runnerArgs: string[],
+  childEnv: NodeJS.ProcessEnv,
+): DaemonSpawnInvocation {
+  const packagedRunner = resolvePackagedNodeEntrypointRunner(daemonRunnerEntry);
+  if (packagedRunner) {
+    return {
+      command: process.execPath,
+      args: [packagedRunner, "node-script", daemonRunnerEntry, ...runnerArgs],
+      env: { ...childEnv, ELECTRON_RUN_AS_NODE: "1" },
+    };
+  }
+  return {
+    command: process.execPath,
+    args: [...process.execArgv, daemonRunnerEntry, ...runnerArgs],
+    env: childEnv,
+  };
+}
+
 function resolveServerRunnerFromDir(currentDir: string): string | null {
   const packageJsonPath = path.join(currentDir, "package.json");
   if (!existsSync(packageJsonPath)) return null;
@@ -586,16 +637,17 @@ export async function startLocalDaemonDetached(
 
   const ottoHome = runtime.resolveHome(childEnv);
   const logPath = path.join(ottoHome, DAEMON_LOG_FILENAME);
-  const child = runtime.spawnDetached(
-    process.execPath,
-    [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],
-    {
-      detached: true,
-      envMode: "internal",
-      env: childEnv,
-      stdio: ["ignore", "ignore", "ignore"],
-    },
+  const invocation = buildDaemonSpawnInvocation(
+    daemonRunnerEntry,
+    buildRunnerArgs(options),
+    childEnv,
   );
+  const child = runtime.spawnDetached(invocation.command, invocation.args, {
+    detached: true,
+    envMode: "internal",
+    env: invocation.env,
+    stdio: ["ignore", "ignore", "ignore"],
+  });
 
   child.unref();
 
@@ -652,14 +704,15 @@ export function startLocalDaemonForeground(
 
   const daemonRunnerEntry = runtime.resolveRunnerEntry();
   const childEnv = buildChildEnv(options);
-  const result = runtime.spawnForeground(
-    process.execPath,
-    [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],
-    {
-      env: childEnv,
-      stdio: "inherit",
-    },
+  const invocation = buildDaemonSpawnInvocation(
+    daemonRunnerEntry,
+    buildRunnerArgs(options),
+    childEnv,
   );
+  const result = runtime.spawnForeground(invocation.command, invocation.args, {
+    env: invocation.env,
+    stdio: "inherit",
+  });
 
   if (result.error) {
     throw result.error;
