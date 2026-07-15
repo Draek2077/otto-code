@@ -885,6 +885,16 @@ async function createWindow(
       revealFallbackTimer = null;
     }
     clearPendingWindowReveal(webContentsId);
+    // Reaching a revealed window — by ANY path: the renderer's boot-settled signal
+    // (otto:window:signalReady), first paint (ready-to-show), or the fallback timer
+    // — proves the graphics path works this launch, so disarm the GPU startup watch
+    // (paint watchdog + sentinel) here, not only on `ready-to-show`. That event
+    // never fires on some software-rendering VM guests (VMware "No 3D enabled"),
+    // where the window still reveals fine via signalReady on native Wayland; tying
+    // the disarm to `ready-to-show` alone let the 15s paint watchdog fire on those
+    // healthy windows and needlessly relaunch into the (flaky, on Wayland) X11
+    // software-rendering fallback.
+    markGpuStartupHealthy();
     if (shouldStartMinimizedToTray) {
       // Window stays hidden (created with show: false); surface the tray icon
       // immediately instead of waiting for a hide/show transition to trigger it.
