@@ -988,7 +988,32 @@ describe("WorkspaceFilesSession known-workspace boundary", () => {
     expect(message.payload.file?.content).toBe("nested");
   });
 
-  test("refuses a cwd that is not a known workspace", async () => {
+  test("refuses to LIST a directory that is not a known workspace", async () => {
+    const known = makeDir("workspace-files-known-only-");
+    const stranger = makeDir("workspace-files-stranger-");
+    writeFileSync(join(stranger, "secret.txt"), "secret");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd: stranger,
+      path: ".",
+      mode: "list",
+      requestId: "req-stranger-list",
+    });
+
+    const message = emitted.at(-1);
+    if (message?.type !== "file_explorer_response") {
+      throw new Error(`expected file_explorer_response, got ${message?.type}`);
+    }
+    expect(message.payload.error).toBe("Access outside of known workspaces is not allowed");
+    expect(message.payload.directory).toBeNull();
+  });
+
+  // Single-file read/write/watch are exempt from the known-workspace boundary so
+  // any file on the host can be previewed/edited (bounded by OS permissions).
+
+  test("reads a single file outside every known workspace", async () => {
     const known = makeDir("workspace-files-known-only-");
     const stranger = makeDir("workspace-files-stranger-");
     writeFileSync(join(stranger, "secret.txt"), "secret");
@@ -1006,43 +1031,42 @@ describe("WorkspaceFilesSession known-workspace boundary", () => {
     if (message?.type !== "file_explorer_response") {
       throw new Error(`expected file_explorer_response, got ${message?.type}`);
     }
-    expect(message.payload.error).toBe("Access outside of known workspaces is not allowed");
-    expect(message.payload.file).toBeNull();
+    expect(message.payload.error).toBeNull();
+    expect(message.payload.file?.content).toBe("secret");
   });
 
-  test("refuses writes to a cwd outside every known workspace", async () => {
+  test("writes a single file outside every known workspace", async () => {
     const known = makeDir("workspace-files-known-write-");
     const stranger = makeDir("workspace-files-stranger-write-");
-    const victim = join(stranger, "victim.txt");
-    writeFileSync(victim, "safe");
+    const target = join(stranger, "plan.txt");
+    writeFileSync(target, "draft");
     const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
 
     await subsystem.handleFileWriteRequest({
       type: "file.write.request",
       requestId: "req-stranger-write",
       cwd: stranger,
-      path: "victim.txt",
-      content: "pwned",
-      expectedModifiedAt: mtimeIso(victim),
+      path: "plan.txt",
+      content: "revised",
+      expectedModifiedAt: mtimeIso(target),
     });
 
     const result = lastWriteResult(emitted);
-    if (result.status !== "error") {
-      throw new Error(`expected error, got ${result.status}`);
+    if (result.status !== "ok") {
+      throw new Error(`expected ok, got ${result.status}`);
     }
-    expect(result.message).toBe("Access outside of known workspaces is not allowed");
-    expect(readFileSync(victim, "utf8")).toBe("safe");
+    expect(readFileSync(target, "utf8")).toBe("revised");
   });
 
-  test("refuses watch subscriptions for a cwd outside every known workspace", async () => {
+  test("watches a single file outside every known workspace", async () => {
     const known = makeDir("workspace-files-known-watch-");
     const stranger = makeDir("workspace-files-stranger-watch-");
     writeFileSync(join(stranger, "a.txt"), "alpha\n");
     const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
 
     const result = await subscribeWatch(subsystem, emitted, { cwd: stranger, path: "a.txt" });
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe("Access outside of known workspaces is not allowed");
+    expect(result.ok).toBe(true);
+    expect(result.error).toBeNull();
     subsystem.dispose();
   });
 });

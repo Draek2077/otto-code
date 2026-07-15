@@ -1705,13 +1705,15 @@ export const ar: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "خارج المشروع · {{project}}",
-      blocked:
-        "ينتمي هذا الملف إلى {{project}}، وهو غير مرتبط بهذا المشروع. اربطهما من إعدادات المشروع لفتحه.",
-      warnTitle: "فتح ملف من مشروع آخر؟",
-      warnMessage:
+      badgeNoProject: "خارج أي مشروع",
+      editOutsideTitle: "تحرير ملف خارج أي مشروع؟",
+      editOutsideMessage:
+        "هذا الملف لا ينتمي إلى أي مشروع. تحريره يكتب مباشرةً في الملف على القرص. يظهر هذا التحذير في كل مرة.",
+      editConfirm: "تحرير على أي حال",
+      editOtherTitle: "تحرير ملف من مشروع آخر؟",
+      editOtherMessage:
         "ينتمي هذا الملف إلى {{project}}. لن تكون التغييرات التي تجريها هنا جزءًا من التزام هذا المشروع.",
-      warnConfirm: "فتح",
-      warnSuppress: "عدم الإظهار مرة أخرى",
+      editOtherSuppress: "عدم تحذيري مرة أخرى بشأن المشاريع الأخرى",
     },
     goToLine: {
       title: "Go to line",
@@ -1833,6 +1835,7 @@ export const ar: TranslationResources = {
       loading: "جارٍ تحميل الملف...",
       noPreview: "لا تتوفر معاينة",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
+      binaryPreviewHint: "إنه ملف ثنائي، لذا لا يوجد ما يمكن عرضه كنص.",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
     },

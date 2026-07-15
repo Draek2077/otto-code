@@ -17,6 +17,15 @@ describe("isLanguageSupported", () => {
     expect(isLanguageSupported("test.dart")).toBe(true);
     expect(isLanguageSupported("test.cs")).toBe(true);
     expect(isLanguageSupported("test.ex")).toBe(true);
+    expect(isLanguageSupported("test.sh")).toBe(true);
+    expect(isLanguageSupported("test.sql")).toBe(true);
+  });
+
+  it("resolves shell fence aliases to the shell grammar", () => {
+    expect(getParserForFile("x.sh")).not.toBeNull();
+    expect(getParserForFile("x.bash")).not.toBeNull();
+    expect(getParserForFile("x.zsh")).not.toBeNull();
+    expect(getParserForFile("x.shell")).not.toBeNull();
   });
 
   it("returns false for unsupported file extensions", () => {

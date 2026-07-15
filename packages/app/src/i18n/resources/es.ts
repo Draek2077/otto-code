@@ -1745,13 +1745,15 @@ export const es: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "Fuera del proyecto · {{project}}",
-      blocked:
-        "Este archivo pertenece a {{project}}, que no está vinculado a este proyecto. Vincúlalos en la configuración del proyecto para abrirlo.",
-      warnTitle: "¿Abrir un archivo de otro proyecto?",
-      warnMessage:
+      badgeNoProject: "Fuera de cualquier proyecto",
+      editOutsideTitle: "¿Editar un archivo fuera de todo proyecto?",
+      editOutsideMessage:
+        "Este archivo no forma parte de ningún proyecto. Editarlo escribe directamente en el archivo del disco. Esta advertencia se muestra cada vez.",
+      editConfirm: "Editar de todos modos",
+      editOtherTitle: "¿Editar un archivo de otro proyecto?",
+      editOtherMessage:
         "Este archivo pertenece a {{project}}. Los cambios que hagas aquí no formarán parte del commit de este proyecto.",
-      warnConfirm: "Abrir",
-      warnSuppress: "No volver a mostrar",
+      editOtherSuppress: "No volver a avisarme sobre otros proyectos",
     },
     goToLine: {
       title: "Go to line",
@@ -1873,6 +1875,7 @@ export const es: TranslationResources = {
       loading: "Cargando archivo...",
       noPreview: "No hay vista previa disponible",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
+      binaryPreviewHint: "Es un archivo binario, así que no hay nada que mostrar como texto.",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
     },

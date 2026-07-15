@@ -495,7 +495,9 @@ function ExplorerSidebarContent({
       label: prTabLabel,
       testID: "explorer-tab-pr",
       alwaysLabeled: true,
-      renderIcon: (color) => <PullRequestTabIcon size={iconSize.sm} color={color} />,
+      renderIcon: (color) => (
+        <PullRequestTabIcon size={iconSize.sm} color={color} provider={prPane.hostingProvider} />
+      ),
     });
   }
 

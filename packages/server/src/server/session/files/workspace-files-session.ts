@@ -44,10 +44,11 @@ import { expandUserPath, isSameOrDescendantPath } from "../../path-utils.js";
 const ACCESS_OUTSIDE_WORKSPACES_MESSAGE = "Access outside of known workspaces is not allowed";
 
 /**
- * Thrown when a file RPC targets a `cwd` that is not one of Otto's known
- * workspace roots (nor a descendant of one). Carries the same message the
- * handlers surface to the client so cross-workspace access stays bounded to
- * paths Otto actually knows about.
+ * Thrown when a **directory-scoped** file RPC targets a `cwd` that is not one
+ * of Otto's known workspace roots (nor a descendant of one). Carries the same
+ * message the handlers surface to the client so directory browsing, search,
+ * and indexing stay bounded to paths Otto actually knows about. Single-file
+ * read/write/watch do not throw this — they are exempt by design.
  */
 class WorkspaceAccessError extends Error {
   constructor() {
@@ -75,13 +76,16 @@ export interface WorkspaceFilesSessionOptions {
   logger: pino.Logger;
   /**
    * Resolves the distinct absolute filesystem roots the client is allowed to
-   * reach through file RPCs — every known Otto workspace (and project) path.
-   * Evaluated per request so workspaces created or removed mid-session are
-   * reflected immediately. A requested `cwd` is honored only when it equals or
-   * sits inside one of these roots; anything else is refused, so the daemon
-   * serves files across every workspace Otto knows about while never exposing
-   * arbitrary filesystem paths outside them. Path-containment within the `cwd`
-   * is still enforced separately by the file-explorer service.
+   * reach through the **directory-scoped** file RPCs — every known Otto
+   * workspace (and project) path. Evaluated per request so workspaces created
+   * or removed mid-session are reflected immediately. A requested `cwd` is
+   * honored only when it equals or sits inside one of these roots; anything
+   * else is refused. This bounds directory listing, project search/replace,
+   * code indexing, project icons, and download tokens to workspaces Otto knows
+   * about. Single-file read/write/watch are deliberately exempt (preview/edit
+   * any file, gated on the client and by OS permissions) — see the call sites.
+   * Path-containment within the `cwd` is still enforced separately by the
+   * file-explorer service.
    */
   resolveAllowedRoots: () => Promise<string[]>;
   /** Test hook: tighten the watcher's timing so specs stay fast. */
@@ -159,7 +163,10 @@ export class WorkspaceFilesSession {
       return;
     }
     try {
-      await this.assertCwdWithinKnownWorkspace(cwd);
+      // Single-file watch is unbounded: a tab may preview/edit a file outside
+      // every known workspace, and its watch must follow. OS filesystem
+      // permissions are the boundary here — the directory-scoped RPCs below
+      // stay workspace-bounded via assertCwdWithinKnownWorkspace.
       await this.fileWatcher.subscribe({ cwd, path: request.path });
       respond(true, null);
     } catch (error) {
@@ -208,8 +215,11 @@ export class WorkspaceFilesSession {
     }
 
     try {
-      await this.assertCwdWithinKnownWorkspace(cwd);
       if (mode === "list") {
+        // Directory browsing stays workspace-bounded — there is no
+        // "browse any folder" surface. Single-file reads (the `else` branch)
+        // are unbounded so any file can be previewed; OS permissions gate them.
+        await this.assertCwdWithinKnownWorkspace(cwd);
         const directory = await listDirectoryEntries({
           root: cwd,
           relativePath: requestedPath,
@@ -320,7 +330,12 @@ export class WorkspaceFilesSession {
     }
 
     try {
-      await this.assertCwdWithinKnownWorkspace(cwd);
+      // Writes are unbounded at the daemon: editing a file outside every known
+      // workspace is allowed, gated on the client by an "edit anyway" warning
+      // and bounded here only by OS filesystem permissions (a write the daemon's
+      // user cannot perform fails with the OS error, which is the intended
+      // outcome). Path containment within `cwd` is still enforced by
+      // writeExplorerFile.
       const outcome = await writeExplorerFile({
         root: cwd,
         relativePath: requestedPath,

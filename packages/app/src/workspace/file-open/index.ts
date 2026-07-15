@@ -19,6 +19,13 @@ export interface WorkspaceFileOrigin {
   cwd: string;
   projectId: string;
   projectName?: string;
+  /**
+   * True for a file that belongs to NO known project — a scratch/plan file
+   * outside every workspace (e.g. an agent's plan under `~/.claude`). Its
+   * `cwd` is the file's own directory and `projectId`/`workspaceId` are
+   * synthetic (path-derived, stable). Editing one always warns (no suppress).
+   */
+  outsideAnyProject?: boolean;
 }
 
 export type WorkspaceFileTabTarget = {

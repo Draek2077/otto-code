@@ -1,9 +1,14 @@
 # Gated multi-root file editing (project links)
 
 **Status:** Phases 0, 1, 2, 4 shipped and green (typecheck/lint/tests). Phase 3
-(authoritative daemon link enforcement) deferred as defense-in-depth. One known gap:
-the desktop side-pane opener (`handleOpenFileFromChatInSidePane`) is not yet gated —
-the primary "click a file in a conversation" path (`handleOpenFileFromChat`) is.
+(authoritative daemon link enforcement) deferred as defense-in-depth.
+
+**Superseded by "preview any file, edit-gated" (v0.5.8) — see the section at the
+bottom.** The original model _blocked_ opening an unlinked project's file. That
+was replaced: **any file previews** (including files outside every project, e.g.
+an agent's plan in `~/.claude`), and the gate moved from _open_ to _edit_. The
+side-pane opener (`handleOpenFileFromChatInSidePane`) is now gated too, closing
+the gap noted here originally.
 
 ## The problem
 
@@ -177,3 +182,50 @@ host lacks `features.projectLinks`. Shown regardless of developer mode.
   decision). Revisit only if it feels wrong in practice.
 - Phase 3 origin-context shape (`originWorkspaceId` vs `originCwd`) — decide when building
   Phase 3; `originWorkspaceId` is more robust than a raw path.
+
+## Preview any file, edit-gated (v0.5.8)
+
+The "unlinked → blocked with a toast" rule was a dead end — and it also broke the
+common case of an agent dropping a **plan/scratch file outside every project**
+(e.g. `~/.claude/plans/*`), which the Phase 0 daemon boundary refused to even read.
+Reworked so **any file can be previewed** and **only editing is gated**:
+
+- **Daemon (`workspace-files-session.ts`).** Single-file **read** (`mode:"file"`),
+  **write**, and **watch-subscribe** no longer enforce `assertCwdWithinKnownWorkspace`
+  — OS filesystem permissions are the boundary (the daemon runs as the user; a write
+  they lack permission for fails with the OS error, which is intended). Directory
+  **list**, project search/replace, code-index, project icon, and download tokens stay
+  workspace-bounded (no "browse any folder"). New capability flag
+  `features.fileOutsideWorkspace` (`COMPAT(fileOutsideWorkspace)`, v0.5.8) so a newer
+  client detects a daemon that serves out-of-workspace single-file ops.
+
+- **Open never blocks (`cross-project-open.ts`, `use-cross-project-file-open.ts`).**
+  `resolveCrossProjectFileOpen` returns `in-project` or `out-of-project` (never
+  `blocked`). A file in another project gets that project's real origin; a file
+  **outside every project** gets a **synthesized origin** rooted at the file's own
+  directory (`cwd = dirname`, `path = basename`, synthetic path-derived
+  `workspaceId`/`projectId`, `outsideAnyProject: true`) — gated behind the capability
+  flag. The opener is now synchronous (no dialog); the side-pane opener is gated too.
+
+- **Edit gate (`resolveEditGate`, applied reactively in `file-panel.tsx`;
+  enforced in `file-tab-pane.tsx`).** Computed against the **live** link set, so
+  linking/unlinking updates an open tab:
+  - **free** — in the current project or a linked project. Edits with no warning.
+  - **other-project** — another, _unlinked_ project. Editing warns; the warning is
+    **globally suppressible** (reuses `suppressOutOfProjectWarning`).
+  - **outside-project** — no project at all. Editing warns **every time, no
+    suppression** ("for now", pending feedback).
+
+  Out-of-project files **default to preview**; the mode bar's Editor/Split are
+  intercepted by an "Edit anyway?" dialog. Accepting sets a **per-tab override that
+  lasts until the tab closes** (reopening warns again). The centered out-of-project
+  banner shows for both non-free tiers (`badgeNoProject` for project-less files).
+
+- **Watermark polish.** The terse "Binary preview unavailable" became friendlier
+  copy plus a one-line hint (`panels.file.binaryPreviewHint`).
+
+Linking is now purely an **intent signal** that removes the edit warning; nothing is
+ever blocked. Non-English locales fully translated. Tests: daemon boundary
+(`workspace-files-session.test.ts` — single-file read/write/watch now serve
+out-of-workspace, list still bounded), `cross-project-open.test.ts`
+(`resolveCrossProjectFileOpen` + `resolveEditGate`).

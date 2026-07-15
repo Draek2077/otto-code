@@ -63,6 +63,8 @@ import { ResizeHandle } from "@/components/resize-handle";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
+import { confirmDialog, confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
+import type { EditGate } from "@/projects/cross-project-open";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { Theme } from "@/styles/theme";
 
@@ -1020,8 +1022,14 @@ function resolveEffectiveMode(input: {
   mode: FileViewMode;
   editorAllowed: boolean;
   splitAllowed: boolean;
+  /** False for an out-of-project file whose edit warning hasn't been accepted. */
+  editUnlocked: boolean;
 }): FileViewMode {
   if (!input.editorAllowed) {
+    return "preview";
+  }
+  if (!input.editUnlocked) {
+    // Gated file: stays in preview until the user accepts the edit warning.
     return "preview";
   }
   if (input.mode === "split" && !input.splitAllowed) {
@@ -1035,36 +1043,96 @@ export function FileTabPane({
   workspaceId,
   workspaceRoot,
   location,
-  outOfProjectName = null,
+  editGate,
 }: {
   serverId: string;
   workspaceId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
-  /** Owning project name when this file belongs to another, linked project. */
-  outOfProjectName?: string | null;
+  /** How editing this file is gated (in-/linked-project = free; else warns). */
+  editGate: EditGate;
 }) {
+  const { t } = useTranslation();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+
+  // A warning must be accepted before editing an out-of-project file. The
+  // "other-project" warning is globally suppressible; "outside-project" always
+  // warns (no suppress). Reading the suppress flag reactively so accepting the
+  // checkbox unlocks other-project files immediately.
+  const suppressOtherProject = useEditorPrefsStore((state) => state.suppressOutOfProjectWarning);
+  const gateActive =
+    editGate.kind === "outside-project" ||
+    (editGate.kind === "other-project" && !suppressOtherProject);
+
   // Rendered formats (markdown, images, binaries) open in preview; plain
-  // text and code open straight in the editor. The per-file memory wins.
+  // text and code open straight in the editor. Out-of-project files default to
+  // preview (editing is opt-in via the gate). The per-file memory wins, but the
+  // effective-mode clamp still forces preview until the gate is accepted.
   const { mode, setMode } = useFileViewMode({
     persistenceKey,
     path: location.path,
-    defaultMode: defaultFileViewMode(location.path),
+    defaultMode: gateActive ? "preview" : defaultFileViewMode(location.path),
   });
   const canEdit = useTextEditorFeature(serverId);
   const isCompact = useIsCompactFormFactor();
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
+  // Per-tab acceptance of the edit warning — lives until the tab unmounts
+  // (closes), so reopening a gated file warns again.
+  const [editOverridden, setEditOverridden] = useState(false);
   const controllerRef = useRef<EditorController | null>(null);
 
+  const editUnlocked = !gateActive || editOverridden;
   // Until the first read reports back, trust the remembered mode: a file that
   // was in editor view last time is a text file until proven otherwise.
   const editorAllowed = canEdit && (fileInfo === null || fileInfo.kind === "text");
   const splitAllowed = editorAllowed && isWeb && !isCompact;
-  const effectiveMode = resolveEffectiveMode({ mode, editorAllowed, splitAllowed });
+  const effectiveMode = resolveEffectiveMode({
+    mode,
+    editorAllowed,
+    splitAllowed,
+    editUnlocked,
+  });
+
+  const otherProjectName = editGate.kind === "other-project" ? editGate.projectName : null;
+  const requestEditUnlock = useCallback(async (): Promise<boolean> => {
+    if (editGate.kind === "outside-project") {
+      return confirmDialog({
+        title: t("editor.outOfProject.editOutsideTitle"),
+        message: t("editor.outOfProject.editOutsideMessage"),
+        confirmLabel: t("editor.outOfProject.editConfirm"),
+        cancelLabel: t("editor.cancel"),
+        destructive: true,
+      });
+    }
+    const { confirmed, checkboxChecked } = await confirmDialogWithCheckbox({
+      title: t("editor.outOfProject.editOtherTitle"),
+      message: t("editor.outOfProject.editOtherMessage", {
+        project: otherProjectName ?? "",
+      }),
+      confirmLabel: t("editor.outOfProject.editConfirm"),
+      cancelLabel: t("editor.cancel"),
+      checkboxLabel: t("editor.outOfProject.editOtherSuppress"),
+    });
+    if (confirmed && checkboxChecked) {
+      useEditorPrefsStore.getState().setSuppressOutOfProjectWarning(true);
+    }
+    return confirmed;
+  }, [editGate.kind, otherProjectName, t]);
 
   const handleModeChange = useCallback(
     (next: FileViewMode) => {
+      // Switching into an editable mode on a gated file requires accepting the
+      // warning first; a rejection leaves the mode unchanged (stays in preview).
+      if ((next === "editor" || next === "split") && gateActive && !editOverridden) {
+        void (async () => {
+          const accepted = await requestEditUnlock();
+          if (accepted) {
+            setEditOverridden(true);
+            setMode(next);
+          }
+        })();
+        return;
+      }
       const controller = controllerRef.current;
       if (next === "preview" && controller) {
         // The doc-sync mirror is debounced; flush the real buffer into the
@@ -1087,7 +1155,7 @@ export function FileTabPane({
       }
       setMode(next);
     },
-    [location.path, serverId, setMode, workspaceId],
+    [editOverridden, gateActive, location.path, requestEditUnlock, serverId, setMode, workspaceId],
   );
 
   const modeBarProps = useMemo<FileViewModeBarProps | null>(
@@ -1121,26 +1189,29 @@ export function FileTabPane({
       />
     );
 
-  if (!outOfProjectName) {
+  if (editGate.kind === "free") {
     return content;
   }
   return (
     <View style={styles.outOfProjectWrap}>
-      <OutOfProjectBanner projectName={outOfProjectName} />
+      <OutOfProjectBanner projectName={otherProjectName} />
       {content}
     </View>
   );
 }
 
-// A file opened from another (linked) project shows a persistent, centered
-// banner naming the owner — a constant reminder that edits here won't be part
-// of this project's commit (gated-multi-root).
-function OutOfProjectBanner({ projectName }: { projectName: string }) {
+// A file opened from another project — or from no project at all — shows a
+// persistent, centered banner: a constant reminder that edits here won't be
+// part of this project's commit (gated-multi-root). `projectName` is null for
+// a file outside every project.
+function OutOfProjectBanner({ projectName }: { projectName: string | null }) {
   const { t } = useTranslation();
   return (
     <View style={styles.outOfProjectBanner} testID="file-out-of-project-banner">
       <Text style={styles.outOfProjectText} numberOfLines={1}>
-        {t("editor.outOfProject.badge", { project: projectName })}
+        {projectName
+          ? t("editor.outOfProject.badge", { project: projectName })
+          : t("editor.outOfProject.badgeNoProject")}
       </Text>
     </View>
   );

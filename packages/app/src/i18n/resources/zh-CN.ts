@@ -1689,11 +1689,14 @@ export const zhCN: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "项目外 · {{project}}",
-      blocked: "此文件属于 {{project}}，它未与此项目关联。请在项目设置中关联它们以打开该文件。",
-      warnTitle: "打开另一个项目的文件？",
-      warnMessage: "此文件属于 {{project}}。你在此处所做的更改不会包含在此项目的提交中。",
-      warnConfirm: "Open",
-      warnSuppress: "不再显示",
+      badgeNoProject: "不属于任何项目",
+      editOutsideTitle: "编辑不属于任何项目的文件？",
+      editOutsideMessage:
+        "此文件不属于任何项目。编辑它会直接写入磁盘上的文件。此警告每次都会显示。",
+      editConfirm: "仍然编辑",
+      editOtherTitle: "编辑另一个项目的文件？",
+      editOtherMessage: "此文件属于 {{project}}。你在此处所做的更改不会包含在此项目的提交中。",
+      editOtherSuppress: "不再就其他项目提醒我",
     },
     goToLine: {
       title: "Go to line",
@@ -1815,6 +1818,7 @@ export const zhCN: TranslationResources = {
       loading: "正在加载文件...",
       noPreview: "没有可用预览",
       binaryPreviewUnavailable: "二进制预览不可用",
+      binaryPreviewHint: "这是一个二进制文件，没有可显示为文本的内容。",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
     },

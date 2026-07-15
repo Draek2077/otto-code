@@ -10,13 +10,17 @@ import { isNative, isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { highlightToKeyedLines, type KeyedLine } from "@/utils/highlight-cache";
+import { highlightToKeyedLines, resolveExtension, type KeyedLine } from "@/utils/highlight-cache";
 
 interface HighlightedCodeBlockProps {
   code: string;
   language: string | null | undefined;
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
+  // When true and no explicit language is given, guess the language from the
+  // code content. Enabled for markdown fences (agents routinely omit the tag);
+  // left off elsewhere so callers with a known-null language stay plain.
+  detectUntagged?: boolean;
 }
 
 // Fence info strings ("```ts", "```typescript", "```ts {1,3}") map to the
@@ -35,6 +39,16 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   "objective-c": "m",
   markdown: "md",
   elixir: "ex",
+  // Shell/SQL fence tags that don't already match a parser key in parsers.ts.
+  "shell-session": "sh",
+  console: "sh",
+  shellscript: "sh",
+  postgres: "sql",
+  postgresql: "sql",
+  psql: "sql",
+  mysql: "sql",
+  sqlite: "sql",
+  plsql: "sql",
 };
 
 function fenceLanguageToExtension(info: string | null | undefined): string | null {
@@ -54,6 +68,7 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   language,
   inheritedStyles,
   textStyle,
+  detectUntagged = false,
 }: HighlightedCodeBlockProps) {
   // Box styles (bg / padding / border / radius / margin) go on the wrapper View
   // so the absolute copy button positions relative to the visible code area,
@@ -64,10 +79,11 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   );
   const renderedCode = useMemo(() => stripTerminalFenceNewline(code), [code]);
 
-  const keyedLines = useMemo<KeyedLine[] | null>(
-    () => highlightToKeyedLines(renderedCode, fenceLanguageToExtension(language)),
-    [renderedCode, language],
-  );
+  const keyedLines = useMemo<KeyedLine[] | null>(() => {
+    let ext = fenceLanguageToExtension(language);
+    if (!ext && detectUntagged) ext = resolveExtension(null, renderedCode);
+    return highlightToKeyedLines(renderedCode, ext);
+  }, [renderedCode, language, detectUntagged]);
 
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);

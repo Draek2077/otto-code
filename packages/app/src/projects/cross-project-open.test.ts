@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { resolveWorkspaceForPath } from "./resolve-workspace-for-path";
 import { canonicalLinkKey } from "./project-links";
-import { resolveCrossProjectFileOpen, type CrossProjectWorkspace } from "./cross-project-open";
+import {
+  resolveCrossProjectFileOpen,
+  resolveEditGate,
+  type CrossProjectWorkspace,
+} from "./cross-project-open";
 
 const WORKSPACES: CrossProjectWorkspace[] = [
   {
@@ -51,15 +55,12 @@ describe("resolveWorkspaceForPath", () => {
 });
 
 describe("resolveCrossProjectFileOpen", () => {
-  const linked = new Set([canonicalLinkKey("proj-a", "proj-b")]);
-  const empty = new Set<string>();
-
   it("treats relative paths as in-project", () => {
     const decision = resolveCrossProjectFileOpen({
       location: { path: "src/index.ts" },
       currentProjectId: "proj-a",
       workspaces: WORKSPACES,
-      linkSet: linked,
+      allowOutsideWorkspace: true,
     });
     expect(decision.kind).toBe("in-project");
   });
@@ -69,21 +70,21 @@ describe("resolveCrossProjectFileOpen", () => {
       location: { path: "/home/me/projects/alpha/src/index.ts" },
       currentProjectId: "proj-a",
       workspaces: WORKSPACES,
-      linkSet: empty,
+      allowOutsideWorkspace: true,
     });
     expect(decision.kind).toBe("in-project");
   });
 
-  it("opens a linked project's file in place with an origin and rewritten path", () => {
+  it("opens another project's file in place with an origin and rewritten path (link-agnostic)", () => {
     const decision = resolveCrossProjectFileOpen({
       location: { path: "/home/me/projects/beta/src/index.ts", lineStart: 12 },
       currentProjectId: "proj-a",
       workspaces: WORKSPACES,
-      linkSet: linked,
+      allowOutsideWorkspace: true,
     });
-    expect(decision.kind).toBe("linked");
-    if (decision.kind !== "linked") {
-      throw new Error("expected linked");
+    expect(decision.kind).toBe("out-of-project");
+    if (decision.kind !== "out-of-project") {
+      throw new Error("expected out-of-project");
     }
     expect(decision.origin).toMatchObject({
       workspaceId: "ws-b",
@@ -91,27 +92,84 @@ describe("resolveCrossProjectFileOpen", () => {
       cwd: "/home/me/projects/beta",
       projectName: "Beta",
     });
+    expect(decision.origin.outsideAnyProject).toBeUndefined();
     // Path rewritten relative to the owning workspace; line preserved.
     expect(decision.location).toEqual({ path: "src/index.ts", lineStart: 12 });
   });
 
-  it("blocks an unlinked project's file, naming the owner", () => {
+  it("synthesizes a per-file origin for a path outside every project", () => {
     const decision = resolveCrossProjectFileOpen({
-      location: { path: "/home/me/projects/beta/src/index.ts" },
+      location: { path: "/home/me/.claude/plans/next.md" },
       currentProjectId: "proj-a",
       workspaces: WORKSPACES,
-      linkSet: empty,
+      allowOutsideWorkspace: true,
     });
-    expect(decision).toEqual({ kind: "blocked", projectName: "Beta" });
+    expect(decision.kind).toBe("out-of-project");
+    if (decision.kind !== "out-of-project") {
+      throw new Error("expected out-of-project");
+    }
+    expect(decision.origin).toMatchObject({
+      cwd: "/home/me/.claude/plans",
+      outsideAnyProject: true,
+    });
+    expect(decision.location.path).toBe("next.md");
   });
 
-  it("treats a path outside every known workspace as in-project (daemon guards it)", () => {
+  it("leaves a project-less path in-project when the daemon lacks the capability", () => {
     const decision = resolveCrossProjectFileOpen({
-      location: { path: "/tmp/stranger.ts" },
+      location: { path: "/home/me/.claude/plans/next.md" },
       currentProjectId: "proj-a",
       workspaces: WORKSPACES,
-      linkSet: empty,
+      allowOutsideWorkspace: false,
     });
     expect(decision.kind).toBe("in-project");
+  });
+});
+
+describe("resolveEditGate", () => {
+  const linked = new Set([canonicalLinkKey("proj-a", "proj-b")]);
+  const empty = new Set<string>();
+
+  it("is free for an in-project file (no origin)", () => {
+    expect(
+      resolveEditGate({ origin: undefined, currentProjectId: "proj-a", linkSet: empty }),
+    ).toEqual({ kind: "free" });
+  });
+
+  it("is free for a linked project's file", () => {
+    const gate = resolveEditGate({
+      origin: { workspaceId: "ws-b", cwd: "/home/me/projects/beta", projectId: "proj-b" },
+      currentProjectId: "proj-a",
+      linkSet: linked,
+    });
+    expect(gate).toEqual({ kind: "free" });
+  });
+
+  it("warns (suppressibly) for an unlinked other project", () => {
+    const gate = resolveEditGate({
+      origin: {
+        workspaceId: "ws-b",
+        cwd: "/home/me/projects/beta",
+        projectId: "proj-b",
+        projectName: "Beta",
+      },
+      currentProjectId: "proj-a",
+      linkSet: empty,
+    });
+    expect(gate).toEqual({ kind: "other-project", projectName: "Beta" });
+  });
+
+  it("always warns for a file outside every project", () => {
+    const gate = resolveEditGate({
+      origin: {
+        workspaceId: "outside:/home/me/.claude/plans",
+        cwd: "/home/me/.claude/plans",
+        projectId: "outside:/home/me/.claude/plans",
+        outsideAnyProject: true,
+      },
+      currentProjectId: "proj-a",
+      linkSet: linked,
+    });
+    expect(gate).toEqual({ kind: "outside-project" });
   });
 });

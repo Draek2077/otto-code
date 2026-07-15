@@ -3466,6 +3466,12 @@ export const ServerInfoStatusPayloadSchema = z
         runsClear: z.boolean().optional(),
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: z.boolean().optional(),
+        // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
+        // Set when the daemon will serve single-file read/write/watch for paths
+        // outside every known workspace (bounded only by OS filesystem
+        // permissions). The client gates this behind an "edit anyway" warning;
+        // an old daemon leaves the flag unset and out-of-project files are not offered.
+        fileOutsideWorkspace: z.boolean().optional(),
       })
       .optional(),
   })

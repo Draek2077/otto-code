@@ -1748,13 +1748,15 @@ export const fr: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "Hors du projet · {{project}}",
-      blocked:
-        "Ce fichier appartient à {{project}}, qui n'est pas lié à ce projet. Liez-les dans les paramètres du projet pour l'ouvrir.",
-      warnTitle: "Ouvrir un fichier d'un autre projet ?",
-      warnMessage:
+      badgeNoProject: "En dehors de tout projet",
+      editOutsideTitle: "Modifier un fichier en dehors de tout projet ?",
+      editOutsideMessage:
+        "Ce fichier ne fait partie d'aucun projet. Le modifier écrit directement dans le fichier sur le disque. Cet avertissement s'affiche à chaque fois.",
+      editConfirm: "Modifier quand même",
+      editOtherTitle: "Modifier un fichier d'un autre projet ?",
+      editOtherMessage:
         "Ce fichier appartient à {{project}}. Les modifications que vous faites ici ne feront pas partie du commit de ce projet.",
-      warnConfirm: "Ouvrir",
-      warnSuppress: "Ne plus afficher",
+      editOtherSuppress: "Ne plus m'avertir pour les autres projets",
     },
     goToLine: {
       title: "Go to line",
@@ -1876,6 +1878,7 @@ export const fr: TranslationResources = {
       loading: "Chargement du fichier...",
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
+      binaryPreviewHint: "C'est un fichier binaire, il n'y a donc rien à afficher en texte.",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
     },
