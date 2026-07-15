@@ -111,6 +111,11 @@ export interface DesktopWindowBridge {
 export interface DesktopWindowModuleBridge {
   openNew?: (options?: { pendingOpenProjectPath?: string | null }) => Promise<void>;
   getCurrentWindow?: () => DesktopWindowBridge;
+  // Renderer → main: "my first durable screen is ready to be shown." Main defers
+  // revealing the window until this fires (or a fallback timeout), so slow
+  // software rendering can't expose the boot transient. Optional so an older
+  // desktop shell without the handler is a no-op, not a crash.
+  signalReady?: () => Promise<void>;
 }
 
 export interface DesktopEventsBridge {
