@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/relay",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Otto relay for bridging daemon and client connections",
   "files": [
     "dist",
