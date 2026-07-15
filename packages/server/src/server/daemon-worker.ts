@@ -6,8 +6,26 @@ import { resolveOttoHome } from "./otto-home.js";
 import { createRootLogger } from "./logger.js";
 import type { DaemonLifecycleIntent } from "./bootstrap.js";
 import { getProcessDiagnostics } from "./process-diagnostics.js";
+import { DAEMON_FATAL_EXIT_CODE } from "./daemon-exit-codes.js";
 
 process.title = "Otto Daemon";
+
+// Walk the error and its `cause` chain looking for a listen conflict. A failed
+// bind can surface either directly or wrapped, so check a few levels deep.
+function isAddressInUseError(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    if (typeof current === "object" && "code" in current) {
+      if ((current as { code?: unknown }).code === "EADDRINUSE") {
+        return true;
+      }
+      current = (current as { cause?: unknown }).cause ?? null;
+    } else {
+      break;
+    }
+  }
+  return false;
+}
 
 type SupervisorLifecycleMessage =
   | {
@@ -304,6 +322,14 @@ async function main() {
     sendSupervisorLifecycleMessage({ type: "otto:ready", listen });
   } catch (err) {
     logger.fatal({ err }, "Daemon failed to start listening");
+    if (isAddressInUseError(err)) {
+      // Another daemon already holds the listen port. Restarting the worker can
+      // never win against an occupied port, so exit with the fatal code that
+      // tells the supervisor to stop instead of crash-looping (which is what
+      // spawns rogue, port-squatting daemon processes).
+      exitAfterPinoFlush(DAEMON_FATAL_EXIT_CODE);
+      return;
+    }
     throw err;
   }
 
@@ -324,8 +350,8 @@ async function main() {
 // Give pino async streams a moment to flush the fatal log entry to daemon.log
 // before the process exits. Without this, the last few entries that explain
 // why the daemon crashed can be lost.
-function exitAfterPinoFlush(): void {
-  setTimeout(() => process.exit(1), 200);
+function exitAfterPinoFlush(code = 1): void {
+  setTimeout(() => process.exit(code), 200);
 }
 
 main().catch((err) => {

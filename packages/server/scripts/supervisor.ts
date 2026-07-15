@@ -2,6 +2,7 @@ import { fork, spawn, type ChildProcess } from "child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { createStream as createRotatingFileStream } from "rotating-file-stream";
+import { DAEMON_FATAL_EXIT_CODE } from "../src/server/daemon-exit-codes.js";
 
 interface SupervisorLogFileOptions {
   path: string;
@@ -260,6 +261,17 @@ export function runSupervisor(options: SupervisorOptions): void {
       if (shuttingDown) {
         log(`Worker exited (${exitDescriptor}). Supervisor shutting down.`);
         exitSupervisor(0);
+        return;
+      }
+
+      if (code === DAEMON_FATAL_EXIT_CODE) {
+        // The worker hit a permanent, non-restartable failure (e.g. the listen
+        // port is already held by another daemon). Restarting would loop
+        // forever and spawn rogue processes, so stop here instead of respawning.
+        log(
+          `Worker exited with a fatal, non-restartable error (code ${code}). Supervisor exiting without restart.`,
+        );
+        exitSupervisor(code);
         return;
       }
 
