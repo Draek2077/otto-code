@@ -1722,13 +1722,15 @@ export const ja: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "プロジェクト外 · {{project}}",
-      blocked:
-        "このファイルは {{project}} に属しており、このプロジェクトとはリンクされていません。開くにはプロジェクト設定でリンクしてください。",
-      warnTitle: "別のプロジェクトのファイルを開きますか？",
-      warnMessage:
+      badgeNoProject: "プロジェクト外",
+      editOutsideTitle: "どのプロジェクトにも属さないファイルを編集しますか？",
+      editOutsideMessage:
+        "このファイルはどのプロジェクトにも属していません。編集するとディスク上のファイルに直接書き込まれます。この警告は毎回表示されます。",
+      editConfirm: "編集する",
+      editOtherTitle: "別のプロジェクトのファイルを編集しますか？",
+      editOtherMessage:
         "このファイルは {{project}} に属しています。ここでの変更はこのプロジェクトのコミットには含まれません。",
-      warnConfirm: "開く",
-      warnSuppress: "今後表示しない",
+      editOtherSuppress: "他のプロジェクトについて今後警告しない",
     },
     goToLine: {
       title: "Go to line",
@@ -1850,6 +1852,7 @@ export const ja: TranslationResources = {
       loading: "ファイルを読み込み中...",
       noPreview: "プレビューが利用できません",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
+      binaryPreviewHint: "バイナリファイルのため、テキストとして表示できるものはありません。",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
     },

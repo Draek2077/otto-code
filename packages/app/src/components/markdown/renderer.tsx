@@ -590,6 +590,7 @@ export function createSharedMarkdownRules(): RenderRules {
         language={node.sourceInfo}
         inheritedStyles={inheritedStyles}
         textStyle={styles.fence}
+        detectUntagged
       />
     ),
     code_inline: (

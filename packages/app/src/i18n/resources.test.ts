@@ -399,7 +399,7 @@ describe("translation resources", () => {
     expect(en.branchSwitcher.title).toBe("Switch branch");
     expect(en.panels.file.loading).toBe("Loading file...");
     expect(en.panels.file.noPreview).toBe("No preview available");
-    expect(en.panels.file.binaryPreviewUnavailable).toBe("Binary preview unavailable");
+    expect(en.panels.file.binaryPreviewUnavailable).toBe("This file can't be previewed here");
     expect(en.panels.file.failedToLoad).toBe("Failed to load file");
     expect(en.toolCallDetails.error).toBe("Error");
     expect(en.toolCallDetails.empty).toBe("No additional details available");

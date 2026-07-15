@@ -12,7 +12,9 @@ import {
 import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptorContext, PanelRegistration } from "@/panels/panel-registry";
-import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { useWorkspaceDirectory, useWorkspaceProjectId } from "@/stores/session-store-hooks";
+import { useProjectLinkSet } from "@/projects/project-links";
+import { resolveEditGate } from "@/projects/cross-project-open";
 import { confirmDialog } from "@/utils/confirm-dialog";
 
 const CENTERED_PADDED_STYLE = {
@@ -81,6 +83,8 @@ function FilePanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target } = usePaneContext();
   const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
+  const paneProjectId = useWorkspaceProjectId(serverId, workspaceId);
+  const { linkSet } = useProjectLinkSet(serverId);
   invariant(target.kind === "file", "FilePanel requires file target");
   // An out-of-project file (gated-multi-root) is served from its OWNING
   // workspace: cwd, workspaceId, and editor buffer all resolve against origin,
@@ -88,6 +92,9 @@ function FilePanel() {
   const origin = target.origin;
   const effectiveWorkspaceId = origin?.workspaceId ?? workspaceId;
   const effectiveRoot = origin?.cwd ?? paneWorkspaceDirectory;
+  // Computed against the LIVE link set so linking/unlinking projects while the
+  // tab is open updates whether editing warns.
+  const editGate = resolveEditGate({ origin, currentProjectId: paneProjectId, linkSet });
   if (!effectiveRoot) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
@@ -101,7 +108,7 @@ function FilePanel() {
       workspaceId={effectiveWorkspaceId}
       workspaceRoot={effectiveRoot}
       location={target}
-      outOfProjectName={origin?.projectName ?? null}
+      editGate={editGate}
     />
   );
 }

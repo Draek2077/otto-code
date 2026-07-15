@@ -1360,6 +1360,8 @@ export class VoiceAssistantWebSocketServer {
         suggestedTasks: true,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: true,
+        // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
+        fileOutsideWorkspace: true,
       },
     };
   }

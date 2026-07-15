@@ -1736,13 +1736,15 @@ export const ru: TranslationResources = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "Вне проекта · {{project}}",
-      blocked:
-        "Этот файл принадлежит проекту {{project}}, который не связан с этим проектом. Свяжите их в настройках проекта, чтобы открыть его.",
-      warnTitle: "Открыть файл из другого проекта?",
-      warnMessage:
+      badgeNoProject: "Вне какого-либо проекта",
+      editOutsideTitle: "Редактировать файл вне какого-либо проекта?",
+      editOutsideMessage:
+        "Этот файл не относится ни к одному проекту. Его редактирование напрямую записывает файл на диск. Это предупреждение показывается каждый раз.",
+      editConfirm: "Всё равно редактировать",
+      editOtherTitle: "Редактировать файл из другого проекта?",
+      editOtherMessage:
         "Этот файл принадлежит проекту {{project}}. Внесённые здесь изменения не войдут в коммит этого проекта.",
-      warnConfirm: "Открыть",
-      warnSuppress: "Больше не показывать",
+      editOtherSuppress: "Больше не предупреждать о других проектах",
     },
     goToLine: {
       title: "Go to line",
@@ -1864,6 +1866,7 @@ export const ru: TranslationResources = {
       loading: "Загрузка файла...",
       noPreview: "Предварительный просмотр недоступен",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
+      binaryPreviewHint: "Это двоичный файл, поэтому показывать как текст нечего.",
       failedToLoad: "Не удалось загрузить файл",
       failedToLoadPreview: "Не удалось загрузить предварительный просмотр файла.",
     },

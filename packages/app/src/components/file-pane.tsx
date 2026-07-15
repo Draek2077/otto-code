@@ -607,6 +607,7 @@ function FilePreviewBody({
   return (
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
+      <Text style={styles.binaryMetaText}>{t("panels.file.binaryPreviewHint")}</Text>
       <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
     </View>
   );

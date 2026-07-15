@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import type { CheckoutPrStatusResponse } from "@otto-code/protocol/messages";
+import {
+  type CheckoutPrStatusResponse,
+  normalizeGitHostingProviderId,
+} from "@otto-code/protocol/messages";
 import { checkoutPrStatusQueryKey } from "@/git/query-keys";
 import { selectPrHintFromStatus, type PrHint } from "@/git/pr-hint";
 
@@ -53,7 +56,7 @@ export function useCheckoutPrStatusQuery({
     // the single normalization point — downstream policy/panel code stays
     // provider-agnostic.
     githubFeaturesEnabled: hosting?.featuresEnabled ?? query.data?.githubFeaturesEnabled ?? true,
-    hostingProvider: hosting?.provider ?? "github",
+    hostingProvider: normalizeGitHostingProviderId(hosting?.provider) ?? "github",
     hostingCapabilities: hosting?.capabilities ?? null,
     payloadError: query.data?.error ?? null,
     isLoading: query.isLoading,

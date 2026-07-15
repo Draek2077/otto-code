@@ -1,4 +1,4 @@
-import { highlightCode, type HighlightToken } from "@otto-code/highlight";
+import { detectLanguage, highlightCode, type HighlightToken } from "@otto-code/highlight";
 
 // Shared, theme-independent tokenization + cache for syntax highlighting.
 // Used by markdown code blocks, file preview, and tool-call detail blocks
@@ -76,6 +76,16 @@ function toKeyedLine(tokens: HighlightToken[], lineIndex: number): KeyedLine {
 export function highlightToKeyedLines(code: string, ext: string | null): KeyedLine[] | null {
   const lines = tokenizeToLines(code, ext);
   return lines ? lines.map(toKeyedLine) : null;
+}
+
+// Resolve the grammar extension for a code block: the explicit fence language
+// when we have one, otherwise a best-effort guess from the content. Detection
+// only runs for untagged blocks (over the size cap it's skipped, matching the
+// highlighter's own ceiling), so tagged fences never pay for it.
+export function resolveExtension(explicitExt: string | null, code: string): string | null {
+  if (explicitExt) return explicitExt;
+  if (code.length > MAX_HIGHLIGHT_CHARS) return null;
+  return detectLanguage(code);
 }
 
 // Extension for grammar selection from a file path. We only need the suffix —

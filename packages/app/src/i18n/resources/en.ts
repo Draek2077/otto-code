@@ -1727,13 +1727,15 @@ export const en = {
     wordWrap: "Word wrap",
     outOfProject: {
       badge: "Out of project · {{project}}",
-      blocked:
-        "This file belongs to {{project}}, which isn't linked to this project. Link them in project settings to open it.",
-      warnTitle: "Open file from another project?",
-      warnMessage:
+      badgeNoProject: "Outside any project",
+      editOutsideTitle: "Edit a file outside any project?",
+      editOutsideMessage:
+        "This file isn't part of any project. Editing it writes directly to the file on disk. This warning shows every time.",
+      editConfirm: "Edit anyway",
+      editOtherTitle: "Edit a file from another project?",
+      editOtherMessage:
         "This file belongs to {{project}}. Changes you make here won't be part of this project's commit.",
-      warnConfirm: "Open",
-      warnSuppress: "Don't show this again",
+      editOtherSuppress: "Don't warn me again for other projects",
     },
     goToLine: {
       title: "Go to line",
@@ -1841,7 +1843,8 @@ export const en = {
       directoryMissing: "Workspace directory not found.",
       loading: "Loading file...",
       noPreview: "No preview available",
-      binaryPreviewUnavailable: "Binary preview unavailable",
+      binaryPreviewUnavailable: "This file can't be previewed here",
+      binaryPreviewHint: "It's a binary file, so there's nothing to show as text.",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
     },

@@ -2679,22 +2679,17 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      // Gate cross-project opens (gated-multi-root): linked → open in place with
-      // an origin discriminator; unlinked → blocked with a toast; else normal.
-      const openGated = async () => {
-        const resolved = await crossProjectFileOpenGate(normalizedLocation);
-        if (!resolved.open) {
-          return;
-        }
-        const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
-        const tabId = options?.parentTabId
-          ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
-          : openWorkspaceTabFocused(persistenceKey, target);
-        if (tabId) {
-          navigateToTabId(tabId);
-        }
-      };
-      void openGated();
+      // Resolve cross-project / project-less opens (gated-multi-root): a file in
+      // another project or outside every project opens in place with an origin
+      // discriminator; editing it is gated later at edit time. The open never blocks.
+      const resolved = crossProjectFileOpenGate(normalizedLocation);
+      const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
+      const tabId = options?.parentTabId
+        ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
+        : openWorkspaceTabFocused(persistenceKey, target);
+      if (tabId) {
+        navigateToTabId(tabId);
+      }
     },
     [
       crossProjectFileOpenGate,
@@ -2722,7 +2717,13 @@ function WorkspaceScreenContent({
         return;
       }
 
-      const target: WorkspaceTabTarget = createWorkspaceFileTabTarget(location);
+      // Resolve cross-project / project-less origin so a side-pane open of an
+      // out-of-project file is scoped to its owning (or synthesized) workspace.
+      const resolved = crossProjectFileOpenGate(location);
+      const target: WorkspaceTabTarget = createWorkspaceFileTabTarget(
+        resolved.location,
+        resolved.origin,
+      );
       const placement = resolveSideFileOpenPlacement({
         layout: workspaceLayout,
         sourcePaneId: input.sourcePaneId,
@@ -2746,6 +2747,7 @@ function WorkspaceScreenContent({
       }
     },
     [
+      crossProjectFileOpenGate,
       handleOpenFileFromChat,
       isMobile,
       focusWorkspacePane,
