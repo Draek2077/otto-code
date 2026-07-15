@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.8 - 2026-07-14
+
+### Added
+
+- Preview any file on your machine, including files outside your open projects, with out-of-project editing gated behind project links
+- Code blocks without a language tag now get syntax highlighting through automatic language detection
+
+### Fixed
+
+- Otto launches reliably on virtual machines without 3D acceleration, which previously left it running with no visible window
+- The local daemon starts cleanly instead of spawning runaway background processes when its port is already in use
+
 ## 0.5.7 - 2026-07-14
 
 ### Fixed
