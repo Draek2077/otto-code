@@ -22,7 +22,7 @@ import {
   ArrowRight,
   Camera,
   ChevronDown,
-  Maximize,
+  Devices,
   Monitor,
   MousePointer2,
   RotateCw,
@@ -124,7 +124,7 @@ interface DeviceSizePreset {
 // others render a fixed-size, centered frame so the user can preview how a page
 // behaves at common device sizes. Content is centered (not left-aligned).
 const DEVICE_SIZE_PRESETS: readonly DeviceSizePreset[] = [
-  { id: "responsive", name: "Responsive", width: null, height: null, icon: Maximize },
+  { id: "responsive", name: "Responsive", width: null, height: null, icon: Devices },
   { id: "iphone-se", name: "iPhone SE", width: 375, height: 667, icon: Smartphone },
   { id: "iphone-14", name: "iPhone 14", width: 390, height: 844, icon: Smartphone },
   { id: "iphone-14-pro-max", name: "iPhone 14 Pro Max", width: 430, height: 932, icon: Smartphone },
@@ -510,7 +510,7 @@ function ToolbarButton({
 
 // Lucide icons themed via withUnistyles so their color stays theme-reactive
 // without a banned useUnistyles() call.
-const ThemedMaximize = withUnistyles(Maximize);
+const ThemedDevices = withUnistyles(Devices);
 const ThemedSmartphone = withUnistyles(Smartphone);
 const ThemedTablet = withUnistyles(Tablet);
 const ThemedMonitor = withUnistyles(Monitor);
@@ -519,11 +519,11 @@ const deviceMutedIconMapping = (theme: { colors: { foregroundMuted: string } }) 
   color: theme.colors.foregroundMuted,
 });
 
-function resolveThemedDeviceIcon(icon: IconComponent): typeof ThemedMaximize {
+function resolveThemedDeviceIcon(icon: IconComponent): typeof ThemedDevices {
   if (icon === Smartphone) return ThemedSmartphone;
   if (icon === Tablet) return ThemedTablet;
   if (icon === Monitor) return ThemedMonitor;
-  return ThemedMaximize;
+  return ThemedDevices;
 }
 
 function DeviceSizeMenuItem({

@@ -89,10 +89,20 @@ export interface AttachmentMenuItem {
   icon?: React.ReactElement | null;
 }
 
+/**
+ * Submit handler result: a `false` resolution means the submit was vetoed
+ * downstream (e.g. the interrupt-a-running-agent confirm was cancelled) and
+ * the composer text stayed put — callers must not collapse the input height.
+ * `void`/`true` (sync or async) means the message is on its way.
+ */
+export type SubmitMessageHandler = (
+  payload: MessagePayload,
+) => void | boolean | Promise<boolean | void>;
+
 export interface MessageInputProps {
   value: string;
   onChangeText: (text: string) => void;
-  onSubmit: (payload: MessagePayload) => void;
+  onSubmit: SubmitMessageHandler;
   /** When true, the submit button is enabled even without text or images (e.g. external attachment selected). */
   hasExternalContent?: boolean;
   /** When true, the submit button stays visible and can submit even with no content. */
@@ -855,7 +865,7 @@ interface DictationTranscriptContext {
   defaultSendBehavior: "interrupt" | "queue";
   isAgentRunning: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;
-  onSubmit: (payload: MessagePayload) => void;
+  onSubmit: SubmitMessageHandler;
   onChangeText: (text: string) => void;
   attachments: ComposerAttachment[];
   cwd: string;
@@ -1001,7 +1011,7 @@ interface SendMessageContext {
   allowEmptySubmit: boolean;
   cwd: string;
   isAgentRunning: boolean;
-  onSubmit: (payload: MessagePayload) => void;
+  onSubmit: SubmitMessageHandler;
   onMinimizeHeight: () => void;
   preserveHeightOnSubmit: boolean;
 }
@@ -1016,7 +1026,7 @@ function sendMessageImpl(ctx: SendMessageContext): void {
   ) {
     return;
   }
-  ctx.onSubmit({
+  const result = ctx.onSubmit({
     text: trimmed,
     attachments: ctx.attachments,
     cwd: ctx.cwd,
@@ -1024,9 +1034,17 @@ function sendMessageImpl(ctx: SendMessageContext): void {
   });
   // When the host preserves and locks the composer (e.g. new-workspace creation),
   // the text stays put — collapsing the height would clip it. Keep it grown.
-  if (!ctx.preserveHeightOnSubmit) {
-    ctx.onMinimizeHeight();
+  if (ctx.preserveHeightOnSubmit) {
+    return;
   }
+  // A submit can be vetoed downstream (interrupt-confirm cancelled) — in that
+  // case the text is still in the box, so collapsing would clip it.
+  void (async () => {
+    const committed = await result;
+    if (committed !== false) {
+      ctx.onMinimizeHeight();
+    }
+  })();
 }
 
 interface QueueMessageContext {
@@ -1189,7 +1207,7 @@ function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOut
 interface ResolvedMessageInputProps {
   value: string;
   onChangeText: (text: string) => void;
-  onSubmit: (payload: MessagePayload) => void;
+  onSubmit: SubmitMessageHandler;
   hasExternalContent: boolean;
   allowEmptySubmit: boolean;
   submitButtonAccessibilityLabel: string | undefined;

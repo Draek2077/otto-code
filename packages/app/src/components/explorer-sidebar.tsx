@@ -6,6 +6,7 @@ import {
   useWindowDimensions,
   StyleSheet as RNStyleSheet,
   type LayoutChangeEvent,
+  type PressableStateCallbackType,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
@@ -318,7 +319,13 @@ function ExplorerTabButton({
   children,
 }: ExplorerTabButtonProps) {
   const handlePress = useCallback(() => onTabPress(tab), [onTabPress, tab]);
-  const tabStyle = useMemo(() => [styles.tab, active && styles.tabActive], [active]);
+  const tabStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType) => [
+      styles.tab,
+      (active || hovered || pressed) && styles.tabActive,
+    ],
+    [active],
+  );
   const tabTextStyle = useMemo(() => [styles.tabText, active && styles.tabTextActive], [active]);
   const accessibilityState = useMemo(() => ({ selected: active }), [active]);
   const button = (

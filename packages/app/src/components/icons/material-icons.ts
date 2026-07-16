@@ -66,6 +66,7 @@ export const CopyX = createMaterialSymbolIcon("CopyX");
 export const CornerDownLeft = createMaterialSymbolIcon("CornerDownLeft");
 export const DataObject = createMaterialSymbolIcon("DataObject");
 export const DesignServices = createMaterialSymbolIcon("DesignServices");
+export const Devices = createMaterialSymbolIcon("Devices");
 export const DocumentSearch = createMaterialSymbolIcon("DocumentSearch");
 export const Download = createMaterialSymbolIcon("Download");
 export const EditNote = createMaterialSymbolIcon("EditNote");
