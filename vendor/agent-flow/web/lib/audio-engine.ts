@@ -31,6 +31,16 @@ export class AudioEngine {
     }
   }
 
+  /** OTTO PATCH (OTTO-PATCHES.md): host-controlled master volume (0..1).
+   * Applied live when unmuted; stored for the next `ensureContext` otherwise
+   * (the AudioContext is created lazily on the first sound). */
+  setVolume(volume: number) {
+    this._volume = Math.max(0, Math.min(1, volume))
+    if (this.masterGain && !this._muted) {
+      this.masterGain.gain.setTargetAtTime(this._volume, this.ctx!.currentTime, 0.05)
+    }
+  }
+
   toggleMute() {
     this.setMuted(!this._muted)
     return this._muted

@@ -217,6 +217,9 @@ const MountedTabSlot = memo(function MountedTabSlot({
           content={content}
           isWorkspaceFocused={isWorkspaceFocused}
           isPaneFocused={isPaneFocused}
+          // `isVisible` here is pane-local (frontmost tab); the content is
+          // actually on screen only when the workspace route is focused too.
+          isVisible={isWorkspaceFocused && isVisible}
           onFocusPane={handleFocusPane}
         />
       </RetainedPanel>

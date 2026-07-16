@@ -2,11 +2,15 @@ import { useEffect, useRef } from "react";
 import { getIsElectron } from "@/constants/platform";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
-import { confirmQuitWithEnabledSchedules } from "@/desktop/components/quit-schedules-warning";
+import {
+  getQuitSchedulesWarningCount,
+  suppressQuitSchedulesWarning,
+} from "@/desktop/components/quit-schedules-warning";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 import { i18n } from "@/i18n/i18next";
 
 interface QuitConfirmRequestPayload {
@@ -18,6 +22,7 @@ async function handleQuitConfirmRequest(
   payload: QuitConfirmRequestPayload,
   settingsRef: { current: DesktopSettings },
   agentsRef: { current: AggregatedAgent[] },
+  localDaemonServerIdRef: { current: string | null },
 ): Promise<void> {
   const settings = settingsRef.current;
   const hasActiveAgents = agentsRef.current.some((agent) => isSidebarActiveAgent(agent));
@@ -28,6 +33,16 @@ async function handleQuitConfirmRequest(
     settings.quit.warnBeforeQuit &&
     (settings.quit.onlyWarnForActiveAgents ? hasActiveAgents : true);
 
+  // Stopping the daemon means enabled schedules stop firing until it runs
+  // again — a suppressible warning that applies even when the generic "warn
+  // before quitting" setting is off. Resolved up front so both warnings can
+  // share a single dialog instead of prompting twice in sequence. The lookup
+  // is deadline-bounded and works off the pre-cached local daemon serverId,
+  // so it cannot noticeably delay the dialog.
+  const schedulesWarningCount = payload.willStopDaemon
+    ? await getQuitSchedulesWarningCount(localDaemonServerIdRef.current)
+    : 0;
+
   console.log("[quit-confirm] request received", {
     requestId: payload.requestId,
     willStopDaemon: payload.willStopDaemon,
@@ -35,33 +50,52 @@ async function handleQuitConfirmRequest(
     onlyWarnForActiveAgents: settings.quit.onlyWarnForActiveAgents,
     hasActiveAgents,
     shouldPrompt,
+    schedulesWarningCount,
   });
 
   let confirmed = true;
-  if (shouldPrompt) {
+  if (shouldPrompt || schedulesWarningCount > 0) {
+    let title: string;
     let message: string;
-    if (hasActiveAgents) {
-      message = i18n.t("desktop.window.quitConfirm.activeAgentsMessage");
-    } else if (payload.willStopDaemon) {
-      message = i18n.t("desktop.window.quitConfirm.appAndDaemonMessage");
+    let confirmLabel: string;
+    if (shouldPrompt) {
+      title = i18n.t("desktop.window.quitConfirm.title");
+      confirmLabel = i18n.t("desktop.window.quitConfirm.confirm");
+      if (hasActiveAgents) {
+        message = i18n.t("desktop.window.quitConfirm.activeAgentsMessage");
+      } else if (payload.willStopDaemon) {
+        message = i18n.t("desktop.window.quitConfirm.appAndDaemonMessage");
+      } else {
+        message = i18n.t("desktop.window.quitConfirm.appMessage");
+      }
+      if (schedulesWarningCount > 0) {
+        message += `\n\n${i18n.t("desktop.window.quitConfirm.schedulesMessage", {
+          count: schedulesWarningCount,
+        })}`;
+      }
     } else {
-      message = i18n.t("desktop.window.quitConfirm.appMessage");
+      title = i18n.t("desktop.window.quitConfirm.schedulesTitle");
+      confirmLabel = i18n.t("desktop.window.quitConfirm.schedulesConfirm");
+      message = i18n.t("desktop.window.quitConfirm.schedulesMessage", {
+        count: schedulesWarningCount,
+      });
     }
 
-    confirmed = await confirmDialog({
-      title: i18n.t("desktop.window.quitConfirm.title"),
+    const result = await confirmDialogWithCheckbox({
+      title,
       message,
-      confirmLabel: i18n.t("desktop.window.quitConfirm.confirm"),
+      confirmLabel,
       cancelLabel: i18n.t("desktop.window.quitConfirm.cancel"),
-      destructive: hasActiveAgents,
+      destructive: shouldPrompt && hasActiveAgents,
+      checkboxLabel:
+        schedulesWarningCount > 0
+          ? i18n.t("desktop.window.quitConfirm.schedulesSuppress")
+          : undefined,
     });
-  }
-
-  // Stopping the daemon means enabled schedules stop firing until it runs
-  // again — a separate, suppressible warning that applies even when the
-  // generic "warn before quitting" setting is off.
-  if (confirmed && payload.willStopDaemon) {
-    confirmed = await confirmQuitWithEnabledSchedules();
+    confirmed = result.confirmed;
+    if (confirmed && schedulesWarningCount > 0 && result.checkboxChecked) {
+      suppressQuitSchedulesWarning();
+    }
   }
 
   console.log("[quit-confirm] responding", { requestId: payload.requestId, confirmed });
@@ -79,11 +113,18 @@ async function handleQuitConfirmRequest(
 export function QuitConfirmListener() {
   const { settings } = useDesktopSettings();
   const { agents } = useAggregatedAgents();
+  // Subscribing here keeps the local daemon serverId query mounted (and its
+  // result cached) for the app's whole lifetime, so the quit flow never has
+  // to resolve it on demand — that path shells out to the CLI and would hold
+  // the quit dialog back by seconds.
+  const localDaemonServerId = useLocalDaemonServerId();
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const agentsRef = useRef(agents);
   agentsRef.current = agents;
+  const localDaemonServerIdRef = useRef(localDaemonServerId);
+  localDaemonServerIdRef.current = localDaemonServerId;
 
   useEffect(() => {
     if (!getIsElectron()) {
@@ -97,7 +138,7 @@ export function QuitConfirmListener() {
       const fn = await listenToDesktopEvent<QuitConfirmRequestPayload>(
         "quit-confirm-request",
         (payload) => {
-          void handleQuitConfirmRequest(payload, settingsRef, agentsRef);
+          void handleQuitConfirmRequest(payload, settingsRef, agentsRef, localDaemonServerIdRef);
         },
       );
       if (cancelled) {

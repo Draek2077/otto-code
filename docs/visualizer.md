@@ -50,12 +50,14 @@ Consumers `import()` the bundle lazily (`load-visualizer-html.ts`) — never at 
 
 All three keep the WebView/webview mounted for the tab's lifetime (no unmount on blur) so accumulated page state survives tab switches.
 
+**Resource sleep (off-screen tabs cost nothing):** a Visualizer that isn't on screen renders zero frames. The guest advances state only inside `requestAnimationFrame`, and `rAF` doesn't fire for a `display:none` (or occluded) WebView — so the whole canvas pipeline (bloom, particles, the graph) halts with no CPU/GPU cost. Two layers put an off-screen Visualizer behind `display:none`: a **non-frontmost tab** in its pane (`RetainedPanel active={isVisible}` in `split-container.tsx`), and a **background workspace** (`WorkspaceDeck` mounts up to `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3` workspaces, each a `RetainedPanel active={isActive}`; beyond the cap the workspace — and its WebView — is fully unmounted). The Otto-side adapter is independently gated off whenever the pane isn't on screen (`usePaneFocus().isVisible`, i.e. workspace focused **and** frontmost tab), so it does no backfill/streaming work either. The one deliberate exception is a **visible companion split** — a Visualizer sharing the focused workspace with the pane you're typing in is on screen and stays live (that's the whole point of the companion view). Bringing an asleep Visualizer back into view flips `isVisible` true, whose reset+replay rehydrates the graph from the session buffers (see "Backfill + liveness").
+
 ## The bridge contract
 
 `web/lib/vscode-bridge.ts` is the render layer's only transport, and it's pluggable — this is the seam Otto's embed drives instead of the vendor's VS Code extension.
 
-- **Host → page:** `__vscode-bridge-init`, `agent-event` / `agent-event-batch` (`{time, type, payload, sessionId?}`), `config` (`{mode, autoPlay, showMockData, disable1MContext, panels}`), `connection-status`, `reset`, `session-list` / `session-started` / `session-ended` / `session-updated`.
-- **Page → host:** `ready`, `open-file` (`{filePath, line?}`).
+- **Host → page:** `__vscode-bridge-init`, `agent-event` / `agent-event-batch` (`{time, type, payload, sessionId?}`), `config` (`{mode, autoPlay, showMockData, disable1MContext, panels, render, soundVolume, hudHidden}`), `connection-status`, `reset`, `session-list` / `session-started` / `session-ended` / `session-updated`.
+- **Page → host:** `ready`, `open-file` (`{filePath, line?}`), `sound-muted` (`{muted}`), `hud-hidden` (`{hidden}`).
 
 ### `config.render` (Otto patch)
 
@@ -63,9 +65,17 @@ An optional `render: Partial<{bloom, stars, backdrop}>` field toggles the canvas
 
 The same settings section owns **Sharpness** (`visualizerRenderQuality`: Fast 1x / Balanced 1.25x / Sharp 1.5x / Native): it substitutes the shell's `__OTTO_DPR_CAP__` placeholder via `applyVisualizerRenderScale` (load-visualizer-html.ts). The page reads dpr once at boot, so a quality change rebuilds the html string, which remounts the guest — the panel resets its handshake state on the change so the fresh `ready` re-runs config + adapter replay.
 
+### `config.soundVolume` (Otto patch)
+
+An optional `soundVolume: number` (0..1) sets the vendor page's master audio volume for its procedural sound effects (agent spawn, tool start/end, completion chord, error tone). It's **authoritative** in the page: `0` mutes, `> 0` is audible at that level and unmutes (driving the in-page mute toggle's icon so it stays truthful). Sent live on every `config` message that carries it, applied via `AudioEngine.setVolume`. Sourced from the `visualizerSoundVolume` device-local setting (stored as a 0-100 percent, ÷100 on the way out), surfaced as the Volume slider in the **Settings → Visualizer "Sound"** section. Defaults to `0` — the vendor page's sounds have always started muted (its localStorage-persisted mute pref resets every run on Otto's fresh webview partition), so sound stays opt-in.
+
 ### `config.panels` (Otto patch)
 
 An optional `panels: Partial<{timeline, fileAttention, transcript, messageFeed, costOverlay, hexGrid}>` field seeds which page panels start visible — applied on every `config` message that carries it, not just the first. `fileAttention`/`transcript`/`costOverlay` are mutually exclusive in the vendor page itself (`toggleExclusivePanel`); a config setting more than one true is resolved by priority (files > transcript > cost). Sourced from device-local settings (`packages/app/src/hooks/use-settings/storage.ts` `visualizerPanel*` fields, Settings → Appearance → Visualizer, developer mode only) and sent once by `visualizer-panel.tsx` on the page's `ready` handshake.
+
+### `config.hudHidden` (Otto patch)
+
+An optional `hudHidden: boolean` collapses the **entire HUD at once** — every panel, bar, and floating popup (message feed, agent/tool/discovery popups, chat panel, context menu, control bar, file-attention/transcript/timeline panels, top bar) — leaving just the canvas graph and a single always-visible bottom-left toggle button (the one HUD element that survives, so the HUD is recoverable). Authoritative when present, applied on every `config` message that carries it (same shape as `config.panels`). The button reports its flip back via the `hud-hidden` (`{hidden}`) page→host message; the panel persists it into the `visualizerHudHidden` device-local setting and re-seeds it as `config.hudHidden`. Because all tabs read that one setting, the toggle is **shared by every Visualizer tab at once** and survives restarts. Like the mute toggle, the in-page button is the whole control — there is no Settings row.
 
 ### Provider logos (Otto patch)
 
@@ -120,6 +130,8 @@ Mechanics:
 `packages/app/src/visualizer/`: `visualizer-event-adapter.ts` holds the pure, unit-tested mapping functions (Otto timeline/stream shapes → `SimulationEvent`); `use-visualizer-event-adapter.ts` owns the stateful side — node-name registry, backfill fetch, live-stream cursor dedup, batching (~200ms tick, matching the page's own UI throttle).
 
 **Sessions:** one visualizer session per attended root agent in the workspace (`session-started {session:{id: agentId, ...}}`). Observed subagents (`attend:"observed"`, `parentAgentId`) do NOT get their own session — they ride inside the parent's session as child nodes (`agent_spawn {parent}`), with the same `parent::sub::key` id special-casing every other subagent-lifecycle codepath needs.
+
+**Completion / when a node fades:** `reconcileAgents` emits `agent_complete` (which the page fades out non-main nodes on) from the pure `isVisualizerAgentTerminal` predicate, which **mirrors the subagents track's `isSubagentRowTidyEligible`** (`subagents/track-presentation.ts`) so a node leaves the graph exactly when the track collapses the row into "Completed": `closed`/archived always (roots included); for an `observed` subagent, also `idle` or `error` unless it's attention-flagged. This is load-bearing — a Claude Task ends its run at **`idle`** (not `closed`), so the old `closed || archived`-only test left completed Task nodes stuck active forever, and clearing them was flaky because the fade never fired. Terminal detection runs for freshly-registered nodes too, so a backfill that first sees an already-idle observed subagent still completes it. Attended/native agents idle between turns and are never faded on `idle`.
 
 **Backfill + liveness:** on activation the adapter does a full `reset` + replay — fetches each new node's timeline via `client.fetchAgentTimeline(agentId, {direction:"tail", limit:0})` as one `agent-event-batch`, then streams live `agent_stream` events, using an epoch/seq cursor to avoid double-feeding the backfill/live overlap. **Every transition to active (page ready AND pane visible) triggers this same reset+replay** — that's also how the adapter recovers from the hidden-webview rAF stall (below), since `active` flips to `true` again on tab refocus.
 

@@ -2,6 +2,7 @@
 // stateful side (name registry, backfill fetch, live-stream cursor dedup)
 // lives in use-visualizer-event-adapter.ts, which calls into these functions.
 // See docs/visualizer.md for the mapping table this file implements.
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type {
   AgentTimelineItem,
   AgentUsage,
@@ -46,6 +47,20 @@ const MAX_SUMMARY_LENGTH = 200;
 
 function truncate(text: string, max: number = MAX_SUMMARY_LENGTH): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Session tab labels render in a cramped horizontal strip at the page's
+ * top-left (vendor session-tabs.tsx pins each tab `whiteSpace: nowrap` +
+ * `flexShrink: 0` with no max-width/ellipsis), so a long agent title blows the
+ * tab out and crowds the others off. Cap the *label* host-side — the node
+ * `name` (graph key, must stay unique/stable) is deliberately left full. */
+const MAX_SESSION_LABEL_LENGTH = 24;
+
+export function truncateSessionLabel(label: string): string {
+  const trimmed = label.trim();
+  return trimmed.length > MAX_SESSION_LABEL_LENGTH
+    ? `${trimmed.slice(0, MAX_SESSION_LABEL_LENGTH).trimEnd()}…`
+    : trimmed;
 }
 
 /** Node names must be stable and unique per session (the page keys agents by
@@ -121,6 +136,41 @@ export function buildModelDetectedEvent(input: {
     type: "model_detected",
     payload: { agent: input.ctx.name, model: input.model },
   };
+}
+
+/** What the visualizer needs to decide whether an agent's node is finished
+ * and should emit `agent_complete` (fade out of the graph). */
+export interface VisualizerTerminalInput {
+  status: AgentLifecycleStatus;
+  attend: "attended" | "observed" | undefined;
+  archived: boolean;
+  requiresAttention: boolean;
+}
+
+/** True when a node should complete and fade out. Mirrors the subagents
+ * track's tidy-eligibility (`isSubagentRowTidyEligible` in
+ * subagents/track-presentation.ts) so a subagent leaves the graph at exactly
+ * the moment the track collapses it into its "Completed" group:
+ *
+ * - `closed` or archived is always terminal (roots included — a session that
+ *   ends stops rendering as active).
+ * - A provider-managed (`observed`) subagent is also done at `idle` or `error`:
+ *   a Claude Task ends its run at `idle` and never resumes, so idle-observed is
+ *   genuinely finished, whereas a native subagent idles *between turns* and may
+ *   still be mid-conversation — so only `observed` idle counts. Attention rows
+ *   (e.g. a usage-exhausted failure) stay visible so the signal isn't buried.
+ *
+ * Without this an idle Claude Task node lingered forever, because the old test
+ * was `status === "closed" || archived` only — an observed subagent that
+ * completes to `idle` matched neither and never faded. */
+export function isVisualizerAgentTerminal(input: VisualizerTerminalInput): boolean {
+  if (input.status === "closed" || input.archived) {
+    return true;
+  }
+  if (input.attend === "observed" && !input.requiresAttention) {
+    return input.status === "idle" || input.status === "error";
+  }
+  return false;
 }
 
 export function buildAgentCompleteEvent(input: {

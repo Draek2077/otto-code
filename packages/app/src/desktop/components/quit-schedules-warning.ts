@@ -1,10 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { getDesktopDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-import { i18n } from "@/i18n/i18next";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 
 const QUIT_SCHEDULES_WARNING_STORAGE_KEY = "quit-schedules-warning";
 
@@ -34,16 +31,8 @@ export const useQuitSchedulesWarningPrefStore = create<QuitSchedulesWarningPrefS
  * the quit flow is about to stop. Resolves 0 when the local daemon can't be
  * identified or reached, so a broken lookup never blocks quitting.
  */
-export async function countEnabledLocalDaemonSchedules(): Promise<number> {
-  if (!shouldUseDesktopDaemon()) {
-    return 0;
-  }
+export async function countEnabledLocalDaemonSchedules(serverId: string): Promise<number> {
   try {
-    const status = await getDesktopDaemonStatus();
-    const serverId = status.serverId.trim();
-    if (!serverId) {
-      return 0;
-    }
     const runtime = getHostRuntimeStore();
     const snapshot = runtime.getSnapshot(serverId);
     const client = runtime.getClient(serverId);
@@ -61,35 +50,42 @@ export async function countEnabledLocalDaemonSchedules(): Promise<number> {
   }
 }
 
+// The quit dialog blocks on this lookup, so it must stay near-instant: with
+// the serverId already cached, the only async step is one scheduleList RPC to
+// the local daemon. The deadline is a fail-open safety net for a busy or hung
+// daemon — better to skip an advisory warning than to stall the quit dialog.
+const SCHEDULES_WARNING_DEADLINE_MS = 750;
+
 /**
- * Warns that enabled schedules will not run while the daemon is off, before a
- * quit that stops the desktop-managed daemon. Resolves `true` when there are
- * no enabled schedules, the warning was previously suppressed, or the user
- * quits anyway — and `false` when they cancel. Mirrors `confirmArchiveChat`
- * (the shared suppressible confirm-dialog pattern): a "don't warn me again"
- * checkbox persists device-locally.
+ * Number of enabled schedules the quit flow should warn about before a quit
+ * that stops the desktop-managed daemon. Resolves 0 (i.e. "no warning
+ * needed") when the warning was previously suppressed via
+ * {@link suppressQuitSchedulesWarning}, the local daemon isn't identified,
+ * there are no enabled schedules, or the lookup misses the deadline.
+ *
+ * `localDaemonServerId` comes from the caller's `useLocalDaemonServerId()`
+ * subscription — the cached query — rather than being resolved here, because
+ * resolving it fresh spawns the external CLI and takes seconds.
  */
-export async function confirmQuitWithEnabledSchedules(): Promise<boolean> {
-  if (useQuitSchedulesWarningPrefStore.getState().suppressed) {
-    return true;
+export async function getQuitSchedulesWarningCount(
+  localDaemonServerId: string | null,
+): Promise<number> {
+  if (!localDaemonServerId || useQuitSchedulesWarningPrefStore.getState().suppressed) {
+    return 0;
   }
+  return Promise.race([
+    countEnabledLocalDaemonSchedules(localDaemonServerId),
+    new Promise<number>((resolve) => {
+      setTimeout(() => resolve(0), SCHEDULES_WARNING_DEADLINE_MS);
+    }),
+  ]);
+}
 
-  const count = await countEnabledLocalDaemonSchedules();
-  if (count === 0) {
-    return true;
-  }
-
-  const result = await confirmDialogWithCheckbox({
-    title: i18n.t("desktop.window.quitConfirm.schedulesTitle"),
-    message: i18n.t("desktop.window.quitConfirm.schedulesMessage", { count }),
-    confirmLabel: i18n.t("desktop.window.quitConfirm.schedulesConfirm"),
-    cancelLabel: i18n.t("desktop.window.quitConfirm.cancel"),
-    checkboxLabel: i18n.t("desktop.window.quitConfirm.schedulesSuppress"),
-  });
-
-  if (result.confirmed && result.checkboxChecked) {
-    useQuitSchedulesWarningPrefStore.getState().setSuppressed(true);
-  }
-
-  return result.confirmed;
+/**
+ * Persists the "don't warn me again" choice for the schedules quit warning,
+ * device-locally. Mirrors `confirmArchiveChat` (the shared suppressible
+ * confirm-dialog pattern).
+ */
+export function suppressQuitSchedulesWarning(): void {
+  useQuitSchedulesWarningPrefStore.getState().setSuppressed(true);
 }

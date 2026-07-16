@@ -941,6 +941,8 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
           content={content}
           isWorkspaceFocused={isWorkspaceFocused}
           isPaneFocused={isPaneFocused}
+          // Already encodes route focus + frontmost tab, i.e. on screen.
+          isVisible={isVisible}
         />
       </RetainedPanel>
     </RenderProfile>

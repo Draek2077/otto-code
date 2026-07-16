@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useColorScheme, View } from "react-native";
+import { Animated, Easing, useColorScheme, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isDev } from "@/constants/platform";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
-import { useSettings } from "@/hooks/use-settings";
+import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { useVisualizerEventAdapter } from "@/visualizer/use-visualizer-event-adapter";
@@ -58,11 +58,30 @@ const RENDER_SCALE_BY_QUALITY: Record<string, number> = {
   native: 4,
 };
 
+// The guest posts `ready` before its first paint, but the settings config
+// (panels/render/hudHidden) only lands a frame or two AFTER the HUD has
+// already painted its defaults — visible as a flash of the default HUD on
+// open. An opaque cover (painted the stage background) hides the guest until
+// the config has settled, then fades out. The delay gives the page time to
+// receive + apply the config effect's message post-ready.
+const LOAD_COVER_SETTLE_MS = 150;
+const LOAD_COVER_FADE_MS = 200;
+
 function VisualizerPanel() {
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "visualizer", "VisualizerPanel requires visualizer target");
-  const { isInteractive } = usePaneFocus();
+  // The Visualizer is a companion view — the user watches it in a split while
+  // working in the chat pane, so it must keep tracking agents whenever it's on
+  // screen, NOT only when it holds focus. Gate on visibility, not focus:
+  // `isInteractive` (isPaneFocused) went false the instant you clicked into the
+  // chat, disposing the adapter and freezing the graph / session tabs until you
+  // clicked back or reopened the tab.
+  const { isVisible } = usePaneFocus();
   const { settings } = useSettings();
+  // The in-page mute toggle persists through this store (visualizer settings
+  // are device-local AppSettings, written directly — they don't round-trip the
+  // merged useSettings updater, which only routes a subset of fields).
+  const { updateSettings: updateAppSettings } = useAppSettings();
   const viewRef = useRef<VisualizerViewHandle>(null);
   const connectedRef = useRef(false);
   const [ready, setReady] = useState(false);
@@ -88,12 +107,34 @@ function VisualizerPanel() {
   // A quality or theme change reloads the guest (new dpr cap / palette baked
   // into the html), so the handshake state must reset — the fresh page
   // re-sends `ready`, which re-runs connection-status + config and
-  // re-activates the adapter.
+  // re-activates the adapter. The load cover snaps back opaque too: the fresh
+  // page would flash its default HUD again before the re-sent config lands.
   const renderScale = RENDER_SCALE_BY_QUALITY[settings.visualizerRenderQuality] ?? 1;
+  const loadCoverOpacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     connectedRef.current = false;
     setReady(false);
-  }, [renderScale, visualizerTheme.json]);
+    loadCoverOpacity.stopAnimation();
+    loadCoverOpacity.setValue(1);
+  }, [renderScale, visualizerTheme.json, loadCoverOpacity]);
+
+  // Reveal the guest once the settings config has settled (see
+  // LOAD_COVER_SETTLE_MS). `ready` only flips on a fresh handshake, so a tab
+  // waking from resource sleep (state intact, no reload) never re-covers.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      Animated.timing(loadCoverOpacity, {
+        toValue: 0,
+        duration: LOAD_COVER_FADE_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    }, LOAD_COVER_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [ready, loadCoverOpacity]);
 
   // Runs "Visualize" scoping (target.runId set): restrict sessions to that
   // run's agent set. The adapter compares agentIdFilter by reference (see
@@ -130,6 +171,20 @@ function VisualizerPanel() {
         setReady(true);
         return;
       }
+      if (message.type === "sound-muted") {
+        // The in-page speaker button was toggled — persist it so the choice
+        // survives reopening the tab and restarting the app. The settings
+        // change flows back out as config.soundVolume via the effect above.
+        void updateAppSettings({ visualizerSoundMuted: message.muted });
+        return;
+      }
+      if (message.type === "hud-hidden") {
+        // The in-page HUD toggle was flipped — persist it so it applies to
+        // every Visualizer tab (all read the same device-local setting) and
+        // survives restarts. Flows back out as config.hudHidden via the effect.
+        void updateAppSettings({ visualizerHudHidden: message.hidden });
+        return;
+      }
       if (message.type === "open-file") {
         // Paths come from tool-call telemetry (visualizer-event-adapter's
         // inputData.file_path) — could be absolute or workspace-relative;
@@ -144,7 +199,7 @@ function VisualizerPanel() {
         }
       }
     },
-    [openFileInWorkspace],
+    [openFileInWorkspace, updateAppSettings],
   );
 
   const handlePostMessage = useCallback<VisualizerViewHandle["postMessage"]>((message) => {
@@ -176,6 +231,13 @@ function VisualizerPanel() {
           stars: settings.visualizerRenderStars,
           backdrop: settings.visualizerRenderBackdrop,
         },
+        // Effective master volume (0..1) for the page's audio engine: the mute
+        // toggle gates the slider level, so muting sends 0 and unmuting restores
+        // exactly the current slider value. Stored as a 0-100 percent.
+        soundVolume: settings.visualizerSoundMuted ? 0 : settings.visualizerSoundVolume / 100,
+        // Whole-HUD visibility — one device-local setting shared by every
+        // Visualizer tab, toggled by the in-page HUD button.
+        hudHidden: settings.visualizerHudHidden,
       },
     });
   }, [
@@ -189,6 +251,9 @@ function VisualizerPanel() {
     settings.visualizerRenderBloom,
     settings.visualizerRenderStars,
     settings.visualizerRenderBackdrop,
+    settings.visualizerSoundVolume,
+    settings.visualizerSoundMuted,
+    settings.visualizerHudHidden,
   ]);
 
   // Fonts + type scale: the guest page renders in Otto's interface/code fonts
@@ -220,7 +285,7 @@ function VisualizerPanel() {
   useVisualizerEventAdapter({
     serverId,
     workspaceId,
-    active: ready && isInteractive && !demoMode,
+    active: ready && isVisible && !demoMode,
     agentIdFilter,
     postMessage: handlePostMessage,
   });
@@ -247,6 +312,14 @@ function VisualizerPanel() {
     viewRef.current?.openDevTools?.();
   }, []);
 
+  const loadCoverStyle = useMemo(
+    () => [
+      styles.loadCover,
+      { backgroundColor: visualizerTheme.background, opacity: loadCoverOpacity },
+    ],
+    [visualizerTheme.background, loadCoverOpacity],
+  );
+
   return (
     <View style={styles.container}>
       <VisualizerView
@@ -256,6 +329,7 @@ function VisualizerPanel() {
         themeJson={visualizerTheme.json}
         themeBackground={visualizerTheme.background}
       />
+      <Animated.View pointerEvents="none" style={loadCoverStyle} />
       {isDev ? (
         <View style={styles.devBar}>
           <Button size="sm" variant="ghost" onPress={handleToggleDemoScenario}>
@@ -283,6 +357,17 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  // Opaque boot cover over the guest, painted the stage background — hides
+  // the default-HUD flash between the page's first paint and the settings
+  // config landing (see LOAD_COVER_SETTLE_MS above). Faded out post-settle;
+  // pointerEvents:none so it never eats input even mid-fade.
+  loadCover: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   devBar: {
     position: "absolute",

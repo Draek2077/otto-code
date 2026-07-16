@@ -31,7 +31,7 @@ export type RenderConfig = Partial<{
   stars: boolean
   backdrop: boolean
 }>
-type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig }>) => void
+type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; soundVolume: number; hudHidden: boolean }>) => void
 type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void
 
 class VSCodeBridge {
@@ -166,6 +166,22 @@ class VSCodeBridge {
 
   openFile(filePath: string, line?: number): void {
     this.postToExtension({ type: 'open-file', filePath, line })
+  }
+
+  /** OTTO PATCH (OTTO-PATCHES.md): report the in-page mute toggle back to the
+   * host so it can persist the preference (device-local `visualizerSoundMuted`)
+   * and re-seed it on the next visualizer open. Mirrors `openFile`'s page->host
+   * post; the host echoes the resulting master volume back via `config.soundVolume`. */
+  setSoundMuted(muted: boolean): void {
+    this.postToExtension({ type: 'sound-muted', muted })
+  }
+
+  /** OTTO PATCH (OTTO-PATCHES.md): report the in-page HUD visibility toggle
+   * back to the host so it can persist the preference (device-local
+   * `visualizerHudHidden`) and re-seed every Visualizer tab via
+   * `config.hudHidden`. Mirrors `setSoundMuted`. */
+  setHudHidden(hidden: boolean): void {
+    this.postToExtension({ type: 'hud-hidden', hidden })
   }
 
   private postToExtension(message: Record<string, unknown>): void {

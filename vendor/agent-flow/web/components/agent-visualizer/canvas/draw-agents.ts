@@ -323,14 +323,19 @@ function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: numb
   }
 }
 
-function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, r: number, isHovered: boolean) {
+// OTTO(label-pulse-stability): `labelR` is the node's base radius WITHOUT the
+// per-frame breathe pulse (see drawAgents) so the label's bounding box — both
+// its truncation width and its Y position — stays fixed while the node pulses.
+// Feeding the pulsing radius here made `truncateText` re-solve every frame, so
+// the ellipsis crawled in and out as the node breathed.
+function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, labelR: number, isHovered: boolean) {
   ctx.fillStyle = isHovered ? COLORS.textPrimary : COLORS.textDim
   ctx.font = '10px monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  const maxLabelW = r * AGENT_DRAW.labelWidthMultiplier
+  const maxLabelW = labelR * AGENT_DRAW.labelWidthMultiplier
   const agentLabel = truncateText(ctx, agent.name, maxLabelW)
-  ctx.fillText(agentLabel, agent.x, agent.y + r + AGENT_DRAW.labelYOffset)
+  ctx.fillText(agentLabel, agent.x, agent.y + labelR + AGENT_DRAW.labelYOffset)
 }
 
 function drawStatsOverlay(ctx: CanvasRenderingContext2D, agent: Agent, r: number) {
@@ -372,6 +377,10 @@ export function drawAgents(
       : agent.state === 'idle' ? Math.sin(time * ANIM.breathe.idleSpeed) * ANIM.breathe.idleAmp + 1 : 1
 
     const r = radius * breathe * agent.scale
+    // Label radius excludes the breathe pulse so the label box doesn't oscillate
+    // (see drawAgentLabel — OTTO(label-pulse-stability)). Keep agent.scale so the
+    // label still tracks the one-time spawn/entry scale-in.
+    const labelR = radius * agent.scale
 
     ctx.save()
     ctx.globalAlpha = agent.opacity
@@ -390,7 +399,7 @@ export function drawAgents(
       drawWaitingRipples(ctx, agent, r, color, time)
     }
 
-    drawAgentLabel(ctx, agent, r, isHovered)
+    drawAgentLabel(ctx, agent, labelR, isHovered)
 
     // Context composition — ring for main agent, bar for sub-agents
     if (agent.state !== 'complete' || agent.opacity > 0.5) {

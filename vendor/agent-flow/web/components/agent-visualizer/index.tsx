@@ -17,7 +17,7 @@ import { AgentChatPanel } from "./chat-panel"
 import { SessionTranscriptPanel } from "./session-transcript-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
-import { TimelineEvent, TIMING } from "@/lib/agent-types"
+import { TimelineEvent, TIMING, Z } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 
 import { MOCK_DURATION } from "@/lib/mock-scenario"
@@ -71,6 +71,24 @@ export function AgentVisualizer() {
   const [showTranscript, setShowTranscript] = useState(false)
   const [showMessageFeed, setShowMessageFeed] = useState(true)
 
+  // Otto patch (OTTO-PATCHES.md): whole-HUD visibility. When true, every HUD
+  // panel/bar/popup is hidden and only the canvas graph plus the HUD toggle
+  // button (bottom-left) remain. Seeded/overridden by the host's authoritative
+  // `config.hudHidden` on every config that carries it (mirrors the panels
+  // seed), and reported back on the in-page toggle so it persists across every
+  // Visualizer tab.
+  const [hudHidden, setHudHidden] = useState(false)
+  useEffect(() => {
+    if (bridge.hudHidden != null) setHudHidden(bridge.hudHidden)
+  }, [bridge.hudHidden])
+  const handleToggleHud = useCallback(() => {
+    setHudHidden(prev => {
+      const next = !prev
+      bridge.bridgeSetHudHidden(next)
+      return next
+    })
+  }, [bridge.bridgeSetHudHidden])
+
   // Mutually exclusive panel toggling — opening one closes the others
   const toggleExclusivePanel = useCallback((panel: 'files' | 'transcript' | 'cost') => {
     setShowFileAttention(prev => panel === 'files' ? !prev : false)
@@ -108,7 +126,7 @@ export function AgentVisualizer() {
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0)
 
   const [isReviewing, setIsReviewing] = useState(false)
-  const { isMuted, seekingRef, handleToggleMute } = useAudioEffects(agents, toolCalls, isReviewing)
+  const { isMuted, seekingRef, handleToggleMute } = useAudioEffects(agents, toolCalls, isReviewing, bridge.soundVolume, bridge.bridgeSetSoundMuted)
 
   // Auto-play on mount
   useEffect(() => {
@@ -292,8 +310,8 @@ export function AgentVisualizer() {
       {isEmpty && (
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className="text-center font-mono">
-            <div className="text-sm" style={{ color: COLORS.holoBase + '80' }}>WAITING FOR AGENT SESSION</div>
-            <div className="mt-2 text-xs" style={{ color: COLORS.holoBase + '40' }}>Start a Claude Code session to see activity</div>
+            <div className="text-sm" style={{ color: COLORS.holoBase + '80' }}>Waiting for chat activity</div>
+            <div className="mt-2 text-xs" style={{ color: COLORS.holoBase + '40' }}>Create a new agent chat to visualize</div>
           </div>
         </div>
       )}
@@ -319,6 +337,11 @@ export function AgentVisualizer() {
         renderOptions={bridge.renderConfig ?? undefined}
       />
 
+      {/* Otto patch (OTTO-PATCHES.md): the entire HUD — every panel, bar, and
+          floating popup — collapses behind a single visibility toggle. Only the
+          canvas (above) and the toggle button (below) survive when hidden. */}
+      {!hudHidden && (
+      <>
       {/* Message feed panel (top-left) */}
       {showMessageFeed && (
         <MessageFeedPanel
@@ -451,7 +474,52 @@ export function AgentVisualizer() {
         onToggleTimeline={() => setShowTimeline(prev => !prev)}
         onToggleMute={handleToggleMute}
       />
+      </>
+      )}
+
+      {/* Otto patch (OTTO-PATCHES.md): HUD visibility toggle — the one control
+          that stays put when the HUD is hidden. Bottom-left, clear of the
+          control strip (bottom-center) and message feed (top-left). */}
+      <button
+        onClick={handleToggleHud}
+        title={hudHidden ? 'Show HUD' : 'Hide HUD'}
+        aria-label={hudHidden ? 'Show HUD' : 'Hide HUD'}
+        className="absolute bottom-3 left-3 p-1.5 rounded transition-all"
+        style={{
+          zIndex: Z.info,
+          lineHeight: 0,
+          background: COLORS.holoBg03,
+          border: `1px solid ${COLORS.holoBorder06}`,
+          // Prominent while hidden (so it's findable to restore the HUD), quiet
+          // while the HUD is shown.
+          color: hudHidden ? COLORS.holoBright : COLORS.textMuted,
+        }}
+      >
+        {hudHidden ? <HudHiddenIcon /> : <HudVisibleIcon />}
+      </button>
     </div>
     </OpenFileProvider>
+  )
+}
+
+// ─── HUD visibility icons (OTTO PATCH) ───────────────────────────────────────
+
+function HudVisibleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function HudHiddenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+    </svg>
   )
 }
