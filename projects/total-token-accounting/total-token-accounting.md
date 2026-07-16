@@ -39,7 +39,13 @@ descendants.cumulativeTokens` (walk `parentAgentId`, both observed and attended 
    pick the few that are honest TODAY client-side for v1, grow as daemon counters land. The
    glossary rule (one label, no synonyms) applies — proposal: **"total tokens"** = cumulative
    spend, **"context"** = window occupancy, never mixed.
-3. **Visualizer top bar.** Feed real usage instead of summed context occupancy: the adapter starts
+3. **Visualizer top bar.** ✅ SHIPPED 2026-07-16 (ahead of the rest of this charter, during the
+   subagent-pipeline fixes): the adapter sends each agent's `cumulativeTokens` (the universal
+   accumulator) on `context_update`; a vendor patch (`OTTO-PATCHES.md` "honest token/cost totals")
+   makes the top-bar Σ and the cost surfaces prefer it over context occupancy and banks the totals
+   of cleaned-up (faded) nodes in `SimulationState.retiredTokens`. The ring still reads occupancy.
+   The remaining charter scope (chat metrics toolbar, in/out split, exact pricing) is unchanged.
+   Original plan for reference: the adapter starts
    sending `tokenCost` on `tool_call_end` (the vendor already sums `tokenCost` into its cost model) or
    — simpler and provider-honest — a small vendor patch that renders a host-supplied
    `sessionTotalTokens` (from the same selector) instead of the Σ-of-context number. Lean: host-supplied

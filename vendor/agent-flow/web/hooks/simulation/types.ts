@@ -26,6 +26,10 @@ export interface SimulationState {
   eventLog: SimulationEvent[]
   /** Highest currentTime ever reached (for scrubber range in live mode) */
   maxTimeReached: number
+  /** OTTO PATCH (OTTO-PATCHES.md): token totals of completed agents whose
+   * nodes were already cleaned up — keeps the top-bar token/cost sum honest
+   * after child nodes fade out and are deleted. */
+  retiredTokens: number
 }
 
 /** Create an empty simulation state, optionally preserving specific fields */
@@ -45,6 +49,7 @@ export function createEmptyState(overrides?: Partial<SimulationState>): Simulati
     eventIndex: 0,
     eventLog: [],
     maxTimeReached: 0,
+    retiredTokens: 0,
     ...overrides,
   }
 }

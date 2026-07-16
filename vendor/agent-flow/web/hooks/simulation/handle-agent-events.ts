@@ -132,21 +132,14 @@ export function handleAgentComplete(
       entry.endTime = currentTime
     }
 
-    const agentsToComplete = [name]
-    for (const [childId, childAgent] of state.agents) {
-      if (childAgent.parentId === name && childAgent.state !== 'complete') {
-        state.agents.set(childId, { ...childAgent, state: 'complete', completeTime: currentTime })
-        agentsToComplete.push(childId)
-        const childEntry = state.timelineEntries.get(childId)
-        if (childEntry) {
-          pushTimelineBlock(childEntry, currentTime, { type: 'complete', label: 'Done', color: COLORS.complete, endTime: currentTime }, ctx)
-          childEntry.endTime = currentTime
-        }
-      }
-    }
-
+    // OTTO PATCH (see OTTO-PATCHES.md): upstream cascaded completion to all
+    // child agents here. Otto's host emits a real per-agent lifecycle for
+    // every node, and a parent can legitimately finish while its spawned
+    // children keep running (background Task handoff) — the cascade killed
+    // those live child nodes. Each child now completes only on its own
+    // agent_complete event.
     for (const [tcId, tc] of state.toolCalls) {
-      if (agentsToComplete.includes(tc.agentId) && tc.state === 'running') {
+      if (tc.agentId === name && tc.state === 'running') {
         state.toolCalls.set(tcId, { ...tc, state: 'complete', completeTime: currentTime })
       }
     }

@@ -815,6 +815,12 @@ export class AgentManager {
     {
       parentAgentId: string;
       taskId?: string;
+      // Nested fan-out: key of the observed subagent that spawned this one
+      // (see ObservedSubagentUpdate.parentKey). Remembered on first sight so
+      // every payload keeps the tree-shaped parent label even when a later
+      // update omits it. The registry's parentAgentId stays the OWNING agent
+      // (stop/archive resolve the provider session through it).
+      parentKey?: string;
       provider: AgentProvider;
       createdAt: string;
       // Frozen row label. Set once from the first named update (task_started)
@@ -1238,14 +1244,18 @@ export class AgentManager {
   }
 
   getTimeline(id: string): AgentTimelineItem[] {
-    if (!this.observedSubagents.has(id)) {
+    if (this.observedSubagents.has(id)) {
+      this.ensureObservedTimelineState(id);
+    } else {
       this.requireAgent(id);
     }
     return this.timelineStore.getItems(id);
   }
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
-    if (!this.observedSubagents.has(id)) {
+    if (this.observedSubagents.has(id)) {
+      this.ensureObservedTimelineState(id);
+    } else {
       this.requireAgent(id);
     }
     if (this.durableTimelineStore) {
@@ -1255,10 +1265,25 @@ export class AgentManager {
   }
 
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
-    if (!this.observedSubagents.has(id)) {
+    if (this.observedSubagents.has(id)) {
+      this.ensureObservedTimelineState(id);
+    } else {
       this.requireAgent(id);
     }
     return this.timelineStore.fetch(id, options);
+  }
+
+  /**
+   * Observed subagents are ephemeral registry projections with no ManagedAgent,
+   * so nothing runs the normal agent-registration path that seeds the timeline
+   * store — without this, every observed timeline append/fetch throws
+   * "Unknown agent" and the subagent's transcript is silently lost (no live
+   * stream, no backfill). See projects/observed-subagents/observed-subagents.md.
+   */
+  private ensureObservedTimelineState(id: string): void {
+    if (!this.timelineStore.has(id)) {
+      this.timelineStore.initialize(id, { timestamp: new Date().toISOString() });
+    }
   }
 
   /**
@@ -1268,6 +1293,24 @@ export class AgentManager {
    */
   getObservedSubagentPayload(id: string): AgentSnapshotPayload | null {
     return this.observedSubagents.get(id)?.lastPayload ?? null;
+  }
+
+  /**
+   * Last emitted snapshots for every observed subagent in the registry.
+   * Observed rows otherwise reach clients only as live pushes — without this
+   * feeding the agent-list fetch, a client that (re)connects mid-run has no
+   * way to learn about running subagents until the provider's next task event,
+   * so a page refresh left the subagents track and the visualizer blind to
+   * in-flight children. See projects/observed-subagents/observed-subagents.md.
+   */
+  listObservedSubagentPayloads(): AgentSnapshotPayload[] {
+    const payloads: AgentSnapshotPayload[] = [];
+    for (const entry of this.observedSubagents.values()) {
+      if (entry.lastPayload) {
+        payloads.push({ ...entry.lastPayload });
+      }
+    }
+    return payloads;
   }
 
   createAgent(
@@ -4213,7 +4256,10 @@ export class AgentManager {
 
   private emitObservedSubagentState(input: {
     id: string;
+    /** Owning agent id — resolves to the tree parent below when the row was
+     * spawned by another observed subagent (nested fan-out). */
     parentAgentId: string;
+    parentKey?: string;
     provider: AgentProvider;
     cwd: string;
     workspaceId?: string;
@@ -4222,7 +4268,12 @@ export class AgentManager {
     cumulativeTokens?: number;
     update: ObservedSubagentUpdate;
   }): void {
-    const payload = toObservedSubagentPayload(input);
+    const payload = toObservedSubagentPayload({
+      ...input,
+      parentAgentId: input.parentKey
+        ? this.observedSubagentId(input.parentAgentId, input.parentKey)
+        : input.parentAgentId,
+    });
     const entry = this.observedSubagents.get(input.id);
     if (entry?.archivedAt) {
       // Archived rows stay archived: a late provider update must not undo the
@@ -4248,6 +4299,7 @@ export class AgentManager {
       this.onActivity?.("subagentsInvoked");
     }
     const createdAt = existing?.createdAt ?? new Date().toISOString();
+    const parentKey = event.update.parentKey ?? existing?.parentKey;
     const { title, titleFrozen, cumulativeTokens } = resolveObservedSubagentDerivedState(
       existing,
       event.update,
@@ -4255,6 +4307,7 @@ export class AgentManager {
     this.observedSubagents.set(id, {
       parentAgentId: agent.id,
       taskId: event.update.taskId ?? existing?.taskId,
+      ...(parentKey ? { parentKey } : {}),
       provider: event.provider,
       createdAt,
       title,
@@ -4266,6 +4319,7 @@ export class AgentManager {
     this.emitObservedSubagentState({
       id,
       parentAgentId: agent.id,
+      ...(parentKey ? { parentKey } : {}),
       provider: event.provider,
       cwd: agent.cwd,
       ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
@@ -4307,6 +4361,7 @@ export class AgentManager {
         update: { key: event.key, status: "running" },
       });
     }
+    this.ensureObservedTimelineState(id);
     this.recordAndDispatchTimelineItem(id, event.item, event.provider, event.turnId);
   }
 

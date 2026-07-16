@@ -1,4 +1,4 @@
-import { Agent, NODE, CARD, TETHER } from '@/lib/agent-types'
+import { Agent, NODE, CARD, TETHER, type NodeShape } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 import { measureTextCached } from './render-cache'
 
@@ -62,6 +62,49 @@ export function drawHexagon(ctx: CanvasRenderingContext2D, x: number, y: number,
     else ctx.lineTo(px, py)
   }
   ctx.closePath()
+}
+
+/** Trace a regular `sides`-gon centered at (x, y), `radius` to each vertex,
+ *  starting from `rotation` radians. Leaves the path open (caller fills/strokes). */
+function tracePolygon(
+  ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, sides: number, rotation: number,
+) {
+  ctx.beginPath()
+  const step = (Math.PI * 2) / sides
+  for (let i = 0; i < sides; i++) {
+    const angle = step * i + rotation
+    const px = x + radius * Math.cos(angle)
+    const py = y + radius * Math.sin(angle)
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  }
+  ctx.closePath()
+}
+
+/** OTTO PATCH (OTTO-PATCHES.md): trace the host-selected node silhouette
+ *  centered at (x, y). `radius` is the circumradius (vertex/edge distance),
+ *  matching `drawHexagon` so every shape occupies the same node slot.
+ *  Rotations are chosen for the conventional upright look: square axis-aligned,
+ *  octagon flat-topped, hexagon pointy-topped (the historical default). */
+export function drawNodeShape(
+  ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, shape: NodeShape,
+) {
+  switch (shape) {
+    case 'circle':
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.closePath()
+      return
+    case 'square':
+      tracePolygon(ctx, x, y, radius, 4, Math.PI / 4)
+      return
+    case 'octagon':
+      tracePolygon(ctx, x, y, radius, 8, Math.PI / 8)
+      return
+    case 'hexagon':
+    default:
+      drawHexagon(ctx, x, y, radius)
+  }
 }
 
 /** Claude spark viewBox size (origin at center via sparkViewBox offset in AGENT_DRAW). */

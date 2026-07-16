@@ -3,6 +3,7 @@
 // lives in use-visualizer-event-adapter.ts, which calls into these functions.
 // See docs/visualizer.md for the mapping table this file implements.
 import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
+import { deriveObservedSubagentTitle } from "@otto-code/protocol/observed-subagent-title";
 import type {
   AgentTimelineItem,
   AgentUsage,
@@ -214,14 +215,18 @@ export function buildPermissionRequestedEvent(input: {
 }
 
 /** `contextBreakdown` has no Otto source — omit it; the page tolerates
- * missing fields. Returns null when the usage carries no context-window
- * reading at all (nothing worth emitting). */
+ * missing fields. `tokens`/`tokensMax` are context OCCUPANCY (drives the
+ * ring); `cumulativeTokens` is the agent's honest lifetime total (drives the
+ * page's token/cost sums — Otto vendor patch). Returns null when neither
+ * reading is present (nothing worth emitting). */
 export function buildContextUpdateEvent(input: {
   ctx: AgentNodeContext;
-  usage: AgentUsage;
+  usage?: AgentUsage;
+  cumulativeTokens?: number;
   time: number;
 }): SimulationEvent | null {
-  if (input.usage.contextWindowUsedTokens == null) {
+  const contextTokens = input.usage?.contextWindowUsedTokens;
+  if (contextTokens == null && input.cumulativeTokens == null) {
     return null;
   }
   return {
@@ -230,10 +235,11 @@ export function buildContextUpdateEvent(input: {
     type: "context_update",
     payload: {
       agent: input.ctx.name,
-      tokens: input.usage.contextWindowUsedTokens,
-      ...(input.usage.contextWindowMaxTokens != null
+      ...(contextTokens != null ? { tokens: contextTokens } : {}),
+      ...(input.usage?.contextWindowMaxTokens != null
         ? { tokensMax: input.usage.contextWindowMaxTokens }
         : {}),
+      ...(input.cumulativeTokens != null ? { cumulativeTokens: input.cumulativeTokens } : {}),
     },
   };
 }
@@ -341,8 +347,43 @@ function stringifyToolCallError(error: unknown): string {
   }
 }
 
+/**
+ * Child label for subagent_dispatch/subagent_return. MUST resolve to the same
+ * string as the observed child agent's node name (which is the daemon-frozen
+ * row title) — the page renders dispatch/return particles on the parent→child
+ * edge keyed by that name, so any mismatch makes them silently invisible.
+ * Both sides therefore share `deriveObservedSubagentTitle`. Exported so the
+ * stateful layer can re-dispatch when a running item's streaming input
+ * changes the derived label (e.g. `subagent_type` parses after `description`).
+ */
+export function resolveSubAgentChildLabel(
+  detail: Extract<ToolCallDetail, { type: "sub_agent" }>,
+): string {
+  return deriveObservedSubagentTitle({
+    ...(detail.subAgentType ? { subAgentType: detail.subAgentType } : {}),
+    ...(detail.description ? { description: detail.description } : {}),
+  });
+}
+
 function toolCallSubAgentLabel(detail: Extract<ToolCallDetail, { type: "sub_agent" }>): string {
-  return detail.description ?? detail.subAgentType ?? "subagent";
+  return resolveSubAgentChildLabel(detail);
+}
+
+/** A dispatch spark alone — for a long-running sub_agent call whose first
+ * running item predated the sub_agent detail (or whose start was already
+ * emitted); the stateful layer dedupes per callId. */
+export function buildSubagentDispatchEvent(input: {
+  ctx: AgentNodeContext;
+  detail: Extract<ToolCallDetail, { type: "sub_agent" }>;
+  time: number;
+}): SimulationEvent {
+  const label = toolCallSubAgentLabel(input.detail);
+  return {
+    time: input.time,
+    sessionId: input.ctx.sessionId,
+    type: "subagent_dispatch",
+    payload: { parent: input.ctx.name, child: label, task: label },
+  };
 }
 
 /** The `tool_call_start` (+ `subagent_dispatch` for sub_agent calls) a

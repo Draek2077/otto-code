@@ -2254,11 +2254,6 @@ export const ptBR: TranslationResources = {
           hint: "Show the background hex grid on the Visualizer canvas",
           accessibilityLabel: "Hex grid",
         },
-        messageFeed: {
-          title: "Message feed",
-          hint: "Show the live message feed panel",
-          accessibilityLabel: "Message feed",
-        },
         timeline: {
           title: "Timeline",
           hint: "Show the timeline panel",
@@ -2266,17 +2261,12 @@ export const ptBR: TranslationResources = {
         },
         fileAttention: {
           title: "File attention",
-          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          hint: "Show the file-attention heatmap panel. Only one of File attention and Cost overlay is visible at a time",
           accessibilityLabel: "File attention",
-        },
-        transcript: {
-          title: "Transcript",
-          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
-          accessibilityLabel: "Transcript",
         },
         costOverlay: {
           title: "Cost overlay",
-          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          hint: "Show the token-cost overlay. Only one of File attention and Cost overlay is visible at a time",
           accessibilityLabel: "Cost overlay",
         },
       },

@@ -60,6 +60,21 @@ export function useCanvasCamera({
     }
   }, [agentCount, dimensions])
 
+  // OTTO PATCH (see OTTO-PATCHES.md): a newly spawned agent re-engages
+  // auto-fit. Manual pan/zoom otherwise disengages follow permanently (until
+  // zoom-to-fit or a selection change), so a subagent spawning outside the
+  // current viewport stayed invisible with nothing hinting it existed. A
+  // spawn is exactly the moment the user wants the full graph in frame; a
+  // selected non-main agent still keeps fit focused on its own subtree.
+  const prevAgentCountRef = useRef(agentCount)
+  useEffect(() => {
+    if (agentCount > prevAgentCountRef.current) {
+      userHasNavigatedRef.current = false
+      targetTransformRef.current = null
+    }
+    prevAgentCountRef.current = agentCount
+  }, [agentCount])
+
   // Collect an agent and all its descendants (BFS)
   const getDescendantIds = useCallback((agents: Map<string, Agent>, rootId: string): Set<string> => {
     const ids = new Set<string>([rootId])

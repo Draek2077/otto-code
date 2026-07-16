@@ -3,38 +3,48 @@ import { useToast } from "@/contexts/toast-context";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
-import { requestClearCompletedSubagents } from "./clear-completed-subagents";
+import {
+  requestClearCompletedSubagents,
+  type ClearableSubagentRow,
+} from "./clear-completed-subagents";
+import { useClearedSubagentTokensStore } from "./cleared-subagent-tokens-store";
 
-export { requestClearCompletedSubagents } from "./clear-completed-subagents";
-export type {
-  ClearCompletedSubagentsDeps,
-  RequestClearCompletedSubagentsInput,
+export {
+  clearCompletedSubagents,
+  requestClearCompletedSubagents,
+  type ClearableSubagentRow,
+  type ClearCompletedSubagentsDeps,
+  type ClearCompletedSubagentsInput,
+  type RequestClearCompletedSubagentsDeps,
 } from "./clear-completed-subagents";
 
 export interface UseClearCompletedSubagentsInput {
   serverId: string;
+  parentAgentId: string;
 }
 
 export function useClearCompletedSubagents(
   input: UseClearCompletedSubagentsInput,
-): (subagentIds: readonly string[]) => void {
-  const { serverId } = input;
+): (rows: readonly ClearableSubagentRow[]) => void {
+  const { serverId, parentAgentId } = input;
   const { archiveAgent } = useArchiveAgent();
+  const recordCleared = useClearedSubagentTokensStore((state) => state.recordCleared);
   const toast = useToast();
 
   return useCallback(
-    (subagentIds: readonly string[]) => {
+    (rows: readonly ClearableSubagentRow[]) => {
       void requestClearCompletedSubagents(
-        { serverId, subagentIds },
+        { serverId, parentAgentId, rows },
         {
           confirm: confirmDialog,
           archiveAgent,
+          recordCleared,
           reportError: (error) => {
             toast.error(toErrorMessage(error));
           },
         },
       );
     },
-    [archiveAgent, serverId, toast],
+    [archiveAgent, parentAgentId, recordCleared, serverId, toast],
   );
 }

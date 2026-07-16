@@ -134,6 +134,38 @@ describe("selectSubagentsForParent", () => {
     expect(childRows.map((row) => row.id)).toEqual(["grandchild"]);
   });
 
+  it("includes nested fan-out reached through observed intermediates only", () => {
+    setAgents([
+      makeAgent({ id: "chat" }),
+      // Observed branch under the chat, with its own observed leaf: the whole
+      // tree is this chat's doing, so the leaf shows in the chat's track.
+      makeAgent({ id: "chat::sub::branch", parentAgentId: "chat", attend: "observed" }),
+      makeAgent({
+        id: "chat::sub::leaf",
+        parentAgentId: "chat::sub::branch",
+        attend: "observed",
+      }),
+      // Attended child = its own chat with its own track; ITS child stays out.
+      makeAgent({ id: "attended-child", parentAgentId: "chat" }),
+      makeAgent({ id: "attended-grandchild", parentAgentId: "attended-child" }),
+    ]);
+
+    const rows = selectSubagentsForParent(
+      useSessionStore.getState(),
+      {
+        serverId: SERVER_ID,
+        parentAgentId: "chat",
+      },
+      EMPTY_PENDING_ARCHIVE_IDS,
+    );
+
+    expect(rows.map((row) => row.id).sort()).toEqual([
+      "attended-child",
+      "chat::sub::branch",
+      "chat::sub::leaf",
+    ]);
+  });
+
   it("sorts by createdAt ascending", () => {
     setAgents([
       makeAgent({ id: "parent" }),
@@ -210,6 +242,8 @@ describe("selectSubagentsForParent", () => {
       "createdAt",
       "cumulativeTokens",
       "id",
+      "personalityName",
+      "personalitySpinner",
       "provider",
       "requiresAttention",
       "status",

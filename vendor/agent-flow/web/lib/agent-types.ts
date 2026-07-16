@@ -3,6 +3,11 @@
 
 export type AgentState = 'idle' | 'thinking' | 'tool_calling' | 'complete' | 'error' | 'paused' | 'waiting_permission'
 
+/** OTTO PATCH (OTTO-PATCHES.md): host-selectable silhouette for agent nodes.
+ *  The whole node body (fill, glow ring, scanline clip, state ring, waiting
+ *  ripples) follows one shape. `hexagon` is the historical default. */
+export type NodeShape = 'square' | 'hexagon' | 'octagon' | 'circle'
+
 // Context window composition — the key insight
 export interface ContextBreakdown {
   systemPrompt: number   // fixed cost, always there
@@ -18,6 +23,10 @@ export interface Agent {
   state: AgentState
   parentId: string | null
   tokensUsed: number
+  // OTTO PATCH (OTTO-PATCHES.md): honest lifetime token total for this agent's
+  // whole run, when the host reports one via context_update. tokensUsed is
+  // context OCCUPANCY (drives the ring); totals/cost prefer this when present.
+  cumulativeTokens?: number
   tokensMax: number
   contextBreakdown: ContextBreakdown
   toolCalls: number

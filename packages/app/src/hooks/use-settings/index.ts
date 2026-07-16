@@ -44,6 +44,7 @@ import {
   type AppStartScreen,
   type PreviewServerCloseBehavior,
   type VisualizerRenderQuality,
+  type VisualizerNodeShape,
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
 } from "./storage";
@@ -81,6 +82,7 @@ export type {
   SettingsDeps,
   PreviewServerCloseBehavior,
   VisualizerRenderQuality,
+  VisualizerNodeShape,
   WorkspaceTitleSource,
   WorkspaceToolsPlacement,
 };

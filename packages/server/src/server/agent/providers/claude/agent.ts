@@ -2046,6 +2046,19 @@ class ClaudeAgentSession implements AgentSession {
   // announces, so stale tasks from persisted history cannot materialize rows.
   private readonly announcedObservedSubagents = new Set<string>();
   private readonly observedKeyByTaskId = new Map<string, string>();
+  // Nested fan-out: a subagent's own Task tool_use appears inside ITS
+  // sidechain — record child tool_use id -> spawning sidechain's key so the
+  // child's observed row parents to the spawning subagent, not the root agent
+  // (trees render as trees). See docs/agent-lifecycle.md.
+  private readonly observedParentKeyByToolUseId = new Map<string, string>();
+  // Keys whose row reached a terminal status (idle/error/closed) — the
+  // turn-end sweep settles anything still open, since a foreground Task
+  // cannot outlive the turn that spawned it (a lost/garbled task_notification
+  // otherwise left the row running forever).
+  private readonly settledObservedSubagents = new Set<string>();
+  // Workflow runs are backgrounded (they legitimately outlive the turn) —
+  // exempt from the turn-end sweep; they settle via their own task_notification.
+  private readonly workflowObservedKeys = new Set<string>();
   private pendingObservedEvents: AgentStreamEvent[] = [];
   // Background-shell-task bookkeeping, same shape as the observed-subagent
   // maps above but for Bash run_in_background tasks (not AI subagents).
@@ -3982,17 +3995,20 @@ class ClaudeAgentSession implements AgentSession {
     parentToolUseId: string,
     events: AgentStreamEvent[],
   ): void {
+    this.recordNestedSubagentSpawns(message, parentToolUseId);
     if (!this.announcedObservedSubagents.has(parentToolUseId)) {
       this.announcedObservedSubagents.add(parentToolUseId);
       const taskInput = this.toolUseCache.get(parentToolUseId)?.input;
       const subAgentType = readObservedSubagentText(taskInput?.subagent_type);
       const description = readObservedSubagentText(taskInput?.description);
+      const parentKey = this.observedParentKeyByToolUseId.get(parentToolUseId);
       events.push({
         type: "observed_subagent_updated",
         provider: "claude",
         update: {
           key: parentToolUseId,
           status: "running",
+          ...(parentKey ? { parentKey } : {}),
           ...(subAgentType ? { subAgentType } : {}),
           ...(description ? { description } : {}),
         },
@@ -4018,6 +4034,34 @@ class ClaudeAgentSession implements AgentSession {
         key: parentToolUseId,
         item,
       });
+    }
+  }
+
+  /**
+   * A Task/Agent tool_use inside a sidechain means THAT subagent is spawning
+   * its own child — remember child tool_use id -> spawning key so the child's
+   * observed row (announced later by its task events or its own sidechain)
+   * parents to the spawning subagent. Recursion gives depth > 2 for free: the
+   * child's sidechain records its grandchildren the same way.
+   */
+  private recordNestedSubagentSpawns(message: SDKMessage, sidechainKey: string): void {
+    if (message.type !== "assistant") {
+      return;
+    }
+    const content = message.message?.content;
+    if (!Array.isArray(content)) {
+      return;
+    }
+    for (const block of content) {
+      if (
+        block &&
+        typeof block === "object" &&
+        (block as { type?: unknown }).type === "tool_use" &&
+        isClaudeSubagentToolName((block as { name?: string }).name) &&
+        typeof (block as { id?: unknown }).id === "string"
+      ) {
+        this.observedParentKeyByToolUseId.set((block as { id: string }).id, sidechainKey);
+      }
     }
   }
 
@@ -4153,6 +4197,9 @@ class ClaudeAgentSession implements AgentSession {
     const cachedTool = message.tool_use_id ? this.toolUseCache.get(message.tool_use_id) : undefined;
     const isWorkflowStart =
       isClaudeWorkflowTaskType(message.task_type) || isClaudeWorkflowToolName(cachedTool?.name);
+    if (isWorkflowStart && message.tool_use_id) {
+      this.workflowObservedKeys.add(message.tool_use_id);
+    }
     this.appendObservedSubagentTaskEvent(message, events, {
       taskId: message.task_id,
       toolUseId: message.tool_use_id,
@@ -4213,6 +4260,10 @@ class ClaudeAgentSession implements AgentSession {
       input.toolUseId ?? this.observedKeyByTaskId.get(input.taskId) ?? `task:${input.taskId}`;
     this.observedKeyByTaskId.set(input.taskId, key);
     this.announcedObservedSubagents.add(key);
+    if (input.status !== "running") {
+      this.settledObservedSubagents.add(key);
+    }
+    const parentKey = this.observedParentKeyByToolUseId.get(key);
     events.push({
       type: "observed_subagent_updated",
       provider: "claude",
@@ -4220,6 +4271,7 @@ class ClaudeAgentSession implements AgentSession {
         key,
         taskId: input.taskId,
         status: input.status,
+        ...(parentKey ? { parentKey } : {}),
         ...(input.requiresAttention !== undefined
           ? { requiresAttention: input.requiresAttention }
           : {}),
@@ -4436,6 +4488,7 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "result" }>,
     events: AgentStreamEvent[],
   ): void {
+    this.appendTurnEndObservedSubagentSweep(events);
     const usage = this.convertUsage(message, message.modelUsage);
     if (message.subtype === "success") {
       // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
@@ -4464,6 +4517,35 @@ class ClaudeAgentSession implements AgentSession {
         ? message.errors.join("\n")
         : "Claude run failed";
     events.push(this.buildTurnFailedEvent(errorMessage));
+  }
+
+  /**
+   * A foreground Task cannot outlive the turn that spawned it, but its
+   * terminal signal can go missing (nested leaves settle inside their
+   * spawner's sidechain, never through the root's tool_result path, and a
+   * garbled/backgrounded finish can drop the task_notification) — leaving the
+   * row stuck "running" forever and its visualizer node never fading. When
+   * the turn ends, settle every announced-but-unsettled row to idle.
+   * Backgrounded Workflow runs legitimately span turns and are exempt.
+   */
+  private appendTurnEndObservedSubagentSweep(events: AgentStreamEvent[]): void {
+    for (const key of this.announcedObservedSubagents) {
+      if (this.settledObservedSubagents.has(key) || this.workflowObservedKeys.has(key)) {
+        continue;
+      }
+      this.settledObservedSubagents.add(key);
+      events.push({
+        type: "observed_subagent_updated",
+        provider: "claude",
+        update: {
+          key,
+          status: "idle",
+          ...(this.observedParentKeyByToolUseId.has(key)
+            ? { parentKey: this.observedParentKeyByToolUseId.get(key) }
+            : {}),
+        },
+      });
+    }
   }
 
   private createClaudeSessionChangedNotice(
@@ -4712,6 +4794,7 @@ class ClaudeAgentSession implements AgentSession {
           (isClaudeSubagentToolName(entry.name) || isClaudeWorkflowToolName(entry.name)) &&
           this.announcedObservedSubagents.has(id)
         ) {
+          this.settledObservedSubagents.add(id);
           this.pushEvent({
             type: "observed_subagent_updated",
             provider: "claude",
@@ -5079,12 +5162,15 @@ class ClaudeAgentSession implements AgentSession {
       );
     } else {
       this.pushToolCall(
-        mapClaudeCompletedToolCall({
-          name: toolName,
-          callId,
-          input: entry?.input ?? null,
-          output: output ?? null,
-        }),
+        this.withSidechainActionsLog(
+          mapClaudeCompletedToolCall({
+            name: toolName,
+            callId,
+            input: entry?.input ?? null,
+            output: output ?? null,
+          }),
+          block.tool_use_id,
+        ),
         items,
       );
     }
@@ -5103,6 +5189,32 @@ class ClaudeAgentSession implements AgentSession {
       this.toolUseCache.delete(block.tool_use_id);
       this.sidechainTracker.delete(block.tool_use_id);
     }
+  }
+
+  /**
+   * The completed Task/Agent item maps its sub_agent log from the final
+   * report only; re-attach the sidechain's accumulated "[Tool] summary"
+   * action lines so the finished card keeps the activity history the running
+   * updates built up (report first — short consumers truncate from the head).
+   */
+  private withSidechainActionsLog(
+    item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
+    toolUseId: unknown,
+  ): Extract<AgentTimelineItem, { type: "tool_call" }> | null {
+    if (!item || item.detail.type !== "sub_agent" || typeof toolUseId !== "string") {
+      return item;
+    }
+    const actionsLog = this.sidechainTracker.getAccumulatedLog(toolUseId);
+    if (!actionsLog) {
+      return item;
+    }
+    return {
+      ...item,
+      detail: {
+        ...item.detail,
+        log: [item.detail.log, actionsLog].filter(Boolean).join("\n"),
+      },
+    };
   }
 
   /**
@@ -5125,12 +5237,16 @@ class ClaudeAgentSession implements AgentSession {
     if (!isClaudeSubagentToolName(toolName) || !this.announcedObservedSubagents.has(toolUseId)) {
       return;
     }
+    this.settledObservedSubagents.add(toolUseId);
     this.pendingObservedEvents.push({
       type: "observed_subagent_updated",
       provider: "claude",
       update: {
         key: toolUseId,
         status: isError ? "error" : "idle",
+        ...(this.observedParentKeyByToolUseId.has(toolUseId)
+          ? { parentKey: this.observedParentKeyByToolUseId.get(toolUseId) }
+          : {}),
         ...(isError ? { requiresAttention: true } : {}),
       },
     });

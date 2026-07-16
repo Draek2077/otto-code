@@ -48,6 +48,14 @@ function isClaudeContentChunk(value: unknown): value is ClaudeContentChunk {
   );
 }
 
+function buildActionsLog(state: SubAgentActivityState): string {
+  return state.actions
+    .map((action) =>
+      action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
+    )
+    .join("\n");
+}
+
 export class ClaudeSidechainTracker {
   private readonly activeSidechains = new Map<string, SubAgentActivityState>();
   private readonly getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
@@ -94,11 +102,7 @@ export class ClaudeSidechainTracker {
       type: "sub_agent",
       ...(state.subAgentType ? { subAgentType: state.subAgentType } : {}),
       ...(state.description ? { description: state.description } : {}),
-      log: state.actions
-        .map((action) =>
-          action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
-        )
-        .join("\n"),
+      log: buildActionsLog(state),
       actions: [],
     };
 
@@ -112,6 +116,17 @@ export class ClaudeSidechainTracker {
         provider: "claude",
       },
     ];
+  }
+
+  /** Accumulated "[Tool] summary" lines for a still-tracked sidechain, or
+   * undefined when none — lets the terminal Task item keep the action history
+   * alongside the subagent's final report. */
+  getAccumulatedLog(toolUseId: string): string | undefined {
+    const state = this.activeSidechains.get(toolUseId);
+    if (!state || state.actions.length === 0) {
+      return undefined;
+    }
+    return buildActionsLog(state);
   }
 
   delete(toolUseId: string): void {

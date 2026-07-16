@@ -485,6 +485,14 @@ export interface ObservedSubagentUpdate {
   key: string;
   /** Provider task id, used to stop the subagent (Claude: `task_id`). */
   taskId?: string;
+  /**
+   * Key of ANOTHER observed subagent this one was spawned by (nested fan-out:
+   * a subagent's own Task call, recognized from its tool_use appearing inside
+   * that subagent's sidechain). The daemon parents the row to that observed
+   * row instead of the owning agent, so trees render as trees. Absent = a
+   * direct child of the owning agent.
+   */
+  parentKey?: string;
   sessionId?: string | null;
   subAgentType?: string;
   description?: string;

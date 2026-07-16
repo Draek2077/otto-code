@@ -8,6 +8,7 @@
 
 export type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
 import type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
+import type { NodeShape } from './agent-types'
 
 type InitCallback = () => void
 type EventCallback = (event: AgentEvent) => void
@@ -17,19 +18,19 @@ type StatusCallback = (status: ConnectionStatus, source: string) => void
 export type PanelsConfig = Partial<{
   timeline: boolean
   fileAttention: boolean
-  transcript: boolean
-  messageFeed: boolean
   costOverlay: boolean
   hexGrid: boolean
 }>
-/** Host-toggleable canvas render layers (OTTO PATCH, see OTTO-PATCHES.md).
- * Omitted keys keep the layer on. `bloom` is the blurred additive glow pass,
- * `stars` the parallax depth particles, `backdrop` the void fill + ambient
- * spotlight. */
+/** Host-toggleable canvas render controls (OTTO PATCH, see OTTO-PATCHES.md).
+ * Omitted keys keep the current behavior. `bloom` is the blurred additive glow
+ * pass, `stars` the parallax depth particles, `backdrop` the void fill +
+ * ambient spotlight; `nodeShape` picks the agent-node silhouette (defaults to
+ * the historical hexagon when omitted). */
 export type RenderConfig = Partial<{
   bloom: boolean
   stars: boolean
   backdrop: boolean
+  nodeShape: NodeShape
 }>
 type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; soundVolume: number; hudHidden: boolean }>) => void
 type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void

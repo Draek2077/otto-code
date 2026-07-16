@@ -4362,7 +4362,15 @@ export class Session {
       )
       .map((record) => this.buildStoredAgentPayload(record, registeredProviderIds));
 
-    let agents = [...liveAgents, ...persistedAgents];
+    // Observed subagents are ephemeral registry projections (no ManagedAgent,
+    // no stored record) that otherwise reach clients only as live pushes —
+    // include them so a client that fetches mid-run (page refresh, reconnect)
+    // learns about in-flight children instead of waiting for the provider's
+    // next task event. The shared archived/label filters below apply to them
+    // like any other agent.
+    const observedAgents = this.agentManager.listObservedSubagentPayloads();
+
+    let agents = [...liveAgents, ...persistedAgents, ...observedAgents];
 
     agents = agents.filter((agent) => this.isProviderVisibleToClient(agent.provider));
     if (!includeArchived) {

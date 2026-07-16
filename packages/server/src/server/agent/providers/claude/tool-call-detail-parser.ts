@@ -43,6 +43,45 @@ const ClaudeToolEnvelopeSchema = z
   })
   .passthrough();
 
+// Claude's subagent fan-out tool ("Task", renamed "Agent" in newer CLIs).
+// Mapping it to a sub_agent detail from the very first running item matters:
+// consumers keying on detail.type (the visualizer's subagent_dispatch/return,
+// the chat's sub-agent card) never see the sidechain tracker's later enriched
+// updates if they dedupe per callId on the first item.
+const ClaudeSubAgentInputSchema = z
+  .object({
+    description: z.string().optional(),
+    subagent_type: z.string().optional(),
+  })
+  .passthrough();
+
+function readClaudeSubAgentResultText(output: unknown): string | undefined {
+  if (typeof output === "string") {
+    return output.trim() || undefined;
+  }
+  if (output && typeof output === "object" && "output" in output) {
+    const nested = (output as { output?: unknown }).output;
+    if (typeof nested === "string") {
+      return nested.trim() || undefined;
+    }
+  }
+  return undefined;
+}
+
+function toClaudeSubAgentDetail(
+  input: z.infer<typeof ClaudeSubAgentInputSchema> | null,
+  output: unknown,
+): ToolCallDetail {
+  const subAgentType = input?.subagent_type?.trim();
+  const description = input?.description?.trim();
+  return {
+    type: "sub_agent",
+    ...(subAgentType ? { subAgentType } : {}),
+    ...(description ? { description } : {}),
+    log: readClaudeSubAgentResultText(output) ?? "",
+  };
+}
+
 const ClaudeSpeakToolDetailSchema = z
   .object({
     name: z.literal("speak"),
@@ -186,6 +225,8 @@ const ClaudeToolDetailPass2Schema = z.union([
     ToolWebFetchOutputSchema,
     toFetchToolDetail,
   ),
+  toolDetailBranchByName("Task", ClaudeSubAgentInputSchema, z.unknown(), toClaudeSubAgentDetail),
+  toolDetailBranchByName("Agent", ClaudeSubAgentInputSchema, z.unknown(), toClaudeSubAgentDetail),
   toolDetailBranchByName(
     "Skill",
     z.object({ skill: z.string() }).passthrough(),

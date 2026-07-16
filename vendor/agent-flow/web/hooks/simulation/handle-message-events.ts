@@ -1,6 +1,6 @@
 import type { ContextBreakdown } from '@/lib/agent-types'
 import type { ConversationMessage } from './types'
-import { appendConversation, asString, asNumber, LABEL_LEN_NAME, LABEL_LEN_TASK, LABEL_LEN_BUBBLE, MAX_BUBBLES } from './types'
+import { appendConversation, asString, LABEL_LEN_NAME, LABEL_LEN_TASK, LABEL_LEN_BUBBLE, MAX_BUBBLES } from './types'
 import type { MutableEventState } from './process-event'
 
 export function handleMessage(
@@ -62,7 +62,13 @@ export function handleContextUpdate(
   state: MutableEventState,
 ): void {
   const agentName = asString(payload.agent)
-  const tokens = asNumber(payload.tokens)
+  // OTTO PATCH (OTTO-PATCHES.md): `tokens` is optional now — an update may
+  // carry only `cumulativeTokens` (honest lifetime total for token/cost
+  // sums) without clobbering the context-occupancy reading to 0.
+  const tokens = typeof payload.tokens === 'number' ? payload.tokens : undefined
+  const cumulativeTokens = typeof payload.cumulativeTokens === 'number'
+    ? payload.cumulativeTokens
+    : undefined
   const raw = payload.breakdown
   const breakdown = (raw && typeof raw === 'object' && 'systemPrompt' in raw) ? raw as ContextBreakdown : undefined
   // Optional override from runtimes that report an authoritative context window
@@ -74,7 +80,8 @@ export function handleContextUpdate(
   if (agent) {
     state.agents.set(agentName, {
       ...agent,
-      tokensUsed: tokens,
+      tokensUsed: tokens ?? agent.tokensUsed,
+      ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
       tokensMax: tokensMaxOverride ?? agent.tokensMax,
       contextBreakdown: breakdown || agent.contextBreakdown,
       state: agent.state === 'complete' ? 'complete' : 'thinking'
