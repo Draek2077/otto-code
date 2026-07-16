@@ -340,10 +340,10 @@ const CATALOG_DATA = [
     id: "qoder",
     title: "Qoder CLI",
     description: "AI coding assistant with agentic capabilities",
-    version: "1.0.46",
+    version: "1.0.47",
     iconId: "qoder",
     installLink: "https://qoder.com",
-    command: ["npx", "-y", "@qoder-ai/qodercli@1.0.46", "--acp"],
+    command: ["npx", "-y", "@qoder-ai/qodercli@1.0.47", "--acp"],
   },
   {
     id: "qwen-code",
