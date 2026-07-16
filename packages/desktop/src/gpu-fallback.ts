@@ -154,6 +154,44 @@ export function armGpuStartupPaintWatchdog(): void {
   startupPaintTimer.unref?.();
 }
 
+// Argv switches that mean this run rasterizes frames on the CPU: the
+// fallback's own --use-gl=disabled, the generic --disable-gpu, and the
+// SwiftShader software-GL escape hatches (--use-angle=swiftshader /
+// swiftshader-webgl). Exact-matched except where the switch carries a value
+// ("--disable-gpu" must not match e.g. --disable-gpu-sandbox, which is not
+// software rendering).
+const SOFTWARE_RENDERING_ARGV_EXACT: ReadonlySet<string> = new Set([
+  "--use-gl=disabled",
+  "--disable-gpu",
+]);
+const SOFTWARE_RENDERING_ARGV_PREFIXES = ["--use-angle=swiftshader"];
+
+export function hasSoftwareRenderingArgv(argv: readonly string[]): boolean {
+  return argv.some(
+    (arg) =>
+      SOFTWARE_RENDERING_ARGV_EXACT.has(arg) ||
+      SOFTWARE_RENDERING_ARGV_PREFIXES.some((prefix) => arg.startsWith(prefix)),
+  );
+}
+
+// Whether this run presents frames without GPU acceleration — via explicit
+// software argv or the persisted fallback marker (which drives
+// disableHardwareAcceleration() on non-Linux and the relaunch flags on
+// Linux). Static for the process lifetime; exposed to the renderer through
+// desktop_get_runtime_info so it can trim GPU-hungry visuals (e.g. the
+// Visualizer force-disables its bloom pass — three full-canvas blurs per
+// frame is exactly what a CPU rasterizer can't afford).
+export function isSoftwareRenderingActive(): boolean {
+  if (hasSoftwareRenderingArgv(process.argv)) {
+    return true;
+  }
+  try {
+    return isSoftwareRenderingMarked(app.getPath("userData"));
+  } catch {
+    return false;
+  }
+}
+
 // Must run before app.whenReady(): disableHardwareAcceleration() is a no-op once
 // the app is ready.
 export function applyPersistedHardwareAccelerationFallback(): void {

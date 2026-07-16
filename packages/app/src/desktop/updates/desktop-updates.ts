@@ -22,6 +22,10 @@ export interface DesktopAppUpdateInstallResult {
 export interface DesktopRuntimeInfo {
   appVersion: string | null;
   runningUnderARM64Translation: boolean;
+  /** The desktop shell is presenting frames without GPU acceleration (the
+   * gpu-fallback marker/flags, or explicit software-GL argv). False when the
+   * shell predates the field. */
+  softwareRendering: boolean;
 }
 
 export type DesktopReleaseChannel = "stable" | "beta";
@@ -86,12 +90,14 @@ export function parseDesktopRuntimeInfo(raw: unknown): DesktopRuntimeInfo {
     return {
       appVersion: null,
       runningUnderARM64Translation: false,
+      softwareRendering: false,
     };
   }
 
   return {
     appVersion: toStringOrNull(raw.appVersion),
     runningUnderARM64Translation: raw.runningUnderARM64Translation === true,
+    softwareRendering: raw.softwareRendering === true,
   };
 }
 

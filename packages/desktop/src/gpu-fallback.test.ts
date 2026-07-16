@@ -32,7 +32,9 @@ import {
   armGpuStartupSentinel,
   clearSoftwareRenderingMarker,
   clearStartupSentinel,
+  hasSoftwareRenderingArgv,
   isGpuProcessFailure,
+  isSoftwareRenderingActive,
   isSoftwareRenderingMarked,
   isStartupSentinelPresent,
   markGpuStartupHealthy,
@@ -77,6 +79,29 @@ describe("software-rendering marker", () => {
     expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
     clearSoftwareRenderingMarker(tempDir);
     expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+  });
+});
+
+describe("software-rendering detection", () => {
+  it("recognizes software-rendering argv switches", () => {
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--use-gl=disabled"])).toBe(true);
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--disable-gpu"])).toBe(true);
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--use-angle=swiftshader"])).toBe(true);
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--use-angle=swiftshader-webgl"])).toBe(true);
+  });
+
+  it("does not match hardware or unrelated switches", () => {
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto"])).toBe(false);
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--ozone-platform=x11"])).toBe(false);
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--use-angle=metal"])).toBe(false);
+    // --disable-gpu-sandbox is not software rendering.
+    expect(hasSoftwareRenderingArgv(["/usr/bin/Otto", "--disable-gpu-sandbox"])).toBe(false);
+  });
+
+  it("reports active when the persisted marker is present", () => {
+    expect(isSoftwareRenderingActive()).toBe(false);
+    writeSoftwareRenderingMarker(tempDir, "crashed");
+    expect(isSoftwareRenderingActive()).toBe(true);
   });
 });
 

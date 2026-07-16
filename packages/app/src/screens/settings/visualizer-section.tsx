@@ -5,6 +5,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   useAppSettings,
@@ -25,6 +26,7 @@ interface ToggleRowProps {
   value: boolean;
   withBorder: boolean;
   onValueChange: (value: boolean) => void;
+  disabled?: boolean;
   testID?: string;
 }
 
@@ -35,6 +37,7 @@ function ToggleRow({
   value,
   withBorder,
   onValueChange,
+  disabled = false,
   testID,
 }: ToggleRowProps) {
   return (
@@ -47,6 +50,7 @@ function ToggleRow({
         value={value}
         onValueChange={onValueChange}
         accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
         testID={testID}
       />
     </View>
@@ -104,6 +108,12 @@ function VolumeRow({ title, hint, accessibilityLabel, value, onCommit }: VolumeR
 export function VisualizerSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
+  // Bloom is forced off while the desktop shell runs without GPU acceleration
+  // (three full-canvas blur passes per frame — a CPU rasterizer can't afford
+  // it; visualizer-panel.tsx applies the same force to the guest config). The
+  // stored preference is left untouched so it comes back if the machine
+  // regains hardware acceleration.
+  const isSoftwareRendering = useIsSoftwareRendering();
 
   const setSetting = useCallback(
     <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -187,11 +197,16 @@ export function VisualizerSection() {
           </View>
           <ToggleRow
             title="Bloom glow"
-            hint="The soft holographic glow composited over the whole scene. The single most expensive visual effect — turning it off also removes the blurry 'echo' of bright elements."
+            hint={
+              isSoftwareRendering
+                ? "Forced off — this machine is running without GPU acceleration, and bloom is the single most expensive visual effect."
+                : "The soft holographic glow composited over the whole scene. The single most expensive visual effect — turning it off also removes the blurry 'echo' of bright elements."
+            }
             accessibilityLabel="Bloom glow"
-            value={settings.visualizerRenderBloom}
+            value={isSoftwareRendering ? false : settings.visualizerRenderBloom}
             withBorder
             onValueChange={handleBloomChange}
+            disabled={isSoftwareRendering}
             testID="settings-visualizer-bloom-switch"
           />
           <ToggleRow
