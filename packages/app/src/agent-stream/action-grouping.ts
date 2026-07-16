@@ -2,6 +2,7 @@ import {
   getOttoToolLeafName,
   normalizeToolName,
 } from "@otto-code/protocol/tool-name-normalization";
+import type { TextEffectActivity } from "@/styles/text-effects";
 import type { ActionGroupItem, ActionGroupMemberItem, StreamItem } from "@/types/stream";
 
 // Only settled actions ever group: live (running) actions stay visible
@@ -104,6 +105,9 @@ const TOOL_NAME_CATEGORIES: Record<string, ActionGroupCategory> = {
   agent: "agent",
   sub_agent: "agent",
   create_artifact: "artifact",
+  // Reasoning blocks stream through the tool-call path as toolName "thinking"
+  // (agent-stream/view.tsx); classify them as thoughts everywhere.
+  thinking: "thought",
 };
 
 function categorizeByToolName(toolName: string): ActionGroupCategory {
@@ -120,7 +124,35 @@ function categorizeByToolName(toolName: string): ActionGroupCategory {
   return TOOL_NAME_CATEGORIES[leafName] ?? "other";
 }
 
-function categorizeActionGroupMember(item: ActionGroupMemberItem): ActionGroupCategory {
+// How each action category shimmers under per-activity text-effect themes
+// (Vivid). Categories without a distinct visual identity fall back to "other".
+// See styles/text-effects.ts.
+const CATEGORY_TO_TEXT_EFFECT_ACTIVITY: Record<ActionGroupCategory, TextEffectActivity> = {
+  read: "read",
+  edit: "edit",
+  write: "write",
+  codeSearch: "search",
+  webSearch: "web",
+  fetch: "web",
+  command: "command",
+  browser: "browser",
+  preview: "browser",
+  artifact: "other",
+  worktree: "other",
+  agent: "agent",
+  thought: "thinking",
+  other: "other",
+};
+
+export function textEffectActivityForCategory(category: ActionGroupCategory): TextEffectActivity {
+  return CATEGORY_TO_TEXT_EFFECT_ACTIVITY[category];
+}
+
+export function textEffectActivityForToolName(toolName: string): TextEffectActivity {
+  return textEffectActivityForCategory(categorizeByToolName(toolName));
+}
+
+export function categorizeActionGroupMember(item: ActionGroupMemberItem): ActionGroupCategory {
   if (item.kind === "thought") {
     return "thought";
   }

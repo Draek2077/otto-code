@@ -95,6 +95,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
+import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subagents-warning";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
@@ -117,7 +118,7 @@ import { getFileTypeLabel } from "@/attachments/file-types";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/components/attachment-pill";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useGithubSearchQuery, useHostingSearchFeature } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
@@ -216,31 +217,49 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
       status: agent?.status ?? null,
-      ...pickAgentUsageFields(agent?.lastUsage),
       model: agent?.model ?? null,
       provider: agent?.provider ?? null,
     };
   };
 }
 
-interface RenderContextWindowMeterArgs {
-  contextWindowMaxTokens: number | null;
-  contextWindowUsedTokens: number | null;
-  totalCostUsd: number | null;
+function buildAgentUsageSelector(serverId: string, agentId: string) {
+  return (state: ReturnType<typeof useSessionStore.getState>) =>
+    pickAgentUsageFields(state.sessions[serverId]?.agents?.get(agentId)?.lastUsage);
+}
+
+interface ComposerContextWindowMeterProps {
   serverId: string;
   agentId: string;
   provider: string | null;
 }
 
-function renderContextWindowMeter(args: RenderContextWindowMeterArgs): ReactElement {
+// Owns the usage-field store subscription so streaming usage patches re-render
+// only this meter, not the whole Composer (which would contend with keystroke
+// renders while an agent turn is streaming).
+function ComposerContextWindowMeter({
+  serverId,
+  agentId,
+  provider,
+}: ComposerContextWindowMeterProps): ReactElement {
+  const usage = useSessionStore(useShallow(buildAgentUsageSelector(serverId, agentId)));
+  const liveContextWindowValues = resolveContextWindowValues(
+    usage.contextWindowMaxTokens,
+    usage.contextWindowUsedTokens,
+  );
+  const contextWindowUsage = useCachedContextWindowUsage(serverId, agentId, {
+    maxTokens: liveContextWindowValues.contextWindowMaxTokens,
+    usedTokens: liveContextWindowValues.contextWindowUsedTokens,
+    totalCostUsd: usage.totalCostUsd,
+  });
   return (
     <ContextWindowMeter
-      maxTokens={args.contextWindowMaxTokens}
-      usedTokens={args.contextWindowUsedTokens}
-      totalCostUsd={args.totalCostUsd}
-      serverId={args.serverId}
-      agentId={args.agentId}
-      provider={args.provider}
+      maxTokens={contextWindowUsage.maxTokens}
+      usedTokens={contextWindowUsage.usedTokens}
+      totalCostUsd={contextWindowUsage.totalCostUsd}
+      serverId={serverId}
+      agentId={agentId}
+      provider={provider}
     />
   );
 }
@@ -1301,6 +1320,19 @@ export function Composer({
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
     ) => {
+      // A forced send to a busy agent interrupts the active turn server-side,
+      // which kills any in-flight observed subagents/workflows — confirm first
+      // (suppressible). Runs before submitAgentInput so a cancel leaves the
+      // composer untouched.
+      if (forceSend && isAgentRunning) {
+        const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
+          serverId,
+          parentAgentId: agentId,
+        });
+        if (!confirmedInterrupt) {
+          return;
+        }
+      }
       const result = await submitAgentInput({
         message: outgoingMessage,
         attachments: outgoingAttachments,
@@ -1336,12 +1368,14 @@ export function Composer({
       });
     },
     [
+      agentId,
       allowEmptySubmit,
       clearDraft,
       completeSubmit,
       hasExternalContent,
       isAgentRunning,
       queueMessage,
+      serverId,
       setSelectedAttachments,
       setUserInput,
       submitBehavior,
@@ -1480,7 +1514,7 @@ export function Composer({
         setLightboxMetadata,
         openWorkspaceAttachment: openAttachment,
         openExternalUrl: (url) => {
-          void openExternalUrl(url);
+          void openLink(url);
         },
       });
     },
@@ -1585,6 +1619,17 @@ export function Composer({
   const handleSendQueuedNow = useCallback(
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
+      // "Send now" on a queued message interrupts the active turn, which kills
+      // any in-flight observed subagents/workflows — confirm first (suppressible).
+      if (isAgentRunning) {
+        const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
+          serverId,
+          parentAgentId: agentId,
+        });
+        if (!confirmedInterrupt) {
+          return;
+        }
+      }
       // Reuse the regular send path; server-side send atomically interrupts any active run.
       const result = await sendQueuedComposerMessageNow({
         agentId,
@@ -1598,7 +1643,7 @@ export function Composer({
         setSendError(result.errorMessage);
       }
     },
-    [agentId, queueWriter, submitMessage, t],
+    [agentId, isAgentRunning, queueWriter, serverId, submitMessage, t],
   );
 
   const handleQueue = useCallback(
@@ -1713,35 +1758,15 @@ export function Composer({
     ],
   );
 
-  const liveContextWindowValues = resolveContextWindowValues(
-    agentState.contextWindowMaxTokens,
-    agentState.contextWindowUsedTokens,
-  );
-
-  const contextWindowUsage = useCachedContextWindowUsage(serverId, agentId, {
-    maxTokens: liveContextWindowValues.contextWindowMaxTokens,
-    usedTokens: liveContextWindowValues.contextWindowUsedTokens,
-    totalCostUsd: agentState.totalCostUsd,
-  });
-
   const contextWindowMeter = useMemo(
-    () =>
-      renderContextWindowMeter({
-        contextWindowMaxTokens: contextWindowUsage.maxTokens,
-        contextWindowUsedTokens: contextWindowUsage.usedTokens,
-        totalCostUsd: contextWindowUsage.totalCostUsd,
-        serverId,
-        agentId,
-        provider: agentState.provider,
-      }),
-    [
-      contextWindowUsage.maxTokens,
-      contextWindowUsage.usedTokens,
-      contextWindowUsage.totalCostUsd,
-      serverId,
-      agentId,
-      agentState.provider,
-    ],
+    () => (
+      <ComposerContextWindowMeter
+        serverId={serverId}
+        agentId={agentId}
+        provider={agentState.provider}
+      />
+    ),
+    [serverId, agentId, agentState.provider],
   );
 
   const githubSearchQueryTrimmed = githubSearchQuery.trim();

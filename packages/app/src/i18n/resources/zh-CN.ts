@@ -59,7 +59,7 @@ export const zhCN: TranslationResources = {
       noMatches: "没有匹配项",
       actions: "操作",
       agents: "Agents",
-      newAgent: "新建 Agent",
+      newAgent: "New chat",
       openProject: "打开项目",
       home: "首页",
     },
@@ -147,6 +147,14 @@ export const zhCN: TranslationResources = {
       searchPlaceholder: "搜索 issues 和 PRs...",
       title: "附加 issue 或 PR",
     },
+    interruptSubagentsWarning: {
+      title: "Interrupt running subagents?",
+      message:
+        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+      confirm: "Interrupt anyway",
+      cancel: "Cancel",
+      suppress: "Don't ask again",
+    },
   },
   agentControls: {
     provider: {
@@ -226,7 +234,7 @@ export const zhCN: TranslationResources = {
   },
   agentPanel: {
     states: {
-      notFound: "未找到 Agent",
+      notFound: "Chat not found",
       failedToLoad: "加载 Agent 失败",
       reconnecting: "正在重连...",
       archivingTitle: "正在归档 Agent...",
@@ -407,8 +415,8 @@ export const zhCN: TranslationResources = {
         download: "下载",
         edit: "Edit",
         findInFiles: "Find in files",
-        addToContext: "Add to context",
-        removeFromContext: "Remove from context",
+        addToContext: "Add to chat",
+        removeFromContext: "Remove from chat",
       },
       actions: {
         back: "返回",
@@ -508,18 +516,25 @@ export const zhCN: TranslationResources = {
       hostDisconnected: "Host 未连接",
       unableToSubscribe: "无法订阅 Terminal",
     },
+    visualizer: {
+      tabLabel: "Visualizer",
+      subtitle: "Agent orchestration graph",
+      placeholder: "The Visualizer is coming soon.",
+      openAction: "Open Visualizer",
+    },
     tabs: {
       loading: "正在加载...",
-      loadingAgentTitle: "正在加载 Agent 标题",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "此窗格中没有标签。",
       fallback: {
-        newAgent: "新建 Agent",
+        newAgent: "New chat",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
         browser: "浏览器",
         agent: "Agent",
         workspace: "Workspace",
+        visualizer: "Visualizer",
       },
       switcher: {
         trigger: "切换标签（已打开 {{count}} 个）",
@@ -541,10 +556,10 @@ export const zhCN: TranslationResources = {
         reloadAgentTooltip: "重新加载 Agent 以更新 skills、MCPs 或登录状态。",
         close: "关闭",
         renameTerminal: "重命名 Terminal",
-        renameAgent: "重命名 Agent",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "新建 Agent",
+        newAgent: "New chat",
         newTerminal: "新建 Terminal",
         preparingTerminal: "正在准备 Terminal 标签",
         preparingTerminalTooltip: "正在准备 Terminal...",
@@ -612,7 +627,7 @@ export const zhCN: TranslationResources = {
       actions: {
         workspaceActions: "Workspace 操作",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "新建 Agent",
+        newAgent: "New chat",
         newTerminal: "新建 Terminal",
         newBrowser: "新建浏览器标签",
         importSession: "导入会话",
@@ -648,6 +663,11 @@ export const zhCN: TranslationResources = {
       },
     },
     git: {
+      hostingProviderNames: {
+        github: "GitHub",
+        bitbucketCloud: "Bitbucket Cloud",
+        generic: "git hosting",
+      },
       actions: {
         moreOptions: "更多选项",
         moreActions: "更多操作",
@@ -655,42 +675,52 @@ export const zhCN: TranslationResources = {
           label: "Commit",
           pending: "正在 commit...",
           success: "已 commit",
+          description: "Stage and commit all local changes — an AI agent writes the message",
         },
         pull: {
           label: "Pull",
           pending: "正在 pull...",
           success: "已 pull",
+          description: "Run git pull to bring new commits from the remote into this branch",
         },
         push: {
           label: "Push",
           pending: "正在 push...",
           success: "已 push",
+          description: "Run git push to send your local commits to the remote",
         },
         pullAndPush: {
           label: "Pull 并 push",
           pending: "正在 pull 并 push...",
           success: "已 pull 并 push",
+          description: "Run git pull, then git push, to sync this branch with its remote",
         },
         viewPr: "查看 PR",
+        viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
           label: "创建 PR",
           pending: "正在创建 PR...",
           success: "PR 已创建",
+          description: "Push this branch to the remote and open a pull request against {{baseRef}}",
         },
         mergeBranch: {
-          label: "本地 merge",
+          label: "Merge into {{baseRef}}",
           pending: "正在 merge...",
           success: "已 merge",
+          description: "Merge this branch into {{baseRef}} on this machine, without a pull request",
         },
         mergeFromBase: {
           label: "从 {{baseRef}} 更新",
           pending: "正在更新...",
           success: "已更新",
+          description:
+            "Merge the latest {{baseRef}} commits into this branch (a merge, not a rebase)",
         },
         archive: {
           label: "归档工作区",
           pending: "正在归档...",
           success: "已归档",
+          description: "Remove this workspace from active use",
         },
         mergePr: {
           squash: "Merge PR (squash)",
@@ -698,6 +728,10 @@ export const zhCN: TranslationResources = {
           rebase: "Merge PR (rebase)",
           pending: "正在 merge PR...",
           success: "PR 已 merge",
+          squashDescription: "Combine the pull request's commits into one and merge it",
+          mergeDescription: "Merge the pull request with a merge commit",
+          rebaseDescription:
+            "Rebase the pull request's commits onto the base branch, no merge commit",
         },
         autoMerge: {
           enableSquash: "Auto merge (squash)",
@@ -707,9 +741,11 @@ export const zhCN: TranslationResources = {
           enabling: "正在启用 auto-merge...",
           disabling: "正在禁用 auto-merge...",
           disabled: "Auto-merge 已禁用",
+          enableDescription: "Merge the pull request automatically once required checks pass",
+          disableDescription: "Select to turn off auto-merge for this pull request",
         },
         unavailable: {
-          viewPrNoGithub: "当前无法查看 PR，因为 GitHub 未连接",
+          viewPrNoGithub: "View PR isn't available right now because {{provider}} isn't connected",
           pullNoRemote: "此处无法 pull，因为此分支尚未连接到 remote",
           pullDirty: "有本地变更时无法 pull，请先 commit 或 stash",
           pullUpToDate: "无法 pull，因为此分支已是最新",
@@ -719,7 +755,8 @@ export const zhCN: TranslationResources = {
           pullAndPushNoRemote: "此处无法 pull 并 push，因为此分支尚未连接到 remote",
           pullAndPushDirty: "有本地变更时无法 pull 并 push，请先 commit 或 stash",
           pullAndPushInSync: "无法 pull 并 push，因为此分支已同步",
-          createPrNoGithub: "当前无法创建 PR，因为 GitHub 未连接",
+          createPrNoGithub:
+            "Create PR isn't available right now because {{provider}} isn't connected",
           createPrNoCommits: "无法创建 PR，因为此分支还没有新的 commit",
           mergeNoBase: "无法 merge，因为无法确定 base branch",
           mergeDirty: "有本地变更时无法 merge，请先 commit 或 stash",
@@ -727,7 +764,8 @@ export const zhCN: TranslationResources = {
           updateNoBase: "无法更新，因为无法确定 base branch",
           updateDirty: "有本地变更时无法更新，请先 commit 或 stash",
           updateCurrent: "无法更新，因为此分支已与 {{baseRef}} 保持最新",
-          mergePrNoGithub: "当前无法 merge PR，因为 GitHub 未连接",
+          mergePrNoGithub:
+            "Merge PR isn't available right now because {{provider}} isn't connected",
           mergePrMissing: "无法 merge PR，因为还没有 pull request",
           mergePrDraft: "无法 merge PR，因为 pull request 仍是 draft",
           mergePrMerged: "无法 merge PR，因为 pull request 已 merge",
@@ -1097,6 +1135,11 @@ export const zhCN: TranslationResources = {
         activeAgentsMessage: "有代理正在运行，确定要退出应用程序吗？",
         confirm: "退出",
         cancel: "取消",
+        schedulesTitle: "Quit and stop schedules?",
+        schedulesMessage:
+          "Quitting stops the daemon, so {{count}} enabled schedules will not run until Otto starts again.",
+        schedulesConfirm: "Quit anyway",
+        schedulesSuppress: "Don't warn me again",
       },
     },
     updates: {
@@ -1428,6 +1471,8 @@ export const zhCN: TranslationResources = {
     restore: "恢复",
     later: "稍后",
     stashRestored: "Stashed 变更已恢复",
+    switchInProgress: "Branch switch in progress",
+    checkedOutElsewhere: "Checked out in another workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "正在搜索 workspace...",
@@ -1789,10 +1834,10 @@ export const zhCN: TranslationResources = {
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
     toggleFile: "Include this file",
-    addToContext: "Add to context",
-    removeFromContext: "Remove from context",
-    addLineToContext: "Add line {{line}} to context",
-    removeLineFromContext: "Remove line {{line}} from context",
+    addToContext: "Add to chat",
+    removeFromContext: "Remove from chat",
+    addLineToContext: "Add line {{line}} to chat",
+    removeLineFromContext: "Remove line {{line}} from chat",
     error: "Search failed",
   },
   subagents: {
@@ -1810,8 +1855,8 @@ export const zhCN: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "新建 Agent",
-      creatingAgent: "正在创建 Agent",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "未找到 workspace 目录。",
@@ -1855,6 +1900,14 @@ export const zhCN: TranslationResources = {
       cancelAccessibility: "取消 review 评论",
       save: "评论",
       saveAccessibility: "保存 review 评论",
+    },
+    removeAll: {
+      action: "Remove all comments",
+      confirmTitleSingle: "Remove comment?",
+      confirmTitleMultiple: "Remove {{count}} comments?",
+      confirmMessage:
+        "All draft review comments on this diff will be deleted. This can't be undone.",
+      confirmButton: "Remove",
     },
   },
   settings: {
@@ -1942,6 +1995,14 @@ export const zhCN: TranslationResources = {
           external: "外部浏览器",
         },
       },
+      openLinks: {
+        label: "Open links",
+        description: "Where links open — PRs, docs, and links in chat",
+        options: {
+          inApp: "In Otto",
+          external: "External browser",
+        },
+      },
       terminalScrollback: {
         label: "终端回滚",
         description: "内置终端缓冲区保留的行数",
@@ -2015,6 +2076,11 @@ export const zhCN: TranslationResources = {
       offline: "离线",
       versionDiffers: "版本与此设备不同",
       upstreamBase: "Based on {{brand}} {{version}}",
+      credits: {
+        title: "Third-party credits",
+        visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        viewSource: "View source",
+      },
       releaseChannel: {
         label: "发布通道",
         description: "切换到 Beta 可更早获取更新并参与改进",
@@ -2092,6 +2158,18 @@ export const zhCN: TranslationResources = {
             relative: "多久之前",
           },
         },
+        textEffects: {
+          title: "Text effects",
+          hint: "Animation style for the activity text shown while the agent is working",
+          accessibilityLabel: "Text effects: {{value}}",
+          options: {
+            professional: "Professional",
+            active: "Active",
+            spectrum: "Spectrum",
+            vivid: "Vivid",
+            nightRider: "Night Rider",
+          },
+        },
       },
       layout: {
         title: "Layout",
@@ -2118,6 +2196,39 @@ export const zhCN: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+      },
+      visualizer: {
+        title: "Visualizer",
+        hexGrid: {
+          title: "Hex grid",
+          hint: "Show the background hex grid on the Visualizer canvas",
+          accessibilityLabel: "Hex grid",
+        },
+        messageFeed: {
+          title: "Message feed",
+          hint: "Show the live message feed panel",
+          accessibilityLabel: "Message feed",
+        },
+        timeline: {
+          title: "Timeline",
+          hint: "Show the timeline panel",
+          accessibilityLabel: "Timeline",
+        },
+        fileAttention: {
+          title: "File attention",
+          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "File attention",
+        },
+        transcript: {
+          title: "Transcript",
+          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Transcript",
+        },
+        costOverlay: {
+          title: "Cost overlay",
+          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Cost overlay",
         },
       },
       fonts: {
@@ -2646,6 +2757,12 @@ export const zhCN: TranslationResources = {
         saved: "Project 已保存",
         saving: "正在保存...",
         cancel: "取消",
+      },
+      unsavedChanges: {
+        title: "Discard unsaved changes?",
+        message: "This project has unsaved settings changes. Discard them?",
+        discard: "Discard",
+        keepEditing: "Keep editing",
       },
     },
   },

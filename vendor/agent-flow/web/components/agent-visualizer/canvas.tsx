@@ -41,12 +41,16 @@ interface CanvasProps {
   onDiscoveryClick?: (discoveryId: string | null) => void
   selectedDiscoveryId?: string | null
   showCostOverlay?: boolean
+  /** OTTO PATCH (see OTTO-PATCHES.md): host-toggleable render layers.
+   * Omitted keys (and an omitted object) keep every layer on. */
+  renderOptions?: { bloom?: boolean; stars?: boolean; backdrop?: boolean }
 }
 
 export function AgentCanvas({
   simulationRef,
   selectedAgentId, hoveredAgentId, showStats, showHexGrid, zoomToFitTrigger, pauseAutoFit,
   onAgentClick, onAgentHover, onAgentDrag, onContextMenu, onToolCallClick, selectedToolCallId, onDiscoveryClick, selectedDiscoveryId, showCostOverlay,
+  renderOptions,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mainCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -98,6 +102,7 @@ export function AgentCanvas({
     onAgentDrag, onAgentClick, onAgentHover, onContextMenu,
     onToolCallClick, onDiscoveryClick,
     isDragging: prev?.isDragging ?? false,
+    renderOptions,
   })
   const drawPropsRef = useRef(makeDrawProps())
   drawPropsRef.current = makeDrawProps(drawPropsRef.current)
@@ -193,8 +198,12 @@ export function AgentCanvas({
         selectedAgentId, hoveredAgentId, showStats, showHexGrid,
         showCostOverlay, selectedToolCallId, selectedDiscoveryId,
         simTime, pauseAutoFit, dimensions, onAgentDrag,
-        isDragging,
+        isDragging, renderOptions,
       } = drawPropsRef.current
+      // OTTO PATCH: host-toggleable render layers (default all on)
+      const showBloom = renderOptions?.bloom !== false
+      const showStars = renderOptions?.stars !== false
+      const showBackdrop = renderOptions?.backdrop !== false
       const transform = transformRef.current
 
       const deltaTime = lastFrameTimeRef.current ? (timestamp - lastFrameTimeRef.current) / 1000 : ANIM_SPEED.defaultDeltaTime
@@ -236,7 +245,7 @@ export function AgentCanvas({
       }
 
       ctx.clearRect(0, 0, w, h)
-      updateDepthParticles(depthParticlesRef.current, deltaTime, w, h)
+      if (showStars) updateDepthParticles(depthParticlesRef.current, deltaTime, w, h)
 
       let activeAgentPos: { x: number; y: number; color: string } | undefined
       for (const [, agent] of agents) {
@@ -246,7 +255,7 @@ export function AgentCanvas({
         }
       }
 
-      drawBackground(ctx, w, h, depthParticlesRef.current, transform, showHexGrid, timeRef.current, activeAgentPos)
+      drawBackground(ctx, w, h, showStars ? depthParticlesRef.current : [], transform, showHexGrid, timeRef.current, activeAgentPos, showBackdrop)
 
       ctx.save()
       ctx.translate(transform.x, transform.y)
@@ -283,7 +292,7 @@ export function AgentCanvas({
       ctx.restore()
 
       if (showCostOverlay) drawCostSummaryPanel(ctx, agents, toolCalls)
-      if (bloomRef.current) bloomRef.current.apply(canvas, ctx)
+      if (showBloom && bloomRef.current) bloomRef.current.apply(canvas, ctx)
 
       // ─── Performance overlay (enabled via ?perf or ?stress) ──────────
       if (PERF_OVERLAY_ENABLED) {

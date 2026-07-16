@@ -48,6 +48,7 @@ import {
   reconcileMissingAgentStateWithPresentAgent,
 } from "@/panels/agent-panel-load-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
@@ -1287,9 +1288,24 @@ const AgentStreamSection = memo(function AgentStreamSection({
   toast: ReturnType<typeof useToastHost>["api"];
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
-  const streamItemsRaw = useSessionStore((state) =>
-    agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
-  );
+  // While this panel slot is hidden, the selector returns the frozen tail
+  // reference instead of the live one, so background agents' 48ms stream
+  // flushes never re-render this section at all (the store notification sees
+  // an identical snapshot). When the panel becomes active again the context
+  // flip re-renders this component and the selector closure reads the live
+  // tail during that same render — reactive, not an imperative getState()
+  // snapshot, so reactivation can't freeze on a stale value.
+  const isPanelActive = useRetainedPanelActive();
+  const frozenStreamItemsRef = useRef<StreamItem[] | undefined>(undefined);
+  const streamItemsRaw = useSessionStore((state) => {
+    if (!isPanelActive) {
+      return frozenStreamItemsRef.current;
+    }
+    return agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined;
+  });
+  if (isPanelActive) {
+    frozenStreamItemsRef.current = streamItemsRaw;
+  }
   const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
   const pendingPermissionList = useStoreWithEqualityFn(
     useSessionStore,

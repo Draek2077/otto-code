@@ -350,6 +350,7 @@ function areSidebarWorkspaceEntriesEqual(
         leftHint.url === rightHint.url &&
         leftHint.number === rightHint.number &&
         leftHint.state === rightHint.state &&
+        leftHint.provider === rightHint.provider &&
         leftHint.checks === rightHint.checks &&
         leftHint.checksStatus === rightHint.checksStatus &&
         leftHint.reviewDecision === rightHint.reviewDecision)

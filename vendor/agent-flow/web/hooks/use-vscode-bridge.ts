@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo } from '@/lib/vscode-bridge'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
@@ -15,6 +15,12 @@ interface BridgeHookResult {
   useMockData: boolean
   /** Whether CLAUDE_CODE_DISABLE_1M_CONTEXT=1 is set — caps context window to 200k */
   disable1MContext: boolean
+  /** Latest `config.panels` seed from the host, or null if none received yet.
+   *  Updates on every config message that carries panels (not just the first). */
+  panelsConfig: PanelsConfig | null
+  /** Latest `config.render` seed from the host, or null if none received yet.
+   *  Updates on every config message that carries render (OTTO PATCH). */
+  renderConfig: RenderConfig | null
   /** Open a file in the VS Code editor */
   bridgeOpenFile: (filePath: string, line?: number) => void
   /** Known sessions from the extension */
@@ -50,6 +56,8 @@ export function useVSCodeBridge(): BridgeHookResult {
     process.env.NEXT_PUBLIC_DEMO !== '0'
   )
   const [disable1MContext, setDisable1MContext] = useState(false)
+  const [panelsConfig, setPanelsConfig] = useState<PanelsConfig | null>(null)
+  const [renderConfig, setRenderConfig] = useState<RenderConfig | null>(null)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
   const [, setEventVersion] = useState(0) // trigger re-render on new events
 
@@ -163,6 +171,8 @@ export function useVSCodeBridge(): BridgeHookResult {
     const unsubConfig = bridge.onConfig((config) => {
       if (config.showMockData !== undefined) { setUseMockData(config.showMockData) }
       if (config.disable1MContext !== undefined) { setDisable1MContext(config.disable1MContext) }
+      if (config.panels !== undefined) { setPanelsConfig(config.panels) }
+      if (config.render !== undefined) { setRenderConfig(config.render) }
     })
 
     // Session lifecycle tracking
@@ -306,6 +316,8 @@ export function useVSCodeBridge(): BridgeHookResult {
     consumeEvents,
     useMockData,
     disable1MContext,
+    panelsConfig,
+    renderConfig,
     bridgeOpenFile,
     sessions,
     selectedSessionId,

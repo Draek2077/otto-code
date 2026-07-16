@@ -59,7 +59,7 @@ export const ar: TranslationResources = {
       noMatches: "لا توجد مباريات",
       actions: "الإجراءات",
       agents: "الوكلاء",
-      newAgent: "وكيل جديد",
+      newAgent: "New chat",
       openProject: "مشروع مفتوح",
       home: "بيت",
     },
@@ -147,6 +147,14 @@ export const ar: TranslationResources = {
       searchPlaceholder: "بحث القضايا والعلاقات العامة...",
       title: "إرفاق المشكلة أو PR",
     },
+    interruptSubagentsWarning: {
+      title: "Interrupt running subagents?",
+      message:
+        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+      confirm: "Interrupt anyway",
+      cancel: "Cancel",
+      suppress: "Don't ask again",
+    },
   },
   agentControls: {
     provider: {
@@ -226,7 +234,7 @@ export const ar: TranslationResources = {
   },
   agentPanel: {
     states: {
-      notFound: "لم يتم العثور على Agent",
+      notFound: "Chat not found",
       failedToLoad: "فشل تحميل الوكيل",
       reconnecting: "جارٍ إعادة الاتصال...",
       archivingTitle: "وكيل الارشيف...",
@@ -407,8 +415,8 @@ export const ar: TranslationResources = {
         download: "تحميل",
         edit: "Edit",
         findInFiles: "Find in files",
-        addToContext: "Add to context",
-        removeFromContext: "Remove from context",
+        addToContext: "Add to chat",
+        removeFromContext: "Remove from chat",
       },
       actions: {
         back: "خلف",
@@ -508,18 +516,25 @@ export const ar: TranslationResources = {
       hostDisconnected: "Host غير متصل",
       unableToSubscribe: "غير قادر على الاشتراك في المحطة",
     },
+    visualizer: {
+      tabLabel: "Visualizer",
+      subtitle: "Agent orchestration graph",
+      placeholder: "The Visualizer is coming soon.",
+      openAction: "Open Visualizer",
+    },
     tabs: {
       loading: "تحميل...",
-      loadingAgentTitle: "جارٍ تحميل عنوان الوكيل",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "لا توجد علامات تبويب في هذا الجزء.",
       fallback: {
-        newAgent: "وكيل جديد",
+        newAgent: "New chat",
         setup: "يثبت",
         workspaceSetup: "إعداد Workspace",
         terminal: "Terminal",
         browser: "المتصفح",
         agent: "Agent",
         workspace: "Workspace",
+        visualizer: "Visualizer",
       },
       switcher: {
         trigger: "تبديل علامات التبويب (فتح{{count}})",
@@ -541,10 +556,10 @@ export const ar: TranslationResources = {
         reloadAgentTooltip: "قم بإعادة تحميل الوكيل لتحديث المهارات أو MCPs أو حالة تسجيل الدخول.",
         close: "يغلق",
         renameTerminal: "إعادة تسمية المحطة",
-        renameAgent: "إعادة تسمية الوكيل",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "وكيل جديد",
+        newAgent: "New chat",
         newTerminal: "محطة جديدة",
         preparingTerminal: "إعداد علامة التبويب المحطة الطرفية",
         preparingTerminalTooltip: "جارٍ تحضير المحطة...",
@@ -614,7 +629,7 @@ export const ar: TranslationResources = {
       actions: {
         workspaceActions: "إجراءات Workspace",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "وكيل جديد",
+        newAgent: "New chat",
         newTerminal: "محطة جديدة",
         newBrowser: "علامة تبويب متصفح جديدة",
         importSession: "جلسة الاستيراد",
@@ -650,6 +665,11 @@ export const ar: TranslationResources = {
       },
     },
     git: {
+      hostingProviderNames: {
+        github: "GitHub",
+        bitbucketCloud: "Bitbucket Cloud",
+        generic: "git hosting",
+      },
       actions: {
         moreOptions: "المزيد من الخيارات",
         moreActions: "المزيد من الإجراءات",
@@ -657,42 +677,52 @@ export const ar: TranslationResources = {
           label: "يقترف",
           pending: "ارتكاب...",
           success: "ملتزم",
+          description: "Stage and commit all local changes — an AI agent writes the message",
         },
         pull: {
           label: "يحذب",
           pending: "سحب...",
           success: "انسحبت",
+          description: "Run git pull to bring new commits from the remote into this branch",
         },
         push: {
           label: "يدفع",
           pending: "دفع...",
           success: "دفعت",
+          description: "Run git push to send your local commits to the remote",
         },
         pullAndPush: {
           label: "سحب ودفع",
           pending: "سحب و دفع...",
           success: "سحبت ودفعت",
+          description: "Run git pull, then git push, to sync this branch with its remote",
         },
         viewPr: "عرض PR",
+        viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
           label: "إنشاء PR",
           pending: "إنشاء PR...",
           success: "تم إنشاء PR",
+          description: "Push this branch to the remote and open a pull request against {{baseRef}}",
         },
         mergeBranch: {
-          label: "دمج محليا",
+          label: "Merge into {{baseRef}}",
           pending: "جار الدمج...",
           success: "تم الدمج",
+          description: "Merge this branch into {{baseRef}} on this machine, without a pull request",
         },
         mergeFromBase: {
           label: "التحديث من{{baseRef}}",
           pending: "جارٍ التحديث...",
           success: "تم التحديث",
+          description:
+            "Merge the latest {{baseRef}} commits into this branch (a merge, not a rebase)",
         },
         archive: {
           label: "أرشفة مساحة العمل",
           pending: "أرشفة...",
           success: "مؤرشف",
+          description: "Remove this workspace from active use",
         },
         mergePr: {
           squash: "دمج PR (squash)",
@@ -700,6 +730,10 @@ export const ar: TranslationResources = {
           rebase: "دمج PR (rebase)",
           pending: "دمج PR...",
           success: "تم دمج PR",
+          squashDescription: "Combine the pull request's commits into one and merge it",
+          mergeDescription: "Merge the pull request with a merge commit",
+          rebaseDescription:
+            "Rebase the pull request's commits onto the base branch, no merge commit",
         },
         autoMerge: {
           enableSquash: "دمج تلقائي (squash)",
@@ -709,9 +743,11 @@ export const ar: TranslationResources = {
           enabling: "تمكين الدمج التلقائي...",
           disabling: "تعطيل الدمج التلقائي...",
           disabled: "تم تعطيل الدمج التلقائي",
+          enableDescription: "Merge the pull request automatically once required checks pass",
+          disableDescription: "Select to turn off auto-merge for this pull request",
         },
         unavailable: {
-          viewPrNoGithub: "عرض PR غير متاح الآن لأن GitHub غير متصل",
+          viewPrNoGithub: "View PR isn't available right now because {{provider}} isn't connected",
           pullNoRemote: "السحب غير متاح هنا لأن هذا الفرع غير متصل بجهاز التحكم عن بعد بعد",
           pullDirty: "السحب غير متاح أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           pullUpToDate: "السحب غير متاح لأن هذا الفرع محدث بالفعل",
@@ -723,7 +759,8 @@ export const ar: TranslationResources = {
           pullAndPushDirty:
             "لا يتوفر السحب والدفع أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           pullAndPushInSync: "السحب والدفع غير متاح لأن هذا الفرع متزامن بالفعل",
-          createPrNoGithub: "إنشاء PR غير متاح حاليًا لأن GitHub غير متصل",
+          createPrNoGithub:
+            "Create PR isn't available right now because {{provider}} isn't connected",
           createPrNoCommits: "إنشاء PR غير متاح لأن هذا الفرع ليس لديه أي التزامات جديدة حتى الآن",
           mergeNoBase: "الدمج غير متاح لأننا لم نتمكن من تحديد الفرع الأساسي",
           mergeDirty:
@@ -732,7 +769,8 @@ export const ar: TranslationResources = {
           updateNoBase: "التحديث غير متاح لأننا لم نتمكن من تحديد الفرع الأساسي",
           updateDirty: "التحديث غير متاح أثناء وجود تغييرات محلية، لذا قم بتنفيذها أو تخزينها أولاً",
           updateCurrent: "التحديث غير متاح لأن هذا الفرع محدث بالفعل باستخدام{{baseRef}}",
-          mergePrNoGithub: "دمج PR غير متاح الآن لأن GitHub غير متصل",
+          mergePrNoGithub:
+            "Merge PR isn't available right now because {{provider}} isn't connected",
           mergePrMissing: "دمج PR غير متاح لأنه لا يوجد طلب سحب حتى الآن",
           mergePrDraft: "دمج PR غير متاح لأن طلب السحب لا يزال مسودة",
           mergePrMerged: "دمج PR غير متاح لأن طلب السحب مدمج بالفعل",
@@ -1107,6 +1145,11 @@ export const ar: TranslationResources = {
         activeAgentsMessage: "هل أنت متأكد أنك تريد إنهاء التطبيق أثناء وجود وكلاء نشطين؟",
         confirm: "إنهاء",
         cancel: "إلغاء",
+        schedulesTitle: "Quit and stop schedules?",
+        schedulesMessage:
+          "Quitting stops the daemon, so {{count}} enabled schedules will not run until Otto starts again.",
+        schedulesConfirm: "Quit anyway",
+        schedulesSuppress: "Don't warn me again",
       },
     },
     updates: {
@@ -1442,6 +1485,8 @@ export const ar: TranslationResources = {
     restore: "يعيد",
     later: "لاحقاً",
     stashRestored: "تمت استعادة التغييرات المخفية",
+    switchInProgress: "Branch switch in progress",
+    checkedOutElsewhere: "Checked out in another workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "جارٍ البحث في مساحة العمل...",
@@ -1806,10 +1851,10 @@ export const ar: TranslationResources = {
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
     toggleFile: "Include this file",
-    addToContext: "Add to context",
-    removeFromContext: "Remove from context",
-    addLineToContext: "Add line {{line}} to context",
-    removeLineFromContext: "Remove line {{line}} from context",
+    addToContext: "Add to chat",
+    removeFromContext: "Remove from chat",
+    addLineToContext: "Add line {{line}} to chat",
+    removeLineFromContext: "Remove line {{line}} from chat",
     error: "Search failed",
   },
   subagents: {
@@ -1827,8 +1872,8 @@ export const ar: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "وكيل جديد",
-      creatingAgent: "وكيل الخلق",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "لم يتم العثور على دليل Workspace.",
@@ -1872,6 +1917,14 @@ export const ar: TranslationResources = {
       cancelAccessibility: "إلغاء تعليق المراجعة",
       save: "تعليق",
       saveAccessibility: "حفظ تعليق المراجعة",
+    },
+    removeAll: {
+      action: "Remove all comments",
+      confirmTitleSingle: "Remove comment?",
+      confirmTitleMultiple: "Remove {{count}} comments?",
+      confirmMessage:
+        "All draft review comments on this diff will be deleted. This can't be undone.",
+      confirmButton: "Remove",
     },
   },
   settings: {
@@ -1960,6 +2013,14 @@ export const ar: TranslationResources = {
           external: "متصفح خارجي",
         },
       },
+      openLinks: {
+        label: "Open links",
+        description: "Where links open — PRs, docs, and links in chat",
+        options: {
+          inApp: "In Otto",
+          external: "External browser",
+        },
+      },
       terminalScrollback: {
         label: "التمرير Terminal",
         description: "يتم الاحتفاظ بالخطوط في المخزن المؤقت الطرفي المدمج",
@@ -2033,6 +2094,11 @@ export const ar: TranslationResources = {
       offline: "غير متصل",
       versionDiffers: "الإصدار يختلف عن هذا الجهاز",
       upstreamBase: "Based on {{brand}} {{version}}",
+      credits: {
+        title: "Third-party credits",
+        visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        viewSource: "View source",
+      },
       releaseChannel: {
         label: "الافراج عن القناة",
         description: "قم بالتبديل إلى Beta للحصول على التحديثات عاجلاً والمساعدة في تشكيلها",
@@ -2110,6 +2176,18 @@ export const ar: TranslationResources = {
             relative: "منذ متى",
           },
         },
+        textEffects: {
+          title: "Text effects",
+          hint: "Animation style for the activity text shown while the agent is working",
+          accessibilityLabel: "Text effects: {{value}}",
+          options: {
+            professional: "Professional",
+            active: "Active",
+            spectrum: "Spectrum",
+            vivid: "Vivid",
+            nightRider: "Night Rider",
+          },
+        },
       },
       layout: {
         title: "Layout",
@@ -2136,6 +2214,39 @@ export const ar: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+      },
+      visualizer: {
+        title: "Visualizer",
+        hexGrid: {
+          title: "Hex grid",
+          hint: "Show the background hex grid on the Visualizer canvas",
+          accessibilityLabel: "Hex grid",
+        },
+        messageFeed: {
+          title: "Message feed",
+          hint: "Show the live message feed panel",
+          accessibilityLabel: "Message feed",
+        },
+        timeline: {
+          title: "Timeline",
+          hint: "Show the timeline panel",
+          accessibilityLabel: "Timeline",
+        },
+        fileAttention: {
+          title: "File attention",
+          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "File attention",
+        },
+        transcript: {
+          title: "Transcript",
+          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Transcript",
+        },
+        costOverlay: {
+          title: "Cost overlay",
+          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Cost overlay",
         },
       },
       fonts: {
@@ -2671,6 +2782,12 @@ export const ar: TranslationResources = {
         saved: "تم حفظ المشروع",
         saving: "جارٍ الحفظ...",
         cancel: "يلغي",
+      },
+      unsavedChanges: {
+        title: "Discard unsaved changes?",
+        message: "This project has unsaved settings changes. Discard them?",
+        discard: "Discard",
+        keepEditing: "Keep editing",
       },
     },
   },

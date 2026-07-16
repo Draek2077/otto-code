@@ -3,6 +3,11 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ChatWidth } from "@/constants/layout";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
+import {
+  DEFAULT_TEXT_EFFECT_THEME,
+  isTextEffectThemeId,
+  type TextEffectThemeId,
+} from "@/styles/text-effects";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
 
 export const APP_SETTINGS_KEY = "@otto:app-settings";
@@ -12,6 +17,13 @@ const LEGACY_SETTINGS_KEY = "@otto:settings";
 export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
+// Where app-initiated link opens land: a normal Otto browser tab ("in-app") or
+// the system browser ("external", default — today's behavior). One global
+// setting for every outbound http(s) link (PR links, chat markdown links, docs
+// links). Surfaces without the browser pane (native mobile, plain web, no
+// workspace mounted) always fall back to the system browser. See
+// utils/open-link.ts.
+export type LinkOpenBehavior = "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
 export type PreviewServerCloseBehavior = "keep-running" | "stop-on-close";
 export type WorkspaceToolsPlacement = "header" | "workspaceList";
@@ -54,6 +66,7 @@ const VALID_LIGHT_THEMES = new Set<string>(LIGHT_THEME_NAMES);
 const VALID_DARK_THEMES = new Set<string>(DARK_THEME_NAMES);
 const VALID_COLOR_SCHEME_MODES = new Set<ColorSchemeMode>(["light", "dark", "system"]);
 const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
+const VALID_LINK_OPEN_BEHAVIORS = new Set<LinkOpenBehavior>(["in-app", "external"]);
 const VALID_WORKSPACE_TITLE_SOURCES = new Set<WorkspaceTitleSource>(["title", "branch"]);
 const VALID_WORKSPACE_TOOLS_PLACEMENTS = new Set<WorkspaceToolsPlacement>([
   "header",
@@ -83,6 +96,8 @@ export interface AppSettings {
   language: AppLanguage;
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
+  // See LinkOpenBehavior. Device-local presentation only.
+  linkOpenBehavior: LinkOpenBehavior;
   terminalScrollbackLines: number;
   uiFontFamily: string; // "" = platform default UI stack
   monoFontFamily: string; // "" = platform default mono stack
@@ -122,6 +137,14 @@ export interface AppSettings {
   hideChatMessageDetails: boolean;
   // Chat message timestamps render as exact clock time or relative "5m ago".
   chatTimestampDisplay: ChatTimestampDisplay;
+  // Animation theme for the "working" text sweep on activity labels (tool
+  // calls, reasoning, action groups). Device-local presentation only. See
+  // styles/text-effects.ts and projects/text-effects/text-effects.md.
+  textEffectTheme: TextEffectThemeId;
+  // Soft-wrap long lines in chat code/tool output (shell commands, tool result
+  // bodies, diffs) instead of scrolling horizontally. Device-local presentation
+  // only. Default on; off restores the horizontal-scroll behavior.
+  wrapCodeLines: boolean;
   // One-time onboarding tour. `false` on a genuinely fresh install (the tour
   // runs once); backfilled to `true` for any device that already has persisted
   // settings, so upgraders never suddenly see the tour. See migrateTutorialFlag.
@@ -140,7 +163,36 @@ export interface AppSettings {
   hasCompletedSetupWizard: boolean;
   // What screen the app opens to. See AppStartScreen.
   appStartScreen: AppStartScreen;
+  // Which Visualizer page panels start visible when a Visualizer tab attaches
+  // (seeded via the bridge `config.panels` message — see
+  // packages/app/src/panels/visualizer-panel.tsx and
+  // vendor/agent-flow/OTTO-PATCHES.md). Defaults mirror the vendored page's
+  // own defaults (web/components/agent-visualizer/index.tsx useState calls).
+  // Device-local, not per-workspace.
+  visualizerPanelTimeline: boolean;
+  visualizerPanelFileAttention: boolean;
+  visualizerPanelTranscript: boolean;
+  visualizerPanelMessageFeed: boolean;
+  visualizerPanelCostOverlay: boolean;
+  visualizerPanelHexGrid: boolean;
+  // Visualizer canvas render controls (bridge `config.render` + the shell's
+  // devicePixelRatio cap — see docs/visualizer.md "Risks / gotchas"). All
+  // decorative layers default on to match upstream; quality defaults to the
+  // fastest tier (a maximized 2x pane measured 14 FPS at native dpr).
+  visualizerRenderBloom: boolean;
+  visualizerRenderStars: boolean;
+  visualizerRenderBackdrop: boolean;
+  visualizerRenderQuality: VisualizerRenderQuality;
 }
+
+export type VisualizerRenderQuality = "performance" | "balanced" | "sharp" | "native";
+
+const VISUALIZER_RENDER_QUALITIES: readonly VisualizerRenderQuality[] = [
+  "performance",
+  "balanced",
+  "sharp",
+  "native",
+];
 
 export interface Settings extends AppSettings {
   manageBuiltInDaemon: boolean;
@@ -154,6 +206,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   language: "system",
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
+  linkOpenBehavior: "external",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
   uiFontFamily: "",
   monoFontFamily: "",
@@ -175,10 +228,22 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
+  textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
+  wrapCodeLines: true,
   hasCompletedTutorial: false,
   interfaceMode: null,
   hasCompletedSetupWizard: false,
   appStartScreen: "workspaces",
+  visualizerPanelTimeline: false,
+  visualizerPanelFileAttention: false,
+  visualizerPanelTranscript: false,
+  visualizerPanelMessageFeed: true,
+  visualizerPanelCostOverlay: false,
+  visualizerPanelHexGrid: true,
+  visualizerRenderBloom: true,
+  visualizerRenderStars: true,
+  visualizerRenderBackdrop: true,
+  visualizerRenderQuality: "performance",
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -386,6 +451,12 @@ function pickThemeAndBehaviorSettings(stored: Partial<AppSettings>): Partial<App
   ) {
     result.serviceUrlBehavior = stored.serviceUrlBehavior;
   }
+  if (
+    typeof stored.linkOpenBehavior === "string" &&
+    VALID_LINK_OPEN_BEHAVIORS.has(stored.linkOpenBehavior)
+  ) {
+    result.linkOpenBehavior = stored.linkOpenBehavior;
+  }
   return result;
 }
 
@@ -506,6 +577,26 @@ function pickOnboardingSettings(stored: Partial<AppSettings>): Partial<AppSettin
 
 // Kept out of pickWorkspaceLayoutSettings to stay under the cyclomatic-
 // complexity ceiling, mirroring pickOnboardingSettings/pickPreviewSettings.
+function pickTextEffectSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.textEffectTheme === "string" && isTextEffectThemeId(stored.textEffectTheme)) {
+    result.textEffectTheme = stored.textEffectTheme;
+  }
+  return result;
+}
+
+// Kept out of pickWorkspaceLayoutSettings to stay under the cyclomatic-
+// complexity ceiling, mirroring pickOnboardingSettings/pickTextEffectSettings.
+function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.wrapCodeLines === "boolean") {
+    result.wrapCodeLines = stored.wrapCodeLines;
+  }
+  return result;
+}
+
+// Kept out of pickWorkspaceLayoutSettings to stay under the cyclomatic-
+// complexity ceiling, mirroring pickOnboardingSettings/pickPreviewSettings.
 function pickTabLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   if (
@@ -531,14 +622,57 @@ function pickPreviewSettings(stored: Partial<AppSettings>): Partial<AppSettings>
   return result;
 }
 
+// Kept out of pickWorkspaceLayoutSettings to stay under the cyclomatic-
+// complexity ceiling, mirroring pickOnboardingSettings/pickTabLayoutSettings.
+function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.visualizerPanelTimeline === "boolean") {
+    result.visualizerPanelTimeline = stored.visualizerPanelTimeline;
+  }
+  if (typeof stored.visualizerPanelFileAttention === "boolean") {
+    result.visualizerPanelFileAttention = stored.visualizerPanelFileAttention;
+  }
+  if (typeof stored.visualizerPanelTranscript === "boolean") {
+    result.visualizerPanelTranscript = stored.visualizerPanelTranscript;
+  }
+  if (typeof stored.visualizerPanelMessageFeed === "boolean") {
+    result.visualizerPanelMessageFeed = stored.visualizerPanelMessageFeed;
+  }
+  if (typeof stored.visualizerPanelCostOverlay === "boolean") {
+    result.visualizerPanelCostOverlay = stored.visualizerPanelCostOverlay;
+  }
+  if (typeof stored.visualizerPanelHexGrid === "boolean") {
+    result.visualizerPanelHexGrid = stored.visualizerPanelHexGrid;
+  }
+  if (typeof stored.visualizerRenderBloom === "boolean") {
+    result.visualizerRenderBloom = stored.visualizerRenderBloom;
+  }
+  if (typeof stored.visualizerRenderStars === "boolean") {
+    result.visualizerRenderStars = stored.visualizerRenderStars;
+  }
+  if (typeof stored.visualizerRenderBackdrop === "boolean") {
+    result.visualizerRenderBackdrop = stored.visualizerRenderBackdrop;
+  }
+  if (
+    typeof stored.visualizerRenderQuality === "string" &&
+    (VISUALIZER_RENDER_QUALITIES as readonly string[]).includes(stored.visualizerRenderQuality)
+  ) {
+    result.visualizerRenderQuality = stored.visualizerRenderQuality;
+  }
+  return result;
+}
+
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   return {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
     ...pickWorkspaceLayoutSettings(stored),
+    ...pickTextEffectSettings(stored),
+    ...pickChatCodeSettings(stored),
     ...pickTabLayoutSettings(stored),
     ...pickOnboardingSettings(stored),
     ...pickPreviewSettings(stored),
+    ...pickVisualizerSettings(stored),
   };
 }
 

@@ -67,6 +67,24 @@ export function useRespondToRunGate(serverId: string | null) {
   });
 }
 
+/**
+ * Every agent id involved in a run: the conductor plus every phase's spawned
+ * candidates. Shared by the token-cost rollup (runs-screen.tsx sumRunTokens)
+ * and the Visualizer "Visualize this run" scoping (visualizer-panel.tsx).
+ */
+export function collectRunAgentIds(run: Run): Set<string> {
+  const agentIds = new Set<string>();
+  if (run.conductorAgentId) {
+    agentIds.add(run.conductorAgentId);
+  }
+  for (const phase of run.phases) {
+    for (const candidate of phase.candidates ?? []) {
+      agentIds.add(candidate.agentId);
+    }
+  }
+  return agentIds;
+}
+
 /** Cancel a run. The terminal run state arrives via the push. */
 export function useCancelRun(serverId: string | null) {
   const client = useHostRuntimeClient(serverId ?? "");

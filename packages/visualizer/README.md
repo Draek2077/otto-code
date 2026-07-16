@@ -5,4 +5,4 @@ Build-time package for the **Visualizer** workspace tab. Compiles the render lay
 - `npm run build:visualizer` (root) — production shell → committed `.gen.ts` module
 - `npm run build:visualizer:demo` (root) — demo shell → `.demo/index.html` (gitignored; drive it by posting `{type:'config', config:{mode:'replay', autoPlay:true, showMockData:true}}` to the window)
 
-Docs: [projects/visualizer/visualizer.md](../../projects/visualizer/visualizer.md) (charter, bridge contract, tasks) and [projects/visualizer/upstream-sync.md](../../projects/visualizer/upstream-sync.md) (subtree pull playbook — read before touching `vendor/`). react/react-dom here stay pinned to the app's exact version so npm hoists one copy.
+Docs: [docs/visualizer.md](../../docs/visualizer.md) (architecture, bridge contract, subtree pull playbook — read before touching `vendor/`). react/react-dom here stay pinned to the app's exact version so npm hoists one copy.

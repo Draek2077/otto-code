@@ -1687,6 +1687,18 @@ export const StatsActivityGetResponseMessageSchema = z.object({
   }),
 });
 
+// Daemon-wide "activity counters moved" ping — broadcast to every client,
+// coalesced at the daemon (at most once every few seconds) so bursts of
+// increments don't get chatty. Carries no payload: clients re-fetch the
+// rollups via stats.activity.get. Purely additive — old clients drop the
+// unknown type with a warning, and against old daemons (which never send it)
+// the stats screen degrades to today's focus/manual refresh. Rides the
+// existing activityStats capability; no new feature flag needed because no
+// client behavior depends on detecting it.
+export const ActivityStatsChangedSchema = z.object({
+  type: z.literal("activity_stats_changed"),
+});
+
 export const AgentContextGetUsageRequestMessageSchema = z.object({
   type: z.literal("agent.context.get_usage.request"),
   agentId: z.string(),
@@ -5127,6 +5139,11 @@ export const BranchSuggestionsResponseSchema = z.object({
           committerDate: z.number(),
           hasLocal: z.boolean().optional(),
           hasRemote: z.boolean().optional(),
+          // True when the branch is checked out in another worktree, so a
+          // direct `git checkout` of it would be rejected. Optional: absent on
+          // older daemons, in which case pickers disable nothing (today's
+          // behavior).
+          checkedOutElsewhere: z.boolean().optional(),
         }),
       )
       .optional(),
@@ -5958,6 +5975,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
   StatsActivityGetResponseMessageSchema,
+  ActivityStatsChangedSchema,
   AgentContextGetUsageResponseMessageSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
@@ -6160,6 +6178,7 @@ export type ProviderUsageListResponseMessage = z.infer<
 >;
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
+export type ActivityStatsChanged = z.infer<typeof ActivityStatsChangedSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;

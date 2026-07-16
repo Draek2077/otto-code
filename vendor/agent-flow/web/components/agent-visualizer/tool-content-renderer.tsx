@@ -53,7 +53,7 @@ function FilePath({ path: filePath }: { path: string }) {
   const short = truncatePath(filePath)
   return (
     <div
-      className={`text-[9px] mb-1 truncate ${openFile ? 'hover:underline' : ''}`}
+      className={`otto-code text-[9px] mb-1 truncate ${openFile ? 'hover:underline' : ''}`}
       style={{ color: openFile ? COLORS.filePathActive : COLORS.filePathInactive, cursor: openFile ? 'pointer' : undefined }}
       onClick={openFile ? () => openFile(filePath) : undefined}
       title={openFile ? filePath : undefined}
@@ -75,7 +75,7 @@ function EditContent({ data, compact }: { data: Record<string, unknown>; compact
   return (
     <div>
       <FilePath path={filePath} />
-      <div className="rounded overflow-hidden text-[9px] font-mono leading-snug" style={{ background: COLORS.codeBlockBg }}>
+      <div className="otto-code rounded overflow-hidden text-[9px] font-mono leading-snug" style={{ background: COLORS.codeBlockBg }}>
         {oldLines.map((line, i) => (
           <div key={`old-${i}`} className="px-1.5 py-px" style={{ color: COLORS.diffRemoved, background: COLORS.diffRemovedBg }}>
             <span className="opacity-50 mr-1">-</span>{line || ' '}
@@ -146,7 +146,7 @@ function BashContent({ data, compact }: { data: Record<string, unknown>; compact
       {description && (
         <div className="text-[9px] mb-1 opacity-60" style={{ color: COLORS.assistantText }}>{description}</div>
       )}
-      <div className="rounded px-1.5 py-1 text-[9px] font-mono" style={{ background: COLORS.codeBlockBg, color: COLORS.tool_calling }}>
+      <div className="otto-code rounded px-1.5 py-1 text-[9px] font-mono" style={{ background: COLORS.codeBlockBg, color: COLORS.tool_calling }}>
         <span className="opacity-55 mr-1">$</span>
         {command.length > maxLen ? command.slice(0, maxLen) + '...' : command}
       </div>
@@ -163,7 +163,7 @@ function WriteContent({ data, compact }: { data: Record<string, unknown>; compac
   return (
     <div>
       <FilePath path={filePath} />
-      <div className="rounded px-1.5 py-1 text-[9px] font-mono leading-snug" style={{ background: COLORS.codeBlockBg, color: COLORS.contentDim }}>
+      <div className="otto-code rounded px-1.5 py-1 text-[9px] font-mono leading-snug" style={{ background: COLORS.codeBlockBg, color: COLORS.contentDim }}>
         {lines.map((line, i) => (
           <div key={i} className="truncate">{line || ' '}</div>
         ))}
@@ -198,7 +198,7 @@ function GrepContent({ data }: { data: Record<string, unknown> }) {
   const glob = typeof data.glob === 'string' ? data.glob : undefined
 
   return (
-    <div className="text-[9px] font-mono">
+    <div className="otto-code text-[9px] font-mono">
       <span style={{ color: COLORS.tool_calling }}>{pattern}</span>
       {searchPath && <span className="opacity-55 ml-1">in {truncatePath(searchPath, 2)}</span>}
       {glob && <span className="opacity-55 ml-1">({glob})</span>}
@@ -211,7 +211,7 @@ function GlobContent({ data }: { data: Record<string, unknown> }) {
   const searchPath = String(data.path || '')
 
   return (
-    <div className="text-[9px] font-mono">
+    <div className="otto-code text-[9px] font-mono">
       <span style={{ color: COLORS.tool_calling }}>{pattern}</span>
       {searchPath && <span className="opacity-55 ml-1">in {truncatePath(searchPath, 2)}</span>}
     </div>
@@ -237,7 +237,7 @@ function WebFetchContent({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div>
-      <div className="rounded px-1.5 py-1 text-[9px] font-mono truncate" style={{ background: COLORS.codeBlockBg, color: COLORS.filePathActive }}>
+      <div className="otto-code rounded px-1.5 py-1 text-[9px] font-mono truncate" style={{ background: COLORS.codeBlockBg, color: COLORS.filePathActive }}>
         🌐 {displayUrl}
       </div>
       {prompt && (

@@ -109,7 +109,14 @@ export default defineConfig((): UserConfig => {
     },
     plugins: [
       cloudflare({ viteEnvironment: { name: "ssr" } }),
-      tsConfigPaths(),
+      tsConfigPaths({
+        // Otto checks out git worktrees under `.claude/worktrees/`. Those are
+        // separate checkouts without `node_modules`, so their tsconfigs (e.g.
+        // expo-module-scripts/tsconfig.base extends) can't resolve and make
+        // tsconfck throw EXTENDS_RESOLVE during discovery. They're never part
+        // of this project's TS graph, so skip them entirely.
+        skip: (dir) => dir === ".claude",
+      }),
       tanstackStart({
         router: {
           quoteStyle: "double",

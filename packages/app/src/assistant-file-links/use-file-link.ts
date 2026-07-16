@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { OpenFileDisposition } from "@/workspace/file-open";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import type { InlinePathTarget } from "./parse";
 import {
   useAssistantFileLinkResolverContext,
@@ -320,7 +320,7 @@ async function dispatchExternalUrl(input: {
   ) {
     return;
   }
-  await openExternalUrl(input.url);
+  await openLink(input.url);
 }
 
 async function dispatchUnresolvedError(input: {

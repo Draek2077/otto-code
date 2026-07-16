@@ -48,7 +48,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlobLoader } from "@/components/blob-loader";
 import { OttoLogo, OttoLogoWink } from "@/components/icons/otto-logo";
 import { Button } from "@/components/ui/button";
-import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
+import { useSizeForFormFactor } from "./use-size-for-form-factor";
 import { WizardBrandBackdrop } from "./wizard-brand-backdrop";
 
 interface WelcomeStepProps {
@@ -165,15 +165,9 @@ function WinkingGlyph({ size }: { size: number }) {
 }
 
 export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
-  const isCompact = useIsCompactFormFactor();
-  const isExtraCompact = useIsExtraCompactFormFactor();
   const insets = useSafeAreaInsets();
 
-  const sizeForFormFactor = (extraCompact: number, compact: number, wide: number) => {
-    if (isExtraCompact) return extraCompact;
-    if (isCompact) return compact;
-    return wide;
-  };
+  const sizeForFormFactor = useSizeForFormFactor();
   const glyphSize = sizeForFormFactor(
     GLYPH_SIZE_EXTRA_COMPACT,
     GLYPH_SIZE_COMPACT,

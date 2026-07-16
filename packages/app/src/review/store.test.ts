@@ -4,6 +4,7 @@ import {
   buildReviewAttachmentSnapshot,
   buildReviewDraftKey,
   buildReviewDraftScopeKey,
+  prunePreBranchDraftKeys,
 } from "./store";
 import {
   addCommentToState,
@@ -70,18 +71,19 @@ function makeFile(): ParsedDiffFile {
 }
 
 describe("buildReviewDraftKey", () => {
-  it("scopes by server, workspace-or-cwd, diff mode, base ref, and whitespace mode", () => {
+  it("scopes by server, workspace-or-cwd, branch, diff mode, base ref, and whitespace mode", () => {
     const base = buildReviewDraftKey({
       serverId: " local ",
       workspaceId: " workspace-1 ",
       cwd: "/repo",
       mode: "base",
       baseRef: " main ",
+      branch: " feature/login ",
       ignoreWhitespace: false,
     });
 
     expect(base).toBe(
-      "review:server=local:workspace=workspace-1:mode=base:base=main:ignoreWhitespace=false",
+      "review:server=local:workspace=workspace-1:branch=feature%2Flogin:mode=base:base=main:ignoreWhitespace=false",
     );
     expect(
       buildReviewDraftKey({
@@ -90,6 +92,7 @@ describe("buildReviewDraftKey", () => {
         cwd: "/repo",
         mode: "base",
         baseRef: "main",
+        branch: "feature/login",
         ignoreWhitespace: true,
       }),
     ).not.toBe(base);
@@ -100,9 +103,28 @@ describe("buildReviewDraftKey", () => {
         cwd: "/repo/",
         mode: "base",
         baseRef: "main",
+        branch: null,
         ignoreWhitespace: false,
       }),
-    ).toBe("review:server=local:cwd=%2Frepo:mode=base:base=main:ignoreWhitespace=false");
+    ).toBe("review:server=local:cwd=%2Frepo:branch=:mode=base:base=main:ignoreWhitespace=false");
+  });
+
+  it("separates drafts written on different branches (baseRef does not change on switch)", () => {
+    const build = (branch: string | null) =>
+      buildReviewDraftKey({
+        serverId: "local",
+        workspaceId: "workspace-1",
+        cwd: "/repo",
+        mode: "base",
+        baseRef: "main",
+        branch,
+        ignoreWhitespace: false,
+      });
+
+    expect(build("feature/a")).not.toBe(build("feature/b"));
+    // Detached HEAD (null) gets its own bucket, stable across renders.
+    expect(build(null)).toBe(build(null));
+    expect(build(null)).not.toBe(build("feature/a"));
   });
 
   it("builds a mode-free scope key for diff mode override sharing", () => {
@@ -166,6 +188,39 @@ describe("normalizePersistedState", () => {
       drafts: {},
       diffModeOverrides: {},
     });
+  });
+});
+
+describe("prunePreBranchDraftKeys", () => {
+  it("drops drafts persisted before keys carried a branch part, keeping branch-scoped ones", () => {
+    const branchedKey =
+      "review:server=local:workspace=w1:branch=feature%2Fa:mode=base:base=main:ignoreWhitespace=false";
+    const preBranchKey =
+      "review:server=local:workspace=w1:mode=base:base=main:ignoreWhitespace=false";
+    const state: ReviewDraftStoreState = {
+      drafts: {
+        [branchedKey]: [makeComment()],
+        [preBranchKey]: [makeComment({ id: "comment-2" })],
+      },
+      diffModeOverrides: {},
+    };
+
+    const pruned = prunePreBranchDraftKeys(state);
+
+    expect(Object.keys(pruned.drafts)).toEqual([branchedKey]);
+  });
+
+  it("keeps state identity when nothing is stale", () => {
+    const state: ReviewDraftStoreState = {
+      drafts: {
+        "review:server=local:cwd=%2Frepo:branch=:mode=base:base=main:ignoreWhitespace=false": [
+          makeComment(),
+        ],
+      },
+      diffModeOverrides: {},
+    };
+
+    expect(prunePreBranchDraftKeys(state)).toBe(state);
   });
 });
 

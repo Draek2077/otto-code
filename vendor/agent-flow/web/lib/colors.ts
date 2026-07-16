@@ -217,6 +217,23 @@ export const COLORS = {
   scrollbarThumb: 'rgba(100,200,255,0.15)',
 } as const
 
+// OTTO PATCH (see OTTO-PATCHES.md): host-seedable palette. An embedding host
+// may define `window.__OTTO_THEME__` BEFORE this bundle executes (Otto's
+// shell script does, from a build-time placeholder); its `colors` overlay is
+// merged over the defaults above at module init — before ROLE_COLORS below
+// and before any importer reads COLORS. Absent (upstream builds, demo shell),
+// nothing changes. Overlay values must keep each token's exact shape (6-hex
+// for solids that get hex alphas appended, partial `rgba(r, g, b,` bases for
+// withAlpha, etc.).
+declare global {
+  interface Window {
+    __OTTO_THEME__?: { colors?: Partial<Record<keyof typeof COLORS, string>> }
+  }
+}
+if (typeof window !== 'undefined' && window.__OTTO_THEME__?.colors) {
+  Object.assign(COLORS as Record<string, string>, window.__OTTO_THEME__.colors)
+}
+
 // ─── Role Colors (message feed & bubbles) ───────────────────────────────────
 
 export const ROLE_COLORS: Record<string, { bg: string; bgSelected: string; text: string; label: string }> = {

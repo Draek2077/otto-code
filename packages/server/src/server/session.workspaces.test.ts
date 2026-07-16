@@ -7581,3 +7581,46 @@ test("workspace.create.response persists the first prompt as the initial title",
   const persisted = await session.workspaceRegistry.get(workspaceId as string);
   expect(persisted?.title).toBe("Add retries to the payments flow");
 });
+
+test("workspace.create.request rejects a directory already backing a live workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const existing = createPersistedWorkspaceRecord({
+    workspaceId: "ws-occupying",
+    projectId: "proj-occupying",
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "repo",
+    title: "Payments checkout",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspaces = new Map([[existing.workspaceId, existing]]);
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    workspaceRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => Array.from(workspaces.values()),
+      get: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,
+      upsert: async (workspace) => {
+        workspaces.set(workspace.workspaceId, workspace);
+      },
+      archive: async () => {},
+      remove: async () => {},
+    },
+  });
+  session.listAgentPayloads = async () => [];
+
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-create-occupied",
+    source: { kind: "directory", path: REPO_CWD },
+  });
+
+  const response = findByType(emitted, "workspace.create.response");
+  expect(response?.payload.workspace).toBeNull();
+  expect(response?.payload.errorCode).toBe("workspace_directory_occupied");
+  expect(response?.payload.error).toContain('"Payments checkout"');
+  // No second record was minted for the occupied directory.
+  expect(workspaces.size).toBe(1);
+});

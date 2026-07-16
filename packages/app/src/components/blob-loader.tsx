@@ -129,16 +129,19 @@ function GlowLayer({
   // match the filter region to the padded box (userSpaceOnUse) so the filter
   // doesn't re-clip. BlobLoader over-scans the SVG by the same pad so the ring
   // still renders at its intended size. The unblurred path keeps the tight
-  // 0..100 box, byte-for-byte unchanged.
-  const pad = blurPadUnits(filtered ? blur : 0);
+  // 0..100 box, byte-for-byte unchanged. The pad is keyed to `blur` (not
+  // `filtered`) because the Android fallback below also overflows the box: its
+  // widened halo reaches r = 40 + 13×bloom ≈ 43 + 2.9×blur, which always fits
+  // inside the gaussian pad's 53 + 3×blur envelope.
+  const pad = blurPadUnits(blur);
   const min = -pad;
   const span = 100 + pad * 2;
 
   // Android fallback: when blur is requested but the SVG filter is unavailable,
-  // simulate the bloom by widening the outer halo strokes and pulling the bright
-  // core in slightly — the radius + opacity falloff reads as a soft glow without
-  // any filter. Scale factor is a hand-tuned mapping of blur stdDeviation →
-  // stroke multiplier that produces a visually similar halo extent.
+  // simulate the bloom by widening the halo strokes while dimming them by the
+  // same factor (constant total ink), so the gradient falloff reads as a soft
+  // glow without any filter. 0.22 is a hand-tuned mapping of blur stdDeviation
+  // → stroke multiplier that lands the halo extent near the gaussian's.
   const androidBloom = isAndroid && blur > 0 ? 1 + blur * 0.22 : 1;
 
   return (
@@ -173,7 +176,7 @@ function GlowLayer({
           stroke={`url(#${gradientId})`}
           strokeWidth={26 * androidBloom}
           fill="none"
-          opacity={0.16 / Math.max(androidBloom, 1)}
+          opacity={0.16 / androidBloom}
         />
         <Circle
           cx={50}
@@ -182,7 +185,7 @@ function GlowLayer({
           stroke={`url(#${gradientId})`}
           strokeWidth={16 * androidBloom}
           fill="none"
-          opacity={0.3 / Math.max(androidBloom, 1)}
+          opacity={0.3 / androidBloom}
         />
         {/* Bright core ring. */}
         <Circle
@@ -287,13 +290,10 @@ export function BlobLoader({
   // to `0.8 × size` on screen — so `size` means the same visible ring diameter
   // whether or not there's a bloom, and the glow overflows the box instead of
   // clipping. Zero pad (unblurred) collapses this to a plain inset-0 fill.
-  //
-  // Android: FeGaussianBlur is broken (react-native-svg#2636), so GlowLayer
-  // disables the filter; overscan must match — no overscan when the filter
-  // won't actually render.
-  const isAndroid = Platform.OS === "android";
-  const effectiveBlur = isAndroid ? 0 : blur;
-  const overscan = (size * blurPadUnits(effectiveBlur)) / 100;
+  // GlowLayer pads its viewBox by the same units whether the bloom comes from
+  // the gaussian filter or the Android stroke-widening fallback, so this
+  // overscan stays in lockstep on every platform.
+  const overscan = (size * blurPadUnits(blur)) / 100;
   const overscanStyle = useMemo(
     () =>
       ({

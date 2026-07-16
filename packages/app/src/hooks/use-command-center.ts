@@ -28,7 +28,9 @@ const EMPTY_COMMAND_CENTER_ITEMS: CommandCenterItem[] = [];
 function isMatch(agent: AggregatedAgent, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  const title = (agent.title ?? "New agent").toLowerCase();
+  // Untitled agents render as the translated "New chat" label; match the
+  // English label here so typing it finds them.
+  const title = (agent.title ?? "New chat").toLowerCase();
   const cwd = agent.cwd.toLowerCase();
   return title.includes(q) || cwd.includes(q);
 }

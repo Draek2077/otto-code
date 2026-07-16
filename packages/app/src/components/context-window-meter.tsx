@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -13,7 +13,8 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { useAgentContextUsage } from "@/hooks/use-agent-context-usage";
-import { compactUp } from "@/styles/theme";
+import { baseColors, compactUp, type Theme } from "@/styles/theme";
+import { themeColorRef } from "@/styles/theme-color-ref";
 import type { AgentContextUsage } from "@otto-code/protocol/messages";
 import { formatTokenCount } from "./context-window-meter.utils";
 
@@ -25,6 +26,21 @@ interface ContextWindowMeterProps {
   agentId?: string | null;
   /** The Otto provider key, e.g. "claude", "gemini", "codex" */
   provider?: string | null;
+}
+
+interface ContextWindowMeterInnerProps extends ContextWindowMeterProps {
+  /**
+   * Theme-dependent meter colors, mapped by the `withUnistyles` wrapper below.
+   * These are `themeColorRef` values: `var(--colors-...)` on web so the ring
+   * follows the nearest scope's CSS variables (the black chat scope wraps the
+   * whole chat pane, composer included — see `styles/black-chat-scope.ts`),
+   * and concrete scoped-theme colors on native where `ScopedTheme` works.
+   * Resolving concrete colors through React here (the old `useUnistyles()`
+   * approach) painted the ring track with the app theme's `surface3` on the
+   * pure-black pane.
+   */
+  meterTrackColor: string;
+  meterDestructiveColor: string;
 }
 
 const SVG_SIZE = 14;
@@ -73,18 +89,35 @@ function formatSessionCost(value: number): string | null {
   return `$${value.toFixed(2)}`;
 }
 
+// SVG strokes are delivered through the `style` prop, not the `stroke` prop:
+// on web the prop lands as an SVG presentation attribute, where the
+// `var(--...)` refs from `themeColorRef` never resolve, while style entries
+// land as real CSS (react-native-web compiles SVG stroke styles) that follows
+// the cascade — and therefore the black chat scope's variables. Native merges
+// style entries into props (`propsAndStyles` in react-native-svg), so the
+// same delivery works there. `CircleProps` omits `style` even though the
+// runtime supports it on both platforms; spreading (exempt from excess
+// property checks) passes it through without a cast.
+function strokeStyleProps(stroke: string): { style: { stroke: string } } {
+  return { style: { stroke } };
+}
+
+// The amber/green steps come from `baseColors`, the static palette shared
+// verbatim by every registered theme (including the black chat mirror), so
+// concrete values are safe. Track and destructive vary per theme and arrive
+// as cascade-following refs via the props documented above.
 function getMeterColors(
   percentage: number,
-  theme: ReturnType<typeof useUnistyles>["theme"],
+  trackColor: string,
+  destructiveColor: string,
 ): { progress: string; track: string } {
-  const track = theme.colors.surface3;
   if (percentage >= 60) {
-    return { progress: theme.colors.destructive, track };
+    return { progress: destructiveColor, track: trackColor };
   }
   if (percentage >= 40) {
-    return { progress: theme.colors.palette.amber[500], track };
+    return { progress: baseColors.amber[500], track: trackColor };
   }
-  return { progress: theme.colors.palette.green[500], track };
+  return { progress: baseColors.green[500], track: trackColor };
 }
 
 function formatCategoryPercentage(tokens: number, maxTokens: number): string {
@@ -169,15 +202,16 @@ function ContextUsageBar({ percentage, color }: { percentage: number; color: str
   );
 }
 
-export function ContextWindowMeter({
+function ContextWindowMeterInner({
   maxTokens,
   usedTokens,
   totalCostUsd,
   serverId,
   agentId,
   provider,
-}: ContextWindowMeterProps) {
-  const { theme } = useUnistyles();
+  meterTrackColor,
+  meterDestructiveColor,
+}: ContextWindowMeterInnerProps) {
   const { t } = useTranslation();
   // react-native-svg needs explicit dimensions — unistyles breakpoint styles
   // don't reach the <svg> element on web, leaving it 0×0. Match compactUp():
@@ -228,8 +262,8 @@ export function ContextWindowMeter({
               cy={CENTER}
               r={RADIUS}
               fill="none"
-              stroke={theme.colors.surface3}
               strokeWidth={STROKE_WIDTH}
+              {...strokeStyleProps(meterTrackColor)}
             />
           </G>
         </Svg>
@@ -240,7 +274,7 @@ export function ContextWindowMeter({
   const clampedPercentage = clampPercentage(percentage);
   const roundedPercentage = Math.round(percentage);
   const dashOffset = CIRCUMFERENCE - (clampedPercentage / 100) * CIRCUMFERENCE;
-  const colors = getMeterColors(clampedPercentage, theme);
+  const colors = getMeterColors(clampedPercentage, meterTrackColor, meterDestructiveColor);
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
 
@@ -268,19 +302,19 @@ export function ContextWindowMeter({
                   cy={CENTER}
                   r={RADIUS}
                   fill="none"
-                  stroke={colors.track}
                   strokeWidth={STROKE_WIDTH}
+                  {...strokeStyleProps(colors.track)}
                 />
                 <Circle
                   cx={CENTER}
                   cy={CENTER}
                   r={RADIUS}
                   fill="none"
-                  stroke={colors.progress}
                   strokeWidth={STROKE_WIDTH}
                   strokeLinecap="round"
                   strokeDasharray={CIRCUMFERENCE}
                   strokeDashoffset={dashOffset}
+                  {...strokeStyleProps(colors.progress)}
                 />
               </G>
             </Svg>
@@ -312,6 +346,17 @@ export function ContextWindowMeter({
     </DropdownMenu>
   );
 }
+
+// `useUnistyles()` is banned (docs/unistyles.md); the theme-dependent meter
+// colors are mapped as props instead (the wizard-brand-backdrop pattern), so
+// only this wrapper re-renders on theme changes. `themeColorRef` keeps the
+// mapping scope-correct: on web it emits `var(--...)` refs that follow the
+// black chat scope's CSS variables, and on native the mapping itself resolves
+// against the `ScopedTheme` captured at mount.
+export const ContextWindowMeter = withUnistyles(ContextWindowMeterInner, (theme: Theme) => ({
+  meterTrackColor: themeColorRef(theme, "surface3"),
+  meterDestructiveColor: themeColorRef(theme, "destructive"),
+}));
 
 const styles = StyleSheet.create((theme) => ({
   button: {

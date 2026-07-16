@@ -46,14 +46,31 @@ export function drawOpenAILogo(ctx: CanvasRenderingContext2D, cx: number, cy: nu
   ctx.restore()
 }
 
-/** Pick the brand logo for the agent's runtime. Defaults to Claude. */
+/** Generic mark for runtimes with no bespoke brand asset — a hollow diamond,
+ * matching the sub-agent glyph style rather than inventing new iconography. */
+function drawGenericRuntimeMark(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.shadowColor = color
+  ctx.shadowBlur = 6
+  ctx.font = `${r * AGENT_DRAW.sparkScale}px monospace`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('◇', cx, cy)
+  ctx.restore()
+}
+
+/** Pick the brand logo for the agent's runtime. Defaults to Claude. Only
+ * Claude/Codex have real brand marks (TRADEMARK.md forbids shipping
+ * others') — every other known runtime gets the generic diamond mark. */
 export function drawAgentBrand(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number, r: number, color: string,
   runtime: Agent['runtime'],
 ) {
   if (runtime === 'codex') drawOpenAILogo(ctx, cx, cy, r, color)
-  else drawClaudeSpark(ctx, cx, cy, r, color)
+  else if (runtime === undefined || runtime === 'claude') drawClaudeSpark(ctx, cx, cy, r, color)
+  else drawGenericRuntimeMark(ctx, cx, cy, r, color)
 }
 
 export function drawContextComposition(

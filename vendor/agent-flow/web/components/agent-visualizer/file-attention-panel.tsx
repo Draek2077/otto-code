@@ -1,7 +1,7 @@
 'use client'
 
 import { FileAttention, Z } from '@/lib/agent-types'
-import { COLORS } from '@/lib/colors'
+import { COLORS, withAlpha } from '@/lib/colors'
 import { formatTokens, truncatePath } from '@/lib/utils'
 import { PanelHeader, ProgressBar, SlidingPanel } from './shared-ui'
 
@@ -54,7 +54,7 @@ export function FileAttentionPanel({ visible, fileAttention, onClose, onOpenFile
                 key={file.path}
                 className={`rounded px-2 py-1.5 transition-colors ${canOpen ? 'hover:brightness-125' : ''}`}
                 style={{
-                  background: `rgba(10, 15, 30, 0.5)`,
+                  background: withAlpha(COLORS.toolCardBase, 0.5),
                   border: `1px solid ${canOpen ? heatColor + '30' : heatColor + '15'}`,
                   cursor: canOpen ? 'pointer' : undefined,
                 }}
@@ -63,7 +63,7 @@ export function FileAttentionPanel({ visible, fileAttention, onClose, onOpenFile
               >
                 {/* Filename */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] font-mono truncate" style={{ color: heatColor, maxWidth: 160 }}>
+                  <span className="otto-code text-[9px] font-mono truncate" style={{ color: heatColor, maxWidth: 160 }}>
                     {displayPath}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color: COLORS.textMuted }}>

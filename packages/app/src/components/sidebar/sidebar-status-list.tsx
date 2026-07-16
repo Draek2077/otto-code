@@ -13,12 +13,10 @@ import { withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
   ChevronRight,
-  CircleAlertFilled,
   CircleCheck,
   CircleDot,
-  CircleHelpFilled,
-  CircleNotificationsFilled,
 } from "@/components/icons/material-icons";
+import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
 import { DiffStat } from "@/components/diff-stat";
 import { useToast } from "@/contexts/toast-context";
 import { useMutation } from "@tanstack/react-query";
@@ -63,9 +61,6 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
-const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
-const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
-const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 
 // Status-group mode sorts rows by statusEnteredAt DESC (see
 // sidebar-status-view-model.ts), so a workspace that's revealed (e.g. a
@@ -82,11 +77,8 @@ const SIDEBAR_STATUS_LIST_MAINTAIN_VISIBLE_CONTENT_POSITION = { minIndexForVisib
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedCircleAlertFilled = withUnistyles(CircleAlertFilled);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
-const ThemedCircleHelpFilled = withUnistyles(CircleHelpFilled);
-const ThemedCircleNotificationsFilled = withUnistyles(CircleNotificationsFilled);
 interface StatusWorkspaceListProps {
   groups: StatusGroup[];
   projectNamesByKey: Map<string, string>;
@@ -306,13 +298,10 @@ function StatusGroupLeadingVisual({
 }
 
 function StatusGroupIcon({ bucket }: { bucket: StatusGroup["bucket"] }) {
+  if (isAttentionStatusBucket(bucket)) {
+    return <StatusBucketIcon bucket={bucket} size={14} />;
+  }
   switch (bucket) {
-    case "needs_input":
-      return <ThemedCircleHelpFilled size={14} uniProps={amberColorMapping} />;
-    case "failed":
-      return <ThemedCircleAlertFilled size={14} uniProps={redColorMapping} />;
-    case "attention":
-      return <ThemedCircleNotificationsFilled size={14} uniProps={greenColorMapping} />;
     case "running":
       return <ThemedCircleDot size={14} uniProps={blueColorMapping} />;
     case "done":

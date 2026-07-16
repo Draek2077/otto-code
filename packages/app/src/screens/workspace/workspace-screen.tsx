@@ -76,6 +76,7 @@ import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
+import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
 import { usePublishExplorerSidebarVisibility } from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useToast } from "@/contexts/toast-context";
@@ -155,6 +156,7 @@ import {
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
+import { registerInAppLinkOpener } from "@/utils/open-link";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import { useHostFeature } from "@/runtime/host-features";
 import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
@@ -386,6 +388,7 @@ function getFallbackTabOptionLabel(
     terminal: string;
     browser: string;
     agent: string;
+    visualizer: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -409,6 +412,9 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "gitLog") {
     return formatGitLogFallbackTitle(tab.target.operation);
   }
+  if (tab.target.kind === "visualizer") {
+    return labels.visualizer;
+  }
   return labels.agent;
 }
 
@@ -427,6 +433,7 @@ function getFallbackTabOptionDescription(
     agent: string;
     terminal: string;
     browser: string;
+    visualizer: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -449,6 +456,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "gitLog") {
     return formatGitLogFallbackTitle(tab.target.operation);
+  }
+  if (tab.target.kind === "visualizer") {
+    return labels.visualizer;
   }
   return tab.target.path;
 }
@@ -724,6 +734,7 @@ function MobileWorkspaceTabOption({
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
+      visualizer: t("workspace.tabs.fallback.visualizer"),
     }),
     [t],
   );
@@ -1585,6 +1596,12 @@ function WorkspaceHeaderTitleBar({
         </View>
       )}
       <View style={styles.compactHeaderMenuCluster}>
+        {isDeveloperMode && !isMobile ? (
+          <WorkspaceVisualizerButton
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+          />
+        ) : null}
         <WorkspaceHeaderMenu
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -2856,6 +2873,7 @@ function WorkspaceScreenContent({
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
+      visualizer: t("workspace.tabs.fallback.visualizer"),
     }),
     [t],
   );
@@ -2931,6 +2949,16 @@ function WorkspaceScreenContent({
     workspaceLayout,
     openUrl: handleOpenUrlInBrowserTab,
   });
+
+  // While this workspace is mounted, the global openLink() helper can route
+  // "in-app" link opens into a normal Otto browser tab here (Electron only —
+  // handleOpenUrlInBrowserTab is a no-op elsewhere). See utils/open-link.ts.
+  useEffect(() => {
+    if (!persistenceKey || !getIsElectron()) {
+      return;
+    }
+    return registerInAppLinkOpener(handleOpenUrlInBrowserTab);
+  }, [handleOpenUrlInBrowserTab, persistenceKey]);
 
   const handleSelectSwitcherTab = useCallback(
     (key: string) => {

@@ -220,6 +220,9 @@ test.describe("Projects settings — error UX", () => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
 
+    // Save is disabled until the form is dirty, so make an edit first.
+    await editWorktreeSetup(page, updatedSetup);
+
     // Bump the file on disk so the daemon detects a revision mismatch on save.
     await bumpOttoConfigOnDisk(editableProject.path);
 
@@ -261,6 +264,9 @@ test.describe("Projects settings — error UX", () => {
   }) => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
+
+    // Save is disabled until the form is dirty, so make an edit first.
+    await editWorktreeSetup(page, updatedSetup);
 
     await blockOttoConfigWrites(editableProject.path);
 

@@ -7,6 +7,8 @@ export interface ComboboxOptionModel {
   label: string;
   description?: string;
   kind?: ComboboxOptionKind;
+  /** Renders the option non-pressable and dimmed (e.g. a branch git would refuse to check out). */
+  disabled?: boolean;
 }
 
 const DESCRIPTION_FALLBACK_TIER = 99;

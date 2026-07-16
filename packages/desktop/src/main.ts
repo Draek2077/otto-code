@@ -68,6 +68,12 @@ import {
   lockDownArtifactWebviewContents,
   registerArtifactWebviewSessionGuards,
 } from "./features/artifact-webview.js";
+import {
+  hardenVisualizerWebviewPreferences,
+  isVisualizerWebviewAttach,
+  lockDownVisualizerWebviewContents,
+  registerVisualizerWebviewSessionGuards,
+} from "./features/visualizer-webview.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
@@ -234,7 +240,10 @@ function readActiveBrowserInput(
   return { workspaceId: record.workspaceId.trim(), browserId: browserId || null };
 }
 
-type PendingWebviewAttach = { kind: "browser"; browserId: string } | { kind: "artifact" };
+type PendingWebviewAttach =
+  | { kind: "browser"; browserId: string }
+  | { kind: "artifact" }
+  | { kind: "visualizer" };
 const pendingWebviewAttaches: PendingWebviewAttach[] = [];
 
 function isBrowserRefreshInput(input: Electron.Input): boolean {
@@ -786,6 +795,14 @@ async function createWindow(
       registerArtifactWebviewSessionGuards();
       return;
     }
+    if (isVisualizerWebviewAttach(params)) {
+      pendingWebviewAttaches.push({ kind: "visualizer" });
+      hardenVisualizerWebviewPreferences(webPreferences);
+      delete params.preload;
+      delete (params as { preloadURL?: string }).preloadURL;
+      registerVisualizerWebviewSessionGuards();
+      return;
+    }
     const browserId = readBrowserIdFromWebviewAttach(params);
     if (!browserId) {
       event.preventDefault();
@@ -809,6 +826,10 @@ async function createWindow(
     const pending = pendingWebviewAttaches.shift() ?? null;
     if (pending?.kind === "artifact") {
       lockDownArtifactWebviewContents(contents);
+      return;
+    }
+    if (pending?.kind === "visualizer") {
+      lockDownVisualizerWebviewContents(contents);
       return;
     }
     const browserId = pending?.kind === "browser" ? pending.browserId : null;
@@ -1203,8 +1224,16 @@ async function confirmQuitIfNeeded(): Promise<boolean> {
   }
 
   const settings = await getDesktopSettingsStore().get();
-  if (!settings.quit.warnBeforeQuit) {
-    log.info("[quit-confirm] skipped: warnBeforeQuit is off", { quit: settings.quit });
+  const willStopDaemon =
+    shouldStopDesktopManagedDaemonOnQuit(settings) && isDesktopManagedDaemonRunningSync();
+  // A quit that stops the managed daemon still round-trips to the renderer even
+  // with warnBeforeQuit off: the renderer owns the (suppressible) "enabled
+  // schedules won't run while the daemon is off" warning and silently confirms
+  // when it doesn't apply.
+  if (!settings.quit.warnBeforeQuit && !willStopDaemon) {
+    log.info("[quit-confirm] skipped: warnBeforeQuit is off and the daemon keeps running", {
+      quit: settings.quit,
+    });
     return true;
   }
 
@@ -1223,9 +1252,6 @@ async function confirmQuitIfNeeded(): Promise<boolean> {
     targetWindow.show();
     targetWindow.focus();
   }
-
-  const willStopDaemon =
-    shouldStopDesktopManagedDaemonOnQuit(settings) && isDesktopManagedDaemonRunningSync();
 
   log.info("[quit-confirm] requesting renderer confirmation", {
     hasTargetWindow: Boolean(targetWindow),

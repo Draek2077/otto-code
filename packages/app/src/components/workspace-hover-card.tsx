@@ -23,7 +23,7 @@ import {
   GitBranch,
   Server,
 } from "@/components/icons/material-icons";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import type { Theme } from "@/styles/theme";
 import { DiffStat } from "@/components/diff-stat";
 import { Pressable } from "react-native";
@@ -32,7 +32,7 @@ import { Portal } from "@gorhom/portal";
 import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import type { PrHint } from "@/git/use-pr-status-query";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { shortenPath } from "@/utils/shorten-path";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PrBadge } from "@/components/sidebar-workspace-list";
@@ -338,7 +338,11 @@ function WorkspaceHoverCardContent({
           {prHint?.checks && prHint.checks.length > 0 ? (
             <>
               <View style={styles.separator} />
-              <ChecksSummaryPressable checks={prHint.checks} url={prHint.url} />
+              <ChecksSummaryPressable
+                checks={prHint.checks}
+                provider={prHint.provider}
+                url={prHint.url}
+              />
             </>
           ) : null}
         </FloatingSurface>
@@ -362,7 +366,7 @@ function HostRow({ serverId }: { serverId: string }): ReactElement | null {
 }
 
 const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedGitHubIcon = withUnistyles(GitHubIcon);
+const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleX = withUnistyles(CircleX);
@@ -507,9 +511,11 @@ function ChecksSummaryPill({
 
 function ChecksSummaryContent({
   checks,
+  provider,
   hovered,
 }: {
   checks: NonNullable<PrHint["checks"]>;
+  provider: PrHint["provider"];
   hovered: boolean;
 }) {
   const { t } = useTranslation();
@@ -523,7 +529,7 @@ function ChecksSummaryContent({
       {hovered ? (
         <ThemedExternalLink size={12} uniProps={iconUniProps} />
       ) : (
-        <ThemedGitHubIcon size={12} uniProps={iconUniProps} />
+        <ThemedGitHostingIcon provider={provider} size={12} uniProps={iconUniProps} />
       )}
       <Text style={labelStyle}>{t("workspace.git.pr.sections.checks")}</Text>
       <View style={styles.checksSummaryCounts}>
@@ -537,20 +543,24 @@ function ChecksSummaryContent({
 
 function ChecksSummaryPressable({
   checks,
+  provider,
   url,
 }: {
   checks: NonNullable<PrHint["checks"]>;
+  provider: PrHint["provider"];
   url: string;
 }) {
   const handlePress = useCallback(() => {
-    void openExternalUrl(`${url}/checks`);
-  }, [url]);
+    // "/checks" is a GitHub PR sub-page; Bitbucket has no equivalent path, so
+    // fall back to the PR page itself there.
+    void openLink(provider === "github" ? `${url}/checks` : url);
+  }, [provider, url]);
 
   const renderChildren = useCallback(
     ({ hovered }: { pressed: boolean; hovered?: boolean }) => (
-      <ChecksSummaryContent checks={checks} hovered={Boolean(hovered)} />
+      <ChecksSummaryContent checks={checks} provider={provider} hovered={Boolean(hovered)} />
     ),
-    [checks],
+    [checks, provider],
   );
 
   return (

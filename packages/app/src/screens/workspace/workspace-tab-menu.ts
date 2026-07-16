@@ -148,6 +148,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "gitLog") {
     return `workspace-gitlog-close-${tab.target.operation}`;
   }
+  if (tab.target.kind === "visualizer") {
+    return "workspace-visualizer-close";
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

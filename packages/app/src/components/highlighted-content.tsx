@@ -17,11 +17,16 @@ interface HighlightedLinesProps {
   // 1-based line number of the first line; when set, a line-number gutter is
   // rendered (used by Read, which carries a server-normalized offset).
   startLine?: number;
+  // "Wrap long lines" appearance setting: soft-wrap long lines instead of
+  // relying on a surrounding horizontal scroller. Visual only — selection/copy
+  // still yields the original unwrapped text. Tokenization is untouched, so
+  // syntax highlighting is unaffected.
+  wrap?: boolean;
 }
 
-function ContentLine({ line }: { line: KeyedLine }) {
+function ContentLine({ line, wrap }: { line: KeyedLine; wrap: boolean }) {
   return (
-    <Text selectable style={styles.lineText}>
+    <Text selectable style={wrap ? LINE_TEXT_WRAP_STYLE : styles.lineText}>
       {line.tokens.length === 0
         ? ZERO_WIDTH
         : line.tokens.map(({ key, token }: KeyedToken) => (
@@ -37,15 +42,17 @@ const GutteredLine = React.memo(function GutteredLine({
   line,
   lineNumber,
   digits,
+  wrap,
 }: {
   line: KeyedLine;
   lineNumber: number;
   digits: number;
+  wrap: boolean;
 }) {
   return (
     <View style={styles.row}>
       <Text style={styles.gutterText}>{String(lineNumber).padStart(digits)} </Text>
-      <ContentLine line={line} />
+      <ContentLine line={line} wrap={wrap} />
     </View>
   );
 });
@@ -53,12 +60,12 @@ const GutteredLine = React.memo(function GutteredLine({
 // Renders pre-tokenized lines (from the shared highlight cache), optionally with
 // a line-number gutter. Callers decide whether to highlight at all, so the
 // expensive size-cap / unsupported-language fallback stays a single plain Text.
-export function HighlightedLines({ lines, startLine }: HighlightedLinesProps) {
+export function HighlightedLines({ lines, startLine, wrap = false }: HighlightedLinesProps) {
   if (startLine === undefined) {
     return (
       <View dataSet={CODE_SURFACE_DATASET}>
         {lines.map((line) => (
-          <ContentLine key={line.key} line={line} />
+          <ContentLine key={line.key} line={line} wrap={wrap} />
         ))}
       </View>
     );
@@ -69,7 +76,13 @@ export function HighlightedLines({ lines, startLine }: HighlightedLinesProps) {
   return (
     <View dataSet={CODE_SURFACE_DATASET}>
       {lines.map((line, index) => (
-        <GutteredLine key={line.key} line={line} lineNumber={startLine + index} digits={digits} />
+        <GutteredLine
+          key={line.key}
+          line={line}
+          lineNumber={startLine + index}
+          digits={digits}
+          wrap={wrap}
+        />
       ))}
     </View>
   );
@@ -101,4 +114,19 @@ const styles = StyleSheet.create((theme) => ({
         }
       : null),
   },
+  // Layered over lineText when "Wrap long lines" is on. flexShrink keeps a
+  // wrapped line inside the gutter row's remaining width instead of pushing
+  // the row wider; web needs the explicit pre-wrap (lineText forces `pre`).
+  lineTextWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+    ...(isWeb
+      ? {
+          whiteSpace: "pre-wrap" as const,
+          overflowWrap: "anywhere" as const,
+        }
+      : null),
+  },
 }));
+
+const LINE_TEXT_WRAP_STYLE = [styles.lineText, styles.lineTextWrap];

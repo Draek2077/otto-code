@@ -15,7 +15,9 @@ import { applyRootUiFont } from "./apply-root-font";
 // flat 2px before the ramp is scaled, and double every icon size token. Both are
 // re-applied here (not baked into FONT_SIZE/ICON_SIZE) so the authored ramp stays the
 // single source of truth and desktop is unaffected.
-const COMPACT_UI_FONT_SIZE_BUMP = 2;
+// Exported for resolveVisualizerAppearance, which mirrors this resolution for
+// the Visualizer guest page (visualizer-appearance.ts).
+export const COMPACT_UI_FONT_SIZE_BUMP = 2;
 const COMPACT_ICON_SIZE_FACTOR = 2;
 
 // All registered Unistyles keys — pinned literal (greppable, type-checked).

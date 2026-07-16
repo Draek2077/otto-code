@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView as RNScrollView,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
@@ -24,6 +25,7 @@ import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useWrapCodeLines } from "@/hooks/use-wrap-code-lines";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
 
@@ -73,17 +75,27 @@ function CodeVerticalScroll({
 // viewport when it lives inside a vertically-scrolling parent, so on desktop
 // web we drop the old always-on tinted scrollbar and hide the native
 // indicator (scrolling still works via trackpad / shift-wheel).
+//
+// With `wrap` (the "Wrap long lines" appearance setting, default on) the
+// horizontal scroller is skipped entirely and long lines soft-wrap instead —
+// callers pair this with the pre-wrap text style from DetailStyles.
 function CodeHorizontalScroll({
   style,
   contentContainerStyle,
+  wrap = false,
   children,
 }: {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  wrap?: boolean;
   children: ReactNode;
 }) {
   const isCompact = useIsCompactFormFactor();
   const showDesktopWebScrollbar = isWeb && !isCompact;
+  const wrapStyle = useMemo(() => [style, contentContainerStyle], [style, contentContainerStyle]);
+  if (wrap) {
+    return <View style={wrapStyle}>{children}</View>;
+  }
   return (
     <ScrollView
       horizontal
@@ -120,6 +132,13 @@ interface DetailStyles {
   resolvedMaxHeight: number | undefined;
   shouldFill: boolean;
   isFullBleed: boolean;
+  // "Wrap long lines" appearance setting: soft-wrap code/tool output instead of
+  // horizontal scrolling. codeTextStyle/codeTextErrorStyle carry the matching
+  // pre vs. pre-wrap monospace text style so sections stay in sync with the
+  // CodeHorizontalScroll `wrap` prop.
+  wrap: boolean;
+  codeTextStyle: StyleProp<TextStyle>;
+  codeTextErrorStyle: StyleProp<TextStyle>;
 }
 
 function resolveIsFullBleed(detail: ToolCallDetail | undefined): boolean {
@@ -139,6 +158,7 @@ function useDetailStyles(
   detail: ToolCallDetail | undefined,
   resolvedMaxHeight: number | undefined,
   fillAvailableHeight: boolean,
+  wrap: boolean,
 ): DetailStyles {
   const isFullBleed = resolveIsFullBleed(detail);
   const shouldFill = resolveShouldFill(detail, fillAvailableHeight);
@@ -202,6 +222,9 @@ function useDetailStyles(
     resolvedMaxHeight,
     shouldFill,
     isFullBleed,
+    wrap,
+    codeTextStyle: wrap ? SCROLL_TEXT_WRAP_STYLE : styles.scrollText,
+    codeTextErrorStyle: wrap ? SCROLL_TEXT_ERROR_WRAP_STYLE : SCROLL_TEXT_ERROR_STYLE,
   };
 }
 
@@ -233,9 +256,9 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
           contentContainerStyle={styles.codeVerticalContent}
           fill={ds.shouldFill}
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={styles.scrollText}>
+              <Text selectable style={ds.codeTextStyle}>
                 <Text style={styles.shellPrompt}>$ </Text>
                 {normalizedCommand}
                 {hasOutput ? `\n\n${commandOutput}` : ""}
@@ -271,9 +294,9 @@ function WorktreeSetupDetailSection({
           contentContainerStyle={styles.codeVerticalContent}
           fill={ds.shouldFill}
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={styles.scrollText}>
+              <Text selectable style={ds.codeTextStyle}>
                 {hasLog ? setupLog : `Preparing worktree ${branchName} at ${worktreePath}`}
               </Text>
             </View>
@@ -384,21 +407,23 @@ function SubAgentLogText({
   activityLog,
   fallbackHeader,
   hasActions,
+  textStyle,
 }: {
   activityLog: string;
   fallbackHeader: string;
   hasActions: boolean;
+  textStyle: StyleProp<TextStyle>;
 }) {
   if (activityLog.length > 0) {
     return (
-      <Text selectable style={styles.scrollText}>
+      <Text selectable style={textStyle}>
         {activityLog}
       </Text>
     );
   }
   if (!hasActions) {
     return (
-      <Text selectable style={styles.scrollText}>
+      <Text selectable style={textStyle}>
         {fallbackHeader}
       </Text>
     );
@@ -429,7 +454,7 @@ function SubAgentDetailSection({
           contentContainerStyle={styles.codeVerticalContent}
           fill={ds.shouldFill}
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent}>
+          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               {childSessionId ? (
                 <Text selectable style={styles.subAgentSessionText}>
@@ -447,6 +472,7 @@ function SubAgentDetailSection({
                 activityLog={remainingLog}
                 fallbackHeader={fallbackHeader}
                 hasActions={hasActions}
+                textStyle={ds.codeTextStyle}
               />
             </View>
           </CodeHorizontalScroll>
@@ -470,6 +496,7 @@ function EditDetailSection({ diffLines, ds }: EditDetailProps) {
             diffLines={diffLines}
             maxHeight={ds.resolvedMaxHeight}
             fillAvailableHeight={ds.shouldFill}
+            wrap={ds.wrap}
           />
         </View>
       ) : null}
@@ -503,11 +530,11 @@ function ScrollableTextSection({
       contentContainerStyle={styles.scrollContent}
       fill={ds.shouldFill}
     >
-      <CodeHorizontalScroll>
+      <CodeHorizontalScroll wrap={ds.wrap}>
         {keyedLines ? (
-          <HighlightedLines lines={keyedLines} startLine={startLine} />
+          <HighlightedLines lines={keyedLines} startLine={startLine} wrap={ds.wrap} />
         ) : (
-          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
             {content}
           </Text>
         )}
@@ -532,8 +559,8 @@ function FetchDetailSection({ url, result, ds }: FetchDetailProps) {
         contentContainerStyle={styles.scrollContent}
         fill={ds.shouldFill}
       >
-        <CodeHorizontalScroll>
-          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+        <CodeHorizontalScroll wrap={ds.wrap}>
+          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
             {result ? `${url}\n\n${result}` : url}
           </Text>
         </CodeHorizontalScroll>
@@ -566,8 +593,8 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
     out.push(
       <View key="search-content" style={styles.section}>
         <CodeVerticalScroll style={ds.scrollAreaStyle} contentContainerStyle={styles.scrollContent}>
-          <CodeHorizontalScroll>
-            <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+          <CodeHorizontalScroll wrap={ds.wrap}>
+            <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
               {detail.content}
             </Text>
           </CodeHorizontalScroll>
@@ -578,7 +605,7 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.filePaths && detail.filePaths.length > 0) {
     out.push(
       <View key="search-files" style={styles.section}>
-        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
           {detail.filePaths.join("\n")}
         </Text>
       </View>,
@@ -587,7 +614,7 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.webResults && detail.webResults.length > 0) {
     out.push(
       <View key="search-web-results" style={styles.section}>
-        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
           {detail.webResults.map((entry) => `${entry.title}\n${entry.url}`).join("\n\n")}
         </Text>
       </View>,
@@ -596,7 +623,7 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.annotations && detail.annotations.length > 0) {
     out.push(
       <View key="search-annotations" style={styles.section}>
-        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
           {detail.annotations.join("\n\n")}
         </Text>
       </View>,
@@ -659,8 +686,9 @@ function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunct
         <CodeHorizontalScroll
           style={ds.jsonScrollCombined}
           contentContainerStyle={styles.jsonContent}
+          wrap={ds.wrap}
         >
-          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
+          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
             {value}
           </Text>
         </CodeHorizontalScroll>
@@ -758,8 +786,9 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
       <CodeHorizontalScroll
         style={ds.jsonScrollErrorCombined}
         contentContainerStyle={styles.jsonContent}
+        wrap={ds.wrap}
       >
-        <Text selectable style={SCROLL_TEXT_ERROR_STYLE} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={ds.codeTextErrorStyle} dataSet={CODE_SURFACE_DATASET}>
           {errorText}
         </Text>
       </CodeHorizontalScroll>
@@ -794,7 +823,10 @@ function ToolCallDetailsContentInner({
 }: ToolCallDetailsContentProps) {
   const { t } = useTranslation();
   const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
-  const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
+  // Select-narrowed settings read: re-renders only when the flag flips, never
+  // per streamed chunk or on unrelated settings writes.
+  const wrap = useWrapCodeLines();
+  const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight, wrap);
   const diffLines = useDiffLines(detail);
 
   const sections: ReactNode[] = buildDetailSections(detail, diffLines, ds, t);
@@ -919,6 +951,20 @@ const styles = StyleSheet.create((theme) => {
           }
         : null),
     },
+    // Layered over scrollText when "Wrap long lines" is on. Web needs the
+    // explicit pre-wrap (scrollText forces `pre`); native Text soft-wraps by
+    // itself once the horizontal ScrollView is gone. Soft wraps are visual
+    // only — selection/copy still yields the original unwrapped text.
+    scrollTextWrap: {
+      flexShrink: 1,
+      minWidth: 0,
+      ...(isWeb
+        ? {
+            whiteSpace: "pre-wrap" as const,
+            overflowWrap: "anywhere" as const,
+          }
+        : null),
+    },
     shellPrompt: {
       color: theme.colors.foregroundMuted,
     },
@@ -998,3 +1044,5 @@ const styles = StyleSheet.create((theme) => {
 
 const SECTION_TITLE_ERROR_STYLE = [styles.sectionTitle, styles.errorText];
 const SCROLL_TEXT_ERROR_STYLE = [styles.scrollText, styles.errorText];
+const SCROLL_TEXT_WRAP_STYLE = [styles.scrollText, styles.scrollTextWrap];
+const SCROLL_TEXT_ERROR_WRAP_STYLE = [styles.scrollText, styles.errorText, styles.scrollTextWrap];

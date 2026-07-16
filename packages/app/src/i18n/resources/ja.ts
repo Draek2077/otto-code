@@ -59,7 +59,7 @@ export const ja: TranslationResources = {
       noMatches: "一致なし",
       actions: "アクション",
       agents: "エージェント",
-      newAgent: "新しいエージェント",
+      newAgent: "New chat",
       openProject: "プロジェクトを開く",
       home: "ホーム",
     },
@@ -147,6 +147,14 @@ export const ja: TranslationResources = {
       searchPlaceholder: "イシューとPRを検索...",
       title: "イシューまたはPRを添付",
     },
+    interruptSubagentsWarning: {
+      title: "Interrupt running subagents?",
+      message:
+        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+      confirm: "Interrupt anyway",
+      cancel: "Cancel",
+      suppress: "Don't ask again",
+    },
   },
   agentControls: {
     provider: {
@@ -226,7 +234,7 @@ export const ja: TranslationResources = {
   },
   agentPanel: {
     states: {
-      notFound: "エージェントが見つかりません",
+      notFound: "Chat not found",
       failedToLoad: "エージェントの読み込みに失敗しました",
       reconnecting: "再接続中...",
       archivingTitle: "エージェントをアーカイブ中...",
@@ -411,8 +419,8 @@ export const ja: TranslationResources = {
         download: "ダウンロード",
         edit: "Edit",
         findInFiles: "Find in files",
-        addToContext: "Add to context",
-        removeFromContext: "Remove from context",
+        addToContext: "Add to chat",
+        removeFromContext: "Remove from chat",
       },
       actions: {
         back: "戻る",
@@ -512,18 +520,25 @@ export const ja: TranslationResources = {
       hostDisconnected: "ホストが接続されていません",
       unableToSubscribe: "ターミナルに接続できません",
     },
+    visualizer: {
+      tabLabel: "Visualizer",
+      subtitle: "Agent orchestration graph",
+      placeholder: "The Visualizer is coming soon.",
+      openAction: "Open Visualizer",
+    },
     tabs: {
       loading: "読み込み中...",
-      loadingAgentTitle: "エージェントタイトルを読み込み中",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "このペインにタブがありません。",
       fallback: {
-        newAgent: "新しいエージェント",
+        newAgent: "New chat",
         setup: "セットアップ",
         workspaceSetup: "ワークスペースセットアップ",
         terminal: "ターミナル",
         browser: "ブラウザ",
         agent: "エージェント",
         workspace: "ワークスペース",
+        visualizer: "Visualizer",
       },
       switcher: {
         trigger: "タブを切り替え（{{count}}件開いています）",
@@ -546,10 +561,10 @@ export const ja: TranslationResources = {
           "スキル、MCP、ログイン状態を更新するためにエージェントを再読み込みします。",
         close: "閉じる",
         renameTerminal: "ターミナルの名前を変更",
-        renameAgent: "エージェントの名前を変更",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "新しいエージェント",
+        newAgent: "New chat",
         newTerminal: "新しいターミナル",
         preparingTerminal: "ターミナルタブを準備中",
         preparingTerminalTooltip: "ターミナルを準備中...",
@@ -618,7 +633,7 @@ export const ja: TranslationResources = {
       actions: {
         workspaceActions: "ワークスペースアクション",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "新しいエージェント",
+        newAgent: "New chat",
         newTerminal: "新しいターミナル",
         newBrowser: "新しいブラウザタブ",
         importSession: "セッションをインポート",
@@ -654,6 +669,11 @@ export const ja: TranslationResources = {
       },
     },
     git: {
+      hostingProviderNames: {
+        github: "GitHub",
+        bitbucketCloud: "Bitbucket Cloud",
+        generic: "git hosting",
+      },
       actions: {
         moreOptions: "その他のオプション",
         moreActions: "その他のアクション",
@@ -661,42 +681,52 @@ export const ja: TranslationResources = {
           label: "コミット",
           pending: "コミット中...",
           success: "コミットしました",
+          description: "Stage and commit all local changes — an AI agent writes the message",
         },
         pull: {
           label: "プル",
           pending: "プル中...",
           success: "プルしました",
+          description: "Run git pull to bring new commits from the remote into this branch",
         },
         push: {
           label: "プッシュ",
           pending: "プッシュ中...",
           success: "プッシュしました",
+          description: "Run git push to send your local commits to the remote",
         },
         pullAndPush: {
           label: "プルしてプッシュ",
           pending: "プルしてプッシュ中...",
           success: "プルしてプッシュしました",
+          description: "Run git pull, then git push, to sync this branch with its remote",
         },
         viewPr: "PRを表示",
+        viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
           label: "PRを作成",
           pending: "PRを作成中...",
           success: "PRが作成されました",
+          description: "Push this branch to the remote and open a pull request against {{baseRef}}",
         },
         mergeBranch: {
-          label: "ローカルでマージ",
+          label: "Merge into {{baseRef}}",
           pending: "マージ中...",
           success: "マージしました",
+          description: "Merge this branch into {{baseRef}} on this machine, without a pull request",
         },
         mergeFromBase: {
           label: "{{baseRef}}から更新",
           pending: "更新中...",
           success: "更新しました",
+          description:
+            "Merge the latest {{baseRef}} commits into this branch (a merge, not a rebase)",
         },
         archive: {
           label: "ワークスペースをアーカイブ",
           pending: "アーカイブ中...",
           success: "アーカイブしました",
+          description: "Remove this workspace from active use",
         },
         mergePr: {
           squash: "PRをマージ（スカッシュ）",
@@ -704,6 +734,10 @@ export const ja: TranslationResources = {
           rebase: "PRをマージ（リベース）",
           pending: "PRをマージ中...",
           success: "PRがマージされました",
+          squashDescription: "Combine the pull request's commits into one and merge it",
+          mergeDescription: "Merge the pull request with a merge commit",
+          rebaseDescription:
+            "Rebase the pull request's commits onto the base branch, no merge commit",
         },
         autoMerge: {
           enableSquash: "自動マージ（スカッシュ）",
@@ -713,9 +747,11 @@ export const ja: TranslationResources = {
           enabling: "自動マージを有効にしています...",
           disabling: "自動マージを無効にしています...",
           disabled: "自動マージが無効になりました",
+          enableDescription: "Merge the pull request automatically once required checks pass",
+          disableDescription: "Select to turn off auto-merge for this pull request",
         },
         unavailable: {
-          viewPrNoGithub: "GitHubが接続されていないため、PRの表示は現在利用できません",
+          viewPrNoGithub: "View PR isn't available right now because {{provider}} isn't connected",
           pullNoRemote:
             "このブランチはまだリモートに接続されていないため、プルはここでは利用できません",
           pullDirty:
@@ -731,7 +767,8 @@ export const ja: TranslationResources = {
             "ローカルに変更があるためプル＆プッシュは利用できません。先にコミットまたはスタッシュしてください",
           pullAndPushInSync:
             "このブランチはすでに同期されているため、プル＆プッシュは利用できません",
-          createPrNoGithub: "GitHubが接続されていないため、PRの作成は現在利用できません",
+          createPrNoGithub:
+            "Create PR isn't available right now because {{provider}} isn't connected",
           createPrNoCommits: "このブランチにまだ新しいコミットがないため、PRの作成は利用できません",
           mergeNoBase: "ベースブランチを特定できなかったため、マージは利用できません",
           mergeDirty:
@@ -741,7 +778,8 @@ export const ja: TranslationResources = {
           updateDirty:
             "ローカルに変更があるため更新は利用できません。先にコミットまたはスタッシュしてください",
           updateCurrent: "このブランチはすでに{{baseRef}}と最新の状態のため、更新は利用できません",
-          mergePrNoGithub: "GitHubが接続されていないため、PRのマージは現在利用できません",
+          mergePrNoGithub:
+            "Merge PR isn't available right now because {{provider}} isn't connected",
           mergePrMissing: "プルリクエストがまだないため、PRのマージは利用できません",
           mergePrDraft: "プルリクエストがまだドラフトのため、PRのマージは利用できません",
           mergePrMerged: "プルリクエストはすでにマージされているため、PRのマージは利用できません",
@@ -1119,6 +1157,11 @@ export const ja: TranslationResources = {
         activeAgentsMessage: "エージェントが稼働中ですが、本当にアプリケーションを終了しますか？",
         confirm: "終了",
         cancel: "キャンセル",
+        schedulesTitle: "Quit and stop schedules?",
+        schedulesMessage:
+          "Quitting stops the daemon, so {{count}} enabled schedules will not run until Otto starts again.",
+        schedulesConfirm: "Quit anyway",
+        schedulesSuppress: "Don't warn me again",
       },
     },
     updates: {
@@ -1457,6 +1500,8 @@ export const ja: TranslationResources = {
     restore: "復元",
     later: "後で",
     stashRestored: "スタッシュした変更を復元しました",
+    switchInProgress: "Branch switch in progress",
+    checkedOutElsewhere: "Checked out in another workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "ワークスペースを検索中...",
@@ -1823,10 +1868,10 @@ export const ja: TranslationResources = {
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
     toggleFile: "Include this file",
-    addToContext: "Add to context",
-    removeFromContext: "Remove from context",
-    addLineToContext: "Add line {{line}} to context",
-    removeLineFromContext: "Remove line {{line}} from context",
+    addToContext: "Add to chat",
+    removeFromContext: "Remove from chat",
+    addLineToContext: "Add line {{line}} to chat",
+    removeLineFromContext: "Remove line {{line}} from chat",
     error: "Search failed",
   },
   subagents: {
@@ -1844,8 +1889,8 @@ export const ja: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "新しいエージェント",
-      creatingAgent: "エージェントを作成中",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "ワークスペースディレクトリが見つかりません。",
@@ -1889,6 +1934,14 @@ export const ja: TranslationResources = {
       cancelAccessibility: "レビューコメントをキャンセル",
       save: "コメント",
       saveAccessibility: "レビューコメントを保存",
+    },
+    removeAll: {
+      action: "Remove all comments",
+      confirmTitleSingle: "Remove comment?",
+      confirmTitleMultiple: "Remove {{count}} comments?",
+      confirmMessage:
+        "All draft review comments on this diff will be deleted. This can't be undone.",
+      confirmButton: "Remove",
     },
   },
   settings: {
@@ -1976,6 +2029,14 @@ export const ja: TranslationResources = {
           external: "外部ブラウザ",
         },
       },
+      openLinks: {
+        label: "Open links",
+        description: "Where links open — PRs, docs, and links in chat",
+        options: {
+          inApp: "In Otto",
+          external: "External browser",
+        },
+      },
       terminalScrollback: {
         label: "ターミナルスクロールバック",
         description: "組み込みターミナルバッファに保持する行数",
@@ -2049,6 +2110,11 @@ export const ja: TranslationResources = {
       offline: "オフライン",
       versionDiffers: "このデバイスとバージョンが異なります",
       upstreamBase: "Based on {{brand}} {{version}}",
+      credits: {
+        title: "Third-party credits",
+        visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        viewSource: "View source",
+      },
       releaseChannel: {
         label: "リリースチャンネル",
         description: "ベータに切り替えると早期に更新を取得してフィードバックを提供できます",
@@ -2126,6 +2192,18 @@ export const ja: TranslationResources = {
             relative: "経過時間",
           },
         },
+        textEffects: {
+          title: "Text effects",
+          hint: "Animation style for the activity text shown while the agent is working",
+          accessibilityLabel: "Text effects: {{value}}",
+          options: {
+            professional: "Professional",
+            active: "Active",
+            spectrum: "Spectrum",
+            vivid: "Vivid",
+            nightRider: "Night Rider",
+          },
+        },
       },
       layout: {
         title: "Layout",
@@ -2152,6 +2230,39 @@ export const ja: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+      },
+      visualizer: {
+        title: "Visualizer",
+        hexGrid: {
+          title: "Hex grid",
+          hint: "Show the background hex grid on the Visualizer canvas",
+          accessibilityLabel: "Hex grid",
+        },
+        messageFeed: {
+          title: "Message feed",
+          hint: "Show the live message feed panel",
+          accessibilityLabel: "Message feed",
+        },
+        timeline: {
+          title: "Timeline",
+          hint: "Show the timeline panel",
+          accessibilityLabel: "Timeline",
+        },
+        fileAttention: {
+          title: "File attention",
+          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "File attention",
+        },
+        transcript: {
+          title: "Transcript",
+          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Transcript",
+        },
+        costOverlay: {
+          title: "Cost overlay",
+          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Cost overlay",
         },
       },
       fonts: {
@@ -2695,6 +2806,12 @@ export const ja: TranslationResources = {
         saved: "プロジェクトを保存しました",
         saving: "保存中...",
         cancel: "キャンセル",
+      },
+      unsavedChanges: {
+        title: "Discard unsaved changes?",
+        message: "This project has unsaved settings changes. Discard them?",
+        discard: "Discard",
+        keepEditing: "Keep editing",
       },
     },
   },

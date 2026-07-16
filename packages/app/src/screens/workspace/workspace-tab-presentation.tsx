@@ -9,8 +9,8 @@ import { PersonalityProviderIcon } from "@/components/personality-provider-icon"
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import type { Theme } from "@/styles/theme";
 import { compactUp, useIconSize } from "@/styles/theme";
@@ -28,11 +28,6 @@ export interface WorkspaceTabPresentation {
   /** Provider id — fills the non-loading agent glyph with the personality gradient. */
   provider?: string;
 }
-
-const DEFAULT_STATUS_DOT_SIZE = 7;
-const EMPHASIZED_STATUS_DOT_SIZE = 9;
-const DEFAULT_STATUS_DOT_OFFSET = -2;
-const EMPHASIZED_STATUS_DOT_OFFSET = -3;
 
 interface WorkspaceTabPresentationResolverProps {
   tab: WorkspaceTabDescriptor;
@@ -114,7 +109,6 @@ interface WorkspaceTabIconProps {
   /** Accent-colored icon — marks the selected tab in the desktop tabs row. */
   accent?: boolean;
   size?: number;
-  statusDotBorderColor?: string;
 }
 
 const ThemedCheckIcon = withUnistyles(Check);
@@ -128,7 +122,6 @@ export function WorkspaceTabIcon({
   active = false,
   accent = false,
   size,
-  statusDotBorderColor,
 }: WorkspaceTabIconProps): ReactElement {
   const iconSize = useIconSize();
   const resolvedSize = size ?? iconSize.sm;
@@ -139,39 +132,11 @@ export function WorkspaceTabIcon({
     iconColor = styles.iconActive.color;
   }
   const bucket = presentation.statusBucket;
-  let statusDotColor: string | null = null;
-  if (bucket === "needs_input") statusDotColor = styles.statusDotNeedsInput.color;
-  else if (bucket === "failed") statusDotColor = styles.statusDotFailed.color;
-  else if (bucket === "running") statusDotColor = styles.statusDotRunning.color;
-  else if (bucket === "attention") statusDotColor = styles.statusDotAttention.color;
-  const statusDotSize = isEmphasizedStatusDotBucket(presentation.statusBucket)
-    ? EMPHASIZED_STATUS_DOT_SIZE
-    : DEFAULT_STATUS_DOT_SIZE;
-  const statusDotOffset =
-    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
-      ? EMPHASIZED_STATUS_DOT_OFFSET
-      : DEFAULT_STATUS_DOT_OFFSET;
-  const shouldShowLoader = shouldRenderSyncedStatusLoader({
-    bucket: presentation.statusBucket,
-  });
+  const shouldShowLoader = shouldRenderSyncedStatusLoader({ bucket });
   const Icon = presentation.icon;
   const agentIconWrapperStyle = useMemo(
     () => [styles.agentIconWrapper, { width: resolvedSize, height: resolvedSize }],
     [resolvedSize],
-  );
-  const statusDotStyle = useMemo(
-    () => [
-      styles.statusDot,
-      {
-        backgroundColor: statusDotColor ?? undefined,
-        borderColor: statusDotBorderColor ?? styles.statusDotBorderDefault.borderColor,
-        width: statusDotSize,
-        height: statusDotSize,
-        right: statusDotOffset,
-        bottom: statusDotOffset,
-      },
-    ],
-    [statusDotColor, statusDotBorderColor, statusDotSize, statusDotOffset],
   );
 
   if (shouldShowLoader) {
@@ -183,6 +148,19 @@ export function WorkspaceTabIcon({
         ) : (
           <ThemedBlobLoader size={resolvedSize - 1} />
         )}
+      </View>
+    );
+  }
+
+  // Actionable states swap the whole glyph for the shared attention badge —
+  // the same icon the sidebar workspace rows show for this bucket — instead
+  // of overlaying a tiny dot. The wrapper keeps the tab's icon box size, so
+  // the swap causes no layout shift; the normal icon returns when the bucket
+  // clears.
+  if (isAttentionStatusBucket(bucket)) {
+    return (
+      <View style={agentIconWrapperStyle}>
+        <StatusBucketIcon bucket={bucket} size={resolvedSize} />
       </View>
     );
   }
@@ -200,7 +178,6 @@ export function WorkspaceTabIcon({
       ) : (
         <Icon size={resolvedSize} color={iconColor} />
       )}
-      {statusDotColor ? <View style={statusDotStyle} /> : null}
     </View>
   );
 }
@@ -263,30 +240,6 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-  },
-  statusDot: {
-    position: "absolute",
-    right: DEFAULT_STATUS_DOT_OFFSET,
-    bottom: DEFAULT_STATUS_DOT_OFFSET,
-    width: DEFAULT_STATUS_DOT_SIZE,
-    height: DEFAULT_STATUS_DOT_SIZE,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-  },
-  statusDotBorderDefault: {
-    borderColor: theme.colors.surface0,
-  },
-  statusDotNeedsInput: {
-    color: theme.colors.palette.amber[500],
-  },
-  statusDotFailed: {
-    color: theme.colors.palette.red[500],
-  },
-  statusDotRunning: {
-    color: theme.colors.palette.blue[500],
-  },
-  statusDotAttention: {
-    color: theme.colors.palette.green[500],
   },
   iconActive: {
     color: theme.colors.foreground,

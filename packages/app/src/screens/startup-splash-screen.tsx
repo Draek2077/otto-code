@@ -11,7 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { BookOpen, Copy, RotateCw, TriangleAlert } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { OttoLogo, OttoLogoRobot, OttoLogoWordmark } from "@/components/icons/otto-logo";
@@ -37,11 +37,11 @@ const LOGO_SIZE = 96;
 const PULSE_HALF_MS = 1400;
 
 function openGithubIssue(): void {
-  void openExternalUrl(GITHUB_ISSUE_URL);
+  void openLink(GITHUB_ISSUE_URL);
 }
 
 function openDocs(): void {
-  void openExternalUrl(DOCS_URL);
+  void openLink(DOCS_URL);
 }
 
 // Plain RN styles: reanimated and unistyles must not share the Animated.View's node

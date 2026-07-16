@@ -6,6 +6,7 @@ import {
 
 type WorkspaceDraftTabSetup = NonNullable<Extract<WorkspaceTabTarget, { kind: "draft" }>["setup"]>;
 
+// oxlint-disable-next-line complexity
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
 ): WorkspaceTabTarget | null {
@@ -47,6 +48,10 @@ export function normalizeWorkspaceTabTarget(
     const operation = trimNonEmpty(value.operation);
     return operation ? { kind: "gitLog", operation } : null;
   }
+  if (value.kind === "visualizer") {
+    const runId = trimNonEmpty(value.runId);
+    return runId ? { kind: "visualizer", runId } : { kind: "visualizer" };
+  }
   return null;
 }
 
@@ -74,6 +79,19 @@ export function normalizeWorkspaceDraftTabSetup(
   };
 }
 
+// Kinds whose equality is "same single id field" — everything except draft
+// (two fields), file (its own equality fn), and visualizer (optional runId).
+// Kept as a lookup rather than another `if (left.kind === X && right.kind
+// === X)` branch per kind to stay under the cyclomatic-complexity ceiling.
+const SIMPLE_ID_FIELD_BY_KIND: Partial<Record<WorkspaceTabTarget["kind"], string>> = {
+  agent: "agentId",
+  terminal: "terminalId",
+  browser: "browserId",
+  setup: "workspaceId",
+  artifact: "artifactId",
+  gitLog: "operation",
+};
+
 export function workspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
   right: WorkspaceTabTarget,
@@ -84,28 +102,22 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "draft" && right.kind === "draft") {
     return left.draftId === right.draftId && workspaceDraftTabSetupsEqual(left.setup, right.setup);
   }
-  if (left.kind === "agent" && right.kind === "agent") {
-    return left.agentId === right.agentId;
-  }
-  if (left.kind === "terminal" && right.kind === "terminal") {
-    return left.terminalId === right.terminalId;
-  }
-  if (left.kind === "browser" && right.kind === "browser") {
-    return left.browserId === right.browserId;
-  }
   if (left.kind === "file" && right.kind === "file") {
     return workspaceFileTabTargetsEqual(left, right);
   }
-  if (left.kind === "setup" && right.kind === "setup") {
-    return left.workspaceId === right.workspaceId;
+  // Two visualizer targets are the same tab only when they're scoped to the
+  // same run (or both workspace-wide, no runId).
+  if (left.kind === "visualizer" && right.kind === "visualizer") {
+    return left.runId === right.runId;
   }
-  if (left.kind === "artifact" && right.kind === "artifact") {
-    return left.artifactId === right.artifactId;
+  const field = SIMPLE_ID_FIELD_BY_KIND[left.kind];
+  if (!field) {
+    return false;
   }
-  if (left.kind === "gitLog" && right.kind === "gitLog") {
-    return left.operation === right.operation;
-  }
-  return false;
+  return (
+    (left as unknown as Record<string, unknown>)[field] ===
+    (right as unknown as Record<string, unknown>)[field]
+  );
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -162,6 +174,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "gitLog") {
     return `gitlog_${target.operation}`;
+  }
+  if (target.kind === "visualizer") {
+    return target.runId ? `visualizer_run_${target.runId}` : "visualizer";
   }
   // Out-of-project files are namespaced by their origin workspace so they never
   // collide with an in-project file of the same relative path (gated-multi-root).

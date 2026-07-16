@@ -97,6 +97,7 @@ import { readOttoConfigJson } from "../utils/otto-config-file.js";
 import {
   createOttoWorktree as createRegisteredOttoWorktree,
   createLocalCheckoutWorkspace,
+  findOccupyingWorkspaceForCwd,
 } from "./otto-worktree-service.js";
 import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
@@ -1078,6 +1079,15 @@ export async function createOttoDaemon(
     cwd: string,
     firstAgentContext?: FirstAgentContext,
   ): Promise<string> => {
+    // One directory = one live workspace: reuse the visible workspace already
+    // backing the cwd (MCP create_agent, loops, and agent-spawned terminals
+    // attach to it) instead of minting a duplicate — which
+    // createLocalCheckoutWorkspace now rejects. Auto-naming only runs for a
+    // freshly minted workspace; an existing one keeps its name.
+    const existingWorkspace = findOccupyingWorkspaceForCwd(await workspaceRegistry.list(), cwd);
+    if (existingWorkspace) {
+      return existingWorkspace.workspaceId;
+    }
     const workspace = await createLocalCheckoutWorkspace(
       { cwd, title: resolveFirstAgentPromptTitle(firstAgentContext) },
       { projectRegistry, workspaceRegistry, workspaceGitService },
@@ -1136,6 +1146,13 @@ export async function createOttoDaemon(
   const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
     wsServer?.broadcast(wrapSessionMessage(message));
   };
+  // Live-update the Metrics screen: whenever any activity counter moves, ping
+  // every connected client so it re-fetches stats.activity.get. The store
+  // coalesces increments (max one callback per couple of seconds), so this
+  // stays a low-frequency, payload-free broadcast.
+  activityStatsStore.onDidChange(() => {
+    emitExternalSessionMessage({ type: "activity_stats_changed" });
+  });
   // Daemon-global artifact service backing the create_artifact agent tool.
   // Client-initiated artifact RPCs go through each session's own service
   // instance; both share the same file-backed store under $OTTO_HOME. Status

@@ -50,7 +50,9 @@ Each of the 12 counters is an individually optional, additive leaf on both the s
 
 ## Protocol & client
 
-RPC pair `stats.activity.get.request` / `stats.activity.get.response` (per [rpc-namespacing.md](rpc-namespacing.md), modeled on `provider.usage.list`). The client never sees raw daily buckets — the daemon computes five preset rollup windows on request: **Today, Yesterday, Last 7 Days, Last 30 Days, All Time** — a fixed-shape payload with no date math on the client. No live-push channel for v1: the client queries on focus + manual refresh (`use-activity-stats.ts`), rendering a stat-tile grid at the `/stats` route (`stats-screen.tsx`), reached from a `Sparkles` button in the sidebar footer.
+RPC pair `stats.activity.get.request` / `stats.activity.get.response` (per [rpc-namespacing.md](rpc-namespacing.md), modeled on `provider.usage.list`). The client never sees raw daily buckets — the daemon computes five preset rollup windows on request: **Today, Yesterday, Last 7 Days, Last 30 Days, All Time** — a fixed-shape payload with no date math on the client. The client queries on focus + manual refresh (`use-activity-stats.ts`), rendering a stat-tile grid at the `/stats` route (`stats-screen.tsx`), reached from a `Sparkles` button in the sidebar footer.
+
+**Live updates:** the daemon also broadcasts a payload-free `activity_stats_changed` notification whenever any counter moves, coalesced in `ActivityStatsStore` (`onDidChange`, max one per ~2s) so bursts stay quiet. The client (session-context) invalidates the stats query on that ping — a focused Metrics screen refetches immediately (consistent with the invalidation-only react-query convention), an unmounted one just goes stale. Tiles flash a brief accent highlight when their displayed value changes. Purely additive: old clients drop the unknown message type, old daemons never send it (screen degrades to focus/manual refresh), so it rides the existing `activityStats` capability with no new feature flag.
 
 ## App start screen
 

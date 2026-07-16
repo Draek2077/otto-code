@@ -28,7 +28,7 @@ import type {
 import { terminalEmulatorWebViewHtml } from "../terminal/webview/terminal-emulator-webview-html";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
-import { openExternalUrl } from "../utils/open-external-url";
+import { openLink } from "../utils/open-link";
 
 export interface TerminalEmulatorHandle {
   writeOutput: (data: TerminalOutputData) => void;
@@ -541,7 +541,7 @@ export default function TerminalEmulator({
           callbacksRef.current.onInputModeChange?.(message.state);
           break;
         case "openExternalUrl":
-          void openExternalUrl(message.url);
+          void openLink(message.url);
           break;
         case "swipeLeft":
           callbacksRef.current.onSwipeLeft?.();

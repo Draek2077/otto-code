@@ -33,6 +33,7 @@ import {
   type AppSettings,
   type DesktopSettingsBridge,
   type KeyValueStorage,
+  type LinkOpenBehavior,
   type ReleaseChannel,
   type SendBehavior,
   type ServiceUrlBehavior,
@@ -42,6 +43,7 @@ import {
   type InterfaceMode,
   type AppStartScreen,
   type PreviewServerCloseBehavior,
+  type VisualizerRenderQuality,
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
 } from "./storage";
@@ -71,12 +73,14 @@ export type {
   AppStartScreen,
   DesktopSettingsBridge,
   KeyValueStorage,
+  LinkOpenBehavior,
   ReleaseChannel,
   SendBehavior,
   ServiceUrlBehavior,
   Settings,
   SettingsDeps,
   PreviewServerCloseBehavior,
+  VisualizerRenderQuality,
   WorkspaceTitleSource,
   WorkspaceToolsPlacement,
 };
@@ -132,6 +136,9 @@ function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSetti
   if (updates.serviceUrlBehavior !== undefined) {
     appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
   }
+  if (updates.linkOpenBehavior !== undefined) {
+    appUpdates.linkOpenBehavior = updates.linkOpenBehavior;
+  }
   if (updates.terminalScrollbackLines !== undefined) {
     appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
   }
@@ -155,6 +162,9 @@ function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSetti
   }
   if (updates.autoExpandReasoning !== undefined) {
     appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
+  }
+  if (updates.wrapCodeLines !== undefined) {
+    appUpdates.wrapCodeLines = updates.wrapCodeLines;
   }
   if (updates.interfaceMode !== undefined) {
     appUpdates.interfaceMode = updates.interfaceMode;

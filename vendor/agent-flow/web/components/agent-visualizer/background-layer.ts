@@ -45,20 +45,25 @@ export function drawBackground(
   showHexGrid: boolean,
   time: number,
   activeAgentPos?: { x: number; y: number; color: string },
+  // OTTO PATCH (see OTTO-PATCHES.md): false skips the void fill + spotlight
+  // (the page body behind the canvas is near-black anyway).
+  showBackdrop: boolean = true,
 ): void {
-  // Deep void
-  ctx.fillStyle = COLORS.void
-  ctx.fillRect(0, 0, width, height)
-
-  // Ambient spotlight following active agent
-  if (activeAgentPos) {
-    const screenX = activeAgentPos.x * transform.scale + transform.x
-    const screenY = activeAgentPos.y * transform.scale + transform.y
-    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 300)
-    gradient.addColorStop(0, activeAgentPos.color + '08')
-    gradient.addColorStop(1, 'transparent')
-    ctx.fillStyle = gradient
+  if (showBackdrop) {
+    // Deep void
+    ctx.fillStyle = COLORS.void
     ctx.fillRect(0, 0, width, height)
+
+    // Ambient spotlight following active agent
+    if (activeAgentPos) {
+      const screenX = activeAgentPos.x * transform.scale + transform.x
+      const screenY = activeAgentPos.y * transform.scale + transform.y
+      const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 300)
+      gradient.addColorStop(0, activeAgentPos.color + '08')
+      gradient.addColorStop(1, 'transparent')
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, 0, width, height)
+    }
   }
 
   // Depth particles (parallax)

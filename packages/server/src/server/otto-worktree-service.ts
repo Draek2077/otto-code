@@ -280,14 +280,76 @@ export interface CreateLocalCheckoutWorkspaceDeps {
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout">;
 }
 
-// Always create a NEW workspace record backed by the existing directory `cwd`.
-// Never reuses a same-cwd record: a directory may back any number of
-// workspaces. Used by explicit user creation.
+/**
+ * Creating a directory/local_checkout workspace on a directory that already
+ * backs a live, visible workspace is rejected: one directory is one physical
+ * git checkout, so two "independent" workspaces on it can never actually be
+ * independent (branch/diff/status fan out to every same-cwd workspace via
+ * `workspaceIdsOnCheckout`). Maps to wire errorCode
+ * `workspace_directory_occupied` on `workspace.create.response`.
+ */
+export class WorkspaceDirectoryOccupiedError extends Error {
+  readonly cwd: string;
+  readonly existingWorkspaceId: string;
+
+  constructor(params: { cwd: string; existingWorkspaceId: string; existingWorkspaceName: string }) {
+    super(
+      `This directory already backs the workspace "${params.existingWorkspaceName}". ` +
+        `Open that workspace instead, or archive it before creating a new one here.`,
+    );
+    this.name = "WorkspaceDirectoryOccupiedError";
+    this.cwd = params.cwd;
+    this.existingWorkspaceId = params.existingWorkspaceId;
+  }
+}
+
+/**
+ * The live, visible workspace already backing `cwd`, if any. Uses the same
+ * resolved-path equality as `workspaceIdsOnCheckout` (workspace-directory.ts),
+ * which is how all persisted cwds are normalized at creation time. Hidden
+ * workspaces (transient schedule-run records) do not count as occupants:
+ * they are invisible and archived/revealed by their own run lifecycle.
+ */
+export function findOccupyingWorkspaceForCwd(
+  workspaces: Iterable<PersistedWorkspaceRecord>,
+  cwd: string,
+): PersistedWorkspaceRecord | null {
+  const resolvedCwd = resolve(cwd);
+  for (const workspace of workspaces) {
+    if (workspace.archivedAt || workspace.hidden) {
+      continue;
+    }
+    if (resolve(workspace.cwd) === resolvedCwd) {
+      return workspace;
+    }
+  }
+  return null;
+}
+
+// Create a NEW workspace record backed by the existing directory `cwd`.
+// Used by explicit user creation. Rejects when a live visible workspace
+// already backs the directory (see WorkspaceDirectoryOccupiedError); hidden
+// per-run workspaces (schedule runs) are exempt from the guard — they are
+// transient, never shown while hidden, and disposed by their run lifecycle.
+// Existing persisted duplicates from before this guard are left untouched.
 export async function createLocalCheckoutWorkspace(
   options: { cwd: string; title?: string | null; hidden?: boolean },
   deps: CreateLocalCheckoutWorkspaceDeps,
 ): Promise<PersistedWorkspaceRecord> {
   const normalizedCwd = resolve(options.cwd);
+  if (!options.hidden) {
+    const occupant = findOccupyingWorkspaceForCwd(
+      await deps.workspaceRegistry.list(),
+      normalizedCwd,
+    );
+    if (occupant) {
+      throw new WorkspaceDirectoryOccupiedError({
+        cwd: normalizedCwd,
+        existingWorkspaceId: occupant.workspaceId,
+        existingWorkspaceName: occupant.title?.trim() || occupant.displayName,
+      });
+    }
+  }
   const checkout = await deps.workspaceGitService.getCheckout(normalizedCwd);
   const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
   const now = new Date().toISOString();

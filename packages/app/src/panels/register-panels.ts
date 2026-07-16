@@ -7,6 +7,7 @@ import { gitLogPanelRegistration } from "@/panels/git-log-panel";
 import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
+import { visualizerPanelRegistration } from "@/panels/visualizer-panel";
 
 let panelsRegistered = false;
 
@@ -22,5 +23,6 @@ export function ensurePanelsRegistered(): void {
   registerPanel(filePanelRegistration);
   registerPanel(artifactPanelRegistration);
   registerPanel(gitLogPanelRegistration);
+  registerPanel(visualizerPanelRegistration);
   panelsRegistered = true;
 }

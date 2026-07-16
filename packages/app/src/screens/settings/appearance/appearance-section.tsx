@@ -42,6 +42,7 @@ import {
 import { isNative } from "@/constants/platform";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
+import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
 import { AppearancePreview } from "./appearance-preview";
 
 // ---------------------------------------------------------------------------
@@ -530,6 +531,84 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Text effects picker — theme for the "working" text sweep on activity labels
+// (see styles/text-effects.ts). Commits immediately, like SyntaxRow.
+// ---------------------------------------------------------------------------
+
+function getTextEffectLabel(t: TFunction, value: TextEffectThemeId): string {
+  const labelKeys: Record<TextEffectThemeId, string> = {
+    professional: "settings.appearance.agents.textEffects.options.professional",
+    active: "settings.appearance.agents.textEffects.options.active",
+    spectrum: "settings.appearance.agents.textEffects.options.spectrum",
+    vivid: "settings.appearance.agents.textEffects.options.vivid",
+    nightRider: "settings.appearance.agents.textEffects.options.nightRider",
+  };
+  return t(labelKeys[value]);
+}
+
+interface TextEffectMenuItemProps {
+  themeId: TextEffectThemeId;
+  selected: boolean;
+  onChange: (themeId: TextEffectThemeId) => void;
+}
+
+function TextEffectMenuItem({ themeId, selected, onChange }: TextEffectMenuItemProps) {
+  const { t } = useTranslation();
+  const handleSelect = useCallback(() => {
+    onChange(themeId);
+  }, [onChange, themeId]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {getTextEffectLabel(t, themeId)}
+    </DropdownMenuItem>
+  );
+}
+
+interface TextEffectsRowProps {
+  value: TextEffectThemeId;
+  onChange: (themeId: TextEffectThemeId) => void;
+}
+
+function TextEffectsRow({ value, onChange }: TextEffectsRowProps) {
+  const { t } = useTranslation();
+  const selectedLabel = getTextEffectLabel(t, value);
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.agents.textEffects.title")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.agents.textEffects.hint")}
+        </Text>
+      </View>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          style={dropdownTriggerStyle}
+          accessibilityLabel={t("settings.appearance.agents.textEffects.accessibilityLabel", {
+            value: selectedLabel,
+          })}
+          testID="settings-text-effects-trigger"
+        >
+          <Text style={styles.triggerText}>{selectedLabel}</Text>
+          <ThemedChevronDown uniProps={mutedColorMapping} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200}>
+          {TEXT_EFFECT_THEME_IDS.map((themeId) => (
+            <TextEffectMenuItem
+              key={themeId}
+              themeId={themeId}
+              selected={value === themeId}
+              onChange={onChange}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Layout: compact sidebar top spacing + workspace tools placement (booleans)
 // ---------------------------------------------------------------------------
 
@@ -658,6 +737,20 @@ export function AppearanceSection() {
   const handleChatTimestampDisplayChange = useCallback(
     (chatTimestampDisplay: AppSettings["chatTimestampDisplay"]) => {
       void updateSettings({ chatTimestampDisplay });
+    },
+    [updateSettings],
+  );
+
+  const handleTextEffectThemeChange = useCallback(
+    (textEffectTheme: TextEffectThemeId) => {
+      void updateSettings({ textEffectTheme });
+    },
+    [updateSettings],
+  );
+
+  const handleWrapCodeLinesChange = useCallback(
+    (wrapCodeLines: boolean) => {
+      void updateSettings({ wrapCodeLines });
     },
     [updateSettings],
   );
@@ -843,6 +936,17 @@ export function AppearanceSection() {
             value={settings.chatTimestampDisplay}
             onChange={handleChatTimestampDisplayChange}
           />
+          {/* i18n: English-only pending a translation pass (wrap long lines). */}
+          <LayoutToggleRow
+            title="Wrap long lines"
+            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
+            accessibilityLabel="Wrap long lines"
+            value={settings.wrapCodeLines}
+            withBorder
+            onValueChange={handleWrapCodeLinesChange}
+            testID="settings-wrap-code-lines-switch"
+          />
+          <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
         </View>
       </SettingsSection>
       {showLayoutSection ? (
@@ -901,6 +1005,8 @@ export function AppearanceSection() {
           </View>
         </SettingsSection>
       ) : null}
+      {/* Visualizer settings moved to their own top-level section
+          (visualizer-section.tsx) — the rows kept their i18n keys. */}
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (

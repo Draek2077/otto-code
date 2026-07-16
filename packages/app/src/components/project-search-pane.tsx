@@ -173,7 +173,7 @@ export function ProjectSearchPane({
   const showDesktopWebScrollbar = isWeb && !isCompact;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
-  // "Add to context" mirrors the file explorer's: the file (or a specific
+  // "Add to chat" mirrors the file explorer's: the file (or a specific
   // matched line) lands in the workspace-scoped attachment store and shows as
   // a composer pill. Offered only while an agent tab is the focused pane, so
   // the attachment has a visible destination — the menu item is hidden

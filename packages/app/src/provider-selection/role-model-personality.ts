@@ -2,7 +2,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { PersonalityRole } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
-import type { SelectorPersonality } from "@/components/combined-model-selector";
+import type {
+  SelectorPersonality,
+  SelectorPersonalityGroupSection,
+} from "@/components/combined-model-selector";
 import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { buildTeamRoleEntry } from "@/provider-selection/team-role-entry";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
@@ -22,6 +25,12 @@ import {
  */
 export interface RolePersonality {
   personalities: SelectorPersonality[] | undefined;
+  /**
+   * The whole roster grouped by team + role for the picker's collapsible
+   * browse section. Form surfaces supply it; the running-agent strategy leaves
+   * it undefined (its picker is locked to the agent's provider family).
+   */
+  personalityGroups?: SelectorPersonalityGroupSection[];
   selectedPersonalityId: string | null;
   onSelectPersonality: ((id: string) => void) | undefined;
   onClearPersonality: (() => void) | undefined;
@@ -119,15 +128,20 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     return match?.id ?? null;
   }, [binding, rosterSource]);
 
-  const { personalities, selectedPersonalityId, selectPersonality, clearPersonality } =
-    usePersonalitySelection({
-      serverId,
-      role,
-      entries,
-      onApply,
-      currentSelection,
-      alwaysIncludePersonalityId: boundRosterId,
-    });
+  const {
+    personalities,
+    personalityGroups,
+    selectedPersonalityId,
+    selectPersonality,
+    clearPersonality,
+  } = usePersonalitySelection({
+    serverId,
+    role,
+    entries,
+    onApply,
+    currentSelection,
+    alwaysIncludePersonalityId: boundRosterId,
+  });
 
   const teamEntryEnabled = team ? (team.enabled ?? true) : false;
   const teamEntry = useMemo(
@@ -190,9 +204,28 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     clearPersonality();
   }, [clearPersonality]);
 
+  // Grouped entries flattened for selection lookups — a personality picked
+  // from the browse groups may not be in the up-front (surface-role) list, and
+  // the trigger/binding must still resolve its name and spinner.
+  const groupedById = useMemo(() => {
+    const byId = new Map<string, SelectorPersonality>();
+    for (const section of personalityGroups) {
+      for (const group of section.roleGroups) {
+        for (const entry of group.personalities) {
+          if (!byId.has(entry.id)) {
+            byId.set(entry.id, entry);
+          }
+        }
+      }
+    }
+    return byId;
+  }, [personalityGroups]);
+
   const selectedEntry = useMemo(
-    () => displayPersonalities.find((entry) => entry.id === effectiveSelectedId) ?? null,
-    [displayPersonalities, effectiveSelectedId],
+    () =>
+      displayPersonalities.find((entry) => entry.id === effectiveSelectedId) ??
+      (effectiveSelectedId ? (groupedById.get(effectiveSelectedId) ?? null) : null),
+    [displayPersonalities, groupedById, effectiveSelectedId],
   );
   const selectedSpinner = useMemo(
     () =>
@@ -218,16 +251,27 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
       return bindingTouched ? null : binding.originalBinding;
     }
     if (effectiveSelectedId) {
-      const selected = personalities.find((entry) => entry.id === effectiveSelectedId);
+      const selected =
+        personalities.find((entry) => entry.id === effectiveSelectedId) ??
+        groupedById.get(effectiveSelectedId);
       if (selected) {
         return selected.name;
       }
     }
     return bindingTouched ? null : binding.originalBinding;
-  }, [binding, teamEntrySelected, teamEntry, bindingTouched, effectiveSelectedId, personalities]);
+  }, [
+    binding,
+    teamEntrySelected,
+    teamEntry,
+    bindingTouched,
+    effectiveSelectedId,
+    personalities,
+    groupedById,
+  ]);
 
   return {
     personalities: displayPersonalities,
+    personalityGroups,
     selectedPersonalityId: effectiveSelectedId,
     onSelectPersonality: handleSelect,
     onClearPersonality: handleClear,

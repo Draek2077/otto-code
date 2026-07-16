@@ -32,7 +32,9 @@ export type {
 } from "@/review/state";
 
 // v2 dropped persisted activeModesByScope (diff mode overrides are in-memory only).
-const STORE_VERSION = 2;
+// v3 added branch scoping to draft keys; pre-branch drafts are pruned on migrate
+// because their branch can't be recovered (see prunePreBranchDraftKeys).
+const STORE_VERSION = 3;
 const CONTEXT_RADIUS = 3;
 const EMPTY_REVIEW_DRAFT_COMMENTS: ReviewDraftComment[] = [];
 
@@ -40,16 +42,25 @@ type ReviewAttachment = Extract<AgentAttachment, { type: "review" }>;
 type ReviewAttachmentContextLine = ReviewAttachment["comments"][number]["context"]["targetLine"];
 type ReviewComposerAttachment = Extract<ComposerAttachment, { kind: "review" }>;
 
-export interface BuildReviewDraftKeyInput {
+export interface BuildReviewDraftScopeKeyInput {
   serverId: string;
   workspaceId?: string | null;
   cwd: string;
-  mode: ReviewDraftMode;
   baseRef?: string | null;
   ignoreWhitespace: boolean;
 }
 
-export type BuildReviewDraftScopeKeyInput = Omit<BuildReviewDraftKeyInput, "mode">;
+export interface BuildReviewDraftKeyInput extends BuildReviewDraftScopeKeyInput {
+  mode: ReviewDraftMode;
+  /**
+   * The checkout's current branch. Comments anchor to line numbers in a specific
+   * diff, so drafts are scoped to the branch they were written on — switching
+   * branches must not carry comments onto an unrelated diff (baseRef is the
+   * repository default branch and does not change on branch switch). Null/absent
+   * covers detached HEAD, where all detached states share one bucket.
+   */
+  branch?: string | null;
+}
 
 export interface BuildReviewAttachmentSnapshotInput {
   reviewDraftKey: string;
@@ -94,6 +105,10 @@ function normalizeBaseRef(baseRef: string | null | undefined): string {
   return baseRef?.trim() ?? "";
 }
 
+function normalizeBranch(branch: string | null | undefined): string {
+  return branch?.trim() ?? "";
+}
+
 function buildReviewDraftScopeParts(input: BuildReviewDraftScopeKeyInput): string[] {
   const workspaceId = input.workspaceId?.trim();
   // workspaceId is opaque; do not parse this key back into a path.
@@ -114,12 +129,40 @@ export function buildReviewDraftScopeKey(input: BuildReviewDraftScopeKeyInput): 
   return buildReviewDraftScopeParts(input).join(":");
 }
 
+// Every draft key contains a branch part; migration prunes keys that predate it.
+const DRAFT_KEY_BRANCH_MARKER = ":branch=";
+
 export function buildReviewDraftKey(input: BuildReviewDraftKeyInput): string {
   const [prefix, serverPart, workspacePart, basePart, whitespacePart] =
     buildReviewDraftScopeParts(input);
-  return [prefix, serverPart, workspacePart, `mode=${input.mode}`, basePart, whitespacePart].join(
-    ":",
+  return [
+    prefix,
+    serverPart,
+    workspacePart,
+    `branch=${encodeKeyPart(normalizeBranch(input.branch))}`,
+    `mode=${input.mode}`,
+    basePart,
+    whitespacePart,
+  ].join(":");
+}
+
+/**
+ * v2 -> v3 migration: drop draft buckets persisted before draft keys carried a
+ * branch part. Their comments were written against some branch's diff, but which
+ * branch is unrecoverable, so re-surfacing them anywhere would misanchor them.
+ */
+export function prunePreBranchDraftKeys(state: ReviewDraftStoreState): ReviewDraftStoreState {
+  const staleKeys = Object.keys(state.drafts).filter(
+    (key) => !key.includes(DRAFT_KEY_BRANCH_MARKER),
   );
+  if (staleKeys.length === 0) {
+    return state;
+  }
+  const drafts = { ...state.drafts };
+  for (const key of staleKeys) {
+    delete drafts[key];
+  }
+  return { ...state, drafts };
 }
 
 function createDraftComment(input: ReviewDraftCommentInput): ReviewDraftComment {
@@ -170,7 +213,7 @@ export const useReviewDraftStore = create<ReviewDraftStore>()(
       version: STORE_VERSION,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => serializeReviewDraftState(state),
-      migrate: async (state) => normalizePersistedState(state),
+      migrate: async (state) => prunePreBranchDraftKeys(normalizePersistedState(state)),
     },
   ),
 );

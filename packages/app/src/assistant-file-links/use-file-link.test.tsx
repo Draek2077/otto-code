@@ -12,8 +12,8 @@ import type { DirectorySuggestionResult } from "./resolver";
 import { useFileLink } from "./use-file-link";
 import type { OpenFileDisposition } from "@/workspace/file-open";
 
-vi.mock("@/utils/open-external-url", () => ({
-  openExternalUrl: vi.fn(async () => {}),
+vi.mock("@/utils/open-link", () => ({
+  openLink: vi.fn(async () => {}),
 }));
 
 const SOURCE = {

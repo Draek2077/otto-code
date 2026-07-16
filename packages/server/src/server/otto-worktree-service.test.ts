@@ -152,17 +152,63 @@ test.skipIf(isPlatform("win32"))(
   },
 );
 
-test("creates a distinct local checkout workspace for the same cwd on every call", async () => {
+test("rejects creating a second local checkout workspace for an occupied directory", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps();
+
+  const first = await createLocalCheckoutWorkspace({ cwd: repoDir, title: "My checkout" }, deps);
+
+  await expect(createLocalCheckoutWorkspace({ cwd: repoDir }, deps)).rejects.toMatchObject({
+    name: "WorkspaceDirectoryOccupiedError",
+    existingWorkspaceId: first.workspaceId,
+    message: expect.stringContaining('"My checkout"'),
+  });
+  // Trailing separators normalize to the same directory and are rejected too.
+  await expect(
+    createLocalCheckoutWorkspace({ cwd: repoDir + path.sep }, deps),
+  ).rejects.toMatchObject({ name: "WorkspaceDirectoryOccupiedError" });
+  expect(deps.workspaces.size).toBe(1);
+});
+
+test("allows a new local checkout workspace when the same-cwd workspace is archived", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);
   const deps = createDeps();
 
   const first = await createLocalCheckoutWorkspace({ cwd: repoDir }, deps);
+  deps.workspaces.set(first.workspaceId, {
+    ...first,
+    archivedAt: "2026-04-22T00:00:00.000Z",
+  });
+
   const second = await createLocalCheckoutWorkspace({ cwd: repoDir }, deps);
 
-  expect(first.cwd).toBe(second.cwd);
-  expect(first.workspaceId).not.toBe(second.workspaceId);
+  expect(second.workspaceId).not.toBe(first.workspaceId);
   expect(deps.workspaces.size).toBe(2);
+});
+
+test("hidden schedule-run workspaces bypass and do not trigger the occupied-directory guard", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const deps = createDeps();
+
+  const visible = await createLocalCheckoutWorkspace({ cwd: repoDir }, deps);
+  // A hidden per-run workspace may still be minted on an occupied directory.
+  const hidden = await createLocalCheckoutWorkspace({ cwd: repoDir, hidden: true }, deps);
+  expect(hidden.workspaceId).not.toBe(visible.workspaceId);
+  expect(hidden.hidden).toBe(true);
+
+  // And an existing hidden workspace does not count as an occupant: with the
+  // visible one archived, a fresh visible creation succeeds despite the
+  // hidden record on the same cwd.
+  deps.workspaces.set(visible.workspaceId, {
+    ...visible,
+    archivedAt: "2026-04-22T00:00:00.000Z",
+  });
+  const replacement = await createLocalCheckoutWorkspace({ cwd: repoDir }, deps);
+  expect(replacement.hidden).toBe(false);
+  expect(deps.workspaces.size).toBe(3);
 });
 
 test("renames an eligible unnamed branch-off worktree once on first agent context", async () => {

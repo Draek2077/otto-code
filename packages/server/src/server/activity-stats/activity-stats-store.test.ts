@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActivityStatsStore } from "./activity-stats-store.js";
 
 describe("ActivityStatsStore", () => {
@@ -69,5 +69,43 @@ describe("ActivityStatsStore", () => {
     const store = new ActivityStatsStore(filePath);
     const rollups = await store.getRollups();
     expect(rollups.allTime.messagesSent).toBe(0);
+  });
+
+  it("coalesces a burst of increments into a single change notification", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new ActivityStatsStore(filePath);
+      const listener = vi.fn();
+      store.onDidChange(listener);
+
+      await store.increment("messagesSent");
+      await store.increment("toolsCalled");
+      await store.increment("thoughts", 5);
+      expect(listener).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // A later increment opens a fresh window and notifies again.
+      await store.increment("messagesReceived");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not notify when no listener is registered", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new ActivityStatsStore(filePath);
+      await store.increment("messagesSent");
+      await vi.advanceTimersByTimeAsync(5_000);
+      // Nothing to assert beyond "no crash": scheduling is skipped entirely.
+      const rollups = await store.getRollups();
+      expect(rollups.allTime.messagesSent).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

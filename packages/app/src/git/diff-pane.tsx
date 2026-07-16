@@ -51,6 +51,7 @@ import {
   RotateCw,
   SquarePen,
   SquareTerminal,
+  Trash2,
   Undo2,
   Upload,
   WrapText,
@@ -100,7 +101,7 @@ import * as Clipboard from "expo-clipboard";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { GitActionsSplitButton } from "@/git/actions-split-button";
@@ -113,7 +114,7 @@ import {
   CheckoutGitRollbackFailedError,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
-import type { CheckoutGitCommitError } from "@otto-code/protocol/messages";
+import type { CheckoutGitCommitError, GitHostingProviderId } from "@otto-code/protocol/messages";
 import { confirmDialog, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { openGitLogTab } from "@/git/open-git-log-tab";
@@ -137,7 +138,9 @@ import {
 import {
   buildReviewDraftScopeKey,
   buildReviewDraftKey,
+  useClearReviewDraft,
   useReviewAttachmentSnapshot,
+  useReviewCommentCount,
   useResolvedDiffMode,
   useSetDiffModeOverride,
   type ReviewDraftComment,
@@ -1405,7 +1408,7 @@ const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
 const ThemedDownload = withUnistyles(Download);
 const ThemedUpload = withUnistyles(Upload);
 const ThemedArrowDownUp = withUnistyles(ArrowDownUp);
-const ThemedGitHubIcon = withUnistyles(GitHubIcon);
+const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
 const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedRefreshCcw = withUnistyles(RefreshCcw);
 const ThemedArchive = withUnistyles(Archive);
@@ -1429,6 +1432,7 @@ const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
 );
 const ThemedUndo2 = withUnistyles(Undo2);
 const DIFF_CONTEXT_ROLLBACK_ICON = <ThemedUndo2 size={14} uniProps={destructiveIconColorMapping} />;
+const ThemedTrash2 = withUnistyles(Trash2);
 
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
@@ -1805,7 +1809,7 @@ function useDiffRollbackActions({
 }
 
 /**
- * "Add to context" for the Changes context menu, mirroring the file explorer's
+ * "Add to chat" for the Changes context menu, mirroring the file explorer's
  * and project search's: the file (or a specific diff line) lands in the
  * workspace-scoped attachment store as a composer pill. Returns null while no
  * agent tab is the focused pane, so the attachment has a visible destination.
@@ -2348,9 +2352,20 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         cwd,
         mode: diffMode,
         baseRef,
+        // Draft comments anchor to this branch's diff; switching branches moves
+        // the pane to that branch's own (possibly empty) comment bucket.
+        branch: currentBranchName,
         ignoreWhitespace: changesPreferences.hideWhitespace,
       }),
-    [baseRef, changesPreferences.hideWhitespace, cwd, diffMode, serverId, workspaceId],
+    [
+      baseRef,
+      changesPreferences.hideWhitespace,
+      currentBranchName,
+      cwd,
+      diffMode,
+      serverId,
+      workspaceId,
+    ],
   );
 
   const handleSelectUncommitted = useCallback(() => {
@@ -2370,6 +2385,26 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const reviewActions = useInlineReviewController({
     reviewDraftKey,
   });
+  const reviewCommentCount = useReviewCommentCount(reviewDraftKey);
+  const clearReviewDraft = useClearReviewDraft();
+  const handleRemoveAllComments = useCallback(() => {
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title:
+          reviewCommentCount === 1
+            ? t("review.removeAll.confirmTitleSingle")
+            : t("review.removeAll.confirmTitleMultiple", { count: reviewCommentCount }),
+        message: t("review.removeAll.confirmMessage"),
+        confirmLabel: t("review.removeAll.confirmButton"),
+        destructive: true,
+      });
+      if (confirmed) {
+        // Clearing the draft bucket also empties the review attachment snapshot,
+        // so the composer's review pill disappears via the sync effect below.
+        clearReviewDraft({ key: reviewDraftKey });
+      }
+    })();
+  }, [clearReviewDraft, reviewCommentCount, reviewDraftKey, t]);
   const reviewAttachment = useReviewAttachmentSnapshot({
     key: reviewDraftKey,
     diffFiles: files,
@@ -2815,6 +2850,19 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       testID: "changes-toggle-wrap-lines",
     });
 
+    if (reviewCommentCount > 0) {
+      list.push({
+        id: "removeComments",
+        label: t("review.removeAll.action"),
+        renderIcon: (size) => (
+          <ThemedTrash2 size={size} uniProps={foregroundMutedIconColorMapping} />
+        ),
+        onPress: handleRemoveAllComments,
+        separatorBefore: true,
+        testID: "changes-remove-all-comments",
+      });
+    }
+
     if (refreshSupported) {
       list.push({
         id: "refresh",
@@ -2842,6 +2890,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     viewMode,
     allFileDiffsExpanded,
     wrapLines,
+    reviewCommentCount,
     refreshSupported,
     isRefreshing,
     handleToggleLayout,
@@ -2849,6 +2898,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     handleToggleExpandAll,
     handleToggleHideWhitespace,
     handleToggleWrapLines,
+    handleRemoveAllComments,
     handleRefresh,
     t,
   ]);
@@ -3057,18 +3107,40 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       pullAndPush: (
         <ThemedArrowDownUp size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
       ),
-      viewPr: <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
-      createPr: (
-        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      viewPr: (provider: GitHostingProviderId) => (
+        <ThemedGitHostingIcon
+          provider={provider}
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
       ),
-      mergePrSquash: (
-        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      createPr: (provider: GitHostingProviderId) => (
+        <ThemedGitHostingIcon
+          provider={provider}
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
       ),
-      mergePrMerge: (
-        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      mergePrSquash: (provider: GitHostingProviderId) => (
+        <ThemedGitHostingIcon
+          provider={provider}
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
       ),
-      mergePrRebase: (
-        <ThemedGitHubIcon size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />
+      mergePrMerge: (provider: GitHostingProviderId) => (
+        <ThemedGitHostingIcon
+          provider={provider}
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
+      ),
+      mergePrRebase: (provider: GitHostingProviderId) => (
+        <ThemedGitHostingIcon
+          provider={provider}
+          size={actionIconSize}
+          uniProps={foregroundMutedIconColorMapping}
+        />
       ),
       merge: <ThemedGitMerge size={actionIconSize} uniProps={foregroundMutedIconColorMapping} />,
       mergeFromBase: (
@@ -3264,7 +3336,15 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2] - 1.75,
+    // Fixed chrome height — content (branch-name casing, platform font
+    // metrics) must never drive the bar height. Desktop matches the
+    // diff-status bar below (WORKSPACE_SECONDARY_HEADER_HEIGHT); compact
+    // keeps the previous rendered height, fitting the GitActionsSplitButton
+    // (34px incl. borders) with breathing room.
+    height: {
+      xs: 46,
+      md: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    },
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },

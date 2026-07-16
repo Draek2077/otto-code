@@ -5,6 +5,7 @@ import { i18n } from "@/i18n/i18next";
 import type {
   CheckoutPrMergeMethod,
   CheckoutPrStatusResponse,
+  GitHostingProviderId,
   PullRequestMergeable,
 } from "@otto-code/protocol/messages";
 
@@ -30,6 +31,8 @@ export interface GitAction {
   label: string;
   pendingLabel: string;
   successLabel: string;
+  /** One-line plain explanation of what selecting the action actually runs. */
+  description?: string;
   disabled: boolean;
   status: ActionStatus;
   unavailableMessage?: string;
@@ -66,6 +69,10 @@ export interface BuildGitActionsInput {
   // Provider-neutral per-PR hosting facts (absent on old daemons / GitHub).
   pullRequestHosting?: PullRequestHostingStatus | null;
   hasRemote: boolean;
+  // The workspace's detected git hosting provider (GitHub, Bitbucket Cloud).
+  // Used to name the provider in "isn't connected" messages; null/undefined
+  // falls back to a neutral "git hosting" label.
+  hostingProvider?: GitHostingProviderId | null;
   isOttoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   hasUncommittedChanges: boolean;
@@ -187,6 +194,21 @@ const PULL_REQUEST_ACTION_MODELS: readonly PullRequestActionModel[] = [
 const REMOTE_ACTION_IDS: GitActionId[] = ["pull", "push", "pull-and-push"];
 const GITHUB_DIRECT_MERGE_STATE_ALLOWLIST = new Set(["CLEAN", "HAS_HOOKS"]);
 
+// Display name for the workspace's git hosting provider, with a neutral
+// fallback when the provider is unknown (e.g. a newer daemon's provider id
+// this build doesn't recognize).
+export function getGitHostingProviderDisplayName(
+  provider: GitHostingProviderId | null | undefined,
+): string {
+  if (provider === "github") {
+    return i18n.t("workspace.git.hostingProviderNames.github");
+  }
+  if (provider === "bitbucket-cloud") {
+    return i18n.t("workspace.git.hostingProviderNames.bitbucketCloud");
+  }
+  return i18n.t("workspace.git.hostingProviderNames.generic");
+}
+
 export function narrowPullRequestState(state: string | null | undefined): "open" | "closed" | null {
   if (state === "open") return "open";
   if (state === "closed") return "closed";
@@ -205,6 +227,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.commit.label"),
     pendingLabel: i18n.t("workspace.git.actions.commit.pending"),
     successLabel: i18n.t("workspace.git.actions.commit.success"),
+    description: i18n.t("workspace.git.actions.commit.description"),
     disabled: input.runtime.commit.disabled,
     status: input.runtime.commit.status,
     icon: input.runtime.commit.icon,
@@ -217,6 +240,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.pull.label"),
     pendingLabel: i18n.t("workspace.git.actions.pull.pending"),
     successLabel: i18n.t("workspace.git.actions.pull.success"),
+    description: i18n.t("workspace.git.actions.pull.description"),
     disabled: input.runtime.pull.disabled,
     status: input.runtime.pull.status,
     unavailableMessage: input.runtime.pull.disabled ? undefined : getPullUnavailableMessage(input),
@@ -230,6 +254,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.push.label"),
     pendingLabel: i18n.t("workspace.git.actions.push.pending"),
     successLabel: i18n.t("workspace.git.actions.push.success"),
+    description: i18n.t("workspace.git.actions.push.description"),
     disabled: input.runtime.push.disabled,
     status: input.runtime.push.status,
     unavailableMessage: input.runtime.push.disabled ? undefined : getPushUnavailableMessage(input),
@@ -243,6 +268,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.pullAndPush.label"),
     pendingLabel: i18n.t("workspace.git.actions.pullAndPush.pending"),
     successLabel: i18n.t("workspace.git.actions.pullAndPush.success"),
+    description: i18n.t("workspace.git.actions.pullAndPush.description"),
     disabled: input.runtime["pull-and-push"].disabled,
     status: input.runtime["pull-and-push"].status,
     unavailableMessage: input.runtime["pull-and-push"].disabled
@@ -259,9 +285,12 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
 
   allActions.set("merge-branch", {
     id: "merge-branch",
-    label: i18n.t("workspace.git.actions.mergeBranch.label"),
+    label: i18n.t("workspace.git.actions.mergeBranch.label", { baseRef: input.baseRefLabel }),
     pendingLabel: i18n.t("workspace.git.actions.mergeBranch.pending"),
     successLabel: i18n.t("workspace.git.actions.mergeBranch.success"),
+    description: i18n.t("workspace.git.actions.mergeBranch.description", {
+      baseRef: input.baseRefLabel,
+    }),
     disabled: input.runtime["merge-branch"].disabled,
     status: input.runtime["merge-branch"].status,
     unavailableMessage: input.runtime["merge-branch"].disabled
@@ -277,6 +306,9 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.mergeFromBase.label", { baseRef: input.baseRefLabel }),
     pendingLabel: i18n.t("workspace.git.actions.mergeFromBase.pending"),
     successLabel: i18n.t("workspace.git.actions.mergeFromBase.success"),
+    description: i18n.t("workspace.git.actions.mergeFromBase.description", {
+      baseRef: input.baseRefLabel,
+    }),
     disabled: input.runtime["merge-from-base"].disabled,
     status: input.runtime["merge-from-base"].status,
     unavailableMessage: input.runtime["merge-from-base"].disabled
@@ -292,6 +324,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     label: i18n.t("workspace.git.actions.archive.label"),
     pendingLabel: i18n.t("workspace.git.actions.archive.pending"),
     successLabel: i18n.t("workspace.git.actions.archive.success"),
+    description: i18n.t("workspace.git.actions.archive.description"),
     disabled: input.runtime["archive-workspace"].disabled,
     status: input.runtime["archive-workspace"].status,
     icon: input.runtime["archive-workspace"].icon,
@@ -403,12 +436,15 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
       label: i18n.t("workspace.git.actions.viewPr"),
       pendingLabel: i18n.t("workspace.git.actions.viewPr"),
       successLabel: i18n.t("workspace.git.actions.viewPr"),
+      description: i18n.t("workspace.git.actions.viewPrDescription"),
       disabled: input.runtime.pr.disabled,
       status: input.runtime.pr.status,
       unavailableMessage:
         input.runtime.pr.disabled || input.githubFeaturesEnabled
           ? undefined
-          : i18n.t("workspace.git.actions.unavailable.viewPrNoGithub"),
+          : i18n.t("workspace.git.actions.unavailable.viewPrNoGithub", {
+              provider: getGitHostingProviderDisplayName(input.hostingProvider),
+            }),
       icon: input.runtime.pr.icon,
       startsGroup: false,
       handler: input.runtime.pr.handler,
@@ -420,6 +456,9 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
     label: i18n.t("workspace.git.actions.createPr.label"),
     pendingLabel: i18n.t("workspace.git.actions.createPr.pending"),
     successLabel: i18n.t("workspace.git.actions.createPr.success"),
+    description: i18n.t("workspace.git.actions.createPr.description", {
+      baseRef: input.baseRefLabel,
+    }),
     disabled: input.runtime.pr.disabled,
     status: input.runtime.pr.status,
     unavailableMessage: input.runtime.pr.disabled
@@ -442,6 +481,7 @@ function buildDirectPullRequestMergeAction(
     label: getDirectPullRequestMergeActionLabel(model.id),
     pendingLabel: i18n.t("workspace.git.actions.mergePr.pending"),
     successLabel: i18n.t("workspace.git.actions.mergePr.success"),
+    description: getDirectPullRequestMergeActionDescription(model.id),
     disabled: runtime.disabled || shouldDisableMergePrAction(input),
     status: runtime.status,
     unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
@@ -461,6 +501,7 @@ function buildEnablePullRequestAutoMergeAction(
     label: getEnablePullRequestAutoMergeActionLabel(model.id),
     pendingLabel: i18n.t("workspace.git.actions.autoMerge.enabling"),
     successLabel: i18n.t("workspace.git.actions.autoMerge.enabled"),
+    description: i18n.t("workspace.git.actions.autoMerge.enableDescription"),
     disabled: runtime.disabled,
     status: runtime.status,
     icon: runtime.icon,
@@ -480,6 +521,7 @@ function buildDisablePullRequestAutoMergeAction(input: BuildGitActionsInput): Gi
     label: i18n.t("workspace.git.actions.autoMerge.enabled"),
     pendingLabel: i18n.t("workspace.git.actions.autoMerge.disabling"),
     successLabel: i18n.t("workspace.git.actions.autoMerge.disabled"),
+    description: i18n.t("workspace.git.actions.autoMerge.disableDescription"),
     disabled: runtime.disabled || input.pullRequestGithub?.viewerCanDisableAutoMerge !== true,
     status: runtime.status,
     unavailableMessage: runtime.disabled ? undefined : unavailableMessage,
@@ -497,6 +539,17 @@ function getDirectPullRequestMergeActionLabel(id: PullRequestDirectMergeActionId
       return i18n.t("workspace.git.actions.mergePr.merge");
     case "merge-pr-rebase":
       return i18n.t("workspace.git.actions.mergePr.rebase");
+  }
+}
+
+function getDirectPullRequestMergeActionDescription(id: PullRequestDirectMergeActionId): string {
+  switch (id) {
+    case "merge-pr-squash":
+      return i18n.t("workspace.git.actions.mergePr.squashDescription");
+    case "merge-pr-merge":
+      return i18n.t("workspace.git.actions.mergePr.mergeDescription");
+    case "merge-pr-rebase":
+      return i18n.t("workspace.git.actions.mergePr.rebaseDescription");
   }
 }
 
@@ -672,7 +725,9 @@ function getPullAndPushUnavailableMessage(input: BuildGitActionsInput): string |
 
 function getCreatePrUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.githubFeaturesEnabled) {
-    return i18n.t("workspace.git.actions.unavailable.createPrNoGithub");
+    return i18n.t("workspace.git.actions.unavailable.createPrNoGithub", {
+      provider: getGitHostingProviderDisplayName(input.hostingProvider),
+    });
   }
   if (input.aheadCount === 0) {
     return i18n.t("workspace.git.actions.unavailable.createPrNoCommits");
@@ -710,7 +765,9 @@ function getMergeFromBaseUnavailableMessage(input: BuildGitActionsInput): string
 
 function getMergePrUnavailableMessage(input: BuildGitActionsInput): string | undefined {
   if (!input.githubFeaturesEnabled) {
-    return i18n.t("workspace.git.actions.unavailable.mergePrNoGithub");
+    return i18n.t("workspace.git.actions.unavailable.mergePrNoGithub", {
+      provider: getGitHostingProviderDisplayName(input.hostingProvider),
+    });
   }
   if (!input.hasPullRequest) {
     return i18n.t("workspace.git.actions.unavailable.mergePrMissing");

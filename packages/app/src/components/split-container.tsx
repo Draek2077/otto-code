@@ -326,6 +326,29 @@ function computePaneOverDropPreview(input: {
   };
 }
 
+// Drag-move handlers fire on every pointer move, but the computed previews
+// are new objects each time. Bailing out on structural equality keeps the
+// recursive SplitNodeView tree (every pane + tab row) from re-rendering per
+// mouse move — that re-render storm is what made the DragOverlay chip lag
+// behind fast drags.
+function reuseIfSameDropPreview(
+  prev: SplitDropZoneHover | null,
+  next: SplitDropZoneHover | null,
+): SplitDropZoneHover | null {
+  return prev?.paneId === next?.paneId && prev?.position === next?.position ? prev : next;
+}
+
+function reuseIfSameTabDropPreview(
+  prev: TabDropPreview | null,
+  next: TabDropPreview | null,
+): TabDropPreview | null {
+  return prev?.paneId === next?.paneId &&
+    prev?.insertionIndex === next?.insertionIndex &&
+    prev?.indicatorIndex === next?.indicatorIndex
+    ? prev
+    : next;
+}
+
 const dropCollisionDetection: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args);
   const tabHits = pointerHits.filter(
@@ -452,7 +475,7 @@ export function SplitContainer({
           uiTabs,
         });
         setDropPreview(null);
-        setTabDropPreview(preview);
+        setTabDropPreview((prev) => reuseIfSameTabDropPreview(prev, preview));
         return;
       }
 
@@ -462,7 +485,8 @@ export function SplitContainer({
         return;
       }
 
-      setDropPreview(computePaneOverDropPreview({ overData, rects }));
+      const nextDropPreview = computePaneOverDropPreview({ overData, rects });
+      setDropPreview((prev) => reuseIfSameDropPreview(prev, nextDropPreview));
     },
     [panesById, uiTabs],
   );

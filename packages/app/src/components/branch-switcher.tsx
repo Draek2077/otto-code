@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useRef } from "react";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+  type PressableStateCallbackType,
+} from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, GitBranch } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -25,6 +31,7 @@ const foregroundMutedIconColorMapping = (theme: Theme) => ({
 
 const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 
 export function BranchSwitcher({
   currentBranchName,
@@ -42,7 +49,7 @@ export function BranchSwitcher({
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const { branchOptions, isOpen, setIsOpen, handleBranchSelect } = useBranchSwitcher({
+  const { branchOptions, isOpen, setIsOpen, handleBranchSelect, isSwitching } = useBranchSwitcher({
     client,
     normalizedServerId: serverId,
     normalizedWorkspaceId: workspaceId,
@@ -59,9 +66,10 @@ export function BranchSwitcher({
   const triggerStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.trigger,
-      (Boolean(hovered) || pressed) && styles.triggerHovered,
+      !isSwitching && (Boolean(hovered) || pressed) && styles.triggerHovered,
+      isSwitching && styles.triggerDisabled,
     ],
-    [],
+    [isSwitching],
   );
 
   const branchLeadingSlot = useMemo(
@@ -73,8 +81,10 @@ export function BranchSwitcher({
     ({ option, selected, active, onPress }) => (
       <ComboboxItem
         label={option.label}
+        description={option.description}
         selected={selected}
         active={active}
+        disabled={option.disabled}
         onPress={onPress}
         leadingSlot={branchLeadingSlot}
       />
@@ -91,15 +101,24 @@ export function BranchSwitcher({
       <Pressable
         testID={testID}
         onPress={handleOpen}
+        disabled={isSwitching}
         style={triggerStyle}
         accessibilityRole="button"
-        accessibilityLabel={t("branchSwitcher.currentBranch", { branchName: currentBranchName })}
+        accessibilityLabel={
+          isSwitching
+            ? t("branchSwitcher.switchInProgress")
+            : t("branchSwitcher.currentBranch", { branchName: currentBranchName })
+        }
       >
         <ThemedGitBranch size={iconSize.sm} uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.branchLabel} numberOfLines={1}>
           {currentBranchName}
         </Text>
-        <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+        {isSwitching ? (
+          <ThemedActivityIndicator size="small" uniProps={foregroundMutedIconColorMapping} />
+        ) : (
+          <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
+        )}
       </Pressable>
       <Combobox
         options={branchOptions}
@@ -140,10 +159,21 @@ const styles = StyleSheet.create((theme) => ({
   triggerHovered: {
     backgroundColor: theme.colors.surfaceHover,
   },
+  triggerDisabled: {
+    opacity: 0.6,
+  },
   branchLabel: {
     fontSize: {
       xs: theme.fontSize.sm + 2,
       md: theme.fontSize.sm,
+    },
+    // Explicit line height so the label's box never rides platform font
+    // metrics (Linux ascenders / ALL-CAPS branch names rendered taller).
+    // Mirrors GitActionsSplitButton's splitButtonText, which sits beside
+    // this in the Changes header on compact.
+    lineHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.5,
+      md: theme.fontSize.sm * 1.5,
     },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,

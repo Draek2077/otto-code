@@ -29,7 +29,7 @@ import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { createCompactMarkdownStyles, createMarkdownStyles } from "@/styles/markdown-styles";
 import type { Theme } from "@/styles/theme";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import {
   splitHtmlishMarkdown,
   type MarkdownDisplayPart,
@@ -255,7 +255,7 @@ function MarkdownInlineImage({
   const handlePress = useCallback(() => {
     if (!part.href) return;
     if (onLinkPress?.(part.href) === false) return;
-    void openExternalUrl(part.href);
+    void openLink(part.href);
   }, [onLinkPress, part.href]);
   const source = useMemo(() => ({ uri: part.src }), [part.src]);
   const imageSize = useMemo(
@@ -297,7 +297,7 @@ function MarkdownFlowImage({
   const handlePress = useCallback(() => {
     if (!part.href) return;
     if (onLinkPress?.(part.href) === false) return;
-    void openExternalUrl(part.href);
+    void openLink(part.href);
   }, [onLinkPress, part.href]);
   const handleError = useCallback(() => setFailed(true), [setFailed]);
   const source = useMemo(() => ({ uri: part.src }), [part.src]);
@@ -471,7 +471,7 @@ function SharedMarkdownLink({
   const handlePress = useCallback(() => {
     if (!href) return;
     if (onLinkPress?.(href) === false) return;
-    void openExternalUrl(href);
+    void openLink(href);
   }, [href, onLinkPress]);
 
   return (
