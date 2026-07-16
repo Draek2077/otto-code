@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/visualizer",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "private": true,
   "description": "Builds the Visualizer webview bundle: vendor/agent-flow's render layer + the Otto entry, compiled to a self-contained HTML shell emitted as a generated module for the app.",
   "scripts": {
