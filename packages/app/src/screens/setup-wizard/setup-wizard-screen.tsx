@@ -16,7 +16,7 @@
  * (matching the step components).
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -64,6 +64,16 @@ export function SetupWizardScreen() {
 
   const earliestOnlineServerId = useEarliestOnlineHostServerId();
   const hosts = useHosts();
+
+  // Guard: the providers step (step 2) calls useProvidersSnapshot() which needs a
+  // live host connection. If no host is online, redirect to /welcome so the user can
+  // connect one first, rather than freezing the wizard indefinitely.
+  useEffect(() => {
+    if (!earliestOnlineServerId && hosts.length === 0) {
+      router.replace("/welcome");
+    }
+  }, [earliestOnlineServerId, hosts.length, router]);
+
   const serverId = earliestOnlineServerId ?? hosts[0]?.serverId ?? null;
   const { entries } = useProvidersSnapshot(serverId);
   const { config } = useDaemonConfig(serverId);

@@ -180,7 +180,7 @@ describe("translation resources", () => {
     expect(en.shell.commandCenter.noMatches).toBe("No matches");
     expect(en.shell.commandCenter.actions).toBe("Actions");
     expect(en.shell.commandCenter.agents).toBe("Agents");
-    expect(en.shell.commandCenter.newAgent).toBe("New agent");
+    expect(en.shell.commandCenter.newAgent).toBe("New chat");
     expect(en.shell.commandCenter.openProject).toBe("Open project");
     expect(en.shell.commandCenter.home).toBe("Home");
   });
@@ -202,8 +202,8 @@ describe("translation resources", () => {
     expect(en.agentStream.permission.required).toBe("Permission Required");
     expect(en.agentStream.permission.proposedPlan).toBe("Proposed plan");
     expect(en.agentPanel.unavailable.selectedHost).toBe("Selected host");
-    expect(en.agentPanel.states.notFound).toBe("Agent not found");
-    expect(en.panels.draft.newAgent).toBe("New Agent");
+    expect(en.agentPanel.states.notFound).toBe("Chat not found");
+    expect(en.panels.draft.newAgent).toBe("New Chat");
   });
 
   it("includes Settings expansion keys for the Batch 3A migration", () => {
@@ -251,7 +251,7 @@ describe("translation resources", () => {
   });
 
   it("includes workspace Git and review keys for the Batch 4B migration", () => {
-    expect(en.workspace.tabs.actions.newAgent).toBe("New agent");
+    expect(en.workspace.tabs.actions.newAgent).toBe("New chat");
     expect(en.workspace.header.actions.copyPath).toBe("Copy workspace path");
     expect(en.workspace.scripts.actions.run).toBe("Run");
     expect(en.workspace.git.actions.commit.label).toBe("Commit");

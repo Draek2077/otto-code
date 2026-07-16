@@ -48,7 +48,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlobLoader } from "@/components/blob-loader";
 import { OttoLogo, OttoLogoWink } from "@/components/icons/otto-logo";
 import { Button } from "@/components/ui/button";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
 import { WizardBrandBackdrop } from "./wizard-brand-backdrop";
 
 interface WelcomeStepProps {
@@ -64,8 +64,10 @@ interface WelcomeStepProps {
 // inside its own over-scanned canvas — so these need no blur compensation.
 const GLYPH_SIZE_WIDE = 250;
 const GLYPH_SIZE_COMPACT = 200;
+const GLYPH_SIZE_EXTRA_COMPACT = 150;
 const RING_SIZE_WIDE = 300;
 const RING_SIZE_COMPACT = 225;
+const RING_SIZE_EXTRA_COMPACT = 170;
 
 // Gaussian bloom on the plasma ring — the "black hole" halo behind the glyph.
 // stdDeviation in the ring's 0..100 viewBox space (resolution-independent, so
@@ -164,10 +166,20 @@ function WinkingGlyph({ size }: { size: number }) {
 
 export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
   const isCompact = useIsCompactFormFactor();
+  const isExtraCompact = useIsExtraCompactFormFactor();
   const insets = useSafeAreaInsets();
 
-  const glyphSize = isCompact ? GLYPH_SIZE_COMPACT : GLYPH_SIZE_WIDE;
-  const ringSize = isCompact ? RING_SIZE_COMPACT : RING_SIZE_WIDE;
+  const sizeForFormFactor = (extraCompact: number, compact: number, wide: number) => {
+    if (isExtraCompact) return extraCompact;
+    if (isCompact) return compact;
+    return wide;
+  };
+  const glyphSize = sizeForFormFactor(
+    GLYPH_SIZE_EXTRA_COMPACT,
+    GLYPH_SIZE_COMPACT,
+    GLYPH_SIZE_WIDE,
+  );
+  const ringSize = sizeForFormFactor(RING_SIZE_EXTRA_COMPACT, RING_SIZE_COMPACT, RING_SIZE_WIDE);
   // The stack box is the larger of the two so both layers center on one point.
   const heroSize = Math.max(glyphSize, ringSize);
 

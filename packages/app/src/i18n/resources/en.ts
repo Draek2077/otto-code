@@ -57,7 +57,7 @@ export const en = {
       noMatches: "No matches",
       actions: "Actions",
       agents: "Agents",
-      newAgent: "New agent",
+      newAgent: "New chat",
       openProject: "Open project",
       home: "Home",
     },
@@ -122,7 +122,7 @@ export const en = {
     },
     errors: {
       failedToSend: "Failed to send message",
-      failedToCreateAgent: "Failed to create agent",
+      failedToCreateAgent: "Failed to create chat",
       noHostSelected: "No host selected",
       initialPromptRequired: "Initial prompt is required",
       alreadyLoading: "Already loading",
@@ -130,8 +130,8 @@ export const en = {
       fileTooLarge: "{{fileName}} is too large (max {{size}})",
     },
     clientCommands: {
-      archiveAgent: "Archive the current agent",
-      freshDraft: "Archive this agent and start a fresh draft",
+      archiveAgent: "Archive the current chat",
+      freshDraft: "Archive this chat and start a fresh draft",
     },
     github: {
       searching: "Searching...",
@@ -149,7 +149,7 @@ export const en = {
   agentControls: {
     provider: {
       fallback: "Provider",
-      select: "Select agent provider",
+      select: "Select chat provider",
     },
     thinking: {
       title: "Effort",
@@ -163,13 +163,13 @@ export const en = {
     },
     features: {
       title: "Features",
-      open: "Open agent features",
+      open: "Open chat features",
       on: "On",
       off: "Off",
     },
     mode: {
       title: "Mode",
-      selectWithValue: "Select agent mode ({{value}})",
+      selectWithValue: "Select chat mode ({{value}})",
     },
     hints: {
       thinking: "Change effort",
@@ -178,7 +178,7 @@ export const en = {
     },
   },
   agentStream: {
-    empty: "Start chatting with this agent...",
+    empty: "Start a new chat...",
     scrollToBottom: "Scroll to bottom",
     actionGroup: {
       summary: {
@@ -224,26 +224,26 @@ export const en = {
   },
   agentPanel: {
     states: {
-      notFound: "Agent not found",
-      failedToLoad: "Failed to load agent",
+      notFound: "Chat not found",
+      failedToLoad: "Failed to load chat",
       reconnecting: "Reconnecting...",
-      archivingTitle: "Archiving agent...",
-      archivingSubtitle: "Please wait while we archive this agent.",
+      archivingTitle: "Archiving chat...",
+      archivingSubtitle: "Please wait while we archive this chat.",
     },
     unavailable: {
       selectedHost: "Selected host",
       unknownHost:
-        "Cannot open this agent because {{serverLabel}} is not configured on this device.",
-      addHost: "Add the host in Settings or open an agent on a configured server to continue.",
+        "Cannot open this chat because {{serverLabel}} is not configured on this device.",
+      addHost: "Add the host in Settings or open a chat on a configured server to continue.",
       preparingSession: "Preparing {{serverLabel}} session...",
       connecting: "Connecting to {{serverLabel}}...",
-      showSoon: "We will show this agent in a moment.",
-      showWhenOnline: "We will show this agent once the host is online.",
+      showSoon: "We will show this chat in a moment.",
+      showWhenOnline: "We will show this chat once the host is online.",
       reconnectingTo: "Reconnecting to {{serverLabel}}...",
-      showAgainWhenReachable: "We will show this agent again as soon as the host is reachable.",
+      showAgainWhenReachable: "We will show this chat again as soon as the host is reachable.",
     },
     archived: {
-      callout: "This agent is archived",
+      callout: "This chat is archived",
       unarchive: "Unarchive",
     },
   },
@@ -278,7 +278,7 @@ export const en = {
     },
     archiveSheet: {
       hostOffline: "Host offline",
-      runningAgent: "This agent is still running. Archiving it will stop the agent.",
+      runningAgent: "This chat is still running. Archiving it will stop the chat.",
       archive: "Archive",
     },
   },
@@ -291,7 +291,7 @@ export const en = {
       forkInNewTab: "Fork in a new tab",
       forkInNewWorkspace: "Fork in a new workspace",
       forkUnavailable: "Update the host to use this.",
-      forkMissingWorkspace: "This agent is not in a workspace.",
+      forkMissingWorkspace: "This chat is not in a workspace.",
       forkFailed: "Failed to fork chat",
       openFile: "Open file",
       copied: "Copied",
@@ -510,15 +510,15 @@ export const en = {
     },
     tabs: {
       loading: "Loading...",
-      loadingAgentTitle: "Loading agent title",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "No tabs in this pane.",
       fallback: {
-        newAgent: "New agent",
+        newAgent: "New chat",
         setup: "Setup",
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
         browser: "Browser",
-        agent: "Agent",
+        agent: "Chat",
         workspace: "Workspace",
       },
       switcher: {
@@ -529,7 +529,7 @@ export const en = {
       menu: {
         openFor: "Open menu for {{label}}",
         copyResumeCommand: "Copy resume command",
-        copyAgentId: "Copy agent id",
+        copyAgentId: "Copy chat id",
         copyFilePath: "Copy file path",
         rename: "Rename",
         closeAbove: "Close tabs above",
@@ -537,14 +537,14 @@ export const en = {
         closeLeft: "Close to the left",
         closeRight: "Close to the right",
         closeOthers: "Close other tabs",
-        reloadAgent: "Reload agent",
-        reloadAgentTooltip: "Reload agent to update skills, MCPs or login status.",
+        reloadAgent: "Reload chat",
+        reloadAgentTooltip: "Reload chat to update skills, MCPs or login status.",
         close: "Close",
         renameTerminal: "Rename terminal",
-        renameAgent: "Rename agent",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "New agent",
+        newAgent: "New chat",
         newTerminal: "New terminal",
         preparingTerminal: "Preparing terminal tab",
         preparingTerminalTooltip: "Preparing terminal...",
@@ -571,14 +571,14 @@ export const en = {
       },
       toasts: {
         copyFailed: "Copy failed",
-        agentIdCopiedLabel: "Agent ID",
+        agentIdCopiedLabel: "Chat ID",
         resumeCommandCopiedLabel: "resume command",
         filePathCopiedLabel: "File path",
         resumeIdUnavailable: "Resume ID not available",
         resumeCommandUnavailable: "Resume command not available",
-        reloadingAgent: "Reloading agent...",
-        reloadedAgent: "Reloaded agent",
-        failedToReloadAgent: "Failed to reload agent",
+        reloadingAgent: "Reloading chat...",
+        reloadedAgent: "Reloaded chat",
+        failedToReloadAgent: "Failed to reload chat",
       },
       confirmations: {
         close: "Close",
@@ -586,9 +586,9 @@ export const en = {
         archive: "Archive",
         closeTerminalTitle: "Close terminal?",
         closeTerminalMessage: "Any running process in this terminal will be stopped immediately.",
-        archiveRunningAgentTitle: "Archive running agent?",
+        archiveRunningAgentTitle: "Archive running chat?",
         archiveRunningAgentMessage:
-          "This agent is still running. Archiving it will stop the agent and close the tab.",
+          "This chat is still running. Archiving it will stop the chat and close the tab.",
         archiveHistoryTitle: "Archive chat?",
         archiveHistoryMessage: "Archiving a chat puts it in History.",
         archiveHistorySuppress: "Suppress this warning next time",
@@ -596,16 +596,16 @@ export const en = {
         closeTabsRightTitle: "Close tabs to the right?",
         closeOtherTabsTitle: "Close other tabs?",
         bulk: {
-          all: "This will archive {{agents}} agent(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process in a closed terminal will be stopped immediately.",
+          all: "This will archive {{agents}} chat(s), close {{terminals}} terminal(s), and close {{tabs}} tab(s). Any running process in a closed terminal will be stopped immediately.",
           agentsAndTerminals:
-            "This will archive {{agents}} agent(s) and close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
+            "This will archive {{agents}} chat(s) and close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
           terminalsAndTabs:
             "This will close {{terminals}} terminal(s) and close {{tabs}} tab(s). Any running process in a closed terminal will be stopped immediately.",
-          agentsAndTabs: "This will archive {{agents}} agent(s) and close {{tabs}} tab(s).",
+          agentsAndTabs: "This will archive {{agents}} chat(s) and close {{tabs}} tab(s).",
           terminals:
             "This will close {{terminals}} terminal(s). Any running process in a closed terminal will be stopped immediately.",
           tabs: "This will close {{tabs}} tab(s).",
-          agents: "This will archive {{agents}} agent(s).",
+          agents: "This will archive {{agents}} chat(s).",
         },
       },
     },
@@ -613,7 +613,7 @@ export const en = {
       actions: {
         workspaceActions: "Workspace actions",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "New agent",
+        newAgent: "New chat",
         newTerminal: "New terminal",
         newBrowser: "New browser tab",
         importSession: "Import session",
@@ -1836,8 +1836,8 @@ export const en = {
   },
   panels: {
     draft: {
-      newAgent: "New Agent",
-      creatingAgent: "Creating agent",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "Workspace directory not found.",
