@@ -152,10 +152,14 @@ export function formatAge(createdAtMs: number, nowMs = Date.now()): string {
 }
 
 function derivePrState(status: NonNullable<CheckoutPrStatus>): PrState {
-  if (status.isMerged || status.state === "merged") {
+  // COMPAT(bitbucketPrStateCase): daemons <= 0.6.1 sent Bitbucket PR states
+  // uppercase ("OPEN"), which read as closed here. Drop the lowercasing once
+  // the daemon floor >= 0.6.2.
+  const state = status.state.toLowerCase();
+  if (status.isMerged || state === "merged") {
     return "merged";
   }
-  if (status.state !== "open") {
+  if (state !== "open") {
     return "closed";
   }
   if (status.isDraft) {

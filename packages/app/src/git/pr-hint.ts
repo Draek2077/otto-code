@@ -57,9 +57,12 @@ export function selectPrHintFromStatus(status: PrStatusLike | null | undefined):
     return null;
   }
 
+  // COMPAT(bitbucketPrStateCase): daemons <= 0.6.1 sent Bitbucket PR states
+  // uppercase ("OPEN"). Drop the lowercasing once the daemon floor >= 0.6.2.
+  const rawState = status.state.toLowerCase();
   let state: "merged" | "open" | "closed";
-  if (status.isMerged || status.state === "merged") state = "merged";
-  else if (status.state === "open") state = "open";
+  if (status.isMerged || rawState === "merged") state = "merged";
+  else if (rawState === "open") state = "open";
   else state = "closed";
 
   return {
