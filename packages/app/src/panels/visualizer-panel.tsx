@@ -7,6 +7,7 @@ import { Waypoints } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isDev } from "@/constants/platform";
+import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
@@ -244,6 +245,11 @@ function VisualizerPanel() {
   // patch) — sent when the page becomes ready and re-sent live whenever a
   // setting changes. Both are partial configs, so they never disturb
   // mode/showMockData (safe during the dev demo scenario).
+  // Software rendering (no GPU acceleration) force-disables bloom regardless
+  // of the setting: it's three full-canvas blur passes per frame — the single
+  // most expensive draw stage — which a CPU rasterizer can't afford. The
+  // Settings toggle shows the same forced-off state (visualizer-section.tsx).
+  const isSoftwareRendering = useIsSoftwareRendering();
   useEffect(() => {
     if (!ready) {
       return;
@@ -260,7 +266,7 @@ function VisualizerPanel() {
           hexGrid: settings.visualizerPanelHexGrid,
         },
         render: {
-          bloom: settings.visualizerRenderBloom,
+          bloom: isSoftwareRendering ? false : settings.visualizerRenderBloom,
           stars: settings.visualizerRenderStars,
           backdrop: settings.visualizerRenderBackdrop,
         },
@@ -275,6 +281,7 @@ function VisualizerPanel() {
     });
   }, [
     ready,
+    isSoftwareRendering,
     settings.visualizerPanelTimeline,
     settings.visualizerPanelFileAttention,
     settings.visualizerPanelTranscript,

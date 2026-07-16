@@ -100,14 +100,28 @@ describe("desktop-updates helpers", () => {
       parseDesktopRuntimeInfo({
         appVersion: " 0.1.64 ",
         runningUnderARM64Translation: true,
+        softwareRendering: true,
       }),
     ).toEqual({
       appVersion: "0.1.64",
       runningUnderARM64Translation: true,
+      softwareRendering: true,
+    });
+    // A shell that predates softwareRendering reports false, not undefined.
+    expect(
+      parseDesktopRuntimeInfo({
+        appVersion: "0.1.64",
+        runningUnderARM64Translation: false,
+      }),
+    ).toEqual({
+      appVersion: "0.1.64",
+      runningUnderARM64Translation: false,
+      softwareRendering: false,
     });
     expect(parseDesktopRuntimeInfo(null)).toEqual({
       appVersion: null,
       runningUnderARM64Translation: false,
+      softwareRendering: false,
     });
   });
 
