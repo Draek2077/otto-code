@@ -82,6 +82,45 @@ export function partitionSubagentRows(
   return { active, completed };
 }
 
+// How long a completed row must stay terminal before the auto-clear driver
+// archives it. A short settle so the row is visibly finished (and its final
+// token/elapsed readout registers) before it tidies itself away.
+export const SUBAGENT_AUTO_CLEAR_SETTLE_MS = 4000;
+
+export interface AutoClearSelectionInput {
+  settleMs: number;
+  now: number;
+  /** Rows already archiving or previously attempted — never re-selected. */
+  excludeIds?: ReadonlySet<string>;
+}
+
+/**
+ * The completed rows due to auto-clear: tidy-eligible (terminal, not attention —
+ * the same set the "Completed" group shows), not excluded, and settled (terminal
+ * for at least `settleMs`). Pure so the driver's timing logic is unit-testable.
+ * See docs/agent-lifecycle.md (the sub-agents track) and
+ * use-auto-clear-completed-subagents.ts.
+ */
+export function selectSubagentsToAutoClear(
+  rows: readonly SubagentRow[],
+  input: AutoClearSelectionInput,
+): SubagentRow[] {
+  const due: SubagentRow[] = [];
+  for (const row of rows) {
+    if (!isSubagentRowTidyEligible(row)) {
+      continue;
+    }
+    if (input.excludeIds?.has(row.id)) {
+      continue;
+    }
+    if (input.now - row.updatedAt.getTime() < input.settleMs) {
+      continue;
+    }
+    due.push(row);
+  }
+  return due;
+}
+
 export type SubagentRowAction = "stop" | "archive";
 
 /**
@@ -130,7 +169,13 @@ export function sumSubagentTokens(rows: readonly SubagentRow[]): number {
   return total;
 }
 
-export function formatHeaderLabel({ active, completed }: PartitionedSubagentRows): string {
+export function formatHeaderLabel(
+  { active, completed }: PartitionedSubagentRows,
+  // Tokens from rows already cleared (archived) out of the track. Added back into
+  // the header total so the honest fan-out cost survives the clear — whether by
+  // the manual "Clear all completed" or the auto-clear driver.
+  clearedTokens = 0,
+): string {
   // Mirror the list's own active/completed split (user-locked wording) so the
   // header reads as a summary of the two groups below it, not a third framing.
   const parts: string[] = [];
@@ -142,9 +187,12 @@ export function formatHeaderLabel({ active, completed }: PartitionedSubagentRows
       `${completed.length} completed ${completed.length === 1 ? "sub-agent" : "sub-agents"}`,
     );
   }
-  // Honest fan-out cost, summed across every row (completed included) so the
-  // number survives the auto-tidy. See subagents-cleanup.md (Items 3 + 6).
-  const tokens = formatCompactTokenCount(sumSubagentTokens(active) + sumSubagentTokens(completed));
+  // Honest fan-out cost, summed across every row (completed included) plus any
+  // already-cleared rows, so the number survives the auto-tidy AND the clear.
+  // See subagents-cleanup.md (Items 3 + 6) and cleared-subagent-tokens-store.ts.
+  const tokens = formatCompactTokenCount(
+    sumSubagentTokens(active) + sumSubagentTokens(completed) + Math.max(0, clearedTokens),
+  );
   if (tokens) {
     parts.push(`${tokens} tokens`);
   }

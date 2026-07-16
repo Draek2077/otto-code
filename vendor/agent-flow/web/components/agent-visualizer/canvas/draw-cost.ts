@@ -50,7 +50,8 @@ export function drawCostLabels(
 
   for (const [, agent] of agents) {
     if (agent.opacity < MIN_VISIBLE_OPACITY) continue
-    const cost = agentCost(agent.tokensUsed, agent.model)
+    // OTTO PATCH (OTTO-PATCHES.md): cost pills prefer the honest lifetime total.
+    const cost = agentCost(agent.cumulativeTokens ?? agent.tokensUsed, agent.model)
     if (cost < COST_DRAW.minDisplayCost) continue
 
     const r = agent.isMain ? NODE.radiusMain : NODE.radiusSub
@@ -130,15 +131,18 @@ export function drawCostSummaryPanel(
   agents: Map<string, Agent>,
   toolCalls: Map<string, ToolCallNode>,
 ) {
-  const agentList = Array.from(agents.values()).filter(a => a.tokensUsed > 0)
+  // OTTO PATCH (OTTO-PATCHES.md): the cost panel prefers each agent's honest
+  // lifetime total (cumulativeTokens) over context occupancy.
+  const agentTokens = (a: Agent) => a.cumulativeTokens ?? a.tokensUsed
+  const agentList = Array.from(agents.values()).filter(a => agentTokens(a) > 0)
   if (agentList.length === 0) return
 
   // Compute totals
-  const totalTokens = agentList.reduce((s, a) => s + a.tokensUsed, 0)
+  const totalTokens = agentList.reduce((s, a) => s + agentTokens(a), 0)
 
   // Per-agent breakdown sorted by cost desc
   const agentBreakdown = agentList
-    .map(a => ({ name: a.name, tokens: a.tokensUsed, cost: agentCost(a.tokensUsed, a.model) }))
+    .map(a => ({ name: a.name, tokens: agentTokens(a), cost: agentCost(agentTokens(a), a.model) }))
     .sort((a, b) => b.cost - a.cost)
   const totalCost = agentBreakdown.reduce((s, a) => s + a.cost, 0)
 

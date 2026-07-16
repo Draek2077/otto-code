@@ -443,4 +443,47 @@ describe("claude tool-call mapper", () => {
 
     expect(item).toBeNull();
   });
+
+  // The subagent fan-out tool must carry a sub_agent detail from its FIRST
+  // running item — per-callId consumers (visualizer dispatch/return, chat
+  // sub-agent card) never see the sidechain tracker's later enriched updates.
+  it.each(["Task", "Agent"])("maps a running %s call to a sub_agent detail", (name) => {
+    const item = expectMapped(
+      mapClaudeRunningToolCall({
+        callId: "claude-task-1",
+        name,
+        input: {
+          description: "Scan repo files",
+          subagent_type: "general-purpose",
+          prompt: "List the files in this repo.",
+        },
+        output: null,
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "sub_agent",
+      subAgentType: "general-purpose",
+      description: "Scan repo files",
+      log: "",
+    });
+  });
+
+  it("maps a completed Agent call's report text into the sub_agent log", () => {
+    const item = expectMapped(
+      mapClaudeCompletedToolCall({
+        callId: "claude-task-1",
+        name: "Agent",
+        input: { description: "Scan repo files", subagent_type: "general-purpose" },
+        output: { output: "The repo contains only a README.md." },
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "sub_agent",
+      subAgentType: "general-purpose",
+      description: "Scan repo files",
+      log: "The repo contains only a README.md.",
+    });
+  });
 });

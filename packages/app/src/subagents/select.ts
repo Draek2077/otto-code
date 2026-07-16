@@ -42,6 +42,37 @@ function toSubagentRow(agent: Agent): SubagentRow {
   };
 }
 
+/** Backstop against a parent-id cycle in corrupt data; real nesting is a few
+ * levels deep at most (chat -> subagent -> its own subagents). */
+const MAX_PARENT_WALK_DEPTH = 8;
+
+/**
+ * True when `agent` belongs in the track of `parentAgentId`: a direct child,
+ * or a nested observed subagent reached by walking up THROUGH observed rows
+ * only (a subagent's own fan-out parents to its spawning subagent's row, and
+ * that whole tree is this chat's doing). An ATTENDED intermediate breaks the
+ * chain on purpose — an attended child is its own chat with its own track,
+ * and its children are not this chat's rows.
+ */
+function isTrackDescendantOf(
+  agent: Agent,
+  parentAgentId: string,
+  agentsById: ReadonlyMap<string, Agent>,
+): boolean {
+  let currentParentId = agent.parentAgentId;
+  for (let depth = 0; depth < MAX_PARENT_WALK_DEPTH && currentParentId; depth += 1) {
+    if (currentParentId === parentAgentId) {
+      return true;
+    }
+    const intermediate = agentsById.get(currentParentId);
+    if (!intermediate || intermediate.attend !== "observed") {
+      return false;
+    }
+    currentParentId = intermediate.parentAgentId;
+  }
+  return false;
+}
+
 export function selectSubagentsForParent(
   state: SessionStoreSnapshot,
   params: SelectSubagentsParams,
@@ -57,7 +88,7 @@ export function selectSubagentsForParent(
     if (
       agent.archivedAt ||
       pendingArchiveIds.has(agent.id) ||
-      agent.parentAgentId !== params.parentAgentId
+      !isTrackDescendantOf(agent, params.parentAgentId, agents)
     ) {
       continue;
     }

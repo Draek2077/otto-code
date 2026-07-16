@@ -91,6 +91,12 @@ Each row shows **honest cumulative token cost** right of the name — the runnin
 
 Completed subagents **tidy themselves without being destroyed**: terminal rows move into a collapsed **"Completed (N)"** group at the bottom of the track, keeping their frozen name and final token total, while the active list shows only in-flight subagents. A manual **"Clear all completed"** gesture archives every terminal row at once (never a running one). Nothing is destroyed until the user clears it or the parent is archived (which cascades), so cost and transcript survive the tidy.
 
+### Auto-clear completed subagents
+
+A device-local **General settings** toggle (`autoClearCompletedSubagents`, default off) turns the manual clear into an automatic one: while a chat's panel is mounted, tidy-eligible completed rows archive themselves once they've been terminal for a short settle (`SUBAGENT_AUTO_CLEAR_SETTLE_MS`), so a fan-out's finished rows don't accumulate in the Completed group. It's purely visual decluttering — scoped to a chat's subagents track (root chats are untouched), settle-delayed so a row is visibly finished before it vanishes, and it never retries a row whose archive fails (the manual clear stays available).
+
+Clearing a row (auto **or** manual) would otherwise silently drop its token total from the header's honest fan-out sum, which only counts in-track rows. To prevent that, every cleared row's `cumulativeTokens` is rolled into a per-parent tally (`subagents/cleared-subagent-tokens-store.ts`) that `formatHeaderLabel` adds back in, so **"N tokens"** stays honest after the clear. Like the daemon's `cumulativeTokens` accumulator the tally is in-memory (resets on app reload); the planned per-chat total ([projects/total-token-accounting](../projects/total-token-accounting/total-token-accounting.md)) can read the same tally so cleared descendants keep counting toward the chat total.
+
 ## The Background Tasks track
 
 A sibling track (`packages/app/src/background-tasks/track.tsx`), also above the composer, that lists **background shell processes** a provider launched itself — Claude's own `Bash` tool used with `run_in_background: true` — never AI subagents. It renders independently of the subagents track: each is `null` when empty, so either, both, or neither can show at once.

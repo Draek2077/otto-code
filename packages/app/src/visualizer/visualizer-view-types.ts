@@ -79,8 +79,6 @@ export type VisualizerHostToPageMessage =
         panels: Partial<{
           timeline: boolean;
           fileAttention: boolean;
-          transcript: boolean;
-          messageFeed: boolean;
           costOverlay: boolean;
           hexGrid: boolean;
         }>;
@@ -88,6 +86,9 @@ export type VisualizerHostToPageMessage =
           bloom: boolean;
           stars: boolean;
           backdrop: boolean;
+          // Agent-node silhouette. Omitted → the page's historical hexagon
+          // (OTTO PATCH).
+          nodeShape: "square" | "hexagon" | "octagon" | "circle";
         }>;
         // Master audio volume (0..1). 0 mutes; > 0 is audible at that level.
         soundVolume: number;

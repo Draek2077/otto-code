@@ -10,6 +10,8 @@ import {
   partitionSubagentRows,
   resolveRowLabel,
   resolveSubagentRowAction,
+  selectSubagentsToAutoClear,
+  SUBAGENT_AUTO_CLEAR_SETTLE_MS,
   sumSubagentTokens,
 } from "./track-presentation";
 
@@ -133,6 +135,22 @@ describe("formatHeaderLabel with token totals", () => {
       "2 active sub-agents",
     );
   });
+
+  it("adds already-cleared tokens back into the header total so the clear isn't lossy", () => {
+    // One completed row worth 300 tokens left in the track, plus 12k already
+    // cleared out of it — the total must still read the full 12.3k.
+    expect(
+      formatHeaderLabel(
+        partitionSubagentRows([row({ id: "a", status: "closed", cumulativeTokens: 300 })]),
+        12_000,
+      ),
+    ).toBe("1 completed sub-agent · 12.3k tokens");
+  });
+
+  it("shows the cleared total even when every row has been cleared away", () => {
+    // No rows left in the track (all cleared), but their tokens are preserved.
+    expect(formatHeaderLabel(partitionSubagentRows([]), 5000)).toBe("5k tokens");
+  });
 });
 
 describe("partitionSubagentRows", () => {
@@ -197,6 +215,54 @@ describe("partitionSubagentRows", () => {
     const { active, completed } = partitionSubagentRows(rows, new Set(["just-stopped"]));
     expect(active.map((r) => r.id)).toEqual(["just-stopped"]);
     expect(completed.map((r) => r.id)).toEqual(["long-done"]);
+  });
+});
+
+describe("selectSubagentsToAutoClear", () => {
+  const NOW = new Date("2026-04-20T00:10:00.000Z").getTime();
+  const settled = new Date(NOW - SUBAGENT_AUTO_CLEAR_SETTLE_MS - 1000);
+  const fresh = new Date(NOW - 500);
+
+  it("selects tidy-eligible rows that have settled past the delay", () => {
+    const due = selectSubagentsToAutoClear(
+      [
+        row({ id: "done", status: "closed", updatedAt: settled }),
+        row({ id: "observed-idle", status: "idle", attend: "observed", updatedAt: settled }),
+      ],
+      { settleMs: SUBAGENT_AUTO_CLEAR_SETTLE_MS, now: NOW },
+    );
+    expect(due.map((r) => r.id)).toEqual(["done", "observed-idle"]);
+  });
+
+  it("leaves a just-finished row alone until it settles", () => {
+    const due = selectSubagentsToAutoClear(
+      [row({ id: "just-done", status: "closed", updatedAt: fresh })],
+      { settleMs: SUBAGENT_AUTO_CLEAR_SETTLE_MS, now: NOW },
+    );
+    expect(due).toEqual([]);
+  });
+
+  it("never selects running or attention rows, matching the completed group", () => {
+    const due = selectSubagentsToAutoClear(
+      [
+        row({ id: "running", status: "running", updatedAt: settled }),
+        row({ id: "failed", status: "error", requiresAttention: true, updatedAt: settled }),
+        row({ id: "native-idle", status: "idle", updatedAt: settled }),
+      ],
+      { settleMs: SUBAGENT_AUTO_CLEAR_SETTLE_MS, now: NOW },
+    );
+    expect(due).toEqual([]);
+  });
+
+  it("skips excluded ids (already archiving or previously attempted)", () => {
+    const due = selectSubagentsToAutoClear(
+      [
+        row({ id: "a", status: "closed", updatedAt: settled }),
+        row({ id: "b", status: "closed", updatedAt: settled }),
+      ],
+      { settleMs: SUBAGENT_AUTO_CLEAR_SETTLE_MS, now: NOW, excludeIds: new Set(["a"]) },
+    );
+    expect(due.map((r) => r.id)).toEqual(["b"]);
   });
 });
 

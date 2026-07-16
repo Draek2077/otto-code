@@ -34,7 +34,10 @@ export function SessionTabs({
   }, [selectedSessionId])
 
   return (
-    <div className="flex gap-1">
+    // OTTO PATCH (OTTO-PATCHES.md): vertical column ("tabs down the side")
+    // instead of a horizontal row. items-start keeps each tab shrink-wrapped
+    // to its label rather than stretched to the column width.
+    <div className="flex flex-col items-start gap-1">
       {sessions.map(session => {
         const isSelected = session.id === selectedSessionId
         const isActive = session.status === 'active'

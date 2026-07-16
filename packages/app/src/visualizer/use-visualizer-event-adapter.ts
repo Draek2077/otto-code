@@ -15,11 +15,14 @@ import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtim
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   buildAgentCompleteEvent,
+  buildContextUpdateEvent,
   buildModelDetectedEvent,
   buildObservedSubagentSpawnEvent,
   buildRootAgentSpawnEvent,
+  buildSubagentDispatchEvent,
   isVisualizerAgentTerminal,
   resolveAgentNodeName,
+  resolveSubAgentChildLabel,
   streamEventToSimulationEvents,
   timelineItemToSimulationEvents,
   truncateSessionLabel,
@@ -61,6 +64,22 @@ interface TrackedNode {
    * drops a tool_call_end with no running match — so a terminal item for an
    * unseen callId gets its start synthesized. */
   startedToolCallIds: Set<string>;
+  /** Last dispatched child label per sub_agent callId. Providers may reveal
+   * (or refine) the sub_agent detail across LATER running updates of the same
+   * callId — the tool input streams progressively, so the first running item
+   * can carry `description` before `subagent_type` has parsed, deriving a
+   * different child label than the final one the observed node is named by.
+   * A dispatch is (re-)emitted whenever the derived label changes; the page
+   * keys the particle's edge by child name, so only a label-accurate dispatch
+   * ever renders. */
+  subAgentDispatchLabels: Map<string, string>;
+  /** Last context-window reading pushed to the page, so reconcile only emits
+   * a context_update when the agent snapshot's usage actually moved. */
+  lastContextTokens: number | null;
+  /** Last lifetime token total pushed to the page (feeds the page's honest
+   * token/cost sums — subagents have this even when they carry no context
+   * usage reading). */
+  lastCumulativeTokens: number | null;
 }
 
 interface AdapterState {
@@ -170,6 +189,9 @@ function ensureNode(
     cursor: null,
     bufferedLive: [],
     startedToolCallIds: new Set(),
+    subAgentDispatchLabels: new Map(),
+    lastContextTokens: null,
+    lastCumulativeTokens: null,
   };
   state.nodes.set(agentId, node);
   state.pendingBackfill.push(agentId);
@@ -245,27 +267,88 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
       }
     }
 
-    // Terminal detection runs for freshly-registered nodes too, so a backfill
-    // that first sees an already-finished (idle) observed subagent still
-    // completes it instead of leaving the node stuck active forever.
-    const isTerminal = isVisualizerAgentTerminal({
-      status: agent.status,
-      attend: agent.attend,
-      archived: Boolean(agent.archivedAt),
-      requiresAttention: Boolean(agent.requiresAttention),
-    });
-    if (isTerminal && !node.terminalEmitted) {
-      node.terminalEmitted = true;
+    reconcileNodeTokens(state, node, agent);
+    reconcileNodeLifecycle(state, node, agent);
+  }
+}
+
+/** Context ring + honest totals: the page draws the main node's context
+ * -window ring from context_update `tokens`, and sums each node's
+ * `cumulativeTokens` (lifetime total, Otto vendor patch) for the top-bar
+ * token/cost readout — context occupancy alone omitted every subagent's
+ * spend. The live source (turn_completed usage) fires once per turn AND
+ * never on backfill, so push from the snapshot whenever either reading moves
+ * (subagents typically carry only cumulativeTokens). */
+function reconcileNodeTokens(state: AdapterState, node: TrackedNode, agent: Agent): void {
+  const contextTokens = agent.lastUsage?.contextWindowUsedTokens ?? null;
+  const cumulativeTokens = agent.cumulativeTokens ?? null;
+  const contextMoved = contextTokens != null && contextTokens !== node.lastContextTokens;
+  const cumulativeMoved =
+    cumulativeTokens != null && cumulativeTokens !== node.lastCumulativeTokens;
+  if (!contextMoved && !cumulativeMoved) {
+    return;
+  }
+  node.lastContextTokens = contextTokens ?? node.lastContextTokens;
+  node.lastCumulativeTokens = cumulativeTokens ?? node.lastCumulativeTokens;
+  const contextEvent = buildContextUpdateEvent({
+    ctx: nodeCtx(node),
+    ...(agent.lastUsage ? { usage: agent.lastUsage } : {}),
+    ...(cumulativeTokens != null ? { cumulativeTokens } : {}),
+    time: toSimTime(state, agent.lastActivityAt.getTime()),
+  });
+  if (contextEvent) {
+    state.pending.push(contextEvent);
+  }
+}
+
+/** Emits the terminal transition (complete/fade) — or, when a settled row
+ * revives, the resurrecting re-spawn. Terminal detection runs for
+ * freshly-registered nodes too, so a backfill that first sees an already
+ * -finished (idle) observed subagent still completes it instead of leaving
+ * the node stuck active forever. */
+function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: Agent): void {
+  const isTerminal = isVisualizerAgentTerminal({
+    status: agent.status,
+    attend: agent.attend,
+    archived: Boolean(agent.archivedAt),
+    requiresAttention: Boolean(agent.requiresAttention),
+  });
+  const time = toSimTime(state, agent.lastActivityAt.getTime());
+  if (isTerminal && !node.terminalEmitted) {
+    node.terminalEmitted = true;
+    state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
+    if (node.isRoot) {
+      state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
+    }
+    return;
+  }
+  if (!isTerminal && node.terminalEmitted) {
+    // Resurrection: an observed row can revive after settling — e.g. a Task
+    // whose tool_result was really a "continuing in background" handoff
+    // keeps emitting task events afterward. The page may have already faded
+    // and deleted the node; a fresh agent_spawn recreates it (or reactivates
+    // it mid-fade — spawn of an existing name is a reactivate).
+    node.terminalEmitted = false;
+    if (node.isRoot) {
       state.pending.push(
-        buildAgentCompleteEvent({
+        buildRootAgentSpawnEvent({
           ctx: nodeCtx(node),
-          time: toSimTime(state, agent.lastActivityAt.getTime()),
+          model: agent.model,
+          provider: agent.provider,
+          time,
         }),
       );
-      if (node.isRoot) {
-        state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
-      }
+      return;
     }
+    const parentNode = agent.parentAgentId ? state.nodes.get(agent.parentAgentId) : undefined;
+    state.pending.push(
+      buildObservedSubagentSpawnEvent({
+        ctx: nodeCtx(node),
+        parentName: parentNode?.name ?? agent.parentAgentId ?? node.sessionId,
+        task: agent.title,
+        time,
+      }),
+    );
   }
 }
 
@@ -275,16 +358,35 @@ function trackedTimelineItemEvents(node: TrackedNode, item: AgentTimelineItem, t
   let synthesizeToolCallStart = false;
   if (item.type === "tool_call") {
     const alreadyStarted = node.startedToolCallIds.has(item.callId);
+    const isSubAgent = item.detail.type === "sub_agent";
     // A long-running tool call (Task/sub_agent especially) streams repeated
     // in-place updates of the SAME running item as its output grows. The page
     // treats every tool_call_start as a fresh node+dispatch — re-emitting made
     // each progress update spark a new outward-firing task node. One start per
-    // callId; later running updates carry nothing the graph shows anyway.
+    // callId; later running updates carry nothing the graph shows anyway —
+    // EXCEPT a sub_agent detail appearing for the first time (some providers
+    // only enrich the running item later): that still owes its dispatch spark.
     if (item.status === "running" && alreadyStarted) {
+      if (isSubAgent && item.detail.type === "sub_agent") {
+        const label = resolveSubAgentChildLabel(item.detail);
+        if (node.subAgentDispatchLabels.get(item.callId) !== label) {
+          node.subAgentDispatchLabels.set(item.callId, label);
+          return [buildSubagentDispatchEvent({ ctx: nodeCtx(node), detail: item.detail, time })];
+        }
+      }
       return [];
     }
     synthesizeToolCallStart = item.status !== "running" && !alreadyStarted;
     node.startedToolCallIds.add(item.callId);
+    // A start emitted with a sub_agent detail (fresh running item, or a
+    // synthesized start for a coalesced terminal) carries its own dispatch.
+    if (
+      isSubAgent &&
+      item.detail.type === "sub_agent" &&
+      (item.status === "running" || synthesizeToolCallStart)
+    ) {
+      node.subAgentDispatchLabels.set(item.callId, resolveSubAgentChildLabel(item.detail));
+    }
   }
   return timelineItemToSimulationEvents({
     ctx: nodeCtx(node),

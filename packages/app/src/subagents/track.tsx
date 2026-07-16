@@ -20,6 +20,7 @@ import {
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-presentation";
 import type { Theme } from "@/styles/theme";
+import type { ClearableSubagentRow } from "./clear-completed-subagents";
 import type { SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
@@ -48,8 +49,12 @@ export interface SubagentsTrackProps {
   onOpenSubagent: (id: string) => void;
   onArchiveSubagent: (id: string) => void;
   onStopSubagent: (id: string) => void;
-  onClearCompleted: (ids: readonly string[]) => void;
+  onClearCompleted: (rows: readonly ClearableSubagentRow[]) => void;
   onDetachSubagent?: (id: string) => void;
+  // Tokens from rows already cleared out of this track, added into the header
+  // total so the honest fan-out cost survives the clear. See
+  // subagents/cleared-subagent-tokens-store.ts.
+  clearedTokens?: number;
 }
 
 const SUBAGENTS_LIST_MAX_HEIGHT = 200;
@@ -72,6 +77,7 @@ export function SubagentsTrack({
   onStopSubagent,
   onClearCompleted,
   onDetachSubagent,
+  clearedTokens = 0,
 }: SubagentsTrackProps): ReactElement | null {
   const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
@@ -107,10 +113,13 @@ export function SubagentsTrack({
     () => partitionSubagentRows(rows, pinnedIds),
     [rows, pinnedIds],
   );
-  const completedIds = useMemo(() => completed.map((row) => row.id), [completed]);
+  const completedClearRows = useMemo<ClearableSubagentRow[]>(
+    () => completed.map((row) => ({ id: row.id, cumulativeTokens: row.cumulativeTokens })),
+    [completed],
+  );
   const handleClearCompleted = useCallback(() => {
-    onClearCompleted(completedIds);
-  }, [onClearCompleted, completedIds]);
+    onClearCompleted(completedClearRows);
+  }, [onClearCompleted, completedClearRows]);
 
   const surfaceStyle = useMemo(
     () => [styles.surface, expanded && styles.surfaceExpanded],
@@ -130,7 +139,7 @@ export function SubagentsTrack({
     return null;
   }
 
-  const headerLabel = formatHeaderLabel({ active, completed });
+  const headerLabel = formatHeaderLabel({ active, completed }, clearedTokens);
 
   return (
     <View style={styles.outer} testID="subagents-track">

@@ -260,8 +260,6 @@ function VisualizerPanel() {
         panels: {
           timeline: settings.visualizerPanelTimeline,
           fileAttention: settings.visualizerPanelFileAttention,
-          transcript: settings.visualizerPanelTranscript,
-          messageFeed: settings.visualizerPanelMessageFeed,
           costOverlay: settings.visualizerPanelCostOverlay,
           hexGrid: settings.visualizerPanelHexGrid,
         },
@@ -269,6 +267,7 @@ function VisualizerPanel() {
           bloom: isSoftwareRendering ? false : settings.visualizerRenderBloom,
           stars: settings.visualizerRenderStars,
           backdrop: settings.visualizerRenderBackdrop,
+          nodeShape: settings.visualizerNodeShape,
         },
         // Effective master volume (0..1) for the page's audio engine: the mute
         // toggle gates the slider level, so muting sends 0 and unmuting restores
@@ -284,13 +283,12 @@ function VisualizerPanel() {
     isSoftwareRendering,
     settings.visualizerPanelTimeline,
     settings.visualizerPanelFileAttention,
-    settings.visualizerPanelTranscript,
-    settings.visualizerPanelMessageFeed,
     settings.visualizerPanelCostOverlay,
     settings.visualizerPanelHexGrid,
     settings.visualizerRenderBloom,
     settings.visualizerRenderStars,
     settings.visualizerRenderBackdrop,
+    settings.visualizerNodeShape,
     settings.visualizerSoundVolume,
     settings.visualizerSoundMuted,
     settings.visualizerHudHidden,
@@ -457,8 +455,8 @@ const styles = StyleSheet.create((theme) => ({
   devBar: {
     position: "absolute",
     // Bottom-right: the page pins its own HUD to the top edge (status bar) and
-    // bottom-center (LIVE timeline); this corner stays clear — the transcript
-    // panel's lowest edge sits 64px up.
+    // bottom-center (LIVE timeline); this corner stays clear — the per-agent
+    // chat panel's lowest edge sits 64px up.
     bottom: theme.spacing[2],
     right: theme.spacing[2],
     flexDirection: "row",

@@ -76,11 +76,14 @@ import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import type { Theme } from "@/styles/theme";
 import {
   useArchiveSubagent,
+  useAutoClearCompletedSubagents,
   useClearCompletedSubagents,
+  useClearedSubagentTokens,
   useDetachSubagent,
   useStopSubagent,
   useSubagentsForParent,
 } from "@/subagents";
+import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import {
   useBackgroundShellTasksForParent,
@@ -1468,7 +1471,18 @@ function ActiveAgentComposer({
   );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
   const handleStopSubagent = useStopSubagent({ serverId });
-  const handleClearCompletedSubagents = useClearCompletedSubagents({ serverId });
+  const handleClearCompletedSubagents = useClearCompletedSubagents({
+    serverId,
+    parentAgentId: agentId,
+  });
+  const autoClearCompletedSubagents = useAutoClearCompletedSubagentsSetting();
+  useAutoClearCompletedSubagents({
+    serverId,
+    parentAgentId: agentId,
+    rows: subagentRows,
+    enabled: autoClearCompletedSubagents,
+  });
+  const clearedSubagentTokens = useClearedSubagentTokens(serverId, agentId);
   const handleDetachSubagent = useDetachSubagent({ serverId });
   const backgroundTaskRows = useBackgroundShellTasksForParent({
     serverId,
@@ -1627,6 +1641,7 @@ function ActiveAgentComposer({
         onStopSubagent={handleStopSubagent}
         onClearCompleted={handleClearCompletedSubagents}
         onDetachSubagent={canDetachSubagents ? handleDetachSubagent : undefined}
+        clearedTokens={clearedSubagentTokens}
       />
       {hasBackgroundShellTasks ? (
         <BackgroundTasksTrack

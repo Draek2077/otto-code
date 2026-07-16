@@ -69,11 +69,10 @@ export interface TopBarProps {
   totalTokens: number
   // Panel toggles
   showFileAttention: boolean
-  showTranscript: boolean
   showCostOverlay: boolean
   showTimeline: boolean
   isMuted: boolean
-  onTogglePanel: (panel: 'files' | 'transcript' | 'cost') => void
+  onTogglePanel: (panel: 'files' | 'cost') => void
   onToggleTimeline: () => void
   onToggleMute: () => void
 }
@@ -82,17 +81,24 @@ export const TopBar = memo(function TopBar({
   sessions, selectedSessionId, sessionsWithActivity,
   onSelectSession, onCloseSession,
   agentCount, totalTokens,
-  showFileAttention, showTranscript, showCostOverlay, showTimeline, isMuted,
+  showFileAttention, showCostOverlay, showTimeline, isMuted,
   onTogglePanel, onToggleTimeline, onToggleMute,
 }: TopBarProps) {
   return (
-    <div className="absolute top-3 left-3 right-3 flex items-center gap-4 font-mono text-[10px]" style={{ zIndex: Z.info }}>
-      {/* Session tabs — scrollable, takes available space.
+    <>
+      {/* Session tabs — vertical column down the LEFT edge.
           OTTO PATCH (see OTTO-PATCHES.md): render from one session up (upstream
           hid the bar below two), so the embed always shows WHICH chat the graph
-          is visualizing. */}
+          is visualizing. Pulled out of the shared top row into its own
+          absolutely-positioned left column at a higher z-index than the
+          right-side toolbar, so the toolbar can never overlap/clip it, and
+          stacked vertically ("tabs down the side"). Height-capped + scrollable
+          via percentages (not vh — frozen in the Electron webview guest). */}
       {sessions.length > 0 && (
-        <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
+        <div
+          className="absolute top-3 left-3 overflow-y-auto scrollbar-hide font-mono text-[10px]"
+          style={{ zIndex: Z.info + 1, maxHeight: 'calc(100% - 6rem)' }}
+        >
           <SessionTabs
             sessions={sessions}
             selectedSessionId={selectedSessionId}
@@ -103,18 +109,16 @@ export const TopBar = memo(function TopBar({
         </div>
       )}
 
-      {/* Spacer pushes info to the right */}
-      <div className="flex-1" />
-
       {/* Right-side info/controls.
           OTTO PATCH (see OTTO-PATCHES.md): connection indicator removed (the
           embed is always connected to its own host — the status read as an
           optional link); "chats" -> "agents" (the count is graph nodes in the
           selected session, not session tabs); block wraps + shrinks on narrow
-          panes instead of overflowing off the right edge. */}
+          panes instead of overflowing off the right edge. Anchored top-right on
+          its own so it never shares a flex row with the session column. */}
       <div
-        className="flex items-center justify-end gap-x-4 gap-y-1 flex-shrink min-w-0 flex-wrap"
-        style={{ color: COLORS.textMuted }}
+        className="absolute top-3 right-3 flex items-center justify-end gap-x-4 gap-y-1 flex-wrap font-mono text-[10px]"
+        style={{ zIndex: Z.info, color: COLORS.textMuted, maxWidth: 'calc(100% - 6rem)' }}
       >
         <span className="whitespace-nowrap">{agentCount} agents</span>
         <span className="whitespace-nowrap">
@@ -130,7 +134,6 @@ export const TopBar = memo(function TopBar({
           border: `1px solid ${COLORS.holoBorder06}`,
         }}>
           <ToggleButton active={showFileAttention} onClick={() => onTogglePanel('files')} style={{ background: showFileAttention ? undefined : 'transparent', border: 'none' }}>Files</ToggleButton>
-          <ToggleButton active={showTranscript} onClick={() => onTogglePanel('transcript')} style={{ background: showTranscript ? undefined : 'transparent', border: 'none' }}>Chat</ToggleButton>
           <ToggleButton
             active={showCostOverlay}
             onClick={() => onTogglePanel('cost')}
@@ -147,6 +150,6 @@ export const TopBar = memo(function TopBar({
           {isMuted ? <MutedIcon /> : <UnmutedIcon />}
         </ToggleButton>
       </div>
-    </div>
+    </>
   )
 })

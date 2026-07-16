@@ -1,10 +1,10 @@
-import { Agent, NODE, ANIM } from '@/lib/agent-types'
+import { Agent, NODE, ANIM, type NodeShape } from '@/lib/agent-types'
 import { COLORS, getStateColor, contextSegments } from '@/lib/colors'
 import {
   AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY,
 } from '@/lib/canvas-constants'
 import { alphaHex, formatTokens } from '@/lib/utils'
-import { truncateText, drawHexagon, CLAUDE_SPARK_D, OPENAI_LOGO_D, OPENAI_LOGO_VIEWBOX } from './draw-misc'
+import { truncateText, drawNodeShape, CLAUDE_SPARK_D, OPENAI_LOGO_D, OPENAI_LOGO_VIEWBOX } from './draw-misc'
 import { getAgentGlowSprite } from './render-cache'
 
 let _claudeSparkPath: Path2D | null = null
@@ -190,42 +190,42 @@ export function drawContextRing(
   }
 }
 
-function drawDepthShadow(ctx: CanvasRenderingContext2D, agent: Agent, r: number) {
+function drawDepthShadow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, shape: NodeShape) {
   ctx.save()
   ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
   ctx.shadowBlur = AGENT_DRAW.shadowBlur
   ctx.shadowOffsetX = AGENT_DRAW.shadowOffsetX
   ctx.shadowOffsetY = AGENT_DRAW.shadowOffsetY
-  drawHexagon(ctx, agent.x, agent.y, r * 0.9)
+  drawNodeShape(ctx, agent.x, agent.y, r * 0.9, shape)
   ctx.fillStyle = COLORS.cardBgFaintOverlay
   ctx.fill()
   ctx.restore()
 }
 
-function drawAgentGlow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean) {
+function drawAgentGlow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean, shape: NodeShape) {
   const glowR = r + AGENT_DRAW.glowPadding
   const glowAlpha = isHovered || isSelected ? 0.35 : isWaiting ? 0.3 : agent.state === 'thinking' ? 0.2 : 0.1
   // Pre-rendered glow sprite instead of per-frame gradient creation
   const sprite = getAgentGlowSprite(color, Math.round(r * 0.5), Math.ceil(glowR), alphaHex(glowAlpha))
   ctx.drawImage(sprite, agent.x - Math.ceil(glowR), agent.y - Math.ceil(glowR))
 
-  // Ambient outer hex ring
-  drawHexagon(ctx, agent.x, agent.y, r + AGENT_DRAW.outerRingOffset)
+  // Ambient outer ring
+  drawNodeShape(ctx, agent.x, agent.y, r + AGENT_DRAW.outerRingOffset, shape)
   ctx.strokeStyle = color + '25'
   ctx.lineWidth = 1
   ctx.stroke()
 
-  // Inner hex fill
-  drawHexagon(ctx, agent.x, agent.y, r)
+  // Inner fill
+  drawNodeShape(ctx, agent.x, agent.y, r, shape)
   ctx.fillStyle = COLORS.nodeInterior
   ctx.fill()
 }
 
-function drawScanline(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isWaiting: boolean, time: number) {
+function drawScanline(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isWaiting: boolean, time: number, shape: NodeShape) {
   const scanSpeed = agent.state === 'thinking' || isHovered || isWaiting ? ANIM.scanline.thinking : ANIM.scanline.normal
   const scanY = agent.y - r + ((time * scanSpeed) % (r * 2))
   ctx.save()
-  drawHexagon(ctx, agent.x, agent.y, r)
+  drawNodeShape(ctx, agent.x, agent.y, r, shape)
   ctx.clip()
   const scanGrad = ctx.createLinearGradient(agent.x, scanY - AGENT_DRAW.scanlineHalfH, agent.x, scanY + AGENT_DRAW.scanlineHalfH)
   const scanAlpha = isHovered ? '35' : '20'
@@ -237,8 +237,8 @@ function drawScanline(ctx: CanvasRenderingContext2D, agent: Agent, r: number, co
   ctx.restore()
 }
 
-function drawStateRing(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean, time: number) {
-  drawHexagon(ctx, agent.x, agent.y, r)
+function drawStateRing(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean, time: number, shape: NodeShape) {
+  drawNodeShape(ctx, agent.x, agent.y, r, shape)
   ctx.strokeStyle = color
   ctx.lineWidth = (isSelected || isHovered) ? 2.5 : 2
   if (agent.state === 'complete') {
@@ -296,14 +296,13 @@ function drawOrbitingParticles(ctx: CanvasRenderingContext2D, agent: Agent, r: n
   }
 }
 
-function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, time: number) {
+function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, time: number, shape: NodeShape) {
   // Radar ripples — 2 concentric rings expanding outward, staggered
   for (let i = 0; i < 2; i++) {
     const ripplePhase = ((time * 0.65 + i * 0.5) % 1.0)
     const rippleR = r + AGENT_DRAW.rippleInnerOffset + ripplePhase * AGENT_DRAW.rippleMaxExpand
     const rippleAlpha = (1 - ripplePhase) * AGENT_DRAW.rippleMaxAlpha
-    ctx.beginPath()
-    drawHexagon(ctx, agent.x, agent.y, rippleR)
+    drawNodeShape(ctx, agent.x, agent.y, rippleR, shape)
     ctx.strokeStyle = color + alphaHex(rippleAlpha)
     ctx.lineWidth = 1.5 * (1 - ripplePhase)
     ctx.stroke()
@@ -361,6 +360,8 @@ export function drawAgents(
   hoveredAgentId: string | null,
   showStats: boolean,
   time: number,
+  // OTTO PATCH: host-selected node silhouette (defaults to the historical hex).
+  shape: NodeShape = 'hexagon',
 ) {
   for (const [id, agent] of agents) {
     const radius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
@@ -385,10 +386,10 @@ export function drawAgents(
     ctx.save()
     ctx.globalAlpha = agent.opacity
 
-    drawDepthShadow(ctx, agent, r)
-    drawAgentGlow(ctx, agent, r, color, isHovered, isSelected, isWaiting)
-    drawScanline(ctx, agent, r, color, isHovered, isWaiting, time)
-    drawStateRing(ctx, agent, r, color, isHovered, isSelected, isWaiting, time)
+    drawDepthShadow(ctx, agent, r, shape)
+    drawAgentGlow(ctx, agent, r, color, isHovered, isSelected, isWaiting, shape)
+    drawScanline(ctx, agent, r, color, isHovered, isWaiting, time, shape)
+    drawStateRing(ctx, agent, r, color, isHovered, isSelected, isWaiting, time, shape)
     drawCenterIcon(ctx, agent, r, color, isWaiting)
 
     if (agent.state === 'thinking') {
@@ -396,7 +397,7 @@ export function drawAgents(
     }
 
     if (isWaiting) {
-      drawWaitingRipples(ctx, agent, r, color, time)
+      drawWaitingRipples(ctx, agent, r, color, time, shape)
     }
 
     drawAgentLabel(ctx, agent, labelR, isHovered)

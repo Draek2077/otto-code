@@ -145,6 +145,13 @@ export interface AppSettings {
   // bodies, diffs) instead of scrolling horizontally. Device-local presentation
   // only. Default on; off restores the horizontal-scroll behavior.
   wrapCodeLines: boolean;
+  // Auto-archive completed sub-agents out of a chat's sub-agents track once they
+  // settle, instead of leaving them in the collapsed "Completed" group for a
+  // manual "Clear all completed". Purely visual decluttering — the cleared rows'
+  // token totals are rolled into the track header first so no metrics are lost
+  // (see subagents/cleared-subagent-tokens-store.ts). Device-local presentation
+  // only. Default off. See docs/agent-lifecycle.md (the sub-agents track).
+  autoClearCompletedSubagents: boolean;
   // One-time onboarding tour. `false` on a genuinely fresh install (the tour
   // runs once); backfilled to `true` for any device that already has persisted
   // settings, so upgraders never suddenly see the tour. See migrateTutorialFlag.
@@ -171,8 +178,6 @@ export interface AppSettings {
   // Device-local, not per-workspace.
   visualizerPanelTimeline: boolean;
   visualizerPanelFileAttention: boolean;
-  visualizerPanelTranscript: boolean;
-  visualizerPanelMessageFeed: boolean;
   visualizerPanelCostOverlay: boolean;
   visualizerPanelHexGrid: boolean;
   // Visualizer canvas render controls (bridge `config.render` + the shell's
@@ -183,6 +188,10 @@ export interface AppSettings {
   visualizerRenderStars: boolean;
   visualizerRenderBackdrop: boolean;
   visualizerRenderQuality: VisualizerRenderQuality;
+  // Silhouette drawn for agent nodes on the canvas (sent to the page as
+  // config.render.nodeShape — see vendor/agent-flow/OTTO-PATCHES.md). Defaults
+  // to "hexagon" to match the vendored page's historical look. Device-local.
+  visualizerNodeShape: VisualizerNodeShape;
   // Visualizer master audio volume as a 0-100 percent — the LEVEL used when the
   // page is unmuted (sent to the page as a 0..1 `config.soundVolume`, gated by
   // visualizerSoundMuted below — see vendor/agent-flow/OTTO-PATCHES.md). The
@@ -212,6 +221,15 @@ const VISUALIZER_RENDER_QUALITIES: readonly VisualizerRenderQuality[] = [
   "balanced",
   "sharp",
   "native",
+];
+
+export type VisualizerNodeShape = "square" | "hexagon" | "octagon" | "circle";
+
+const VISUALIZER_NODE_SHAPES: readonly VisualizerNodeShape[] = [
+  "square",
+  "hexagon",
+  "octagon",
+  "circle",
 ];
 
 export interface Settings extends AppSettings {
@@ -250,20 +268,20 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatTimestampDisplay: "absolute",
   textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
   wrapCodeLines: true,
+  autoClearCompletedSubagents: false,
   hasCompletedTutorial: false,
   interfaceMode: null,
   hasCompletedSetupWizard: false,
   appStartScreen: "workspaces",
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
-  visualizerPanelTranscript: false,
-  visualizerPanelMessageFeed: false,
   visualizerPanelCostOverlay: false,
   visualizerPanelHexGrid: true,
   visualizerRenderBloom: false,
   visualizerRenderStars: true,
   visualizerRenderBackdrop: true,
   visualizerRenderQuality: "sharp",
+  visualizerNodeShape: "hexagon",
   visualizerSoundVolume: 50,
   visualizerSoundMuted: false,
   visualizerHudHidden: false,
@@ -615,6 +633,9 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   if (typeof stored.wrapCodeLines === "boolean") {
     result.wrapCodeLines = stored.wrapCodeLines;
   }
+  if (typeof stored.autoClearCompletedSubagents === "boolean") {
+    result.autoClearCompletedSubagents = stored.autoClearCompletedSubagents;
+  }
   return result;
 }
 
@@ -655,12 +676,6 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   if (typeof stored.visualizerPanelFileAttention === "boolean") {
     result.visualizerPanelFileAttention = stored.visualizerPanelFileAttention;
   }
-  if (typeof stored.visualizerPanelTranscript === "boolean") {
-    result.visualizerPanelTranscript = stored.visualizerPanelTranscript;
-  }
-  if (typeof stored.visualizerPanelMessageFeed === "boolean") {
-    result.visualizerPanelMessageFeed = stored.visualizerPanelMessageFeed;
-  }
   if (typeof stored.visualizerPanelCostOverlay === "boolean") {
     result.visualizerPanelCostOverlay = stored.visualizerPanelCostOverlay;
   }
@@ -681,6 +696,12 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
     (VISUALIZER_RENDER_QUALITIES as readonly string[]).includes(stored.visualizerRenderQuality)
   ) {
     result.visualizerRenderQuality = stored.visualizerRenderQuality;
+  }
+  if (
+    typeof stored.visualizerNodeShape === "string" &&
+    (VISUALIZER_NODE_SHAPES as readonly string[]).includes(stored.visualizerNodeShape)
+  ) {
+    result.visualizerNodeShape = stored.visualizerNodeShape;
   }
   if (typeof stored.visualizerSoundVolume === "number") {
     result.visualizerSoundVolume = Math.max(

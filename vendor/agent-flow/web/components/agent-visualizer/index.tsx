@@ -14,14 +14,12 @@ import { DiscoveryDetailPopup } from "./discovery-detail-popup"
 import { FileAttentionPanel } from "./file-attention-panel"
 import { TimelinePanel } from "./timeline-panel"
 import { AgentChatPanel } from "./chat-panel"
-import { SessionTranscriptPanel } from "./session-transcript-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
 import { TimelineEvent, TIMING, Z } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 
 import { MOCK_DURATION } from "@/lib/mock-scenario"
-import { MessageFeedPanel } from "./message-feed-panel"
 import { TopBar } from "./top-bar"
 import { useAudioEffects } from "@/hooks/use-audio-effects"
 
@@ -41,6 +39,7 @@ export function AgentVisualizer() {
     isPlaying,
     speed,
     maxTimeReached,
+    retiredTokens,
     conversations,
     play,
     pause,
@@ -68,8 +67,6 @@ export function AgentVisualizer() {
   const [showCostOverlay, setShowCostOverlay] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
-  const [showTranscript, setShowTranscript] = useState(false)
-  const [showMessageFeed, setShowMessageFeed] = useState(true)
 
   // Otto patch (OTTO-PATCHES.md): whole-HUD visibility. When true, every HUD
   // panel/bar/popup is hidden and only the canvas graph plus the HUD toggle
@@ -89,10 +86,11 @@ export function AgentVisualizer() {
     })
   }, [bridge.bridgeSetHudHidden])
 
-  // Mutually exclusive panel toggling — opening one closes the others
-  const toggleExclusivePanel = useCallback((panel: 'files' | 'transcript' | 'cost') => {
+  // Mutually exclusive panel toggling — opening one closes the others.
+  // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") panel was removed
+  // from Otto's embed, so the exclusive group is just files/cost now.
+  const toggleExclusivePanel = useCallback((panel: 'files' | 'cost') => {
     setShowFileAttention(prev => panel === 'files' ? !prev : false)
-    setShowTranscript(prev => panel === 'transcript' ? !prev : false)
     setShowCostOverlay(prev => panel === 'cost' ? !prev : false)
   }, [])
 
@@ -107,18 +105,17 @@ export function AgentVisualizer() {
     if (!panels) return
     if (panels.hexGrid !== undefined) setShowHexGrid(panels.hexGrid)
     if (panels.timeline !== undefined) setShowTimeline(panels.timeline)
-    if (panels.messageFeed !== undefined) setShowMessageFeed(panels.messageFeed)
-    if (panels.fileAttention || panels.transcript || panels.costOverlay) {
+    // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") and message-feed
+    // panels were removed from Otto's embed, so only the files/cost exclusive
+    // pair is seeded here.
+    if (panels.fileAttention || panels.costOverlay) {
       setShowFileAttention(Boolean(panels.fileAttention))
-      setShowTranscript(!panels.fileAttention && Boolean(panels.transcript))
-      setShowCostOverlay(!panels.fileAttention && !panels.transcript && Boolean(panels.costOverlay))
+      setShowCostOverlay(!panels.fileAttention && Boolean(panels.costOverlay))
     } else if (
       panels.fileAttention !== undefined ||
-      panels.transcript !== undefined ||
       panels.costOverlay !== undefined
     ) {
       setShowFileAttention(false)
-      setShowTranscript(false)
       setShowCostOverlay(false)
     }
   }, [bridge.panelsConfig])
@@ -232,7 +229,6 @@ export function AgentVisualizer() {
   const keyboardActions = useMemo(() => ({
     togglePlayPause: handlePlayPause,
     toggleFilePanel: () => toggleExclusivePanel('files'),
-    toggleTranscript: () => toggleExclusivePanel('transcript'),
     toggleTimeline: () => { setShowTimeline(prev => !prev) },
     toggleHexGrid: () => { setShowHexGrid(prev => !prev) },
     toggleStats: () => { setShowStats(prev => !prev) },
@@ -240,7 +236,6 @@ export function AgentVisualizer() {
     zoomToFit: () => { setZoomToFitTrigger(n => n + 1) },
     clearSelection: () => { selection.clearAllSelections() },
     deselectAgent: () => { selection.clearAgent() },
-    closeTranscript: () => { setShowTranscript(false) },
     toggleMute: handleToggleMute,
     setSpeed,
     selectedAgentId: selection.selectedAgentId,
@@ -248,30 +243,25 @@ export function AgentVisualizer() {
 
   useKeyboardShortcuts(keyboardActions)
 
+  // OTTO PATCH (OTTO-PATCHES.md): honest total — prefer each agent's lifetime
+  // cumulativeTokens over context occupancy, and keep counting agents whose
+  // completed nodes were already cleaned up (retiredTokens).
   const totalTokens = useMemo(() => {
-    let sum = 0
-    for (const a of agents.values()) sum += a.tokensUsed
+    let sum = retiredTokens ?? 0
+    for (const a of agents.values()) sum += a.cumulativeTokens ?? a.tokensUsed
     return sum
-  }, [agents])
+  }, [agents, retiredTokens])
 
   const selectedAgent = selection.selectedAgentId ? agents.get(selection.selectedAgentId) : null
   const selectedConversation = selection.selectedAgentId ? (conversations.get(selection.selectedAgentId) || []) : []
 
-  // Session runtime — drives the assistant label (CLAUDE vs CODEX) in transcript panels
+  // Session runtime — drives the assistant label (CLAUDE vs CODEX) in the per-agent chat panel
   const sessionRuntime = useMemo(() => {
     for (const a of agents.values()) {
       if (a.runtime === 'codex') return 'codex' as const
     }
     return 'claude' as const
   }, [agents])
-
-  // Session-wide conversation (all agents merged chronologically)
-  // Only compute when the transcript panel is visible to avoid O(n log n) sort every frame
-  const sessionConversation = useMemo(() => {
-    if (!showTranscript) return []
-    const all = Array.from(conversations.values()).flat()
-    return all.sort((a, b) => a.timestamp - b.timestamp)
-  }, [conversations, showTranscript])
 
   // Context menu items
   const contextMenuItems = selection.contextMenu ? (
@@ -339,18 +329,12 @@ export function AgentVisualizer() {
 
       {/* Otto patch (OTTO-PATCHES.md): the HUD chrome — top bar + control bar —
           collapses behind a single visibility toggle. Informational surfaces
-          (message feed, node/tool/discovery popups, chat panel, slide-in
-          panels) stay visible: hiding the HUD means clearing the chrome, not
-          blinding the user. */}
-      {/* Message feed panel (top-left) */}
-      {showMessageFeed && (
-        <MessageFeedPanel
-          conversations={conversations}
-          agents={agents}
-          onAgentClick={selection.handleAgentClick}
-          selectedAgentId={selection.selectedAgentId}
-        />
-      )}
+          (node/tool/discovery popups, chat panel, slide-in panels) stay
+          visible: hiding the HUD means clearing the chrome, not blinding the
+          user. */}
+      {/* OTTO PATCH (OTTO-PATCHES.md): the top-left message-feed panel was
+          removed from Otto's embed — it duplicated the real chat transcript
+          the user already has. */}
 
       {/* Agent detail card (floating, tethered to node) */}
       {selectedAgent && selection.selectedAgentWorldPos && (
@@ -440,13 +424,9 @@ export function AgentVisualizer() {
         onOpenFile={bridge.isVSCode ? openFile : undefined}
       />
 
-      {/* Session transcript panel (slide-in from right) */}
-      <SessionTranscriptPanel
-        visible={showTranscript}
-        conversation={sessionConversation}
-        runtime={sessionRuntime}
-        onClose={() => setShowTranscript(false)}
-      />
+      {/* OTTO PATCH (OTTO-PATCHES.md): the session transcript ("Chat") panel
+          was removed from Otto's embed — it duplicated the real chat the user
+          already has open. */}
 
       {/* Timeline panel (slide-in from bottom) */}
       <TimelinePanel
@@ -467,7 +447,6 @@ export function AgentVisualizer() {
         agentCount={agents.size}
         totalTokens={totalTokens}
         showFileAttention={showFileAttention}
-        showTranscript={showTranscript}
         showCostOverlay={showCostOverlay}
         showTimeline={showTimeline}
         isMuted={isMuted}

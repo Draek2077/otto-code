@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Agent, Particle, Edge, Discovery, DepthParticle } from '@/lib/agent-types'
+import { Agent, Particle, Edge, Discovery, DepthParticle, type NodeShape } from '@/lib/agent-types'
 import type { SimulationState } from '@/hooks/simulation/types'
 import { getStateColor } from '@/lib/colors'
 import { ANIM_SPEED, PERF_OVERLAY, PERF_OVERLAY_ENABLED } from '@/lib/canvas-constants'
@@ -41,9 +41,10 @@ interface CanvasProps {
   onDiscoveryClick?: (discoveryId: string | null) => void
   selectedDiscoveryId?: string | null
   showCostOverlay?: boolean
-  /** OTTO PATCH (see OTTO-PATCHES.md): host-toggleable render layers.
-   * Omitted keys (and an omitted object) keep every layer on. */
-  renderOptions?: { bloom?: boolean; stars?: boolean; backdrop?: boolean }
+  /** OTTO PATCH (see OTTO-PATCHES.md): host-toggleable render layers plus the
+   * agent-node silhouette. Omitted keys (and an omitted object) keep every
+   * layer on and the node shape at its historical hexagon. */
+  renderOptions?: { bloom?: boolean; stars?: boolean; backdrop?: boolean; nodeShape?: NodeShape }
 }
 
 export function AgentCanvas({
@@ -200,10 +201,11 @@ export function AgentCanvas({
         simTime, pauseAutoFit, dimensions, onAgentDrag,
         isDragging, renderOptions,
       } = drawPropsRef.current
-      // OTTO PATCH: host-toggleable render layers (default all on)
+      // OTTO PATCH: host-toggleable render layers (default all on) + node shape
       const showBloom = renderOptions?.bloom !== false
       const showStars = renderOptions?.stars !== false
       const showBackdrop = renderOptions?.backdrop !== false
+      const nodeShape = renderOptions?.nodeShape ?? 'hexagon'
       const transform = transformRef.current
 
       const deltaTime = lastFrameTimeRef.current ? (timestamp - lastFrameTimeRef.current) / 1000 : ANIM_SPEED.defaultDeltaTime
@@ -278,7 +280,7 @@ export function AgentCanvas({
       drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current)
+      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape)
       drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
       if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls)
       drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)

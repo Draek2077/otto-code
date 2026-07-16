@@ -224,6 +224,26 @@ describe("buildContextUpdateEvent", () => {
     });
     expect(event?.payload).toEqual({ agent: "Main Agent", tokens: 1000, tokensMax: 200000 });
   });
+
+  test("a lifetime total alone is worth emitting — without a tokens field", () => {
+    const event = buildContextUpdateEvent({ ctx: CTX, cumulativeTokens: 19000, time: 1 });
+    expect(event?.payload).toEqual({ agent: "Main Agent", cumulativeTokens: 19000 });
+  });
+
+  test("carries both readings when both are known", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: { contextWindowUsedTokens: 1000, contextWindowMaxTokens: 200000 },
+      cumulativeTokens: 55000,
+      time: 1,
+    });
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      tokens: 1000,
+      tokensMax: 200000,
+      cumulativeTokens: 55000,
+    });
+  });
 });
 
 describe("tool call detail summaries", () => {
@@ -355,6 +375,42 @@ describe("timelineItemToSimulationEvents", () => {
     const endEvents = timelineItemToSimulationEvents({ ctx: CTX, item: completedItem, time: 21 });
     expect(endEvents).toHaveLength(2);
     expect(endEvents[1]?.type).toBe("subagent_return");
+  });
+
+  test("sub_agent dispatch/return child label matches the observed node title rule", () => {
+    // The page keys dispatch/return particles on the parent→child edge by
+    // child NAME — which is the daemon-frozen observed row title. A named
+    // subAgentType must win over the description (title rule), else the
+    // particle targets an edge that doesn't exist and silently never renders.
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-6",
+      name: "Agent",
+      status: "running",
+      error: null,
+      detail: {
+        type: "sub_agent",
+        subAgentType: "code-explorer",
+        description: "Investigate flaky test",
+        log: "",
+      },
+    };
+    const events = timelineItemToSimulationEvents({ ctx: CTX, item, time: 22 });
+    expect(events[1]?.payload).toMatchObject({ child: "code-explorer" });
+
+    // Generic catch-all types defer to the description, same as the title.
+    const genericItem: AgentTimelineItem = {
+      ...item,
+      callId: "call-7",
+      detail: {
+        type: "sub_agent",
+        subAgentType: "general-purpose",
+        description: "Investigate flaky test",
+        log: "",
+      },
+    };
+    const genericEvents = timelineItemToSimulationEvents({ ctx: CTX, item: genericItem, time: 23 });
+    expect(genericEvents[1]?.payload).toMatchObject({ child: "Investigate flaky test" });
   });
 
   test("synthesizeToolCallStart prepends the start a coalesced terminal item never had", () => {
