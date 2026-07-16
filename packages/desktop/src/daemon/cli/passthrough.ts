@@ -3,16 +3,18 @@ import { resolvePassthroughCliEntrypoint } from "./entrypoints.js";
 
 const DESKTOP_CLI_ENV = "OTTO_DESKTOP_CLI";
 // Chromium/Electron flags that must not flip a launch into CLI-passthrough
-// mode. --ozone-platform= and --use-gl= are the rendering escape hatches for
-// VM guests without 3D acceleration; they have to arrive as real process argv
-// (OTTO_ELECTRON_FLAGS/appendSwitch is too late for the browser process's
-// Ozone platform selection), so the arg parser must let them through.
+// mode. --ozone-platform=, --use-gl=, and --use-angle= are the rendering
+// escape hatches for VM guests without 3D acceleration; they have to arrive
+// as real process argv (OTTO_ELECTRON_FLAGS/appendSwitch is too late for the
+// browser process's Ozone platform selection), so the arg parser must let
+// them through.
 const IGNORED_ARG_PREFIXES = [
   "-psn_",
   "--no-sandbox",
   "--remote-debugging-port=",
   "--ozone-platform=",
   "--use-gl=",
+  "--use-angle=",
 ];
 
 export type PassthroughCliRunner = (argv: string[]) => Promise<number>;
