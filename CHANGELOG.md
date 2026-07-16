@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.1 - 2026-07-16
+
+### Added
+
+- The Visualizer now plays sound effects for agent activity — spawns, tool calls, completions, and errors — at half volume by default
+- Set the Visualizer sound level with a new volume slider in Settings
+- The speaker button in the Visualizer now remembers your mute choice across restarts
+- A new button in the Visualizer hides the whole overlay, leaving just the animated graph
+
+### Improved
+
+- The Visualizer renders sharper by default, with less on-screen clutter
+- Long chat titles no longer crowd out the Visualizer's session tabs
+- A Visualizer sharing a split with your chat keeps animating while you type
+- Background Visualizer tabs no longer use CPU or GPU
+- Quitting the desktop app asks once in a single dialog, even when the schedules warning applies
+- Refreshed punctuation and wording across the app
+- Refreshed the bundled versions of several third-party coding agents
+
+### Fixed
+
+- Finished subagent tasks now fade out of the Visualizer instead of staying lit forever
+- Agent name labels in the Visualizer no longer wobble in time with the node's pulse
+- The quit confirmation no longer hangs for several seconds while it checks for enabled schedules
+- An error no longer appears at startup on web and desktop from the QR pairing camera
+- The Developer Tools menu item no longer appears in packaged desktop builds
+
 ## 0.6.0 - 2026-07-16
 
 ### Added
