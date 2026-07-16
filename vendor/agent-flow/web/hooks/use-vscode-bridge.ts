@@ -21,8 +21,21 @@ interface BridgeHookResult {
   /** Latest `config.render` seed from the host, or null if none received yet.
    *  Updates on every config message that carries render (OTTO PATCH). */
   renderConfig: RenderConfig | null
+  /** Latest `config.soundVolume` seed from the host (0..1), or null if none
+   *  received yet. Authoritative master volume — 0 mutes (OTTO PATCH). */
+  soundVolume: number | null
+  /** Latest `config.hudHidden` seed from the host, or null if none received
+   *  yet. Authoritative — when set, hides every HUD panel/bar except the HUD
+   *  toggle button itself (OTTO PATCH). */
+  hudHidden: boolean | null
   /** Open a file in the VS Code editor */
   bridgeOpenFile: (filePath: string, line?: number) => void
+  /** OTTO PATCH: report the in-page mute toggle to the host so it persists the
+   *  preference and re-seeds it via `config.soundVolume` on the next open. */
+  bridgeSetSoundMuted: (muted: boolean) => void
+  /** OTTO PATCH: report the in-page HUD-visibility toggle to the host so it
+   *  persists the preference and re-seeds it via `config.hudHidden`. */
+  bridgeSetHudHidden: (hidden: boolean) => void
   /** Known sessions from the extension */
   sessions: SessionInfo[]
   /** Currently selected session ID */
@@ -58,6 +71,8 @@ export function useVSCodeBridge(): BridgeHookResult {
   const [disable1MContext, setDisable1MContext] = useState(false)
   const [panelsConfig, setPanelsConfig] = useState<PanelsConfig | null>(null)
   const [renderConfig, setRenderConfig] = useState<RenderConfig | null>(null)
+  const [soundVolume, setSoundVolume] = useState<number | null>(null)
+  const [hudHidden, setHudHidden] = useState<boolean | null>(null)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
   const [, setEventVersion] = useState(0) // trigger re-render on new events
 
@@ -173,6 +188,8 @@ export function useVSCodeBridge(): BridgeHookResult {
       if (config.disable1MContext !== undefined) { setDisable1MContext(config.disable1MContext) }
       if (config.panels !== undefined) { setPanelsConfig(config.panels) }
       if (config.render !== undefined) { setRenderConfig(config.render) }
+      if (config.soundVolume !== undefined) { setSoundVolume(config.soundVolume) }
+      if (config.hudHidden !== undefined) { setHudHidden(config.hudHidden) }
     })
 
     // Session lifecycle tracking
@@ -309,6 +326,16 @@ export function useVSCodeBridge(): BridgeHookResult {
     vscodeBridge?.openFile(filePath, line)
   }, [])
 
+  // OTTO PATCH: forward the in-page mute toggle to the host (see BridgeHookResult).
+  const bridgeSetSoundMuted = useCallback((muted: boolean) => {
+    vscodeBridge?.setSoundMuted(muted)
+  }, [])
+
+  // OTTO PATCH: forward the in-page HUD-visibility toggle to the host (see BridgeHookResult).
+  const bridgeSetHudHidden = useCallback((hidden: boolean) => {
+    vscodeBridge?.setHudHidden(hidden)
+  }, [])
+
   return {
     isVSCode,
     connectionStatus,
@@ -318,7 +345,11 @@ export function useVSCodeBridge(): BridgeHookResult {
     disable1MContext,
     panelsConfig,
     renderConfig,
+    soundVolume,
+    hudHidden,
     bridgeOpenFile,
+    bridgeSetSoundMuted,
+    bridgeSetHudHidden,
     sessions,
     selectedSessionId,
     selectedSessionIdRef,

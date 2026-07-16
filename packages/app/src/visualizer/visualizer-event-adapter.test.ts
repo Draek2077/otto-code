@@ -9,6 +9,7 @@ import {
   buildObservedSubagentSpawnEvent,
   buildPermissionRequestedEvent,
   buildRootAgentSpawnEvent,
+  isVisualizerAgentTerminal,
   resolveAgentNodeName,
   resolveVisualizerRuntime,
   streamEventToSimulationEvents,
@@ -16,6 +17,7 @@ import {
   summarizeToolCallResult,
   timelineItemToSimulationEvents,
   toolCallDetailFilePath,
+  truncateSessionLabel,
 } from "./visualizer-event-adapter";
 
 const CTX = { name: "Main Agent", sessionId: "agent-root" };
@@ -42,6 +44,86 @@ describe("resolveVisualizerRuntime", () => {
 
   test("omits unrecognized (custom openai-compatible) providers", () => {
     expect(resolveVisualizerRuntime("my-custom-lmstudio")).toBeUndefined();
+  });
+});
+
+describe("truncateSessionLabel", () => {
+  test("leaves short labels untouched (trimmed)", () => {
+    expect(truncateSessionLabel("  Fix login bug  ")).toBe("Fix login bug");
+  });
+
+  test("caps long labels at 24 chars with an ellipsis", () => {
+    const label = truncateSessionLabel("Fix the visualizer sync bug in the companion pane");
+    expect(label).toBe("Fix the visualizer sync…");
+    // Never more than the cap of visible chars ahead of the ellipsis glyph.
+    expect([...label.replace(/…$/, "")].length).toBeLessThanOrEqual(24);
+  });
+
+  test("keeps a label sitting exactly on the cap without an ellipsis", () => {
+    const exactly24 = "123456789012345678901234";
+    expect(truncateSessionLabel(exactly24)).toBe(exactly24);
+  });
+
+  test("trims trailing whitespace exposed by the cut before the ellipsis", () => {
+    expect(truncateSessionLabel("Investigate the flaky   test suite")).toBe(
+      "Investigate the flaky…",
+    );
+  });
+});
+
+describe("isVisualizerAgentTerminal", () => {
+  const base = {
+    status: "running" as const,
+    attend: undefined,
+    archived: false,
+    requiresAttention: false,
+  };
+
+  test("closed is terminal regardless of attend", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "closed" })).toBe(true);
+    expect(isVisualizerAgentTerminal({ ...base, status: "closed", attend: "observed" })).toBe(true);
+  });
+
+  test("archived is terminal regardless of status", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "running", archived: true })).toBe(true);
+  });
+
+  test("an observed subagent that ends idle is terminal (Claude Task done)", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "idle", attend: "observed" })).toBe(true);
+  });
+
+  test("an observed subagent that errors is terminal", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "error", attend: "observed" })).toBe(true);
+  });
+
+  test("an attention-flagged observed subagent stays visible (signal not buried)", () => {
+    expect(
+      isVisualizerAgentTerminal({
+        ...base,
+        status: "error",
+        attend: "observed",
+        requiresAttention: true,
+      }),
+    ).toBe(false);
+    expect(
+      isVisualizerAgentTerminal({
+        ...base,
+        status: "idle",
+        attend: "observed",
+        requiresAttention: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("an idle attended (native/root) agent is NOT terminal — it idles between turns", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "idle", attend: "attended" })).toBe(false);
+    expect(isVisualizerAgentTerminal({ ...base, status: "idle", attend: undefined })).toBe(false);
+  });
+
+  test("a running observed subagent is not terminal", () => {
+    expect(isVisualizerAgentTerminal({ ...base, status: "running", attend: "observed" })).toBe(
+      false,
+    );
   });
 });
 

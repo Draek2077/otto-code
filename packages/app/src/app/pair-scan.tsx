@@ -4,8 +4,7 @@ import { Alert, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { CameraView, useCameraPermissions } from "expo-camera";
-import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
+import { PairScanCameraView, usePairScanCameraPermissions } from "@/components/pair-scan-camera";
 import { useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
@@ -110,8 +109,8 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-function extractOfferUrlFromScan(result: BarcodeScanningResult): string | null {
-  const raw = typeof result.data === "string" ? result.data.trim() : "";
+function extractOfferUrlFromScan(data: string): string | null {
+  const raw = data.trim();
   if (!raw) return null;
 
   if (raw.includes("#offer=")) return raw;
@@ -130,7 +129,7 @@ export default function PairScanScreen() {
   const source = typeof params.source === "string" ? params.source : "settings";
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
 
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission] = usePairScanCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
 
@@ -160,9 +159,9 @@ export default function PairScanScreen() {
   }, [permission, requestPermission]);
 
   const handleScan = useCallback(
-    async (result: BarcodeScanningResult) => {
+    async (data: string) => {
       if (isPairing) return;
-      const offerUrl = extractOfferUrlFromScan(result);
+      const offerUrl = extractOfferUrlFromScan(data);
       if (!offerUrl) return;
 
       if (lastScannedRef.current === offerUrl) return;
@@ -249,12 +248,7 @@ export default function PairScanScreen() {
           </View>
         ) : (
           <View style={styles.cameraWrap}>
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
-              onBarcodeScanned={handleScan}
-            />
+            <PairScanCameraView style={styles.camera} onScannedData={handleScan} />
             <View style={styles.overlay} pointerEvents="none">
               <View style={styles.scanFrame}>
                 <View style={CORNER_TL_STYLE} />
@@ -271,7 +265,6 @@ export default function PairScanScreen() {
   );
 }
 
-const BARCODE_SCANNER_SETTINGS: BarcodeSettings = { barcodeTypes: ["qr"] };
 const CORNER_TL_STYLE = [styles.corner, styles.cornerTL];
 const CORNER_TR_STYLE = [styles.corner, styles.cornerTR];
 const CORNER_BL_STYLE = [styles.corner, styles.cornerBL];

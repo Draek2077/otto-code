@@ -64,6 +64,10 @@ export interface WorkspacePaneContentProps {
   content: WorkspacePaneContentModel;
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
+  /** The content is on screen (workspace focused AND this tab is frontmost in
+   * its pane) — see `isVisible` on PaneFocusContextValue. Optional; defaults
+   * to the focused value inside createPaneFocusContextValue. */
+  isVisible?: boolean;
   onFocusPane?: () => void;
 }
 
@@ -71,6 +75,7 @@ export function WorkspacePaneContent({
   content,
   isWorkspaceFocused,
   isPaneFocused,
+  isVisible,
   onFocusPane,
 }: WorkspacePaneContentProps) {
   const { Component, key, paneContextValue } = content;
@@ -108,9 +113,10 @@ export function WorkspacePaneContent({
       createPaneFocusContextValue({
         isWorkspaceFocused,
         isPaneFocused,
+        isVisible,
         onFocusPane,
       }),
-    [isPaneFocused, isWorkspaceFocused, onFocusPane],
+    [isPaneFocused, isVisible, isWorkspaceFocused, onFocusPane],
   );
 
   return (

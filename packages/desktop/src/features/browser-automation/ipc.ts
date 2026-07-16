@@ -44,17 +44,18 @@ interface WebContentsDebugger {
   ): void;
 }
 
+// Electron 32+ delivers the message details on the event object itself; the
+// old positional (level, message, line, sourceId) args are deprecated and log
+// a warning when the listener declares them.
+interface ConsoleMessageEvent {
+  level: unknown;
+  message: unknown;
+  lineNumber: unknown;
+  sourceId: unknown;
+}
+
 interface ConsoleMessageEmitter {
-  on(
-    event: "console-message",
-    listener: (
-      event: unknown,
-      level: unknown,
-      message: unknown,
-      line: unknown,
-      sourceId: unknown,
-    ) => void,
-  ): void;
+  on(event: "console-message", listener: (event: ConsoleMessageEvent) => void): void;
   once(event: "destroyed", listener: () => void): void;
 }
 
@@ -254,8 +255,8 @@ function observeConsoleMessages(contents: BrowserAutomationWebContents): void {
     return;
   }
   observedContentsIds.add(contents.id);
-  contents.on("console-message", (_event, level, message, line, sourceId) => {
-    const entry = normalizeConsoleMessage({ level, message, line, sourceId });
+  contents.on("console-message", (event) => {
+    const entry = normalizeConsoleMessage(event);
     const messages = consoleMessagesByContentsId.get(contents.id) ?? [];
     messages.push(entry);
     consoleMessagesByContentsId.set(contents.id, messages.slice(-MAX_CONSOLE_MESSAGES_PER_TAB));
@@ -455,19 +456,14 @@ function parsePromptShimDialogs(value: unknown): BrowserAutomationDialogEvent[] 
   });
 }
 
-function normalizeConsoleMessage(input: {
-  level: unknown;
-  message: unknown;
-  line: unknown;
-  sourceId: unknown;
-}): BrowserAutomationConsoleLogEntry {
+function normalizeConsoleMessage(input: ConsoleMessageEvent): BrowserAutomationConsoleLogEntry {
   return {
     level: typeof input.level === "string" ? input.level : String(input.level ?? "log"),
     message: typeof input.message === "string" ? input.message : String(input.message ?? ""),
     ...(typeof input.sourceId === "string" && input.sourceId.length > 0
       ? { source: input.sourceId }
       : {}),
-    ...(typeof input.line === "number" ? { line: input.line } : {}),
+    ...(typeof input.lineNumber === "number" ? { line: input.lineNumber } : {}),
     timestamp: Date.now(),
   };
 }

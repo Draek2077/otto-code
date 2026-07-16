@@ -183,6 +183,25 @@ export interface AppSettings {
   visualizerRenderStars: boolean;
   visualizerRenderBackdrop: boolean;
   visualizerRenderQuality: VisualizerRenderQuality;
+  // Visualizer master audio volume as a 0-100 percent — the LEVEL used when the
+  // page is unmuted (sent to the page as a 0..1 `config.soundVolume`, gated by
+  // visualizerSoundMuted below — see vendor/agent-flow/OTTO-PATCHES.md). The
+  // Settings "Sound" slider drives it; the in-page speaker button only toggles
+  // mute, so this stays put and unmuting restores exactly this level.
+  visualizerSoundVolume: number;
+  // Whether the Visualizer's sound effects are muted. Toggled by the in-page
+  // speaker button (reported back via the `sound-muted` page->host message) and
+  // persisted here so the choice survives closing the tab and restarting the
+  // app — the page's own localStorage is wiped every run on Otto's fresh
+  // webview partition. Defaults muted: sound stays opt-in.
+  visualizerSoundMuted: boolean;
+  // Whether the Visualizer's whole HUD (every panel, bar, and popup) is hidden,
+  // leaving just the canvas graph and the in-page HUD toggle button. Toggled by
+  // that button (reported back via the `hud-hidden` page->host message) and
+  // persisted here so it applies to every Visualizer tab at once and survives
+  // restarts (the page's own state resets on Otto's fresh webview partition).
+  // Sent to the page as `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
+  visualizerHudHidden: boolean;
 }
 
 export type VisualizerRenderQuality = "performance" | "balanced" | "sharp" | "native";
@@ -237,13 +256,16 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
   visualizerPanelTranscript: false,
-  visualizerPanelMessageFeed: true,
+  visualizerPanelMessageFeed: false,
   visualizerPanelCostOverlay: false,
   visualizerPanelHexGrid: true,
-  visualizerRenderBloom: true,
+  visualizerRenderBloom: false,
   visualizerRenderStars: true,
   visualizerRenderBackdrop: true,
-  visualizerRenderQuality: "performance",
+  visualizerRenderQuality: "sharp",
+  visualizerSoundVolume: 50,
+  visualizerSoundMuted: true,
+  visualizerHudHidden: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -658,6 +680,18 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
     (VISUALIZER_RENDER_QUALITIES as readonly string[]).includes(stored.visualizerRenderQuality)
   ) {
     result.visualizerRenderQuality = stored.visualizerRenderQuality;
+  }
+  if (typeof stored.visualizerSoundVolume === "number") {
+    result.visualizerSoundVolume = Math.max(
+      0,
+      Math.min(100, Math.round(stored.visualizerSoundVolume)),
+    );
+  }
+  if (typeof stored.visualizerSoundMuted === "boolean") {
+    result.visualizerSoundMuted = stored.visualizerSoundMuted;
+  }
+  if (typeof stored.visualizerHudHidden === "boolean") {
+    result.visualizerHudHidden = stored.visualizerHudHidden;
   }
   return result;
 }

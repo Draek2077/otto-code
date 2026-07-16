@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
@@ -59,6 +60,47 @@ const QUALITY_OPTIONS: SegmentedControlOption<VisualizerRenderQuality>[] = [
   { value: "native", label: "Native" },
 ];
 
+interface VolumeRowProps {
+  title: string;
+  hint: string;
+  accessibilityLabel: string;
+  value: number;
+  onCommit: (value: number) => void;
+}
+
+// Drag updates a local draft (live feedback + percent readout) and only
+// commits to device-local settings on release — same shape as
+// appearance-section.tsx's FontSizeRow, so the config re-send fires once per
+// gesture, not on every tick.
+function VolumeRow({ title, hint, accessibilityLabel, value, onCommit }: VolumeRowProps) {
+  const [draft, setDraft] = useState(value);
+  // Keep the draft in sync when the committed value changes elsewhere.
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return (
+    <View style={settingsStyles.rowResponsive}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <Text style={settingsStyles.rowHint}>{hint}</Text>
+      </View>
+      <View style={styles.volumeField}>
+        <Slider
+          min={0}
+          max={100}
+          step={5}
+          value={draft}
+          onValueChange={setDraft}
+          onSlidingComplete={onCommit}
+          accessibilityLabel={accessibilityLabel}
+          testID="settings-visualizer-volume"
+        />
+        <Text style={styles.volumeValue}>{draft}%</Text>
+      </View>
+    </View>
+  );
+}
+
 export function VisualizerSection() {
   const { t } = useTranslation();
   const { settings, updateSettings } = useAppSettings();
@@ -110,6 +152,10 @@ export function VisualizerSection() {
   );
   const handleCostOverlayChange = useCallback(
     (value: boolean) => setSetting("visualizerPanelCostOverlay", value),
+    [setSetting],
+  );
+  const handleVolumeCommit = useCallback(
+    (value: number) => setSetting("visualizerSoundVolume", value),
     [setSetting],
   );
 
@@ -228,6 +274,17 @@ export function VisualizerSection() {
           />
         </View>
       </SettingsSection>
+      <SettingsSection title="Sound">
+        <View style={settingsStyles.card}>
+          <VolumeRow
+            title="Volume"
+            hint="Level for the Visualizer's procedural sound effects (agent spawn, tool activity, completion, errors) when unmuted. Use the speaker button inside the Visualizer to mute or unmute — that choice is remembered across sessions."
+            accessibilityLabel="Visualizer sound volume"
+            value={settings.visualizerSoundVolume}
+            onCommit={handleVolumeCommit}
+          />
+        </View>
+      </SettingsSection>
     </>
   );
 }
@@ -243,5 +300,21 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
+  },
+  // Slider + percent readout, mirroring appearance-section.tsx's sizeField.
+  volumeField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "auto",
+    width: { xs: "100%", sm: "auto" },
+  },
+  volumeValue: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    minWidth: 40,
+    textAlign: "right",
   },
 }));

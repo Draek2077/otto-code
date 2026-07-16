@@ -80,13 +80,12 @@ class FakeDebugger {
   }
 }
 
-type ConsoleMessageListener = (
-  event: unknown,
-  level: unknown,
-  message: unknown,
-  line: unknown,
-  sourceId: unknown,
-) => void;
+type ConsoleMessageListener = (event: {
+  level: unknown;
+  message: unknown;
+  lineNumber: unknown;
+  sourceId: unknown;
+}) => void;
 
 class FakeWebContents {
   public readonly debugger = new FakeDebugger();
@@ -162,13 +161,13 @@ class FakeWebContents {
   public emitConsoleMessage(input: {
     level: unknown;
     message: unknown;
-    line: unknown;
+    lineNumber: unknown;
     sourceId: unknown;
   }): void {
     if (!this.consoleMessageListener) {
       throw new Error("Console listener was not registered");
     }
-    this.consoleMessageListener({}, input.level, input.message, input.line, input.sourceId);
+    this.consoleMessageListener(input);
   }
 
   public destroy(): void {
@@ -197,7 +196,7 @@ describe("browser automation IPC adapter", () => {
     contents.emitConsoleMessage({
       level: "warning",
       message: "hello",
-      line: 12,
+      lineNumber: 12,
       sourceId: "https://example.com/app.js",
     });
 

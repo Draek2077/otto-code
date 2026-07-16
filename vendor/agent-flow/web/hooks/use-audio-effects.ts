@@ -8,6 +8,14 @@ export function useAudioEffects(
   agents: Map<string, Agent>,
   toolCalls: Map<string, ToolCallNode>,
   isReviewing: boolean,
+  // OTTO PATCH (OTTO-PATCHES.md): host-controlled master volume (0..1), or
+  // null when the host hasn't sent one. Authoritative when present — a value
+  // of 0 means muted, > 0 means audible at that level.
+  hostVolume: number | null = null,
+  // OTTO PATCH: notified whenever the user flips the in-page mute toggle, so the
+  // host can persist the preference (localStorage resets every run on Otto's
+  // fresh webview partition, so it can't be the durable store).
+  onMuteChange: ((muted: boolean) => void) | null = null,
 ) {
   const audioRef = useRef<AudioEngine | null>(null)
   const [isMuted, setIsMuted] = useState(true)
@@ -28,6 +36,19 @@ export function useAudioEffects(
     audioRef.current = engine
     return () => { audioRef.current?.dispose(); audioRef.current = null }
   }, [])
+
+  // OTTO PATCH: apply the host-seeded master volume. Drives the engine AND the
+  // mute state so the in-page mute toggle's icon reflects reality (volume 0 =
+  // muted). The engine stores the level even before its AudioContext exists,
+  // so a volume set before the first sound still takes effect.
+  useEffect(() => {
+    if (hostVolume == null || !audioRef.current) return
+    const engine = audioRef.current
+    engine.setVolume(hostVolume)
+    const shouldMute = hostVolume <= 0
+    engine.setMuted(shouldMute)
+    setIsMuted(shouldMute)
+  }, [hostVolume])
 
   // Detect tool/agent state transitions and play sounds (live mode only)
   useEffect(() => {
@@ -57,8 +78,10 @@ export function useAudioEffects(
       const nowMuted = audioRef.current.toggleMute()
       setIsMuted(nowMuted)
       try { localStorage.setItem(SOUND_PREF_KEY, nowMuted ? 'off' : 'on') } catch { /* ignore */ }
+      // OTTO PATCH: let the host persist the preference (localStorage is ephemeral here).
+      onMuteChange?.(nowMuted)
     }
-  }, [])
+  }, [onMuteChange])
 
   return { isMuted, seekingRef, handleToggleMute }
 }

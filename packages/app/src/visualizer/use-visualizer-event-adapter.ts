@@ -15,9 +15,11 @@ import {
   buildModelDetectedEvent,
   buildObservedSubagentSpawnEvent,
   buildRootAgentSpawnEvent,
+  isVisualizerAgentTerminal,
   resolveAgentNodeName,
   streamEventToSimulationEvents,
   timelineItemToSimulationEvents,
+  truncateSessionLabel,
   type AgentNodeContext,
 } from "@/visualizer/visualizer-event-adapter";
 import type {
@@ -143,7 +145,7 @@ function ensureNode(
       type: "session-started",
       session: {
         id: rootId,
-        label: agent.title ?? name,
+        label: truncateSessionLabel(agent.title ?? name),
         status: "active",
         startTime: time,
         lastActivityTime: agent.lastActivityAt.getTime(),
@@ -185,33 +187,46 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
   const sorted = [...agents].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
   for (const agent of sorted) {
-    const existing = state.nodes.get(agent.id);
-    if (!existing) {
-      ensureNode(state, agent.id, agentsById);
-      continue;
+    let node = state.nodes.get(agent.id);
+    if (!node) {
+      node = ensureNode(state, agent.id, agentsById);
+      if (!node) {
+        continue;
+      }
+    } else {
+      const time = agent.lastActivityAt.getTime();
+      if (agent.model && agent.model !== node.lastModel) {
+        node.lastModel = agent.model;
+        state.pending.push(
+          buildModelDetectedEvent({ ctx: nodeCtx(node), model: agent.model, time }),
+        );
+      }
+      if (node.isRoot && agent.title && agent.title !== node.lastTitle) {
+        node.lastTitle = agent.title;
+        state.pendingSessionMessages.push({
+          type: "session-updated",
+          sessionId: node.sessionId,
+          label: truncateSessionLabel(agent.title),
+        });
+      }
     }
 
-    const time = agent.lastActivityAt.getTime();
-    if (agent.model && agent.model !== existing.lastModel) {
-      existing.lastModel = agent.model;
+    // Terminal detection runs for freshly-registered nodes too, so a backfill
+    // that first sees an already-finished (idle) observed subagent still
+    // completes it instead of leaving the node stuck active forever.
+    const isTerminal = isVisualizerAgentTerminal({
+      status: agent.status,
+      attend: agent.attend,
+      archived: Boolean(agent.archivedAt),
+      requiresAttention: Boolean(agent.requiresAttention),
+    });
+    if (isTerminal && !node.terminalEmitted) {
+      node.terminalEmitted = true;
       state.pending.push(
-        buildModelDetectedEvent({ ctx: nodeCtx(existing), model: agent.model, time }),
+        buildAgentCompleteEvent({ ctx: nodeCtx(node), time: agent.lastActivityAt.getTime() }),
       );
-    }
-    if (existing.isRoot && agent.title && agent.title !== existing.lastTitle) {
-      existing.lastTitle = agent.title;
-      state.pendingSessionMessages.push({
-        type: "session-updated",
-        sessionId: existing.sessionId,
-        label: agent.title,
-      });
-    }
-    const isTerminal = agent.status === "closed" || Boolean(agent.archivedAt);
-    if (isTerminal && !existing.terminalEmitted) {
-      existing.terminalEmitted = true;
-      state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(existing), time }));
-      if (existing.isRoot) {
-        state.pendingSessionMessages.push({ type: "session-ended", sessionId: existing.sessionId });
+      if (node.isRoot) {
+        state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
       }
     }
   }

@@ -130,3 +130,94 @@ light and dark) and `packages/visualizer/scripts/emit-bundle.mjs` bakes it
 into the shell via the `__OTTO_THEME_JSON__` placeholder; a `visualizer-theme`
 unit test parses this file's COLORS registry from source and fails when an
 upstream pull adds or renames tokens the overlay misses.
+
+## 2026-07-16 — host-controlled master audio volume (`config.soundVolume`)
+
+Upstream's `AudioEngine` master volume was a fixed private `_volume = 0.5`,
+reachable only via the in-page mute toggle (on/off, persisted in
+`localStorage[agent-viz-sound]`, which resets every run on Otto's fresh
+webview partition — so sound effectively always started muted). A host embed
+had no way to set the level. Patched to add an optional `soundVolume` field to
+the bridge `config` message, mirroring the `panels`/`render` patches:
+
+- `web/lib/audio-engine.ts` — new `setVolume(volume: number)` (clamps 0..1, ramps the master gain live when unmuted, otherwise stores it for the next lazy `ensureContext`).
+- `web/lib/vscode-bridge.ts` — `soundVolume: number` added to `ConfigCallback`'s config union.
+- `web/hooks/use-vscode-bridge.ts` — new `soundVolume` state/return field (`number | null`), set from `config.soundVolume` in the existing `onConfig` handler.
+- `web/hooks/use-audio-effects.ts` — new optional `hostVolume` param; when non-null it's authoritative: applies the level via `setVolume` and drives the mute state (`volume <= 0` ⇒ muted) so the in-page mute toggle's icon stays truthful.
+- `web/components/agent-visualizer/index.tsx` — threads `bridge.soundVolume` into `useAudioEffects`.
+
+Otto-side counterpart: `visualizerSoundVolume` device-local setting (0-100
+percent, the LEVEL used when unmuted) surfaced as a Volume slider in the
+Settings → Visualizer "Sound" section, and `visualizerSoundMuted` (default true
+— sound stays opt-in) driven by the in-page speaker button. The panel sends the
+effective master volume as `config.soundVolume` (`muted ? 0 : volume/100`) from
+`packages/app/src/panels/visualizer-panel.tsx` on ready and live on change.
+
+The in-page mute toggle reports back so the preference is durable (the page's
+own `localStorage[agent-viz-sound]` resets every run on Otto's fresh webview
+partition). Additional patch surface:
+
+- `web/lib/vscode-bridge.ts` — new `setSoundMuted(muted)` posting a `sound-muted` page->host message (mirrors `openFile`).
+- `web/hooks/use-vscode-bridge.ts` — new `bridgeSetSoundMuted` passthrough (mirrors `bridgeOpenFile`).
+- `web/hooks/use-audio-effects.ts` — new optional `onMuteChange` param, fired from `handleToggleMute` alongside the localStorage write.
+- `web/components/agent-visualizer/index.tsx` — threads `bridge.bridgeSetSoundMuted` into `useAudioEffects`.
+
+Otto host: `packages/app/src/panels/visualizer-panel.tsx` handles the
+`sound-muted` message by persisting `visualizerSoundMuted`, which re-seeds the
+page via the `config.soundVolume` effect. Unmuting therefore restores exactly
+the current slider level.
+
+## 2026-07-16 — whole-HUD visibility toggle (`config.hudHidden`)
+
+Upstream has per-panel toggles (Files/Chat/Cost/Timeline/mute) but no way to
+collapse the entire HUD at once — a host embed had no lever to give the user a
+clean, chrome-free view of just the graph. Patched to add an optional
+`hudHidden` field to the bridge `config` message and a single always-visible
+in-page toggle button, mirroring the `soundVolume`/`sound-muted` round-trip:
+
+- `web/lib/vscode-bridge.ts` — `hudHidden: boolean` added to `ConfigCallback`'s config union; new `setHudHidden(hidden)` posting a `hud-hidden` page->host message (mirrors `setSoundMuted`).
+- `web/hooks/use-vscode-bridge.ts` — new `hudHidden` state/return field (`boolean | null`), set from `config.hudHidden` in the existing `onConfig` handler; new `bridgeSetHudHidden` passthrough (mirrors `bridgeSetSoundMuted`).
+- `web/components/agent-visualizer/index.tsx` — new local `hudHidden` state, applied from `bridge.hudHidden` on every config that carries it (authoritative, like the panels seed). All HUD chrome (message feed, agent/tool/discovery popups, chat panel, context menu, control bar, file-attention/transcript/timeline panels, top bar) is wrapped in `{!hudHidden && (…)}`; only the `<AgentCanvas>` and a new bottom-left toggle button survive. The button reports the flip via `bridge.bridgeSetHudHidden` so it persists. Icons are inline eye / eye-off SVGs (same style as the mute icons); colors/glass come from the themed `COLORS` registry.
+
+Otto-side counterpart: `visualizerHudHidden` device-local setting (default
+false) in `packages/app/src/hooks/use-settings/storage.ts`. The panel sends it
+as `config.hudHidden` on ready and live on change, and persists the
+`hud-hidden` page->host message back into it — so the toggle is shared by every
+Visualizer tab at once (they all read the one device-local setting) and
+survives restarts. There is intentionally no Settings row: like the mute
+toggle, the in-page button is the whole control.
+
+## 2026-07-16 — stabilize the node label against the breathe pulse
+
+Idle/thinking/waiting agent nodes "breathe" — their draw radius `r` oscillates
+each frame (`radius * breathe * agent.scale` in `drawAgents`). Upstream passed
+that pulsing `r` straight into `drawAgentLabel`, which used it for both the
+label's truncation width (`maxLabelW = r * labelWidthMultiplier`) and its Y
+position. So the available label width oscillated every frame, `truncateText`
+re-solved its binary search, and the ellipsis on a truncated name visibly
+crawled in and out (and the label bobbed vertically) in time with the pulse.
+Patched to give the label a radius that excludes the breathe factor:
+
+- `web/components/agent-visualizer/canvas/draw-agents.ts` — `drawAgents` now
+  computes `labelR = radius * agent.scale` (base size + one-time spawn/entry
+  scale, but NOT `breathe`) and passes it to `drawAgentLabel` in place of the
+  pulsing `r`. `drawAgentLabel`'s param is renamed `labelR` and used for both
+  the truncation width and the Y offset, so the label's bounding box stays a
+  fixed size and position while the node pulses. The node glyph/rings/glow keep
+  using the pulsing `r` — only the label is stabilized.
+
+No Otto-side counterpart; purely a vendor-local rendering fix. Upstream-PR
+candidate.
+
+## 2026-07-16 — reword the empty-state splash for Otto's embed
+
+Upstream's empty-state copy ("WAITING FOR AGENT SESSION" / "Start a Claude
+Code session to see activity") is shouty and Claude-Code-specific — in Otto's
+embed the visualizer covers every provider and sessions are "agent chats".
+Reworded to sentence case and Otto vocabulary:
+
+- `web/components/agent-visualizer/index.tsx` — empty-state title →
+  "Waiting for chat activity", subtitle → "Create a new agent chat to
+  visualize".
+
+No Otto-side counterpart; copy-only.

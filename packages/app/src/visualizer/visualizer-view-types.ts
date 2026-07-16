@@ -4,7 +4,13 @@ import type { VisualizerAppearance } from "./visualizer-appearance";
 // typed on purpose — the bridge tolerates/ignores fields it doesn't know.
 export type VisualizerHostMessage =
   | { type: "ready" }
-  | { type: "open-file"; filePath: string; line?: number };
+  | { type: "open-file"; filePath: string; line?: number }
+  // The in-page speaker button was toggled; the host persists it as
+  // visualizerSoundMuted and re-seeds it via config.soundVolume (OTTO PATCH).
+  | { type: "sound-muted"; muted: boolean }
+  // The in-page HUD toggle was flipped; the host persists it as
+  // visualizerHudHidden and re-seeds it via config.hudHidden (OTTO PATCH).
+  | { type: "hud-hidden"; hidden: boolean };
 
 // The vendored page's SimulationEvent shape (web/lib/agent-types.ts). Payloads
 // are intentionally loose records — each handle-*.ts hook in the vendored page
@@ -78,6 +84,11 @@ export type VisualizerHostToPageMessage =
           stars: boolean;
           backdrop: boolean;
         }>;
+        // Master audio volume (0..1). 0 mutes; > 0 is audible at that level.
+        soundVolume: number;
+        // Hide the entire HUD (every panel/bar/popup) except the in-page HUD
+        // toggle button. Authoritative when present (OTTO PATCH).
+        hudHidden: boolean;
       }>;
     };
 

@@ -19,6 +19,14 @@ export interface PaneFocusContextValue {
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   isInteractive: boolean;
+  /** The pane's content is actually on screen and rendering: the workspace
+   * route is focused AND this tab is the frontmost tab in its pane. Unlike
+   * `isInteractive`/`isPaneFocused`, this does NOT require the pane to hold
+   * focus — a companion view in an unfocused split (e.g. the Visualizer next
+   * to the chat you're typing in) is visible but not focused. Consumers that
+   * should keep running whenever they're watchable (not just when clicked
+   * into) gate on this. */
+  isVisible: boolean;
   focusPane: () => void;
 }
 
@@ -29,12 +37,17 @@ const noopFocusPane = () => {};
 export function createPaneFocusContextValue(input: {
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
+  /** Whether the pane's content is on screen (see `isVisible` on
+   * PaneFocusContextValue). Optional: callers that don't distinguish
+   * visibility from focus fall back to the focused-and-on-workspace value. */
+  isVisible?: boolean;
   onFocusPane?: () => void;
 }): PaneFocusContextValue {
   return {
     isWorkspaceFocused: input.isWorkspaceFocused,
     isPaneFocused: input.isPaneFocused,
     isInteractive: input.isWorkspaceFocused && input.isPaneFocused,
+    isVisible: input.isVisible ?? (input.isWorkspaceFocused && input.isPaneFocused),
     focusPane: input.onFocusPane ?? noopFocusPane,
   };
 }
