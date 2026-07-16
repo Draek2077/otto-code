@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -108,10 +108,40 @@ function StatsScreenContent(): ReactElement {
   );
 }
 
+// Target tile width — the grid fits as many columns of ~this size as the
+// measured width allows, clamped so 12 tiles always land in 2–4 rows (a few
+// wide rows that fill the screen, never one row of small squares).
+const TARGET_TILE_WIDTH = 240;
+const MIN_COLUMNS = 3;
+const MAX_COLUMNS = 6;
+
+function resolveColumns(width: number): number {
+  if (width <= 0) {
+    return MIN_COLUMNS;
+  }
+  const fitted = Math.floor(width / TARGET_TILE_WIDTH);
+  return Math.min(MAX_COLUMNS, Math.max(MIN_COLUMNS, fitted));
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size));
+  }
+  return rows;
+}
+
 function HostStatsSection({ serverId }: { serverId: string }): ReactElement | null {
   const supported = useActivityStatsFeature(serverId);
   const [window, setWindow] = useState<RollupWindow>("today");
+  const [gridWidth, setGridWidth] = useState(0);
   const { view } = useActivityStats(serverId);
+
+  const columns = useMemo(() => resolveColumns(gridWidth), [gridWidth]);
+  const handleGridLayout = useCallback(
+    (event: LayoutChangeEvent) => setGridWidth(event.nativeEvent.layout.width),
+    [],
+  );
 
   if (!supported) {
     return null;
@@ -124,17 +154,27 @@ function HostStatsSection({ serverId }: { serverId: string }): ReactElement | nu
     body = <Text style={styles.inlineMessage}>{view.message}</Text>;
   } else {
     const counters = view.rollups[window];
+    const rows = chunk(STAT_TILES, columns);
     body = (
-      <View style={styles.grid}>
-        {STAT_TILES.map((tile) => (
-          <StatTile
-            // Keyed by window too: switching windows remounts the tile, so only
-            // live data updates (not user-driven window changes) flash.
-            key={`${window}:${tile.field}`}
-            Icon={tile.Icon}
-            label={tile.label}
-            value={counters[tile.field]}
-          />
+      <View style={styles.grid} onLayout={handleGridLayout}>
+        {rows.map((row) => (
+          <View key={row[0]!.field} style={styles.gridRow}>
+            {row.map((tile) => (
+              <StatTile
+                // Keyed by window too: switching windows remounts the tile, so
+                // only live data updates (not window changes) flash.
+                key={`${window}:${tile.field}`}
+                Icon={tile.Icon}
+                label={tile.label}
+                value={counters[tile.field]}
+              />
+            ))}
+            {/* Pad the final row so tiles keep a consistent width instead of
+                stretching to fill the leftover columns. */}
+            {Array.from({ length: columns - row.length }, (_, index) => (
+              <View key={`spacer:${index}`} style={styles.gridSpacer} />
+            ))}
+          </View>
         ))}
       </View>
     );
@@ -219,26 +259,37 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
     gap: theme.spacing[6],
   },
   section: {
+    flex: 1,
     gap: theme.spacing[3],
   },
   inlineMessage: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
+  // Fill the remaining viewport (scrollContent flexGrow: 1) so the rows stretch
+  // to give a few tall rows instead of one row of small squares.
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flex: 1,
     gap: theme.spacing[3],
   },
+  gridRow: {
+    flex: 1,
+    flexDirection: "row",
+    gap: theme.spacing[3],
+  },
+  gridSpacer: {
+    flex: 1,
+  },
   tile: {
-    minWidth: 140,
-    flexGrow: 1,
+    flex: 1,
+    minHeight: 120,
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
@@ -246,6 +297,7 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     gap: theme.spacing[1],
     alignItems: "center",
+    justifyContent: "center",
   },
   // Accent overlay animated via opacity only — absolutely positioned, so the
   // update flash never shifts layout.
