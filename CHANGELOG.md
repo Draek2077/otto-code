@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.0 - 2026-07-16
+
+### Added
+
+- Visualizer: a live, interactive map of what your agents are doing — agents, subagents, tool calls, messages, and a file-attention heatmap — that works for every provider and opens from any chat or scoped to a single run
+- Text Effect themes: choose the animated style that sweeps across activity labels while an agent is working, in Appearance settings
+
+### Improved
+
+- Typing in the composer stays smooth while an agent is streaming its response
+- The Stats screen fits its tiles to the window width and fills the screen, instead of leaving one row of small squares
+- Bitbucket pull requests now show the Bitbucket icon and link straight to the pull request, instead of a GitHub glyph and a broken checks link
+- Refreshed the bundled versions of several third-party coding agents
+
+### Fixed
+
+- Creating a second workspace on a folder already backing a live one is now blocked, so branches and diffs no longer silently interfere
+- Review comments no longer carry onto an unrelated diff after you switch branches
+- Commit, push, PR, and merge actions are locked while a branch switch is in progress, and can no longer fire twice mid-switch
+- The setup wizard no longer freezes forever when a saved host is offline
+- Leaving project settings with unsaved edits now warns instead of silently discarding them
+- A saved personality whose role changed is no longer dropped from the picker
+- The desktop app no longer shows a "warn before quitting" prompt when that option is turned off
+- Stats tiles no longer flash when you switch the time window
+- The chat context meter shows the correct color in the dark chat view
+- The agent activity glow is no longer clipped on Android
+- The drag preview keeps up when you drag panels quickly
+- Branch names no longer render misaligned on Linux
+- The marketing website builds correctly from worktree checkouts
+
 ## 0.5.8 - 2026-07-14
 
 ### Added
