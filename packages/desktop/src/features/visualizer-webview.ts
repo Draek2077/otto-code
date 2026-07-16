@@ -1,4 +1,5 @@
 import { session, type WebContents, type WebPreferences } from "electron";
+import log from "electron-log/main";
 
 // Must match VISUALIZER_WEBVIEW_PARTITION in
 // packages/app/src/visualizer/visualizer-view.electron.tsx.
@@ -39,6 +40,59 @@ export function registerVisualizerWebviewSessionGuards(): void {
     callback(false);
   });
   visualizerSession.setPermissionCheckHandler(() => false);
+}
+
+// How long a healthy guest can plausibly take to reach dom-ready. The bundle
+// is a local data: URL (no network), so anything past this is a genuine
+// startup failure, not slowness.
+const GUEST_DOM_READY_WATCHDOG_MS = 20_000;
+
+/**
+ * Always-on failure diagnostics for the visualizer guest. The renderer-side
+ * view dev-gates its logging and the guest has no visible console of its own,
+ * so without this a guest that never loads — seen on Linux machines running
+ * the GPU software-rendering fallback — fails with zero evidence anywhere.
+ * These lines land in the electron-log file users can send.
+ */
+export function registerVisualizerWebviewDiagnostics(contents: WebContents): void {
+  const id = contents.id;
+  log.info("[visualizer-webview] guest attached", { webContentsId: id });
+
+  let domReady = false;
+  contents.once("dom-ready", () => {
+    domReady = true;
+    log.info("[visualizer-webview] guest dom-ready", { webContentsId: id });
+  });
+  const watchdog = setTimeout(() => {
+    if (!domReady && !contents.isDestroyed()) {
+      log.error(
+        "[visualizer-webview] guest never reached dom-ready — the Visualizer tab will stay blank",
+        { webContentsId: id, timeoutMs: GUEST_DOM_READY_WATCHDOG_MS },
+      );
+    }
+  }, GUEST_DOM_READY_WATCHDOG_MS);
+  contents.once("destroyed", () => clearTimeout(watchdog));
+
+  contents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+      // -3 (ERR_ABORTED) fires on normal teardown/reload.
+      if (!isMainFrame || errorCode === -3) {
+        return;
+      }
+      log.error("[visualizer-webview] guest failed to load", {
+        webContentsId: id,
+        errorCode,
+        errorDescription,
+      });
+    },
+  );
+  contents.on("render-process-gone", (_event, details) => {
+    log.error("[visualizer-webview] guest renderer gone", { webContentsId: id, ...details });
+  });
+  contents.on("unresponsive", () => {
+    log.warn("[visualizer-webview] guest unresponsive", { webContentsId: id });
+  });
 }
 
 /** The visualizer is a single self-contained document - it never legitimately

@@ -262,12 +262,30 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
         }
       };
       const handleFailLoad = (event: Event) => {
-        if (!isDev) {
+        const detail = event as Event & {
+          errorCode?: number;
+          errorDescription?: string;
+          isMainFrame?: boolean;
+        };
+        // -3 (ERR_ABORTED) fires on normal teardown/reload; subframe failures
+        // can't happen in this single-document guest but are filtered anyway.
+        if (detail.isMainFrame === false || detail.errorCode === -3) {
           return;
         }
-        const detail = event as Event & { errorCode?: number; errorDescription?: string };
-        // eslint-disable-next-line no-console
-        console.log("[visualizer:did-fail-load]", detail.errorCode, detail.errorDescription);
+        if (isDev) {
+          // eslint-disable-next-line no-console
+          console.log("[visualizer:did-fail-load]", detail.errorCode, detail.errorDescription);
+        }
+        // Not dev-gated: a guest that fails to load emits nothing else at all
+        // (no dom-ready, no ready) — without this the panel's only symptom is
+        // an eternally-opaque load cover. Machines running the Linux
+        // software-rendering fallback hit exactly that. The desktop main
+        // process logs the same failure durably ([visualizer-webview] in the
+        // electron-log); this message drives the panel's visible error state.
+        onMessageRef.current?.({
+          type: "load-failed",
+          reason: `did-fail-load ${detail.errorCode ?? "?"}: ${detail.errorDescription ?? "unknown"}`,
+        });
       };
 
       webview.addEventListener("dom-ready", handleDomReady);

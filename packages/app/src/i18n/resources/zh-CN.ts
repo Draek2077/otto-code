@@ -521,6 +521,11 @@ export const zhCN: TranslationResources = {
       subtitle: "Agent orchestration graph",
       placeholder: "The Visualizer is coming soon.",
       openAction: "Open Visualizer",
+      demoLoad: "Load demo scenario",
+      demoExit: "Exit demo",
+      loadFailedTitle: "The Visualizer couldn't start",
+      loadFailedBody:
+        "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
     },
     tabs: {
       loading: "正在加载...",

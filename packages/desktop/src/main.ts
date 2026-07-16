@@ -72,6 +72,7 @@ import {
   hardenVisualizerWebviewPreferences,
   isVisualizerWebviewAttach,
   lockDownVisualizerWebviewContents,
+  registerVisualizerWebviewDiagnostics,
   registerVisualizerWebviewSessionGuards,
 } from "./features/visualizer-webview.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
@@ -830,6 +831,7 @@ async function createWindow(
     }
     if (pending?.kind === "visualizer") {
       lockDownVisualizerWebviewContents(contents);
+      registerVisualizerWebviewDiagnostics(contents);
       return;
     }
     const browserId = pending?.kind === "browser" ? pending.browserId : null;

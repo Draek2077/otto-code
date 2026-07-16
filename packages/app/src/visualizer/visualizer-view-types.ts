@@ -2,8 +2,13 @@ import type { VisualizerAppearance } from "./visualizer-appearance";
 
 // Page -> host messages the vendored bridge (vscode-bridge.ts) sends. Loosely
 // typed on purpose — the bridge tolerates/ignores fields it doesn't know.
+// `load-failed` is NOT a page message — the Electron view synthesizes it from
+// the webview's did-fail-load so the panel can show a real failure state
+// instead of an eternally-opaque load cover (a guest that never loads emits
+// nothing at all otherwise; see visualizer-view.electron.tsx).
 export type VisualizerHostMessage =
   | { type: "ready" }
+  | { type: "load-failed"; reason?: string }
   | { type: "open-file"; filePath: string; line?: number }
   // The in-page speaker button was toggled; the host persists it as
   // visualizerSoundMuted and re-seeds it via config.soundVolume (OTTO PATCH).

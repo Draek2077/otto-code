@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, useColorScheme, View } from "react-native";
+import { Animated, Easing, Text, useColorScheme, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
@@ -67,7 +67,15 @@ const RENDER_SCALE_BY_QUALITY: Record<string, number> = {
 const LOAD_COVER_SETTLE_MS = 150;
 const LOAD_COVER_FADE_MS = 200;
 
+// A guest that never loads emits nothing — no `ready`, no error — leaving the
+// opaque load cover up forever (the silent-blank-tab failure seen on machines
+// running the Linux GPU software-rendering fallback). If the handshake hasn't
+// arrived after this long of the pane being visible, surface a failure state
+// instead. The bundle is local (no network), so a healthy load is far faster.
+const READY_HANDSHAKE_TIMEOUT_MS = 15_000;
+
 function VisualizerPanel() {
+  const { t } = useTranslation();
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "visualizer", "VisualizerPanel requires visualizer target");
   // The Visualizer is a companion view — the user watches it in a split while
@@ -86,6 +94,10 @@ function VisualizerPanel() {
   const connectedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
+  // Set when the guest reported a load failure (`load-failed`, Electron) or
+  // the ready handshake timed out. `reason` is only ever shown as a small
+  // diagnostic line; null reason = timeout.
+  const [loadFailure, setLoadFailure] = useState<{ reason: string | null } | null>(null);
 
   // Theme colors (docs/visualizer.md "Theme colors"): the guest palette is
   // derived from the active variant, resolved exactly like applyColorScheme —
@@ -114,9 +126,25 @@ function VisualizerPanel() {
   useEffect(() => {
     connectedRef.current = false;
     setReady(false);
+    setLoadFailure(null);
     loadCoverOpacity.stopAnimation();
     loadCoverOpacity.setValue(1);
   }, [renderScale, visualizerTheme.json, loadCoverOpacity]);
+
+  // Ready-handshake watchdog. Counts only while the pane is visible — a tab
+  // mounted in a hidden pane/workspace legitimately hasn't loaded yet (hidden
+  // webviews may not attach at all), and the timer restarts from zero on every
+  // visibility flip. A late `ready` clears the failure state (see
+  // handleMessage), so a slow machine self-heals.
+  useEffect(() => {
+    if (ready || loadFailure !== null || !isVisible) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLoadFailure({ reason: null });
+    }, READY_HANDSHAKE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [ready, loadFailure, isVisible]);
 
   // Reveal the guest once the settings config has settled (see
   // LOAD_COVER_SETTLE_MS). `ready` only flips on a fresh handshake, so a tab
@@ -169,6 +197,11 @@ function VisualizerPanel() {
         // The panels/render config is sent by the settings effect below, which
         // fires on this ready flip and again live on every settings change.
         setReady(true);
+        setLoadFailure(null);
+        return;
+      }
+      if (message.type === "load-failed") {
+        setLoadFailure({ reason: message.reason ?? null });
         return;
       }
       if (message.type === "sound-muted") {
@@ -330,16 +363,30 @@ function VisualizerPanel() {
         themeBackground={visualizerTheme.background}
       />
       <Animated.View pointerEvents="none" style={loadCoverStyle} />
-      {isDev ? (
-        <View style={styles.devBar}>
-          <Button size="sm" variant="ghost" onPress={handleToggleDemoScenario}>
-            {demoMode ? "Exit demo" : "Load demo scenario"}
-          </Button>
+      {/* Above the (still-opaque) load cover: without this, a guest that never
+          loads presents as a silent solid-color tab with no evidence anywhere
+          (docs/visualizer.md "Risks / gotchas" — software-rendering machines). */}
+      {loadFailure !== null && !ready ? (
+        <View pointerEvents="none" style={styles.loadFailure}>
+          <Text style={styles.loadFailureTitle}>{t("workspace.visualizer.loadFailedTitle")}</Text>
+          <Text style={styles.loadFailureBody}>{t("workspace.visualizer.loadFailedBody")}</Text>
+          {loadFailure.reason ? (
+            <Text style={styles.loadFailureReason}>{loadFailure.reason}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {/* The demo scenario is a user-facing feature; only the DevTools debug
+          affordance is dev-gated. */}
+      <View style={styles.devBar}>
+        <Button size="sm" variant="ghost" onPress={handleToggleDemoScenario}>
+          {demoMode ? t("workspace.visualizer.demoExit") : t("workspace.visualizer.demoLoad")}
+        </Button>
+        {isDev ? (
           <Button size="sm" variant="ghost" onPress={handleOpenDevTools}>
             Open guest DevTools
           </Button>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -368,6 +415,37 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  // Centered on top of the opaque load cover; pointerEvents:none so the
+  // dev-bar buttons beneath stay clickable (reopening the tab is the retry).
+  loadFailure: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[6],
+  },
+  loadFailureTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+    textAlign: "center",
+  },
+  loadFailureBody: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    textAlign: "center",
+    maxWidth: 480,
+  },
+  loadFailureReason: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.mono,
+    textAlign: "center",
   },
   devBar: {
     position: "absolute",

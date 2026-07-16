@@ -75,6 +75,21 @@ describe("passthrough CLI", () => {
     ).toBeNull();
   });
 
+  it("ignores GPU rendering escape-hatch switches", () => {
+    expect(
+      parsePassthroughCliArgs({
+        argv: [
+          "/usr/bin/Otto",
+          "--ozone-platform=x11",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+        ],
+        isDefaultApp: false,
+        forceCli: false,
+      }),
+    ).toBeNull();
+  });
+
   it("preserves CLI flags for direct app invocations", () => {
     expect(
       parsePassthroughCliArgs({
