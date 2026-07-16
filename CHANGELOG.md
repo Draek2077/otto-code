@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.2 - 2026-07-16
+
+### Added
+
+- A Load demo scenario button in the Visualizer lets you preview the graph without live agents
+
+### Improved
+
+- On machines without GPU acceleration, the Visualizer automatically turns off its expensive bloom glow
+- Hiding the Visualizer HUD now hides only the top and control bars, keeping the info panels available
+- Agents spawned by another agent appear as child nodes in the Visualizer instead of separate session tabs
+- Idle agents in the Visualizer now show as resting instead of endlessly thinking
+- The sub-agents panel header now counts active and completed sub-agents and their total tokens
+- Sub-agent rows lead with the agent's personality name next to the chat title
+- Visualizer startup failures are recorded in the desktop log for troubleshooting
+- Installing a desktop update now restarts the app right away, without an extra confirmation
+- Pane splitters are slightly easier to grab
+- The browser's responsive-mode button uses a clearer devices icon
+- Explorer tabs show clearer hover feedback
+- Refreshed the bundled versions of several third-party coding agents
+
+### Fixed
+
+- A Visualizer that can't start now shows an explanatory message instead of a silent blank tab
+- The Visualizer timeline no longer shows an enormous timestamp
+- Tools in the Visualizer no longer fade out while they are still running
+- Subagent nodes in the Visualizer no longer flicker or spark repeatedly
+- The Visualizer's bloom glow no longer flickers or looks washed out on light themes
+- The Visualizer's top-bar count is labeled agents again, since it counts graph nodes
+- Sub-agents no longer show up as "general-purpose" — rows are titled by the task they were given
+- Cancelling the interrupt confirmation no longer collapses the message box over your unsent text
+- Bitbucket pull requests report their state correctly again
+- Launching the desktop app with graphics troubleshooting flags no longer drops it into command-line mode
+
 ## 0.6.1 - 2026-07-16
 
 ### Added
