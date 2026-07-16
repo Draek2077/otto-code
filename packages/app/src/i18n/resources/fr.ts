@@ -391,7 +391,7 @@ export const fr: TranslationResources = {
       loading: "Chargement de l'espace de travail",
       restoring: "Restauration de l'espace de travail",
       restoreFailed:
-        "Impossible de restaurer cet espace de travail — le répertoire a peut-être été déplacé ou supprimé",
+        "Impossible de restaurer cet espace de travail. Le répertoire a peut-être été déplacé ou supprimé",
       connecting: "De liaison",
       hostOffline: "{{hostName}}est hors ligne",
       cannotReachHost: "Impossible d'atteindre{{hostName}}",
@@ -683,7 +683,7 @@ export const fr: TranslationResources = {
           label: "Commettre",
           pending: "S'engager...",
           success: "Engagé",
-          description: "Stage and commit all local changes — an AI agent writes the message",
+          description: "Stage and commit all local changes. An AI agent writes the message",
         },
         pull: {
           label: "Tirer",
@@ -1467,11 +1467,11 @@ export const fr: TranslationResources = {
         attribution: "- Your AI Agent",
       },
       {
-        text: "It's not a hallucination — it's thinking outside the training data.",
+        text: "It's not a hallucination, it's thinking outside the training data.",
         attribution: "- Your AI Agent",
       },
       {
-        text: "I could stop using em-dashes — but then how would you know it's me?",
+        text: "I could stop using em-dashes, but then how would you know it's me?",
         attribution: "- Your AI Agent",
       },
     ],
@@ -1859,9 +1859,9 @@ export const fr: TranslationResources = {
     scopeLines: "lines {{start}}–{{end}}",
     instructionPlaceholder: "Describe the change (e.g. extract this into a helper)",
     guardNote:
-      "An agent makes the change, scoped to your selection — no unrelated edits or dependency changes.",
+      "An agent makes the change, scoped to your selection, with no unrelated edits or dependency changes.",
     confirm: "Create refactor task",
-    draftOpened: "Refactor prompt ready — review and send.",
+    draftOpened: "Refactor prompt ready. Review and send.",
   },
   codeOutline: {
     open: "Outline",
@@ -1878,7 +1878,7 @@ export const fr: TranslationResources = {
     noResults: "No results",
     idleHint: "Type a query and press Enter.",
     summary: "{{matches}} matches in {{files}} files",
-    truncated: "Result limit reached — refine the search to see everything.",
+    truncated: "Result limit reached. Refine the search to see everything.",
     openReplace: "Show replace",
     replacePlaceholder: "Replace with",
     replaceSelected: "Replace selected",
@@ -1887,7 +1887,7 @@ export const fr: TranslationResources = {
       "Replace {{matches}} matches across {{files}} files? Files that changed since this preview are skipped, never overwritten.",
     replaceDialogConfirm: "Replace",
     replaceDialogSuppress: "Don't ask me again",
-    dirtySkipped: "Skipped — unsaved editor changes",
+    dirtySkipped: "Skipped: unsaved editor changes",
     replaceDone: "Replaced in {{files}} files",
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
@@ -1908,7 +1908,7 @@ export const fr: TranslationResources = {
     completedGroup: "Terminés ({{count}})",
     clearCompleted: "Tout effacer",
     clearCompletedTooltip: "Archiver tous les sous-agents terminés",
-    stopNothingRunning: "Le sous-agent n'est pas en cours d'exécution — rien à arrêter.",
+    stopNothingRunning: "Le sous-agent n'est pas en cours d'exécution, rien à arrêter.",
     daemonUnavailable: "Démon indisponible",
   },
   panels: {
@@ -2025,7 +2025,7 @@ export const fr: TranslationResources = {
       interfaceMode: {
         label: "Interface mode",
         descriptions: {
-          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          user: "A focused view for chatting with agents and organizing projects. Developer tools (files, diffs, terminals, git, and search) are hidden.",
           developer: "The full development environment: files, diffs, terminals, git, and search.",
         },
         options: {
@@ -2057,7 +2057,7 @@ export const fr: TranslationResources = {
       },
       openLinks: {
         label: "Open links",
-        description: "Where links open — PRs, docs, and links in chat",
+        description: "Where links open: PRs, docs, and links in chat",
         options: {
           inApp: "In Otto",
           external: "External browser",
@@ -2496,7 +2496,7 @@ export const fr: TranslationResources = {
           hint: "Authentifié avec un e-mail Atlassian et un jeton d'API",
           email: "E-mail Atlassian",
           apiToken: "Jeton d'API",
-          apiTokenHint: "Stocké de manière privée sur l'hôte — jamais dans un dépôt",
+          apiTokenHint: "Stocké de manière privée sur l'hôte, jamais dans un dépôt",
           apiTokenPlaceholder: "Collez un jeton d'API",
           saveError: "Échec de l'enregistrement des identifiants",
           readyToCheck: "Identifiants enregistrés",
@@ -2865,7 +2865,7 @@ export const fr: TranslationResources = {
       },
       workspaces: {
         title: "Your workspaces",
-        body: "Each project's workspaces live here — switch between them anytime.",
+        body: "Each project's workspaces live here. Switch between them anytime.",
       },
       explorer: {
         title: "Explore your files",
@@ -2875,7 +2875,7 @@ export const fr: TranslationResources = {
       chat: {
         title: "Chat with your agents",
         body: "This is where you talk to your AI agents. Type a message to get started.",
-        hint: "Tap to finish — you're all set.",
+        hint: "Tap to finish. You're all set.",
       },
     },
   },

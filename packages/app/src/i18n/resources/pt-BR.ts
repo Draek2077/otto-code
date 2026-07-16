@@ -391,7 +391,7 @@ export const ptBR: TranslationResources = {
       loading: "Carregando workspace",
       restoring: "Restaurando workspace",
       restoreFailed:
-        "Não foi possível restaurar este workspace — o diretório pode ter sido movido ou excluído",
+        "Não foi possível restaurar este workspace. O diretório pode ter sido movido ou excluído",
       connecting: "Conectando",
       hostOffline: "{{hostName}} está offline",
       cannotReachHost: "Não é possível acessar {{hostName}}",
@@ -681,7 +681,7 @@ export const ptBR: TranslationResources = {
           label: "Commit",
           pending: "Fazendo commit...",
           success: "Commit concluído",
-          description: "Stage and commit all local changes — an AI agent writes the message",
+          description: "Stage and commit all local changes. An AI agent writes the message",
         },
         pull: {
           label: "Pull",
@@ -1452,11 +1452,11 @@ export const ptBR: TranslationResources = {
         attribution: "- Your AI Agent",
       },
       {
-        text: "It's not a hallucination — it's thinking outside the training data.",
+        text: "It's not a hallucination, it's thinking outside the training data.",
         attribution: "- Your AI Agent",
       },
       {
-        text: "I could stop using em-dashes — but then how would you know it's me?",
+        text: "I could stop using em-dashes, but then how would you know it's me?",
         attribution: "- Your AI Agent",
       },
     ],
@@ -1843,9 +1843,9 @@ export const ptBR: TranslationResources = {
     scopeLines: "lines {{start}}–{{end}}",
     instructionPlaceholder: "Describe the change (e.g. extract this into a helper)",
     guardNote:
-      "An agent makes the change, scoped to your selection — no unrelated edits or dependency changes.",
+      "An agent makes the change, scoped to your selection, with no unrelated edits or dependency changes.",
     confirm: "Create refactor task",
-    draftOpened: "Refactor prompt ready — review and send.",
+    draftOpened: "Refactor prompt ready. Review and send.",
   },
   codeOutline: {
     open: "Outline",
@@ -1862,7 +1862,7 @@ export const ptBR: TranslationResources = {
     noResults: "No results",
     idleHint: "Type a query and press Enter.",
     summary: "{{matches}} matches in {{files}} files",
-    truncated: "Result limit reached — refine the search to see everything.",
+    truncated: "Result limit reached. Refine the search to see everything.",
     openReplace: "Show replace",
     replacePlaceholder: "Replace with",
     replaceSelected: "Replace selected",
@@ -1871,7 +1871,7 @@ export const ptBR: TranslationResources = {
       "Replace {{matches}} matches across {{files}} files? Files that changed since this preview are skipped, never overwritten.",
     replaceDialogConfirm: "Replace",
     replaceDialogSuppress: "Don't ask me again",
-    dirtySkipped: "Skipped — unsaved editor changes",
+    dirtySkipped: "Skipped: unsaved editor changes",
     replaceDone: "Replaced in {{files}} files",
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
@@ -1892,7 +1892,7 @@ export const ptBR: TranslationResources = {
     completedGroup: "Concluídos ({{count}})",
     clearCompleted: "Limpar tudo",
     clearCompletedTooltip: "Arquivar todos os subagentes concluídos",
-    stopNothingRunning: "O subagente não está em execução — nada para parar.",
+    stopNothingRunning: "O subagente não está em execução. Nada para parar.",
     daemonUnavailable: "Daemon indisponível",
   },
   panels: {
@@ -2008,7 +2008,7 @@ export const ptBR: TranslationResources = {
       interfaceMode: {
         label: "Interface mode",
         descriptions: {
-          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          user: "A focused view for chatting with agents and organizing projects. Developer tools (files, diffs, terminals, git, and search) are hidden.",
           developer: "The full development environment: files, diffs, terminals, git, and search.",
         },
         options: {
@@ -2040,7 +2040,7 @@ export const ptBR: TranslationResources = {
       },
       openLinks: {
         label: "Open links",
-        description: "Where links open — PRs, docs, and links in chat",
+        description: "Where links open: PRs, docs, and links in chat",
         options: {
           inApp: "In Otto",
           external: "External browser",
@@ -2477,7 +2477,7 @@ export const ptBR: TranslationResources = {
           hint: "Autenticado com um e-mail da Atlassian e um token de API",
           email: "E-mail da Atlassian",
           apiToken: "Token de API",
-          apiTokenHint: "Armazenado de forma privada no host — nunca em um repositório",
+          apiTokenHint: "Armazenado de forma privada no host, nunca em um repositório",
           apiTokenPlaceholder: "Cole um token de API",
           saveError: "Falha ao salvar as credenciais",
           readyToCheck: "Credenciais salvas",
@@ -2844,7 +2844,7 @@ export const ptBR: TranslationResources = {
       },
       workspaces: {
         title: "Your workspaces",
-        body: "Each project's workspaces live here — switch between them anytime.",
+        body: "Each project's workspaces live here. Switch between them anytime.",
       },
       explorer: {
         title: "Explore your files",
@@ -2854,7 +2854,7 @@ export const ptBR: TranslationResources = {
       chat: {
         title: "Chat with your agents",
         body: "This is where you talk to your AI agents. Type a message to get started.",
-        hint: "Tap to finish — you're all set.",
+        hint: "Tap to finish. You're all set.",
       },
     },
   },

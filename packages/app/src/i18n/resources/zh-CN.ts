@@ -387,7 +387,7 @@ export const zhCN: TranslationResources = {
     route: {
       loading: "正在加载 workspace",
       restoring: "正在恢复 workspace",
-      restoreFailed: "无法恢复此 workspace — 目录可能已被移动或删除",
+      restoreFailed: "无法恢复此 workspace，目录可能已被移动或删除",
       connecting: "正在连接",
       hostOffline: "{{hostName}} 已离线",
       cannotReachHost: "无法连接 {{hostName}}",
@@ -675,7 +675,7 @@ export const zhCN: TranslationResources = {
           label: "Commit",
           pending: "正在 commit...",
           success: "已 commit",
-          description: "Stage and commit all local changes — an AI agent writes the message",
+          description: "Stage and commit all local changes. An AI agent writes the message",
         },
         pull: {
           label: "Pull",
@@ -1416,11 +1416,11 @@ export const zhCN: TranslationResources = {
         attribution: "- Your AI Agent",
       },
       {
-        text: "It's not a hallucination — it's thinking outside the training data.",
+        text: "It's not a hallucination, it's thinking outside the training data.",
         attribution: "- Your AI Agent",
       },
       {
-        text: "I could stop using em-dashes — but then how would you know it's me?",
+        text: "I could stop using em-dashes, but then how would you know it's me?",
         attribution: "- Your AI Agent",
       },
     ],
@@ -1801,9 +1801,9 @@ export const zhCN: TranslationResources = {
     scopeLines: "lines {{start}}–{{end}}",
     instructionPlaceholder: "Describe the change (e.g. extract this into a helper)",
     guardNote:
-      "An agent makes the change, scoped to your selection — no unrelated edits or dependency changes.",
+      "An agent makes the change, scoped to your selection, with no unrelated edits or dependency changes.",
     confirm: "Create refactor task",
-    draftOpened: "Refactor prompt ready — review and send.",
+    draftOpened: "Refactor prompt ready. Review and send.",
   },
   codeOutline: {
     open: "Outline",
@@ -1820,7 +1820,7 @@ export const zhCN: TranslationResources = {
     noResults: "No results",
     idleHint: "Type a query and press Enter.",
     summary: "{{matches}} matches in {{files}} files",
-    truncated: "Result limit reached — refine the search to see everything.",
+    truncated: "Result limit reached. Refine the search to see everything.",
     openReplace: "Show replace",
     replacePlaceholder: "Replace with",
     replaceSelected: "Replace selected",
@@ -1829,7 +1829,7 @@ export const zhCN: TranslationResources = {
       "Replace {{matches}} matches across {{files}} files? Files that changed since this preview are skipped, never overwritten.",
     replaceDialogConfirm: "Replace",
     replaceDialogSuppress: "Don't ask me again",
-    dirtySkipped: "Skipped — unsaved editor changes",
+    dirtySkipped: "Skipped: unsaved editor changes",
     replaceDone: "Replaced in {{files}} files",
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
@@ -1850,7 +1850,7 @@ export const zhCN: TranslationResources = {
     completedGroup: "已完成 ({{count}})",
     clearCompleted: "全部清除",
     clearCompletedTooltip: "归档所有已完成的 subagent",
-    stopNothingRunning: "子代理未在运行——没有可停止的任务。",
+    stopNothingRunning: "子代理未在运行，没有可停止的任务。",
     daemonUnavailable: "守护进程不可用",
   },
   panels: {
@@ -1965,7 +1965,7 @@ export const zhCN: TranslationResources = {
       interfaceMode: {
         label: "Interface mode",
         descriptions: {
-          user: "A focused view for chatting with agents and organizing projects. Developer tools — files, diffs, terminals, git, and search — are hidden.",
+          user: "A focused view for chatting with agents and organizing projects. Developer tools (files, diffs, terminals, git, and search) are hidden.",
           developer: "The full development environment: files, diffs, terminals, git, and search.",
         },
         options: {
@@ -1997,7 +1997,7 @@ export const zhCN: TranslationResources = {
       },
       openLinks: {
         label: "Open links",
-        description: "Where links open — PRs, docs, and links in chat",
+        description: "Where links open: PRs, docs, and links in chat",
         options: {
           inApp: "In Otto",
           external: "External browser",
@@ -2430,7 +2430,7 @@ export const zhCN: TranslationResources = {
           hint: "使用 Atlassian 邮箱和 API 令牌进行身份验证",
           email: "Atlassian 邮箱",
           apiToken: "API 令牌",
-          apiTokenHint: "私密保存在 Host 上 — 绝不会存入仓库",
+          apiTokenHint: "私密保存在 Host 上，绝不会存入仓库",
           apiTokenPlaceholder: "粘贴 API 令牌",
           saveError: "保存凭据失败",
           readyToCheck: "凭据已保存",
@@ -2787,7 +2787,7 @@ export const zhCN: TranslationResources = {
       },
       workspaces: {
         title: "Your workspaces",
-        body: "Each project's workspaces live here — switch between them anytime.",
+        body: "Each project's workspaces live here. Switch between them anytime.",
       },
       explorer: {
         title: "Explore your files",
@@ -2797,7 +2797,7 @@ export const zhCN: TranslationResources = {
       chat: {
         title: "Chat with your agents",
         body: "This is where you talk to your AI agents. Type a message to get started.",
-        hint: "Tap to finish — you're all set.",
+        hint: "Tap to finish. You're all set.",
       },
     },
   },

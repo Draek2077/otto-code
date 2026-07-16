@@ -278,7 +278,7 @@ export function VisualizerSection() {
         <View style={settingsStyles.card}>
           <VolumeRow
             title="Volume"
-            hint="Level for the Visualizer's procedural sound effects (agent spawn, tool activity, completion, errors) when unmuted. Use the speaker button inside the Visualizer to mute or unmute — that choice is remembered across sessions."
+            hint="Sound effect loudness — mute with the speaker button in the Visualizer."
             accessibilityLabel="Visualizer sound volume"
             value={settings.visualizerSoundVolume}
             onCommit={handleVolumeCommit}
@@ -301,7 +301,9 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
-  // Slider + percent readout, mirroring appearance-section.tsx's sizeField.
+  // Slider + percent readout, mirroring appearance-section.tsx's sizeField:
+  // capped width so the field centers under the label when the row stacks on
+  // the narrowest widths instead of running edge-to-edge.
   volumeField: {
     flexDirection: "row",
     alignItems: "center",
@@ -310,6 +312,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     flexBasis: "auto",
     width: { xs: "100%", sm: "auto" },
+    maxWidth: 220,
+    marginLeft: { xs: 0, sm: theme.spacing[4] },
   },
   volumeValue: {
     color: theme.colors.foregroundMuted,

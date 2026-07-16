@@ -148,8 +148,9 @@ the bridge `config` message, mirroring the `panels`/`render` patches:
 
 Otto-side counterpart: `visualizerSoundVolume` device-local setting (0-100
 percent, the LEVEL used when unmuted) surfaced as a Volume slider in the
-Settings → Visualizer "Sound" section, and `visualizerSoundMuted` (default true
-— sound stays opt-in) driven by the in-page speaker button. The panel sends the
+Settings → Visualizer "Sound" section, and `visualizerSoundMuted` (default
+false — first-time users hear the feature at the default 50% level) driven by
+the in-page speaker button. The panel sends the
 effective master volume as `config.soundVolume` (`muted ? 0 : volume/100`) from
 `packages/app/src/panels/visualizer-panel.tsx` on ready and live on change.
 
@@ -219,5 +220,19 @@ Reworded to sentence case and Otto vocabulary:
 - `web/components/agent-visualizer/index.tsx` — empty-state title →
   "Waiting for chat activity", subtitle → "Create a new agent chat to
   visualize".
+
+No Otto-side counterpart; copy-only.
+
+## 2026-07-16 — top-bar copy tweaks for Otto's embed
+
+Two label rewordings in the top bar:
+
+- Upstream labels the cost-overlay toggle "$Cost"; the dollar prefix reads as
+  a stray template placeholder rather than a currency hint.
+- Upstream's node counter reads "N agents"; in Otto's vocabulary the nodes in
+  a session's graph (the root agent and its subagents) are all chats.
+
+- `web/components/agent-visualizer/top-bar.tsx` — `$Cost` → `Cost` in the
+  cost-overlay `ToggleButton`; `{agentCount} agents` → `{agentCount} chats`.
 
 No Otto-side counterpart; copy-only.
