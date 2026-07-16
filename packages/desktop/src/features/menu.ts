@@ -132,7 +132,7 @@ function buildApplicationMenuTemplate(
             reloadFocusedContentsOrWindow(win, { ignoreCache: true });
           }),
         },
-        { role: "toggleDevTools" },
+        ...(app.isPackaged ? [] : [{ role: "toggleDevTools" as const }]),
         { type: "separator" },
         { role: "togglefullscreen" },
       ],

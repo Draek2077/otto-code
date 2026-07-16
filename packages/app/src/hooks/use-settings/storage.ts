@@ -193,7 +193,8 @@ export interface AppSettings {
   // speaker button (reported back via the `sound-muted` page->host message) and
   // persisted here so the choice survives closing the tab and restarting the
   // app — the page's own localStorage is wiped every run on Otto's fresh
-  // webview partition. Defaults muted: sound stays opt-in.
+  // webview partition. Defaults unmuted so first-time users hear the feature
+  // at the default 50% level; muting is one click away in the page.
   visualizerSoundMuted: boolean;
   // Whether the Visualizer's whole HUD (every panel, bar, and popup) is hidden,
   // leaving just the canvas graph and the in-page HUD toggle button. Toggled by
@@ -264,7 +265,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerRenderBackdrop: true,
   visualizerRenderQuality: "sharp",
   visualizerSoundVolume: 50,
-  visualizerSoundMuted: true,
+  visualizerSoundMuted: false,
   visualizerHudHidden: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {

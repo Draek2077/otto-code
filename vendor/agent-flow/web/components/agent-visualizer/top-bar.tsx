@@ -132,7 +132,7 @@ export const TopBar = memo(function TopBar({
       {/* Right-side info/controls */}
       <div className="flex items-center gap-4 flex-shrink-0" style={{ color: COLORS.textMuted }}>
         {isVSCode && <ConnectionIndicator status={connectionStatus} />}
-        <span>{agentCount} agents</span>
+        <span>{agentCount} chats</span>
         <span>
           {formatTokens(totalTokens)} tokens
           <span style={{ color: COLORS.complete + '65', marginLeft: 4 }}>
@@ -153,7 +153,7 @@ export const TopBar = memo(function TopBar({
             activeColor={{ bg: COLORS.costActiveBg, text: COLORS.complete }}
             style={{ background: showCostOverlay ? undefined : 'transparent', border: 'none' }}
           >
-            $Cost
+            Cost
           </ToggleButton>
         </div>
 
