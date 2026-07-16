@@ -6,7 +6,7 @@ import { COLORS } from "@/lib/colors"
 import { formatTokens } from "@/lib/utils"
 import { agentCost } from "./canvas/draw-cost"
 import { SessionTabs } from "./session-tabs"
-import type { SessionInfo, ConnectionStatus } from "@/lib/bridge-types"
+import type { SessionInfo } from "@/lib/bridge-types"
 
 // ─── Mute/Unmute SVG Icons ───────────────────────────────────────────────────
 
@@ -55,25 +55,6 @@ function ToggleButton({ active, onClick, children, style, activeColor }: {
   )
 }
 
-// ─── Connection Status Indicator ────────────────────────────────────────────
-
-function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const color = status === 'watching' ? COLORS.complete
-    : status === 'connected' ? COLORS.idle : COLORS.error
-  const label = status === 'watching' ? 'LIVE'
-    : status === 'connected' ? 'CONNECTED' : 'OFFLINE'
-
-  return (
-    <span className="flex items-center gap-1.5">
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ background: color, boxShadow: `0 0 4px ${color}` }}
-      />
-      {label}
-    </span>
-  )
-}
-
 // ─── Top Bar ────────────────────────────────────────────────────────────────
 
 export interface TopBarProps {
@@ -83,9 +64,6 @@ export interface TopBarProps {
   sessionsWithActivity: Set<string>
   onSelectSession: (id: string) => void
   onCloseSession: (id: string) => void
-  // Connection
-  isVSCode: boolean
-  connectionStatus: ConnectionStatus
   // Stats
   agentCount: number
   totalTokens: number
@@ -103,7 +81,6 @@ export interface TopBarProps {
 export const TopBar = memo(function TopBar({
   sessions, selectedSessionId, sessionsWithActivity,
   onSelectSession, onCloseSession,
-  isVSCode, connectionStatus,
   agentCount, totalTokens,
   showFileAttention, showTranscript, showCostOverlay, showTimeline, isMuted,
   onTogglePanel, onToggleTimeline, onToggleMute,
@@ -129,11 +106,18 @@ export const TopBar = memo(function TopBar({
       {/* Spacer pushes info to the right */}
       <div className="flex-1" />
 
-      {/* Right-side info/controls */}
-      <div className="flex items-center gap-4 flex-shrink-0" style={{ color: COLORS.textMuted }}>
-        {isVSCode && <ConnectionIndicator status={connectionStatus} />}
-        <span>{agentCount} chats</span>
-        <span>
+      {/* Right-side info/controls.
+          OTTO PATCH (see OTTO-PATCHES.md): connection indicator removed (the
+          embed is always connected to its own host — the status read as an
+          optional link); "chats" -> "agents" (the count is graph nodes in the
+          selected session, not session tabs); block wraps + shrinks on narrow
+          panes instead of overflowing off the right edge. */}
+      <div
+        className="flex items-center justify-end gap-x-4 gap-y-1 flex-shrink min-w-0 flex-wrap"
+        style={{ color: COLORS.textMuted }}
+      >
+        <span className="whitespace-nowrap">{agentCount} agents</span>
+        <span className="whitespace-nowrap">
           {formatTokens(totalTokens)} tokens
           <span style={{ color: COLORS.complete + '65', marginLeft: 4 }}>
             ~${agentCost(totalTokens).toFixed(2)}

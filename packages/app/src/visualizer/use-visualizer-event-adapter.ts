@@ -1,5 +1,8 @@
-// Stateful Otto -> Visualizer wiring: one visualizer session per attended
-// root agent in the workspace, backfilled from the daemon's timeline RPC and
+// Stateful Otto -> Visualizer wiring: one visualizer session per root agent
+// in the workspace (agents spawned by another tracked agent — observed Task
+// children and attended create_agent children alike — render as child nodes
+// inside the parent's session, mirroring the subagents track), backfilled
+// from the daemon's timeline RPC and
 // kept live via `agent_stream`. All actual event construction is delegated
 // to the pure functions in visualizer-event-adapter.ts — this file only
 // owns node identity (name registry, parent resolution), the backfill/live
@@ -68,6 +71,17 @@ interface AdapterState {
   pendingSessionMessages: VisualizerHostToPageMessage[];
   /** Agent ids that just got a node and still need their timeline fetched. */
   pendingBackfill: string[];
+  /** Wall-clock anchor for event times. The page's simulation clock runs in
+   * SECONDS from ~0 (rAF dt accumulation); every constant it ages against
+   * (TOOL_MAX_RUNNING_S etc.) and its m:ss time readout assume that scale.
+   * Feeding raw epoch-ms slammed the sim clock ~1.7e12 ahead on every event,
+   * so two events 200ms apart were "200 seconds" apart — running tools blew
+   * past their max-running age between batches and faded while still active.
+   * Events are stamped `(ms - epochMs) / 1000`, clamped at 0 (backfilled
+   * history predates activation; the page clamps stale times to "now"
+   * anyway). Session-message fields (startTime/lastActivityTime) stay
+   * epoch-ms — the page mixes those with its own Date.now(). */
+  epochMs: number;
 }
 
 function createAdapterState(): AdapterState {
@@ -77,22 +91,32 @@ function createAdapterState(): AdapterState {
     pending: [],
     pendingSessionMessages: [],
     pendingBackfill: [],
+    epochMs: Date.now(),
   };
+}
+
+/** Epoch-ms -> page simulation seconds (see {@link AdapterState.epochMs}). */
+function toSimTime(state: AdapterState, epochMs: number): number {
+  if (!Number.isFinite(epochMs)) {
+    return 0;
+  }
+  return Math.max(0, (epochMs - state.epochMs) / 1000);
 }
 
 function nodeCtx(node: TrackedNode): AgentNodeContext {
   return { name: node.name, sessionId: node.sessionId };
 }
 
-/** Walks up `parentAgentId` while the agent is an observed subagent, to find
- * the attended root its SimulationEvent sessionId is keyed on. Non-observed
- * agents (regardless of parent) are their own root — see the task doc's
- * "Sessions" section. */
+/** Walks up `parentAgentId` (observed AND attended children — the visualizer
+ * mirrors the subagents track, which lists both under the parent) to find the
+ * root agent the SimulationEvent sessionId is keyed on. The walk stops at the
+ * topmost agent still present in the workspace set — an agent whose parent
+ * isn't tracked here is its own root. */
 function resolveRootAgentId(agentId: string, agentsById: ReadonlyMap<string, Agent>): string {
   let currentId = agentId;
   for (let depth = 0; depth < MAX_PARENT_WALK_DEPTH; depth += 1) {
     const current = agentsById.get(currentId);
-    if (!current || current.attend !== "observed" || !current.parentAgentId) {
+    if (!current?.parentAgentId || !agentsById.has(current.parentAgentId)) {
       return currentId;
     }
     currentId = current.parentAgentId;
@@ -117,7 +141,17 @@ function ensureNode(
     return undefined;
   }
 
-  const isRoot = agent.attend !== "observed" || !agent.parentAgentId;
+  const parentPresent = Boolean(agent.parentAgentId && agentsById.has(agent.parentAgentId));
+  // An observed subagent is never a chat of its own — if its parent isn't in
+  // the set yet (snapshot ordering), don't register it as an orphan session;
+  // the next reconcile picks it up once the parent is tracked.
+  if (!parentPresent && agent.attend === "observed" && agent.parentAgentId) {
+    return undefined;
+  }
+  // Any agent spawned by another tracked agent (observed Task children AND
+  // attended create_agent children) renders as a child node in its parent's
+  // session, mirroring the subagents track — not as a separate top-level chat.
+  const isRoot = !parentPresent;
   const rootId = isRoot ? agentId : resolveRootAgentId(agentId, agentsById);
   const time = agent.createdAt.getTime();
 
@@ -156,7 +190,7 @@ function ensureNode(
         ctx: nodeCtx(node),
         model: agent.model,
         provider: agent.provider,
-        time,
+        time: toSimTime(state, time),
       }),
     );
   } else {
@@ -167,7 +201,7 @@ function ensureNode(
         ctx: nodeCtx(node),
         parentName: parentNode?.name ?? parentId,
         task: agent.title,
-        time,
+        time: toSimTime(state, time),
       }),
     );
   }
@@ -194,7 +228,7 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
         continue;
       }
     } else {
-      const time = agent.lastActivityAt.getTime();
+      const time = toSimTime(state, agent.lastActivityAt.getTime());
       if (agent.model && agent.model !== node.lastModel) {
         node.lastModel = agent.model;
         state.pending.push(
@@ -223,7 +257,10 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
     if (isTerminal && !node.terminalEmitted) {
       node.terminalEmitted = true;
       state.pending.push(
-        buildAgentCompleteEvent({ ctx: nodeCtx(node), time: agent.lastActivityAt.getTime() }),
+        buildAgentCompleteEvent({
+          ctx: nodeCtx(node),
+          time: toSimTime(state, agent.lastActivityAt.getTime()),
+        }),
       );
       if (node.isRoot) {
         state.pendingSessionMessages.push({ type: "session-ended", sessionId: node.sessionId });
@@ -237,8 +274,16 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
 function trackedTimelineItemEvents(node: TrackedNode, item: AgentTimelineItem, time: number) {
   let synthesizeToolCallStart = false;
   if (item.type === "tool_call") {
-    synthesizeToolCallStart =
-      item.status !== "running" && !node.startedToolCallIds.has(item.callId);
+    const alreadyStarted = node.startedToolCallIds.has(item.callId);
+    // A long-running tool call (Task/sub_agent especially) streams repeated
+    // in-place updates of the SAME running item as its output grows. The page
+    // treats every tool_call_start as a fresh node+dispatch — re-emitting made
+    // each progress update spark a new outward-firing task node. One start per
+    // callId; later running updates carry nothing the graph shows anyway.
+    if (item.status === "running" && alreadyStarted) {
+      return [];
+    }
+    synthesizeToolCallStart = item.status !== "running" && !alreadyStarted;
     node.startedToolCallIds.add(item.callId);
   }
   return timelineItemToSimulationEvents({
@@ -291,7 +336,7 @@ async function backfillAgentTimeline(input: {
       projection: "projected",
     });
     for (const entry of response.entries) {
-      const time = Date.parse(entry.timestamp);
+      const time = toSimTime(state, Date.parse(entry.timestamp));
       state.pending.push(...trackedTimelineItemEvents(node, entry.item, time));
     }
     node.cursor = { epoch: response.epoch, seq: response.endCursor?.seq ?? response.window.maxSeq };
@@ -486,7 +531,12 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
         // agent_update-driven reconcile will pick it up if it should be.
         return;
       }
-      const envelope: LiveEnvelope = { event, time: Date.parse(timestamp), seq, epoch };
+      const envelope: LiveEnvelope = {
+        event,
+        time: toSimTime(state, Date.parse(timestamp)),
+        seq,
+        epoch,
+      };
       if (node.cursor === null) {
         node.bufferedLive.push(envelope);
         return;

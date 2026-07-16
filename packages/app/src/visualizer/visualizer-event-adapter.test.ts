@@ -487,14 +487,24 @@ describe("streamEventToSimulationEvents", () => {
         type: "context_update",
         payload: { agent: "Main Agent", tokens: 500 },
       },
-      { time: 1, sessionId: "agent-root", type: "agent_idle", payload: { name: "Main Agent" } },
+      {
+        time: 1,
+        sessionId: "agent-root",
+        type: "agent_idle",
+        payload: { name: "Main Agent", resting: true },
+      },
     ]);
   });
 
   test("turn_completed without usage emits only agent_idle", () => {
     const event: AgentStreamEventPayload = { type: "turn_completed", provider: "claude" };
     expect(streamEventToSimulationEvents({ ctx: CTX, event, time: 1 })).toEqual([
-      { time: 1, sessionId: "agent-root", type: "agent_idle", payload: { name: "Main Agent" } },
+      {
+        time: 1,
+        sessionId: "agent-root",
+        type: "agent_idle",
+        payload: { name: "Main Agent", resting: true },
+      },
     ]);
   });
 

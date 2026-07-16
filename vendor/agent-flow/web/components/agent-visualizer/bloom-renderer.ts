@@ -2,7 +2,27 @@
  * Bloom post-processing for holographic glow effect.
  * Takes the main canvas, extracts bright areas, blurs them,
  * and composites back with additive blending.
+ *
+ * OTTO PATCH (see OTTO-PATCHES.md): on light stages additive ('lighter')
+ * compositing adds brightness to an already-bright frame — it clamps toward
+ * white and the glow vanishes. When the themed stage background (COLORS.void)
+ * is light, composite the blurred frame with 'multiply' at reduced alpha
+ * instead: dark glyphs bleed a soft dark halo — the light-theme analog of
+ * bloom. Also raises the downsample smoothing quality: the half-res buffer
+ * temporal-aliases 1-2px features (stars) as they cross pixel boundaries,
+ * which reads as flicker.
  */
+import { COLORS } from '@/lib/colors'
+
+function isLightStage(): boolean {
+  const hex = /^#([0-9a-f]{6})$/i.exec(String(COLORS.void).trim())
+  if (!hex) return false
+  const value = parseInt(hex[1], 16)
+  const r = (value >> 16) & 0xff
+  const g = (value >> 8) & 0xff
+  const b = value & 0xff
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
+}
 
 export class BloomRenderer {
   private bloomCanvas: HTMLCanvasElement
@@ -10,11 +30,13 @@ export class BloomRenderer {
   private tempCanvas: HTMLCanvasElement
   private tempCtx: CanvasRenderingContext2D
   private intensity: number
+  private darkenBlend: boolean
 
   private enabled: boolean
 
   constructor(intensity: number = 0.6) {
     this.intensity = intensity
+    this.darkenBlend = isLightStage()
     this.bloomCanvas = document.createElement('canvas')
     this.tempCanvas = document.createElement('canvas')
     const bCtx = this.bloomCanvas.getContext('2d')
@@ -22,6 +44,10 @@ export class BloomRenderer {
     this.enabled = !!(bCtx && tCtx)
     this.bloomCtx = bCtx!
     this.tempCtx = tCtx!
+    if (this.enabled) {
+      this.bloomCtx.imageSmoothingQuality = 'high'
+      this.tempCtx.imageSmoothingQuality = 'high'
+    }
   }
 
   resize(width: number, height: number): void {
@@ -48,10 +74,11 @@ export class BloomRenderer {
     this.boxBlur(this.bloomCtx, this.tempCtx, w, h, 6)
     this.boxBlur(this.bloomCtx, this.tempCtx, w, h, 4)
 
-    // Composite bloom over the target with additive blending
+    // Composite bloom over the target — additive on dark stages, a softer
+    // multiply "dark halo" on light stages (see OTTO PATCH header note).
     targetCtx.save()
-    targetCtx.globalCompositeOperation = 'lighter'
-    targetCtx.globalAlpha = this.intensity
+    targetCtx.globalCompositeOperation = this.darkenBlend ? 'multiply' : 'lighter'
+    targetCtx.globalAlpha = this.darkenBlend ? this.intensity * 0.6 : this.intensity
     targetCtx.drawImage(this.bloomCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height)
     targetCtx.restore()
   }

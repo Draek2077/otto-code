@@ -202,10 +202,14 @@ export const AGENT_DRAW = {
   glowPadding: 20,
   /** Ambient outer hex ring offset from agent radius */
   outerRingOffset: 3,
-  /** Shadow blur for depth shadow */
+  /** Shadow blur for depth shadow.
+      OTTO PATCH (see OTTO-PATCHES.md): zero offsets — canvas shadow offsets
+      apply in untransformed device space, so under the camera transform the
+      offset smeared the shadow to one side (visible only top/left at typical
+      zoom) instead of reading as depth. A centered blur halos evenly. */
   shadowBlur: 15,
-  shadowOffsetX: 3,
-  shadowOffsetY: 5,
+  shadowOffsetX: 0,
+  shadowOffsetY: 0,
   /** Agent name label Y offset from agent radius */
   labelYOffset: 8,
   /** Agent name label width multiplier of radius */
