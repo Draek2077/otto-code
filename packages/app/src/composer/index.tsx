@@ -1319,18 +1319,19 @@ export function Composer({
       outgoingMessage: string,
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
-    ) => {
+    ): Promise<boolean> => {
       // A forced send to a busy agent interrupts the active turn server-side,
       // which kills any in-flight observed subagents/workflows — confirm first
       // (suppressible). Runs before submitAgentInput so a cancel leaves the
-      // composer untouched.
+      // composer untouched — including its grown height (the false return
+      // tells the input not to collapse).
       if (forceSend && isAgentRunning) {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
           serverId,
           parentAgentId: agentId,
         });
         if (!confirmedInterrupt) {
-          return;
+          return false;
         }
       }
       const result = await submitAgentInput({
@@ -1366,6 +1367,7 @@ export function Composer({
         result,
         outgoingAttachments,
       });
+      return true;
     },
     [
       agentId,
@@ -1396,7 +1398,7 @@ export function Composer({
       }
 
       dismissKeyboardOnSubmit();
-      void sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
+      return sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
     },
     [
       attachments,
@@ -2268,7 +2270,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    // Matches the sub-agent track surface so the stacked queue reads as part
+    // of the same supervision chrome (user-locked).
+    borderColor: theme.colors.borderAccent,
     gap: theme.spacing[2],
   },
   queueText: {

@@ -228,16 +228,19 @@ const styles = StyleSheet.create((_theme) => ({
     position: "absolute",
     zIndex: 10,
   },
+  // 11px band centered on the 1px line (5px each side): -5..+6 around 0..1.
+  // An even width can't center on an odd line — the old 10px box sat half a
+  // pixel off, biasing the grab band left/up of the visible divider.
   hitAreaHorizontal: {
     left: -5,
     top: 0,
     bottom: 0,
-    width: 10,
+    width: 11,
   },
   hitAreaVertical: {
     top: -5,
     left: 0,
     right: 0,
-    height: 10,
+    height: 11,
   },
 }));

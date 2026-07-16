@@ -1613,8 +1613,26 @@ function useMiddleClickClose(onClose: () => void) {
       }
     }
 
+    // Linux/X11 primary-selection paste is initiated from the middle-button
+    // PRESS, before auxclick fires — without cancelling it here, closing a tab
+    // could paste the selection into whatever ends up under the cursor (the
+    // revealed editor). Also suppresses Windows/ChromeOS middle-click
+    // autoscroll starting on a tab.
+    function handleMiddleDown(event: MouseEvent | PointerEvent) {
+      if (event.button === 1) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
     node.addEventListener("auxclick", handleAuxClick);
-    return () => node.removeEventListener("auxclick", handleAuxClick);
+    node.addEventListener("pointerdown", handleMiddleDown);
+    node.addEventListener("mousedown", handleMiddleDown);
+    return () => {
+      node.removeEventListener("auxclick", handleAuxClick);
+      node.removeEventListener("pointerdown", handleMiddleDown);
+      node.removeEventListener("mousedown", handleMiddleDown);
+    };
   }, [onClose]);
 
   return ref;

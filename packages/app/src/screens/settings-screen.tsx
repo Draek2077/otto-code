@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet as RNStyleSheet,
@@ -72,7 +71,6 @@ import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection"
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { SIDEBAR_TOP_SPACER_TRIM } from "@/components/left-sidebar";
-import { confirmDialog } from "@/utils/confirm-dialog";
 import { BackHeader } from "@/components/headers/back-header";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { SettingsContentErrorBoundary } from "@/components/settings-content-error-boundary";
@@ -1019,27 +1017,10 @@ function DesktopAppUpdateRow() {
       return;
     }
 
-    void confirmDialog({
-      title: t("settings.about.updates.installTitle"),
-      message: t("settings.about.updates.installMessage"),
-      confirmLabel: t("settings.about.updates.installConfirm"),
-      cancelLabel: t("common.actions.cancel"),
-    })
-      .then((confirmed) => {
-        if (!confirmed) {
-          return;
-        }
-        void installUpdate();
-        return;
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to open app update confirmation", error);
-        Alert.alert(
-          t("settings.about.updates.alertTitle"),
-          t("settings.about.updates.alertMessage"),
-        );
-      });
-  }, [installUpdate, isDesktopApp, t]);
+    // No confirmation — the button already says what happens, so just restart
+    // into the update (user-locked; matches the sidebar callout's install path).
+    void installUpdate();
+  }, [installUpdate, isDesktopApp]);
 
   const isUpdateReady = availableUpdate?.readyToInstall === true;
   const readyUpdateVersion = isUpdateReady ? availableUpdate?.latestVersion : null;
