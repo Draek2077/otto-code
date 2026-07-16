@@ -213,15 +213,18 @@ interface BitbucketRepoIdentity {
 
 type BitbucketPullRequest = z.infer<typeof BitbucketPullRequestSchema>;
 
+// Lowercase to match the GitHub service's wire shape — the client compares
+// state === "open" exactly, so Bitbucket's uppercase "OPEN" rendered as a red
+// "Closed" badge on open PRs.
 function mapPullRequestState(state: string): { state: string; isMerged: boolean } {
   switch (state) {
     case "OPEN":
-      return { state: "OPEN", isMerged: false };
+      return { state: "open", isMerged: false };
     case "MERGED":
-      return { state: "MERGED", isMerged: true };
+      return { state: "merged", isMerged: true };
     default:
       // DECLINED / SUPERSEDED
-      return { state: "CLOSED", isMerged: false };
+      return { state: "closed", isMerged: false };
   }
 }
 
