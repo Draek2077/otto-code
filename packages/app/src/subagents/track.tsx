@@ -58,6 +58,10 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
   return {
     ...buildSubagentRowPresentationData(row),
     icon: getProviderIcon(row.provider),
+    // Personality-spawned subagents keep their identity colors on the glyph
+    // and busy loader; rows without one fall back to the plain themed icon.
+    personalitySpinner: row.personalitySpinner ?? null,
+    provider: row.provider,
   };
 }
 
@@ -126,7 +130,7 @@ export function SubagentsTrack({
     return null;
   }
 
-  const headerLabel = formatHeaderLabel(rows);
+  const headerLabel = formatHeaderLabel({ active, completed });
 
   return (
     <View style={styles.outer} testID="subagents-track">
@@ -168,6 +172,7 @@ export function SubagentsTrack({
               {completed.length > 0 ? (
                 <CompletedSubagentsGroup
                   rows={completed}
+                  flushTop={active.length === 0}
                   expanded={completedExpanded}
                   onToggle={toggleCompletedExpanded}
                   onClear={handleClearCompleted}
@@ -187,6 +192,8 @@ export function SubagentsTrack({
 
 interface CompletedSubagentsGroupProps {
   rows: SubagentRow[];
+  /** No active rows above — drop the separator gap so the group sits flush. */
+  flushTop: boolean;
   expanded: boolean;
   onToggle: () => void;
   onClear: () => void;
@@ -201,6 +208,7 @@ interface CompletedSubagentsGroupProps {
 // "Clear all completed". See docs/agent-lifecycle.md (Item 6).
 function CompletedSubagentsGroup({
   rows,
+  flushTop,
   expanded,
   onToggle,
   onClear,
@@ -214,7 +222,10 @@ function CompletedSubagentsGroup({
   const clearLabel = t("subagents.clearCompleted");
 
   return (
-    <View style={styles.completedGroup} testID="subagents-track-completed-group">
+    <View
+      style={flushTop ? styles.completedGroupFlush : styles.completedGroup}
+      testID="subagents-track-completed-group"
+    >
       <View style={styles.completedHeaderRow}>
         <Pressable
           accessibilityRole="button"
@@ -323,7 +334,7 @@ function SubagentsTrackRow({
       >
         {({ pressed }) => (
           <View style={hovered || pressed ? styles.rowActive : styles.row}>
-            <WorkspaceTabIcon presentation={presentation} />
+            <WorkspaceTabIcon presentation={presentation} active />
             <Text style={styles.rowLabel} numberOfLines={1}>
               {displayLabel}
             </Text>
@@ -590,6 +601,8 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
+  // The separator only earns its space when active rows sit above the group.
+  completedGroupFlush: {},
   completedHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
