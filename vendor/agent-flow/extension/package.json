@@ -1,0 +1,103 @@
+{
+  "name": "agent-flow",
+  "displayName": "Agent Flow",
+  "description": "Real-time visualization of Claude Code and Codex agent orchestration",
+  "version": "0.9.1",
+  "publisher": "simon-p",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patoles/agent-flow"
+  },
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["llm", "agent", "claude", "codex", "ai", "visualization", "orchestration"],
+  "activationEvents": [
+    "onWebviewPanel:agentVisualizer"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentVisualizer.open",
+        "title": "Open Agent Flow",
+        "category": "Agent Flow"
+      },
+      {
+        "command": "agentVisualizer.openToSide",
+        "title": "Open Agent Flow to Side",
+        "category": "Agent Flow"
+      },
+      {
+        "command": "agentVisualizer.connectToAgent",
+        "title": "Connect to Running Agent",
+        "category": "Agent Flow"
+      },
+      {
+        "command": "agentVisualizer.configureHooks",
+        "title": "Configure Claude Code Hooks",
+        "category": "Agent Flow"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "agentVisualizer.open",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      }
+    ],
+    "configuration": {
+      "title": "Agent Flow",
+      "properties": {
+        "agentVisualizer.runtime": {
+          "type": "string",
+          "enum": ["auto", "claude", "codex"],
+          "enumDescriptions": [
+            "Watch both Claude Code and Codex sessions concurrently (default)",
+            "Watch only Claude Code sessions",
+            "Watch only Codex sessions"
+          ],
+          "default": "auto",
+          "description": "Which agent runtime(s) to watch. In auto mode, runtimes you don't use are harmless no-ops (no session directory = nothing to scan)."
+        },
+        "agentVisualizer.devServerPort": {
+          "type": "number",
+          "default": 0,
+          "description": "Port for the development server. Set to 0 (default) for production mode, or 3002 for development."
+        },
+        "agentVisualizer.eventLogPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to JSONL event log file to watch for agent events"
+        },
+        "agentVisualizer.autoOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open the visualizer when an agent session starts"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "cp ../README.md ./README.md && pnpm run build:all",
+    "build": "node esbuild.js",
+    "build:webview": "cd ../web && pnpm run build:webview",
+    "build:all": "pnpm run build:webview && pnpm run build",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package",
+    "lint": "tsc --noEmit",
+    "lint:test": "tsc --noEmit --project tsconfig.test.json",
+    "test": "tsx --test test/**/*.test.ts",
+    "vscode:uninstall": "node scripts/uninstall.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.20.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.0"
+  }
+}

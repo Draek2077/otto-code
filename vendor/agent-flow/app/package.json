@@ -1,0 +1,26 @@
+{
+  "name": "agent-flow-app",
+  "version": "0.9.1",
+  "description": "Real-time visualization of AI agent orchestration — standalone web app",
+  "bin": {
+    "agent-flow": "dist/app.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patoles/agent-flow"
+  },
+  "keywords": [
+    "agent",
+    "visualization",
+    "ai",
+    "llm",
+    "agent-flow"
+  ]
+}

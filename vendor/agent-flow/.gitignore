@@ -1,0 +1,29 @@
+node_modules
+dist
+.vite
+*.local
+.next
+*.vsix
+
+# Auto-generated
+extension/README.md
+scripts/.dev-relay.js
+scripts/.dev-relay.js.map
+app/dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local IDE config
+extension/.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+
+# Claude Code
+.claude/
+
+# Subdirectory lock files (project uses pnpm workspace)
+extension/package-lock.json
+
+.DS_Store
