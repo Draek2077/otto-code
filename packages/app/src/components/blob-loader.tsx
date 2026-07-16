@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import Animated, {
   Easing,
   makeMutable,
@@ -114,7 +114,14 @@ function GlowLayer({
   // is in the 0..100 viewBox space, so a single value is resolution-independent
   // and looks the same at any rendered size. Default 0 keeps every small
   // working-indicator instance crisp.
-  const filtered = blur > 0;
+  //
+  // Android: react-native-svg FeGaussianBlur renders incorrectly (barely any
+  // blur) on Hermes/Android — see software-mansion/react-native-svg#2636.
+  // Instead of a broken filter we widen the halo strokes proportionally to
+  // simulate the bloom through opacity and radius falloff. The result is a
+  // softer-than-crisp ring that reads as a glow, even if not a true gaussian.
+  const isAndroid = Platform.OS === "android";
+  const filtered = blur > 0 && !isAndroid;
 
   // An SVG clips to its viewBox (always on native; overflow:hidden by default
   // on web), which shaves a blurred ring's glow into a squared-off oval. Pad
@@ -123,9 +130,16 @@ function GlowLayer({
   // doesn't re-clip. BlobLoader over-scans the SVG by the same pad so the ring
   // still renders at its intended size. The unblurred path keeps the tight
   // 0..100 box, byte-for-byte unchanged.
-  const pad = blurPadUnits(blur);
+  const pad = blurPadUnits(filtered ? blur : 0);
   const min = -pad;
   const span = 100 + pad * 2;
+
+  // Android fallback: when blur is requested but the SVG filter is unavailable,
+  // simulate the bloom by widening the outer halo strokes and pulling the bright
+  // core in slightly — the radius + opacity falloff reads as a soft glow without
+  // any filter. Scale factor is a hand-tuned mapping of blur stdDeviation →
+  // stroke multiplier that produces a visually similar halo extent.
+  const androidBloom = isAndroid && blur > 0 ? 1 + blur * 0.22 : 1;
 
   return (
     <Svg width="100%" height="100%" viewBox={`${min} ${min} ${span} ${span}`}>
@@ -149,24 +163,26 @@ function GlowLayer({
         ) : null}
       </Defs>
       <G filter={filtered ? `url(#${filterId})` : undefined}>
-        {/* Feathered halo: stacked strokes fade the glow outward and inward. */}
+        {/* Feathered halo: stacked strokes fade the glow outward and inward.
+            On Android the stroke widths are widened to simulate the missing
+            gaussian bloom — wider, lower-opacity halos read as a soft glow. */}
         <Circle
           cx={50}
           cy={50}
           r={40}
           stroke={`url(#${gradientId})`}
-          strokeWidth={26}
+          strokeWidth={26 * androidBloom}
           fill="none"
-          opacity={0.16}
+          opacity={0.16 / Math.max(androidBloom, 1)}
         />
         <Circle
           cx={50}
           cy={50}
           r={40}
           stroke={`url(#${gradientId})`}
-          strokeWidth={16}
+          strokeWidth={16 * androidBloom}
           fill="none"
-          opacity={0.3}
+          opacity={0.3 / Math.max(androidBloom, 1)}
         />
         {/* Bright core ring. */}
         <Circle
@@ -271,7 +287,13 @@ export function BlobLoader({
   // to `0.8 × size` on screen — so `size` means the same visible ring diameter
   // whether or not there's a bloom, and the glow overflows the box instead of
   // clipping. Zero pad (unblurred) collapses this to a plain inset-0 fill.
-  const overscan = (size * blurPadUnits(blur)) / 100;
+  //
+  // Android: FeGaussianBlur is broken (react-native-svg#2636), so GlowLayer
+  // disables the filter; overscan must match — no overscan when the filter
+  // won't actually render.
+  const isAndroid = Platform.OS === "android";
+  const effectiveBlur = isAndroid ? 0 : blur;
+  const overscan = (size * blurPadUnits(effectiveBlur)) / 100;
   const overscanStyle = useMemo(
     () =>
       ({

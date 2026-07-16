@@ -338,7 +338,10 @@ describe("resolveStartupRoute", () => {
     ).toEqual({ kind: "redirect", href: "/setup" });
   });
 
-  it("sends a fresh device to the setup wizard when only a saved (offline) host exists", () => {
+  it("does not send a fresh device to the wizard when only a saved (offline) host exists", () => {
+    // Wizard requires an ONLINE host — its providers step calls useProvidersSnapshot()
+    // which needs a live connection. With only a saved-but-offline host, fall through
+    // to the host route or welcome so the user can reconnect first.
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
@@ -346,15 +349,30 @@ describe("resolveStartupRoute", () => {
         hosts: [{ serverId: "server-saved" }],
         hasGivenUpWaitingForHost: true,
       }),
-    ).toEqual({ kind: "redirect", href: "/setup" });
+    ).toEqual({ kind: "redirect", href: "/h/server-saved" });
   });
 
-  it("runs the wizard before restoring a saved workspace on a fresh device", () => {
+  it("does not run the wizard before restoring a saved workspace when the host is offline", () => {
+    // Wizard requires an ONLINE host. With a saved-but-offline host and a restorable
+    // workspace, go straight to the workspace restore instead of the wizard.
     expect(
       resolveStartupRoute({
         ...baseIndexInput,
         hasCompletedSetupWizard: false,
         hosts: [{ serverId: "server-1" }],
+        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
+        workspaceSelectionStatus: "exists",
+      }),
+    ).toEqual({ kind: "redirect", href: "/h/server-1" });
+  });
+
+  it("runs the wizard before restoring a saved workspace on a fresh device when host is online", () => {
+    expect(
+      resolveStartupRoute({
+        ...baseIndexInput,
+        hasCompletedSetupWizard: false,
+        hosts: [{ serverId: "server-1" }],
+        anyOnlineHostServerId: "server-1",
         workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
         workspaceSelectionStatus: "exists",
       }),

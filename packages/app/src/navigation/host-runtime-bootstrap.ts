@@ -228,20 +228,18 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
     return { kind: "splash" };
   }
 
-  // First-run setup wizard: a fresh device (flag `false`) with at least one host
+  // First-run setup wizard: a fresh device (flag `false`) with an ONLINE host
   // to configure runs the wizard before any host/workspace routing (Mode →
   // Providers → … → Done). Existing devices are backfilled to completed
   // (migrateSetupWizardFlag), so they never see it. Wait for the flag to load so
   // the unhydrated `false` default can't flash the wizard in front of a
-  // returning user. A device with zero hosts falls through to the welcome/pair
-  // flow below — there is nothing to configure yet.
+  // returning user. A device with no online host falls through to the welcome/pair
+  // flow below — there is nothing to configure yet (the providers step requires
+  // a live connection to fetch provider details).
   if (!input.isSetupWizardStateLoaded) {
     return { kind: "splash" };
   }
-  if (
-    !input.hasCompletedSetupWizard &&
-    (input.hosts.length > 0 || input.anyOnlineHostServerId !== null)
-  ) {
+  if (!input.hasCompletedSetupWizard && input.anyOnlineHostServerId !== null) {
     return { kind: "redirect", href: SETUP_ROUTE };
   }
 

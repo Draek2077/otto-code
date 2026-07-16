@@ -18,10 +18,11 @@ import { PairLinkModal } from "./pair-link-modal";
 import { Button } from "@/components/ui/button";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
-import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { buildOpenProjectRoute, buildSetupRoute } from "@/utils/host-routes";
 import { OttoLogo } from "@/components/icons/otto-logo";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isWeb, isNative } from "@/constants/platform";
+import { useAppSettings } from "@/hooks/use-settings";
 
 interface WelcomeAction {
   key: "scan-qr" | "direct-connection" | "paste-pairing-link";
@@ -173,15 +174,36 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const [isPasteLinkOpen, setIsPasteLinkOpen] = useState(false);
   const hosts = useHosts();
   const anyOnlineServerId = useAnyHostOnline(hosts.map((h) => h.serverId));
+  const { settings, isLoading: isSettingsLoading } = useAppSettings();
+  const hasCompletedWizard = settings.hasCompletedSetupWizard;
 
+  // When a host comes online, navigate away from the welcome screen.
+  // For fresh devices that haven't completed the wizard, go to the setup
+  // wizard so they can configure providers, teams, etc. For existing devices,
+  // go straight to the project selection screen.
+  // Guard on settings hydration — DEFAULT_CLIENT_SETTINGS has
+  // hasCompletedSetupWizard === false, so unhydrated state would flash the
+  // wizard in front of a returning user (the same class of bug the bootstrap
+  // prevents with isSetupWizardStateLoaded).
   useEffect(() => {
     if (!anyOnlineServerId) return;
-    router.replace(buildOpenProjectRoute());
-  }, [anyOnlineServerId, router]);
+    if (isSettingsLoading) return;
+    if (!hasCompletedWizard) {
+      router.replace(buildSetupRoute());
+    } else {
+      router.replace(buildOpenProjectRoute());
+    }
+  }, [anyOnlineServerId, hasCompletedWizard, isSettingsLoading, router]);
 
+  // "Finish onboarding" callback exposed to child modals. For fresh devices
+  // this is a no-op — the effect above owns navigation when a host comes
+  // online. We only navigate here for existing devices (wizard already done)
+  // so that both paths agree on the destination.
   const finishOnboarding = useCallback(() => {
-    router.replace(buildOpenProjectRoute());
-  }, [router]);
+    if (hasCompletedWizard) {
+      router.replace(buildOpenProjectRoute());
+    }
+  }, [hasCompletedWizard, router]);
 
   const handleOpenOttoSite = useCallback(() => {
     void openExternalUrl("https://otto-code.me");

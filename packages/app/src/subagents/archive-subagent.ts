@@ -14,7 +14,7 @@ function resolveSubagentLabel(title: Agent["title"] | null | undefined): string 
   if (!normalized) {
     return null;
   }
-  if (normalized.toLowerCase() === "new agent") {
+  if (normalized.toLowerCase() === "new agent" || normalized.toLowerCase() === "new chat") {
     return null;
   }
   return normalized;
