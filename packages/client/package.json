@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/client",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "description": "Otto client SDK package",
   "files": [
     "dist",
@@ -35,8 +35,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@otto-code/protocol": "0.5.8",
-    "@otto-code/relay": "0.5.8",
+    "@otto-code/protocol": "0.6.0",
+    "@otto-code/relay": "0.6.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
