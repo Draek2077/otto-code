@@ -178,7 +178,7 @@ in-page toggle button, mirroring the `soundVolume`/`sound-muted` round-trip:
 
 - `web/lib/vscode-bridge.ts` — `hudHidden: boolean` added to `ConfigCallback`'s config union; new `setHudHidden(hidden)` posting a `hud-hidden` page->host message (mirrors `setSoundMuted`).
 - `web/hooks/use-vscode-bridge.ts` — new `hudHidden` state/return field (`boolean | null`), set from `config.hudHidden` in the existing `onConfig` handler; new `bridgeSetHudHidden` passthrough (mirrors `bridgeSetSoundMuted`).
-- `web/components/agent-visualizer/index.tsx` — new local `hudHidden` state, applied from `bridge.hudHidden` on every config that carries it (authoritative, like the panels seed). All HUD chrome (message feed, agent/tool/discovery popups, chat panel, context menu, control bar, file-attention/transcript/timeline panels, top bar) is wrapped in `{!hudHidden && (…)}`; only the `<AgentCanvas>` and a new bottom-left toggle button survive. The button reports the flip via `bridge.bridgeSetHudHidden` so it persists. Icons are inline eye / eye-off SVGs (same style as the mute icons); colors/glass come from the themed `COLORS` registry.
+- `web/components/agent-visualizer/index.tsx` — new local `hudHidden` state, applied from `bridge.hudHidden` on every config that carries it (authoritative, like the panels seed). The HUD *chrome* — the top bar and the bottom control bar — is wrapped in `{!hudHidden && (…)}`; informational surfaces (message feed, agent/tool/discovery popups, chat panel, context menu, slide-in panels) stay visible, because hiding the HUD means clearing the chrome, not blinding the user (originally the gate wrapped everything; narrowed 2026-07-16 on user feedback). The `<AgentCanvas>` and a bottom-left toggle button always survive. The button reports the flip via `bridge.bridgeSetHudHidden` so it persists. Icons are inline eye / eye-off SVGs (same style as the mute icons); colors/glass come from the themed `COLORS` registry.
 
 Otto-side counterpart: `visualizerHudHidden` device-local setting (default
 false) in `packages/app/src/hooks/use-settings/storage.ts`. The panel sends it
@@ -225,14 +225,82 @@ No Otto-side counterpart; copy-only.
 
 ## 2026-07-16 — top-bar copy tweaks for Otto's embed
 
-Two label rewordings in the top bar:
+Label rewording in the top bar:
 
 - Upstream labels the cost-overlay toggle "$Cost"; the dollar prefix reads as
   a stray template placeholder rather than a currency hint.
-- Upstream's node counter reads "N agents"; in Otto's vocabulary the nodes in
-  a session's graph (the root agent and its subagents) are all chats.
 
 - `web/components/agent-visualizer/top-bar.tsx` — `$Cost` → `Cost` in the
-  cost-overlay `ToggleButton`; `{agentCount} agents` → `{agentCount} chats`.
+  cost-overlay `ToggleButton`.
+
+(The same day this entry briefly also renamed the node counter "N agents" →
+"N chats"; reverted on user feedback — the count is graph nodes in the
+selected session, not session tabs, so "chats" was the misleading label.)
 
 No Otto-side counterpart; copy-only.
+
+## 2026-07-16 — top bar: drop the connection indicator, shrink-safe right block
+
+Upstream's top bar renders a LIVE/CONNECTED/OFFLINE dot when embedded
+(`isVSCode`), and its right-side info/controls block is `flex-shrink-0` — on a
+narrow pane it overflows past the right edge (the bottom control bar, by
+contrast, is bounded by `maxWidth` + internal `flex-1` shrink and adapts).
+In Otto's embed the page is always connected to its own host, so the
+indicator read as an optional link that could drop:
+
+- `web/components/agent-visualizer/top-bar.tsx` — `ConnectionIndicator`
+  removed along with the `isVSCode`/`connectionStatus` props; the right-side
+  block becomes `flex-shrink min-w-0 flex-wrap justify-end gap-x-4 gap-y-1`
+  with `whitespace-nowrap` stat spans, so it wraps/shrinks on narrow panes
+  instead of going off-page.
+- `web/components/agent-visualizer/index.tsx` — stops passing the two props.
+
+No Otto-side counterpart.
+
+## 2026-07-16 — `agent_idle` learns a `resting` flag (true idle vs thinking)
+
+Upstream's `agent_idle` event means "tool finished — back to reasoning": it
+transitions `tool_calling`/`waiting_permission` → `thinking`, and nothing ever
+sets the (visually distinct, dimmer) `idle` state after spawn. In Otto's
+embed an agent that finished its turn therefore pulsed "thinking" forever —
+idle and working looked identical:
+
+- `web/hooks/simulation/handle-agent-events.ts` — `handleAgentIdle` reads an
+  optional `resting: true` payload flag: when set, any non-complete state
+  transitions to `idle` (and `currentTool` clears). Without the flag the
+  upstream behavior is unchanged.
+
+Otto-side counterpart: `packages/app/src/visualizer/visualizer-event-adapter.ts`
+sends `resting: true` on `turn_completed`/`turn_failed`/`turn_canceled` and
+keeps the plain form for `permission_resolved` (the agent resumes reasoning).
+
+## 2026-07-16 — center the node depth shadow
+
+`drawDepthShadow` used `shadowOffsetX: 3 / shadowOffsetY: 5`, but canvas
+shadow offsets apply in untransformed device space while the node is drawn
+inside the camera transform — at typical zoom the offset smeared the blurred
+disc to one side (read as a shadow only on the top/left) instead of reading
+as depth:
+
+- `web/lib/canvas-constants.ts` — `AGENT_DRAW.shadowOffsetX/Y` → `0`, so the
+  15px blur halos the node evenly on all sides.
+
+No Otto-side counterpart. Upstream-PR candidate.
+
+## 2026-07-16 — bloom on light stages + downsample smoothing
+
+The bloom pass blurs the whole frame and composites it back with additive
+(`'lighter'`) blending — correct on the upstream near-black stage, but on
+Otto's light theme variants it adds brightness to an already-bright frame:
+values clamp toward white and the glow vanishes ("bloom not working in light
+mode"). The half-res buffer also temporal-aliases 1–2px features (the
+parallax stars) as they cross pixel boundaries, which reads as flicker:
+
+- `web/components/agent-visualizer/bloom-renderer.ts` — reads the themed
+  stage background (`COLORS.void`, host-seeded via `window.__OTTO_THEME__`);
+  when its relative luminance is light (> 0.5), composites with `'multiply'`
+  at `intensity * 0.6` instead — dark glyphs bleed a soft dark halo, the
+  light-stage analog of bloom. Also sets `imageSmoothingQuality = 'high'` on
+  both work buffers to soften the half-res shimmer.
+
+No Otto-side counterpart (the theme overlay already carries the stage color).

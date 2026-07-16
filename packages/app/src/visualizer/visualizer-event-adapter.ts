@@ -188,12 +188,16 @@ export function buildAgentCompleteEvent(input: {
 export function buildAgentIdleEvent(input: {
   ctx: AgentNodeContext;
   time: number;
+  /** True marks a real turn end — the page rests the node at its dim 'idle'
+   * state (Otto vendor patch) instead of the upstream "back to thinking"
+   * transition, so an idle agent no longer looks identical to one reasoning. */
+  resting?: boolean;
 }): SimulationEvent {
   return {
     time: input.time,
     sessionId: input.ctx.sessionId,
     type: "agent_idle",
-    payload: { name: input.ctx.name },
+    payload: { name: input.ctx.name, ...(input.resting ? { resting: true } : {}) },
   };
 }
 
@@ -500,15 +504,16 @@ export function streamEventToSimulationEvents(input: {
       if (contextEvent) {
         events.push(contextEvent);
       }
-      events.push(buildAgentIdleEvent({ ctx, time }));
+      events.push(buildAgentIdleEvent({ ctx, time, resting: true }));
       return events;
     }
     case "turn_failed":
     case "turn_canceled":
-      return [buildAgentIdleEvent({ ctx, time })];
+      return [buildAgentIdleEvent({ ctx, time, resting: true })];
     case "permission_requested":
       return [buildPermissionRequestedEvent({ ctx, time })];
     case "permission_resolved":
+      // The agent resumes its turn — back to reasoning, not resting.
       return [buildAgentIdleEvent({ ctx, time })];
     case "thread_started":
     case "turn_started":

@@ -180,7 +180,20 @@ export function handleAgentIdle(
 ): void {
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
-  if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {
+  if (!idleAgent || idleAgent.state === 'complete') {
+    return
+  }
+  // OTTO PATCH (see OTTO-PATCHES.md): `resting: true` marks a real turn end —
+  // the agent is done and waiting for input, so it rests at the dimmer 'idle'
+  // state instead of pulsing 'thinking' forever. Without the flag this event
+  // keeps its upstream meaning ("tool finished, back to reasoning").
+  if (asBoolean(payload.resting)) {
+    if (idleAgent.state !== 'idle') {
+      state.agents.set(idleName, { ...idleAgent, state: 'idle', currentTool: undefined })
+    }
+    return
+  }
+  if (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission') {
     state.agents.set(idleName, { ...idleAgent, state: 'thinking', currentTool: undefined })
   }
 }

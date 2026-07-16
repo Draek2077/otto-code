@@ -337,11 +337,11 @@ export function AgentVisualizer() {
         renderOptions={bridge.renderConfig ?? undefined}
       />
 
-      {/* Otto patch (OTTO-PATCHES.md): the entire HUD — every panel, bar, and
-          floating popup — collapses behind a single visibility toggle. Only the
-          canvas (above) and the toggle button (below) survive when hidden. */}
-      {!hudHidden && (
-      <>
+      {/* Otto patch (OTTO-PATCHES.md): the HUD chrome — top bar + control bar —
+          collapses behind a single visibility toggle. Informational surfaces
+          (message feed, node/tool/discovery popups, chat panel, slide-in
+          panels) stay visible: hiding the HUD means clearing the chrome, not
+          blinding the user. */}
       {/* Message feed panel (top-left) */}
       {showMessageFeed && (
         <MessageFeedPanel
@@ -404,6 +404,7 @@ export function AgentVisualizer() {
       )}
 
       {/* Floating control strip */}
+      {!hudHidden && (
       <ControlBar
         isPlaying={isPlaying}
         speed={speed}
@@ -429,6 +430,7 @@ export function AgentVisualizer() {
         onEnterReview={handleEnterReview}
         onResumeLive={handleResumeLive}
       />
+      )}
 
       {/* File attention panel (slide-in from right) */}
       <FileAttentionPanel
@@ -455,14 +457,13 @@ export function AgentVisualizer() {
       />
 
       {/* Top bar: session tabs + info/controls */}
+      {!hudHidden && (
       <TopBar
         sessions={bridge.sessions}
         selectedSessionId={bridge.selectedSessionId}
         sessionsWithActivity={bridge.sessionsWithActivity}
         onSelectSession={bridge.selectSession}
         onCloseSession={handleCloseSession}
-        isVSCode={bridge.isVSCode}
-        connectionStatus={bridge.connectionStatus}
         agentCount={agents.size}
         totalTokens={totalTokens}
         showFileAttention={showFileAttention}
@@ -474,7 +475,6 @@ export function AgentVisualizer() {
         onToggleTimeline={() => setShowTimeline(prev => !prev)}
         onToggleMute={handleToggleMute}
       />
-      </>
       )}
 
       {/* Otto patch (OTTO-PATCHES.md): HUD visibility toggle — the one control
