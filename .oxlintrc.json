@@ -3,7 +3,7 @@
   "options": {
     "typeAware": false
   },
-  "ignorePatterns": [".dev/**", "packages/app/demo/staging/templates/**"],
+  "ignorePatterns": [".dev/**", "packages/app/demo/staging/templates/**", "vendor/**"],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
   "categories": {
     "correctness": "error",
