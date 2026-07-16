@@ -520,7 +520,7 @@ describe("git-actions-policy", () => {
 
     expect(actions.primary).toMatchObject({
       id: "merge-branch",
-      label: "Merge locally",
+      label: "Merge into main",
     });
   });
 
@@ -640,7 +640,7 @@ describe("git-actions-policy", () => {
     ]);
   });
 
-  it("uses Merge locally for the local merge action", () => {
+  it("names the base branch in the local merge action label", () => {
     const actions = buildGitActions(
       createInput({
         isOnBaseBranch: false,
@@ -649,7 +649,7 @@ describe("git-actions-policy", () => {
     );
     const action = actions.secondary.find((entry) => entry.id === "merge-branch");
 
-    expect(action).toMatchObject({ label: "Merge locally" });
+    expect(action).toMatchObject({ label: "Merge into main" });
   });
 
   it("uses the active language for policy-owned action labels and unavailable messages", async () => {

@@ -59,7 +59,7 @@ export const ru: TranslationResources = {
       noMatches: "Нет совпадений",
       actions: "Действия",
       agents: "Агенты",
-      newAgent: "Новый агент",
+      newAgent: "New chat",
       openProject: "Открыть проект",
       home: "Дом",
     },
@@ -147,6 +147,14 @@ export const ru: TranslationResources = {
       searchPlaceholder: "Поиск проблем и пиар...",
       title: "Прикрепите проблему или PR",
     },
+    interruptSubagentsWarning: {
+      title: "Interrupt running subagents?",
+      message:
+        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+      confirm: "Interrupt anyway",
+      cancel: "Cancel",
+      suppress: "Don't ask again",
+    },
   },
   agentControls: {
     provider: {
@@ -226,7 +234,7 @@ export const ru: TranslationResources = {
   },
   agentPanel: {
     states: {
-      notFound: "Agent не найден",
+      notFound: "Chat not found",
       failedToLoad: "Не удалось загрузить агент",
       reconnecting: "Повторное подключение...",
       archivingTitle: "Архивный агент...",
@@ -410,8 +418,8 @@ export const ru: TranslationResources = {
         download: "Скачать",
         edit: "Edit",
         findInFiles: "Find in files",
-        addToContext: "Add to context",
-        removeFromContext: "Remove from context",
+        addToContext: "Add to chat",
+        removeFromContext: "Remove from chat",
       },
       actions: {
         back: "Назад",
@@ -512,18 +520,25 @@ export const ru: TranslationResources = {
       hostDisconnected: "Host не подключен",
       unableToSubscribe: "Невозможно подписаться на терминал",
     },
+    visualizer: {
+      tabLabel: "Visualizer",
+      subtitle: "Agent orchestration graph",
+      placeholder: "The Visualizer is coming soon.",
+      openAction: "Open Visualizer",
+    },
     tabs: {
       loading: "Загрузка...",
-      loadingAgentTitle: "Название агента загрузки",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "На этой панели нет вкладок.",
       fallback: {
-        newAgent: "Новый агент",
+        newAgent: "New chat",
         setup: "Настраивать",
         workspaceSetup: "Настройка Workspace",
         terminal: "Terminal",
         browser: "Браузер",
         agent: "Agent",
         workspace: "Workspace",
+        visualizer: "Visualizer",
       },
       switcher: {
         trigger: "Переключить вкладки ({{count}}открыт)",
@@ -545,10 +560,10 @@ export const ru: TranslationResources = {
         reloadAgentTooltip: "Перезагрузите агента, чтобы обновить навыки, MCP или статус входа.",
         close: "Закрывать",
         renameTerminal: "Переименование терминала",
-        renameAgent: "Переименовать агента",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "Новый агент",
+        newAgent: "New chat",
         newTerminal: "Новый терминал",
         preparingTerminal: "Подготовка вкладки терминала",
         preparingTerminalTooltip: "Подготовка терминала...",
@@ -619,7 +634,7 @@ export const ru: TranslationResources = {
       actions: {
         workspaceActions: "Действия Workspace",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "Новый агент",
+        newAgent: "New chat",
         newTerminal: "Новый терминал",
         newBrowser: "Новая вкладка браузера",
         importSession: "Импортировать сеанс",
@@ -655,6 +670,11 @@ export const ru: TranslationResources = {
       },
     },
     git: {
+      hostingProviderNames: {
+        github: "GitHub",
+        bitbucketCloud: "Bitbucket Cloud",
+        generic: "git hosting",
+      },
       actions: {
         moreOptions: "Больше возможностей",
         moreActions: "Дополнительные действия",
@@ -662,42 +682,52 @@ export const ru: TranslationResources = {
           label: "Совершить",
           pending: "Совершение...",
           success: "Преданный идее",
+          description: "Stage and commit all local changes — an AI agent writes the message",
         },
         pull: {
           label: "Тянуть",
           pending: "Тяну...",
           success: "Вытащил",
+          description: "Run git pull to bring new commits from the remote into this branch",
         },
         push: {
           label: "Толкать",
           pending: "Толкаю...",
           success: "Нажатый",
+          description: "Run git push to send your local commits to the remote",
         },
         pullAndPush: {
           label: "Тяни и толкай",
           pending: "Тянет и толкает...",
           success: "Вытащил и толкнул",
+          description: "Run git pull, then git push, to sync this branch with its remote",
         },
         viewPr: "Посмотреть PR",
+        viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
           label: "Создать PR",
           pending: "Создание PR...",
           success: "PR создано",
+          description: "Push this branch to the remote and open a pull request against {{baseRef}}",
         },
         mergeBranch: {
-          label: "Объединить локально",
+          label: "Merge into {{baseRef}}",
           pending: "Слияние...",
           success: "Объединено",
+          description: "Merge this branch into {{baseRef}} on this machine, without a pull request",
         },
         mergeFromBase: {
           label: "Обновление от{{baseRef}}",
           pending: "Обновление...",
           success: "Обновлено",
+          description:
+            "Merge the latest {{baseRef}} commits into this branch (a merge, not a rebase)",
         },
         archive: {
           label: "Архивировать рабочее пространство",
           pending: "Архивирование...",
           success: "В архиве",
+          description: "Remove this workspace from active use",
         },
         mergePr: {
           squash: "Объединить PR (squash)",
@@ -705,6 +735,10 @@ export const ru: TranslationResources = {
           rebase: "Объединить PR (rebase)",
           pending: "Объединение PR...",
           success: "PR объединен",
+          squashDescription: "Combine the pull request's commits into one and merge it",
+          mergeDescription: "Merge the pull request with a merge commit",
+          rebaseDescription:
+            "Rebase the pull request's commits onto the base branch, no merge commit",
         },
         autoMerge: {
           enableSquash: "Автообъединение (squash)",
@@ -714,9 +748,11 @@ export const ru: TranslationResources = {
           enabling: "Включение автоматического объединения...",
           disabling: "Отключение автоматического объединения...",
           disabled: "Автоматическое объединение отключено",
+          enableDescription: "Merge the pull request automatically once required checks pass",
+          disableDescription: "Select to turn off auto-merge for this pull request",
         },
         unavailable: {
-          viewPrNoGithub: "Просмотр PR сейчас недоступен, поскольку GitHub не подключен.",
+          viewPrNoGithub: "View PR isn't available right now because {{provider}} isn't connected",
           pullNoRemote:
             "Функция Pull здесь недоступна, поскольку эта ветка еще не подключена к удаленному серверу.",
           pullDirty:
@@ -733,7 +769,7 @@ export const ru: TranslationResources = {
           pullAndPushInSync:
             "Функция Pull and Push недоступна, поскольку эта ветвь уже синхронизирована.",
           createPrNoGithub:
-            "Функция «Создать PR» сейчас недоступна, поскольку GitHub не подключен.",
+            "Create PR isn't available right now because {{provider}} isn't connected",
           createPrNoCommits:
             "Функция «Создать PR» недоступна, поскольку в этой ветке еще нет новых коммитов.",
           mergeNoBase: "Объединение недоступно, поскольку нам не удалось определить базовую ветку.",
@@ -746,7 +782,8 @@ export const ru: TranslationResources = {
             "Обновление недоступно, пока у вас есть локальные изменения, поэтому сначала зафиксируйте или сохраните их.",
           updateCurrent:
             "Обновление недоступно, поскольку эта ветка уже обновлена ​​до версии{{baseRef}}.",
-          mergePrNoGithub: "Объединение PR сейчас недоступно, поскольку GitHub не подключен.",
+          mergePrNoGithub:
+            "Merge PR isn't available right now because {{provider}} isn't connected",
           mergePrMissing: "Объединение PR недоступно, поскольку еще нет запроса на включение",
           mergePrDraft:
             "Объединение PR недоступно, поскольку запрос на включение все еще находится на стадии черновика.",
@@ -1126,6 +1163,11 @@ export const ru: TranslationResources = {
         activeAgentsMessage: "Вы уверены, что хотите выйти из приложения, пока активны агенты?",
         confirm: "Выйти",
         cancel: "Отмена",
+        schedulesTitle: "Quit and stop schedules?",
+        schedulesMessage:
+          "Quitting stops the daemon, so {{count}} enabled schedules will not run until Otto starts again.",
+        schedulesConfirm: "Quit anyway",
+        schedulesSuppress: "Don't warn me again",
       },
     },
     updates: {
@@ -1470,6 +1512,8 @@ export const ru: TranslationResources = {
     restore: "Восстановить",
     later: "Позже",
     stashRestored: "Спрятанные изменения восстановлены.",
+    switchInProgress: "Branch switch in progress",
+    checkedOutElsewhere: "Checked out in another workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "Ищем рабочее место...",
@@ -1837,10 +1881,10 @@ export const ru: TranslationResources = {
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
     toggleFile: "Include this file",
-    addToContext: "Add to context",
-    removeFromContext: "Remove from context",
-    addLineToContext: "Add line {{line}} to context",
-    removeLineFromContext: "Remove line {{line}} from context",
+    addToContext: "Add to chat",
+    removeFromContext: "Remove from chat",
+    addLineToContext: "Add line {{line}} to chat",
+    removeLineFromContext: "Remove line {{line}} from chat",
     error: "Search failed",
   },
   subagents: {
@@ -1858,8 +1902,8 @@ export const ru: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "Новый агент",
-      creatingAgent: "Создание агента",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "Каталог Workspace не найден.",
@@ -1903,6 +1947,14 @@ export const ru: TranslationResources = {
       cancelAccessibility: "Отменить комментарий к отзыву",
       save: "Комментарий",
       saveAccessibility: "Сохранить комментарий к отзыву",
+    },
+    removeAll: {
+      action: "Remove all comments",
+      confirmTitleSingle: "Remove comment?",
+      confirmTitleMultiple: "Remove {{count}} comments?",
+      confirmMessage:
+        "All draft review comments on this diff will be deleted. This can't be undone.",
+      confirmButton: "Remove",
     },
   },
   settings: {
@@ -1990,6 +2042,14 @@ export const ru: TranslationResources = {
           external: "Внешний браузер",
         },
       },
+      openLinks: {
+        label: "Open links",
+        description: "Where links open — PRs, docs, and links in chat",
+        options: {
+          inApp: "In Otto",
+          external: "External browser",
+        },
+      },
       terminalScrollback: {
         label: "Terminal прокрутка назад",
         description: "Строки, хранящиеся во встроенном буфере терминала.",
@@ -2064,6 +2124,11 @@ export const ru: TranslationResources = {
       offline: "Оффлайн",
       versionDiffers: "Версия отличается от этого устройства",
       upstreamBase: "Based on {{brand}} {{version}}",
+      credits: {
+        title: "Third-party credits",
+        visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        viewSource: "View source",
+      },
       releaseChannel: {
         label: "Канал выпуска",
         description:
@@ -2142,6 +2207,18 @@ export const ru: TranslationResources = {
             relative: "Как давно",
           },
         },
+        textEffects: {
+          title: "Text effects",
+          hint: "Animation style for the activity text shown while the agent is working",
+          accessibilityLabel: "Text effects: {{value}}",
+          options: {
+            professional: "Professional",
+            active: "Active",
+            spectrum: "Spectrum",
+            vivid: "Vivid",
+            nightRider: "Night Rider",
+          },
+        },
       },
       layout: {
         title: "Layout",
@@ -2168,6 +2245,39 @@ export const ru: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+      },
+      visualizer: {
+        title: "Visualizer",
+        hexGrid: {
+          title: "Hex grid",
+          hint: "Show the background hex grid on the Visualizer canvas",
+          accessibilityLabel: "Hex grid",
+        },
+        messageFeed: {
+          title: "Message feed",
+          hint: "Show the live message feed panel",
+          accessibilityLabel: "Message feed",
+        },
+        timeline: {
+          title: "Timeline",
+          hint: "Show the timeline panel",
+          accessibilityLabel: "Timeline",
+        },
+        fileAttention: {
+          title: "File attention",
+          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "File attention",
+        },
+        transcript: {
+          title: "Transcript",
+          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Transcript",
+        },
+        costOverlay: {
+          title: "Cost overlay",
+          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Cost overlay",
         },
       },
       fonts: {
@@ -2711,6 +2821,12 @@ export const ru: TranslationResources = {
         saved: "Проект сохранен.",
         saving: "Сохранение...",
         cancel: "Отмена",
+      },
+      unsavedChanges: {
+        title: "Discard unsaved changes?",
+        message: "This project has unsaved settings changes. Discard them?",
+        discard: "Discard",
+        keepEditing: "Keep editing",
       },
     },
   },

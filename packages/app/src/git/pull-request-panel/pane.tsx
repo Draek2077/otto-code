@@ -29,7 +29,7 @@ import {
 } from "@/components/icons/material-icons";
 import type { PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -128,7 +128,7 @@ const COPY_MENU_ICON = <ThemedCopy size={14} uniProps={foregroundMutedColorMappi
 const OPEN_MENU_ICON = <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />;
 
 function handleMarkdownLinkPress(url: string): boolean {
-  void openExternalUrl(url);
+  void openLink(url);
   return false;
 }
 
@@ -216,7 +216,7 @@ export function PullRequestPane({
   const [loadingCheckKeys, setLoadingCheckKeys] = useState<ReadonlySet<string>>(() => new Set());
 
   const handleOpenPrUrl = useCallback(() => {
-    void openExternalUrl(data.url);
+    void openLink(data.url);
   }, [data.url]);
 
   const refreshSupported = useSessionStore(
@@ -663,7 +663,7 @@ function CheckRow({
   onAddLogsToChat: (check: PrPaneCheck) => void;
 }) {
   const handlePress = useCallback(() => {
-    void openExternalUrl(check.url);
+    void openLink(check.url);
   }, [check.url]);
   const handleAddLogsToChat = useCallback(
     (event: GestureResponderEvent) => {
@@ -770,7 +770,7 @@ function ActivityKebab({
     void writeMarkdownToRichClipboard(activity.body, getDefaultMarkdownClipboardEnvironment());
   }, [activity.body]);
   const handleOpen = useCallback(() => {
-    void openExternalUrl(activity.url);
+    void openLink(activity.url);
   }, [activity.url]);
 
   return (
@@ -901,7 +901,7 @@ function SingleActivityCard({
       onToggleCollapsed(entry.id, collapsed);
       return;
     }
-    void openExternalUrl(activity.url);
+    void openLink(activity.url);
   }, [activity.url, collapsed, entry.id, hasBody, onToggleCollapsed]);
 
   if (!hasBody) {
@@ -1116,7 +1116,7 @@ function ThreadBlock({
     [onAddThreadToChat, thread],
   );
   const handleOpenThread = useCallback(() => {
-    void openExternalUrl(thread.comments[0].url);
+    void openLink(thread.comments[0].url);
   }, [thread.comments]);
 
   const [root, ...replies] = thread.comments;

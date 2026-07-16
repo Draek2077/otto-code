@@ -8,7 +8,7 @@ import { ArrowUpRight, Terminal, Blocks, Check } from "@/components/icons/materi
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { Button } from "@/components/ui/button";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   shouldUseDesktopDaemon,
@@ -102,11 +102,11 @@ export function IntegrationsSection() {
   }, [isSkillsWorking, t, uninstallSkills]);
 
   const handleOpenCliDocs = useCallback(() => {
-    void openExternalUrl(CLI_DOCS_URL);
+    void openLink(CLI_DOCS_URL);
   }, []);
 
   const handleOpenSkillsDocs = useCallback(() => {
-    void openExternalUrl(SKILLS_DOCS_URL);
+    void openLink(SKILLS_DOCS_URL);
   }, []);
 
   const arrowIcon = useMemo(

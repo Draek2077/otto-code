@@ -29,7 +29,7 @@ import type {
   TerminalLocalFileLinkTarget,
 } from "../terminal/local-links/terminal-local-link-provider";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
-import { openExternalUrl } from "../utils/open-external-url";
+import { openLink } from "../utils/open-link";
 import { focusWithRetries } from "../utils/web-focus";
 import {
   computeScrollOffsetFromDragDelta,
@@ -498,7 +498,7 @@ export default function TerminalEmulator({
     runtime.setCallbacks({
       callbacks: {
         ...mountCallbacksRef.current,
-        onOpenExternalUrl: openExternalUrl,
+        onOpenExternalUrl: openLink,
       },
     });
     runtime.setPendingModifiers({ pendingModifiers: pendingModifiersRef.current });
@@ -532,7 +532,7 @@ export default function TerminalEmulator({
         onInputModeChange,
         onResolveLocalFileLink,
         onOpenLocalFileLink,
-        onOpenExternalUrl: openExternalUrl,
+        onOpenExternalUrl: openLink,
       },
     });
   }, [

@@ -5,7 +5,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type { Run, RunPhase } from "@otto-code/protocol/orchestration";
 import { isTerminalRunStatus } from "@otto-code/protocol/orchestration";
 import { judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
-import { Network, Trash2 } from "@/components/icons/material-icons";
+import { Network, Trash2, Waypoints } from "@/components/icons/material-icons";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -26,12 +26,14 @@ import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
+  collectRunAgentIds,
   useCancelRun,
   useClearFinishedRuns,
   useRespondToRunGate,
   useRuns,
   type RunWithHost,
 } from "@/hooks/use-runs";
+import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
 
 // ── Pure presentation helpers ───────────────────────────────────────────────
 
@@ -179,15 +181,7 @@ export function sumRunTokens(
   if (!agentsById) {
     return null;
   }
-  const agentIds = new Set<string>();
-  if (run.conductorAgentId) {
-    agentIds.add(run.conductorAgentId);
-  }
-  for (const phase of run.phases) {
-    for (const candidate of phase.candidates ?? []) {
-      agentIds.add(candidate.agentId);
-    }
-  }
+  const agentIds = collectRunAgentIds(run);
   let total = 0;
   let found = false;
   for (const id of agentIds) {
@@ -556,6 +550,13 @@ function RunCard({
   const cancelRun = useCallback(() => {
     cancelMutation.mutate(run.id);
   }, [cancelMutation, run.id]);
+  const workspaceId = run.workspaceId;
+  const runId = run.id;
+  const handleVisualize = useCallback(() => {
+    if (workspaceId) {
+      openVisualizerTab({ serverId, workspaceId, runId });
+    }
+  }, [serverId, workspaceId, runId]);
 
   const complexity = describeRunComplexity(run);
   const failure = describeRunFailure(run);
@@ -628,6 +629,20 @@ function RunCard({
         <StatusBadge label={runStatusLabel(run.status)} variant={runStatusVariant(run.status)} />
         <RunFooterMeta run={run} totalTokens={totalTokens} />
       </View>
+
+      {workspaceId ? (
+        <View style={styles.gateRow}>
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={Waypoints}
+            onPress={handleVisualize}
+            testID="run-visualize-button"
+          >
+            Visualize
+          </Button>
+        </View>
+      ) : null}
 
       {gatePhase ? (
         <View style={styles.gateRow}>

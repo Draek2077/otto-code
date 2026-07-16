@@ -10,15 +10,13 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
-  CircleAlertFilled,
-  CircleHelpFilled,
-  CircleNotificationsFilled,
   ExternalLink,
   GitPullRequest,
   Globe,
   SquareTerminal,
 } from "@/components/icons/material-icons";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
+import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { ThemedBlobLoader } from "@/components/blob-loader";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
@@ -27,12 +25,11 @@ import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const amberColorMapping = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
 const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
@@ -40,11 +37,8 @@ const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purp
 
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
-const ThemedGitHubIcon = withUnistyles(GitHubIcon);
+const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const ThemedCircleAlertFilled = withUnistyles(CircleAlertFilled);
-const ThemedCircleHelpFilled = withUnistyles(CircleHelpFilled);
-const ThemedCircleNotificationsFilled = withUnistyles(CircleNotificationsFilled);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
@@ -141,7 +135,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
           {workspace.prHint ? (
             <View style={styles.workspacePrBadgeRow}>
               <PrBadge hint={workspace.prHint} />
-              <ChecksBadge checks={workspace.prHint.checks} />
+              <ChecksBadge checks={workspace.prHint.checks} provider={workspace.prHint.provider} />
             </View>
           ) : null}
         </View>
@@ -196,29 +190,15 @@ function WorkspaceStatusIndicator({
     );
   }
 
-  // Every actionable state renders the same unified badge shape: a filled circle
-  // with a symbol knocked out, color-coded by meaning. Running keeps its loader
-  // (above) and done/idle reserves the slot but draws nothing (below).
-  if (bucket === "needs_input") {
+  // Every actionable state renders the shared attention badge (see
+  // status-bucket-icon.tsx): a filled circle with a symbol knocked out,
+  // color-coded by meaning — the same glyph the workspace tabs show. Running
+  // keeps its loader (above) and done/idle reserves the slot but draws
+  // nothing (below).
+  if (isAttentionStatusBucket(bucket)) {
     return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-needs_input">
-        <ThemedCircleHelpFilled size={14} uniProps={amberColorMapping} />
-      </View>
-    );
-  }
-
-  if (bucket === "failed") {
-    return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-failed">
-        <ThemedCircleAlertFilled size={14} uniProps={redColorMapping} />
-      </View>
-    );
-  }
-
-  if (bucket === "attention") {
-    return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-attention">
-        <ThemedCircleNotificationsFilled size={14} uniProps={greenColorMapping} />
+      <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
+        <StatusBucketIcon bucket={bucket} size={14} />
       </View>
     );
   }
@@ -231,7 +211,7 @@ function PrBadge({ hint }: { hint: PrHint }) {
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
       event.stopPropagation();
-      void openExternalUrl(hint.url);
+      void openLink(hint.url);
     },
     [hint.url],
   );
@@ -273,13 +253,19 @@ function PrBadge({ hint }: { hint: PrHint }) {
   );
 }
 
-function ChecksBadge({ checks }: { checks: PrHint["checks"] }) {
+function ChecksBadge({
+  checks,
+  provider,
+}: {
+  checks: PrHint["checks"];
+  provider: PrHint["provider"];
+}) {
   if (!checks || checks.length === 0) return null;
   const failed = checks.filter((check) => check.status === "failure").length;
   if (failed === 0) return null;
   return (
     <View style={checksBadgeStyles.badge}>
-      <ThemedGitHubIcon size={10} uniProps={redColorMapping} />
+      <ThemedGitHostingIcon provider={provider} size={10} uniProps={redColorMapping} />
       <Text style={checksBadgeStyles.text}>{failed} failed</Text>
     </View>
   );

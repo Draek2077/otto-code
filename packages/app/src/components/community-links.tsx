@@ -5,7 +5,7 @@ import { Heart } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { DiscordIcon } from "@/components/icons/discord-icon";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { useIconSize } from "@/styles/theme";
 
 export function CommunityLinks() {
@@ -28,15 +28,15 @@ export function CommunityLinks() {
   const discordIcon = useMemo(() => ({ render: renderDiscordIcon }), [renderDiscordIcon]);
 
   const handleOpenGitHub = useCallback(() => {
-    void openExternalUrl("https://github.com/Draek2077/otto-code");
+    void openLink("https://github.com/Draek2077/otto-code");
   }, []);
 
   const handleOpenSponsor = useCallback(() => {
-    void openExternalUrl("https://github.com/sponsors/boudra");
+    void openLink("https://github.com/sponsors/boudra");
   }, []);
 
   const handleOpenDiscord = useCallback(() => {
-    void openExternalUrl("https://discord.gg/jz8T2uahpH");
+    void openLink("https://discord.gg/jz8T2uahpH");
   }, []);
 
   return (

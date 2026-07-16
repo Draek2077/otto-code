@@ -20,7 +20,7 @@ import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { buildOpenProjectRoute, buildSetupRoute } from "@/utils/host-routes";
 import { OttoLogo } from "@/components/icons/otto-logo";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { isWeb, isNative } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 
@@ -206,7 +206,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   }, [hasCompletedWizard, router]);
 
   const handleOpenOttoSite = useCallback(() => {
-    void openExternalUrl("https://otto-code.me");
+    void openLink("https://otto-code.me");
   }, []);
 
   const handleOpenSettings = useCallback(() => {

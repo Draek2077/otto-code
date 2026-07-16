@@ -59,7 +59,7 @@ export const es: TranslationResources = {
       noMatches: "No hay coincidencias",
       actions: "Comportamiento",
       agents: "Agentes",
-      newAgent: "Nuevo agente",
+      newAgent: "New chat",
       openProject: "Abrir proyecto",
       home: "Hogar",
     },
@@ -147,6 +147,14 @@ export const es: TranslationResources = {
       searchPlaceholder: "Problemas de búsqueda y relaciones públicas...",
       title: "Adjuntar problema oPR",
     },
+    interruptSubagentsWarning: {
+      title: "Interrupt running subagents?",
+      message:
+        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+      confirm: "Interrupt anyway",
+      cancel: "Cancel",
+      suppress: "Don't ask again",
+    },
   },
   agentControls: {
     provider: {
@@ -226,7 +234,7 @@ export const es: TranslationResources = {
   },
   agentPanel: {
     states: {
-      notFound: "Agentno encontrado",
+      notFound: "Chat not found",
       failedToLoad: "No se pudo cargar el agente",
       reconnecting: "Reconectando...",
       archivingTitle: "Agente de archivo...",
@@ -411,8 +419,8 @@ export const es: TranslationResources = {
         download: "Descargar",
         edit: "Edit",
         findInFiles: "Find in files",
-        addToContext: "Add to context",
-        removeFromContext: "Remove from context",
+        addToContext: "Add to chat",
+        removeFromContext: "Remove from chat",
       },
       actions: {
         back: "Atrás",
@@ -512,18 +520,25 @@ export const es: TranslationResources = {
       hostDisconnected: "Hostno está conectado",
       unableToSubscribe: "No se puede suscribir al terminal",
     },
+    visualizer: {
+      tabLabel: "Visualizer",
+      subtitle: "Agent orchestration graph",
+      placeholder: "The Visualizer is coming soon.",
+      openAction: "Open Visualizer",
+    },
     tabs: {
       loading: "Cargando...",
-      loadingAgentTitle: "Título del agente de carga",
+      loadingAgentTitle: "Loading chat title",
       emptyPane: "No hay pestañas en este panel.",
       fallback: {
-        newAgent: "Nuevo agente",
+        newAgent: "New chat",
         setup: "Configuración",
         workspaceSetup: "Configuración deWorkspace",
         terminal: "Terminal",
         browser: "Navegador",
         agent: "Agent",
         workspace: "Workspace",
+        visualizer: "Visualizer",
       },
       switcher: {
         trigger: "Cambiar pestañas ({{count}}abierto)",
@@ -546,10 +561,10 @@ export const es: TranslationResources = {
           "Vuelva a cargar el agente para actualizar habilidades, MCP o estado de inicio de sesión.",
         close: "Cerca",
         renameTerminal: "Cambiar nombre de terminal",
-        renameAgent: "Cambiar nombre del agente",
+        renameAgent: "Rename chat",
       },
       actions: {
-        newAgent: "Nuevo agente",
+        newAgent: "New chat",
         newTerminal: "Nueva terminal",
         preparingTerminal: "Preparando la pestaña del terminal",
         preparingTerminalTooltip: "Preparando terminal...",
@@ -619,7 +634,7 @@ export const es: TranslationResources = {
       actions: {
         workspaceActions: "AccionesWorkspace",
         workspaceActionsTooltip: "Current workspace",
-        newAgent: "Nuevo agente",
+        newAgent: "New chat",
         newTerminal: "Nueva terminal",
         newBrowser: "Nueva pestaña del navegador",
         importSession: "Importar sesión",
@@ -656,6 +671,11 @@ export const es: TranslationResources = {
       },
     },
     git: {
+      hostingProviderNames: {
+        github: "GitHub",
+        bitbucketCloud: "Bitbucket Cloud",
+        generic: "git hosting",
+      },
       actions: {
         moreOptions: "Más opciones",
         moreActions: "Más acciones",
@@ -663,42 +683,52 @@ export const es: TranslationResources = {
           label: "Comprometerse",
           pending: "Comprometiéndose...",
           success: "Comprometido",
+          description: "Stage and commit all local changes — an AI agent writes the message",
         },
         pull: {
           label: "Jalar",
           pending: "Tracción...",
           success: "tirado",
+          description: "Run git pull to bring new commits from the remote into this branch",
         },
         push: {
           label: "Empujar",
           pending: "Emprendedor...",
           success: "Empujado",
+          description: "Run git push to send your local commits to the remote",
         },
         pullAndPush: {
           label: "Tirar y empujar",
           pending: "Tirando y empujando...",
           success: "Tirado y empujado",
+          description: "Run git pull, then git push, to sync this branch with its remote",
         },
         viewPr: "VerPR",
+        viewPrDescription: "Open this branch's pull request in the browser",
         createPr: {
           label: "CrearPR",
           pending: "CreandoPR...",
           success: "PRcreado",
+          description: "Push this branch to the remote and open a pull request against {{baseRef}}",
         },
         mergeBranch: {
-          label: "Fusionar localmente",
+          label: "Merge into {{baseRef}}",
           pending: "Fusionando...",
           success: "Fusionado",
+          description: "Merge this branch into {{baseRef}} on this machine, without a pull request",
         },
         mergeFromBase: {
           label: "Actualización desde{{baseRef}}",
           pending: "Actualizando...",
           success: "Actualizado",
+          description:
+            "Merge the latest {{baseRef}} commits into this branch (a merge, not a rebase)",
         },
         archive: {
           label: "Archivar espacio de trabajo",
           pending: "Archivando...",
           success: "Archivado",
+          description: "Remove this workspace from active use",
         },
         mergePr: {
           squash: "Fusionar PR (squash)",
@@ -706,6 +736,10 @@ export const es: TranslationResources = {
           rebase: "Fusionar PR (rebase)",
           pending: "Fusionando PR...",
           success: "PR fusionado",
+          squashDescription: "Combine the pull request's commits into one and merge it",
+          mergeDescription: "Merge the pull request with a merge commit",
+          rebaseDescription:
+            "Rebase the pull request's commits onto the base branch, no merge commit",
         },
         autoMerge: {
           enableSquash: "Fusión automática (squash)",
@@ -715,9 +749,11 @@ export const es: TranslationResources = {
           enabling: "Habilitando la fusión automática...",
           disabling: "Desactivando la fusión automática...",
           disabled: "Fusión automática deshabilitada",
+          enableDescription: "Merge the pull request automatically once required checks pass",
+          disableDescription: "Select to turn off auto-merge for this pull request",
         },
         unavailable: {
-          viewPrNoGithub: "VerPRno está disponible en este momento porqueGitHubno está conectado",
+          viewPrNoGithub: "View PR isn't available right now because {{provider}} isn't connected",
           pullNoRemote:
             "Pull no está disponible aquí porque esta rama aún no está conectada a un control remoto",
           pullDirty:
@@ -735,7 +771,7 @@ export const es: TranslationResources = {
           pullAndPushInSync:
             "Pull and push no está disponible porque esta rama ya está sincronizada",
           createPrNoGithub:
-            "CrearPRno está disponible en este momento porqueGitHubno está conectado",
+            "Create PR isn't available right now because {{provider}} isn't connected",
           createPrNoCommits:
             "CrearPRno está disponible porque esta rama aún no tiene nuevas confirmaciones",
           mergeNoBase:
@@ -751,7 +787,7 @@ export const es: TranslationResources = {
           updateCurrent:
             "La actualización no está disponible porque esta rama ya está actualizada con{{baseRef}}",
           mergePrNoGithub:
-            "FusionarPRno está disponible en este momento porqueGitHubno está conectado",
+            "Merge PR isn't available right now because {{provider}} isn't connected",
           mergePrMissing:
             "FusionarPRno está disponible porque aún no hay una solicitud de extracción",
           mergePrDraft:
@@ -1135,6 +1171,11 @@ export const es: TranslationResources = {
           "¿Seguro que quieres salir de la aplicación mientras hay agentes activos?",
         confirm: "Salir",
         cancel: "Cancelar",
+        schedulesTitle: "Quit and stop schedules?",
+        schedulesMessage:
+          "Quitting stops the daemon, so {{count}} enabled schedules will not run until Otto starts again.",
+        schedulesConfirm: "Quit anyway",
+        schedulesSuppress: "Don't warn me again",
       },
     },
     updates: {
@@ -1480,6 +1521,8 @@ export const es: TranslationResources = {
     restore: "Restaurar",
     later: "Más tarde",
     stashRestored: "Se restauraron los cambios ocultos",
+    switchInProgress: "Branch switch in progress",
+    checkedOutElsewhere: "Checked out in another workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "Buscando espacio de trabajo...",
@@ -1846,10 +1889,10 @@ export const es: TranslationResources = {
     replaceIssues: "{{count}} files skipped or failed",
     toggleMatch: "Include this match",
     toggleFile: "Include this file",
-    addToContext: "Add to context",
-    removeFromContext: "Remove from context",
-    addLineToContext: "Add line {{line}} to context",
-    removeLineFromContext: "Remove line {{line}} from context",
+    addToContext: "Add to chat",
+    removeFromContext: "Remove from chat",
+    addLineToContext: "Add line {{line}} to chat",
+    removeLineFromContext: "Remove line {{line}} from chat",
     error: "Search failed",
   },
   subagents: {
@@ -1867,8 +1910,8 @@ export const es: TranslationResources = {
   },
   panels: {
     draft: {
-      newAgent: "Nuevo agente",
-      creatingAgent: "Agente creador",
+      newAgent: "New Chat",
+      creatingAgent: "Creating chat",
     },
     file: {
       directoryMissing: "No se encontró el directorio de Workspace.",
@@ -1912,6 +1955,14 @@ export const es: TranslationResources = {
       cancelAccessibility: "Cancelar comentario de revisión",
       save: "Comentario",
       saveAccessibility: "Guardar comentario de revisión",
+    },
+    removeAll: {
+      action: "Remove all comments",
+      confirmTitleSingle: "Remove comment?",
+      confirmTitleMultiple: "Remove {{count}} comments?",
+      confirmMessage:
+        "All draft review comments on this diff will be deleted. This can't be undone.",
+      confirmButton: "Remove",
     },
   },
   settings: {
@@ -2001,6 +2052,14 @@ export const es: TranslationResources = {
           external: "Navegador externo",
         },
       },
+      openLinks: {
+        label: "Open links",
+        description: "Where links open — PRs, docs, and links in chat",
+        options: {
+          inApp: "In Otto",
+          external: "External browser",
+        },
+      },
       terminalScrollback: {
         label: "Historial de terminal",
         description: "Líneas mantenidas en el búfer de terminal incorporado",
@@ -2075,6 +2134,11 @@ export const es: TranslationResources = {
       offline: "Desconectado",
       versionDiffers: "La versión difiere de este dispositivo.",
       upstreamBase: "Based on {{brand}} {{version}}",
+      credits: {
+        title: "Third-party credits",
+        visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        viewSource: "View source",
+      },
       releaseChannel: {
         label: "Canal de lanzamiento",
         description: "Cambie aBetapara recibir actualizaciones antes y ayudar a darles forma",
@@ -2152,6 +2216,18 @@ export const es: TranslationResources = {
             relative: "Hace cuánto",
           },
         },
+        textEffects: {
+          title: "Text effects",
+          hint: "Animation style for the activity text shown while the agent is working",
+          accessibilityLabel: "Text effects: {{value}}",
+          options: {
+            professional: "Professional",
+            active: "Active",
+            spectrum: "Spectrum",
+            vivid: "Vivid",
+            nightRider: "Night Rider",
+          },
+        },
       },
       layout: {
         title: "Layout",
@@ -2178,6 +2254,39 @@ export const es: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+      },
+      visualizer: {
+        title: "Visualizer",
+        hexGrid: {
+          title: "Hex grid",
+          hint: "Show the background hex grid on the Visualizer canvas",
+          accessibilityLabel: "Hex grid",
+        },
+        messageFeed: {
+          title: "Message feed",
+          hint: "Show the live message feed panel",
+          accessibilityLabel: "Message feed",
+        },
+        timeline: {
+          title: "Timeline",
+          hint: "Show the timeline panel",
+          accessibilityLabel: "Timeline",
+        },
+        fileAttention: {
+          title: "File attention",
+          hint: "Show the file-attention heatmap panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "File attention",
+        },
+        transcript: {
+          title: "Transcript",
+          hint: "Show the session transcript panel. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Transcript",
+        },
+        costOverlay: {
+          title: "Cost overlay",
+          hint: "Show the token-cost overlay. Only one of File attention, Transcript, and Cost overlay is visible at a time",
+          accessibilityLabel: "Cost overlay",
         },
       },
       fonts: {
@@ -2720,6 +2829,12 @@ export const es: TranslationResources = {
         saved: "Proyecto guardado",
         saving: "Guardando...",
         cancel: "Cancelar",
+      },
+      unsavedChanges: {
+        title: "Discard unsaved changes?",
+        message: "This project has unsaved settings changes. Discard them?",
+        discard: "Discard",
+        keepEditing: "Keep editing",
       },
     },
   },

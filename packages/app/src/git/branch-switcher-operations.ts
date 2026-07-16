@@ -9,7 +9,9 @@ export function createBranchSwitcherOperations(client: DaemonClient, cwd: string
     listOttoStashes: () => client.stashList(cwd, { ottoOnly: true }),
     saveStash: (branch: string | undefined) => client.stashSave(cwd, { branch }),
     popStash: (stashIndex: number) => client.stashPop(cwd, stashIndex),
-    switchBranch: (branch: string) => client.checkoutSwitchBranch(cwd, branch),
+    // The branch switch itself lives in the checkout-actions store
+    // (useCheckoutGitActionsStore.switchBranch) so its pending state is shared
+    // with the rest of the git UI.
   };
 }
 

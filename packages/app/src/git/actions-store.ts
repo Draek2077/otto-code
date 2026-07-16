@@ -43,7 +43,8 @@ export type CheckoutGitAsyncActionId =
   | "disable-pr-auto-merge"
   | "merge-branch"
   | "merge-from-base"
-  | "archive-worktree";
+  | "archive-worktree"
+  | "switch-branch";
 
 type CheckoutKey = string;
 type StatusMap = Partial<Record<CheckoutGitAsyncActionId, CheckoutGitActionStatus>>;
@@ -309,6 +310,7 @@ interface CheckoutGitActionsStoreState {
   disablePrAutoMerge: (params: { serverId: string; cwd: string }) => Promise<void>;
   mergeBranch: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
   mergeFromBase: (params: { serverId: string; cwd: string; baseRef: string }) => Promise<void>;
+  switchBranch: (params: { serverId: string; cwd: string; branch: string }) => Promise<void>;
   archiveWorktree: (params: {
     serverId: string;
     cwd: string;
@@ -330,6 +332,13 @@ async function runCheckoutAction({
 }): Promise<void> {
   const key = checkoutKey(serverId, cwd);
   const inflightId = inFlightKey(key, actionId);
+
+  // A branch switch rewrites the working tree out from under every other git
+  // mutation, so while one is in flight all other actions on this checkout are
+  // refused up front (surfaced through each caller's existing error toast).
+  if (actionId !== "switch-branch" && inFlight.has(inFlightKey(key, "switch-branch"))) {
+    throw new Error(i18n.t("branchSwitcher.switchInProgress"));
+  }
 
   const existing = inFlight.get(inflightId);
   if (existing) {
@@ -592,6 +601,21 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
           baseRef,
           requireCleanTarget: true,
         });
+        if (payload.error) {
+          throw new Error(payload.error.message);
+        }
+      },
+    });
+  },
+
+  switchBranch: async ({ serverId, cwd, branch }) => {
+    await runCheckoutAction({
+      serverId,
+      cwd,
+      actionId: "switch-branch",
+      run: async () => {
+        const client = resolveClient(serverId);
+        const payload = await client.checkoutSwitchBranch(cwd, branch);
         if (payload.error) {
           throw new Error(payload.error.message);
         }

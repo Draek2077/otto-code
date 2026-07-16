@@ -1,7 +1,13 @@
+import { isBitbucketCloudHost, normalizeHost } from "@otto-code/protocol/git-remote";
+import type { GitHostingProviderId } from "@otto-code/protocol/messages";
+
 export interface PrHint {
   url: string;
   number: number;
   state: "open" | "merged" | "closed";
+  // Derived from the PR URL host — lets badge UI show the right provider mark
+  // without a protocol change (workspace snapshots don't carry the provider).
+  provider: GitHostingProviderId;
   checks?: Array<{ name: string; status: string; url: string | null }>;
   checksStatus?: "none" | "pending" | "success" | "failure";
   reviewDecision?: "approved" | "changes_requested" | "pending" | null;
@@ -19,7 +25,8 @@ interface PrStatusLike {
 function parsePullRequestNumber(url: string): number | null {
   try {
     const pathname = new URL(url).pathname;
-    const match = pathname.match(/\/pull\/(\d+)(?:\/|$)/);
+    // GitHub uses /pull/<n>, Bitbucket Cloud uses /pull-requests/<n>.
+    const match = pathname.match(/\/(?:pull|pull-requests)\/(\d+)(?:\/|$)/);
     if (!match) {
       return null;
     }
@@ -28,6 +35,15 @@ function parsePullRequestNumber(url: string): number | null {
     return Number.isFinite(number) ? number : null;
   } catch {
     return null;
+  }
+}
+
+function deriveProviderFromPrUrl(url: string): GitHostingProviderId {
+  try {
+    const host = normalizeHost(new URL(url).hostname);
+    return isBitbucketCloudHost(host) ? "bitbucket-cloud" : "github";
+  } catch {
+    return "github";
   }
 }
 
@@ -50,6 +66,7 @@ export function selectPrHintFromStatus(status: PrStatusLike | null | undefined):
     url: status.url,
     number,
     state,
+    provider: deriveProviderFromPrUrl(status.url),
     checks: status.checks,
     checksStatus: status.checksStatus as PrHint["checksStatus"],
     reviewDecision: status.reviewDecision as PrHint["reviewDecision"],

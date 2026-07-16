@@ -1,7 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { AgentVisualizer } from "@/components/agent-visualizer";
 import { vscodeBridge } from "@/lib/vscode-bridge";
-import "@/app/globals.css";
+// Wraps the vendor globals.css with an @source directive so Tailwind scans
+// the vendor tree for utility classes — see otto-globals.css for why.
+import "./otto-globals.css";
 
 // Otto embed entry — replaces vendor/agent-flow/web/webview-entry.tsx (which binds
 // to acquireVsCodeApi). Binds the vendor bridge to whichever Otto host transport

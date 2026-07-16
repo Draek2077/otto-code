@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { useNavigation, usePreventRemove } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -38,6 +39,7 @@ import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { isNative } from "@/constants/platform";
 import { useProjects } from "@/hooks/use-projects";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useHostFeature } from "@/runtime/host-features";
@@ -98,11 +100,40 @@ const WORKTREE_DOCS_URL = "https://otto-code.me/docs/worktrees";
 
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
 
-export interface ProjectSettingsScreenProps {
-  projectKey: string;
+// What the header save button needs from the (separately mounted) config form.
+interface ProjectFormSaveState {
+  isDirty: boolean;
+  isSaving: boolean;
+  canSave: boolean;
+  save: () => void;
 }
 
-export default function ProjectSettingsScreen({ projectKey }: ProjectSettingsScreenProps) {
+/**
+ * Shared discard/keep-editing confirmation for leaving project settings with
+ * unsaved changes. Used by this screen's own back affordance and by the
+ * settings shell's exit handlers (sidebar, back header).
+ */
+export function confirmDiscardProjectSettingsChanges(t: TFunction): Promise<boolean> {
+  return confirmDialog({
+    title: t("settings.project.unsavedChanges.title"),
+    message: t("settings.project.unsavedChanges.message"),
+    confirmLabel: t("settings.project.unsavedChanges.discard"),
+    cancelLabel: t("settings.project.unsavedChanges.keepEditing"),
+    destructive: true,
+  });
+}
+
+export interface ProjectSettingsScreenProps {
+  projectKey: string;
+  // Reports whether the config form has unsaved changes, so the settings shell
+  // can guard its own exit affordances (sidebar navigation, back header).
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export default function ProjectSettingsScreen({
+  projectKey,
+  onDirtyChange,
+}: ProjectSettingsScreenProps) {
   const { projects } = useProjects();
   const project = useMemo(
     () => projects.find((entry) => entry.projectKey === projectKey),
@@ -142,6 +173,7 @@ export default function ProjectSettingsScreen({ projectKey }: ProjectSettingsScr
       onSelectHost={setSelectedServerId}
       client={client}
       isHostGone={isHostGone}
+      onDirtyChange={onDirtyChange}
     />
   );
 }
@@ -175,13 +207,13 @@ function NoEditableTarget() {
   );
 }
 
-function BackToProjectsButton() {
+function BackToProjectsButton({ onPress }: { onPress?: () => void }) {
   const { t } = useTranslation();
   return (
     <Button
       testID="project-settings-back-link"
       accessibilityLabel={t("settings.project.backToProjects")}
-      onPress={navigateBackToProjects}
+      onPress={onPress ?? navigateBackToProjects}
       variant="ghost"
       size="sm"
       leftIcon={ArrowLeft}
@@ -199,6 +231,7 @@ interface ProjectSettingsBodyProps {
   onSelectHost: (serverId: string) => void;
   client: DaemonClient;
   isHostGone: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function ProjectSettingsBody({
@@ -208,7 +241,48 @@ function ProjectSettingsBody({
   onSelectHost,
   client,
   isHostGone,
+  onDirtyChange,
 }: ProjectSettingsBodyProps) {
+  const { t } = useTranslation();
+  const navigation = useNavigation();
+  const [saveState, setSaveState] = useState<ProjectFormSaveState | null>(null);
+  const isFormDirty = saveState?.isDirty ?? false;
+
+  useEffect(() => {
+    onDirtyChange?.(isFormDirty);
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange, isFormDirty]);
+
+  // Native: a single route-removal guard covers hardware back, swipe-back, and
+  // any in-app navigation that pops this screen. Web keeps the guard in the
+  // explicit exit handlers instead — preventing removal there fights the
+  // browser's URL, which expo-router does not recover from (see
+  // docs/expo-router.md on route-tree fragility).
+  const handlePreventRemove = useCallback(
+    ({ data }: { data: { action: Parameters<typeof navigation.dispatch>[0] } }) => {
+      void (async () => {
+        if (await confirmDiscardProjectSettingsChanges(t)) {
+          navigation.dispatch(data.action);
+        }
+      })();
+    },
+    [navigation, t],
+  );
+  usePreventRemove(isNative && isFormDirty, handlePreventRemove);
+
+  const handleBackToProjects = useCallback(() => {
+    // Native removal is guarded by usePreventRemove above; don't double-prompt.
+    if (isNative || !isFormDirty) {
+      navigateBackToProjects();
+      return;
+    }
+    void (async () => {
+      if (await confirmDiscardProjectSettingsChanges(t)) {
+        navigateBackToProjects();
+      }
+    })();
+  }, [isFormDirty, t]);
+
   const queryKey = useMemo(
     () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
     [selectedHost.serverId, selectedHost.repoRoot],
@@ -247,7 +321,24 @@ function ProjectSettingsBody({
 
   return (
     <View style={styles.body}>
-      <BackToProjectsButton />
+      <View style={styles.topBar}>
+        <BackToProjectsButton onPress={handleBackToProjects} />
+        {saveState ? (
+          <Button
+            testID="save-button"
+            accessibilityLabel={t("settings.project.actions.save")}
+            variant="default"
+            size="sm"
+            disabled={!saveState.canSave}
+            loading={saveState.isSaving}
+            onPress={saveState.save}
+          >
+            {saveState.isSaving
+              ? t("settings.project.actions.saving")
+              : t("settings.project.actions.save")}
+          </Button>
+        ) : null}
+      </View>
 
       <View style={styles.headerBlock}>
         <View style={styles.titleRow}>
@@ -278,6 +369,7 @@ function ProjectSettingsBody({
         onReload: handleReload,
         hasMultipleHosts,
         isHostGone,
+        onSaveStateChange: setSaveState,
       })}
     </View>
   );
@@ -294,6 +386,7 @@ interface RenderContentInput {
   onReload: () => void;
   hasMultipleHosts: boolean;
   isHostGone: boolean;
+  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
 }
 
 function renderContent({
@@ -307,6 +400,7 @@ function renderContent({
   onReload,
   hasMultipleHosts,
   isHostGone,
+  onSaveStateChange,
 }: RenderContentInput) {
   if (readQuery.isLoading) {
     return (
@@ -360,6 +454,7 @@ function renderContent({
       queryKey={queryKey}
       client={client}
       onReload={onReload}
+      onSaveStateChange={onSaveStateChange}
     />
   );
 }
@@ -445,6 +540,17 @@ interface ProjectConfigFormProps {
   queryKey: readonly [string, string, string];
   client: DaemonClient;
   onReload: () => void;
+  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
+}
+
+// Content-only identity of a draft, for dirty comparison. Script row ids come
+// from a module counter, so two configToDraft calls over the same config would
+// differ by id alone — strip them.
+function draftFingerprint(draft: ProjectConfigDraft): string {
+  return JSON.stringify({
+    ...draft,
+    scripts: draft.scripts.map(({ id: _id, ...rest }) => rest),
+  });
 }
 
 function ProjectConfigForm({
@@ -454,6 +560,7 @@ function ProjectConfigForm({
   queryKey,
   client,
   onReload,
+  onSaveStateChange,
 }: ProjectConfigFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -462,8 +569,14 @@ function ProjectConfigForm({
   const isDeveloperMode = useIsDeveloperMode();
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
+  const [initialFingerprint] = useState(() => draftFingerprint(draft));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+
+  const isDirty = useMemo(
+    () => draftFingerprint(draft) !== initialFingerprint,
+    [draft, initialFingerprint],
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (input: {
@@ -651,7 +764,32 @@ function ProjectConfigForm({
 
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
-  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts;
+  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts || !isDirty;
+
+  // Publish save state to the header button without re-rendering the whole
+  // body on every keystroke: the handler is ref-stable, so the effect only
+  // fires when one of the booleans flips.
+  const saveHandlerRef = useRef(handleSave);
+  useEffect(() => {
+    saveHandlerRef.current = handleSave;
+  }, [handleSave]);
+  const stableSave = useCallback(() => saveHandlerRef.current(), []);
+
+  const isSaving = saveMutation.isPending;
+  useEffect(() => {
+    if (!isDeveloperMode) {
+      onSaveStateChange(null);
+      return;
+    }
+    onSaveStateChange({
+      isDirty,
+      isSaving,
+      canSave: !saveDisabled,
+      save: stableSave,
+    });
+  }, [onSaveStateChange, isDeveloperMode, isDirty, isSaving, saveDisabled, stableSave]);
+
+  useEffect(() => () => onSaveStateChange(null), [onSaveStateChange]);
 
   return (
     <View>
@@ -780,22 +918,6 @@ function ProjectConfigForm({
               </Alert>
             </View>
           ) : null}
-
-          <View style={styles.footer}>
-            <Button
-              testID="save-button"
-              accessibilityLabel={t("settings.project.actions.save")}
-              variant="default"
-              size="md"
-              disabled={saveDisabled}
-              loading={saveMutation.isPending}
-              onPress={handleSave}
-            >
-              {saveMutation.isPending
-                ? t("settings.project.actions.saving")
-                : t("settings.project.actions.save")}
-            </Button>
-          </View>
 
           {editingScript ? (
             <ScriptEditModal
@@ -1418,6 +1540,12 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: "flex-start",
     paddingHorizontal: 0,
   },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   headerBlock: {
     marginTop: theme.spacing[2],
     marginBottom: theme.spacing[4],
@@ -1539,11 +1667,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   calloutWrap: {
     marginTop: theme.spacing[3],
-  },
-  footer: {
-    marginTop: theme.spacing[4],
-    flexDirection: "row",
-    justifyContent: "flex-end",
   },
   modalSection: {
     gap: theme.spacing[2],

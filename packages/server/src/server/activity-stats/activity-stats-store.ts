@@ -50,6 +50,11 @@ const COUNTER_FIELDS: readonly ActivityCounterField[] = [
 // drift at the edges.
 const DAILY_RETENTION_DAYS = 35;
 
+// Change notifications are coalesced: a burst of increments (a busy agent can
+// tick several counters per second) produces at most one onDidChange callback
+// per window, so the resulting activity_stats_changed broadcast stays quiet.
+const CHANGE_NOTIFY_COALESCE_MS = 2_000;
+
 function zeroCounters(): ActivityCounters {
   const counters = {} as ActivityCounters;
   for (const field of COUNTER_FIELDS) {
@@ -127,12 +132,39 @@ export class ActivityStatsStore {
   private cache: PersistedShape | null = null;
   private queue: Promise<void> = Promise.resolve();
   private readonly logger?: Logger;
+  private changeListener: (() => void) | null = null;
+  private changeNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly filePath: string,
     logger?: Logger,
   ) {
     this.logger = logger?.child({ component: "activity-stats-store" });
+  }
+
+  /**
+   * Register the (single) coalesced change listener. Fires at most once per
+   * CHANGE_NOTIFY_COALESCE_MS after any counter increments — the hook behind
+   * the daemon-wide activity_stats_changed push.
+   */
+  onDidChange(listener: () => void): void {
+    this.changeListener = listener;
+  }
+
+  private scheduleChangeNotification(): void {
+    if (!this.changeListener || this.changeNotifyTimer) {
+      return;
+    }
+    this.changeNotifyTimer = setTimeout(() => {
+      this.changeNotifyTimer = null;
+      try {
+        this.changeListener?.();
+      } catch (error) {
+        this.logger?.warn({ err: error }, "Activity stats change listener failed");
+      }
+    }, CHANGE_NOTIFY_COALESCE_MS);
+    // Never hold the process open for a pending stats ping.
+    this.changeNotifyTimer.unref?.();
   }
 
   private async load(): Promise<PersistedShape> {
@@ -163,6 +195,7 @@ export class ActivityStatsStore {
       state.daily[today] = state.daily[today] ?? zeroCounters();
       state.daily[today][field] += by;
       trimOldDays(state.daily);
+      this.scheduleChangeNotification();
       try {
         await writeJsonFileAtomic(this.filePath, state);
       } catch (error) {

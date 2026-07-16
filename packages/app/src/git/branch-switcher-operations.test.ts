@@ -21,10 +21,6 @@ function createRecordingClient() {
       cwds.push(cwd);
       return { error: null };
     },
-    checkoutSwitchBranch: async (cwd: string) => {
-      cwds.push(cwd);
-      return { error: null };
-    },
   } as unknown as DaemonClient;
   return { client, cwds };
 }
@@ -40,10 +36,8 @@ describe("createBranchSwitcherOperations", () => {
     await operations.listOttoStashes();
     await operations.saveStash("main");
     await operations.popStash(0);
-    await operations.switchBranch("feature");
 
     expect(cwds).toEqual([
-      workspaceDirectory,
       workspaceDirectory,
       workspaceDirectory,
       workspaceDirectory,

@@ -58,6 +58,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
+import {
+  getTextEffectSpec,
+  type TextEffectActivity,
+  type TextEffectSpec,
+} from "@/styles/text-effects";
+import { useTextEffectThemeId } from "@/hooks/use-text-effect-theme";
+import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import { MarkdownRenderer, type MarkdownStyles } from "@/components/markdown/renderer";
@@ -1346,6 +1353,7 @@ interface NativeExpandableBadgeShimmerProps {
   peakWidth: number;
   durationSeconds: number;
   gradientId: string;
+  effect: TextEffectSpec;
 }
 
 const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer({
@@ -1356,8 +1364,10 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   peakWidth,
   durationSeconds,
   gradientId,
+  effect,
 }: NativeExpandableBadgeShimmerProps) {
   const shimmerTranslateX = useSharedValue(0);
+  const { bounce, easing } = effect;
 
   useEffect(() => {
     const startPosition = -peakWidth;
@@ -1366,15 +1376,16 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
     shimmerTranslateX.value = withRepeat(
       withTiming(endPosition, {
         duration: durationSeconds * 1000,
-        easing: Easing.linear,
+        easing: easing === "ease-in-out" ? Easing.inOut(Easing.ease) : Easing.linear,
       }),
       -1,
-      false,
+      // Bounce themes (Night Rider) reverse each cycle instead of restarting.
+      bounce,
     );
     return () => {
       cancelAnimation(shimmerTranslateX);
     };
-  }, [durationSeconds, peakWidth, rowWidth, shimmerTranslateX]);
+  }, [bounce, durationSeconds, easing, peakWidth, rowWidth, shimmerTranslateX]);
 
   const nativeShimmerPeakStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shimmerTranslateX.value }],
@@ -1432,7 +1443,7 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
       <MaskedView pointerEvents="none" style={nativeShimmerTrackStyle} maskElement={maskElement}>
         <View pointerEvents="none" style={nativeShimmerTrackStyle}>
           <Animated.View pointerEvents="none" style={nativeShimmerPeakCombinedStyle}>
-            <NativeShimmerPeakSvg gradientId={gradientId} />
+            <NativeShimmerPeakSvg gradientId={gradientId} stops={effect.nativeStops} />
           </Animated.View>
         </View>
       </MaskedView>
@@ -1440,14 +1451,25 @@ const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer(
   );
 });
 
-function NativeShimmerPeakSvg({ gradientId }: { gradientId: string }) {
+function NativeShimmerPeakSvg({
+  gradientId,
+  stops,
+}: {
+  gradientId: string;
+  stops: TextEffectSpec["nativeStops"];
+}) {
   return (
     <Svg width="100%" height="100%" preserveAspectRatio="none">
       <Defs>
         <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
-          <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
-          <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+          {stops.map((stop) => (
+            <Stop
+              key={stop.offset}
+              offset={`${stop.offset * 100}%`}
+              stopColor={stop.color}
+              stopOpacity={stop.opacity}
+            />
+          ))}
         </SvgLinearGradient>
       </Defs>
       <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
@@ -2428,6 +2450,9 @@ interface ExpandableBadgeProps {
   // Grouped contexts (ActionGroup) space rows with a parent `gap` instead of
   // per-row margins, so they also opt out of the expanded bottom margin.
   disableExpandedSpacing?: boolean;
+  // What the loading label represents, for text-effect themes that color per
+  // activity (see styles/text-effects.ts). Defaults to "other".
+  effectActivity?: TextEffectActivity;
   testID?: string;
 }
 
@@ -2511,6 +2536,7 @@ interface ExpandableBadgeLabelRowProps {
   nativeShimmerPeakWidth: number;
   shimmerDuration: number;
   nativeGradientId: string;
+  effect: TextEffectSpec;
   onLabelRowLayout: (event: LayoutChangeEvent) => void;
   onLabelLayout: (event: LayoutChangeEvent) => void;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
@@ -2537,6 +2563,7 @@ function ExpandableBadgeLabelRow({
   nativeShimmerPeakWidth,
   shimmerDuration,
   nativeGradientId,
+  effect,
   onLabelRowLayout,
   onLabelLayout,
   onSecondaryLayout,
@@ -2600,6 +2627,7 @@ function ExpandableBadgeLabelRow({
           peakWidth={nativeShimmerPeakWidth}
           durationSeconds={shimmerDuration}
           gradientId={nativeGradientId}
+          effect={effect}
         />
       ) : null}
     </View>
@@ -2687,17 +2715,18 @@ function computeShimmerMetrics(input: {
   labelWidth: number;
   secondaryOffsetX: number;
   secondaryWidth: number;
+  effect: TextEffectSpec;
 }) {
   const totalShimmerChars = input.label.trim().length + (input.secondaryLabel?.trim().length ?? 0);
   const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
-  const shimmerDuration = Math.max(
-    1,
-    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment),
-  );
-  const nativeShimmerPeakWidth = Math.max(
-    32,
-    Math.min(120, input.labelRowWidth > 0 ? input.labelRowWidth * 0.28 : 0),
-  );
+  // The effect theme scales the text-length-derived duration and the measured
+  // peak width (Professional is 1/1, i.e. exactly the historical values).
+  const shimmerDuration =
+    Math.max(1, Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment)) *
+    input.effect.durationScale;
+  const nativeShimmerPeakWidth =
+    Math.max(32, Math.min(120, input.labelRowWidth > 0 ? input.labelRowWidth * 0.28 : 0)) *
+    input.effect.peakScale;
   const isWebShimmer = input.isLoading && isWeb;
   const shouldMeasureWebShimmer = isWebShimmer;
   const shouldMeasureNativeShimmer = input.isLoading && isNative;
@@ -2708,7 +2737,8 @@ function computeShimmerMetrics(input: {
     ? input.secondaryOffsetX + input.secondaryWidth
     : input.labelOffsetX + input.labelWidth;
   const webShimmerSpanWidth = Math.max(1, webShimmerSpanEndX - webShimmerSpanStartX);
-  const webShimmerPeakWidth = Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22));
+  const webShimmerPeakWidth =
+    Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22)) * input.effect.peakScale;
   const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
   const webShimmerTrackEnd = webShimmerSpanEndX;
   return {
@@ -2750,9 +2780,6 @@ function useDetailWheelPropagationBlocker(input: {
   }, [detailWrapperRef, enabled]);
 }
 
-const SHIMMER_GRADIENT =
-  "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
-
 function buildShimmerTextStyle(input: {
   isWebShimmer: boolean;
   webShimmerPeakWidth: number;
@@ -2760,18 +2787,24 @@ function buildShimmerTextStyle(input: {
   webShimmerTrackStart: number;
   webShimmerTrackEnd: number;
   offsetX: number;
+  effect: TextEffectSpec;
 }): object | null {
   if (!input.isWebShimmer) return null;
+  // The shared @keyframes animate background-position between the per-element
+  // CSS vars, so every effect theme rides the same registered keyframes — the
+  // theme only varies the gradient, timing function, and direction here.
+  const timingFunction = input.effect.easing === "ease-in-out" ? "ease-in-out" : "linear";
+  const direction = input.effect.bounce ? "alternate" : "normal";
   return {
     opacity: 1,
     color: "transparent",
-    backgroundImage: SHIMMER_GRADIENT,
+    backgroundImage: input.effect.webGradient,
     backgroundSize: `${input.webShimmerPeakWidth}px 100%`,
     backgroundRepeat: "no-repeat",
     backgroundClip: "text",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
-    animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${input.shimmerDuration}s linear infinite`,
+    animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${input.shimmerDuration}s ${timingFunction} infinite ${direction}`,
     "--otto-shimmer-start": `${input.webShimmerTrackStart - input.offsetX}px`,
     "--otto-shimmer-end": `${input.webShimmerTrackEnd - input.offsetX}px`,
   };
@@ -2792,6 +2825,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   isLastInSequence = false,
   disableOuterSpacing,
   disableExpandedSpacing = false,
+  effectActivity = "other",
   testID,
 }: ExpandableBadgeProps) {
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
@@ -2828,6 +2862,10 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
   );
+  // Registry specs are module-level constants, so this reference is stable per
+  // (theme, activity) and the downstream memos never churn while streaming.
+  const textEffectThemeId = useTextEffectThemeId();
+  const effect = getTextEffectSpec(textEffectThemeId, effectActivity);
   const [labelRowWidth, setLabelRowWidth] = useState(0);
   const [labelRowHeight, setLabelRowHeight] = useState(0);
   const [labelOffsetX, setLabelOffsetX] = useState(0);
@@ -2855,6 +2893,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     labelWidth,
     secondaryOffsetX,
     secondaryWidth,
+    effect,
   });
 
   const handleLabelRowLayout = useCallback(
@@ -2914,6 +2953,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackStart,
         webShimmerTrackEnd,
         offsetX: labelOffsetX,
+        effect,
       }),
     [
       isWebShimmer,
@@ -2922,6 +2962,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackStart,
       webShimmerTrackEnd,
       labelOffsetX,
+      effect,
     ],
   );
 
@@ -2934,6 +2975,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackStart,
         webShimmerTrackEnd,
         offsetX: secondaryOffsetX,
+        effect,
       }),
     [
       isWebShimmer,
@@ -2942,6 +2984,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackStart,
       webShimmerTrackEnd,
       secondaryOffsetX,
+      effect,
     ],
   );
 
@@ -3078,6 +3121,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             nativeShimmerPeakWidth={nativeShimmerPeakWidth}
             shimmerDuration={shimmerDuration}
             nativeGradientId={nativeGradientIdRef.current}
+            effect={effect}
             onLabelRowLayout={handleLabelRowLayout}
             onLabelLayout={handleLabelLayout}
             onSecondaryLayout={handleSecondaryLayout}
@@ -3114,6 +3158,7 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.disableExpandedSpacing !== next.disableExpandedSpacing) return false;
+  if (previous.effectActivity !== next.effectActivity) return false;
   if (previous.testID !== next.testID) return false;
   if (previous.onToggle !== next.onToggle) return false;
   if (previous.onOpenFile !== next.onOpenFile) return false;
@@ -3192,6 +3237,8 @@ export const ToolCall = memo(function ToolCall({
       }),
     [toolName, status, error, effectiveDetail, metadata, cwd],
   );
+  // Drives per-activity text-effect themes (Vivid) — see styles/text-effects.ts.
+  const effectActivity = useMemo(() => textEffectActivityForToolName(toolName), [toolName]);
   const handleOpenFile = useMemo(() => {
     const openFilePath = presentation.openFilePath;
     if (!openFilePath || !onOpenFilePath) {
@@ -3289,6 +3336,7 @@ export const ToolCall = memo(function ToolCall({
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
       disableExpandedSpacing={disableExpandedSpacing}
+      effectActivity={effectActivity}
       onDetailHoverChange={onInlineDetailsHoverChange}
     />
   );

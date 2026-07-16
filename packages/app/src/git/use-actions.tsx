@@ -6,14 +6,19 @@ import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-st
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import {
   buildGitActions,
+  getGitHostingProviderDisplayName,
   narrowPullRequestState,
   type BuildGitActionsInput,
   type GitAction,
   type GitActions,
 } from "@/git/policy";
-import type { CheckoutPrMergeMethod, CommitMessageAgent } from "@otto-code/protocol/messages";
+import type {
+  CheckoutPrMergeMethod,
+  CommitMessageAgent,
+  GitHostingProviderId,
+} from "@otto-code/protocol/messages";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
@@ -28,7 +33,7 @@ import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
 function openURLInNewTab(url: string): void {
-  void openExternalUrl(url);
+  void openLink(url);
 }
 
 /** Human-friendly "who writes the message" line for the AI-commit confirmation. */
@@ -86,6 +91,7 @@ interface DeriveGitActionsStateArgs {
   hasUncommittedChanges: boolean;
   postShipArchiveSuggested: boolean;
   isStatusLoading: boolean;
+  isBranchSwitchPending: boolean;
   baseRefLabel: string;
 }
 
@@ -137,9 +143,13 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
     hasUncommittedChanges,
     postShipArchiveSuggested,
     isStatusLoading,
+    isBranchSwitchPending,
     baseRefLabel,
   } = args;
-  const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
+  // A pending branch switch rewrites the working tree, so every other git
+  // action in the header locks until it resolves.
+  const actionsDisabled =
+    !isGit || Boolean(status?.error) || isStatusLoading || isBranchSwitchPending;
   const isOttoOwnedWorktree = gitStatus?.isOttoOwnedWorktree ?? false;
   const isMergedPullRequest = Boolean(prStatus?.isMerged);
   return {
@@ -165,11 +175,14 @@ interface UseGitActionsInput {
     pull: ReactElement;
     push: ReactElement;
     pullAndPush: ReactElement;
-    viewPr: ReactElement;
-    createPr: ReactElement;
-    mergePrSquash: ReactElement;
-    mergePrMerge: ReactElement;
-    mergePrRebase: ReactElement;
+    // PR-hosting actions carry the provider mark (GitHub/Bitbucket), so they
+    // render per-provider — the hook resolves them with the workspace's
+    // detected git hosting provider.
+    viewPr: (provider: GitHostingProviderId) => ReactElement;
+    createPr: (provider: GitHostingProviderId) => ReactElement;
+    mergePrSquash: (provider: GitHostingProviderId) => ReactElement;
+    mergePrMerge: (provider: GitHostingProviderId) => ReactElement;
+    mergePrRebase: (provider: GitHostingProviderId) => ReactElement;
     merge: ReactElement;
     mergeFromBase: ReactElement;
     archive: ReactElement;
@@ -302,7 +315,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
 
-  const { status: prStatus, githubFeaturesEnabled } = useCheckoutPrStatusQuery({
+  const {
+    status: prStatus,
+    githubFeaturesEnabled,
+    hostingProvider,
+  } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
     enabled: isGit,
@@ -411,6 +428,9 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
   const mergeFromBaseStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "merge-from-base" }),
+  );
+  const switchBranchStatus = useCheckoutGitActionsStore((s) =>
+    s.getStatus({ serverId, cwd, actionId: "switch-branch" }),
   );
 
   const runCommit = useCheckoutGitActionsStore((s) => s.commit);
@@ -655,6 +675,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasUncommittedChanges,
     postShipArchiveSuggested,
     isStatusLoading,
+    isBranchSwitchPending: switchBranchStatus === "pending",
     baseRefLabel,
   });
   const {
@@ -692,6 +713,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
       pullRequestGithub: prStatus?.github ?? null,
       pullRequestHosting: prStatus?.hosting ?? null,
+      hostingProvider,
       hasRemote,
       isOttoOwnedWorktree,
       isOnBaseBranch,
@@ -732,49 +754,49 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
         pr: {
           disabled: isActionDisabled(actionsDisabled, prCreateStatus),
           status: hasPullRequest ? "idle" : prCreateStatus,
-          icon: hasPullRequest ? icons.viewPr : icons.createPr,
+          icon: hasPullRequest ? icons.viewPr(hostingProvider) : icons.createPr(hostingProvider),
           handler: handlePrAction,
         },
         "merge-pr-squash": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.squash),
           status: mergePrStatuses.squash,
-          icon: icons.mergePrSquash,
+          icon: icons.mergePrSquash(hostingProvider),
           handler: () => handleMergePr("squash"),
         },
         "merge-pr-merge": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.merge),
           status: mergePrStatuses.merge,
-          icon: icons.mergePrMerge,
+          icon: icons.mergePrMerge(hostingProvider),
           handler: () => handleMergePr("merge"),
         },
         "merge-pr-rebase": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.rebase),
           status: mergePrStatuses.rebase,
-          icon: icons.mergePrRebase,
+          icon: icons.mergePrRebase(hostingProvider),
           handler: () => handleMergePr("rebase"),
         },
         "enable-pr-auto-merge-squash": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.squash),
           status: enablePrAutoMergeStatuses.squash,
-          icon: icons.mergePrSquash,
+          icon: icons.mergePrSquash(hostingProvider),
           handler: () => handleEnablePrAutoMerge("squash"),
         },
         "enable-pr-auto-merge-merge": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.merge),
           status: enablePrAutoMergeStatuses.merge,
-          icon: icons.mergePrMerge,
+          icon: icons.mergePrMerge(hostingProvider),
           handler: () => handleEnablePrAutoMerge("merge"),
         },
         "enable-pr-auto-merge-rebase": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.rebase),
           status: enablePrAutoMergeStatuses.rebase,
-          icon: icons.mergePrRebase,
+          icon: icons.mergePrRebase(hostingProvider),
           handler: () => handleEnablePrAutoMerge("rebase"),
         },
         "disable-pr-auto-merge": {
           disabled: isActionDisabled(actionsDisabled, disablePrAutoMergeStatus),
           status: disablePrAutoMergeStatus,
-          icon: icons.viewPr,
+          icon: icons.viewPr(hostingProvider),
           handler: handleDisablePrAutoMerge,
         },
         "merge-branch": {
@@ -849,27 +871,33 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       handleMergeFromBase,
       handleArchiveWorkspace,
       icons,
+      hostingProvider,
       baseRef,
     ],
   );
 
   const gitActions: GitActions = useMemo(
     () =>
-      translateGitActions(buildGitActions(gitActionsInput), { baseRefLabel, hasPullRequest, t }),
-    [gitActionsInput, baseRefLabel, hasPullRequest, t],
+      translateGitActions(buildGitActions(gitActionsInput), {
+        baseRefLabel,
+        hasPullRequest,
+        hostingProvider,
+        t,
+      }),
+    [gitActionsInput, baseRefLabel, hasPullRequest, hostingProvider, t],
   );
 
   return { gitActions, branchLabel, isGit };
 }
 
-function translateGitActions(
-  actions: GitActions,
-  input: {
-    baseRefLabel: string;
-    hasPullRequest: boolean;
-    t: (key: string, options?: Record<string, unknown>) => string;
-  },
-): GitActions {
+interface TranslateGitActionsInput {
+  baseRefLabel: string;
+  hasPullRequest: boolean;
+  hostingProvider: GitHostingProviderId | null;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}
+
+function translateGitActions(actions: GitActions, input: TranslateGitActionsInput): GitActions {
   return {
     primary: actions.primary ? translateGitAction(actions.primary, input) : null,
     secondary: actions.secondary.map((action) => translateGitAction(action, input)),
@@ -877,65 +905,47 @@ function translateGitActions(
   };
 }
 
-function translateGitAction(
-  action: GitAction,
-  {
-    baseRefLabel,
-    hasPullRequest,
-    t,
-  }: {
-    baseRefLabel: string;
-    hasPullRequest: boolean;
-    t: (key: string, options?: Record<string, unknown>) => string;
-  },
-): GitAction {
-  const labels = getTranslatedGitActionLabels(action, { baseRefLabel, hasPullRequest, t });
+function translateGitAction(action: GitAction, input: TranslateGitActionsInput): GitAction {
+  const labels = getTranslatedGitActionLabels(action, input);
   return {
     ...action,
     ...labels,
-    unavailableMessage: translateGitActionUnavailableMessage(action.unavailableMessage, {
-      baseRefLabel,
-      t,
-    }),
+    unavailableMessage: translateGitActionUnavailableMessage(action.unavailableMessage, input),
   };
 }
 
 function getTranslatedGitActionLabels(
   action: GitAction,
-  {
-    baseRefLabel,
-    hasPullRequest,
-    t,
-  }: {
-    baseRefLabel: string;
-    hasPullRequest: boolean;
-    t: (key: string, options?: Record<string, unknown>) => string;
-  },
-): Pick<GitAction, "label" | "pendingLabel" | "successLabel"> {
+  { baseRefLabel, hasPullRequest, t }: TranslateGitActionsInput,
+): Pick<GitAction, "label" | "pendingLabel" | "successLabel" | "description"> {
   switch (action.id) {
     case "commit":
       return {
         label: t("workspace.git.actions.commit.label"),
         pendingLabel: t("workspace.git.actions.commit.pending"),
         successLabel: t("workspace.git.actions.commit.success"),
+        description: t("workspace.git.actions.commit.description"),
       };
     case "pull":
       return {
         label: t("workspace.git.actions.pull.label"),
         pendingLabel: t("workspace.git.actions.pull.pending"),
         successLabel: t("workspace.git.actions.pull.success"),
+        description: t("workspace.git.actions.pull.description"),
       };
     case "push":
       return {
         label: t("workspace.git.actions.push.label"),
         pendingLabel: t("workspace.git.actions.push.pending"),
         successLabel: t("workspace.git.actions.push.success"),
+        description: t("workspace.git.actions.push.description"),
       };
     case "pull-and-push":
       return {
         label: t("workspace.git.actions.pullAndPush.label"),
         pendingLabel: t("workspace.git.actions.pullAndPush.pending"),
         successLabel: t("workspace.git.actions.pullAndPush.success"),
+        description: t("workspace.git.actions.pullAndPush.description"),
       };
     case "pr":
       return hasPullRequest
@@ -943,89 +953,99 @@ function getTranslatedGitActionLabels(
             label: t("workspace.git.actions.viewPr"),
             pendingLabel: t("workspace.git.actions.viewPr"),
             successLabel: t("workspace.git.actions.viewPr"),
+            description: t("workspace.git.actions.viewPrDescription"),
           }
         : {
             label: t("workspace.git.actions.createPr.label"),
             pendingLabel: t("workspace.git.actions.createPr.pending"),
             successLabel: t("workspace.git.actions.createPr.success"),
+            description: t("workspace.git.actions.createPr.description", {
+              baseRef: baseRefLabel,
+            }),
           };
     case "merge-pr-squash":
       return {
         label: t("workspace.git.actions.mergePr.squash"),
         pendingLabel: t("workspace.git.actions.mergePr.pending"),
         successLabel: t("workspace.git.actions.mergePr.success"),
+        description: t("workspace.git.actions.mergePr.squashDescription"),
       };
     case "merge-pr-merge":
       return {
         label: t("workspace.git.actions.mergePr.merge"),
         pendingLabel: t("workspace.git.actions.mergePr.pending"),
         successLabel: t("workspace.git.actions.mergePr.success"),
+        description: t("workspace.git.actions.mergePr.mergeDescription"),
       };
     case "merge-pr-rebase":
       return {
         label: t("workspace.git.actions.mergePr.rebase"),
         pendingLabel: t("workspace.git.actions.mergePr.pending"),
         successLabel: t("workspace.git.actions.mergePr.success"),
+        description: t("workspace.git.actions.mergePr.rebaseDescription"),
       };
     case "enable-pr-auto-merge-squash":
       return {
         label: t("workspace.git.actions.autoMerge.enableSquash"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
+        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "enable-pr-auto-merge-merge":
       return {
         label: t("workspace.git.actions.autoMerge.enableMerge"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
+        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "enable-pr-auto-merge-rebase":
       return {
         label: t("workspace.git.actions.autoMerge.enableRebase"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
+        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "disable-pr-auto-merge":
       return {
         label: t("workspace.git.actions.autoMerge.enabled"),
         pendingLabel: t("workspace.git.actions.autoMerge.disabling"),
         successLabel: t("workspace.git.actions.autoMerge.disabled"),
+        description: t("workspace.git.actions.autoMerge.disableDescription"),
       };
     case "merge-branch":
       return {
-        label: t("workspace.git.actions.mergeBranch.label"),
+        label: t("workspace.git.actions.mergeBranch.label", { baseRef: baseRefLabel }),
         pendingLabel: t("workspace.git.actions.mergeBranch.pending"),
         successLabel: t("workspace.git.actions.mergeBranch.success"),
+        description: t("workspace.git.actions.mergeBranch.description", {
+          baseRef: baseRefLabel,
+        }),
       };
     case "merge-from-base":
       return {
         label: t("workspace.git.actions.mergeFromBase.label", { baseRef: baseRefLabel }),
         pendingLabel: t("workspace.git.actions.mergeFromBase.pending"),
         successLabel: t("workspace.git.actions.mergeFromBase.success"),
+        description: t("workspace.git.actions.mergeFromBase.description", {
+          baseRef: baseRefLabel,
+        }),
       };
     case "archive-workspace":
       return {
         label: t("workspace.git.actions.archive.label"),
         pendingLabel: t("workspace.git.actions.archive.pending"),
         successLabel: t("workspace.git.actions.archive.success"),
+        description: t("workspace.git.actions.archive.description"),
       };
   }
 }
 
 function translateGitActionUnavailableMessage(
   message: string | undefined,
-  {
-    baseRefLabel,
-    t,
-  }: {
-    baseRefLabel: string;
-    t: (key: string, options?: Record<string, unknown>) => string;
-  },
+  { baseRefLabel, hostingProvider, t }: TranslateGitActionsInput,
 ): string | undefined {
   if (!message) return undefined;
   const keyByMessage: Record<string, string> = {
-    "View PR isn't available right now because GitHub isn't connected":
-      "workspace.git.actions.unavailable.viewPrNoGithub",
     "Pull isn't available here because this branch is not connected to a remote yet":
       "workspace.git.actions.unavailable.pullNoRemote",
     "Pull isn't available while you have local changes so commit or stash them first":
@@ -1044,8 +1064,6 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.pullAndPushDirty",
     "Pull and push isn't available because this branch is already in sync":
       "workspace.git.actions.unavailable.pullAndPushInSync",
-    "Create PR isn't available right now because GitHub isn't connected":
-      "workspace.git.actions.unavailable.createPrNoGithub",
     "Create PR isn't available because this branch doesn't have any new commits yet":
       "workspace.git.actions.unavailable.createPrNoCommits",
     "Merge isn't available because we couldn't determine the base branch":
@@ -1058,8 +1076,6 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.updateNoBase",
     "Update isn't available while you have local changes so commit or stash them first":
       "workspace.git.actions.unavailable.updateDirty",
-    "Merge PR isn't available right now because GitHub isn't connected":
-      "workspace.git.actions.unavailable.mergePrNoGithub",
     "Merge PR isn't available because there isn't a pull request yet":
       "workspace.git.actions.unavailable.mergePrMissing",
     "Merge PR isn't available because the pull request is still a draft":
@@ -1081,6 +1097,19 @@ function translateGitActionUnavailableMessage(
     message.startsWith("Update isn't available because this branch is already up to date with ")
   ) {
     return t("workspace.git.actions.unavailable.updateCurrent", { baseRef: baseRefLabel });
+  }
+  // The "<provider> isn't connected" messages carry the workspace's hosting
+  // provider name, so they match by their invariant prefix instead of the
+  // full string.
+  const providerName = getGitHostingProviderDisplayName(hostingProvider);
+  if (message.startsWith("View PR isn't available right now because ")) {
+    return t("workspace.git.actions.unavailable.viewPrNoGithub", { provider: providerName });
+  }
+  if (message.startsWith("Create PR isn't available right now because ")) {
+    return t("workspace.git.actions.unavailable.createPrNoGithub", { provider: providerName });
+  }
+  if (message.startsWith("Merge PR isn't available right now because ")) {
+    return t("workspace.git.actions.unavailable.mergePrNoGithub", { provider: providerName });
   }
   const key = keyByMessage[message];
   return key ? t(key) : message;

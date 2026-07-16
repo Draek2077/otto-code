@@ -1,0 +1,12 @@
+/* Otto wrapper around the vendor stylesheet — exists so we can point Tailwind
+   at the vendor sources without editing the vendor tree.
+
+   The vendor's globals.css does `@import 'tailwindcss'`, and Tailwind v4's
+   automatic source detection only scans from the package root it runs in
+   (packages/visualizer). The component sources live in ../../vendor/agent-flow,
+   outside that root, so without the @source below Tailwind emits almost no
+   utility classes (9 KB of preflight/theme) and every `absolute`/`flex`/
+   `h-full` in the vendor markup silently does nothing — the whole HUD
+   collapses into document flow. */
+@import "../../../vendor/agent-flow/web/app/globals.css";
+@source "../../../vendor/agent-flow/web";

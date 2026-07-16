@@ -12,7 +12,7 @@ import {
 } from "@/hooks/use-acp-provider-catalog";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import type { Theme } from "@/styles/theme";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 
 interface ProviderCatalogListProps {
   serverId: string;
@@ -61,7 +61,7 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
   }, [entry, onInstall]);
 
   const handleOpenInstallLink = useCallback(() => {
-    void openExternalUrl(entry.installLink);
+    void openLink(entry.installLink);
   }, [entry.installLink]);
 
   return (

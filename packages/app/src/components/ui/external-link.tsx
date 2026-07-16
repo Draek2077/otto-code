@@ -3,7 +3,7 @@ import { Pressable, Text } from "react-native";
 import { ArrowUpRight } from "@/components/icons/material-icons";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 
 interface ExternalLinkProps {
   href: string;
@@ -15,8 +15,9 @@ interface ExternalLinkProps {
 
 /**
  * Inline "Docs ↗" affordance — muted text + arrow-top-right icon, opens the
- * URL via the platform's external opener. Wrap in a Tooltip when there's a
- * one-line hint worth surfacing on hover/tap.
+ * URL via the global openLink router (in-app browser tab or system browser,
+ * per the "Open links" setting). Wrap in a Tooltip when there's a one-line
+ * hint worth surfacing on hover/tap.
  */
 export function ExternalLink({
   href,
@@ -27,7 +28,7 @@ export function ExternalLink({
 }: ExternalLinkProps) {
   const { theme } = useUnistyles();
   const handlePress = useCallback(() => {
-    void openExternalUrl(href);
+    void openLink(href);
   }, [href]);
 
   const trigger = (

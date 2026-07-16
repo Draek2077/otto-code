@@ -97,6 +97,10 @@ verify→judger, gate→human, deliver→coder/writer.
   plan + dispatch. Taught **only** by the conductor's **standing directive** (method, not just
   permission), so orchestration is emergent — **no separately-invoked `/epic`-style skill**
   (LOCKED). The method the directive teaches is the `/epic` playbook, distilled into the prompt.
+- **How a user _deliberately_ sparks one — and how we stop "run X" from summoning a provider's
+  own Workflow tool instead — is designed in [invocation.md](invocation.md)** (explicit composer
+  surface + `/orchestrate`, Ask-first gate on Claude's `Workflow`, confirm-before-spawn caps,
+  "Orchestration" as the one user-facing noun).
 
 ## The control substrate: a daemon orchestration runtime (LOCKED: full runtime)
 
@@ -204,6 +208,8 @@ conductor standing directive; client RPC methods; app replica hook + push writer
   acceptable v1, but unattended child mode / auto-approval posture is unaddressed.
 - Token/spawn budget caps; autopilot eligibility tie-in to safe-unattended.
 - Composer teams-as-default surface; a nav entry to `/runs`; richer run-detail UI.
+- **The invocation UX** — explicit "Start orchestration" surfaces, the `Workflow` ask-gate, and
+  the cost-confirm layer. Designed in [invocation.md](invocation.md); not started.
 - The `ROLE_LABELS` triplication cleanup (Phase 0 note) — a background task was spawned.
 
 ## Locked decisions

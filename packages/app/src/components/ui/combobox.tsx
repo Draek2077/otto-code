@@ -237,6 +237,12 @@ export interface ComboboxItemProps {
   disabled?: boolean;
   /** When true, bumps hover/pressed colors up one surface level (for items on elevated backgrounds). */
   elevated?: boolean;
+  /**
+   * Dense variant: reduced row height/padding so long lists fit more items on
+   * screen (currently the model/personality picker). Desktop-only shrink —
+   * compact breakpoints keep the default touch-friendly height.
+   */
+  dense?: boolean;
   onPress: () => void;
   testID?: string;
 }
@@ -252,6 +258,7 @@ export function ComboboxItem({
   active,
   disabled,
   elevated,
+  dense,
   onPress,
   testID,
 }: ComboboxItemProps): ReactElement {
@@ -277,12 +284,13 @@ export function ComboboxItem({
   const itemPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.comboboxItem,
+      dense && styles.comboboxItemDense,
       hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
       pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
       active && styles.comboboxItemActive,
       disabled && styles.comboboxItemDisabled,
     ],
-    [elevated, active, disabled],
+    [elevated, active, disabled, dense],
   );
 
   const itemContentStyle = useMemo(
@@ -352,6 +360,7 @@ function OptionRow({ option, selected, active, onSelect, renderOption }: OptionR
       kind={option.kind}
       selected={selected}
       active={active}
+      disabled={option.disabled}
       onPress={handlePress}
     />
   );
@@ -1607,6 +1616,16 @@ const styles = StyleSheet.create((theme) => ({
           marginHorizontal: theme.spacing[1],
           marginBottom: theme.spacing[1],
         }),
+  },
+  comboboxItemDense: {
+    minHeight: {
+      xs: 36,
+      md: 28,
+    },
+    paddingVertical: {
+      xs: theme.spacing[2],
+      md: theme.spacing[1],
+    },
   },
   comboboxItemHovered: {
     backgroundColor: theme.colors.surface1,

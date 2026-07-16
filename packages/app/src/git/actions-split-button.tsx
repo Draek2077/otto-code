@@ -67,6 +67,7 @@ function GitActionMenuItem({
         }
         leading={action.icon}
         trailing={trailing}
+        description={action.description}
         disabled={action.disabled}
         muted={Boolean(action.unavailableMessage)}
         status={action.status}

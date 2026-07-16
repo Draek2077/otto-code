@@ -12,7 +12,26 @@ import type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
 type InitCallback = () => void
 type EventCallback = (event: AgentEvent) => void
 type StatusCallback = (status: ConnectionStatus, source: string) => void
-type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean }>) => void
+/** Which panels start visible when the host seeds an initial config (e.g. on
+ * tab attach). Any subset — omitted keys keep the page's own default. */
+export type PanelsConfig = Partial<{
+  timeline: boolean
+  fileAttention: boolean
+  transcript: boolean
+  messageFeed: boolean
+  costOverlay: boolean
+  hexGrid: boolean
+}>
+/** Host-toggleable canvas render layers (OTTO PATCH, see OTTO-PATCHES.md).
+ * Omitted keys keep the layer on. `bloom` is the blurred additive glow pass,
+ * `stars` the parallax depth particles, `backdrop` the void fill + ambient
+ * spotlight. */
+export type RenderConfig = Partial<{
+  bloom: boolean
+  stars: boolean
+  backdrop: boolean
+}>
+type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig }>) => void
 type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void
 
 class VSCodeBridge {

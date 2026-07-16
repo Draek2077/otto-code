@@ -23,7 +23,7 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { isAbsolutePath } from "@/utils/path";
 import { isWeb } from "@/constants/platform";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
@@ -131,7 +131,7 @@ export function WorkspaceOpenInEditorButton({
             id: target.id,
             label: target.label,
             icon: <ThemedGitHubIcon size={16} uniProps={mutedColorMapping} />,
-            onOpen: () => openExternalUrl(target.url),
+            onOpen: () => openLink(target.url),
           };
         }
         return {

@@ -26,7 +26,13 @@ export type WorkspaceTabTarget =
   | { kind: "artifact"; artifactId: string }
   // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
   // operation per workspace; `operation` is the wire operation id.
-  | { kind: "gitLog"; operation: string };
+  | { kind: "gitLog"; operation: string }
+  // The Visualizer tab — a live node-graph of agent orchestration. One per
+  // workspace when `runId` is absent (the page's own session tabs cover
+  // per-agent switching). An orchestration Run's "Visualize" action opens a
+  // separate, run-scoped tab (`runId` set) restricted to that run's agent set
+  // — one per run per workspace, same as `gitLog`'s one-per-operation shape.
+  | { kind: "visualizer"; runId?: string };
 
 export interface WorkspaceTab {
   tabId: string;
@@ -499,6 +505,20 @@ function extractMigrationRawSources(persistedState: unknown): MigrationRawSource
   };
 }
 
+// Kinds whose persisted shape is "kind + one required string id field" —
+// everything except draft (extra setup object), file/editor (its own
+// coercer), and visualizer (runId is optional). A lookup here (rather than
+// another `if (kind === X && typeof raw.field === "string")` branch per
+// kind) keeps this function under the cyclomatic-complexity ceiling.
+const SIMPLE_STRING_FIELD_BY_KIND: Record<string, string> = {
+  agent: "agentId",
+  terminal: "terminalId",
+  browser: "browserId",
+  setup: "workspaceId",
+  artifact: "artifactId",
+  gitLog: "operation",
+};
+
 function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
   const kind = typeof raw.kind === "string" ? raw.kind : null;
   if (kind === "draft" && typeof raw.draftId === "string") {
@@ -509,26 +529,18 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
       ...(setup ? { setup } : {}),
     });
   }
-  if (kind === "agent" && typeof raw.agentId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "agent", agentId: raw.agentId });
-  }
-  if (kind === "terminal" && typeof raw.terminalId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "terminal", terminalId: raw.terminalId });
-  }
-  if (kind === "browser" && typeof raw.browserId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId });
-  }
   if (kind === "file" || kind === "editor") {
     return coerceFileLikeTabTarget(raw);
   }
-  if (kind === "setup" && typeof raw.workspaceId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "setup", workspaceId: raw.workspaceId });
+  if (kind === "visualizer") {
+    return normalizeWorkspaceTabTarget({
+      kind: "visualizer",
+      ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
+    });
   }
-  if (kind === "artifact" && typeof raw.artifactId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "artifact", artifactId: raw.artifactId });
-  }
-  if (kind === "gitLog" && typeof raw.operation === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "gitLog", operation: raw.operation });
+  const field = kind ? SIMPLE_STRING_FIELD_BY_KIND[kind] : undefined;
+  if (kind && field && typeof raw[field] === "string") {
+    return normalizeWorkspaceTabTarget({ kind, [field]: raw[field] } as WorkspaceTabTarget);
   }
   return null;
 }

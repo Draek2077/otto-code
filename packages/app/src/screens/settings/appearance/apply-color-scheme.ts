@@ -23,7 +23,9 @@ import {
 // Source-of-truth palette per variant name. These are never registered with
 // Unistyles directly (see `styles/unistyles.ts`) — only copied from here into
 // the two registered `light`/`dark` mirror keys by `applyColorScheme` below.
-const LIGHT_VARIANT_THEMES: Record<LightThemeName, typeof daylightTheme> = {
+// Exported for resolveVisualizerTheme (visualizer-theme.ts), which resolves
+// the active variant the same way to derive the Visualizer guest palette.
+export const LIGHT_VARIANT_THEMES: Record<LightThemeName, typeof daylightTheme> = {
   daylight: daylightTheme,
   meadow: meadowTheme,
   terracotta: terracottaTheme,
@@ -32,7 +34,7 @@ const LIGHT_VARIANT_THEMES: Record<LightThemeName, typeof daylightTheme> = {
   pastel: pastelTheme,
 };
 
-const DARK_VARIANT_THEMES: Record<DarkThemeName, typeof darkTheme> = {
+export const DARK_VARIANT_THEMES: Record<DarkThemeName, typeof darkTheme> = {
   dark: darkTheme,
   evergreen: darkEvergreenTheme,
   zinc: darkZincTheme,

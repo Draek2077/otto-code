@@ -7,6 +7,7 @@ export {
   resetReviewDraftStore,
   useClearReviewDraft,
   useReviewAttachmentSnapshot,
+  useReviewCommentCount,
   useResolvedDiffMode,
   useSetDiffModeOverride,
   addReviewDraftComment,

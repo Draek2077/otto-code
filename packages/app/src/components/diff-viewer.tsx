@@ -20,9 +20,14 @@ interface DiffViewerProps {
   maxHeight?: number;
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
+  // "Wrap long lines" appearance setting: soft-wrap long diff lines instead of
+  // horizontal scrolling. Visual only — selection/copy still yields the
+  // original unwrapped text.
+  wrap?: boolean;
 }
 
-function DiffLineRow({ line }: { line: DiffLine }) {
+function DiffLineRow({ line, wrap }: { line: DiffLine; wrap: boolean }) {
+  const baseTextStyle = wrap ? LINE_TEXT_WRAP_STYLE : styles.lineText;
   const lineContainerStyle = React.useMemo(
     () => [
       styles.line,
@@ -35,13 +40,13 @@ function DiffLineRow({ line }: { line: DiffLine }) {
   );
   const plainLineTextStyle = React.useMemo(
     () => [
-      styles.lineText,
+      baseTextStyle,
       line.type === "header" && styles.headerText,
       line.type === "add" && styles.addText,
       line.type === "remove" && styles.removeText,
       line.type === "context" && styles.contextText,
     ],
-    [line.type],
+    [line.type, baseTextStyle],
   );
 
   const prefixStyle = React.useMemo(
@@ -56,7 +61,7 @@ function DiffLineRow({ line }: { line: DiffLine }) {
   if (line.tokens) {
     return (
       <View style={lineContainerStyle}>
-        <Text style={styles.lineText}>
+        <Text style={baseTextStyle}>
           <Text style={prefixStyle}>{diffLinePrefix(line)}</Text>
           <DiffTokens tokens={line.tokens} />
         </Text>
@@ -67,7 +72,7 @@ function DiffLineRow({ line }: { line: DiffLine }) {
   return (
     <View style={lineContainerStyle}>
       {line.segments ? (
-        <Text style={styles.lineText}>
+        <Text style={baseTextStyle}>
           <Text style={line.type === "add" ? styles.addText : styles.removeText}>
             {line.content[0]}
           </Text>
@@ -124,6 +129,7 @@ export function DiffViewer({
   maxHeight,
   emptyLabel,
   fillAvailableHeight = false,
+  wrap = false,
 }: DiffViewerProps) {
   const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
@@ -155,9 +161,10 @@ export function DiffViewer({
   const linesContainerStyle = React.useMemo(
     () => [
       styles.linesContainer,
-      scrollViewWidth > 0 && inlineUnistylesStyle({ minWidth: scrollViewWidth }),
+      wrap && styles.linesContainerWrap,
+      !wrap && scrollViewWidth > 0 && inlineUnistylesStyle({ minWidth: scrollViewWidth }),
     ],
-    [scrollViewWidth],
+    [scrollViewWidth, wrap],
   );
   const keyedDiffLines = React.useMemo(
     () => diffLines.map((line, index) => ({ key: `${index}-${line.type}-${line.content}`, line })),
@@ -179,12 +186,16 @@ export function DiffViewer({
   const lines = (
     <View style={linesContainerStyle} dataSet={CODE_SURFACE_DATASET}>
       {keyedDiffLines.map(({ key, line }) => (
-        <DiffLineRow key={key} line={line} />
+        <DiffLineRow key={key} line={line} wrap={wrap} />
       ))}
     </View>
   );
 
-  const horizontalScroll = (
+  // With wrap on, the horizontal scroller is skipped and long lines soft-wrap
+  // inside the vertical scroll instead.
+  const horizontalScroll = wrap ? (
+    <View style={styles.horizontalContent}>{lines}</View>
+  ) : (
     <ScrollView
       horizontal
       nestedScrollEnabled
@@ -239,6 +250,9 @@ const styles = StyleSheet.create((theme) => {
       alignSelf: "flex-start",
       padding: insets.padding,
     },
+    linesContainerWrap: {
+      alignSelf: "stretch",
+    },
     line: {
       minWidth: "100%",
       paddingHorizontal: 0,
@@ -252,6 +266,19 @@ const styles = StyleSheet.create((theme) => {
         ? {
             whiteSpace: "pre",
             overflowWrap: "normal",
+          }
+        : null),
+    },
+    // Layered over lineText when "Wrap long lines" is on: web needs the
+    // explicit pre-wrap (lineText forces `pre`); native Text soft-wraps by
+    // itself once the horizontal ScrollView is gone.
+    lineTextWrap: {
+      flexShrink: 1,
+      minWidth: 0,
+      ...(isWeb
+        ? {
+            whiteSpace: "pre-wrap" as const,
+            overflowWrap: "anywhere" as const,
           }
         : null),
     },
@@ -296,3 +323,5 @@ const styles = StyleSheet.create((theme) => {
     },
   };
 });
+
+const LINE_TEXT_WRAP_STYLE = [styles.lineText, styles.lineTextWrap];

@@ -69,6 +69,7 @@ export function AgentVisualizer() {
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [showMessageFeed, setShowMessageFeed] = useState(true)
 
   // Mutually exclusive panel toggling — opening one closes the others
   const toggleExclusivePanel = useCallback((panel: 'files' | 'transcript' | 'cost') => {
@@ -76,6 +77,34 @@ export function AgentVisualizer() {
     setShowTranscript(prev => panel === 'transcript' ? !prev : false)
     setShowCostOverlay(prev => panel === 'cost' ? !prev : false)
   }, [])
+
+  // Otto patch (OTTO-PATCHES.md): apply a host-seeded initial panel config
+  // (bridge `config.panels`) on every message that carries one — not just the
+  // first, matching how showMockData/disable1MContext behave. The mutually
+  // exclusive trio (files/transcript/cost) is resolved by priority — a config
+  // that sets more than one true keeps only the highest-priority one — rather
+  // than briefly rendering an invalid multi-panel state.
+  useEffect(() => {
+    const panels = bridge.panelsConfig
+    if (!panels) return
+    if (panels.hexGrid !== undefined) setShowHexGrid(panels.hexGrid)
+    if (panels.timeline !== undefined) setShowTimeline(panels.timeline)
+    if (panels.messageFeed !== undefined) setShowMessageFeed(panels.messageFeed)
+    if (panels.fileAttention || panels.transcript || panels.costOverlay) {
+      setShowFileAttention(Boolean(panels.fileAttention))
+      setShowTranscript(!panels.fileAttention && Boolean(panels.transcript))
+      setShowCostOverlay(!panels.fileAttention && !panels.transcript && Boolean(panels.costOverlay))
+    } else if (
+      panels.fileAttention !== undefined ||
+      panels.transcript !== undefined ||
+      panels.costOverlay !== undefined
+    ) {
+      setShowFileAttention(false)
+      setShowTranscript(false)
+      setShowCostOverlay(false)
+    }
+  }, [bridge.panelsConfig])
+
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0)
 
   const [isReviewing, setIsReviewing] = useState(false)
@@ -262,9 +291,9 @@ export function AgentVisualizer() {
       {/* Empty state when no demo and no live data */}
       {isEmpty && (
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-          <div className="text-center" style={{ fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
-            <div className="text-sm" style={{ color: '#66ccff80' }}>WAITING FOR AGENT SESSION</div>
-            <div className="mt-2 text-xs" style={{ color: '#66ccff40' }}>Start a Claude Code session to see activity</div>
+          <div className="text-center font-mono">
+            <div className="text-sm" style={{ color: COLORS.holoBase + '80' }}>WAITING FOR AGENT SESSION</div>
+            <div className="mt-2 text-xs" style={{ color: COLORS.holoBase + '40' }}>Start a Claude Code session to see activity</div>
           </div>
         </div>
       )}
@@ -287,15 +316,18 @@ export function AgentVisualizer() {
         onDiscoveryClick={selection.handleDiscoveryClick}
         selectedDiscoveryId={selection.selectedDiscoveryId}
         showCostOverlay={showCostOverlay}
+        renderOptions={bridge.renderConfig ?? undefined}
       />
 
       {/* Message feed panel (top-left) */}
-      <MessageFeedPanel
-        conversations={conversations}
-        agents={agents}
-        onAgentClick={selection.handleAgentClick}
-        selectedAgentId={selection.selectedAgentId}
-      />
+      {showMessageFeed && (
+        <MessageFeedPanel
+          conversations={conversations}
+          agents={agents}
+          onAgentClick={selection.handleAgentClick}
+          selectedAgentId={selection.selectedAgentId}
+        />
+      )}
 
       {/* Agent detail card (floating, tethered to node) */}
       {selectedAgent && selection.selectedAgentWorldPos && (

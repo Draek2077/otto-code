@@ -9,7 +9,7 @@ import { ArrowUpRight, Copy, FileText, Activity } from "@/components/icons/mater
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { getCliDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { useBuiltInDaemonManagement } from "@/desktop/hooks/use-built-in-daemon-management";
@@ -371,7 +371,7 @@ export function LocalDaemonSection() {
   }, [handleOpenCliStatus]);
 
   const handleOpenAdvancedSettings = useCallback(
-    () => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL),
+    () => void openLink(ADVANCED_DAEMON_SETTINGS_URL),
     [],
   );
 

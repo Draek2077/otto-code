@@ -224,6 +224,42 @@ export interface BranchSuggestion {
   committerDate: number;
   hasLocal: boolean;
   hasRemote: boolean;
+  /**
+   * True when the branch is checked out in a worktree other than the one
+   * containing the requesting cwd. Git refuses `git checkout` of such a
+   * branch, so pickers can disable it up front instead of erroring after.
+   * Optional to match the wire schema; absent means "unknown", which clients
+   * treat as not disabled.
+   */
+  checkedOutElsewhere?: boolean;
+}
+
+/**
+ * Branch names checked out in worktrees other than the one containing `cwd`.
+ * Git allows a branch in at most one worktree, so "checked out somewhere and
+ * not the current branch of cwd" is exactly "checked out elsewhere".
+ * Best-effort: failures degrade to "nothing disabled", never a thrown error.
+ */
+async function listBranchesCheckedOutElsewhere(cwd: string): Promise<Set<string>> {
+  try {
+    const [worktreeResult, currentBranchResult] = await Promise.all([
+      runGitCommand(["worktree", "list", "--porcelain"], { cwd, envOverlay: READ_ONLY_GIT_ENV }),
+      runGitCommand(["branch", "--show-current"], { cwd, envOverlay: READ_ONLY_GIT_ENV }),
+    ]);
+    const currentBranch = currentBranchResult.stdout.trim();
+    const names = new Set<string>();
+    for (const line of worktreeResult.stdout.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("branch ")) continue;
+      const ref = trimmed.slice("branch ".length).trim();
+      const name = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
+      if (!name || name === currentBranch) continue;
+      names.add(name);
+    }
+    return names;
+  } catch {
+    return new Set();
+  }
 }
 
 async function listGitRefs(cwd: string, refPrefix: string): Promise<GitRef[]> {
@@ -292,9 +328,10 @@ export async function listBranchSuggestions(
   const limit = Math.max(1, Math.min(200, requestedLimit));
   const query = options?.query?.trim().toLowerCase() ?? "";
 
-  const [localRefs, remoteRefs] = await Promise.all([
+  const [localRefs, remoteRefs, checkedOutElsewhereNames] = await Promise.all([
     listGitRefs(cwd, "refs/heads"),
     listGitRefs(cwd, "refs/remotes/origin"),
+    listBranchesCheckedOutElsewhere(cwd),
   ]);
 
   const branchMeta = new Map<string, BranchSuggestionMeta>();
@@ -344,6 +381,7 @@ export async function listBranchSuggestions(
       committerDate: meta?.committerDate ?? 0,
       hasLocal: meta?.hasLocal ?? false,
       hasRemote: meta?.hasRemote ?? false,
+      checkedOutElsewhere: checkedOutElsewhereNames.has(name),
     };
   });
 }

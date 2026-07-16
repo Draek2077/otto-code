@@ -110,8 +110,11 @@ export const TopBar = memo(function TopBar({
 }: TopBarProps) {
   return (
     <div className="absolute top-3 left-3 right-3 flex items-center gap-4 font-mono text-[10px]" style={{ zIndex: Z.info }}>
-      {/* Session tabs — scrollable, takes available space */}
-      {sessions.length > 1 && (
+      {/* Session tabs — scrollable, takes available space.
+          OTTO PATCH (see OTTO-PATCHES.md): render from one session up (upstream
+          hid the bar below two), so the embed always shows WHICH chat the graph
+          is visualizing. */}
+      {sessions.length > 0 && (
         <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
           <SessionTabs
             sessions={sessions}

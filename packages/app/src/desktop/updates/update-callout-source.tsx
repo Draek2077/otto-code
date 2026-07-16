@@ -14,7 +14,7 @@ import {
 } from "@/desktop/updates/resolve-update-callout";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { openExternalUrl } from "@/utils/open-external-url";
+import { openLink } from "@/utils/open-link";
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const CHANGELOG_URL = "https://otto-code.me/changelog";
@@ -53,7 +53,7 @@ export function UpdateCalloutSource() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const openChangelog = useStableEvent(() => {
-    void openExternalUrl(CHANGELOG_URL);
+    void openLink(CHANGELOG_URL);
   });
   const install = useStableEvent(() => {
     void installUpdate();

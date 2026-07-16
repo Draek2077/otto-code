@@ -50,6 +50,11 @@ type WizardStep = (typeof STEP_SEQUENCE)[number];
 // brand bookends own their own layout and buttons instead.
 const MIDDLE_STEPS = new Set<WizardStep>(["mode", "providers", "team"]);
 
+// How long the wizard tolerates having saved hosts but none online before
+// bailing to /welcome. Long enough to ride out a reconnect, short enough that
+// a genuinely dead host doesn't leave the user staring at a frozen step.
+const OFFLINE_HOST_GRACE_MS = 5000;
+
 export function SetupWizardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -65,13 +70,22 @@ export function SetupWizardScreen() {
   const earliestOnlineServerId = useEarliestOnlineHostServerId();
   const hosts = useHosts();
 
-  // Guard: the providers step (step 2) calls useProvidersSnapshot() which needs a
-  // live host connection. If no host is online, redirect to /welcome so the user can
-  // connect one first, rather than freezing the wizard indefinitely.
+  // Guard: the wizard needs a live host — the providers step (step 2) calls
+  // useProvidersSnapshot(), which hangs without a connection. With no saved
+  // hosts there is nothing to wait for, so leave for /welcome immediately.
+  // With a saved-but-offline host (host dropped mid-wizard, or a stale deep
+  // link to /setup), give the connection a grace window to (re)establish
+  // before bailing so a transient socket blip doesn't eject the user; once on
+  // /welcome, the host coming back online routes an unfinished wizard right
+  // back here (see WelcomeScreen).
   useEffect(() => {
-    if (!earliestOnlineServerId && hosts.length === 0) {
+    if (earliestOnlineServerId) return;
+    if (hosts.length === 0) {
       router.replace("/welcome");
+      return;
     }
+    const timer = setTimeout(() => router.replace("/welcome"), OFFLINE_HOST_GRACE_MS);
+    return () => clearTimeout(timer);
   }, [earliestOnlineServerId, hosts.length, router]);
 
   const serverId = earliestOnlineServerId ?? hosts[0]?.serverId ?? null;

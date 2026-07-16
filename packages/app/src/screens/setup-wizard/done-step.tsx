@@ -16,7 +16,7 @@ import type { InterfaceMode } from "@/hooks/use-settings";
 import { BlobLoader } from "@/components/blob-loader";
 import { OttoLogo } from "@/components/icons/otto-logo";
 import { Button } from "@/components/ui/button";
-import { useIsCompactFormFactor, useIsExtraCompactFormFactor } from "@/constants/layout";
+import { useSizeForFormFactor } from "./use-size-for-form-factor";
 import { WizardBrandBackdrop } from "./wizard-brand-backdrop";
 
 // Same bloom as the welcome ring, for a matching bookend (see welcome-step).
@@ -37,15 +37,9 @@ export function DoneStep({
   activeTeamName,
   onFinish,
 }: DoneStepProps) {
-  const isCompact = useIsCompactFormFactor();
-  const isExtraCompact = useIsExtraCompactFormFactor();
   const insets = useSafeAreaInsets();
 
-  const sizeForFormFactor = (extraCompact: number, compact: number, wide: number) => {
-    if (isExtraCompact) return extraCompact;
-    if (isCompact) return compact;
-    return wide;
-  };
+  const sizeForFormFactor = useSizeForFormFactor();
   const glyphSize = sizeForFormFactor(72, 92, 108);
   const ringSize = sizeForFormFactor(110, 132, 150);
   // Stack box is the larger layer so ring + glyph center on one point.

@@ -2,16 +2,25 @@
 // pinned into the toolbar strip. Mirrors the workspace tab bar's pin model
 // (see @/workspace-pins) — pins are global (device-local), not per-workspace.
 
-export type ChangesToolbarItemId = "split" | "tree" | "expand" | "whitespace" | "wrap" | "refresh";
+export type ChangesToolbarItemId =
+  | "split"
+  | "tree"
+  | "expand"
+  | "whitespace"
+  | "wrap"
+  | "removeComments"
+  | "refresh";
 
 // Fixed catalog order — both the ▾ menu and the pinned toolbar strip render in
 // this order regardless of the order items were pinned, so the layout is stable.
+// removeComments is only offered while the current diff has draft review comments.
 export const CHANGES_TOOLBAR_ITEM_IDS = [
   "split",
   "tree",
   "expand",
   "whitespace",
   "wrap",
+  "removeComments",
   "refresh",
 ] as const;
 

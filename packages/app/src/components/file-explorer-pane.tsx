@@ -583,7 +583,7 @@ export function FileExplorerPane({
     };
   }, [canEditFiles, hasWorkspaceScope, onOpenFile, selectExplorerEntry]);
 
-  // "Add to context" mirrors the diff pane's review comments: the file lands
+  // "Add to chat" mirrors the diff pane's review comments: the file lands
   // in the workspace-scoped attachment store, shows as a composer pill, and
   // can be removed from either side. Offered only while an agent tab is the
   // focused pane, so the attachment has a visible destination.

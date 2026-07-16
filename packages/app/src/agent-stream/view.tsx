@@ -2,6 +2,7 @@ import React, {
   forwardRef,
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -570,23 +571,29 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
 
+    // Defer the stream-derived inputs so React can interrupt the ~48ms flush
+    // re-renders (render-model rebuild + layout + streaming markdown) with
+    // urgent updates like composer keystrokes: the urgent render reuses the
+    // previous memoized model, and the fresh items commit in a low-priority
+    // follow-up render. That follow-up still commits normally, so post-commit
+    // auto-scroll/re-stick (content-size driven, inside the viewport strategy)
+    // is unaffected. Both consumers below must read the SAME deferred pair so
+    // reveal spans stay consistent with the rendered text. While the panel is
+    // frozen (inactive) the references never change, so deferral is a no-op.
+    const deferredStreamItems = useDeferredValue(effectiveStreamItems);
+    const deferredStreamHead = useDeferredValue(effectiveStreamHead);
+
     const groupConsecutiveActions = useAppSettings().settings.groupConsecutiveActions;
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         agentStatus: agent.status,
-        tail: effectiveStreamItems,
-        head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+        tail: deferredStreamItems,
+        head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         groupConsecutiveActions,
       });
-    }, [
-      agent.status,
-      isMobile,
-      effectiveStreamHead,
-      effectiveStreamItems,
-      groupConsecutiveActions,
-    ]);
+    }, [agent.status, isMobile, deferredStreamHead, deferredStreamItems, groupConsecutiveActions]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
@@ -668,10 +675,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () =>
         computeLiveTurnReveal({
           running: agent.status === "running",
-          tail: effectiveStreamItems,
-          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+          tail: deferredStreamItems,
+          head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
         }),
-      [agent.status, effectiveStreamItems, effectiveStreamHead],
+      [agent.status, deferredStreamItems, deferredStreamHead],
     );
     const revealTicker = useTurnRevealTicker({
       turnKey: liveTurnReveal.turnKey,

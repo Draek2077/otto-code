@@ -5,8 +5,10 @@ import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   ACTION_GROUP_CATEGORY_ORDER,
+  categorizeActionGroupMember,
   countActionGroupCategories,
   isActiveActionMember,
+  textEffectActivityForCategory,
   type ActionGroupCategory,
 } from "@/agent-stream/action-grouping";
 import { Layers } from "@/components/icons/material-icons";
@@ -179,8 +181,13 @@ export const ActionGroup = memo(function ActionGroup({
   }, [onInlineDetailsExpandedChange]);
 
   const summary = useMemo(() => buildActionGroupSummary(t, items), [t, items]);
-  const isLoading = items.some(isActiveActionMember);
+  const activeMember = items.find(isActiveActionMember);
+  const isLoading = activeMember !== undefined;
   const isError = items.some(isFailedMember);
+  // Shimmer in the color of whatever the group is currently doing (Vivid).
+  const effectActivity = activeMember
+    ? textEffectActivityForCategory(categorizeActionGroupMember(activeMember))
+    : undefined;
 
   const renderDetails = useCallback(
     () => (
@@ -209,6 +216,7 @@ export const ActionGroup = memo(function ActionGroup({
       isLoading={isLoading}
       isError={isError}
       isLastInSequence={isLastInSequence}
+      effectActivity={effectActivity}
     />
   );
 });

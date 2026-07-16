@@ -37,6 +37,7 @@ import {
   Plus,
   FolderGit2,
   SquareTerminal,
+  Waypoints,
 } from "@/components/icons/material-icons";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
@@ -50,6 +51,7 @@ import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { VisualizerSection } from "@/screens/settings/visualizer-section";
 import {
   useAppSettings,
   useSettings,
@@ -57,6 +59,7 @@ import {
   type AppSettings,
   type InterfaceMode,
   type AppStartScreen,
+  type LinkOpenBehavior,
   type PreviewServerCloseBehavior,
   type SendBehavior,
   type ServiceUrlBehavior,
@@ -94,6 +97,13 @@ import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater"
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { UPSTREAM_BASE_NAME, UPSTREAM_BASE_VERSION } from "@/utils/upstream-base-version";
+import {
+  VISUALIZER_UPSTREAM_AUTHOR,
+  VISUALIZER_UPSTREAM_LICENSE,
+  VISUALIZER_UPSTREAM_NAME,
+  VISUALIZER_UPSTREAM_URL,
+} from "@/utils/visualizer-attribution";
+import { openLink } from "@/utils/open-link";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -114,9 +124,11 @@ import {
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
 import ProjectsScreen from "@/screens/projects-screen";
-import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import ProjectSettingsScreen, {
+  confirmDiscardProjectSettingsChanges,
+} from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -165,11 +177,21 @@ interface SidebarSectionItem {
   labelKey: string;
   icon: ComponentType<{ size: number; color: string }>;
   desktopOnly?: boolean;
+  // Hidden from the sidebar (and content gated to null) in User mode.
+  developerOnly?: boolean;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
+  // Reuses the (pre-move) Appearance-subsection title key so every locale
+  // already has it — the rows themselves moved to visualizer-section.tsx.
+  {
+    id: "visualizer",
+    labelKey: "settings.appearance.visualizer.title",
+    icon: Waypoints,
+    developerOnly: true,
+  },
   { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
   {
     id: "integrations",
@@ -324,12 +346,21 @@ function getServiceUrlBehaviorLabel(t: TFunction, value: ServiceUrlBehavior): st
   return labels[value];
 }
 
+function getLinkOpenBehaviorLabel(t: TFunction, value: LinkOpenBehavior): string {
+  const labels: Record<LinkOpenBehavior, string> = {
+    "in-app": t("settings.general.openLinks.options.inApp"),
+    external: t("settings.general.openLinks.options.external"),
+  };
+  return labels[value];
+}
+
 function getActiveLocale(language: string | undefined): SupportedLocale {
   const parsed = parseAppLanguage(language);
   return parsed && parsed !== "system" ? parsed : "en";
 }
 
 const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "external"];
+const LINK_OPEN_BEHAVIOR_VALUES: LinkOpenBehavior[] = ["external", "in-app"];
 
 // ---------------------------------------------------------------------------
 // Section components
@@ -342,6 +373,7 @@ interface GeneralSectionProps {
   handleAppStartScreenChange: (screen: AppStartScreen) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
+  handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
   handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
@@ -361,6 +393,29 @@ function ServiceUrlBehaviorMenuItem({
   selected,
   onChange,
 }: ServiceUrlBehaviorMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onChange(value);
+  }, [onChange, value]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {label}
+    </DropdownMenuItem>
+  );
+}
+
+interface LinkOpenBehaviorMenuItemProps {
+  value: LinkOpenBehavior;
+  label: string;
+  selected: boolean;
+  onChange: (value: LinkOpenBehavior) => void;
+}
+
+function LinkOpenBehaviorMenuItem({
+  value,
+  label,
+  selected,
+  onChange,
+}: LinkOpenBehaviorMenuItemProps) {
   const handleSelect = useCallback(() => {
     onChange(value);
   }, [onChange, value]);
@@ -402,6 +457,7 @@ function GeneralSection({
   handleAppStartScreenChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
+  handleLinkOpenBehaviorChange,
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
   handlePreviewServerCloseBehaviorChange,
@@ -559,6 +615,34 @@ function GeneralSection({
                       label={getServiceUrlBehaviorLabel(t, value)}
                       selected={settings.serviceUrlBehavior === value}
                       onChange={handleServiceUrlBehaviorChange}
+                    />
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </View>
+          ) : null}
+          {isDesktopApp ? (
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>{t("settings.general.openLinks.label")}</Text>
+                <Text style={settingsStyles.rowHint}>
+                  {t("settings.general.openLinks.description")}
+                </Text>
+              </View>
+              <DropdownMenu>
+                <DropdownTrigger style={themeTriggerStyle}>
+                  <Text style={styles.themeTriggerText}>
+                    {getLinkOpenBehaviorLabel(t, settings.linkOpenBehavior)}
+                  </Text>
+                </DropdownTrigger>
+                <DropdownMenuContent side="bottom" align="end" width={200}>
+                  {LINK_OPEN_BEHAVIOR_VALUES.map((value) => (
+                    <LinkOpenBehaviorMenuItem
+                      key={value}
+                      value={value}
+                      label={getLinkOpenBehaviorLabel(t, value)}
+                      selected={settings.linkOpenBehavior === value}
+                      onChange={handleLinkOpenBehaviorChange}
                     />
                   ))}
                 </DropdownMenuContent>
@@ -727,6 +811,7 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
           </View>
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
           <SetupWizardRerunRow />
+          <ThirdPartyCreditsRow />
         </View>
       </SettingsSection>
       <ConnectedHostsSection clientVersion={appVersion} />
@@ -754,6 +839,35 @@ function SetupWizardRerunRow() {
       </View>
       <Button variant="secondary" size="sm" onPress={handlePress} testID="settings-reset-wizard">
         {t("settings.about.resetWizard.action")}
+      </Button>
+    </View>
+  );
+}
+
+function ThirdPartyCreditsRow() {
+  const { t } = useTranslation();
+  const handlePress = useCallback(() => {
+    void openLink(VISUALIZER_UPSTREAM_URL);
+  }, []);
+  return (
+    <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.about.credits.title")}</Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.about.credits.visualizer", {
+            name: VISUALIZER_UPSTREAM_NAME,
+            license: VISUALIZER_UPSTREAM_LICENSE,
+            author: VISUALIZER_UPSTREAM_AUTHOR,
+          })}
+        </Text>
+      </View>
+      <Button
+        variant="ghost"
+        size="sm"
+        onPress={handlePress}
+        testID="settings-visualizer-credits-link"
+      >
+        {t("settings.about.credits.viewSource")}
       </Button>
     </View>
   );
@@ -1227,11 +1341,13 @@ function SettingsSidebar({
   const hasHosts = sortedHosts.length > 0;
   const enableBuiltInDaemonOption = useEnableBuiltInDaemonOption();
   const isDesktopApp = isElectronRuntime();
-  const items = SIDEBAR_SECTION_ITEMS.filter((item) => !item.desktopOnly || isDesktopApp);
   const insets = useSafeAreaInsets();
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
   const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
+  const items = SIDEBAR_SECTION_ITEMS.filter(
+    (item) => (!item.desktopOnly || isDesktopApp) && (!item.developerOnly || isDeveloperMode),
+  );
   const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
@@ -1514,6 +1630,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleLinkOpenBehaviorChange = useCallback(
+    (behavior: LinkOpenBehavior) => {
+      void updateSettings({ linkOpenBehavior: behavior });
+    },
+    [updateSettings],
+  );
+
   const handleLanguageChange = useCallback(
     (language: AppLanguage) => {
       void updateSettings({ language });
@@ -1605,28 +1728,56 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     setIsPasteLinkVisible(true);
   }, []);
 
+  // Tracks whether the project settings form (the only settings view with a
+  // draft/save cycle) has unsaved changes, so shell-level exits can warn.
+  const projectSettingsDirtyRef = useRef(false);
+  const handleProjectSettingsDirtyChange = useCallback((dirty: boolean) => {
+    projectSettingsDirtyRef.current = dirty;
+  }, []);
+
+  // Web-only exit guard: on native the project screen guards its own route
+  // removal via usePreventRemove, and running both would double-prompt.
+  const guardProjectSettingsExit = useCallback(
+    (action: () => void) => {
+      if (isNative || !projectSettingsDirtyRef.current) {
+        action();
+        return;
+      }
+      void (async () => {
+        if (await confirmDiscardProjectSettingsChanges(t)) {
+          action();
+        }
+      })();
+    },
+    [t],
+  );
+
   const handleHostAdded = useCallback(
     ({ serverId }: { serverId: string }) => {
-      const target = buildSettingsHostSectionRoute(serverId, "connections");
-      if (isCompactLayout) {
-        router.push(target);
-      } else {
-        router.replace(target);
-      }
+      guardProjectSettingsExit(() => {
+        const target = buildSettingsHostSectionRoute(serverId, "connections");
+        if (isCompactLayout) {
+          router.push(target);
+        } else {
+          router.replace(target);
+        }
+      });
     },
-    [isCompactLayout, router],
+    [guardProjectSettingsExit, isCompactLayout, router],
   );
 
   const handleSelectSection = useCallback(
     (section: SettingsSectionSlug) => {
-      const target = buildSettingsSectionRoute(section);
-      if (isCompactLayout) {
-        router.push(target);
-      } else {
-        router.replace(target);
-      }
+      guardProjectSettingsExit(() => {
+        const target = buildSettingsSectionRoute(section);
+        if (isCompactLayout) {
+          router.push(target);
+        } else {
+          router.replace(target);
+        }
+      });
     },
-    [isCompactLayout, router],
+    [guardProjectSettingsExit, isCompactLayout, router],
   );
 
   // Picker: choose the host for host-section rows. If the user is already on a
@@ -1654,24 +1805,28 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         handleAddHost();
         return;
       }
-      const target = buildSettingsHostSectionRoute(activeHostServerId, section);
+      guardProjectSettingsExit(() => {
+        const target = buildSettingsHostSectionRoute(activeHostServerId, section);
+        if (isCompactLayout) {
+          router.push(target);
+        } else {
+          router.replace(target);
+        }
+      });
+    },
+    [activeHostServerId, guardProjectSettingsExit, handleAddHost, isCompactLayout, router],
+  );
+
+  const handleSelectProjects = useCallback(() => {
+    guardProjectSettingsExit(() => {
+      const target = buildProjectsSettingsRoute();
       if (isCompactLayout) {
         router.push(target);
       } else {
         router.replace(target);
       }
-    },
-    [activeHostServerId, handleAddHost, isCompactLayout, router],
-  );
-
-  const handleSelectProjects = useCallback(() => {
-    const target = buildProjectsSettingsRoute();
-    if (isCompactLayout) {
-      router.push(target);
-    } else {
-      router.replace(target);
-    }
-  }, [isCompactLayout, router]);
+    });
+  }, [guardProjectSettingsExit, isCompactLayout, router]);
 
   const handleScanQr = useCallback(() => {
     closeAddConnectionFlow();
@@ -1699,11 +1854,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   }, [router]);
 
   const handleBackToWorkspace = useCallback(() => {
-    if (navigateToLastWorkspace()) {
-      return;
-    }
-    router.replace(buildOpenProjectRoute());
-  }, [router]);
+    guardProjectSettingsExit(() => {
+      if (navigateToLastWorkspace()) {
+        return;
+      }
+      router.replace(buildOpenProjectRoute());
+    });
+  }, [guardProjectSettingsExit, router]);
 
   const detailHeader = ((): {
     title: string;
@@ -1734,7 +1891,12 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       return <ProjectsScreen view={view} />;
     }
     if (view.kind === "project") {
-      return <ProjectSettingsScreen projectKey={view.projectKey} />;
+      return (
+        <ProjectSettingsScreen
+          projectKey={view.projectKey}
+          onDirtyChange={handleProjectSettingsDirtyChange}
+        />
+      );
     }
     if (view.kind === "section") {
       switch (view.section) {
@@ -1747,6 +1909,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleAppStartScreenChange={handleAppStartScreenChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
+              handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
               handleLanguageChange={handleLanguageChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
               handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
@@ -1755,6 +1918,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           );
         case "appearance":
           return <AppearanceSection />;
+        case "visualizer":
+          return isDeveloperMode ? <VisualizerSection /> : null;
         case "shortcuts":
           return isDesktopApp ? <KeyboardShortcutsSection /> : null;
         case "integrations":

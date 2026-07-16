@@ -1,5 +1,11 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { ScrollView, Text, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ActivityCounters } from "@otto-code/protocol/messages";
@@ -122,7 +128,9 @@ function HostStatsSection({ serverId }: { serverId: string }): ReactElement | nu
       <View style={styles.grid}>
         {STAT_TILES.map((tile) => (
           <StatTile
-            key={tile.field}
+            // Keyed by window too: switching windows remounts the tile, so only
+            // live data updates (not user-driven window changes) flash.
+            key={`${window}:${tile.field}`}
             Icon={tile.Icon}
             label={tile.label}
             value={counters[tile.field]}
@@ -155,10 +163,31 @@ function StatTile({
   label: string;
   value: number;
 }): ReactElement {
+  const display = formatTokenCount(value);
+  const previousDisplay = useRef<string | null>(null);
+  const flash = useSharedValue(0);
+
+  // Brief highlight when the *displayed* value changes (raw-count changes that
+  // round to the same formatted string would flash invisibly). First render
+  // never flashes — only live updates after mount do.
+  useEffect(() => {
+    if (previousDisplay.current !== null && previousDisplay.current !== display) {
+      flash.value = withSequence(
+        withTiming(1, { duration: 150 }),
+        withTiming(0, { duration: 650 }),
+      );
+    }
+    previousDisplay.current = display;
+  }, [display, flash]);
+
+  const flashAnimatedStyle = useAnimatedStyle(() => ({ opacity: flash.value * 0.28 }));
+  const flashStyles = useMemo(() => [styles.tileFlash, flashAnimatedStyle], [flashAnimatedStyle]);
+
   return (
     <View style={styles.tile}>
+      <Animated.View pointerEvents="none" style={flashStyles} />
       <Icon size={30} uniProps={foregroundMutedColorMapping} />
-      <Text style={styles.tileValue}>{formatTokenCount(value)}</Text>
+      <Text style={styles.tileValue}>{display}</Text>
       <Text style={styles.tileLabel}>{label}</Text>
     </View>
   );
@@ -217,6 +246,17 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     gap: theme.spacing[1],
     alignItems: "center",
+  },
+  // Accent overlay animated via opacity only — absolutely positioned, so the
+  // update flash never shifts layout.
+  tileFlash: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.accent,
   },
   tileValue: {
     color: theme.colors.foreground,

@@ -1,18 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { PersonalityRole } from "@otto-code/protocol/messages";
-import { personalityHasRole } from "@otto-code/protocol/agent-personalities";
-import { getActiveAgentTeam, isTeamMember } from "@otto-code/protocol/agent-teams";
-import type { SelectorPersonality } from "@/components/combined-model-selector";
+import {
+  PERSONALITY_ROLES,
+  type AgentPersonality,
+  type PersonalityRole,
+} from "@otto-code/protocol/messages";
+import {
+  normalizePersonalityRoles,
+  personalityHasRole,
+} from "@otto-code/protocol/agent-personalities";
+import {
+  getActiveAgentTeam,
+  isTeamMember,
+  resolveTeamMembers,
+} from "@otto-code/protocol/agent-teams";
+import type {
+  SelectorPersonality,
+  SelectorPersonalityGroupSection,
+  SelectorPersonalityRoleGroup,
+} from "@/components/combined-model-selector";
 import {
   resolvePersonalityForForm,
   type PersonalityFormValues,
 } from "@/provider-selection/personality-form";
+import { ROLE_ICONS } from "@/provider-selection/role-icons";
+import { ROLE_LABELS } from "@/provider-selection/role-labels";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { mergeLastPersonality } from "@/create-agent-preferences/preferences";
 
-export type { SelectorPersonality };
+export type { SelectorPersonality, SelectorPersonalityGroupSection };
+
+/**
+ * A provider that is broken right now — absent from the snapshot, disabled, or
+ * in an error/unavailable state (auth failed, binary missing, unreachable).
+ * Personalities bound to a broken provider are HIDDEN from pickers entirely
+ * (not just grayed) — the provider itself is hidden too, so showing its
+ * personalities would dead-end. A provider still loading is NOT broken; its
+ * personalities stay visible (grayed "not ready") instead of flashing away.
+ */
+function isBrokenProviderEntry(entry: ProviderSnapshotEntry | undefined): boolean {
+  if (!entry || !entry.enabled) {
+    return true;
+  }
+  return entry.status === "error" || entry.status === "unavailable";
+}
 
 /**
  * The picker surface's current provider/model/effort (and, for attended
@@ -56,6 +88,13 @@ export interface UsePersonalitySelectionInput {
 
 export interface UsePersonalitySelectionResult {
   personalities: SelectorPersonality[];
+  /**
+   * The full roster organized for browsing: active team first (roles →
+   * members), then the remaining personalities by role — or a single
+   * "All personalities" section when no team is active. Every entry here is
+   * selectable through selectPersonality, regardless of the surface role.
+   */
+  personalityGroups: SelectorPersonalityGroupSection[];
   selectedPersonalityId: string | null;
   selectPersonality: (id: string) => void;
   clearPersonality: () => void;
@@ -109,15 +148,18 @@ export function usePersonalitySelection(
   // Depend on the roster slice, not the whole config — unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
   const rosterSource = config?.agentPersonalities?.personalities;
-  // Strict active-team scoping: with a team active only its members show
-  // (role/availability-filtered as always). The one escape hatch is the
-  // caller's already-bound personality (schedule form editing an off-team
-  // binding). No active team = the full roster, exactly legacy behavior.
+  const fullRoster = useMemo(() => rosterSource ?? [], [rosterSource]);
+  // Strict active-team scoping FOR THE UP-FRONT SECTION: with a team active
+  // only its members show (role/availability-filtered as always). The one
+  // escape hatch is the caller's already-bound personality (schedule form
+  // editing an off-team binding). No active team = the full roster, exactly
+  // legacy behavior. The grouped browse section below deliberately reaches the
+  // whole roster (off-team spawns simply don't carry the team prompt).
   const agentTeamsSource = config?.agentTeams;
   const activeTeam = useMemo(() => getActiveAgentTeam(agentTeamsSource), [agentTeamsSource]);
   const roster = useMemo(
     () =>
-      (rosterSource ?? []).filter((personality) => {
+      fullRoster.filter((personality) => {
         if (!personalityHasRole(personality, role)) {
           return false;
         }
@@ -129,39 +171,122 @@ export function usePersonalitySelection(
           personality.id === (alwaysIncludePersonalityId ?? null)
         );
       }),
-    [rosterSource, role, activeTeam, alwaysIncludePersonalityId],
+    [fullRoster, role, activeTeam, alwaysIncludePersonalityId],
   );
 
+  // Resolutions cover the FULL roster (not just the surface role) — the
+  // grouped browse section makes every personality selectable here.
   const resolutions = useMemo(
-    () => new Map(roster.map((p) => [p.id, resolvePersonalityForForm(p, entries)] as const)),
-    [roster, entries],
+    () => new Map(fullRoster.map((p) => [p.id, resolvePersonalityForForm(p, entries)] as const)),
+    [fullRoster, entries],
+  );
+
+  // Providers that are broken right now — their personalities are hidden from
+  // the picker (the provider itself is hidden too). Exceptions below keep the
+  // CURRENT selection (and a schedule's already-stored binding) rendering with
+  // an unavailable marker instead of vanishing out from under the trigger.
+  const brokenProviders = useMemo(() => {
+    const broken = new Set<string>();
+    for (const personality of fullRoster) {
+      if (broken.has(personality.provider)) {
+        continue;
+      }
+      const entry = entries.find((candidate) => candidate.provider === personality.provider);
+      if (isBrokenProviderEntry(entry)) {
+        broken.add(personality.provider);
+      }
+    }
+    return broken;
+  }, [fullRoster, entries]);
+
+  const isHiddenPersonality = useCallback(
+    (personality: AgentPersonality): boolean =>
+      brokenProviders.has(personality.provider) &&
+      personality.id !== selectedPersonalityId &&
+      personality.id !== (alwaysIncludePersonalityId ?? null),
+    [brokenProviders, selectedPersonalityId, alwaysIncludePersonalityId],
+  );
+
+  const buildSelectorPersonality = useCallback(
+    (personality: AgentPersonality): SelectorPersonality => {
+      const resolution = resolutions.get(personality.id);
+      // Show the human-readable provider/model names from the live snapshot
+      // rather than the raw ids; fall back to the id when the snapshot has no
+      // matching entry (provider unavailable, model since removed).
+      const entry = entries.find((candidate) => candidate.provider === personality.provider);
+      const providerLabel = entry?.label ?? personality.provider;
+      const modelLabel =
+        entry?.models?.find((candidate) => candidate.id === personality.model)?.label ??
+        personality.model;
+      return {
+        id: personality.id,
+        name: personality.name,
+        provider: personality.provider,
+        subtitle: `${providerLabel} · ${modelLabel}`,
+        glowA: personality.spinner?.glowA,
+        glowB: personality.spinner?.glowB,
+        available: resolution?.available ?? false,
+        unavailableReason: resolution && !resolution.available ? resolution.reason : undefined,
+      };
+    },
+    [resolutions, entries],
   );
 
   const personalities = useMemo<SelectorPersonality[]>(
     () =>
-      roster.map((personality) => {
-        const resolution = resolutions.get(personality.id);
-        // Show the human-readable provider/model names from the live snapshot
-        // rather than the raw ids; fall back to the id when the snapshot has no
-        // matching entry (provider unavailable, model since removed).
-        const entry = entries.find((candidate) => candidate.provider === personality.provider);
-        const providerLabel = entry?.label ?? personality.provider;
-        const modelLabel =
-          entry?.models?.find((candidate) => candidate.id === personality.model)?.label ??
-          personality.model;
-        return {
-          id: personality.id,
-          name: personality.name,
-          provider: personality.provider,
-          subtitle: `${providerLabel} · ${modelLabel}`,
-          glowA: personality.spinner?.glowA,
-          glowB: personality.spinner?.glowB,
-          available: resolution?.available ?? false,
-          unavailableReason: resolution && !resolution.available ? resolution.reason : undefined,
-        };
-      }),
-    [roster, resolutions, entries],
+      roster
+        .filter((personality) => !isHiddenPersonality(personality))
+        .map(buildSelectorPersonality),
+    [roster, isHiddenPersonality, buildSelectorPersonality],
   );
+
+  // The grouped browse structure: with a team active, ONE group — the active
+  // team's members by role (strict active-team scoping, same as the up-front
+  // section); with no team, one "All personalities" group over the full
+  // roster. A multi-role personality appears under each role it carries;
+  // roleless ones land in a trailing "No role" group so everything on deck
+  // stays reachable.
+  const personalityGroups = useMemo<SelectorPersonalityGroupSection[]>(() => {
+    const visible = fullRoster.filter((personality) => !isHiddenPersonality(personality));
+    if (visible.length === 0) {
+      return [];
+    }
+    const buildRoleGroups = (list: readonly AgentPersonality[]): SelectorPersonalityRoleGroup[] => {
+      const groups: SelectorPersonalityRoleGroup[] = [];
+      for (const groupRole of PERSONALITY_ROLES) {
+        const members = list.filter((personality) => personalityHasRole(personality, groupRole));
+        if (members.length > 0) {
+          groups.push({
+            key: groupRole,
+            label: ROLE_LABELS[groupRole],
+            icon: ROLE_ICONS[groupRole],
+            personalities: members.map(buildSelectorPersonality),
+          });
+        }
+      }
+      const roleless = list.filter(
+        (personality) => normalizePersonalityRoles(personality.roles).length === 0,
+      );
+      if (roleless.length > 0) {
+        groups.push({
+          key: "none",
+          // i18n: English-only pending the agent-personalities translation pass.
+          label: "No role",
+          personalities: roleless.map(buildSelectorPersonality),
+        });
+      }
+      return groups;
+    };
+    if (activeTeam) {
+      const teamGroups = buildRoleGroups(resolveTeamMembers(activeTeam, visible));
+      return teamGroups.length > 0
+        ? [{ key: "team", label: activeTeam.name, roleGroups: teamGroups }]
+        : [];
+    }
+    const roleGroups = buildRoleGroups(visible);
+    // i18n: English-only pending the agent-personalities translation pass.
+    return roleGroups.length > 0 ? [{ key: "all", label: "All personalities", roleGroups }] : [];
+  }, [fullRoster, isHiddenPersonality, activeTeam, buildSelectorPersonality]);
 
   const persistLastPersonality = useCallback(
     (personalityId: string | null) => {
@@ -233,16 +358,19 @@ export function usePersonalitySelection(
     selectedPersonalityId,
   ]);
 
-  // A selection whose personality has since left the roster (deleted remotely,
-  // role removed) reads as no selection — the draft must not spawn with a stale
-  // id the daemon would soft-skip (spinner shown, prompt silently absent).
+  // A selection whose personality has since left the roster (deleted remotely)
+  // reads as no selection — the draft must not spawn with a stale id the
+  // daemon would soft-skip (spinner shown, prompt silently absent). Checked
+  // against the FULL roster: any personality is selectable via the grouped
+  // browse section, so a role change alone must not drop the selection.
   const effectiveSelectedPersonalityId =
-    selectedPersonalityId && roster.some((entry) => entry.id === selectedPersonalityId)
+    selectedPersonalityId && fullRoster.some((entry) => entry.id === selectedPersonalityId)
       ? selectedPersonalityId
       : null;
 
   return {
     personalities,
+    personalityGroups,
     selectedPersonalityId: effectiveSelectedPersonalityId,
     selectPersonality,
     clearPersonality,

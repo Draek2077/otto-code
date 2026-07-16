@@ -334,6 +334,8 @@ export const MATERIAL_SYMBOL_SVGS: Record<string, string> = {
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M452-202h60v-201l82 82 42-42-156-152-154 154 42 42 84-84v201ZM220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h361l219 219v521q0 24-18 42t-42 18H220Zm331-554v-186H220v680h520v-494H551ZM220-820v186-186 680-680Z"/></svg>',
   WandStars:
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="m162-121-42-42 326-326-185-46 192-120-16-225 173 145 209-84-85 209 146 173-226-17-119 192-46-185-327 326Zm25-544-67-67 68-68 67 67-68 68Zm372 251 63-102 120 9-78-92 45-111-111 45-92-78 9 120-102 64 117 29 29 116Zm174 294-67-68 67-67 67 68-67 67ZM578-579Z"/></svg>',
+  Waypoints:
+    '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M120-120v-180h154l176-176v-149q-35-12-57.5-40.65T370-730q0-45.83 32.12-77.92 32.12-32.08 78-32.08T558-807.92q32 32.09 32 77.92 0 35.7-22.5 64.35Q545-637 510-625v149l176 176h154v180H660v-116L480-416 300-236v116H120Z"/></svg>',
   WrapText:
     '<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 -960 960 960"><path d="M579-130 440-270l139-141 42 43-67 69h141q35 0 60-25.5t25-60.5q0-35-25-60t-60-25H160v-60h535q60 0 102.5 42.5T840-385q0 60-42.5 103T695-239H554l67 66-42 43ZM160-239v-60h200v60H160Zm0-461v-60h640v60H160Z"/></svg>',
   Wrench:

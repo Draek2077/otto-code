@@ -192,6 +192,7 @@ export const Unlink = createMaterialSymbolIcon("Unlink");
 export const Upload = createMaterialSymbolIcon("Upload");
 export const UploadFile = createMaterialSymbolIcon("UploadFile");
 export const WandStars = createMaterialSymbolIcon("WandStars");
+export const Waypoints = createMaterialSymbolIcon("Waypoints");
 export const WrapText = createMaterialSymbolIcon("WrapText");
 export const Wrench = createMaterialSymbolIcon("Wrench");
 export const X = createMaterialSymbolIcon("X");

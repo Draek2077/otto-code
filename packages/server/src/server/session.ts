@@ -224,6 +224,7 @@ import { shouldEmitPendingBootstrapUpdate } from "./workspace-bootstrap-dedupe.j
 import {
   createLocalCheckoutWorkspace,
   createOttoWorktree,
+  WorkspaceDirectoryOccupiedError,
   type CreateOttoWorktreeInput,
   type CreateOttoWorktreeResult,
 } from "./otto-worktree-service.js";
@@ -5570,6 +5571,9 @@ export class Session {
           workspace: null,
           setupTerminalId: null,
           error: message,
+          ...(error instanceof WorkspaceDirectoryOccupiedError
+            ? { errorCode: "workspace_directory_occupied" }
+            : {}),
         },
       });
     }
