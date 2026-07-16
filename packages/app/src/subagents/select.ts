@@ -13,6 +13,8 @@ export interface SubagentRow {
   updatedAt: Agent["updatedAt"];
   attend?: Agent["attend"];
   cumulativeTokens?: Agent["cumulativeTokens"];
+  personalityName?: Agent["personalityName"];
+  personalitySpinner?: Agent["personalitySpinner"];
 }
 
 type SessionStoreSnapshot = ReturnType<typeof useSessionStore.getState>;
@@ -35,6 +37,8 @@ function toSubagentRow(agent: Agent): SubagentRow {
     updatedAt: agent.updatedAt,
     attend: agent.attend,
     cumulativeTokens: agent.cumulativeTokens,
+    personalityName: agent.personalityName,
+    personalitySpinner: agent.personalitySpinner,
   };
 }
 

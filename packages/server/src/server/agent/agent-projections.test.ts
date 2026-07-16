@@ -540,6 +540,16 @@ describe("deriveObservedSubagentTitle", () => {
     expect(deriveObservedSubagentTitle({})).toBe("Subagent");
   });
 
+  it("skips catch-all types like general-purpose in favor of the description", () => {
+    expect(
+      deriveObservedSubagentTitle({
+        subAgentType: "general-purpose",
+        description: "Explore the auth flow",
+      }),
+    ).toBe("Explore the auth flow");
+    expect(deriveObservedSubagentTitle({ subAgentType: "General-Purpose" })).toBe("Subagent");
+  });
+
   it("collapses whitespace and hard-caps a wall-of-text label", () => {
     const wall =
       "line one\n  line two   with    lots\tof\nwhitespace that runs on and on and on forever";
@@ -559,6 +569,13 @@ describe("observedUpdateHasTitleSource", () => {
   it("is false when neither is a usable name source", () => {
     expect(observedUpdateHasTitleSource({})).toBe(false);
     expect(observedUpdateHasTitleSource({ subAgentType: "   ", description: "" })).toBe(false);
+  });
+
+  it("does not freeze on a catch-all type alone — a later description should win", () => {
+    expect(observedUpdateHasTitleSource({ subAgentType: "general-purpose" })).toBe(false);
+    expect(
+      observedUpdateHasTitleSource({ subAgentType: "general-purpose", description: "do it" }),
+    ).toBe(true);
   });
 });
 

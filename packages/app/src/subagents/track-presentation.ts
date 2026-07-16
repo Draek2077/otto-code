@@ -13,7 +13,14 @@ export interface SubagentRowPresentationData {
 }
 
 export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowPresentationData {
-  const label = resolveRowLabel(row.title);
+  const title = resolveRowLabel(row.title);
+  // A personality-spawned subagent leads with its identity: "<Name>: <Chat title>".
+  // With no title yet, the name alone beats a bare loading placeholder.
+  const personalityName = row.personalityName?.trim() || null;
+  let label = title;
+  if (personalityName) {
+    label = title ? `${personalityName}: ${title}` : personalityName;
+  }
   return {
     key: `subagent_${row.id}`,
     kind: "agent",
@@ -123,21 +130,21 @@ export function sumSubagentTokens(rows: readonly SubagentRow[]): number {
   return total;
 }
 
-export function formatHeaderLabel(rows: readonly SubagentRow[]): string {
-  let runningCount = 0;
-  for (const row of rows) {
-    if (row.status === "running") {
-      runningCount += 1;
-    }
+export function formatHeaderLabel({ active, completed }: PartitionedSubagentRows): string {
+  // Mirror the list's own active/completed split (user-locked wording) so the
+  // header reads as a summary of the two groups below it, not a third framing.
+  const parts: string[] = [];
+  if (active.length > 0) {
+    parts.push(`${active.length} active ${active.length === 1 ? "sub-agent" : "sub-agents"}`);
   }
-
-  const parts = [`${rows.length} ${rows.length === 1 ? "subagent" : "subagents"}`];
-  if (runningCount > 0) {
-    parts.push(`${runningCount} running`);
+  if (completed.length > 0) {
+    parts.push(
+      `${completed.length} completed ${completed.length === 1 ? "sub-agent" : "sub-agents"}`,
+    );
   }
   // Honest fan-out cost, summed across every row (completed included) so the
   // number survives the auto-tidy. See subagents-cleanup.md (Items 3 + 6).
-  const tokens = formatCompactTokenCount(sumSubagentTokens(rows));
+  const tokens = formatCompactTokenCount(sumSubagentTokens(active) + sumSubagentTokens(completed));
   if (tokens) {
     parts.push(`${tokens} tokens`);
   }

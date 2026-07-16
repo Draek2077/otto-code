@@ -24,58 +24,55 @@ function row(overrides: Partial<SubagentRow> & Pick<SubagentRow, "id">): Subagen
     updatedAt: overrides.updatedAt ?? new Date("2026-04-20T00:00:00.000Z"),
     attend: overrides.attend,
     cumulativeTokens: overrides.cumulativeTokens,
+    personalityName: overrides.personalityName,
+    personalitySpinner: overrides.personalitySpinner,
   };
 }
 
 describe("formatHeaderLabel", () => {
-  it("uses singular 'subagent' for a single row", () => {
-    expect(formatHeaderLabel([row({ id: "a" })])).toBe("1 subagent");
+  it("uses singular 'active sub-agent' for a single active row", () => {
+    expect(formatHeaderLabel(partitionSubagentRows([row({ id: "a" })]))).toBe("1 active sub-agent");
   });
 
-  it("uses plural 'subagents' for two rows with no running rows", () => {
-    expect(formatHeaderLabel([row({ id: "a" }), row({ id: "b" })])).toBe("2 subagents");
+  it("uses plural 'active sub-agents' for two active rows", () => {
+    expect(formatHeaderLabel(partitionSubagentRows([row({ id: "a" }), row({ id: "b" })]))).toBe(
+      "2 active sub-agents",
+    );
   });
 
-  it("appends the running count when at least one row is running", () => {
+  it("summarizes both groups when active and completed rows coexist", () => {
     expect(
-      formatHeaderLabel([row({ id: "a", status: "running" }), row({ id: "b" }), row({ id: "c" })]),
-    ).toBe("3 subagents · 1 running");
+      formatHeaderLabel(
+        partitionSubagentRows([
+          row({ id: "a", status: "running" }),
+          row({ id: "b", status: "closed" }),
+          row({ id: "c", status: "closed" }),
+        ]),
+      ),
+    ).toBe("1 active sub-agent · 2 completed sub-agents");
   });
 
-  it("counts every running row in the suffix", () => {
+  it("shows only the completed clause when nothing is active", () => {
     expect(
-      formatHeaderLabel([
-        row({ id: "a", status: "running" }),
-        row({ id: "b", status: "running" }),
-        row({ id: "c", requiresAttention: true }),
-        row({ id: "d" }),
-        row({ id: "e" }),
-      ]),
-    ).toBe("5 subagents · 2 running");
+      formatHeaderLabel(
+        partitionSubagentRows([
+          row({ id: "a", status: "closed" }),
+          row({ id: "b", status: "error" }),
+          row({ id: "c", status: "idle", attend: "observed" }),
+        ]),
+      ),
+    ).toBe("3 completed sub-agents");
   });
 
-  it("ignores requiresAttention on non-running rows in the header copy", () => {
+  it("keeps attention-flagged terminal rows in the active count", () => {
     expect(
-      formatHeaderLabel([
-        row({ id: "a", status: "error", requiresAttention: false }),
-        row({ id: "b", status: "idle", requiresAttention: false }),
-        row({ id: "c", status: "idle", requiresAttention: true }),
-      ]),
-    ).toBe("3 subagents");
-  });
-
-  it("still counts running rows even when they require attention", () => {
-    expect(
-      formatHeaderLabel([
-        row({ id: "a", status: "error", requiresAttention: true }),
-        row({ id: "b", status: "running", requiresAttention: true }),
-        row({ id: "c", status: "idle", requiresAttention: true }),
-      ]),
-    ).toBe("3 subagents · 1 running");
-  });
-
-  it("uses singular 'subagent' for a single row that requires attention upstream", () => {
-    expect(formatHeaderLabel([row({ id: "a", requiresAttention: true })])).toBe("1 subagent");
+      formatHeaderLabel(
+        partitionSubagentRows([
+          row({ id: "a", status: "error", requiresAttention: true }),
+          row({ id: "b", status: "closed" }),
+        ]),
+      ),
+    ).toBe("1 active sub-agent · 1 completed sub-agent");
   });
 });
 
@@ -120,17 +117,21 @@ describe("sumSubagentTokens", () => {
 });
 
 describe("formatHeaderLabel with token totals", () => {
-  it("appends the summed fan-out cost when any row reports tokens", () => {
+  it("appends the summed fan-out cost across active and completed rows", () => {
     expect(
-      formatHeaderLabel([
-        row({ id: "a", status: "running", cumulativeTokens: 12_000 }),
-        row({ id: "b", status: "idle", cumulativeTokens: 300 }),
-      ]),
-    ).toBe("2 subagents · 1 running · 12.3k tokens");
+      formatHeaderLabel(
+        partitionSubagentRows([
+          row({ id: "a", status: "running", cumulativeTokens: 12_000 }),
+          row({ id: "b", status: "closed", cumulativeTokens: 300 }),
+        ]),
+      ),
+    ).toBe("1 active sub-agent · 1 completed sub-agent · 12.3k tokens");
   });
 
   it("omits the token clause when no row reports a total", () => {
-    expect(formatHeaderLabel([row({ id: "a" }), row({ id: "b" })])).toBe("2 subagents");
+    expect(formatHeaderLabel(partitionSubagentRows([row({ id: "a" }), row({ id: "b" })]))).toBe(
+      "2 active sub-agents",
+    );
   });
 });
 
@@ -312,5 +313,21 @@ describe("buildSubagentRowPresentationData", () => {
       buildSubagentRowPresentationData(row({ id: "a", status: "idle", requiresAttention: true }))
         .statusBucket,
     ).toBe("done");
+  });
+
+  it("prefixes the personality name onto the chat title", () => {
+    const presentation = buildSubagentRowPresentationData(
+      row({ id: "a", title: "Build it", personalityName: "Sage" }),
+    );
+    expect(presentation.label).toBe("Sage: Build it");
+    expect(presentation.titleState).toBe("ready");
+  });
+
+  it("shows the personality name alone while the chat title is still loading", () => {
+    const presentation = buildSubagentRowPresentationData(
+      row({ id: "a", title: "new agent", personalityName: "Sage" }),
+    );
+    expect(presentation.label).toBe("Sage");
+    expect(presentation.titleState).toBe("ready");
   });
 });
