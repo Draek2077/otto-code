@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Root tests (scripts, app)
+        run: pnpm test
+
+      - name: Extension tests
+        run: pnpm --dir extension test
+
+      - name: Extension typecheck
+        run: pnpm --filter agent-flow run lint
+
+      - name: Web typecheck
+        run: pnpm --dir web exec tsc --noEmit
