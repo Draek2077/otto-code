@@ -11,6 +11,10 @@ export interface AgentEvent {
   type: string
   payload: Record<string, unknown>
   sessionId?: string
+  /** OTTO PATCH (OTTO-PATCHES.md): stamped by the bridge from an
+   *  `agent-event-batch { hydrate: true }` message — marks backfilled history
+   *  to be settled (not animated) on attach. */
+  hydrate?: boolean
 }
 
 export interface SessionInfo {

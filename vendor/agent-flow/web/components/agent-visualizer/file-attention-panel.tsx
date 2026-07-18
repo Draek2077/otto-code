@@ -8,11 +8,13 @@ import { PanelHeader, ProgressBar, SlidingPanel } from './shared-ui'
 interface FileAttentionPanelProps {
   visible: boolean
   fileAttention: Map<string, FileAttention>
-  onClose: () => void
   onOpenFile?: (filePath: string) => void
 }
 
-export function FileAttentionPanel({ visible, fileAttention, onClose, onOpenFile }: FileAttentionPanelProps) {
+// OTTO patch (OTTO-PATCHES.md): no ✕ / onClose — the Files toolbar toggle
+// closes this panel. Anchored to the shared top-right corner (top: 42, matching
+// the Cost panel) so the mutually-exclusive Files/Cost pair sits in one spot.
+export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileAttentionPanelProps) {
   if (!visible) return null
 
   const files = Array.from(fileAttention.values())
@@ -23,14 +25,14 @@ export function FileAttentionPanel({ visible, fileAttention, onClose, onOpenFile
   return (
     <SlidingPanel
       visible={visible}
-      position={{ top: 48, right: 12 }}
+      position={{ top: 42, right: 12 }}
       zIndex={Z.sidePanel}
       width={260}
     >
       <div className="glass-card relative">
-        <PanelHeader onClose={onClose}>
+        <PanelHeader>
           <span className="text-[10px] font-mono tracking-wider" style={{ color: COLORS.textPrimary }}>
-            FILE ATTENTION
+            File Attention
           </span>
         </PanelHeader>
 
@@ -46,7 +48,12 @@ export function FileAttentionPanel({ visible, fileAttention, onClose, onOpenFile
             const heatColor = heatRatio > 0.7 ? COLORS.error :
               heatRatio > 0.4 ? COLORS.tool :
                 COLORS.holoBase
-            const canOpen = onOpenFile && file.path.startsWith('/')
+            // OTTO patch: a path is openable when the host wired an open
+            // handler and it's non-empty — not only POSIX-absolute paths. The
+            // original `startsWith('/')` gate silently made every Windows
+            // absolute path (`C:\…`) and every workspace-relative path
+            // non-clickable. See OTTO-PATCHES.md.
+            const canOpen = Boolean(onOpenFile) && file.path.trim().length > 0
             const displayPath = truncatePath(file.path)
 
             return (

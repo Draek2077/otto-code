@@ -4,7 +4,6 @@ export function useKeyboardShortcuts(actions: {
   togglePlayPause: () => void
   toggleFilePanel: () => void
   toggleTimeline: () => void
-  toggleHexGrid: () => void
   toggleStats: () => void
   toggleCostOverlay: () => void
   zoomToFit: () => void
@@ -45,10 +44,6 @@ export function useKeyboardShortcuts(actions: {
           break
         case 'Escape':
           a.clearSelection()
-          break
-        case 'g':
-        case 'G':
-          a.toggleHexGrid()
           break
         case 's':
         case 'S':

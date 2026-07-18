@@ -664,6 +664,41 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, newPaneId)?.focusedTabId).toBe(draftTabId);
   });
 
+  it("splitting a mid-list focused tab out leaves the source pane on the adjacent tab, not the last", () => {
+    // Reproduces the Visualizer bug: opening the Visualizer inserts its tab
+    // right after the focused tab and then splits it into a new pane. The
+    // source pane must keep its previously-focused tab rather than jumping its
+    // selection to the last tab in the set.
+    useWorkspaceLayoutIds("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    const tabA = store.openTabFocused(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    store.openTabFocused(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    store.openTabFocused(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+
+    // Focus a mid-list tab, then open a companion tab right after it and split
+    // that companion out — mirroring openVisualizerTab.
+    store.focusTab(workspaceKey, tabA!);
+    const companionTabId = store.openTabFocused(
+      workspaceKey,
+      { kind: "visualizer" },
+      { insertAfterFocusedTab: true },
+    );
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: companionTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(layout.focusedPaneId).toBe(splitPaneId);
+    expect(findPaneById(layout.root, splitPaneId)?.focusedTabId).toBe(companionTabId);
+    // The source pane returns to tab A (the tab focused before the companion
+    // was inserted after it), not tab C.
+    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe(tabA);
+  });
+
   it("focusTab moves workspace focus to the pane containing the tab", () => {
     useWorkspaceLayoutIds("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     const workspaceKey = createWorkspaceKey();

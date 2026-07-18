@@ -1,6 +1,10 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
-import type { AgentAttachment, AgentContextUsage } from "@otto-code/protocol/messages";
+import type {
+  AgentAttachment,
+  AgentContextUsage,
+  AgentRateLimitInfo,
+} from "@otto-code/protocol/messages";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { OttoToolCatalog } from "./tools/types.js";
 // Type-only import — erased at compile time, so the resolver ⇄ config-types
@@ -10,6 +14,7 @@ import type { ResolvedTeamSnapshot } from "./agent-teams.js";
 
 export type { AgentProviderNotice };
 export type { AgentContextUsage };
+export type { AgentRateLimitInfo };
 
 export type AgentProvider = string;
 
@@ -222,6 +227,21 @@ export interface AgentRunOptions {
   messageId?: string;
 }
 
+/**
+ * How the tokens occupying an agent's context window break down by origin.
+ * Mirrors the protocol `ContextComposition` (packages/protocol/agent-types) —
+ * this file keeps the server's own copy of the provider-facing types. Every
+ * field is an optional best-effort token count; a provider fills what it can
+ * attribute and omits the rest. Powers the visualizer context ring/bar.
+ */
+export interface ContextComposition {
+  systemPrompt?: number;
+  userMessages?: number;
+  toolResults?: number;
+  reasoning?: number;
+  subagentResults?: number;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -229,6 +249,7 @@ export interface AgentUsage {
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
+  contextComposition?: ContextComposition;
 }
 
 export const TOOL_CALL_ICON_NAMES = [
@@ -448,6 +469,23 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       reason: "finished" | "error" | "permission";
       timestamp: string;
+    }
+  // A predicted next-user-prompt suggestion, emitted after a turn completes.
+  // Transient: the app shows the latest as composer ghost text and clears it when
+  // the next turn starts. Not persisted to the timeline.
+  | {
+      type: "prompt_suggestion";
+      provider: AgentProvider;
+      suggestion: string;
+    }
+  // Provider-reported plan rate-limit status (e.g. Claude claude.ai plan
+  // windows). Transient client state: the app shows a suppressible warning
+  // strip near the composer. Deduped provider-side so it only fires when the
+  // meaningful fields change. Not persisted to the timeline.
+  | {
+      type: "rate_limit_updated";
+      provider: AgentProvider;
+      info: AgentRateLimitInfo;
     }
   // A provider-managed subagent's lifecycle changed. The daemon materializes it
   // as a read-only "observed subagent" agent record. See projects/observed-subagents/observed-subagents.md.

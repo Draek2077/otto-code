@@ -245,7 +245,7 @@ function FileLinkHoverTooltip({
             <View style={styles.tooltipHintRow}>
               <Shortcut keys={FILE_LINK_TOOLTIP_MOD_KEYS} />
               <Text selectable={false} style={styles.tooltipHintText}>
-                click for side pane
+                click to open in place
               </Text>
             </View>
           </View>

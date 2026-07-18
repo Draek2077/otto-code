@@ -27,8 +27,11 @@ function startSuccessMessage(count: number, mode: TasksSuggestedStartMode): stri
   if (mode === "worktree") {
     return `Started ${count} ${label} in ${pluralize(count, "new worktree")}`;
   }
-  if (mode === "local") {
-    return `Started ${count} ${label} locally`;
+  if (mode === "new_chat") {
+    return `Started ${count} ${label} in ${pluralize(count, "new chat")}`;
+  }
+  if (mode === "subagent") {
+    return `Started ${count} ${pluralize(count, "subagent")}`;
   }
   // in_session lands in the current chat — no toast, the result is on screen.
   return null;

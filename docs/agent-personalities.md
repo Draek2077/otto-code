@@ -33,8 +33,11 @@ AgentPersonality {
   roles: PersonalityRole[]      // one or more
   spinner: { glowA: string; glowB: string }         // two hex colors for BlobLoader
   voice?: { provider: string; model: string; name: string }  // TTS voice; soft binding
+  voiceCues?: { join?: string[]; thinking?: string[]; done?: string[] }  // Visualizer spoken cues
 }
 ```
+
+`voiceCues` are the pre-generated (and hand-editable) short lines the **Visualizer** speaks in the personality's voice at three moments — its node joins the graph, first starts thinking, completes a turn. Stored on the personality so they're deterministic and tunable (the Visualizer reads them directly, no runtime generation). Authored in the editor's Voice tab (Generate button + auto-generate on save when empty); see [docs/visualizer.md](visualizer.md) "Voice cues".
 
 This is the logical shape; on the wire everything past `provider`/`model` is an optional plain string (`AgentPersonalitySchema`, `messages.ts` — no enums) for forward compat, and the daemon validates values against its own catalog when applying a patch.
 
@@ -146,7 +149,10 @@ The five `skills/*/SKILL.md` files teach role-aware discovery: committee prefers
 Personalities are authored in the **Agent personalities** card (Host settings → Agents, `agent-personalities-section.tsx`), feature-gated on `features.agentPersonalities`. It reads/writes the roster via `useDaemonConfig`, so every save round-trips through `daemon-config-store.ts` and hot-reloads to all connected clients.
 
 - **List rows** show name, `provider · model · roles`, a live `BlobLoader` in the row's spinner colors, and "Used N times" (from `agentPersonalities.get_stats`). Rows for out-of-commission personalities are grayed out with a reason via the shared `checkPersonalityAvailability` predicate — the same availability logic the pickers use.
-- **Edit modal** (`PersonalityEditModal`): name field, provider → model → mode → effort pickers sourced from the live providers snapshot, personality-prompt textarea, respect-global-append toggle, role chips with an **All / None** toggle, two spinner **color inputs** (wheel + hex text) with a live `BlobLoader` preview, and a **TTS voice picker** (from `getSpeechSettingsOptions`, shown only when the host exposes voices).
+- **Edit modal** (`PersonalityEditModal`) is **tabbed** (the form grew long) — a `SegmentedControl` across three tabs, all editing the one `draft` (fields are conditionally rendered, so switching tabs never loses in-progress edits), with the Cancel/Save actions pinned below the tabs:
+  - **Identity** — name, personality-prompt textarea, respect-global-append toggle, role chips with an **All / None** toggle, and the two spinner **color inputs** (wheel + hex text) with a live `BlobLoader` preview.
+  - **Model** — provider → model → mode → effort pickers sourced from the live providers snapshot.
+  - **Voice** — the **TTS voice picker** (from `getSpeechSettingsOptions`, shown only when the host exposes voices) plus the **Voice cues editor**: the three cue groups (Joining / Thinking / Done), each an editable list of short lines (add/remove, stable-id keyed rows), with a **"Generate with AI"** button that authors a set from the draft's name + prompt via the `visualizer.voiceCues.generate` RPC. **On save, empty cues are auto-generated** (best-effort — a generation failure saves without cues rather than blocking). See [docs/visualizer.md](visualizer.md) "Voice cues".
 
 The editor enforces the invariants that make a personality safe to reference:
 

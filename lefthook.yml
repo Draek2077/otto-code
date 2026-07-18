@@ -3,12 +3,25 @@ pre-commit:
   jobs:
     - name: format
       glob: "*.{css,js,json,jsonc,jsx,md,ts,tsx,yaml,yml}"
+      # Mirror oxfmt's ignorePatterns (oxfmt.json). Without these, a staged batch
+      # made up entirely of ignored files makes oxfmt exit non-zero with
+      # "Expected at least one target file", failing the hook on nothing.
       exclude:
         - "package-lock.json"
         - "**/package-lock.json"
+        - "vendor/**"
+        - "**/*.gen.ts"
+        - "**/*.gen.tsx"
+        - "AGENTS.md"
+        - "**/AGENTS.md"
       run: npm run format:check:files -- {staged_files}
     - name: lint
       glob: "*.{js,jsx,ts,tsx}"
+      # Mirror oxlint's ignorePatterns (.oxlintrc.json) for the same reason.
+      exclude:
+        - ".dev/**"
+        - "packages/app/demo/staging/templates/**"
+        - "vendor/**"
       run: npm run lint -- {staged_files}
     - name: typecheck
       run: npm run typecheck

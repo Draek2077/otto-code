@@ -93,9 +93,17 @@ button, input, textarea, select { font-family: inherit; }
 .glass-card {
   background: var(--otto-vis-glass-bg, rgba(10, 15, 30, 0.7));
   border-color: var(--otto-vis-glass-border, rgba(100, 200, 255, 0.15));
+  /* Match the chat message (composer) box corner radius
+     (theme.borderRadius.md = 6px; input.tsx inputWrapper style) so every HUD box —
+     popups, timeline, live/playback control bar, file-attention/message
+     panels — reads as the same family as the chat input. Vendor default is 8px
+     (globals.css .glass-card). */
+  border-radius: 6px;
 }
 .glass-card::before {
   background: linear-gradient(90deg, transparent, var(--otto-vis-glass-border, rgba(100, 200, 255, 0.15)), transparent);
+  /* Follow the rounded top corners of the card above. */
+  border-radius: 6px 6px 0 0;
 }
 .glass-card input, .glass-card textarea, .glass-card select {
   background: var(--otto-vis-input-bg, rgba(100, 200, 255, 0.05)) !important;

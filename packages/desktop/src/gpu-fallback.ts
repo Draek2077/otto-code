@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { app } from "electron";
@@ -55,6 +55,100 @@ export function writeSoftwareRenderingMarker(userDataDir: string, reason: string
 
 export function clearSoftwareRenderingMarker(userDataDir: string): void {
   rmSync(markerFilePath(userDataDir), { force: true });
+}
+
+// Self-healing state that sits alongside the marker. The marker alone is a
+// one-way latch — once written it pinned software rendering forever (only
+// OTTO_FORCE_GPU=1 cleared it), so a single transient hiccup (a dev launch
+// killed before first paint, one Modern-Standby GPU lock) disabled GPU visuals
+// permanently. This state lets the fallback heal itself:
+//   - A lone "never painted" launch retries hardware next boot instead of
+//     latching software immediately (NEVER_PAINTED_STRIKE_LIMIT). Only a second
+//     consecutive never-paint commits to software.
+//   - While software rendering is latched, hardware is re-probed after
+//     `reprobeAfter` launches. You can't tell a GPU has recovered from within
+//     software mode (a CPU rasterizer always paints), so healing means actually
+//     running hardware for one launch: it paints -> clear the marker for good;
+//     it fails -> back off and keep software.
+// Missing/corrupt state degrades to the defaults, i.e. the pre-self-heal
+// behavior, so this can never make the fallback worse than before.
+const STATE_FILENAME = "gpu-fallback-state.json";
+const NEVER_PAINTED_STRIKE_LIMIT = 2;
+const REPROBE_BASE_LAUNCHES = 8;
+const REPROBE_MAX_LAUNCHES = 256;
+
+interface GpuFallbackState {
+  // Consecutive launches that armed the startup sentinel but never painted,
+  // observed while NOT in software rendering. Reset to 0 on any healthy paint.
+  neverPaintedStrikes: number;
+  // Consecutive software-rendering launches since the marker was last written.
+  softwareLaunches: number;
+  // Software launches to wait before the next hardware re-probe. Doubles (up to
+  // REPROBE_MAX_LAUNCHES) each time a probe fails, so a genuinely dead GPU
+  // re-probes ever less often instead of flapping every N launches.
+  reprobeAfter: number;
+  // True for exactly the one launch where we run hardware despite the marker to
+  // see whether the GPU has recovered.
+  probing: boolean;
+}
+
+const DEFAULT_STATE: GpuFallbackState = {
+  neverPaintedStrikes: 0,
+  softwareLaunches: 0,
+  reprobeAfter: REPROBE_BASE_LAUNCHES,
+  probing: false,
+};
+
+function statePath(userDataDir: string): string {
+  return path.join(userDataDir, STATE_FILENAME);
+}
+
+function coerceCount(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : fallback;
+}
+
+export function readGpuFallbackState(userDataDir: string): GpuFallbackState {
+  try {
+    const parsed = JSON.parse(readFileSync(statePath(userDataDir), "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    return {
+      neverPaintedStrikes: coerceCount(parsed.neverPaintedStrikes, 0),
+      softwareLaunches: coerceCount(parsed.softwareLaunches, 0),
+      reprobeAfter: Math.max(1, coerceCount(parsed.reprobeAfter, REPROBE_BASE_LAUNCHES)),
+      probing: parsed.probing === true,
+    };
+  } catch {
+    return { ...DEFAULT_STATE };
+  }
+}
+
+export function writeGpuFallbackState(userDataDir: string, state: GpuFallbackState): void {
+  try {
+    const file = statePath(userDataDir);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(state), "utf-8");
+  } catch (error) {
+    log.warn("[gpu-fallback] failed to persist self-heal state", error);
+  }
+}
+
+function clearGpuFallbackState(userDataDir: string): void {
+  rmSync(statePath(userDataDir), { force: true });
+}
+
+// The backed-off state after a failed hardware re-probe: stay software, wait
+// longer before the next probe, and clear the probing flag.
+function backedOffState(state: GpuFallbackState): GpuFallbackState {
+  return {
+    ...state,
+    probing: false,
+    softwareLaunches: 0,
+    reprobeAfter: Math.min(state.reprobeAfter * 2, REPROBE_MAX_LAUNCHES),
+  };
 }
 
 // A GPU that hangs (blank window that never paints) rather than cleanly
@@ -140,8 +234,17 @@ export function armGpuStartupPaintWatchdog(): void {
     log.warn(
       "[gpu-fallback] window did not paint within 15s; relaunching with --ozone-platform=x11 --use-gl=disabled",
     );
+    const userDataDir = app.getPath("userData");
+    const state = readGpuFallbackState(userDataDir);
     try {
-      writeSoftwareRenderingMarker(app.getPath("userData"), "startup-paint-timeout");
+      if (state.probing) {
+        // A hardware re-probe hung — the GPU is still bad. Back off; the marker
+        // is already on disk from before the probe.
+        writeGpuFallbackState(userDataDir, backedOffState(state));
+      } else {
+        writeSoftwareRenderingMarker(userDataDir, "startup-paint-timeout");
+        writeGpuFallbackState(userDataDir, { ...DEFAULT_STATE });
+      }
     } catch (error) {
       log.error("[gpu-fallback] failed to persist the marker; not relaunching", error);
       return;
@@ -186,7 +289,15 @@ export function isSoftwareRenderingActive(): boolean {
     return true;
   }
   try {
-    return isSoftwareRenderingMarked(app.getPath("userData"));
+    const userDataDir = app.getPath("userData");
+    if (!isSoftwareRenderingMarked(userDataDir)) {
+      return false;
+    }
+    // During a hardware re-probe the marker stays on disk but the GPU is
+    // actually driving this launch (disableHardwareAcceleration was skipped),
+    // so report hardware — otherwise the renderer would needlessly trim GPU
+    // visuals on the very launch meant to prove the GPU works.
+    return !readGpuFallbackState(userDataDir).probing;
   } catch {
     return false;
   }
@@ -212,38 +323,99 @@ export function applyPersistedHardwareAccelerationFallback(): void {
       log.info("[gpu-fallback] OTTO_FORCE_GPU=1 cleared the software-rendering marker");
     }
     clearStartupSentinel(userDataDir);
+    clearGpuFallbackState(userDataDir);
     return;
   }
 
-  // A sentinel left behind by a previous launch means that launch armed the
-  // startup watch but never reached a painted window — it hung or crashed during
-  // GPU/compositor init. Treat that as a hardware-acceleration failure and fall
-  // back, even though no GPU crash event reached this process.
-  if (isStartupSentinelPresent(userDataDir) && !isSoftwareRenderingMarked(userDataDir)) {
-    writeSoftwareRenderingMarker(userDataDir, "previous-launch-never-painted");
-    log.warn(
-      "[gpu-fallback] previous launch never reached a visible window; enabling software rendering",
-    );
-  }
+  // Read the self-heal state once and thread it through: each branch below
+  // assigns the updated state object it persists, so the re-probe decision at
+  // the bottom works off the in-memory value instead of re-reading the file it
+  // just wrote.
+  let state = readGpuFallbackState(userDataDir);
+  const sentinelSurvived = isStartupSentinelPresent(userDataDir);
 
-  if (isSoftwareRenderingMarked(userDataDir)) {
-    if (process.platform === "linux") {
-      if (relaunchWithLinuxSoftwareRendering()) {
-        log.warn(
-          "[gpu-fallback] prior GPU failure recorded; relaunching with --ozone-platform=x11 --use-gl=disabled",
-        );
-        return;
-      }
+  if (state.probing) {
+    // Last launch was a hardware re-probe that did not heal — a successful probe
+    // clears `probing` (see markGpuStartupHealthy) and a crashed one is handled
+    // by the recovery listener before relaunch. Reaching here means it hung
+    // (never painted) or was killed. Back off and keep the marker's software
+    // rendering; the marker is still on disk from before the probe.
+    state = backedOffState(state);
+    writeGpuFallbackState(userDataDir, state);
+    log.warn("[gpu-fallback] hardware re-probe did not paint; backing off, staying in software");
+  } else if (sentinelSurvived && !isSoftwareRenderingMarked(userDataDir)) {
+    // A sentinel left by a previous hardware launch means that launch armed the
+    // startup watch but never painted — a hang/crash during GPU init, OR just a
+    // launch killed or restarted before first paint (routine in dev). One
+    // occurrence is not enough to condemn the GPU: retry hardware next launch.
+    // Only NEVER_PAINTED_STRIKE_LIMIT consecutive never-paints latch software.
+    const neverPaintedStrikes = state.neverPaintedStrikes + 1;
+    if (neverPaintedStrikes >= NEVER_PAINTED_STRIKE_LIMIT) {
+      writeSoftwareRenderingMarker(userDataDir, "previous-launch-never-painted");
+      state = { ...DEFAULT_STATE };
+      writeGpuFallbackState(userDataDir, state);
       log.warn(
-        "[gpu-fallback] software rendering active (--ozone-platform=x11 --use-gl=disabled) — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
+        `[gpu-fallback] ${neverPaintedStrikes} consecutive launches never painted; enabling software rendering`,
+      );
+    } else {
+      writeGpuFallbackState(userDataDir, { ...state, neverPaintedStrikes });
+      log.warn(
+        "[gpu-fallback] previous launch never painted; retrying hardware acceleration once more before falling back",
       );
       return;
     }
-    app.disableHardwareAcceleration();
+  }
+
+  if (!isSoftwareRenderingMarked(userDataDir)) {
+    return;
+  }
+
+  // Already committed to software this launch by real argv flags: the Linux
+  // post-relaunch process (--ozone-platform=x11 --use-gl=disabled) re-enters
+  // this function, and an explicit --disable-gpu is a deliberate user choice.
+  // The decision was made by the launch that set the flags — don't re-count it
+  // (which would double the Linux tally) or try to re-probe within it.
+  if (hasSoftwareRenderingArgv(process.argv)) {
     log.warn(
       "[gpu-fallback] software rendering active — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
     );
+    return;
   }
+
+  // Marker present → software rendering, unless enough software launches have
+  // passed to warrant a hardware re-probe. `state.probing` is always false
+  // here: the back-off branch above cleared it (and reset the counter with a
+  // doubled `reprobeAfter`), and the never-paint branch just reset the state —
+  // so a re-probe can't fire on the same launch that (re)wrote the marker.
+  const softwareLaunches = state.softwareLaunches + 1;
+  if (softwareLaunches >= state.reprobeAfter) {
+    // Give the GPU another chance: run hardware this launch despite the marker.
+    // If it paints we heal; if it fails the recovery/watchdog/next-startup path
+    // backs off. `isSoftwareRenderingActive()` reports hardware while probing.
+    writeGpuFallbackState(userDataDir, { ...state, probing: true, softwareLaunches: 0 });
+    log.warn(
+      `[gpu-fallback] re-probing hardware acceleration after ${softwareLaunches} software launches (heal-on-success)`,
+    );
+    return;
+  }
+  writeGpuFallbackState(userDataDir, { ...state, softwareLaunches });
+
+  if (process.platform === "linux") {
+    if (relaunchWithLinuxSoftwareRendering()) {
+      log.warn(
+        "[gpu-fallback] prior GPU failure recorded; relaunching with --ozone-platform=x11 --use-gl=disabled",
+      );
+      return;
+    }
+    log.warn(
+      "[gpu-fallback] software rendering active (--ozone-platform=x11 --use-gl=disabled) — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
+    );
+    return;
+  }
+  app.disableHardwareAcceleration();
+  log.warn(
+    "[gpu-fallback] software rendering active — a prior GPU failure was recorded (set OTTO_FORCE_GPU=1 to re-enable hardware acceleration)",
+  );
 }
 
 // Arm the startup watch just before the first GUI window is created. Only call
@@ -259,16 +431,30 @@ export function armGpuStartupSentinel(): void {
 }
 
 // Clear the startup watch once the first window has painted — the graphics path
-// is proven healthy for this launch.
+// is proven healthy for this launch. Also advances the self-heal state: a
+// healthy paint clears any lone never-painted strike, and a paint during a
+// hardware re-probe means the GPU recovered — clear the marker for good.
 export function markGpuStartupHealthy(): void {
   if (startupPaintTimer) {
     clearTimeout(startupPaintTimer);
     startupPaintTimer = null;
   }
   try {
-    clearStartupSentinel(app.getPath("userData"));
+    const userDataDir = app.getPath("userData");
+    clearStartupSentinel(userDataDir);
+    const state = readGpuFallbackState(userDataDir);
+    if (state.probing) {
+      // The hardware re-probe painted: the GPU works again. Heal permanently.
+      clearSoftwareRenderingMarker(userDataDir);
+      clearGpuFallbackState(userDataDir);
+      log.info(
+        "[gpu-fallback] hardware re-probe painted successfully; cleared the software-rendering marker",
+      );
+    } else if (state.neverPaintedStrikes !== 0) {
+      writeGpuFallbackState(userDataDir, { ...state, neverPaintedStrikes: 0 });
+    }
   } catch (error) {
-    log.warn("[gpu-fallback] failed to clear startup sentinel", error);
+    log.warn("[gpu-fallback] failed to update self-heal state on healthy paint", error);
   }
 }
 
@@ -280,16 +466,32 @@ export function registerGpuFallbackRecovery(): void {
       return;
     }
     const userDataDir = app.getPath("userData");
-    if (isSoftwareRenderingMarked(userDataDir)) {
+    const state = readGpuFallbackState(userDataDir);
+    if (isSoftwareRenderingMarked(userDataDir) && !state.probing) {
       // Already running without hardware acceleration; another GPU failure
       // isn't something toggling acceleration will fix, and relaunching would
       // loop. Leave it be and let the failure surface.
       log.error("[gpu-fallback] GPU process failed while already in software rendering", details);
       return;
     }
-    log.error("[gpu-fallback] GPU process failed; relaunching into software rendering", details);
     try {
-      writeSoftwareRenderingMarker(userDataDir, details.reason);
+      if (state.probing) {
+        // A hardware re-probe crashed — the GPU is still bad. Back off and go
+        // back to software; the marker is already on disk from before the probe.
+        writeGpuFallbackState(userDataDir, backedOffState(state));
+        log.error(
+          "[gpu-fallback] hardware re-probe crashed; relaunching into software rendering",
+          details,
+        );
+      } else {
+        // First GPU failure on a hardware launch — latch software rendering.
+        writeSoftwareRenderingMarker(userDataDir, details.reason);
+        writeGpuFallbackState(userDataDir, { ...DEFAULT_STATE });
+        log.error(
+          "[gpu-fallback] GPU process failed; relaunching into software rendering",
+          details,
+        );
+      }
     } catch (error) {
       log.error("[gpu-fallback] failed to persist the marker; not relaunching", error);
       return;

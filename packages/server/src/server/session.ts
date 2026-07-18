@@ -167,6 +167,11 @@ import {
   createAgentStructuredTextGeneration,
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
+import {
+  createVoiceCueGenerator,
+  type CueMoment,
+  type VoiceCueGenerator,
+} from "./agent/voice-cue-generator.js";
 import { ChatScheduleLoopSession } from "./session/chat/chat-schedule-loop-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
@@ -229,6 +234,7 @@ import {
   type CreateOttoWorktreeResult,
 } from "./otto-worktree-service.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import {
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
   createOttoWorktreeWorkflow as createWorktreeWorkflow,
@@ -475,6 +481,11 @@ export interface SessionOptions {
   renameCurrentBranch?: typeof renameCurrentBranchDefault;
   workspaceGitService: WorkspaceGitService;
   workspaceAutoName: WorkspaceAutoName;
+  // The daemon-wide AgentAutoTitle instance (bootstrap-owned). Optional so the
+  // many test harnesses need not construct one; production (websocket-server)
+  // always supplies the shared instance so per-instance state (dedupe, rate
+  // limiting) is never split across sessions. Falls back to a local instance.
+  agentAutoTitle?: AgentAutoTitle;
   daemonConfigStore: DaemonConfigStore;
   mcpBaseUrl?: string | null;
   stt: Resolvable<SpeechToTextProvider | null>;
@@ -607,6 +618,7 @@ export class Session {
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
+  private readonly agentAutoTitle: AgentAutoTitle;
   private readonly gitMutation: GitMutationService;
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly daemonConfigStore: DaemonConfigStore;
@@ -620,6 +632,9 @@ export class Session {
   private readonly getPersonalityStats:
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null;
+  // Generates the Visualizer's short spoken cue lines for a personality (join /
+  // thinking / done), via the Writer mini-task chain. Cached per personality.
+  private readonly voiceCueGenerator: VoiceCueGenerator;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -692,6 +707,7 @@ export class Session {
       renameCurrentBranch,
       workspaceGitService,
       workspaceAutoName,
+      agentAutoTitle,
       daemonConfigStore,
       stt,
       sttLanguage,
@@ -812,6 +828,17 @@ export class Session {
       ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.sessionLogger,
+    });
+    this.voiceCueGenerator = createVoiceCueGenerator({
+      generation: createAgentStructuredTextGeneration({
+        agentManager: this.agentManager,
+        providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+      }),
+      // Provider resolution needs a cwd; the editor passes none, so a live
+      // agent's cwd is a sane fallback (global providers resolve regardless).
+      fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
     });
     this.workspaceGitObserver = createWorkspaceGitObserverService({
       workspaceGitService: this.workspaceGitService,
@@ -976,6 +1003,7 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.providerSnapshotManager = providerSnapshotManager;
+    this.agentAutoTitle = this.resolveAgentAutoTitle(agentAutoTitle);
     this.getActivityRollups = getActivityRollups;
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
@@ -1047,6 +1075,24 @@ export class Session {
     this.subscribeToAgentEvents();
 
     this.sessionLogger.trace({}, "agent.session.lifecycle.created");
+  }
+
+  /**
+   * Prefer the daemon-wide shared instance (see SessionOptions.agentAutoTitle);
+   * the local construction exists only for test harnesses that omit it.
+   */
+  private resolveAgentAutoTitle(shared: AgentAutoTitle | undefined): AgentAutoTitle {
+    return (
+      shared ??
+      new AgentAutoTitle({
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        providerSnapshotManager: this.providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        workspaceGitService: this.workspaceGitService,
+        logger: this.sessionLogger,
+      })
+    );
   }
 
   updateAppVersion(appVersion: string | null): void {
@@ -1535,6 +1581,7 @@ export class Session {
       this.dispatchAgentTimelineMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
+      this.dispatchVisualizerMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchPreviewMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
@@ -1821,15 +1868,22 @@ export class Session {
    * The new agent inherits the parent agent's brain — provider/model plus its
    * full config (personality snapshot, mode, features) minus the parent's
    * title — so a started task reads as a continuation of the suggesting agent.
+   *
+   * Only `subagent` links the new agent to the parent (bound child in the
+   * Subagents track, archive-cascades). `new_chat` and `worktree` are `detached`
+   * — independent top-level agents that outlive the parent's cancel/archive. We
+   * keep `callerAgentId` set even when detached so the new agent still inherits
+   * the parent's cwd/workspace/config; only the parent-id label is dropped.
    */
   private async createAgentForSuggestedTask(params: {
     parent: ManagedAgent;
-    mode: "worktree" | "local";
+    mode: "worktree" | "subagent" | "new_chat";
     title: string;
     prompt: string;
     cwd?: string;
   }): Promise<string> {
     const { parent, mode } = params;
+    const detached = mode !== "subagent";
     const passthroughConfig: Partial<AgentSessionConfig> = { ...parent.config };
     // The parent's title would win over the task title in buildMcpSessionConfig.
     delete passthroughConfig.title;
@@ -1843,6 +1897,14 @@ export class Session {
         terminalManager: this.terminalManager,
         providerSnapshotManager: this.providerSnapshotManager,
         createOttoWorktree: (input, options) => this.createOttoWorktreeWorkflow(input, options),
+        // No-op today: the explicit `title` below makes createAgentCommand skip
+        // auto-titling (explicitTitle guard). Wired so a future caller that
+        // omits the title still gets an AI-written chat name.
+        scheduleAutoTitle: (request) =>
+          this.agentAutoTitle.schedule({
+            ...request,
+            currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
+          }),
       },
       {
         kind: "mcp",
@@ -1852,8 +1914,13 @@ export class Session {
         initialPrompt: params.prompt,
         cwd: params.cwd ?? parent.cwd,
         callerAgentId: parent.id,
+        // Bound subagent → child row in the parent's track. Detached → its own
+        // top-level tab, no parent link (mergeLabels strips the parent-id label).
+        detached,
         background: true,
-        notifyOnFinish: false,
+        // A detached chat isn't watchable via the parent's Subagents track, so
+        // notify on finish; a bound subagent surfaces there already.
+        notifyOnFinish: detached,
         ...(mode === "worktree" ? { worktree: { action: "branch-off" as const } } : {}),
       },
     );
@@ -2049,6 +2116,56 @@ export class Session {
           payload: {
             requestId,
             error: error instanceof Error ? error.message : "Voice preview failed.",
+          },
+        });
+      });
+  }
+
+  private dispatchVisualizerMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (msg.type === "visualizer.voiceCues.generate.request") {
+      this.handleVisualizerVoiceCuesRequest(
+        msg.requestId,
+        msg.name,
+        msg.prompt,
+        msg.cwd,
+        msg.roles,
+        msg.moment,
+      );
+    }
+    return undefined;
+  }
+
+  private handleVisualizerVoiceCuesRequest(
+    requestId: string,
+    name: string,
+    prompt: string | undefined,
+    cwd: string | undefined,
+    roles: string[] | undefined,
+    moment: CueMoment | undefined,
+  ): void {
+    void this.voiceCueGenerator
+      .generate({
+        name,
+        ...(prompt ? { prompt } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(roles && roles.length > 0 ? { roles } : {}),
+        ...(moment ? { moment } : {}),
+      })
+      .then((cues) => {
+        this.emit({
+          type: "visualizer.voiceCues.generate.response",
+          payload: cues
+            ? { requestId, cues }
+            : { requestId, error: "No voice cues could be generated for this personality." },
+        });
+        return undefined;
+      })
+      .catch((error: unknown) => {
+        this.emit({
+          type: "visualizer.voiceCues.generate.response",
+          payload: {
+            requestId,
+            error: error instanceof Error ? error.message : "Voice cue generation failed.",
           },
         });
       });
@@ -3570,6 +3687,11 @@ export class Session {
           ottoHome: this.ottoHome,
           worktreesRoot: this.worktreesRoot,
           providerSnapshotManager: this.providerSnapshotManager,
+          scheduleAutoTitle: (request) =>
+            this.agentAutoTitle.schedule({
+              ...request,
+              currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
+            }),
         },
         {
           kind: "session",

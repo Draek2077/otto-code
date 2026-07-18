@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useEffect, useMemo } from 'react'
-import { TimelineEntry, Z } from '@/lib/agent-types'
+import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { TimelineEntry, Z, POPUP } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 import { PanelHeader, SlidingPanel } from './shared-ui'
 
@@ -9,7 +9,6 @@ interface TimelinePanelProps {
   visible: boolean
   timelineEntries: Map<string, TimelineEntry>
   currentTime: number
-  onClose: () => void
 }
 
 // ─── Layout constants ────────────────────────────────────────────────────────
@@ -152,8 +151,9 @@ function drawTimeline(
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }: TimelinePanelProps) {
+export function TimelinePanel({ visible, timelineEntries, currentTime }: TimelinePanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const sortedEntries = useMemo(() => {
     if (!visible) return []
@@ -162,7 +162,7 @@ export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }
 
   const canvasHeight = HEADER_HEIGHT + sortedEntries.length * ROW_HEIGHT
 
-  useEffect(() => {
+  const render = useCallback(() => {
     if (!visible) return
     const canvas = canvasRef.current
     if (!canvas) return
@@ -170,7 +170,7 @@ export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }
     if (!ctx) return
 
     // Use the scroll container's clientWidth (excludes scrollbar) for a snug fit
-    const scrollContainer = canvas.parentElement
+    const scrollContainer = scrollRef.current ?? canvas.parentElement
     const width = scrollContainer?.clientWidth ?? canvas.clientWidth
     const dpr = window.devicePixelRatio || 1
     canvas.width = width * dpr
@@ -179,34 +179,48 @@ export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }
     canvas.style.height = `${canvasHeight}px`
 
     drawTimeline(ctx, sortedEntries, currentTime, width, canvasHeight, dpr)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- redraw on every prop change (component only re-renders on data/time updates)
   }, [visible, sortedEntries, currentTime, canvasHeight])
+
+  // Redraw on data/time changes.
+  useEffect(() => { render() }, [render])
+
+  // Redraw when the panel resizes so the timeline reflows to the new width
+  // instead of overflowing its stale (wider) canvas behind a horizontal scrollbar.
+  useEffect(() => {
+    if (!visible || typeof ResizeObserver === 'undefined') return
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => render())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [visible, render])
 
   if (!visible) return null
 
   return (
     <SlidingPanel
       visible={visible}
-      position={{ bottom: 72, left: 16, right: 16 }}
+      position={{ bottom: 86, left: 16, right: 16 }}
       axis="Y"
       zIndex={Z.sidePanel}
       className="mx-auto"
-      style={{ maxWidth: 700 }}
+      style={{ maxWidth: POPUP.controlBarMaxWidth }}
     >
       <div className="glass-card relative">
-        <PanelHeader onClose={onClose}>
+        {/* OTTO patch (OTTO-PATCHES.md): no ✕ — the Timeline toolbar toggle
+            closes this panel. */}
+        <PanelHeader>
           <span className="text-[10px] font-mono tracking-wider" style={{ color: COLORS.textPrimary }}>
-            EXECUTION TIMELINE
+            Execution Timeline
           </span>
         </PanelHeader>
 
-        <div className="overflow-auto" style={{ maxHeight: 300 }}>
+        <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: 300 }}>
           <canvas ref={canvasRef} style={{ display: 'block' }} />
         </div>
 
         {/* Legend (static DOM) */}
-        <div className="flex items-center gap-3 px-3 py-1.5" style={{ borderTop: `1px solid ${COLORS.holoBorder06}` }}>
-          <div style={{ width: LABEL_WIDTH, flexShrink: 0 }} />
+        <div className="flex items-center justify-center gap-3 px-3 py-1.5" style={{ borderTop: `1px solid ${COLORS.holoBorder06}` }}>
           <div className="flex items-center gap-3">
             {LEGEND_ITEMS.map(item => (
               <div key={item.label} className="flex items-center gap-1">

@@ -67,6 +67,11 @@ export interface CapturedNetworkRequest {
 export interface TabImage {
   toPNG(): Uint8Array;
   getSize(): { width: number; height: number };
+  /**
+   * Optional downscale support — Electron's NativeImage provides this natively,
+   * so the adapter needs no wrapper. When absent, captures are returned as-is.
+   */
+  resize?(options: { width: number; height: number }): TabImage;
 }
 
 export interface TabCapturePageOptions {
@@ -91,6 +96,20 @@ const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
 const PIXEL_CAPTURE_RETRY_INTERVAL_MS = 200;
 const SCREENSHOT_NO_FRAME_MESSAGE = "The tab has not painted yet. Retry the screenshot.";
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
+/**
+ * Vision-model legibility budget. Frontier vision APIs downscale images past
+ * ~1568px on the long edge / ~1.15 megapixels before the model sees them, and
+ * token cost scales with pixel area — so anything we send beyond this budget
+ * costs more AND reads worse. Captures are normalized to CSS pixels (undoing
+ * device-pixel-ratio inflation) and then scaled to fit this budget host-side,
+ * where we can do it once, deliberately, instead of letting each provider's
+ * API crush the image.
+ */
+const SCREENSHOT_MAX_LONG_EDGE = 1568;
+const SCREENSHOT_MAX_PIXELS = 1_150_000;
+/** Element captures re-render through CDP at up to this scale for crisp small text. */
+const ELEMENT_CAPTURE_MAX_SCALE = 3;
+const ELEMENT_CAPTURE_PADDING_PX = 8;
 const MAX_EVALUATE_RESULT_JSON_LENGTH = 80_000;
 const MAX_EVALUATE_RESULT_PREVIEW_LENGTH = 79_000;
 const MAX_EVALUATE_ERROR_MESSAGE_LENGTH = 2_000;
@@ -495,6 +514,45 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     fail(requestId, "browser_unsupported", "browser_resize is handled by the app runtime."),
   close_tab: ({ requestId }) =>
     fail(requestId, "browser_unsupported", "browser_close_tab is handled by the app runtime."),
+  focus_tab: ({ requestId }) =>
+    fail(requestId, "browser_unsupported", "browser_focus_tab is handled by the app runtime."),
+  page_text: ({ command, requestId, workspaceId, registry }) => {
+    const pageTextCommand = command as Extract<BrowserAutomationCommand, { command: "page_text" }>;
+    return executePageText(
+      requestId,
+      workspaceId,
+      pageTextCommand.args.browserId,
+      pageTextCommand.args.maxChars,
+      registry,
+    );
+  },
+  set_color_scheme: ({ command, requestId, workspaceId, registry }) => {
+    const colorSchemeCommand = command as Extract<
+      BrowserAutomationCommand,
+      { command: "set_color_scheme" }
+    >;
+    return executeSetColorScheme(
+      requestId,
+      workspaceId,
+      colorSchemeCommand.args.browserId,
+      colorSchemeCommand.args.colorScheme,
+      registry,
+    );
+  },
+  screenshot_element: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
+    const elementCommand = command as Extract<
+      BrowserAutomationCommand,
+      { command: "screenshot_element" }
+    >;
+    return executeScreenshotElement(
+      requestId,
+      workspaceId,
+      elementCommand.args.browserId,
+      elementCommand.args.ref,
+      registry,
+      snapshotEngine,
+    );
+  },
 };
 
 interface ResolvedTabTarget {
@@ -1525,6 +1583,75 @@ async function executeNavigationAction(
   });
 }
 
+/**
+ * Scale factor that fits width×height (CSS px) inside the legibility budget.
+ * Always ≤ 1 — callers that want to zoom IN (element captures) invert it.
+ */
+function screenshotFitScale(width: number, height: number): number {
+  if (width <= 0 || height <= 0) {
+    return 1;
+  }
+  return Math.min(
+    1,
+    SCREENSHOT_MAX_LONG_EDGE / Math.max(width, height),
+    Math.sqrt(SCREENSHOT_MAX_PIXELS / (width * height)),
+  );
+}
+
+function roundScale(scale: number): number {
+  return Math.round(scale * 1000) / 1000;
+}
+
+const VIEWPORT_METRICS_SCRIPT = String.raw`(() => {
+  const __OTTO_VIEWPORT_METRICS__ = true;
+  return { cssWidth: window.innerWidth || 0, cssHeight: window.innerHeight || 0 };
+})()`;
+
+async function readCssViewportSize(
+  contents: TabContents,
+): Promise<{ width: number; height: number } | null> {
+  let raw: unknown;
+  try {
+    raw = await contents.executeJavaScript(VIEWPORT_METRICS_SCRIPT);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const width = readNumber(record.cssWidth);
+  const height = readNumber(record.cssHeight);
+  if (width === null || height === null || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}
+
+/**
+ * Normalize a captured viewport image to CSS pixels, then fit it to the
+ * legibility budget. Undoing device-pixel-ratio inflation is the key move: a
+ * 2x display doubles every dimension for zero extra legibility once the
+ * vision API downscales, quadrupling token cost while shrinking text.
+ */
+function normalizeViewportImage(
+  image: TabImage,
+  cssViewport: { width: number; height: number } | null,
+): { image: TabImage; scale?: number } {
+  const size = image.getSize();
+  const reference = cssViewport ?? size;
+  const fit = screenshotFitScale(reference.width, reference.height);
+  const targetWidth = Math.max(1, Math.round(reference.width * fit));
+  const targetHeight = Math.max(1, Math.round(reference.height * fit));
+  if (targetWidth >= size.width || !image.resize) {
+    // Nothing to shrink (or the host image can't resize): report the capture
+    // as-is, noting the scale only when the budget actually bound.
+    return fit < 1 && cssViewport ? { image, scale: roundScale(fit) } : { image };
+  }
+  const resized = image.resize({ width: targetWidth, height: targetHeight });
+  return fit < 1 ? { image: resized, scale: roundScale(fit) } : { image: resized };
+}
+
 async function executeScreenshot(
   requestId: string,
   workspaceId: string | undefined,
@@ -1541,6 +1668,7 @@ async function executeScreenshot(
     return target;
   }
   return withDialogCapture(target.contents, async () => {
+    const cssViewport = await readCssViewportSize(target.contents);
     let image: TabImage;
     try {
       image = await capturePaintedViewport(target.contents);
@@ -1550,7 +1678,8 @@ async function executeScreenshot(
       }
       throw error;
     }
-    const size = image.getSize();
+    const normalized = normalizeViewportImage(image, cssViewport);
+    const size = normalized.image.getSize();
     return {
       requestId,
       ok: true,
@@ -1558,9 +1687,10 @@ async function executeScreenshot(
         command: "screenshot",
         browserId: target.browserId,
         mimeType: "image/png",
-        dataBase64: Buffer.from(image.toPNG()).toString("base64"),
+        dataBase64: Buffer.from(normalized.image.toPNG()).toString("base64"),
         width: size.width,
         height: size.height,
+        ...(normalized.scale !== undefined ? { scale: normalized.scale } : {}),
       },
     };
   });
@@ -1642,15 +1772,27 @@ async function executeFullPageScreenshot(
     let screenshot: CdpCaptureScreenshotResult;
     let width = 0;
     let height = 0;
+    let fit = 1;
     try {
       screenshot = await runPaintedPixelCapture(target.contents, async () => {
         const metrics = await getCdpLayoutMetrics(target.contents);
-        width = metrics.contentWidth;
-        height = metrics.contentHeight;
+        // Fit the whole page into the legibility budget by rendering the CDP
+        // clip at reduced scale — cheaper and sharper than downscaling a huge
+        // capture after the fact. Very tall pages still end up unreadable;
+        // the daemon warns the agent based on the reported scale.
+        fit = screenshotFitScale(metrics.contentWidth, metrics.contentHeight);
+        width = Math.max(1, Math.round(metrics.contentWidth * fit));
+        height = Math.max(1, Math.round(metrics.contentHeight * fit));
         return (await sendDebugCommand("Page.captureScreenshot", {
           format: "png",
           captureBeyondViewport: true,
-          clip: { x: 0, y: 0, width, height, scale: 1 },
+          clip: {
+            x: 0,
+            y: 0,
+            width: metrics.contentWidth,
+            height: metrics.contentHeight,
+            scale: fit,
+          },
         })) as CdpCaptureScreenshotResult;
       });
     } catch (error) {
@@ -1672,6 +1814,288 @@ async function executeFullPageScreenshot(
         dataBase64: screenshot.data,
         width,
         height,
+        ...(fit < 1 ? { scale: roundScale(fit) } : {}),
+      },
+    };
+  });
+}
+
+const PAGE_TEXT_SOURCES = new Set(["article", "main", "body"]);
+
+/**
+ * Reader-mode extraction: prefer the page's article/main landmark so the agent
+ * pays tokens for the content, not the chrome. Falls back to the full body.
+ */
+function buildPageTextScript(maxChars: number): string {
+  return String.raw`(() => {
+    const pick = () => {
+      const article = document.querySelector('article');
+      if (article && (article.innerText || '').trim().length > 0) {
+        return { source: 'article', element: article };
+      }
+      const main = document.querySelector('main') || document.querySelector('[role="main"]');
+      if (main && (main.innerText || '').trim().length > 0) {
+        return { source: 'main', element: main };
+      }
+      return { source: 'body', element: document.body };
+    };
+    const { source, element } = pick();
+    const full = (element && element.innerText) || '';
+    const truncated = full.length > ${maxChars};
+    return JSON.stringify({
+      source,
+      text: truncated ? full.slice(0, ${maxChars}) : full,
+      truncated,
+    });
+  })()`;
+}
+
+interface PageTextScriptResult {
+  source: "article" | "main" | "body";
+  text: string;
+  truncated: boolean;
+}
+
+function parsePageTextScriptResult(raw: unknown): PageTextScriptResult | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (
+    typeof record.source !== "string" ||
+    !PAGE_TEXT_SOURCES.has(record.source) ||
+    typeof record.text !== "string" ||
+    typeof record.truncated !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    source: record.source as PageTextScriptResult["source"],
+    text: record.text,
+    truncated: record.truncated,
+  };
+}
+
+async function executePageText(
+  requestId: string,
+  workspaceId: string | undefined,
+  browserId: string,
+  maxChars: number,
+  registry: BrowserRegistry,
+): Promise<AutomationCommandPayload> {
+  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
+  if ("ok" in target) {
+    return target;
+  }
+  return withDialogCapture(target.contents, async () => {
+    let raw: unknown;
+    try {
+      raw = await target.contents.executeJavaScript(buildPageTextScript(maxChars));
+    } catch (error) {
+      return fail(requestId, "browser_unknown_error", evaluateErrorMessage(error));
+    }
+    const parsed = parsePageTextScriptResult(raw);
+    if (!parsed) {
+      return fail(requestId, "browser_unknown_error", "page_text returned an unexpected result");
+    }
+    return {
+      requestId,
+      ok: true,
+      result: {
+        command: "page_text",
+        browserId: target.browserId,
+        url: target.contents.getURL(),
+        title: target.contents.getTitle(),
+        source: parsed.source,
+        text: parsed.text,
+        truncated: parsed.truncated,
+      },
+    };
+  });
+}
+
+async function executeSetColorScheme(
+  requestId: string,
+  workspaceId: string | undefined,
+  browserId: string,
+  colorScheme: "light" | "dark" | "auto",
+  registry: BrowserRegistry,
+): Promise<AutomationCommandPayload> {
+  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
+  if ("ok" in target) {
+    return target;
+  }
+  if (!target.contents.sendDebugCommand) {
+    return fail(
+      requestId,
+      "browser_unsupported",
+      "Color-scheme emulation requires CDP on this browser host.",
+    );
+  }
+  try {
+    // "auto" clears the override so the page follows the real OS preference.
+    await target.contents.sendDebugCommand("Emulation.setEmulatedMedia", {
+      features: [
+        { name: "prefers-color-scheme", value: colorScheme === "auto" ? "" : colorScheme },
+      ],
+    });
+  } catch (error) {
+    return fail(
+      requestId,
+      "browser_unknown_error",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  return {
+    requestId,
+    ok: true,
+    result: {
+      command: "set_color_scheme",
+      browserId: target.browserId,
+      colorScheme,
+    },
+  };
+}
+
+interface ElementCaptureRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function buildElementRectScript(elementExpression: string): string {
+  return String.raw`(() => {
+    const __OTTO_ELEMENT_RECT__ = true;
+    const element = ${elementExpression};
+    if (!element) {
+      return { staleRef: true };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.x + window.scrollX,
+      y: rect.y + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+  })()`;
+}
+
+function parseElementRectResult(raw: unknown): ElementCaptureRect | "stale_ref" | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  if (record.staleRef === true) {
+    return "stale_ref";
+  }
+  const x = readNumber(record.x);
+  const y = readNumber(record.y);
+  const width = readNumber(record.width);
+  const height = readNumber(record.height);
+  if (x === null || y === null || width === null || height === null) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+async function executeScreenshotElement(
+  requestId: string,
+  workspaceId: string | undefined,
+  browserId: string,
+  ref: string,
+  registry: BrowserRegistry,
+  snapshotEngine: BrowserSnapshotEngine,
+): Promise<AutomationCommandPayload> {
+  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
+  if ("ok" in target) {
+    return target;
+  }
+  return withDialogCapture(target.contents, async () => {
+    if (!target.contents.sendDebugCommand) {
+      return fail(requestId, "browser_unsupported", "Element screenshots require CDP.");
+    }
+    const elementExpression = snapshotEngine.runtimeElementExpression({
+      browserId: target.browserId,
+      ref,
+    });
+    if (typeof elementExpression !== "string") {
+      return staleRefFailure(requestId, ref);
+    }
+
+    let rawRect: unknown;
+    try {
+      rawRect = await target.contents.executeJavaScript(buildElementRectScript(elementExpression));
+    } catch (error) {
+      return fail(requestId, "browser_unknown_error", evaluateErrorMessage(error));
+    }
+    const rect = parseElementRectResult(rawRect);
+    if (rect === "stale_ref") {
+      return staleRefFailure(requestId, ref);
+    }
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return fail(
+        requestId,
+        "browser_element_not_found",
+        `Element ${ref} has no visible box to capture.`,
+      );
+    }
+
+    const clip = {
+      x: Math.max(0, rect.x - ELEMENT_CAPTURE_PADDING_PX),
+      y: Math.max(0, rect.y - ELEMENT_CAPTURE_PADDING_PX),
+      width: rect.width + ELEMENT_CAPTURE_PADDING_PX * 2,
+      height: rect.height + ELEMENT_CAPTURE_PADDING_PX * 2,
+    };
+    // Re-render the clip zoomed in until it fills the legibility budget (or
+    // hits the zoom cap). Unlike magnifying captured pixels, the CDP scale
+    // re-renders vector content — small text comes out crisp.
+    const rawFit = Math.min(
+      SCREENSHOT_MAX_LONG_EDGE / Math.max(clip.width, clip.height),
+      Math.sqrt(SCREENSHOT_MAX_PIXELS / (clip.width * clip.height)),
+    );
+    const scale = Math.min(rawFit, ELEMENT_CAPTURE_MAX_SCALE);
+
+    const sendDebugCommand = target.contents.sendDebugCommand.bind(target.contents);
+    let screenshot: CdpCaptureScreenshotResult;
+    try {
+      screenshot = await runPaintedPixelCapture(target.contents, async () => {
+        return (await sendDebugCommand("Page.captureScreenshot", {
+          format: "png",
+          captureBeyondViewport: true,
+          clip: { ...clip, scale },
+        })) as CdpCaptureScreenshotResult;
+      });
+    } catch (error) {
+      if (isScreenshotNoFrameError(error)) {
+        return screenshotNoFrameFailure(requestId, error);
+      }
+      throw error;
+    }
+    if (!screenshot.data) {
+      return fail(requestId, "browser_unsupported", "Element screenshot returned no data.");
+    }
+    return {
+      requestId,
+      ok: true,
+      result: {
+        command: "screenshot_element",
+        browserId: target.browserId,
+        ref,
+        mimeType: "image/png",
+        dataBase64: screenshot.data,
+        width: Math.max(1, Math.round(clip.width * scale)),
+        height: Math.max(1, Math.round(clip.height * scale)),
+        scale: roundScale(scale),
       },
     };
   });

@@ -130,6 +130,14 @@ async function handleBrowserAutomationRequest(params: {
     return;
   }
 
+  if (request.command.command === "focus_tab") {
+    client.sendBrowserAutomationExecuteResponse({
+      type: "browser.automation.execute.response",
+      payload: focusBrowserTabForRequest({ request, serverId }),
+    });
+    return;
+  }
+
   if (request.command.command === "close_tab") {
     try {
       client.sendBrowserAutomationExecuteResponse({
@@ -224,6 +232,42 @@ function resizeBrowserTabForRequest(params: {
       width: dimensions.width,
       height: dimensions.height,
     },
+  };
+}
+
+function focusBrowserTabForRequest(params: {
+  request: BrowserAutomationExecuteRequest;
+  serverId?: string;
+}): BrowserAutomationResponsePayload {
+  const { request, serverId } = params;
+  const command = request.command as Extract<
+    BrowserAutomationExecuteRequest["command"],
+    { command: "focus_tab" }
+  >;
+  const browserId = command.args.browserId;
+  const workspaceId = request.workspaceId;
+  if (!serverId || !workspaceId) {
+    return browserAutomationFailure({
+      requestId: request.requestId,
+      code: "browser_unsupported",
+      message: "Cannot focus a browser tab without a workspace context.",
+    });
+  }
+  const workspaceTab = findWorkspaceBrowserTab({ serverId, workspaceId, browserId });
+  if (!workspaceTab || !getBrowserRecord(browserId)) {
+    return browserAutomationFailure({
+      requestId: request.requestId,
+      code: "browser_tab_not_found",
+      message: `No browser tab found for ID: ${browserId}`,
+    });
+  }
+
+  useWorkspaceLayoutStore.getState().focusTab(workspaceTab.workspaceKey, workspaceTab.tabId);
+
+  return {
+    requestId: request.requestId,
+    ok: true,
+    result: { command: "focus_tab", browserId },
   };
 }
 

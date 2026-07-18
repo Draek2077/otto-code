@@ -192,6 +192,31 @@ export interface AgentRunOptions {
   maxThinkingTokens?: number;
 }
 
+/**
+ * How the tokens currently occupying an agent's context window break down by
+ * origin. Powers the visualizer's context ring/bar colored segments (the same
+ * five categories the vendored render layer draws). Every field is optional and
+ * a token count: a provider fills as many categories as it can attribute and
+ * omits the rest, so richness degrades gracefully per provider — Claude
+ * attributes the most; a provider that can attribute nothing omits the whole
+ * object and consumers fall back to occupancy-only (no colored segments, the
+ * pre-composition behavior). Counts are best-effort estimates, not billed usage;
+ * they need not sum exactly to `contextWindowUsedTokens` (the consumer scales).
+ */
+export interface ContextComposition {
+  /** System prompt + tool/function definitions — the fixed base cost. */
+  systemPrompt?: number;
+  /** User-authored input messages. */
+  userMessages?: number;
+  /** Tool results — file contents, search output, command output (usually the
+   * largest and most volatile category). */
+  toolResults?: number;
+  /** The agent's own reasoning / thinking blocks. */
+  reasoning?: number;
+  /** Content returned by child / observed sub-agents. */
+  subagentResults?: number;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -199,6 +224,12 @@ export interface AgentUsage {
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
+  /**
+   * Best-effort breakdown of what fills the context window, by origin. Optional
+   * and provider-graded (see {@link ContextComposition}); absent ⇒ the consumer
+   * shows occupancy only. Added for the visualizer context ring/bar.
+   */
+  contextComposition?: ContextComposition;
 }
 
 export const TOOL_CALL_ICON_NAMES = [

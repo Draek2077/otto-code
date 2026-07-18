@@ -4,21 +4,24 @@ import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
 import { Waypoints } from "@/components/icons/material-icons";
-import { Button } from "@/components/ui/button";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { isDev } from "@/constants/platform";
 import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
-import { useVisualizerEventAdapter } from "@/visualizer/use-visualizer-event-adapter";
+import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
+import { useSessionStore } from "@/stores/session-store";
+import {
+  sessionIdForRootAgent,
+  useVisualizerEventAdapter,
+} from "@/visualizer/use-visualizer-event-adapter";
+import { useVisualizerVoiceCues } from "@/visualizer/use-visualizer-voice-cues";
 import { resolveVisualizerAppearance } from "@/visualizer/visualizer-appearance";
 import { resolveVisualizerTheme } from "@/visualizer/visualizer-theme";
 import { VisualizerView } from "@/visualizer/visualizer-view";
 import type {
   VisualizerHostMessage,
-  VisualizerHostToPageMessage,
   VisualizerViewHandle,
 } from "@/visualizer/visualizer-view-types";
 import { normalizeWorkspaceFileLocation } from "@/workspace/file-open";
@@ -34,18 +37,14 @@ function useVisualizerPanelDescriptor(): PanelDescriptor {
   };
 }
 
-// Dev-only affordance to exercise the vendored bundle's built-in demo
-// scenario (see docs/visualizer.md "Risks / gotchas"). Demo mode SUSPENDS the
-// real event adapter — its live stream (and the reset it sends on every
-// activation) would immediately clobber the mock scenario otherwise.
-const DEMO_SCENARIO_MESSAGE: VisualizerHostToPageMessage = {
-  type: "config",
-  config: { mode: "replay", autoPlay: true, showMockData: true },
-};
-const DEMO_EXIT_MESSAGE: VisualizerHostToPageMessage = {
-  type: "config",
-  config: { mode: "live", autoPlay: false, showMockData: false },
-};
+// The demo scenario (the vendored bundle's built-in mock run — see
+// docs/visualizer.md "Risks / gotchas") is retained in the bundle and reachable
+// through the config protocol; it just no longer has a floating on-canvas
+// button. To re-surface it later, post `config: { mode: "replay", autoPlay:
+// true, showMockData: true }` to load it and `config: { mode: "live", autoPlay:
+// false, showMockData: false }` to exit, and gate the event adapter's `active`
+// off while it runs (the live stream + its reset would otherwise clobber the
+// mock scenario). A `{ type: "reset" }` on each transition clears stale state.
 
 // The shell caps the devicePixelRatio the page sees (emit-bundle.mjs
 // placeholder) — the canvas backing store and bloom buffers scale with it.
@@ -94,11 +93,38 @@ function VisualizerPanel() {
   const viewRef = useRef<VisualizerViewHandle>(null);
   const connectedRef = useRef(false);
   const [ready, setReady] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
   // Set when the guest reported a load failure (`load-failed`, Electron) or
   // the ready handshake timed out. `reason` is only ever shown as a small
   // diagnostic line; null reason = timeout.
   const [loadFailure, setLoadFailure] = useState<{ reason: string | null } | null>(null);
+  // Mirror of the page's live session list + selection (page->host
+  // `session-state`), driving the toolbar's chats dropdown. The page owns the
+  // session state machine; the toolbar just renders + remote-controls it.
+  const [sessionState, setSessionState] = useState<{
+    sessions: { id: string; label: string; status: "active" | "completed" }[];
+    selectedId: string | null;
+    activityIds: string[];
+  }>({ sessions: [], selectedId: null, activityIds: [] });
+
+  // Follow-the-active-chat mode. On by default: the Visualizer auto-switches
+  // its displayed chat to whatever chat tab is focused in the workspace, so it
+  // tracks what you're actually looking at. Pinning (the toolbar Pin toggle, or
+  // manually picking a chat from the dropdown) freezes it on one chat until you
+  // unpin. The workspace's focusedAgentId maps to a page session id via the
+  // adapter's `sessionIdForRootAgent` — the named seam for that keying contract.
+  const [followActive, setFollowActive] = useState(true);
+  const focusedAgentId = useSessionStore(
+    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
+  );
+  // The last chat that actually held focus. Focusing the Visualizer's own pane
+  // (or a terminal) reports focusedAgentId = null; we keep following the last
+  // real chat rather than blanking the selection when you click the canvas.
+  const [followTargetAgentId, setFollowTargetAgentId] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusedAgentId) {
+      setFollowTargetAgentId(focusedAgentId);
+    }
+  }, [focusedAgentId]);
 
   // Theme colors (docs/visualizer.md "Theme colors"): the guest palette is
   // derived from the active variant, resolved exactly like applyColorScheme —
@@ -186,6 +212,63 @@ function VisualizerPanel() {
     [agentIdsKey],
   );
 
+  const handlePostMessage = useCallback<VisualizerViewHandle["postMessage"]>((message) => {
+    viewRef.current?.postMessage(message);
+  }, []);
+
+  // ─── Toolbar controls (OTTO toolbar above the tab) ─────────────────────────
+  // Chats switcher → remote-control the page's selection. Panel/audio/HUD
+  // toggles flip the device-local settings that the config effect above already
+  // pushes to the page, so the page stays the single config-driven follower.
+  const handleSelectSession = useCallback((sessionId: string) => {
+    // Manually picking a chat pins the Visualizer to it — otherwise the next
+    // focus change would immediately yank it back to the active chat.
+    setFollowActive(false);
+    viewRef.current?.postMessage({ type: "select-session", sessionId });
+  }, []);
+  const handleToggleFollow = useCallback(() => {
+    // Flipping follow back on re-syncs to the focused chat via the effect below.
+    setFollowActive((previous) => !previous);
+  }, []);
+  const handleToggleTimeline = useCallback(() => {
+    void updateAppSettings({ visualizerPanelTimeline: !settings.visualizerPanelTimeline });
+  }, [settings.visualizerPanelTimeline, updateAppSettings]);
+  const handleToggleFiles = useCallback(() => {
+    // Files/Cost are a mutually exclusive pair in the page — enabling one
+    // disables the other so the toolbar's active states stay truthful.
+    void updateAppSettings({
+      visualizerPanelFileAttention: !settings.visualizerPanelFileAttention,
+      visualizerPanelCostOverlay: false,
+    });
+  }, [settings.visualizerPanelFileAttention, updateAppSettings]);
+  const handleToggleCost = useCallback(() => {
+    void updateAppSettings({
+      visualizerPanelCostOverlay: !settings.visualizerPanelCostOverlay,
+      visualizerPanelFileAttention: false,
+    });
+  }, [settings.visualizerPanelCostOverlay, updateAppSettings]);
+  const handleToggleAudio = useCallback(() => {
+    void updateAppSettings({ visualizerSoundMuted: !settings.visualizerSoundMuted });
+  }, [settings.visualizerSoundMuted, updateAppSettings]);
+  const handleToggleHud = useCallback(() => {
+    void updateAppSettings({ visualizerHudHidden: !settings.visualizerHudHidden });
+  }, [settings.visualizerHudHidden, updateAppSettings]);
+  // Stats is a config-driven follower like the other panel toggles: flip the
+  // device-local setting → the config effect below pushes config.panels → the
+  // page follows.
+  const handleToggleStats = useCallback(() => {
+    void updateAppSettings({ visualizerPanelStats: !settings.visualizerPanelStats });
+  }, [settings.visualizerPanelStats, updateAppSettings]);
+  // Zoom to Fit + Restart are stateless one-shot viewport actions — the page
+  // owns the simulation, so these just remote-control it (no device-local
+  // setting to persist), mirroring how the chats dropdown drives selection.
+  const handleZoomToFit = useCallback(() => {
+    viewRef.current?.postMessage({ type: "viewport-command", action: "zoom-to-fit" });
+  }, []);
+  const handleRestart = useCallback(() => {
+    viewRef.current?.postMessage({ type: "viewport-command", action: "restart" });
+  }, []);
+
   const handleMessage = useCallback(
     (message: VisualizerHostMessage) => {
       if (message.type === "ready" && !connectedRef.current) {
@@ -212,11 +295,37 @@ function VisualizerPanel() {
         void updateAppSettings({ visualizerSoundMuted: message.muted });
         return;
       }
-      if (message.type === "hud-hidden") {
-        // The in-page HUD toggle was flipped — persist it so it applies to
-        // every Visualizer tab (all read the same device-local setting) and
-        // survives restarts. Flows back out as config.hudHidden via the effect.
-        void updateAppSettings({ visualizerHudHidden: message.hidden });
+      if (message.type === "panel-toggle") {
+        // A page keyboard shortcut asked to toggle a panel. Host settings are
+        // the source of truth for panel visibility, so flip the same
+        // device-local setting the matching toolbar button does — the change
+        // flows back to the page via the config.panels push, keeping the
+        // toolbar's selected state and the page in sync.
+        // While the HUD is hidden the panels are force-hidden and their toolbar
+        // toggles are disabled, so ignore the shortcut too — otherwise it would
+        // silently flip the stored setting and surprise the user on re-show.
+        if (settings.visualizerHudHidden) {
+          return;
+        }
+        if (message.panel === "timeline") {
+          handleToggleTimeline();
+        } else if (message.panel === "files") {
+          handleToggleFiles();
+        } else if (message.panel === "cost") {
+          handleToggleCost();
+        } else {
+          handleToggleStats();
+        }
+        return;
+      }
+      if (message.type === "session-state") {
+        // The page mirrored its live session list/selection so the toolbar's
+        // chats dropdown can render + drive them (OTTO PATCH).
+        setSessionState({
+          sessions: message.sessions,
+          selectedId: message.selectedId,
+          activityIds: message.activityIds,
+        });
         return;
       }
       if (message.type === "open-file") {
@@ -229,16 +338,24 @@ function VisualizerPanel() {
           lineEnd: message.line,
         });
         if (location) {
-          openFileInWorkspace({ location, disposition: "main" });
+          // The Visualizer is a canvas that doesn't share its pane well — a file
+          // opened on top of it would cover the graph the user is watching. Open
+          // beside it instead (focus an adjacent pane, else split one out), the
+          // same "side" disposition chat file links use.
+          openFileInWorkspace({ location, disposition: "side" });
         }
       }
     },
-    [openFileInWorkspace, updateAppSettings],
+    [
+      openFileInWorkspace,
+      updateAppSettings,
+      handleToggleTimeline,
+      handleToggleFiles,
+      handleToggleCost,
+      handleToggleStats,
+      settings.visualizerHudHidden,
+    ],
   );
-
-  const handlePostMessage = useCallback<VisualizerViewHandle["postMessage"]>((message) => {
-    viewRef.current?.postMessage(message);
-  }, []);
 
   // Device-local prefs (Settings -> Visualizer): panel visibility seeds
   // (vendor `config.panels` patch) and render-layer toggles (`config.render`
@@ -250,6 +367,15 @@ function VisualizerPanel() {
   // most expensive draw stage — which a CPU rasterizer can't afford. The
   // Settings toggle shows the same forced-off state (visualizer-section.tsx).
   const isSoftwareRendering = useIsSoftwareRendering();
+  // Hiding the HUD hides the informational panels too (Timeline / Files / Cost
+  // / Stats), not just the vendor's top+bottom bars: the HUD-eye is meant to
+  // give a clean canvas view, so a stale slide-in panel left open would defeat
+  // it. Force config.panels off while hudden — but read from the stored panel
+  // settings, never write them, so re-showing the HUD restores exactly the
+  // panels that were open before (same preserve-the-preference pattern as
+  // software-rendering forcing bloom off). The toolbar's panel toggles are
+  // disabled + unselected to match (visualizer-toolbar.tsx).
+  const hudHidden = settings.visualizerHudHidden;
   useEffect(() => {
     if (!ready) {
       return;
@@ -258,40 +384,44 @@ function VisualizerPanel() {
       type: "config",
       config: {
         panels: {
-          timeline: settings.visualizerPanelTimeline,
-          fileAttention: settings.visualizerPanelFileAttention,
-          costOverlay: settings.visualizerPanelCostOverlay,
-          hexGrid: settings.visualizerPanelHexGrid,
+          timeline: !hudHidden && settings.visualizerPanelTimeline,
+          fileAttention: !hudHidden && settings.visualizerPanelFileAttention,
+          costOverlay: !hudHidden && settings.visualizerPanelCostOverlay,
+          stats: !hudHidden && settings.visualizerPanelStats,
         },
         render: {
           bloom: isSoftwareRendering ? false : settings.visualizerRenderBloom,
+          nodeGlow: settings.visualizerRenderNodeGlow,
           stars: settings.visualizerRenderStars,
           backdrop: settings.visualizerRenderBackdrop,
           nodeShape: settings.visualizerNodeShape,
+          showFps: settings.visualizerShowFps,
         },
         // Effective master volume (0..1) for the page's audio engine: the mute
         // toggle gates the slider level, so muting sends 0 and unmuting restores
         // exactly the current slider value. Stored as a 0-100 percent.
         soundVolume: settings.visualizerSoundMuted ? 0 : settings.visualizerSoundVolume / 100,
         // Whole-HUD visibility — one device-local setting shared by every
-        // Visualizer tab, toggled by the in-page HUD button.
-        hudHidden: settings.visualizerHudHidden,
+        // Visualizer tab, toggled by the toolbar HUD-eye.
+        hudHidden,
       },
     });
   }, [
     ready,
     isSoftwareRendering,
+    hudHidden,
     settings.visualizerPanelTimeline,
     settings.visualizerPanelFileAttention,
     settings.visualizerPanelCostOverlay,
-    settings.visualizerPanelHexGrid,
+    settings.visualizerPanelStats,
     settings.visualizerRenderBloom,
+    settings.visualizerRenderNodeGlow,
     settings.visualizerRenderStars,
     settings.visualizerRenderBackdrop,
     settings.visualizerNodeShape,
+    settings.visualizerShowFps,
     settings.visualizerSoundVolume,
     settings.visualizerSoundMuted,
-    settings.visualizerHudHidden,
   ]);
 
   // Fonts + type scale: the guest page renders in Otto's interface/code fonts
@@ -317,38 +447,43 @@ function VisualizerPanel() {
 
   // Every transition to active (ready + this pane actually visible) does a
   // full reset + replay — including recovery from a hidden-webview rAF stall
-  // (visualizer.md Risks: "Hidden panes stop the world"). Suspended while the
-  // dev demo scenario runs; toggling demo off re-activates it, and that
-  // activation's own reset+replay restores the real sessions.
+  // (visualizer.md Risks: "Hidden panes stop the world").
   useVisualizerEventAdapter({
     serverId,
     workspaceId,
-    active: ready && isVisible && !demoMode,
+    active: ready && isVisible,
     agentIdFilter,
     postMessage: handlePostMessage,
   });
 
-  const handleToggleDemoScenario = useCallback(() => {
-    const next = !demoMode;
-    if (next) {
-      // Clear the adapter's sessions so the mock scenario starts on a clean
-      // stage; the state flip below suspends the adapter until demo exit.
-      viewRef.current?.postMessage({ type: "reset" });
-      viewRef.current?.postMessage(DEMO_SCENARIO_MESSAGE);
-    } else {
-      // The adapter re-activates on this flip and its reset+replay restores
-      // the real sessions after these clear the mock state.
-      viewRef.current?.postMessage(DEMO_EXIT_MESSAGE);
-      viewRef.current?.postMessage({ type: "reset" });
-    }
-    setDemoMode(next);
-  }, [demoMode]);
+  // Speak short personality voice cues (join / thinking / done) for the main
+  // agent — gated by the setting + host capabilities inside the hook.
+  useVisualizerVoiceCues({
+    serverId,
+    workspaceId,
+    active: ready && isVisible,
+    agentIdFilter,
+  });
 
-  // Debug affordance — pops the guest webview's own DevTools (Electron only;
-  // no-op elsewhere).
-  const handleOpenDevTools = useCallback(() => {
-    viewRef.current?.openDevTools?.();
-  }, []);
+  // Follow the focused chat: whenever follow is on, drive the page's selection
+  // to the workspace's focused chat. Guards keep it inert unless there's real
+  // work to do — the target must be a session the page actually knows about
+  // (run-scoped tabs filter the set) and must differ from the current
+  // selection. The page echoes the new selection back via `session-state`,
+  // which satisfies the `=== selectedId` guard and stops any feedback loop.
+  useEffect(() => {
+    if (!ready || !followActive || followTargetAgentId === null) {
+      return;
+    }
+    const sessionId = sessionIdForRootAgent(followTargetAgentId);
+    if (sessionId === sessionState.selectedId) {
+      return;
+    }
+    if (!sessionState.sessions.some((session) => session.id === sessionId)) {
+      return;
+    }
+    viewRef.current?.postMessage({ type: "select-session", sessionId });
+  }, [ready, followActive, followTargetAgentId, sessionState.selectedId, sessionState.sessions]);
 
   const loadCoverStyle = useMemo(
     () => [
@@ -360,36 +495,50 @@ function VisualizerPanel() {
 
   return (
     <View style={styles.container}>
-      <VisualizerView
-        ref={viewRef}
-        onMessage={handleMessage}
-        renderScale={renderScale}
-        themeJson={visualizerTheme.json}
-        themeBackground={visualizerTheme.background}
+      {/* Native Otto toolbar at the top of the tab — chats switcher + panel/
+          audio/HUD toggles pulled out of the in-webview HUD. Always visible;
+          the HUD-eye here hides only the in-webview HUD. */}
+      <VisualizerToolbar
+        sessions={sessionState.sessions}
+        selectedSessionId={sessionState.selectedId}
+        onSelectSession={handleSelectSession}
+        followActive={followActive}
+        onToggleFollow={handleToggleFollow}
+        timelineOpen={settings.visualizerPanelTimeline}
+        filesOpen={settings.visualizerPanelFileAttention}
+        costOpen={settings.visualizerPanelCostOverlay}
+        statsOpen={settings.visualizerPanelStats}
+        soundMuted={settings.visualizerSoundMuted}
+        hudHidden={settings.visualizerHudHidden}
+        onToggleTimeline={handleToggleTimeline}
+        onToggleFiles={handleToggleFiles}
+        onToggleCost={handleToggleCost}
+        onToggleStats={handleToggleStats}
+        onZoomToFit={handleZoomToFit}
+        onRestart={handleRestart}
+        onToggleAudio={handleToggleAudio}
+        onToggleHud={handleToggleHud}
       />
-      <Animated.View pointerEvents="none" style={loadCoverStyle} />
-      {/* Above the (still-opaque) load cover: without this, a guest that never
-          loads presents as a silent solid-color tab with no evidence anywhere
-          (docs/visualizer.md "Risks / gotchas" — software-rendering machines). */}
-      {loadFailure !== null && !ready ? (
-        <View pointerEvents="none" style={styles.loadFailure}>
-          <Text style={styles.loadFailureTitle}>{t("workspace.visualizer.loadFailedTitle")}</Text>
-          <Text style={styles.loadFailureBody}>{t("workspace.visualizer.loadFailedBody")}</Text>
-          {loadFailure.reason ? (
-            <Text style={styles.loadFailureReason}>{loadFailure.reason}</Text>
-          ) : null}
-        </View>
-      ) : null}
-      {/* The demo scenario is a user-facing feature; only the DevTools debug
-          affordance is dev-gated. */}
-      <View style={styles.devBar}>
-        <Button size="sm" variant="ghost" onPress={handleToggleDemoScenario}>
-          {demoMode ? t("workspace.visualizer.demoExit") : t("workspace.visualizer.demoLoad")}
-        </Button>
-        {isDev ? (
-          <Button size="sm" variant="ghost" onPress={handleOpenDevTools}>
-            Open guest DevTools
-          </Button>
+      <View style={styles.canvasWrap}>
+        <VisualizerView
+          ref={viewRef}
+          onMessage={handleMessage}
+          renderScale={renderScale}
+          themeJson={visualizerTheme.json}
+          themeBackground={visualizerTheme.background}
+        />
+        <Animated.View pointerEvents="none" style={loadCoverStyle} />
+        {/* Above the (still-opaque) load cover: without this, a guest that never
+            loads presents as a silent solid-color tab with no evidence anywhere
+            (docs/visualizer.md "Risks / gotchas" — software-rendering machines). */}
+        {loadFailure !== null && !ready ? (
+          <View pointerEvents="none" style={styles.loadFailure}>
+            <Text style={styles.loadFailureTitle}>{t("workspace.visualizer.loadFailedTitle")}</Text>
+            <Text style={styles.loadFailureBody}>{t("workspace.visualizer.loadFailedBody")}</Text>
+            {loadFailure.reason ? (
+              <Text style={styles.loadFailureReason}>{loadFailure.reason}</Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
     </View>
@@ -409,6 +558,12 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  // Holds the webview + its absolute load/failure overlays below the toolbar,
+  // so the overlays cover only the canvas area, never the toolbar.
+  canvasWrap: {
+    flex: 1,
+    position: "relative",
   },
   // Opaque boot cover over the guest, painted the stage background — hides
   // the default-HUD flash between the page's first paint and the settings
@@ -451,17 +606,5 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
     textAlign: "center",
-  },
-  devBar: {
-    position: "absolute",
-    // Bottom-right: the page pins its own HUD to the top edge (status bar) and
-    // bottom-center (LIVE timeline); this corner stays clear — the per-agent
-    // chat panel's lowest edge sits 64px up.
-    bottom: theme.spacing[2],
-    right: theme.spacing[2],
-    flexDirection: "row",
-    gap: theme.spacing[1],
-    backgroundColor: theme.colors.surface1,
-    borderRadius: theme.borderRadius.sm,
   },
 }));

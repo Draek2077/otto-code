@@ -13,8 +13,8 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
 import {
   AlertTriangle,
+  Boxes,
   Check,
-  ChevronDown,
   ChevronRight,
   type IconComponent,
   Search,
@@ -84,8 +84,8 @@ const DESKTOP_PERSONALITY_ROW_HEIGHT = 30;
 const DESKTOP_PERSONALITY_HEADING_HEIGHT = 28;
 
 const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const ThemedBoxes = withUnistyles(Boxes);
 const ThemedCheck = withUnistyles(Check);
-const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedSearch = withUnistyles(Search);
@@ -94,6 +94,7 @@ const ThemedStar = withUnistyles(Star);
 const ThemedStarFilled = withUnistyles(StarFilled);
 
 const accentMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const foregroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 
 /**
  * Presentation view-model for a personality row in the picker. The selector is
@@ -232,7 +233,8 @@ function FavoriteStar({ isFavorite, hovered }: { isFavorite: boolean; hovered: b
 
 type SelectorView =
   | { kind: "all" }
-  | { kind: "provider"; providerId: string; providerLabel: string };
+  | { kind: "provider"; providerId: string; providerLabel: string }
+  | { kind: "personalityGroup"; sectionKey: string; sectionLabel: string };
 
 interface CombinedModelSelectorProps {
   providers: ProviderSelectorProvider[];
@@ -312,6 +314,7 @@ interface SelectorContentProps {
   onSelect: (provider: string, modelId: string) => void;
   onToggleFavorite?: (provider: string, modelId: string) => void;
   onDrillDown: (providerId: string, providerLabel: string) => void;
+  onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
   personalities?: SelectorPersonality[];
@@ -761,121 +764,193 @@ function RoleGroupIcon({ icon: Icon }: { icon: IconComponent }) {
   return <Icon size={ICON_SIZE.sm} color={styles.providerIconMuted.color} />;
 }
 
-function PersonalityGroupSectionBlock({
+/** Distinct personalities across a section's role groups (a multi-role
+ * personality shows under each role it carries but counts once here). */
+function countDistinctPersonalities(section: SelectorPersonalityGroupSection): number {
+  const ids = new Set<string>();
+  for (const group of section.roleGroups) {
+    for (const personality of group.personalities) {
+      ids.add(personality.id);
+    }
+  }
+  return ids.size;
+}
+
+/**
+ * Keep the role groups (and, within them, the personalities) that survive a
+ * search query. A query matching a role label keeps that whole group; otherwise
+ * it filters the group's personalities by name. Empty query keeps everything.
+ */
+function filterPersonalityRoleGroups(
+  section: SelectorPersonalityGroupSection,
+  normalizedQuery: string,
+): SelectorPersonalityRoleGroup[] {
+  if (!normalizedQuery) {
+    return section.roleGroups;
+  }
+  const result: SelectorPersonalityRoleGroup[] = [];
+  for (const group of section.roleGroups) {
+    const roleMatches = group.label.toLowerCase().includes(normalizedQuery);
+    const personalities = roleMatches
+      ? group.personalities
+      : group.personalities.filter((entry) => entry.name.toLowerCase().includes(normalizedQuery));
+    if (personalities.length > 0) {
+      result.push({ ...group, personalities });
+    }
+  }
+  return result;
+}
+
+/**
+ * One drill-down row for a personality group section (the active team, or "All
+ * personalities"). Mirrors GroupProviderButton: a leading glyph, the section
+ * label, the distinct-personality count, and a chevron opening the second
+ * panel — where the section's roles and personalities are browsed/searched.
+ */
+function PersonalityGroupButton({
   section,
-  isExpanded,
-  onToggle,
-  selectedPersonalityId,
-  onSelectPersonality,
-  onClearPersonality,
+  onDrillDown,
 }: {
   section: SelectorPersonalityGroupSection;
-  isExpanded: boolean;
-  onToggle: (key: string) => void;
-  selectedPersonalityId?: string | null;
-  onSelectPersonality: (id: string) => void;
-  onClearPersonality: () => void;
+  onDrillDown: (sectionKey: string, sectionLabel: string) => void;
 }) {
-  const handleToggle = useCallback(() => onToggle(section.key), [onToggle, section.key]);
-  const a11yExpandedState = useMemo(() => ({ expanded: isExpanded }), [isExpanded]);
-  // Distinct personalities in the section — a multi-role personality shows in
-  // several role groups but must count once in the collapsed header.
-  const count = useMemo(() => {
-    const ids = new Set<string>();
-    for (const group of section.roleGroups) {
-      for (const personality of group.personalities) {
-        ids.add(personality.id);
-      }
-    }
-    return ids.size;
-  }, [section.roleGroups]);
-  const Chevron = isExpanded ? ThemedChevronDown : ThemedChevronRight;
+  const handlePress = useCallback(
+    () => onDrillDown(section.key, section.label),
+    [onDrillDown, section.key, section.label],
+  );
+  const count = useMemo(() => countDistinctPersonalities(section), [section]);
   return (
-    <View>
-      <Pressable
-        onPress={handleToggle}
-        style={drillDownRowStyle}
-        accessibilityRole="button"
-        accessibilityState={a11yExpandedState}
-        testID={`personality-group-${section.key}`}
-      >
-        <Chevron size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
-        <Text style={styles.drillDownText}>{section.label}</Text>
-        <View style={styles.drillDownTrailing}>
-          <Text style={styles.drillDownCount}>{count}</Text>
+    <Pressable
+      onPress={handlePress}
+      style={drillDownRowStyle}
+      accessibilityRole="button"
+      testID={`personality-group-${section.key}`}
+    >
+      <ThemedBoxes size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+      <Text style={styles.drillDownText}>{section.label}</Text>
+      <View style={styles.drillDownTrailing}>
+        {/* i18n: English-only pending the agent-personalities translation pass. */}
+        <Text style={styles.drillDownCount}>
+          {count === 1 ? "1 personality" : `${count} personalities`}
+        </Text>
+        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+      </View>
+    </Pressable>
+  );
+}
+
+/**
+ * The "browse everyone" section, now a set of drill-down rows (one per group:
+ * active team first, then the rest of the roster — or a single "All
+ * personalities" row). Each opens a second panel (like a provider family) with
+ * its own search over roles and personalities, so ANY personality is reachable
+ * without the picker ballooning inline.
+ */
+function PersonalityGroupsSection({
+  groups,
+  onDrillDownPersonalityGroup,
+  onSelectPersonality,
+}: {
+  groups?: SelectorPersonalityGroupSection[];
+  onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
+  onSelectPersonality?: (id: string) => void;
+}) {
+  if (!groups || groups.length === 0 || !onSelectPersonality) {
+    return null;
+  }
+  return (
+    <View style={styles.personalitiesContainer}>
+      {groups.map((section, index) => (
+        <View key={section.key}>
+          {index > 0 ? <View style={styles.separator} /> : null}
+          <PersonalityGroupButton section={section} onDrillDown={onDrillDownPersonalityGroup} />
         </View>
-      </Pressable>
-      {isExpanded
-        ? section.roleGroups.map((group) => (
-            <View key={group.key}>
-              <View style={styles.roleGroupHeading}>
-                {group.icon ? <RoleGroupIcon icon={group.icon} /> : null}
-                <Text style={styles.sectionHeadingText}>{group.label}</Text>
-              </View>
-              {group.personalities.map((personality) => (
-                <PersonalityRow
-                  key={`${group.key}-${personality.id}`}
-                  personality={personality}
-                  isSelected={personality.id === selectedPersonalityId}
-                  indent
-                  onSelect={onSelectPersonality}
-                  onClear={onClearPersonality}
-                />
-              ))}
-            </View>
-          ))
-        : null}
+      ))}
     </View>
   );
 }
 
 /**
- * The "browse everyone" section: collapsible groups (active team first, then
- * the rest of the roster) with role sub-headings, so ANY personality — not just
- * this surface's role — is two taps away. Collapsed by default to keep the
- * picker short; expansion state is local and resets when the picker unmounts.
+ * Second-panel body for a drilled-in personality group: role sub-headings with
+ * their personalities, already filtered by the header search. Selection flows
+ * through the same handlers as everywhere else.
  */
-function PersonalityGroupsSection({
-  groups,
+function PersonalityGroupRoleGroups({
+  roleGroups,
   selectedPersonalityId,
   onSelectPersonality,
   onClearPersonality,
 }: {
-  groups?: SelectorPersonalityGroupSection[];
+  roleGroups: SelectorPersonalityRoleGroup[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality: (id: string) => void;
+  onClearPersonality: () => void;
+}) {
+  return (
+    <View style={styles.personalitiesContainer}>
+      {roleGroups.map((group) => (
+        <View key={group.key}>
+          <View style={styles.roleGroupHeading}>
+            {group.icon ? <RoleGroupIcon icon={group.icon} /> : null}
+            <Text style={styles.sectionHeadingText}>{group.label}</Text>
+          </View>
+          {group.personalities.map((personality) => (
+            <PersonalityRow
+              key={`${group.key}-${personality.id}`}
+              personality={personality}
+              isSelected={personality.id === selectedPersonalityId}
+              indent
+              onSelect={onSelectPersonality}
+              onClear={onClearPersonality}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * The drilled-in personality-group panel: resolves the section, applies the
+ * header search over its roles/personalities, and renders the role groups (or a
+ * "no matches" empty state). Extracted so SelectorContent stays a thin router.
+ */
+function PersonalityGroupContent({
+  sectionKey,
+  normalizedQuery,
+  personalityGroups,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
+}: {
+  sectionKey: string;
+  normalizedQuery: string;
+  personalityGroups?: SelectorPersonalityGroupSection[];
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
   onClearPersonality?: () => void;
 }) {
-  const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set<string>());
-  const handleToggle = useCallback((key: string) => {
-    setExpandedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
-  if (!groups || groups.length === 0 || !onSelectPersonality) {
-    return null;
+  const { t } = useTranslation();
+  const section = personalityGroups?.find((entry) => entry.key === sectionKey);
+  const roleGroups = useMemo(
+    () => (section ? filterPersonalityRoleGroups(section, normalizedQuery) : []),
+    [section, normalizedQuery],
+  );
+  if (!section || !onSelectPersonality || roleGroups.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+        <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
+      </View>
+    );
   }
-  const handleClear = onClearPersonality ?? noop;
   return (
-    <View style={styles.personalitiesContainer}>
-      {groups.map((section) => (
-        <PersonalityGroupSectionBlock
-          key={section.key}
-          section={section}
-          isExpanded={expandedKeys.has(section.key)}
-          onToggle={handleToggle}
-          selectedPersonalityId={selectedPersonalityId}
-          onSelectPersonality={onSelectPersonality}
-          onClearPersonality={handleClear}
-        />
-      ))}
-    </View>
+    <PersonalityGroupRoleGroups
+      roleGroups={roleGroups}
+      selectedPersonalityId={selectedPersonalityId}
+      onSelectPersonality={onSelectPersonality}
+      onClearPersonality={onClearPersonality ?? noop}
+    />
   );
 }
 
@@ -889,6 +964,7 @@ function SelectorContent({
   onSelect,
   onToggleFavorite,
   onDrillDown,
+  onDrillDownPersonalityGroup,
   onRetryProvider,
   isRetryingProvider,
   personalities,
@@ -913,21 +989,25 @@ function SelectorContent({
         : [],
     [normalizedQuery, selectedViewProvider],
   );
-  const favoriteRows = useMemo(
-    () => getAllProviderModelRows(providers).filter((row) => favoriteKeys.has(row.favoriteKey)),
-    [favoriteKeys, providers],
-  );
-  const hasResults =
-    favoriteRows.length > 0 ||
-    providers.length > 0 ||
-    (personalities?.length ?? 0) > 0 ||
-    (personalityGroups?.length ?? 0) > 0;
   const emptyState = (
     <View style={styles.emptyState}>
       <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
     </View>
   );
+
+  if (view.kind === "personalityGroup") {
+    return (
+      <PersonalityGroupContent
+        sectionKey={view.sectionKey}
+        normalizedQuery={normalizedQuery}
+        personalityGroups={personalityGroups}
+        selectedPersonalityId={selectedPersonalityId}
+        onSelectPersonality={onSelectPersonality}
+        onClearPersonality={onClearPersonality}
+      />
+    );
+  }
 
   if (view.kind === "provider") {
     if (!selectedViewProvider) {
@@ -1008,6 +1088,69 @@ function SelectorContent({
   }
 
   return (
+    <AllViewContent
+      providers={providers}
+      selectedProvider={selectedProvider}
+      selectedModel={selectedModel}
+      favoriteKeys={favoriteKeys}
+      onSelect={onSelect}
+      onToggleFavorite={onToggleFavorite}
+      onDrillDown={onDrillDown}
+      onDrillDownPersonalityGroup={onDrillDownPersonalityGroup}
+      personalities={personalities}
+      personalityGroups={personalityGroups}
+      selectedPersonalityId={selectedPersonalityId}
+      onSelectPersonality={onSelectPersonality}
+      onClearPersonality={onClearPersonality}
+    />
+  );
+}
+
+/**
+ * Level-1 "all" view: the up-front (surface-role) personalities, the personality
+ * group drill-down rows, favorites, and the provider families. Extracted so
+ * SelectorContent stays a thin view router under the complexity budget.
+ */
+function AllViewContent({
+  providers,
+  selectedProvider,
+  selectedModel,
+  favoriteKeys,
+  onSelect,
+  onToggleFavorite,
+  onDrillDown,
+  onDrillDownPersonalityGroup,
+  personalities,
+  personalityGroups,
+  selectedPersonalityId,
+  onSelectPersonality,
+  onClearPersonality,
+}: {
+  providers: ProviderSelectorProvider[];
+  selectedProvider: string;
+  selectedModel: string;
+  favoriteKeys: Set<string>;
+  onSelect: (provider: string, modelId: string) => void;
+  onToggleFavorite?: (provider: string, modelId: string) => void;
+  onDrillDown: (providerId: string, providerLabel: string) => void;
+  onDrillDownPersonalityGroup: (sectionKey: string, sectionLabel: string) => void;
+  personalities?: SelectorPersonality[];
+  personalityGroups?: SelectorPersonalityGroupSection[];
+  selectedPersonalityId?: string | null;
+  onSelectPersonality?: (id: string) => void;
+  onClearPersonality?: () => void;
+}) {
+  const { t } = useTranslation();
+  const favoriteRows = useMemo(
+    () => getAllProviderModelRows(providers).filter((row) => favoriteKeys.has(row.favoriteKey)),
+    [favoriteKeys, providers],
+  );
+  const hasResults =
+    favoriteRows.length > 0 ||
+    providers.length > 0 ||
+    (personalities?.length ?? 0) > 0 ||
+    (personalityGroups?.length ?? 0) > 0;
+  return (
     <View>
       <PersonalitiesSection
         personalities={personalities}
@@ -1018,9 +1161,8 @@ function SelectorContent({
 
       <PersonalityGroupsSection
         groups={personalityGroups}
-        selectedPersonalityId={selectedPersonalityId}
+        onDrillDownPersonalityGroup={onDrillDownPersonalityGroup}
         onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
       />
 
       <FavoritesSection
@@ -1036,7 +1178,12 @@ function SelectorContent({
         <GroupedProviderRows providers={providers} onDrillDown={onDrillDown} />
       ) : null}
 
-      {!hasResults ? emptyState : null}
+      {!hasResults ? (
+        <View style={styles.emptyState}>
+          <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+          <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1115,10 +1262,13 @@ export function CombinedModelSelector({
   const computeInitialView = useCallback((): SelectorView => {
     if (singleProviderView) return singleProviderView;
 
-    // A selected personality lives in the "all" view — open there so it (and the
-    // rest of the roster) shows up front, rather than drilling into the model
-    // family of the personality's underlying provider/model.
-    if (hasPersonalities && selectedPersonalityId) return { kind: "all" };
+    // A selectable personality roster (individual personalities and/or team
+    // groups) lives in the "all" view. Always open there when one exists — even
+    // with nothing selected yet — so the Personalities and Team groups are
+    // visible up front, rather than drilling into the selected model's provider
+    // family (which only surfaces that family's personalities and hides the
+    // group headers until a personality happens to be selected).
+    if (hasPersonalities) return { kind: "all" };
 
     const selectedFavoriteKey = `${selectedProvider}:${selectedModel}`;
     if (selectedProvider && selectedModel && !favoriteKeys.has(selectedFavoriteKey)) {
@@ -1131,7 +1281,6 @@ export function CombinedModelSelector({
   }, [
     singleProviderView,
     hasPersonalities,
-    selectedPersonalityId,
     selectedProvider,
     selectedModel,
     favoriteKeys,
@@ -1237,6 +1386,29 @@ export function CombinedModelSelector({
   }, [isLoading, providers, selectedModel, selectedProvider]);
 
   const desktopFixedHeight = useMemo(() => {
+    if (view.kind === "personalityGroup") {
+      const section = personalityGroups?.find((entry) => entry.key === view.sectionKey);
+      if (!section) {
+        return DESKTOP_PROVIDER_VIEW_MIN_HEIGHT;
+      }
+      // A multi-role personality renders once per role it carries, so the row
+      // total is the sum across groups (not the distinct-personality count).
+      let headingCount = 0;
+      let rowCount = 0;
+      for (const group of section.roleGroups) {
+        headingCount += 1;
+        rowCount += group.personalities.length;
+      }
+      return Math.min(
+        Math.max(
+          DESKTOP_PROVIDER_VIEW_MIN_HEIGHT,
+          DESKTOP_PROVIDER_VIEW_BASE_HEIGHT +
+            headingCount * DESKTOP_PERSONALITY_HEADING_HEIGHT +
+            rowCount * DESKTOP_PERSONALITY_ROW_HEIGHT,
+        ),
+        DESKTOP_PROVIDER_VIEW_MAX_HEIGHT,
+      );
+    }
     if (view.kind !== "provider") {
       return undefined;
     }
@@ -1262,7 +1434,7 @@ export function CombinedModelSelector({
       ),
       DESKTOP_PROVIDER_VIEW_MAX_HEIGHT,
     );
-  }, [displayProviders, view, personalities, onSelectPersonality]);
+  }, [displayProviders, view, personalities, personalityGroups, onSelectPersonality]);
 
   const triggerLabel = useMemo(() => {
     if (selectedPersonality) {
@@ -1333,6 +1505,13 @@ export function CombinedModelSelector({
     setView({ kind: "provider", providerId, providerLabel });
   }, []);
 
+  const handleDrillDownPersonalityGroup = useCallback(
+    (sectionKey: string, sectionLabel: string) => {
+      setView({ kind: "personalityGroup", sectionKey, sectionLabel });
+    },
+    [],
+  );
+
   const handleSearchQueryChange = useCallback((value: string) => {
     setSearchQuery(value);
   }, []);
@@ -1345,6 +1524,21 @@ export function CombinedModelSelector({
   const sheetHeader = useMemo<SheetHeader>(() => {
     if (view.kind === "all") {
       return { title: t("modelSelector.title") };
+    }
+    if (view.kind === "personalityGroup") {
+      return {
+        title: view.sectionLabel,
+        leading: <ThemedBoxes size={ICON_SIZE.md} uniProps={foregroundMapping} />,
+        back: { onPress: handleBackToAll },
+        search: {
+          onChange: handleSearchQueryChange,
+          resetKey: `${view.sectionKey}:${searchResetKey}`,
+          // i18n: English-only pending the agent-personalities translation pass.
+          placeholder: "Search personalities and roles",
+          autoFocus: platformIsWeb,
+          testID: "personality-search-input",
+        },
+      };
     }
     const headerActions = (
       <Pressable
@@ -1458,6 +1652,7 @@ export function CombinedModelSelector({
             onSelect={handleSelect}
             onToggleFavorite={onToggleFavorite}
             onDrillDown={handleDrillDown}
+            onDrillDownPersonalityGroup={handleDrillDownPersonalityGroup}
             onRetryProvider={onRetryProvider}
             isRetryingProvider={isRetryingProvider}
             personalities={personalities}

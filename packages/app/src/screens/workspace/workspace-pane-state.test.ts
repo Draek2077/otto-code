@@ -3,6 +3,7 @@ import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
   resolveSideFileOpenPlacement,
+  resolveWorkspaceNewChatPlacement,
 } from "@/screens/workspace/workspace-pane-state";
 import type { WorkspaceLayout } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
@@ -187,7 +188,84 @@ describe("workspace-pane-state", () => {
     ).toEqual({ kind: "focus-side-pane", paneId: "right" });
   });
 
-  it("resolves side file opens to a split when there is no right pane", () => {
+  it("reuses an existing left pane when the source is the rightmost pane", () => {
+    // The Visualizer opens as a split to the RIGHT of the chat, so its only
+    // neighbor is to the left — it must reuse that pane, not split a new one.
+    const layout: WorkspaceLayout = {
+      root: {
+        kind: "group",
+        group: {
+          id: "group-root",
+          direction: "horizontal",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              kind: "pane",
+              pane: { id: "left", tabIds: ["agent_agent-a"], focusedTabId: "agent_agent-a" },
+            },
+            {
+              kind: "pane",
+              pane: { id: "right", tabIds: ["visualizer"], focusedTabId: "visualizer" },
+            },
+          ],
+        },
+      },
+      focusedPaneId: "right",
+    };
+
+    expect(
+      resolveSideFileOpenPlacement({
+        layout,
+        sourcePaneId: "right",
+        tabs: [
+          createTab("agent_agent-a", { kind: "agent", agentId: "agent-a" }),
+          createTab("visualizer", { kind: "visualizer" }),
+        ],
+        target: { kind: "file", path: "/repo/README.md" },
+      }),
+    ).toEqual({ kind: "focus-side-pane", paneId: "left" });
+  });
+
+  it("splits a pane between the chat and the Visualizer instead of reusing it", () => {
+    // The document must never displace the Visualizer. With the Visualizer to
+    // the right of the chat, a fresh pane is split off the chat (source) — it
+    // lands between the chat and the Visualizer.
+    const layout: WorkspaceLayout = {
+      root: {
+        kind: "group",
+        group: {
+          id: "group-root",
+          direction: "horizontal",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              kind: "pane",
+              pane: { id: "left", tabIds: ["agent_agent-a"], focusedTabId: "agent_agent-a" },
+            },
+            {
+              kind: "pane",
+              pane: { id: "right", tabIds: ["visualizer"], focusedTabId: "visualizer" },
+            },
+          ],
+        },
+      },
+      focusedPaneId: "left",
+    };
+
+    expect(
+      resolveSideFileOpenPlacement({
+        layout,
+        sourcePaneId: "left",
+        tabs: [
+          createTab("agent_agent-a", { kind: "agent", agentId: "agent-a" }),
+          createTab("visualizer", { kind: "visualizer" }),
+        ],
+        target: { kind: "file", path: "/repo/README.md" },
+      }),
+    ).toEqual({ kind: "split-side-pane", paneId: "left" });
+  });
+
+  it("resolves side file opens to a split when the source pane is alone", () => {
     const layout: WorkspaceLayout = {
       root: {
         kind: "pane",
@@ -204,5 +282,107 @@ describe("workspace-pane-state", () => {
         target: { kind: "file", path: "/repo/README.md" },
       }),
     ).toEqual({ kind: "split-side-pane", paneId: "main" });
+  });
+});
+
+describe("resolveWorkspaceNewChatPlacement", () => {
+  const splitLayout: WorkspaceLayout = {
+    root: {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.5, 0.5],
+        children: [
+          {
+            kind: "pane",
+            pane: { id: "left", tabIds: ["agent_agent-a"], focusedTabId: "agent_agent-a" },
+          },
+          {
+            kind: "pane",
+            pane: { id: "right", tabIds: ["visualizer"], focusedTabId: "visualizer" },
+          },
+        ],
+      },
+    },
+    focusedPaneId: "right",
+  };
+  const splitTabs: WorkspaceTab[] = [
+    createTab("agent_agent-a", { kind: "agent", agentId: "agent-a" }),
+    createTab("visualizer", { kind: "visualizer" }),
+  ];
+
+  it("reuses the sibling pane when a new chat targets the Visualizer's pane", () => {
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout: splitLayout,
+        tabs: splitTabs,
+        requestedPaneId: "right",
+        supportsPaneSplits: true,
+      }),
+    ).toEqual({ kind: "reuse-pane", paneId: "left" });
+  });
+
+  it("reuses the sibling pane when the Visualizer's pane is focused and no pane is requested", () => {
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout: splitLayout,
+        tabs: splitTabs,
+        requestedPaneId: null,
+        supportsPaneSplits: true,
+      }),
+    ).toEqual({ kind: "reuse-pane", paneId: "left" });
+  });
+
+  it("splits a new pane to the left when the Visualizer stands alone", () => {
+    const layout: WorkspaceLayout = {
+      root: {
+        kind: "pane",
+        pane: { id: "only", tabIds: ["visualizer"], focusedTabId: "visualizer" },
+      },
+      focusedPaneId: "only",
+    };
+
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout,
+        tabs: [createTab("visualizer", { kind: "visualizer" })],
+        requestedPaneId: "only",
+        supportsPaneSplits: true,
+      }),
+    ).toEqual({ kind: "split-left", targetPaneId: "only" });
+  });
+
+  it("opens in place when the target pane has no Visualizer tab", () => {
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout: splitLayout,
+        tabs: splitTabs,
+        requestedPaneId: "left",
+        supportsPaneSplits: true,
+      }),
+    ).toEqual({ kind: "open-in-pane" });
+  });
+
+  it("opens in place when pane splits are unsupported (native/compact)", () => {
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout: splitLayout,
+        tabs: splitTabs,
+        requestedPaneId: "right",
+        supportsPaneSplits: false,
+      }),
+    ).toEqual({ kind: "open-in-pane" });
+  });
+
+  it("opens in place when there is no layout yet", () => {
+    expect(
+      resolveWorkspaceNewChatPlacement({
+        layout: null,
+        tabs: [],
+        requestedPaneId: null,
+        supportsPaneSplits: true,
+      }),
+    ).toEqual({ kind: "open-in-pane" });
   });
 });

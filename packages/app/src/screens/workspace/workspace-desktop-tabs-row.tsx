@@ -1577,6 +1577,14 @@ interface WorkspaceDesktopTabsRowProps {
   showPaneSplitActions?: boolean;
   tabOrientation: "horizontal" | "vertical";
   onToggleTabOrientation: () => void;
+  /**
+   * Reserve for the native window controls that overlap this row when it is the
+   * top strip (focus mode on desktop). Applied as content inset on the inner
+   * strip so the tab chips/tools clear the caption buttons, while the row's
+   * gutter background and bottom hairline still span the full pane width. See
+   * split-container's `windowControlsInset`.
+   */
+  windowControlsInset?: { left: number; right: number };
 }
 
 export function getFallbackTabLabel(
@@ -1799,14 +1807,19 @@ function TabChip({
     () => [styles.tabLabelSkeleton, showCloseButton && styles.tabLabelSkeletonWithCloseButton],
     [showCloseButton],
   );
+  // The selected (active + focused) tab accent-colors its label to match its
+  // accent icon. Accent is applied last so it wins even on the forced-black
+  // chat tab, where the icon is already accent-colored too.
+  const isSelectedTab = isActive && isFocused;
   const tabLabelStyle = useMemo(
     () => [
       styles.tabLabel,
       isHighlighted && styles.tabLabelActive,
       onBlack && styles.tabLabelOnBlack,
+      isSelectedTab && styles.tabLabelAccent,
       showCloseButton && styles.tabLabelWithCloseButton,
     ],
-    [isHighlighted, onBlack, showCloseButton],
+    [isHighlighted, isSelectedTab, onBlack, showCloseButton],
   );
 
   return (
@@ -1949,6 +1962,7 @@ export function WorkspaceDesktopTabsRow({
   showPaneSplitActions = true,
   tabOrientation,
   onToggleTabOrientation,
+  windowControlsInset,
 }: WorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -1972,6 +1986,21 @@ export function WorkspaceDesktopTabsRow({
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
     updateMeasuredWidth(setTabsContainerWidth, event);
   }, []);
+
+  // The window-controls reserve is applied as padding *inside* the tabsContainer
+  // (keeping its background + hairline full-width), so the measured container
+  // width now includes that reserve. Subtract it back out for the tab-layout and
+  // tools-overflow math, which reason about the usable content strip.
+  const insetLeft = windowControlsInset?.left ?? 0;
+  const insetRight = windowControlsInset?.right ?? 0;
+  const contentWidth = Math.max(0, tabsContainerWidth - insetLeft - insetRight);
+  const tabsContainerStyle = useMemo(
+    () =>
+      insetLeft === 0 && insetRight === 0
+        ? styles.tabsContainer
+        : [styles.tabsContainer, { paddingLeft: insetLeft, paddingRight: insetRight }],
+    [insetLeft, insetRight],
+  );
 
   const handleTabsActionsLayout = useCallback((event: LayoutChangeEvent) => {
     updateMeasuredWidth(setTabsActionsWidth, event);
@@ -2035,7 +2064,7 @@ export function WorkspaceDesktopTabsRow({
 
   const { layout } = useWorkspaceTabLayout({
     tabLabelLengths,
-    viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
+    viewportWidthOverride: contentWidth > 0 ? contentWidth : null,
     metrics: layoutMetrics,
   });
 
@@ -2165,7 +2194,7 @@ export function WorkspaceDesktopTabsRow({
   const row = (
     <View
       ref={rowRef}
-      style={styles.tabsContainer}
+      style={tabsContainerStyle}
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
       onPointerEnter={handleRowPointerEnter}
@@ -2211,7 +2240,7 @@ export function WorkspaceDesktopTabsRow({
         showCreateBrowserTab={showCreateBrowserTab}
         showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab}
         terminalDisabled={terminalDisabled}
-        tabsContainerWidth={tabsContainerWidth}
+        tabsContainerWidth={contentWidth}
         tabCount={tabs.length}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
@@ -2703,6 +2732,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabLabelActive: {
     color: theme.colors.foreground,
+  },
+  tabLabelAccent: {
+    color: theme.colors.accentBright,
   },
   tabLabelOnBlack: {
     color: ON_BLACK_FOREGROUND,

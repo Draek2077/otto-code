@@ -212,8 +212,15 @@ export const AGENT_DRAW = {
   shadowOffsetY: 0,
   /** Agent name label Y offset from agent radius */
   labelYOffset: 8,
-  /** Agent name label width multiplier of radius */
-  labelWidthMultiplier: 3,
+  /** Agent name label width multiplier of radius.
+      OTTO PATCH (see OTTO-PATCHES.md): 3 → 4 so agent names keep a few more
+      characters before the ellipsis (main ~14 → ~18 chars at 10px mono). */
+  labelWidthMultiplier: 4,
+  /** Sub-agent label width multiplier of radius.
+      OTTO PATCH (see OTTO-PATCHES.md): sub nodes are smaller (radius 20 vs 28),
+      so a shared multiplier leaves their labels disproportionately short. 5.6
+      lands sub labels on the same ~112px cap as main nodes (20×5.6 = 28×4). */
+  labelWidthMultiplierSub: 5.6,
   /** Scanline gradient half-height */
   scanlineHalfH: 4,
   /** Scanline width = 2 * scanlineHalfH */
@@ -282,6 +289,9 @@ export const STATS_OVERLAY = {
   borderRadius: 3,
   fontSize: 8,
   textPaddingY: 4,
+  /** OTTO PATCH: vertical clearance between the stats box and the cost pill
+   *  when both overlays are on for one node (see draw-agents drawStatsOverlay). */
+  stackGap: 3,
 } as const
 
 // ─── Tool card drawing constants ────────────────────────────────────────────

@@ -61,6 +61,18 @@ export class StructuredAgentFallbackError extends Error {
   }
 }
 
+/**
+ * True when `error` is one of the expected structured-generation failures
+ * (invalid model output after retries, or every fallback provider exhausted) —
+ * the "generation just didn't work out" cases callers degrade gracefully on,
+ * as opposed to unexpected errors they should rethrow.
+ */
+export function isStructuredGenerationFailure(error: unknown): boolean {
+  return (
+    error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
+  );
+}
+
 export interface StructuredAgentResponseOptions<T> {
   caller: AgentCaller;
   prompt: string;

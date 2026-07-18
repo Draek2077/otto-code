@@ -295,6 +295,118 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     ).toEqual(["Explore", "Explore"]);
   });
 
+  it("relabels the node and the session when the root chat title changes", async () => {
+    // Spawned with the provisional first-line title (the graph node is keyed on
+    // it), then the auto-title writer rewrites it to a terser title.
+    setAgents([makeAgent({ id: "root-1", title: "fix the visualizer title bug" })]);
+    renderAdapter();
+    await settle();
+
+    const rootSpawn = collectEvents(messages).find((e) => e.type === "agent_spawn");
+    expect(rootSpawn?.payload.name).toBe("fix the visualizer title bug");
+
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "Visualizer Title Fix",
+        lastActivityAt: new Date(BASE_TIME.getTime() + 10_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 10_000),
+      }),
+    );
+    await settle();
+
+    // The toolbar dropdown label follows via session-updated…
+    const updated = messages.find((m) => m.type === "session-updated");
+    expect(updated).toMatchObject({ sessionId: "root-1", label: "Visualizer Title Fix" });
+
+    // …and the graph node relabels in place — agent_rename keys on the STABLE
+    // spawn name, carrying the new full title as the display label.
+    const rename = collectEvents(messages).find((e) => e.type === "agent_rename");
+    expect(rename?.payload).toEqual({
+      agent: "fix the visualizer title bug",
+      label: "Visualizer Title Fix",
+    });
+
+    // Idempotent: a snapshot that doesn't move the title emits neither again.
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "Visualizer Title Fix",
+        lastActivityAt: new Date(BASE_TIME.getTime() + 20_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 20_000),
+      }),
+    );
+    await settle();
+    expect(messages.some((m) => m.type === "session-updated")).toBe(false);
+    expect(collectEvents(messages).some((e) => e.type === "agent_rename")).toBe(false);
+  });
+
+  it("removes the session (not completes it) when the visualized chat is archived", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    renderAdapter();
+    await settle();
+    expect(messages.some((m) => m.type === "session-started")).toBe(true);
+    messages.length = 0;
+
+    // Archive the visualized chat.
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        archivedAt: new Date(BASE_TIME.getTime() + 30_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    );
+    await settle();
+
+    // Removal, not completion: the page is told to drop the session (returning
+    // to "Waiting for chat activity"), and NO agent_complete fires (which would
+    // fade the node green + play the completion chord while leaving it selected).
+    const closes = messages.filter((m) => m.type === "close-session");
+    expect(closes).toHaveLength(1);
+    expect(closes[0]).toMatchObject({ type: "close-session", sessionId: "root-1" });
+    expect(collectEvents(messages).filter((e) => e.type === "agent_complete")).toEqual([]);
+    expect(messages.some((m) => m.type === "session-ended")).toBe(false);
+
+    // A further archived snapshot must not re-fire close-session or complete.
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        archivedAt: new Date(BASE_TIME.getTime() + 30_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 45_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 45_000),
+      }),
+    );
+    await settle();
+    expect(messages.filter((m) => m.type === "close-session")).toEqual([]);
+    expect(collectEvents(messages).filter((e) => e.type === "agent_complete")).toEqual([]);
+
+    // Un-archiving while attached brings the session back.
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "running",
+        archivedAt: null,
+        lastActivityAt: new Date(BASE_TIME.getTime() + 60_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 60_000),
+      }),
+    );
+    await settle();
+    expect(messages.some((m) => m.type === "session-started")).toBe(true);
+    expect(
+      collectEvents(messages).some((e) => e.type === "agent_spawn" && e.payload.name === "My chat"),
+    ).toBe(true);
+  });
+
   it("routes the observed subagent's own live timeline onto its node", async () => {
     setAgents([
       makeAgent({ id: "root-1", title: "My chat" }),
@@ -390,6 +502,98 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     expect(refreshed[1]?.payload).toMatchObject({ child: "Explore" });
   });
 
+  it("coalesces streaming message deltas into one whole-message bubble", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    renderAdapter();
+    await settle();
+
+    const emitDelta = (text: string, seq: number, messageId = "msg-1") => {
+      client.emitStream({
+        agentId: "root-1",
+        event: {
+          type: "timeline",
+          item: { type: "assistant_message", text, messageId },
+          provider: "claude",
+        },
+        timestamp: new Date(BASE_TIME.getTime() + seq * 1_000).toISOString(),
+        seq,
+        epoch: "epoch-1",
+      });
+    };
+
+    // Token-by-token deltas of ONE message must not each spawn a bubble.
+    emitDelta("Hel", 5);
+    emitDelta("lo, ", 6);
+    emitDelta("world", 7);
+    await settle();
+    // Nothing settled the message yet → no bubble emitted mid-stream.
+    expect(collectEvents(messages).filter((e) => e.type === "message")).toEqual([]);
+
+    // The turn ending settles it into exactly one whole-message event.
+    client.emitStream({
+      agentId: "root-1",
+      event: { type: "turn_completed", provider: "claude" },
+      timestamp: new Date(BASE_TIME.getTime() + 8_000).toISOString(),
+      seq: 8,
+      epoch: "epoch-1",
+    });
+    await settle();
+
+    const bubbles = collectEvents(messages).filter((e) => e.type === "message");
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]?.payload).toMatchObject({
+      agent: "My chat",
+      content: "Hello, world",
+      role: "assistant",
+    });
+  });
+
+  it("settles a streaming message when a new message or a tool call intervenes", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    renderAdapter();
+    await settle();
+
+    const emit = (item: unknown, seq: number) => {
+      client.emitStream({
+        agentId: "root-1",
+        event: { type: "timeline", item, provider: "claude" },
+        timestamp: new Date(BASE_TIME.getTime() + seq * 1_000).toISOString(),
+        seq,
+        epoch: "epoch-1",
+      });
+    };
+
+    // Reasoning deltas (no messageId) accumulate under the role key…
+    emit({ type: "reasoning", text: "Think" }, 5);
+    emit({ type: "reasoning", text: "ing…" }, 6);
+    // …a different message (assistant) flushes the held reasoning bubble…
+    emit({ type: "assistant_message", text: "Answer", messageId: "msg-a" }, 7);
+    // …and a tool call flushes the held assistant bubble before its start.
+    emit(
+      {
+        type: "tool_call",
+        callId: "call-1",
+        name: "Read",
+        status: "running",
+        detail: { type: "read", filePath: "src/index.ts" },
+      },
+      8,
+    );
+    await settle();
+
+    const events = collectEvents(messages);
+    const bubbles = events.filter((e) => e.type === "message");
+    expect(bubbles.map((e) => e.payload.content)).toEqual(["Thinking…", "Answer"]);
+    expect(bubbles.map((e) => e.payload.role)).toEqual(["thinking", "assistant"]);
+    // The assistant bubble is emitted before the tool_call_start it preceded.
+    const assistantIdx = events.findIndex(
+      (e) => e.type === "message" && e.payload.content === "Answer",
+    );
+    const toolIdx = events.findIndex((e) => e.type === "tool_call_start");
+    expect(assistantIdx).toBeGreaterThanOrEqual(0);
+    expect(toolIdx).toBeGreaterThan(assistantIdx);
+  });
+
   it("pushes context_update from the agent snapshot's lastUsage without waiting for a turn", async () => {
     setAgents([
       makeAgent({
@@ -434,6 +638,271 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     const updates = collectEvents(messages).filter((e) => e.type === "context_update");
     expect(updates).toHaveLength(2);
     expect(updates[1]?.payload).toMatchObject({ tokens: 48_000 });
+  });
+
+  it("tags the initial backfill batch hydrate, and later live batches not", async () => {
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    renderAdapter();
+    await settle();
+
+    // Every batch flushed during the one-shot backfill window carries hydrate,
+    // so the page settles the replayed history instead of animating it back in.
+    const backfillBatches = messages.filter((m) => m.type === "agent-event-batch");
+    expect(backfillBatches.length).toBeGreaterThan(0);
+    expect(backfillBatches.every((m) => m.type === "agent-event-batch" && m.hydrate === true)).toBe(
+      true,
+    );
+
+    const beforeLive = messages.length;
+    // A live stream event after the window is genuinely-watched activity.
+    client.emitStream({
+      agentId: "root-1",
+      event: {
+        type: "timeline",
+        item: {
+          type: "tool_call",
+          callId: "call-1",
+          name: "Read",
+          status: "running",
+          detail: { type: "read", filePath: "src/index.ts" },
+        },
+        provider: "claude",
+      },
+      timestamp: new Date(BASE_TIME.getTime() + 10_000).toISOString(),
+      seq: 5,
+      epoch: "epoch-1",
+    });
+    await settle();
+
+    const liveBatches = messages.slice(beforeLive).filter((m) => m.type === "agent-event-batch");
+    const liveEvents = collectEvents(messages.slice(beforeLive));
+    expect(liveEvents.some((e) => e.type === "tool_call_start")).toBe(true);
+    // Live batches must animate — never hydrate.
+    expect(liveBatches.every((m) => m.type === "agent-event-batch" && !m.hydrate)).toBe(true);
+  });
+
+  it("hydrates an agent that only appears via the directory refresh", async () => {
+    // The store holds one root at attach; the authoritative directory refresh
+    // surfaces a second. Its backfill lands AFTER the initial reconcile — the
+    // exact case that used to flip `hydrating` false too early and animate the
+    // second chat's whole history on first open. Both must stay hydrate.
+    setAgents([makeAgent({ id: "root-1", title: "First chat" })]);
+    hoisted.refreshAgentDirectory.mockImplementationOnce(async () => {
+      setAgents([
+        makeAgent({ id: "root-1", title: "First chat" }),
+        makeAgent({ id: "root-2", title: "Second chat" }),
+      ]);
+    });
+
+    renderAdapter();
+    await settle();
+
+    const batches = messages.filter((m) => m.type === "agent-event-batch");
+    const spawnNames = new Set(
+      collectEvents(messages)
+        .filter((e) => e.type === "agent_spawn")
+        .map((e) => (e.payload as { name?: string }).name),
+    );
+    // Both roots spawned — including the refresh-surfaced one.
+    expect(spawnNames.size).toBeGreaterThanOrEqual(2);
+    // Every batch flushed during hydration is tagged hydrate; nothing animates.
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches.every((m) => m.type === "agent-event-batch" && m.hydrate === true)).toBe(true);
+  });
+
+  it("re-asserts completion after backfill replays an already-finished agent's history", async () => {
+    // Refresh/reattach: the agent is already terminal when first registered,
+    // so the reconcile emits agent_complete immediately — but the backfill
+    // then appends the whole historical timeline into the same batch, AFTER
+    // that complete. The page's tool/message handlers have no completed-guard
+    // (only agent_idle/permission do), so without a trailing complete the
+    // replayed history revived the node into thinking/tool_calling forever.
+    client.fetchAgentTimeline.mockImplementation(async (agentId: string) => {
+      if (agentId !== "root-1::sub::toolu_1") {
+        return { entries: [], epoch: "epoch-1", endCursor: { seq: 0 }, window: { maxSeq: 0 } };
+      }
+      return {
+        entries: [
+          {
+            timestamp: new Date(BASE_TIME.getTime() + 6_000).toISOString(),
+            item: {
+              type: "tool_call",
+              callId: "call-1",
+              name: "Read",
+              status: "completed",
+              detail: { type: "read", filePath: "src/index.ts" },
+            },
+          },
+        ],
+        epoch: "epoch-1",
+        endCursor: { seq: 9 },
+        window: { maxSeq: 9 },
+      };
+    });
+    setAgents([
+      makeAgent({ id: "root-1", title: "My chat" }),
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "idle",
+        parentAgentId: "root-1",
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    const events = collectEvents(messages);
+    const lastToolEventIdx = events.reduce(
+      (last, e, i) =>
+        (e.type === "tool_call_start" || e.type === "tool_call_end") &&
+        e.payload.agent === "Explore"
+          ? i
+          : last,
+      -1,
+    );
+    const lastCompleteIdx = events.reduce(
+      (last, e, i) => (e.type === "agent_complete" && e.payload.name === "Explore" ? i : last),
+      -1,
+    );
+    // The replayed history is present…
+    expect(lastToolEventIdx).toBeGreaterThanOrEqual(0);
+    // …and the page's LAST word on the finished agent is its completion.
+    expect(lastCompleteIdx).toBeGreaterThan(lastToolEventIdx);
+  });
+
+  it("does not resurrect a completed node when its personality colors change", async () => {
+    // A live persona-color change re-emits the spawn (re-tint), but a node
+    // that already completed must keep its old colors: spawn of an existing
+    // name is a reactivate on the page, and the terminal branch can never
+    // re-complete it (terminalEmitted stays true) — the node would sit
+    // "alive" forever.
+    setAgents([
+      makeAgent({ id: "root-1", title: "My chat" }),
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "running",
+        parentAgentId: "root-1",
+        personalitySpinner: { glowA: "#ff0000", glowB: "#00ff00" },
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 5_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    // Sanity: a LIVE persona switch still re-emits the spawn with the new tint.
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "running",
+        parentAgentId: "root-1",
+        personalitySpinner: { glowA: "#0000ff", glowB: "#00ffff" },
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 10_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 10_000),
+      }),
+    );
+    await settle();
+    const liveRespawns = collectEvents(messages).filter(
+      (e) => e.type === "agent_spawn" && e.payload.name === "Explore",
+    );
+    expect(liveRespawns).toHaveLength(1);
+    expect(liveRespawns[0]?.payload).toMatchObject({ colorA: "#0000ff", colorB: "#00ffff" });
+
+    // The subagent finishes (idle-observed is terminal) …
+    upsertAgent(
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "idle",
+        parentAgentId: "root-1",
+        personalitySpinner: { glowA: "#0000ff", glowB: "#00ffff" },
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 20_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 20_000),
+      }),
+    );
+    await settle();
+    expect(
+      collectEvents(messages)
+        .filter((e) => e.type === "agent_complete")
+        .map((e) => e.payload.name),
+    ).toEqual(["Explore"]);
+
+    // … then its personality colors change (e.g. the personality was edited).
+    // The completed node must NOT be re-spawned/resurrected.
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "idle",
+        parentAgentId: "root-1",
+        personalitySpinner: { glowA: "#123456", glowB: "#654321" },
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    );
+    await settle();
+    expect(
+      collectEvents(messages).filter(
+        (e) => e.type === "agent_spawn" && e.payload.name === "Explore",
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not re-spawn an archived root's node when its personality colors change", async () => {
+    // Archiving removed the session (close-session); a persona-color re-spawn
+    // would target that already-closed session.
+    setAgents([
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        personalitySpinner: { glowA: "#ff0000", glowB: "#00ff00" },
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        personalitySpinner: { glowA: "#ff0000", glowB: "#00ff00" },
+        archivedAt: new Date(BASE_TIME.getTime() + 30_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    );
+    await settle();
+    expect(messages.filter((m) => m.type === "close-session")).toHaveLength(1);
+
+    messages.length = 0;
+    upsertAgent(
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        personalitySpinner: { glowA: "#123456", glowB: "#654321" },
+        archivedAt: new Date(BASE_TIME.getTime() + 30_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 40_000),
+        updatedAt: new Date(BASE_TIME.getTime() + 40_000),
+      }),
+    );
+    await settle();
+    expect(collectEvents(messages).filter((e) => e.type === "agent_spawn")).toEqual([]);
   });
 
   it("pushes a subagent's cumulativeTokens without a context reading (honest totals)", async () => {

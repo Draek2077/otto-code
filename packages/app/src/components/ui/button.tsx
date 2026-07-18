@@ -183,6 +183,7 @@ export function Button({
   variant = "secondary",
   size = "md",
   leftIcon,
+  iconSize,
   trailing,
   style,
   textStyle,
@@ -196,6 +197,8 @@ export function Button({
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
+    /** Override the icon size derived from `size` (e.g. a compact 2x bump). */
+    iconSize?: number;
     trailing?: ReactNode;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
@@ -289,7 +292,7 @@ export function Button({
       <ThemedButtonIcon
         loading={loading}
         leftIcon={leftIcon}
-        iconSize={buttonIconSize[size]}
+        iconSize={iconSize ?? buttonIconSize[size]}
         uniProps={resolveIconMapping()}
       />
       {children != null ? <Text style={resolvedTextStyle}>{children}</Text> : null}

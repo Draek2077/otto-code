@@ -685,9 +685,14 @@ function DesktopWindowControlsSync({ enabled }: { enabled: boolean }) {
   // color too early. This flag is true only once the sidebar is on screen, and
   // false everywhere else (so other pages switch to surface0 immediately).
   const explorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
-  const backgroundColor = explorerSidebarVisible
-    ? theme.colors.surfaceSidebar
-    : theme.colors.surface0;
+  // In focus mode the desktop tab row is the top strip under the window controls;
+  // its gutter is surfaceSidebar too, so the caption strip must follow it there
+  // just as it follows the explorer sidebar.
+  const focusModeTabStripVisible = usePanelStore((state) => state.focusModeTabStripVisible);
+  const backgroundColor =
+    explorerSidebarVisible || focusModeTabStripVisible
+      ? theme.colors.surfaceSidebar
+      : theme.colors.surface0;
   const foreground = theme.colors.foreground;
 
   useEffect(() => {

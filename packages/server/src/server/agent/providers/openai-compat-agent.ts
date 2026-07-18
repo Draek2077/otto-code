@@ -1268,6 +1268,8 @@ export class OpenAICompatAgentSession implements AgentSession {
     if (hasBrowser) {
       lines.push(
         "- After changing code that a running dev server renders, verify it: reload or snapshot the page, check browser_logs for errors, then share proof (a snapshot or screenshot) instead of asking the user to check manually.",
+        "- Read pages with browser_page_text (cheap reader-mode text); use browser_snapshot only when you need element refs to click or fill.",
+        "- Tabs you open stay in the background. Call browser_focus_tab when you have something worth showing the user.",
       );
     }
     return lines.join("\n");

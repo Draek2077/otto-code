@@ -16,6 +16,7 @@ import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { buildLineDiff, parseUnifiedDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
+import { getToolDisplayName } from "@/utils/tool-call-display";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
@@ -391,16 +392,10 @@ function SubAgentActionRow({ action }: { action: SubAgentActivityRow }) {
 }
 
 function formatSubAgentToolName(toolName: string): string {
-  const trimmed = toolName.trim();
-  if (!trimmed) {
-    return toolName;
-  }
-  return trimmed
-    .replace(/[._-]+/g, " ")
-    .split(" ")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
-    .join(" ");
+  // Same friendly, namespace-stripped label as the main tool-call rows, so
+  // sub-agent activity reads identically ("mcp__otto__browser_click" ->
+  // "Browser Click").
+  return getToolDisplayName(toolName);
 }
 
 function SubAgentLogText({

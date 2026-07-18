@@ -3,6 +3,7 @@ import type { AgentStreamEventPayload, SessionOutboundMessage } from "@otto-code
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/voice/audio-engine-types";
+import { formatToMimeType } from "@/voice/audio-format";
 import {
   THINKING_TONE_NATIVE_PCM_BASE64,
   THINKING_TONE_NATIVE_PCM_DURATION_MS,
@@ -273,14 +274,9 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     bytes: Uint8Array,
     format: string,
   ): { arrayBuffer(): Promise<ArrayBuffer>; size: number; type: string } {
-    let mimeType: string;
-    if (format === "pcm") mimeType = "audio/pcm;rate=24000;bits=16";
-    else if (format === "mp3") mimeType = "audio/mpeg";
-    else mimeType = `audio/${format}`;
-
     return {
       size: bytes.byteLength,
-      type: mimeType,
+      type: formatToMimeType(format),
       async arrayBuffer() {
         return Uint8Array.from(bytes).buffer;
       },

@@ -118,7 +118,6 @@ interface SplitContainerProps {
   onResizeSplit: (groupId: string, sizes: number[]) => void;
   onReorderTabsInPane: (paneId: string, tabIds: string[]) => void;
   renderPaneEmptyState?: () => ReactNode;
-  focusModeEnabled?: boolean;
 }
 
 interface WorkspaceTabDragData {
@@ -403,7 +402,6 @@ export function SplitContainer({
   onResizeSplit,
   onReorderTabsInPane,
   renderPaneEmptyState = () => null,
-  focusModeEnabled,
 }: SplitContainerProps) {
   const [activeDragTabId, setActiveDragTabId] = useState<string | null>(null);
   const [dropPreview, setDropPreview] = useState<SplitDropZoneHover | null>(null);
@@ -422,17 +420,11 @@ export function SplitContainer({
 
   const panesById = useMemo(() => collectPanesById(layout.root), [layout.root]);
 
-  const effectiveRoot = useMemo(() => {
-    if (!focusModeEnabled) {
-      return layout.root;
-    }
-    const focusedPane = layout.focusedPaneId ? panesById.get(layout.focusedPaneId) : null;
-    if (!focusedPane) {
-      return layout.root;
-    }
-    return { kind: "pane" as const, pane: focusedPane };
-  }, [focusModeEnabled, layout.root, layout.focusedPaneId, panesById]);
-  const renderRoot = useMemo(() => wrapRootPaneForStableMount(effectiveRoot), [effectiveRoot]);
+  // Focus mode maximizes the whole workspace by hiding the surrounding chrome
+  // (header + explorer sidebar, gated in workspace-screen); it deliberately keeps
+  // the full split layout so every pane and tab stays visible, rather than
+  // collapsing down to the single focused pane.
+  const renderRoot = useMemo(() => wrapRootPaneForStableMount(layout.root), [layout.root]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = asWorkspaceTabDragData(event.active.data.current);
@@ -1031,8 +1023,14 @@ function SplitPaneView({
     () => onSplitPaneEmpty({ targetPaneId: paneId, position: "bottom" }),
     [onSplitPaneEmpty, paneId],
   );
-  const paneTabsStyle = useMemo(
-    () => [styles.paneTabs, { paddingLeft: padding.left, paddingRight: padding.right }],
+  // In focus mode the tab row is the top strip beneath the native window
+  // controls. The reserve for those controls is applied *inside* the tab row (as
+  // content inset on its inner strip) rather than as padding on this wrapper, so
+  // the row's gutter background and bottom hairline still span the full pane
+  // width — edge to edge under the caption buttons — instead of stopping short of
+  // them. See WorkspaceDesktopTabsRow's `windowControlsInset`.
+  const windowControlsInset = useMemo(
+    () => ({ left: padding.left, right: padding.right }),
     [padding.left, padding.right],
   );
   const paneOuterStyle = useMemo(
@@ -1102,9 +1100,10 @@ function SplitPaneView({
             onToggleTabOrientation={handleToggleTabOrientation}
           />
         ) : (
-          <View style={paneTabsStyle}>
+          <View style={styles.paneTabs}>
             <TitlebarDragRegion />
             <WorkspaceDesktopTabsRow
+              windowControlsInset={windowControlsInset}
               paneId={pane.id}
               isFocused={isFocused}
               tabs={desktopTabRowItems}

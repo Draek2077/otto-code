@@ -57,6 +57,10 @@ const READ_ONLY_TOOLS = new Set([
   "list_pending_permissions",
   "list_artifacts",
   "inspect_artifact",
+  // Suggesting/withdrawing a background task only draws or removes a card — the
+  // work starts when the user clicks Start, which is where the real gate lives.
+  "spawn_task",
+  "dismiss_task",
 ]);
 
 const INTERACT_TOOLS = new Set([

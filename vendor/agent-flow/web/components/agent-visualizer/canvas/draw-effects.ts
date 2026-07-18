@@ -1,7 +1,8 @@
 import { COLORS } from '@/lib/colors'
 import { SPAWN_FX, COMPLETE_FX } from '@/lib/canvas-constants'
-import { drawHexagon } from './draw-misc'
+import { drawNodeShape } from './draw-misc'
 import { alphaHex } from '@/lib/utils'
+import type { NodeShape } from '@/lib/agent-types'
 
 export interface VisualEffect {
   type: 'spawn' | 'complete' | 'shatter'
@@ -13,7 +14,11 @@ export interface VisualEffect {
   particles?: Array<{ angle: number; speed: number; size: number }>
 }
 
-export function drawEffects(ctx: CanvasRenderingContext2D, effects: VisualEffect[]) {
+// OTTO PATCH (OTTO-PATCHES.md): the transient spawn/complete burst ring follows
+// the host-selected node silhouette so it matches the shape it emits from,
+// instead of always being a hexagon. `nodeShape` defaults to the historical
+// hexagon when a caller omits it.
+export function drawEffects(ctx: CanvasRenderingContext2D, effects: VisualEffect[], nodeShape: NodeShape = 'hexagon') {
   for (const fx of effects) {
     const progress = fx.age / fx.duration
     ctx.save()
@@ -33,9 +38,9 @@ export function drawEffects(ctx: CanvasRenderingContext2D, effects: VisualEffect
           ctx.fill()
         }
 
-        // Expanding hexagonal ring
+        // Expanding ring in the node's own silhouette
         ctx.globalAlpha = alpha
-        drawHexagon(ctx, fx.x, fx.y, ringRadius)
+        drawNodeShape(ctx, fx.x, fx.y, ringRadius, nodeShape)
         ctx.strokeStyle = fx.color
         ctx.lineWidth = 2 * (1 - progress)
         ctx.stroke()
@@ -69,15 +74,14 @@ export function drawEffects(ctx: CanvasRenderingContext2D, effects: VisualEffect
           ctx.fillRect(fx.x - COMPLETE_FX.flashRadius, fx.y - COMPLETE_FX.flashRadius, COMPLETE_FX.flashRadius * 2, COMPLETE_FX.flashRadius * 2)
         }
 
-        // Expanding ring
+        // Expanding ring in the node's own silhouette
         ctx.globalAlpha = alpha
-        ctx.beginPath()
-        ctx.arc(fx.x, fx.y, ringRadius, 0, Math.PI * 2)
+        drawNodeShape(ctx, fx.x, fx.y, ringRadius, nodeShape)
         ctx.strokeStyle = fx.color
         ctx.lineWidth = COMPLETE_FX.lineWidthMax * (1 - progress)
         ctx.stroke()
 
-        // Glow behind ring
+        // Glow behind ring (soft radial — stays circular regardless of shape)
         const grad = ctx.createRadialGradient(fx.x, fx.y, ringRadius - COMPLETE_FX.glowInner, fx.x, fx.y, ringRadius + COMPLETE_FX.glowOuter)
         grad.addColorStop(0, fx.color + '00')
         grad.addColorStop(0.5, fx.color + alphaHex(alpha * (100 / 255)))

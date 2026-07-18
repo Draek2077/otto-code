@@ -588,6 +588,22 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(deps)).chatTimestampDisplay).toBe("relative");
   });
 
+  it("defaults chat-bubble-gradient to on and loads a persisted off value", async () => {
+    const omitted = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(omitted)).chatBubbleGradient).toBe(true);
+
+    const disabled = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ chatBubbleGradient: false }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(disabled)).chatBubbleGradient).toBe(false);
+  });
+
   it("clamps the UI font size into range and rejects non-numeric values", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -816,6 +832,62 @@ describe("app start screen", () => {
     });
 
     expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("workspaces");
+  });
+});
+
+describe("suggested tasks enabled", () => {
+  it("defaults suggestedTasksEnabled to true on a fresh install", async () => {
+    const deps = makeDeps();
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(true);
+  });
+
+  it("loads a persisted suggestedTasksEnabled=false", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksEnabled: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(false);
+  });
+
+  it("drops a non-boolean suggestedTasksEnabled back to the true default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksEnabled: "nope" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(true);
+  });
+});
+
+describe("suggested tasks default mode", () => {
+  it("defaults suggestedTasksDefaultMode to 'new_chat' on a fresh install", async () => {
+    const deps = makeDeps();
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("new_chat");
+  });
+
+  it("loads a persisted suggested tasks default mode", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksDefaultMode: "worktree" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("worktree");
+  });
+
+  it("drops an unknown suggested tasks default mode back to 'new_chat'", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksDefaultMode: "telepathy" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("new_chat");
   });
 });
 

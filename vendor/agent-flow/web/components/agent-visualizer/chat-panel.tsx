@@ -43,7 +43,7 @@ export function AgentChatPanel({
             style={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
           />
           <span className="text-[10px] font-mono tracking-wider" style={{ color: COLORS.textPrimary }}>
-            {agentName.toUpperCase()}
+            {agentName}
           </span>
           <span className="text-[9px] font-mono capitalize" style={{ color: stateColor + '90' }}>
             {agentState}

@@ -44,6 +44,7 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import { confirmBulkReplace } from "@/components/project-search-replace-warning";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
+import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -657,7 +658,7 @@ export function ProjectSearchPane({
         </View>
 
         {showReplaceControls && replaceOpen ? (
-          <View style={styles.queryRow}>
+          <View style={styles.replaceRow}>
             <View style={styles.replaceIndent} />
             <ThemedSearchInput
               style={styles.queryInput}
@@ -990,7 +991,10 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   searchHeaderReplaceOpen: {
-    paddingBottom: theme.spacing[2] - 3.75,
+    // The replace band (styles.replaceRow) owns its own vertical rhythm — a full
+    // pane-toolbar-height row with the input centered — so the header drops its
+    // own bottom padding when open and lets the band govern the lower edge.
+    paddingBottom: 0,
   },
   queryRow: {
     flexDirection: "row",
@@ -1004,6 +1008,26 @@ const styles = StyleSheet.create((theme) => ({
     },
     paddingRight: theme.spacing[2] + 5,
     paddingTop: theme.spacing[2] - 2.75,
+  },
+  // The replace band mirrors the search row's horizontal geometry but forms its
+  // own full pane-toolbar-height row with the input vertically centered (no
+  // paddingTop, unlike queryRow). This adds a proper second band below the
+  // search row — leaving the search row untouched — so the expanded toolbar
+  // lines up with the neighboring pane's toolbar divider and the replace input
+  // sits centered in the added space.
+  replaceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingLeft: {
+      xs: theme.spacing[2] - 2,
+      md: theme.spacing[2] - 5,
+    },
+    paddingRight: theme.spacing[2] + 5,
+    // A touch taller than a bare pane-toolbar row so the expanded header's lower
+    // divider settles onto the neighboring pane's toolbar line; the input stays
+    // centered in the band (alignItems: "center").
+    height: PANE_TOOLBAR_HEIGHT + 5,
   },
   queryInput: {
     flex: 1,

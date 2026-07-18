@@ -1,4 +1,5 @@
 import {
+  collectAllPanes,
   findPaneById,
   type SplitPane,
   type WorkspaceLayout,
@@ -223,10 +224,116 @@ export function resolveSideFileOpenPlacement(input: {
     return { kind: "open-in-source" };
   }
 
-  const sidePaneId = findAdjacentPane(layout.root, sourcePaneId, "right");
+  // The Visualizer is a companion view that owns its own pane and must never be
+  // displaced by a document. Detect which panes are Visualizer panes so we can
+  // both refuse to reuse them and, when one sits immediately to the right, split
+  // a fresh pane BETWEEN the chat and the Visualizer instead.
+  const visualizerTabIds = new Set(
+    input.tabs.filter((tab) => tab.target.kind === "visualizer").map((tab) => tab.tabId),
+  );
+  const isVisualizerPane = (paneId: string | null): boolean => {
+    if (!paneId) {
+      return false;
+    }
+    const pane = findPaneById(layout.root, paneId);
+    return pane ? paneContainsVisualizer(pane, visualizerTabIds) : false;
+  };
+
+  // A document opened from chat belongs to the right of the chat. When the pane
+  // to the right is the Visualizer, split a fresh pane off the source (chat) to
+  // the right — that lands the new pane between the chat and the Visualizer,
+  // rather than hijacking the Visualizer's own pane.
+  const rightNeighbor = findAdjacentPane(layout.root, sourcePaneId, "right");
+  if (rightNeighbor && isVisualizerPane(rightNeighbor)) {
+    return { kind: "split-side-pane", paneId: sourcePaneId };
+  }
+
+  // Otherwise prefer reusing an already-on-screen pane over splitting a new one
+  // — every pane in a split layout is visible at once, so any neighbor works.
+  // Search right first (where a companion doc split usually sits), then the
+  // other directions so a source pane that is itself the rightmost one (e.g. a
+  // file opened from the Visualizer's own pane) still lands in the pane to its
+  // left. Never reuse a Visualizer pane. Only split when the source pane is
+  // truly alone (or its only neighbor is the Visualizer).
+  const reusable = (candidate: string | null): string | null =>
+    candidate && !isVisualizerPane(candidate) ? candidate : null;
+  const sidePaneId =
+    reusable(rightNeighbor) ??
+    reusable(findAdjacentPane(layout.root, sourcePaneId, "left")) ??
+    reusable(findAdjacentPane(layout.root, sourcePaneId, "down")) ??
+    reusable(findAdjacentPane(layout.root, sourcePaneId, "up"));
   if (sidePaneId) {
     return { kind: "focus-side-pane", paneId: sidePaneId };
   }
 
   return { kind: "split-side-pane", paneId: sourcePaneId };
+}
+
+/**
+ * Where a "New chat" (draft) tab should land, given the pane the action fired
+ * from. The Visualizer is a companion view that owns its own pane — a new chat
+ * must never displace it into a second tab there. When the draft would land in
+ * the Visualizer's pane, redirect it: reuse an existing sibling pane if one is
+ * already on screen (a neighbor to the left or right — where the chat usually
+ * sits), otherwise split a fresh pane to the LEFT of the Visualizer.
+ */
+export type WorkspaceNewChatPlacement =
+  | { kind: "open-in-pane" }
+  | { kind: "reuse-pane"; paneId: string }
+  | { kind: "split-left"; targetPaneId: string };
+
+function paneContainsVisualizer(pane: SplitPane, visualizerTabIds: Set<string>): boolean {
+  return pane.tabIds.some((tabId) => visualizerTabIds.has(tabId));
+}
+
+export function resolveWorkspaceNewChatPlacement(input: {
+  layout?: WorkspaceLayout | null;
+  tabs: WorkspaceTab[];
+  requestedPaneId?: string | null;
+  /** Pane splits are desktop-only; native/compact just opens in place. */
+  supportsPaneSplits: boolean;
+}): WorkspaceNewChatPlacement {
+  const layout = input.layout ?? null;
+  if (!layout || !input.supportsPaneSplits) {
+    return { kind: "open-in-pane" };
+  }
+
+  const paneId = trimNonEmpty(input.requestedPaneId) ?? layout.focusedPaneId;
+  if (!paneId) {
+    return { kind: "open-in-pane" };
+  }
+  const targetPane = findPaneById(layout.root, paneId);
+  if (!targetPane) {
+    return { kind: "open-in-pane" };
+  }
+
+  const visualizerTabIds = new Set(
+    input.tabs.filter((tab) => tab.target.kind === "visualizer").map((tab) => tab.tabId),
+  );
+  if (visualizerTabIds.size === 0 || !paneContainsVisualizer(targetPane, visualizerTabIds)) {
+    return { kind: "open-in-pane" };
+  }
+
+  // The draft would land in the Visualizer's pane. Prefer reusing an existing
+  // pane that isn't itself a Visualizer pane, scanning the on-screen neighbors
+  // first (left, then right, then vertical) before falling back to any other
+  // non-Visualizer pane in the tree.
+  const reusablePaneIds = new Set(
+    collectAllPanes(layout.root)
+      .filter((pane) => !paneContainsVisualizer(pane, visualizerTabIds))
+      .map((pane) => pane.id),
+  );
+  if (reusablePaneIds.size > 0) {
+    const preferReusable = (candidate: string | null): string | null =>
+      candidate && reusablePaneIds.has(candidate) ? candidate : null;
+    const reusePaneId =
+      preferReusable(findAdjacentPane(layout.root, paneId, "left")) ??
+      preferReusable(findAdjacentPane(layout.root, paneId, "right")) ??
+      preferReusable(findAdjacentPane(layout.root, paneId, "up")) ??
+      preferReusable(findAdjacentPane(layout.root, paneId, "down")) ??
+      [...reusablePaneIds][0];
+    return { kind: "reuse-pane", paneId: reusePaneId };
+  }
+
+  return { kind: "split-left", targetPaneId: paneId };
 }

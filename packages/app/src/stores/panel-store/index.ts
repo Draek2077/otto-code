@@ -99,6 +99,13 @@ export interface PanelState {
   // the sidebar surface exactly when the sidebar appears. Owned by the workspace
   // screen; false everywhere else.
   explorerSidebarVisible: boolean;
+  // Ephemeral (not persisted): true only while the workspace focus-mode tab strip
+  // is the top strip painted under the window controls (focus mode on a
+  // non-compact desktop layout). Like explorerSidebarVisible, the window-controls
+  // overlay follows this so the native caption strip matches the tab-row gutter
+  // (surfaceSidebar) instead of the default surface0. Owned by the workspace
+  // screen; false everywhere else.
+  focusModeTabStripVisible: boolean;
 
   // Actions
   toggleFocusMode: () => void;
@@ -132,6 +139,7 @@ export interface PanelState {
   requestFilesReveal: (path: string) => void;
   clearFilesRevealRequest: () => void;
   setExplorerSidebarVisible: (visible: boolean) => void;
+  setFocusModeTabStripVisible: (visible: boolean) => void;
 }
 
 const DEFAULT_DESKTOP_OPEN = isWeb;
@@ -171,6 +179,7 @@ export const usePanelStore = create<PanelState>()(
       projectSearchFocusToken: 0,
       filesRevealRequest: null,
       explorerSidebarVisible: false,
+      focusModeTabStripVisible: false,
 
       toggleFocusMode: () =>
         set((state) => ({
@@ -323,6 +332,12 @@ export const usePanelStore = create<PanelState>()(
       setExplorerSidebarVisible: (visible) =>
         set((state) =>
           state.explorerSidebarVisible === visible ? state : { explorerSidebarVisible: visible },
+        ),
+      setFocusModeTabStripVisible: (visible) =>
+        set((state) =>
+          state.focusModeTabStripVisible === visible
+            ? state
+            : { focusModeTabStripVisible: visible },
         ),
     }),
     {

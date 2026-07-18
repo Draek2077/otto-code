@@ -2282,6 +2282,112 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(events.some((event) => event.type === "turn_completed")).toBe(true);
   });
 
+  test("rate_limit_event maps to a deduped rate_limit_updated stream event", async () => {
+    const session = await createSessionForTest();
+
+    const warningMessage = {
+      type: "rate_limit_event",
+      rate_limit_info: {
+        status: "allowed_warning",
+        utilization: 82.4,
+        rateLimitType: "five_hour",
+        resetsAt: 1784331000,
+        isUsingOverage: false,
+      },
+      uuid: "rate-limit-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage;
+
+    const events = session.translateMessageToEvents(warningMessage);
+    expect(events).toContainEqual({
+      type: "rate_limit_updated",
+      provider: "claude",
+      info: {
+        status: "warning",
+        utilizationPercent: 82,
+        limitType: "five_hour",
+        resetsAt: new Date(1784331000 * 1000).toISOString(),
+        isUsingOverage: false,
+      },
+    });
+
+    // rate_limit_event fires per API request; an identical payload is deduped.
+    const repeat = session.translateMessageToEvents(warningMessage);
+    expect(repeat.filter((event) => event.type === "rate_limit_updated")).toEqual([]);
+
+    // A meaningful change re-emits.
+    const rejected = session.translateMessageToEvents({
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", rateLimitType: "five_hour" },
+      uuid: "rate-limit-2",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(rejected).toContainEqual({
+      type: "rate_limit_updated",
+      provider: "claude",
+      info: { status: "rejected", limitType: "five_hour" },
+    });
+  });
+
+  test("background_tasks_changed level signal settles a row whose task_notification was lost", async () => {
+    const session = await createSessionForTest();
+
+    // A workflow run announces itself; workflow rows are exempt from the
+    // turn-end sweep and normally settle only via task_notification.
+    const started = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "wf-task-1",
+      tool_use_id: "wf-tool-1",
+      task_type: "local_workflow",
+      workflow_name: "review",
+      description: "Workflow run",
+      uuid: "task-started-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "observed_subagent_updated",
+        update: expect.objectContaining({ key: "wf-tool-1", status: "running" }),
+      }),
+    );
+
+    // Level payload reports the task live.
+    const live = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [{ task_id: "wf-task-1", task_type: "local_workflow", description: "Workflow run" }],
+      uuid: "bg-changed-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(live.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
+
+    // task_notification lost; the next level payload no longer lists the task
+    // — the reconcile settles the row instead of leaving it running forever.
+    const settled = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [],
+      uuid: "bg-changed-2",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(settled).toContainEqual({
+      type: "observed_subagent_updated",
+      provider: "claude",
+      update: { key: "wf-tool-1", status: "idle" },
+    });
+
+    // Replace semantics: a repeat empty payload emits nothing new.
+    const repeat = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [],
+      uuid: "bg-changed-3",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(repeat.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
+  });
+
   test("result.result is not duplicated when assistant text already streamed with zero token usage", async () => {
     const queryFactory = createQueryFactoryForTurns([
       [

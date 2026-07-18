@@ -15,6 +15,7 @@ import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtim
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   buildAgentCompleteEvent,
+  buildAgentRenameEvent,
   buildContextUpdateEvent,
   buildModelDetectedEvent,
   buildObservedSubagentSpawnEvent,
@@ -27,6 +28,7 @@ import {
   timelineItemToSimulationEvents,
   truncateSessionLabel,
   type AgentNodeContext,
+  type PersonalityNodeColors,
 } from "@/visualizer/visualizer-event-adapter";
 import type {
   SimulationEvent,
@@ -51,9 +53,23 @@ interface TrackedNode {
   sessionId: string;
   name: string;
   isRoot: boolean;
+  /** The agent's own working directory — file paths reported by its tool calls
+   * are displayed relative to this (see `AgentNodeContext.workspaceRoot`). */
+  workspaceRoot: string;
   lastModel: string | null;
   lastTitle: string | null;
+  /** `glowA|glowB` of the personality colors last sent to the page, so a live
+   * personality switch (which updates the agent snapshot's personalitySpinner)
+   * re-emits the spawn with the new tint. Null when the agent has no bound
+   * personality. */
+  lastPersonaColorKey: string | null;
   terminalEmitted: boolean;
+  /** True once a root node's session has been removed from the page because the
+   * chat was archived. Archiving is a removal, not a completion — the session
+   * disappears (page returns to "Waiting for chat activity" / auto-selects a
+   * remaining chat) rather than lingering as a green "completed" node. Cleared
+   * if the chat is un-archived so the session can be re-added. */
+  sessionRemoved: boolean;
   /** Null while the initial backfill fetch is in flight; live envelopes are
    * buffered (not dropped) until it resolves. */
   cursor: { epoch: string; seq: number } | null;
@@ -80,6 +96,31 @@ interface TrackedNode {
    * token/cost sums — subagents have this even when they carry no context
    * usage reading). */
   lastCumulativeTokens: number | null;
+  /** In-flight streaming message accumulation. The daemon streams assistant/
+   * reasoning/user text as DELTAS (Claude's emitNewContent slices off the
+   * already-emitted length; other providers chunk similarly), keyed by a
+   * stable messageId where the provider supplies one. Emitting a `message`
+   * SimulationEvent per delta made the page draw one bubble per token-chunk —
+   * dozens of tiny boxes for a single message. We instead accumulate
+   * contiguous same-message deltas and emit ONE whole-message event when the
+   * message settles (a different message starts, a tool call / turn event
+   * intervenes, or backfill ends), mirroring the daemon's projected-timeline
+   * assistant/reasoning merge (timeline-projection.ts) but for the live path. */
+  streamingMessage: StreamingMessage | null;
+}
+
+type StreamingMessageRole = "user" | "assistant" | "thinking";
+
+interface StreamingMessage {
+  /** messageId when the provider supplies one, else the role — so contiguous
+   * deltas of one message merge, while a role/message change starts a fresh
+   * bubble. messageIds are provider-unique (UUID-ish), so they never collide
+   * with the role-fallback strings. */
+  key: string;
+  role: StreamingMessageRole;
+  text: string;
+  /** Sim-time of the latest delta; stamps the emitted whole-message event. */
+  time: number;
 }
 
 interface AdapterState {
@@ -90,6 +131,13 @@ interface AdapterState {
   pendingSessionMessages: VisualizerHostToPageMessage[];
   /** Agent ids that just got a node and still need their timeline fetched. */
   pendingBackfill: string[];
+  /** The in-flight `runBackfillQueue` drain, or null when idle. A single-flight
+   * handle: the initial hydration sequence and the store-subscribe reconcile
+   * both drive backfill, and letting them drain the shared `pendingBackfill`
+   * queue concurrently is what let `hydrating` flip false mid-backfill. A
+   * second caller awaits THIS promise instead of starting a rival loop (see
+   * `hydrating` below). */
+  backfillDrain: Promise<void> | null;
   /** Wall-clock anchor for event times. The page's simulation clock runs in
    * SECONDS from ~0 (rAF dt accumulation); every constant it ages against
    * (TOOL_MAX_RUNNING_S etc.) and its m:ss time readout assume that scale.
@@ -101,6 +149,17 @@ interface AdapterState {
    * anyway). Session-message fields (startTime/lastActivityTime) stay
    * epoch-ms — the page mixes those with its own Date.now(). */
   epochMs: number;
+  /** True until the initial hydration is genuinely quiescent: every batch
+   * flushed in this window is marked `hydrate` so the page settles it to its
+   * end state instead of animating the whole history back in (spawn/tool
+   * bursts, sound). It stays true until the directory refresh has resolved AND
+   * the backfill queue has drained with nothing in flight — NOT merely until
+   * the first `flushAfterBackfill` resolves. That earlier one-shot flip raced
+   * the `refreshAgentDirectory` store update: agents that first appeared via
+   * the refresh backfilled AFTER the flip and streamed out un-hydrated, so the
+   * page animated the whole run back in on first open. See
+   * visualizer-view-types.ts and docs/visualizer.md "Hydrate on attach". */
+  hydrating: boolean;
 }
 
 function createAdapterState(): AdapterState {
@@ -110,7 +169,9 @@ function createAdapterState(): AdapterState {
     pending: [],
     pendingSessionMessages: [],
     pendingBackfill: [],
+    backfillDrain: null,
     epochMs: Date.now(),
+    hydrating: true,
   };
 }
 
@@ -123,7 +184,7 @@ function toSimTime(state: AdapterState, epochMs: number): number {
 }
 
 function nodeCtx(node: TrackedNode): AgentNodeContext {
-  return { name: node.name, sessionId: node.sessionId };
+  return { name: node.name, sessionId: node.sessionId, workspaceRoot: node.workspaceRoot };
 }
 
 /** Walks up `parentAgentId` (observed AND attended children — the visualizer
@@ -143,9 +204,65 @@ function resolveRootAgentId(agentId: string, agentsById: ReadonlyMap<string, Age
   return currentId;
 }
 
+/** THE keying contract between the adapter and its hosts: a visualizer page
+ * session is keyed on its ROOT agent's id verbatim (see `ensureNode`, which
+ * sets `sessionId: rootId`). Host code that treats a root chat's agent id as a
+ * page session id (e.g. the panel's follow-the-active-chat logic matching the
+ * workspace's focusedAgentId against `session-state` ids) must go through this
+ * helper, so a future keying change has one named seam instead of a comment. */
+export function sessionIdForRootAgent(agentId: string): string {
+  return agentId;
+}
+
 /** Ensures a tracked node exists for `agentId`, recursively registering any
  * observed-subagent ancestor first so `parent`/`sessionId` resolve correctly.
  * Returns undefined only if `agentId` isn't in `agentsById` at all. */
+/** The personality's identity colors for this agent, when it was spawned from
+ * an Agent Personality (both glow colors present). Feeds the spawn payload so
+ * the page can tint the node's idle/thinking states in the personality. */
+function personaColorsOf(agent: Agent): PersonalityNodeColors | null {
+  const spinner = agent.personalitySpinner;
+  if (spinner?.glowA && spinner.glowB) {
+    return { glowA: spinner.glowA, glowB: spinner.glowB };
+  }
+  return null;
+}
+
+/** Stable key for change detection across snapshots. */
+function personaColorKey(colors: PersonalityNodeColors | null): string | null {
+  return colors ? `${colors.glowA}|${colors.glowB}` : null;
+}
+
+/** The spawn event (root or observed-subagent shape) for an already-tracked
+ * node — used both to re-color on a live personality switch and to resurrect a
+ * settled node that revived. Spawn of an existing name is a reactivate on the
+ * page, so it preserves accumulated stats while applying the new payload. */
+function buildReSpawnEvent(
+  state: AdapterState,
+  node: TrackedNode,
+  agent: Agent,
+  personaColors: PersonalityNodeColors | null,
+  time: number,
+): SimulationEvent {
+  if (node.isRoot) {
+    return buildRootAgentSpawnEvent({
+      ctx: nodeCtx(node),
+      model: agent.model,
+      provider: agent.provider,
+      personalityColors: personaColors,
+      time,
+    });
+  }
+  const parentNode = agent.parentAgentId ? state.nodes.get(agent.parentAgentId) : undefined;
+  return buildObservedSubagentSpawnEvent({
+    ctx: nodeCtx(node),
+    parentName: parentNode?.name ?? agent.parentAgentId ?? node.sessionId,
+    task: agent.title,
+    personalityColors: personaColors,
+    time,
+  });
+}
+
 function ensureNode(
   state: AdapterState,
   agentId: string,
@@ -179,19 +296,24 @@ function ensureNode(
   const name = resolveAgentNodeName({ agentId, title: agent.title, usedNames });
   usedNames.add(name);
 
+  const personaColors = personaColorsOf(agent);
   const node: TrackedNode = {
     sessionId: rootId,
     name,
     isRoot,
+    workspaceRoot: agent.cwd,
     lastModel: agent.model,
     lastTitle: agent.title,
+    lastPersonaColorKey: personaColorKey(personaColors),
     terminalEmitted: false,
+    sessionRemoved: false,
     cursor: null,
     bufferedLive: [],
     startedToolCallIds: new Set(),
     subAgentDispatchLabels: new Map(),
     lastContextTokens: null,
     lastCumulativeTokens: null,
+    streamingMessage: null,
   };
   state.nodes.set(agentId, node);
   state.pendingBackfill.push(agentId);
@@ -212,6 +334,7 @@ function ensureNode(
         ctx: nodeCtx(node),
         model: agent.model,
         provider: agent.provider,
+        personalityColors: personaColors,
         time: toSimTime(state, time),
       }),
     );
@@ -223,6 +346,7 @@ function ensureNode(
         ctx: nodeCtx(node),
         parentName: parentNode?.name ?? parentId,
         task: agent.title,
+        personalityColors: personaColors,
         time: toSimTime(state, time),
       }),
     );
@@ -259,11 +383,34 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
       }
       if (node.isRoot && agent.title && agent.title !== node.lastTitle) {
         node.lastTitle = agent.title;
+        // The toolbar dropdown (session label, truncated) AND the graph node
+        // (display name, full title) both track the chat title — the node is
+        // keyed on its frozen spawn name, so agent_rename relabels it in place.
         state.pendingSessionMessages.push({
           type: "session-updated",
           sessionId: node.sessionId,
           label: truncateSessionLabel(agent.title),
         });
+        state.pending.push(
+          buildAgentRenameEvent({ ctx: nodeCtx(node), label: agent.title.trim(), time }),
+        );
+      }
+      // Live personality switch: the running agent's identity colors changed,
+      // so re-emit the spawn (a reactivate for an existing name) carrying the
+      // new tint. Skipped when unchanged so a normal snapshot push is inert.
+      // Also skipped for a node that already completed or whose session was
+      // removed: a spawn would resurrect a faded node that the terminal branch
+      // can never re-complete (terminalEmitted stays true), and for an
+      // archived root it would target an already-closed session. A completed
+      // node keeping its old colors is correct; if the row genuinely revives,
+      // the resurrection path below re-spawns it with the current colors.
+      const personaColors = personaColorsOf(agent);
+      const personaKey = personaColorKey(personaColors);
+      if (personaKey !== node.lastPersonaColorKey) {
+        node.lastPersonaColorKey = personaKey;
+        if (!node.terminalEmitted && !node.sessionRemoved) {
+          state.pending.push(buildReSpawnEvent(state, node, agent, personaColors, time));
+        }
       }
     }
 
@@ -307,6 +454,53 @@ function reconcileNodeTokens(state: AdapterState, node: TrackedNode, agent: Agen
  * -finished (idle) observed subagent still completes it instead of leaving
  * the node stuck active forever. */
 function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: Agent): void {
+  // Archiving a root chat is a REMOVAL, not a completion. The user threw the
+  // chat away — its session should disappear from the visualizer (the page
+  // returns to "Waiting for chat activity" or auto-selects a remaining chat),
+  // not fade to a green "completed" node that stays selected and plays the
+  // completion chord. So drive the page's close-session/removeSession path
+  // instead of the agent_complete + session-ended a natural terminal takes.
+  // (Non-root nodes have no session of their own; they keep fading via the
+  // terminal path below when the whole chat isn't archived out from under
+  // them.)
+  const archived = Boolean(agent.archivedAt);
+  if (node.isRoot) {
+    if (archived && !node.sessionRemoved) {
+      node.sessionRemoved = true;
+      // Suppress the terminal branch below (archived is terminal) so no
+      // agent_complete fires for the now-removed session.
+      node.terminalEmitted = true;
+      state.pendingSessionMessages.push({ type: "close-session", sessionId: node.sessionId });
+      return;
+    }
+    if (!archived && node.sessionRemoved) {
+      // Un-archived while attached: bring the session (and its node) back.
+      node.sessionRemoved = false;
+      node.terminalEmitted = false;
+      state.pendingSessionMessages.push({
+        type: "session-started",
+        session: {
+          id: node.sessionId,
+          label: truncateSessionLabel(agent.title ?? node.name),
+          status: "active",
+          startTime: agent.createdAt.getTime(),
+          lastActivityTime: agent.lastActivityAt.getTime(),
+        },
+      });
+      state.pending.push(
+        buildReSpawnEvent(
+          state,
+          node,
+          agent,
+          personaColorsOf(agent),
+          toSimTime(state, agent.lastActivityAt.getTime()),
+        ),
+      );
+      // Fall through to normal lifecycle so a chat un-archived straight into a
+      // terminal status still settles correctly.
+    }
+  }
+
   const isTerminal = isVisualizerAgentTerminal({
     status: agent.status,
     attend: agent.attend,
@@ -329,32 +523,94 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
     // and deleted the node; a fresh agent_spawn recreates it (or reactivates
     // it mid-fade — spawn of an existing name is a reactivate).
     node.terminalEmitted = false;
-    if (node.isRoot) {
-      state.pending.push(
-        buildRootAgentSpawnEvent({
-          ctx: nodeCtx(node),
-          model: agent.model,
-          provider: agent.provider,
-          time,
-        }),
-      );
-      return;
-    }
-    const parentNode = agent.parentAgentId ? state.nodes.get(agent.parentAgentId) : undefined;
-    state.pending.push(
-      buildObservedSubagentSpawnEvent({
-        ctx: nodeCtx(node),
-        parentName: parentNode?.name ?? agent.parentAgentId ?? node.sessionId,
-        task: agent.title,
-        time,
-      }),
-    );
+    state.pending.push(buildReSpawnEvent(state, node, agent, personaColorsOf(agent), time));
   }
 }
 
+type MessageTimelineItem = Extract<
+  AgentTimelineItem,
+  { type: "user_message" | "assistant_message" | "reasoning" }
+>;
+
+function isMessageTimelineItem(item: AgentTimelineItem): item is MessageTimelineItem {
+  return (
+    item.type === "user_message" || item.type === "assistant_message" || item.type === "reasoning"
+  );
+}
+
+function messageItemRole(item: MessageTimelineItem): StreamingMessageRole {
+  if (item.type === "user_message") {
+    return "user";
+  }
+  if (item.type === "assistant_message") {
+    return "assistant";
+  }
+  return "thinking";
+}
+
+function messageBubbleKey(item: MessageTimelineItem, role: StreamingMessageRole): string {
+  return "messageId" in item && item.messageId ? item.messageId : role;
+}
+
+/** Emits the held streaming message as one whole-message event (or nothing if
+ * none is held / it accumulated no text) and clears the hold. */
+function flushStreamingMessage(node: TrackedNode): SimulationEvent[] {
+  const held = node.streamingMessage;
+  if (!held) {
+    return [];
+  }
+  node.streamingMessage = null;
+  if (held.text.length === 0) {
+    return [];
+  }
+  return [
+    {
+      time: held.time,
+      sessionId: node.sessionId,
+      type: "message",
+      payload: { agent: node.name, content: held.text, role: held.role },
+    },
+  ];
+}
+
+/** Accumulates one message delta into the node's in-flight bubble instead of
+ * emitting it immediately (see {@link TrackedNode.streamingMessage}). A delta
+ * for a different message than the one held first flushes the held one; the
+ * delta itself emits nothing — the whole message is emitted on settle. */
+function accumulateStreamingMessage(
+  node: TrackedNode,
+  item: MessageTimelineItem,
+  time: number,
+): SimulationEvent[] {
+  const role = messageItemRole(item);
+  const key = messageBubbleKey(item, role);
+  const events: SimulationEvent[] = [];
+  const held = node.streamingMessage;
+  if (held && held.key !== key) {
+    events.push(...flushStreamingMessage(node));
+  }
+  const current = node.streamingMessage;
+  if (current && current.key === key) {
+    current.text += item.text;
+    current.time = time;
+  } else {
+    node.streamingMessage = { key, role, text: item.text, time };
+  }
+  return events;
+}
+
 /** Maps a timeline item through the pure adapter while maintaining the
- * node's sent-start callId bookkeeping (see `startedToolCallIds`). */
+ * node's sent-start callId bookkeeping (see `startedToolCallIds`) and
+ * streaming-message accumulation (see `streamingMessage`). */
 function trackedTimelineItemEvents(node: TrackedNode, item: AgentTimelineItem, time: number) {
+  if (isMessageTimelineItem(item)) {
+    return accumulateStreamingMessage(node, item, time);
+  }
+  // Any non-message item settles a held streaming message before its own
+  // events, so the whole-message bubble lands in timeline order (e.g. the
+  // assistant text that preceded a tool call is emitted just before the
+  // tool_call_start).
+  const settled = flushStreamingMessage(node);
   let synthesizeToolCallStart = false;
   if (item.type === "tool_call") {
     const alreadyStarted = node.startedToolCallIds.has(item.callId);
@@ -371,10 +627,13 @@ function trackedTimelineItemEvents(node: TrackedNode, item: AgentTimelineItem, t
         const label = resolveSubAgentChildLabel(item.detail);
         if (node.subAgentDispatchLabels.get(item.callId) !== label) {
           node.subAgentDispatchLabels.set(item.callId, label);
-          return [buildSubagentDispatchEvent({ ctx: nodeCtx(node), detail: item.detail, time })];
+          return [
+            ...settled,
+            buildSubagentDispatchEvent({ ctx: nodeCtx(node), detail: item.detail, time }),
+          ];
         }
       }
-      return [];
+      return settled;
     }
     synthesizeToolCallStart = item.status !== "running" && !alreadyStarted;
     node.startedToolCallIds.add(item.callId);
@@ -388,12 +647,15 @@ function trackedTimelineItemEvents(node: TrackedNode, item: AgentTimelineItem, t
       node.subAgentDispatchLabels.set(item.callId, resolveSubAgentChildLabel(item.detail));
     }
   }
-  return timelineItemToSimulationEvents({
-    ctx: nodeCtx(node),
-    item,
-    time,
-    synthesizeToolCallStart,
-  });
+  return [
+    ...settled,
+    ...timelineItemToSimulationEvents({
+      ctx: nodeCtx(node),
+      item,
+      time,
+      synthesizeToolCallStart,
+    }),
+  ];
 }
 
 function applyLiveEnvelope(state: AdapterState, node: TrackedNode, envelope: LiveEnvelope): void {
@@ -408,6 +670,10 @@ function applyLiveEnvelope(state: AdapterState, node: TrackedNode, envelope: Liv
     state.pending.push(...trackedTimelineItemEvents(node, envelope.event.item, envelope.time));
     return;
   }
+  // A non-timeline stream event (turn_completed/turn_failed/permission…) marks
+  // the end of the turn's streaming — settle any in-flight message before the
+  // event's own effects (idle/context) so the whole-message bubble lands first.
+  state.pending.push(...flushStreamingMessage(node));
   state.pending.push(
     ...streamEventToSimulationEvents({
       ctx: nodeCtx(node),
@@ -427,6 +693,7 @@ async function backfillAgentTimeline(input: {
   if (!node) {
     return;
   }
+  let lastReplayTime = 0;
   try {
     // limit: 0 = "all matching rows" (see FetchAgentTimelineRequestMessageSchema) —
     // a one-shot full replay, matching "replay the agent's existing timeline
@@ -439,6 +706,7 @@ async function backfillAgentTimeline(input: {
     });
     for (const entry of response.entries) {
       const time = toSimTime(state, Date.parse(entry.timestamp));
+      lastReplayTime = Math.max(lastReplayTime, time);
       state.pending.push(...trackedTimelineItemEvents(node, entry.item, time));
     }
     node.cursor = { epoch: response.epoch, seq: response.endCursor?.seq ?? response.window.maxSeq };
@@ -451,7 +719,26 @@ async function backfillAgentTimeline(input: {
   const buffered = node.bufferedLive;
   node.bufferedLive = [];
   for (const envelope of buffered) {
+    lastReplayTime = Math.max(lastReplayTime, envelope.time);
     applyLiveEnvelope(state, node, envelope);
+  }
+  // Backfill entries are already-merged whole messages (projection:"projected")
+  // and any buffered live deltas have continued the trailing one — nothing
+  // follows the last message to settle it, so flush it now. (A message still
+  // streaming live at attach may then split across this boundary: the settled
+  // portion shows as one bubble and later live deltas start another — a rare
+  // cosmetic case, far better than the pre-fix bubble-per-delta.)
+  state.pending.push(...flushStreamingMessage(node));
+  // An agent that was already terminal at attach had its agent_complete
+  // emitted by the registering reconcile — BEFORE this replay appended the
+  // historical timeline into the same batch. The page's tool/message handlers
+  // carry no completed-guard, so the replayed history revives the node into
+  // thinking/tool_calling and nothing ever completes it again
+  // (terminalEmitted is already true). Re-assert the terminal transition at
+  // the tail so the page's last word on a finished agent is its completion.
+  // Archived roots were REMOVED (close-session), not completed — skip those.
+  if (node.terminalEmitted && !node.sessionRemoved) {
+    state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time: lastReplayTime }));
   }
 }
 
@@ -480,7 +767,11 @@ function orderSessionMessagesForSelection(
     let key = "";
     if (message.type === "session-started") {
       key = message.session.id;
-    } else if (message.type === "session-updated" || message.type === "session-ended") {
+    } else if (
+      message.type === "session-updated" ||
+      message.type === "session-ended" ||
+      message.type === "close-session"
+    ) {
       key = message.sessionId;
     }
     let group = groups.get(key);
@@ -512,7 +803,15 @@ function flush(
   if (state.pending.length > 0) {
     const events = state.pending;
     state.pending = [];
-    postMessage({ type: "agent-event-batch", events });
+    // While `hydrating` (the one-shot backfill window), tag the batch so the
+    // page settles it to the end state instead of replaying the whole history
+    // animation — the user is bringing an existing chat into view, not
+    // watching it happen. Live batches after the window animate normally.
+    postMessage({
+      type: "agent-event-batch",
+      events,
+      ...(state.hydrating ? { hydrate: true } : {}),
+    });
   }
 }
 
@@ -578,11 +877,8 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
     const lifecycle = { disposed: false };
 
     postMessageRef.current({ type: "reset" });
-    void getHostRuntimeStore()
-      .refreshAgentDirectory({ serverId })
-      .catch(() => undefined);
 
-    const runBackfillQueue = async () => {
+    const drainBackfillQueue = async (): Promise<void> => {
       // Sequential on purpose — a busy workspace shouldn't burst a pile of
       // full-history fetches at the daemon all at once.
       while (state.pendingBackfill.length > 0 && !lifecycle.disposed) {
@@ -591,6 +887,29 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
           await backfillAgentTimeline({ state, client, agentId });
         }
       }
+    };
+    const runBackfillQueue = (): Promise<void> => {
+      // Single-flight: the initial hydration sequence and the store
+      // subscription both call this, and two loops shifting the same queue
+      // concurrently is what let `hydrating` flip false while a backfill was
+      // still in flight. A second caller awaits the in-flight drain rather
+      // than starting a rival loop (or busy-spinning on a boolean guard).
+      if (state.backfillDrain) {
+        return state.backfillDrain;
+      }
+      const drain = drainBackfillQueue();
+      state.backfillDrain = drain;
+      // Clear via .finally (a microtask) so the assignment above lands first —
+      // an empty queue makes `drain` settle synchronously, and a `finally {}`
+      // INSIDE the async body would run before this assignment and strand
+      // `backfillDrain` non-null forever (spinning the hydration while-loop).
+      // The identity guard keeps a superseding drain from being cleared.
+      void drain.finally(() => {
+        if (state.backfillDrain === drain) {
+          state.backfillDrain = null;
+        }
+      });
+      return drain;
     };
 
     const flushAfterBackfill = async () => {
@@ -601,8 +920,41 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
     };
 
     void (async () => {
+      // The authoritative directory refresh (observed subagents, agents that
+      // hadn't synced into the store yet) is a network RPC with no dependency
+      // on the first drain, so START it now and only await it below —
+      // overlapping it with the first backfill drain instead of serializing
+      // drain → refresh → drain. Its store update fires the subscription below
+      // (registering + queuing those agents); mid-drain reconciles are safe
+      // because the backfill queue is single-flight (runBackfillQueue) and the
+      // quiescence loop re-drains anything they enqueue.
+      const refreshDirectory = getHostRuntimeStore()
+        .refreshAgentDirectory({ serverId })
+        .catch(() => undefined);
+      // Fast first paint from whatever the store already holds — reconcile and
+      // hydrate it immediately so the graph appears settled without waiting on
+      // the network.
       reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
       await flushAfterBackfill();
+      // The refresh MUST complete before we leave the hydrate window: an agent
+      // that first appears via it would otherwise backfill after `hydrating`
+      // flipped false and animate its whole history — the "replay on first
+      // open" bug.
+      await refreshDirectory;
+      if (lifecycle.disposed) {
+        return;
+      }
+      reconcileAgents(state, selectWorkspaceAgents(serverId, workspaceId, agentIdFilter));
+      await flushAfterBackfill();
+      // Keep hydrating until the queue is genuinely quiescent — a reconcile
+      // triggered during the flush above (or a still-running subscribe drain)
+      // can enqueue more history that must also settle, not animate.
+      while (!lifecycle.disposed && (state.pendingBackfill.length > 0 || state.backfillDrain)) {
+        await flushAfterBackfill();
+      }
+      // Everything from here is genuinely-live activity the user is watching —
+      // animate it.
+      state.hydrating = false;
     })();
 
     const unsubscribeStore = useSessionStore.subscribe((current, previous) => {

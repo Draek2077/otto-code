@@ -195,6 +195,7 @@ import {
 } from "./auth.js";
 import { createWebUiMiddleware } from "./web-ui.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
 import { resolveFirstAgentPromptTitle } from "./agent/create-agent-title.js";
@@ -1192,6 +1193,18 @@ export async function createOttoDaemon(
     },
     logger,
   });
+  const agentAutoTitle = new AgentAutoTitle({
+    agentManager,
+    agentStorage,
+    providerSnapshotManager,
+    readDaemonConfig: () => ({
+      metadataGeneration: daemonConfigStore.get().metadataGeneration,
+      agentPersonalities: daemonConfigStore.get().agentPersonalities,
+      agentTeams: daemonConfigStore.get().agentTeams,
+    }),
+    workspaceGitService,
+    logger,
+  });
 
   setupAutoArchiveOnMerge({
     ottoHome: config.ottoHome,
@@ -1271,6 +1284,7 @@ export async function createOttoDaemon(
     providerSnapshotManager,
     createOttoWorktree: createOttoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
+    scheduleAutoTitle: (request) => agentAutoTitle.schedule(request),
   };
   const createAgent = (input: Parameters<typeof createAgentCommand>[1]) =>
     createAgentCommand(createAgentCommandDependencies, input);
@@ -1469,6 +1483,7 @@ export async function createOttoDaemon(
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: createAgentCommandDependencies.ensureWorkspaceForCreate,
     createOttoWorktree: createAgentCommandDependencies.createOttoWorktree,
+    scheduleAutoTitle: createAgentCommandDependencies.scheduleAutoTitle,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
     browserToolsBroker,
     previewDevServers,
@@ -1792,6 +1807,7 @@ export async function createOttoDaemon(
               recordActivity,
               () => activityStatsStore.getRollups(),
               projectLinkStore,
+              agentAutoTitle,
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());

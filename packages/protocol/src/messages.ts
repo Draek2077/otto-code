@@ -307,6 +307,28 @@ const AgentPersonalityVoiceSchema = z
   })
   .passthrough();
 
+// The three Visualizer lifecycle moments a personality voice-cue line can
+// belong to. Protocol owns this vocabulary — the daemon's cue generator, the
+// personality editor, and the Visualizer playback hook all import it from here.
+export const CUE_MOMENTS = ["join", "thinking", "done"] as const;
+export type CueMoment = (typeof CUE_MOMENTS)[number];
+
+// Pre-generated (and user-editable) spoken "voice cue" lines for the personality
+// — a few short variations for each of three Visualizer moments (its node joins
+// the graph, first starts thinking, completes). Stored on the personality so
+// they're deterministic and hand-tunable in the editor; the Visualizer reads
+// them directly (no runtime generation). All groups optional/loose — a
+// personality may have none, or only some. See docs/visualizer.md "Voice cues".
+const AgentPersonalityVoiceCuesSchema = z
+  .object({
+    join: z.array(z.string()).optional(),
+    thinking: z.array(z.string()).optional(),
+    done: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export type AgentPersonalityVoiceCues = z.infer<typeof AgentPersonalityVoiceCuesSchema>;
+
 // A named, reusable agent template stored per-host. `id` is the stable identity
 // everything binds to; `name` is a freely-renamable label. Effort and roles are
 // plain strings on the wire (like speech engine/model ids) so the daemon can
@@ -329,6 +351,7 @@ export const AgentPersonalitySchema = z
     roles: z.array(z.string().min(1)).optional(),
     spinner: AgentPersonalitySpinnerSchema.optional(),
     voice: AgentPersonalityVoiceSchema.optional(),
+    voiceCues: AgentPersonalityVoiceCuesSchema.optional(),
   })
   .passthrough();
 
@@ -507,6 +530,7 @@ import type {
   ToolCallDetail,
   ToolCallTimelineItem,
   AgentUsage,
+  ContextComposition,
 } from "./agent-types.js";
 
 export const AgentStatusSchema = z.enum(AGENT_LIFECYCLE_STATUSES);
@@ -539,6 +563,23 @@ const AgentProviderNoticeSchema: z.ZodType<AgentProviderNotice> = z.discriminate
   z.object({ type: z.literal("warning"), message: z.string() }),
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
+
+// Provider-reported plan rate-limit status (e.g. Claude claude.ai plan
+// windows), pushed on the agent stream when it changes. Presentation-only:
+// the app decides whether to show it (rateLimitWarningsEnabled setting).
+export const AgentRateLimitInfoSchema = z.object({
+  status: z.enum(["allowed", "warning", "rejected"]),
+  // Percentage of the limit window used, 0-100. Absent when the provider
+  // does not report it (Claude only includes it near the limit).
+  utilizationPercent: z.number().optional(),
+  // Provider-reported window identifier, e.g. "five_hour" | "seven_day".
+  // Open set — display code falls back to a generic label for unknown values.
+  limitType: z.string().optional(),
+  // ISO 8601 timestamp when the window resets.
+  resetsAt: z.string().optional(),
+  // True when usage is currently drawing from overage/extra usage credits.
+  isUsingOverage: z.boolean().optional(),
+});
 
 export const AgentFeatureToggleSchema = z.object({
   type: z.literal("toggle"),
@@ -615,6 +656,14 @@ const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z
   })
   .catchall(z.boolean());
 
+const ContextCompositionSchema: z.ZodType<ContextComposition> = z.object({
+  systemPrompt: z.number().optional(),
+  userMessages: z.number().optional(),
+  toolResults: z.number().optional(),
+  reasoning: z.number().optional(),
+  subagentResults: z.number().optional(),
+});
+
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   inputTokens: z.number().optional(),
   cachedInputTokens: z.number().optional(),
@@ -622,6 +671,9 @@ const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   totalCostUsd: z.number().optional(),
   contextWindowMaxTokens: z.number().optional(),
   contextWindowUsedTokens: z.number().optional(),
+  // Provider-graded context breakdown for the visualizer ring/bar; absent ⇒
+  // occupancy only (pre-composition behavior). See ContextComposition.
+  contextComposition: ContextCompositionSchema.optional(),
 });
 
 const AgentSessionConfigSchema = z.object({
@@ -961,6 +1013,22 @@ export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
         }),
       })
       .optional(),
+  }),
+  // Predicted next-user-prompt suggestion emitted after a turn. Transient: the
+  // app shows the latest as composer ghost text (Tab to accept) and clears it on
+  // the next turn_started. COMPAT(promptSuggestions): added in v0.6.3.
+  z.object({
+    type: z.literal("prompt_suggestion"),
+    provider: AgentProviderSchema,
+    suggestion: z.string(),
+  }),
+  // Provider-reported plan rate-limit status (Claude claude.ai plan windows).
+  // Transient: the app shows a suppressible warning strip near the composer.
+  // Deduped provider-side. COMPAT(rateLimitEvents): added in v0.6.3.
+  z.object({
+    type: z.literal("rate_limit_updated"),
+    provider: AgentProviderSchema,
+    info: AgentRateLimitInfoSchema,
   }),
 ]);
 
@@ -1506,6 +1574,33 @@ export const SpeechTtsPreviewRequestSchema = z.object({
     .optional(),
 });
 
+// COMPAT(visualizerVoiceCues): added in v0.6.3; gate lives in
+// features.visualizerVoiceCues. Author short spoken "cue" lines for a
+// personality — a handful of variations each for three Visualizer moments
+// (join / thinking / done) — via the Writer mini-task chain, flavored by the
+// persona's `name` + `prompt`. The persona is passed inline (not a stored id)
+// so the personality editor can generate for an unsaved draft too; the result
+// is stored on the personality (`voiceCues`) and edited there, so this is an
+// editor-time action, not a runtime one. `cwd` scopes provider resolution to a
+// workspace; omitted falls back to any resolvable one.
+export const VisualizerVoiceCuesGenerateRequestSchema = z.object({
+  type: z.literal("visualizer.voiceCues.generate.request"),
+  requestId: z.string(),
+  name: z.string(),
+  prompt: z.string().optional(),
+  cwd: z.string().optional(),
+  // The persona's roles (e.g. "researcher", "coder") so the writer can flavor
+  // the lines to what the agent does. Permissive strings to match the stored
+  // personality shape (forward-compatible with roles this daemon predates).
+  roles: z.array(z.string().min(1)).optional(),
+  // When present, author only this one moment's lines (a focused single-moment
+  // prompt) and return only that group. The editor issues one request per
+  // moment so it can show generation progress and keep the moments distinct.
+  // Omitted → author all three at once (the original all-in-one path, still
+  // used by older clients).
+  moment: z.enum(CUE_MOMENTS).optional(),
+});
+
 export const AgentPersonalitiesGetStatsRequestSchema = z.object({
   type: z.literal("agentPersonalities.get_stats.request"),
   requestId: z.string(),
@@ -1957,11 +2052,22 @@ const SuggestedTaskActionResponsePayloadSchema = z.object({
 });
 
 // Start one or more suggested tasks, applying the SAME mode to each — no
-// combining. `worktree` spins a new worktree-backed workspace per task, `local`
-// a new session in the same repo/cwd per task, `in_session` steers the parent
-// agent with the task prompt. The daemon resolves the parent agent's brain
-// (provider/model/personality) so a started task continues the suggesting agent.
-export const TasksSuggestedStartModeSchema = z.enum(["worktree", "local", "in_session"]);
+// combining. Four modes, only `subagent` links the new agent to the parent:
+//  - `new_chat`:   a fresh independent agent in its own tab, same repo/cwd, NO
+//                  parent link — survives the parent's cancel/archive.
+//  - `subagent`:   a bound child agent that shows in the parent's Subagents
+//                  track and archive-cascades with it.
+//  - `worktree`:   an independent agent on a new git worktree (auto branch-off),
+//                  isolated workspace — also unlinked from the parent.
+//  - `in_session`: steers the parent agent with the task prompt (no new agent).
+// The daemon resolves the parent agent's brain (provider/model/personality) so a
+// started task continues the suggesting agent.
+export const TasksSuggestedStartModeSchema = z.enum([
+  "new_chat",
+  "subagent",
+  "worktree",
+  "in_session",
+]);
 
 export const TasksSuggestedStartRequestMessageSchema = z.object({
   type: z.literal("tasks.suggested.start.request"),
@@ -3087,6 +3193,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigRequestMessageSchema,
   SpeechSettingsGetOptionsRequestSchema,
   SpeechTtsPreviewRequestSchema,
+  VisualizerVoiceCuesGenerateRequestSchema,
   AgentPersonalitiesGetStatsRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
@@ -3456,6 +3563,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentPersonalities: z.boolean().optional(),
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: z.boolean().optional(),
+        // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        visualizerVoiceCues: z.boolean().optional(),
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: z.boolean().optional(),
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
@@ -3484,6 +3593,15 @@ export const ServerInfoStatusPayloadSchema = z
         // permissions). The client gates this behind an "edit anyway" warning;
         // an old daemon leaves the flag unset and out-of-project files are not offered.
         fileOutsideWorkspace: z.boolean().optional(),
+        // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        // Set when the daemon emits agent_stream `prompt_suggestion` events (native
+        // Claude next-prompt predictions). The client gates the Settings toggle on
+        // this; suggestions already degrade silently on an old daemon (no event).
+        promptSuggestions: z.boolean().optional(),
+        // COMPAT(rateLimitEvents): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        // Set when the daemon emits agent_stream `rate_limit_updated` events (Claude
+        // plan rate-limit status). Warnings degrade silently on an old daemon (no event).
+        rateLimitEvents: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4244,6 +4362,23 @@ export const SpeechTtsPreviewResponseSchema = z.object({
 });
 
 export type SpeechTtsPreviewResult = z.infer<typeof SpeechTtsPreviewResponseSchema>["payload"];
+
+export const VisualizerVoiceCuesGenerateResponseSchema = z.object({
+  type: z.literal("visualizer.voiceCues.generate.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      // Absent when generation failed (see error) or no writer/provider
+      // resolves on this host. Reuses the stored-cues shape.
+      cues: AgentPersonalityVoiceCuesSchema.optional(),
+      error: z.string().optional(),
+    })
+    .passthrough(),
+});
+
+export type VisualizerVoiceCuesResult = z.infer<
+  typeof VisualizerVoiceCuesGenerateResponseSchema
+>["payload"];
 
 export const AgentPersonalitiesGetStatsResponseSchema = z.object({
   type: z.literal("agentPersonalities.get_stats.response"),
@@ -5875,6 +6010,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigResponseMessageSchema,
   SpeechSettingsGetOptionsResponseSchema,
   SpeechTtsPreviewResponseSchema,
+  VisualizerVoiceCuesGenerateResponseSchema,
   AgentPersonalitiesGetStatsResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
@@ -6170,6 +6306,7 @@ export type ProviderUsageBalance = z.infer<typeof ProviderUsageBalanceSchema>;
 export type ProviderUsageDetail = z.infer<typeof ProviderUsageDetailSchema>;
 export type AgentContextUsageCategory = z.infer<typeof AgentContextUsageCategorySchema>;
 export type AgentContextUsage = z.infer<typeof AgentContextUsageSchema>;
+export type AgentRateLimitInfo = z.infer<typeof AgentRateLimitInfoSchema>;
 export type AgentContextGetUsageResponseMessage = z.infer<
   typeof AgentContextGetUsageResponseMessageSchema
 >;

@@ -17,12 +17,13 @@ import { createEmptyState, MAX_EVENT_LOG } from './simulation/types'
 import { processEvent, type ProcessEventContext } from './simulation/process-event'
 import { computeNextFrame } from './simulation/animate'
 import { snapVisualState } from './simulation/snap-visual-state'
+import { settleVisualState } from './simulation/settle-visual-state'
 
 /** ms between React state updates — canvas uses frameRef for smooth 60fps */
 const UI_THROTTLE_MS = 250
 
 export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
-  const { useMockData = true, externalEvents, onExternalEventsConsumed, sessionFilter, sessionFilterRef: externalFilterRef, disable1MContext = false } = options
+  const { useMockData = true, externalEvents, onExternalEventsConsumed, sessionFilter, sessionFilterRef: externalFilterRef, disable1MContext = false, suppressAudioRef } = options
   const internalFilterRef = useRef(sessionFilter)
   internalFilterRef.current = sessionFilter
   const sessionFilterRef = externalFilterRef ?? internalFilterRef
@@ -206,6 +207,13 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     // Process events — thread state through each event
     let currentState = prev
     const newEvents: SimulationEvent[] = []
+    // OTTO PATCH (OTTO-PATCHES.md): true once this frame processed any
+    // hydrate-flagged (backfilled) event — its structure is applied but the
+    // frame is then settled to the end state (no spawn/tool bursts) and audio
+    // is suppressed. Backfill and live never share a frame (the host tags the
+    // whole one-shot backfill window hydrate, then live), so settling the whole
+    // frame is safe.
+    let sawHydrateBatch = false
 
     if (useMockData) {
       while (newEventIndex < MOCK_SCENARIO.length && MOCK_SCENARIO[newEventIndex].time <= newTime) {
@@ -230,6 +238,7 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
         if (activeFilter && event.sessionId && event.sessionId !== activeFilter) {
           continue
         }
+        if (event.hydrate) sawHydrateBatch = true
         const eventTime = Math.max(event.time || newTime, newTime)
         const timedEvent = { ...event, time: eventTime }
         currentState = { ...currentState, currentTime: eventTime }
@@ -257,11 +266,21 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
 
     currentState = { ...currentState, eventIndex: newEventIndex }
 
-    const result = computeNextFrame(prev, deltaTime, newTime, maxT, currentState, {
+    let result = computeNextFrame(prev, deltaTime, newTime, maxT, currentState, {
       useMockData,
       mockScenarioLength: MOCK_SCENARIO.length,
       mockScenarioEndTime: MOCK_SCENARIO.length > 0 ? MOCK_SCENARIO[MOCK_SCENARIO.length - 1].time : 0,
     })
+
+    // OTTO PATCH (OTTO-PATCHES.md): a hydrate frame lands at the settled end
+    // state — drop the transient tool cards / bubbles / particles the replayed
+    // history produced (settled node opacities keep the canvas's frame-diff
+    // effect detector from firing spawn bursts) and mute the sounds those
+    // transitions would trigger. Node/tool/timeline/conversation data survives.
+    if (sawHydrateBatch) {
+      result = settleVisualState(result)
+      if (suppressAudioRef) suppressAudioRef.current = true
+    }
 
     // Write to frameRef (canvas reads this every frame)
     frameRef.current = result
@@ -269,9 +288,12 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     // Force tick — updates agent positions in frameRef
     if (forceSimRef.current) forceSimRef.current.tick()
 
-    // Throttle React re-renders — UI updates at ~4/sec, canvas stays smooth via frameRef
+    // Throttle React re-renders — UI updates at ~4/sec, canvas stays smooth via frameRef.
+    // A hydrate frame bypasses the throttle so the settled state (and the
+    // suppressAudio signal) reaches the audio effect this tick, not up to
+    // UI_THROTTLE_MS later.
     if (newEvents.length > 0) {
-      if (!lastUIUpdateRef.current || timestamp - lastUIUpdateRef.current >= UI_THROTTLE_MS) {
+      if (sawHydrateBatch || !lastUIUpdateRef.current || timestamp - lastUIUpdateRef.current >= UI_THROTTLE_MS) {
         setState(frameRef.current)
         lastUIUpdateRef.current = timestamp
       }

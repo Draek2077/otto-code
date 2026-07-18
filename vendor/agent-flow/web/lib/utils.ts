@@ -5,8 +5,41 @@ export function alphaHex(alpha: number): string {
   return Math.floor(alpha * 255).toString(16).padStart(2, '0')
 }
 
-/** Format a token count for display (e.g. 128500 → '128k') */
+function hexChannel(hex: string, offset: number): number {
+  return parseInt(hex.slice(offset, offset + 2), 16)
+}
+
+/** Parse a `#rgb`/`#rrggbb` string to [r, g, b] (0–255). Returns null on
+ *  anything it can't read, so callers can fall back gracefully. */
+function parseHex(hex: string): [number, number, number] | null {
+  let h = hex.trim().replace(/^#/, '')
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  if (h.length !== 6 || /[^0-9a-f]/i.test(h)) return null
+  return [hexChannel(h, 0), hexChannel(h, 2), hexChannel(h, 4)]
+}
+
+/** OTTO PATCH (OTTO-PATCHES.md): linearly blend two hex colors. `t` is the
+ *  weight of `to` (0 → `from`, 1 → `to`). Used to derive a personality node's
+ *  muted (idle) and vivid (thinking) tints from its identity color and to
+ *  darken it into the node interior fill. Falls back to `from` if either
+ *  input can't be parsed. */
+export function mixHex(from: string, to: string, t: number): string {
+  const a = parseHex(from)
+  const b = parseHex(to)
+  if (!a || !b) return from
+  const k = Math.max(0, Math.min(1, t))
+  const ch = (i: number) => Math.round(a[i] + (b[i] - a[i]) * k).toString(16).padStart(2, '0')
+  return `#${ch(0)}${ch(1)}${ch(2)}`
+}
+
+/** Format a token count for display (e.g. 128500 → '128k', 1000000 → '1M').
+ *  OTTO PATCH (OTTO-PATCHES.md): render millions as 'M' so a 1M context budget
+ *  reads '1M' instead of '1000k'. */
 export function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`
+  }
   return `${Math.floor(tokens / 1000)}k`
 }
 

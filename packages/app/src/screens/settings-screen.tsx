@@ -37,6 +37,7 @@ import {
   FolderGit2,
   SquareTerminal,
   Waypoints,
+  Workspaces,
 } from "@/components/icons/material-icons";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
@@ -58,6 +59,7 @@ import {
   type AppSettings,
   type InterfaceMode,
   type AppStartScreen,
+  type SuggestedTasksDefaultMode,
   type LinkOpenBehavior,
   type PreviewServerCloseBehavior,
   type SendBehavior,
@@ -139,6 +141,7 @@ import {
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
+import { rememberLastSettingsView } from "@/stores/last-settings-view";
 
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
 // panel-store width identically.
@@ -227,7 +230,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   {
     id: "workspaces",
     labelKey: "settings.hostSections.workspaces",
-    icon: FolderGit2,
+    icon: Workspaces,
     developerOnly: true,
   },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
@@ -322,6 +325,25 @@ const APP_START_SCREEN_DESCRIPTION_KEYS = {
   dashboard: "settings.general.appStartScreen.descriptions.dashboard",
 } as const satisfies Record<AppStartScreen, string>;
 
+// Suggested-task default action. English-only for now — the whole suggested-task
+// feature is unlocalized pending verification (see build-first-translate-last).
+const SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS: {
+  value: SuggestedTasksDefaultMode;
+  label: string;
+}[] = [
+  { value: "new_chat", label: "New chat" },
+  { value: "subagent", label: "Sub-agent" },
+  { value: "worktree", label: "Worktree" },
+  { value: "in_session", label: "In session" },
+];
+
+const SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS = {
+  new_chat: "Starts in a separate chat in its own tab, with no link to this chat.",
+  subagent: "Starts as a linked sub-agent shown under this chat and archived with it.",
+  worktree: "Starts in an isolated new git worktree (its own branch) in a new tab.",
+  in_session: "Sends the task straight to this chat's agent.",
+} as const satisfies Record<SuggestedTasksDefaultMode, string>;
+
 function getPreviewServerCloseBehaviorOptions(t: TFunction) {
   return [
     {
@@ -369,6 +391,8 @@ interface GeneralSectionProps {
   isDesktopApp: boolean;
   handleInterfaceModeChange: (mode: InterfaceMode) => void;
   handleAppStartScreenChange: (screen: AppStartScreen) => void;
+  handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
+  handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
@@ -453,6 +477,8 @@ function GeneralSection({
   isDesktopApp,
   handleInterfaceModeChange,
   handleAppStartScreenChange,
+  handleSuggestedTasksEnabledChange,
+  handleSuggestedTasksDefaultModeChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLinkOpenBehaviorChange,
@@ -473,6 +499,8 @@ function GeneralSection({
       : "settings.general.interfaceMode.descriptions.developer";
   const appStartScreenOptions = useMemo(() => getAppStartScreenOptions(t), [t]);
   const appStartScreenDescriptionKey = APP_START_SCREEN_DESCRIPTION_KEYS[settings.appStartScreen];
+  const suggestedTasksDefaultModeDescription =
+    SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
   const previewServerCloseBehaviorOptions = useMemo(
     () => getPreviewServerCloseBehaviorOptions(t),
     [t],
@@ -549,6 +577,36 @@ function GeneralSection({
               testID="settings-app-start-screen"
             />
           </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Suggested tasks</Text>
+              <Text style={settingsStyles.rowHint}>
+                Show a card when an agent proposes follow-up work you can start later. Turn off to
+                suppress these entirely.
+              </Text>
+            </View>
+            <Switch
+              value={settings.suggestedTasksEnabled}
+              onValueChange={handleSuggestedTasksEnabledChange}
+              accessibilityLabel="Suggested tasks"
+              testID="settings-suggested-tasks-enabled-switch"
+            />
+          </View>
+          {settings.suggestedTasksEnabled ? (
+            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>Suggested tasks default</Text>
+                <Text style={settingsStyles.rowHint}>{suggestedTasksDefaultModeDescription}</Text>
+              </View>
+              <SegmentedControl
+                size="sm"
+                value={settings.suggestedTasksDefaultMode}
+                onValueChange={handleSuggestedTasksDefaultModeChange}
+                options={SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS}
+                testID="settings-suggested-tasks-default-mode"
+              />
+            </View>
+          ) : null}
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
@@ -1329,6 +1387,12 @@ function SettingsSidebar({
   const items = SIDEBAR_SECTION_ITEMS.filter(
     (item) => (!item.desktopOnly || isDesktopApp) && (!item.developerOnly || isDeveloperMode),
   );
+  // Projects renders right after Visualizer. Visualizer is developer-only, so in
+  // User mode it's filtered out — fall back to Appearance (always present, and
+  // the item just before Visualizer) so Projects never disappears.
+  const projectsAnchorId: SettingsSectionSlug = items.some((item) => item.id === "visualizer")
+    ? "visualizer"
+    : "appearance";
   const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
@@ -1406,7 +1470,7 @@ function SettingsSidebar({
               isSelected={selectedSectionId === item.id}
               onSelect={onSelectSection}
             />
-            {item.id === "general" ? (
+            {item.id === projectsAnchorId ? (
               <SidebarProjectsButton isSelected={isProjectsSelected} onSelect={onSelectProjects} />
             ) : null}
           </Fragment>
@@ -1574,6 +1638,12 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
   }, [view]);
 
+  // Remember the current sub-page so re-opening Settings returns here instead of
+  // resetting to General (see the /settings redirect in app/settings/index.tsx).
+  useEffect(() => {
+    rememberLastSettingsView(view);
+  }, [view]);
+
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
@@ -1593,6 +1663,20 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const handleAppStartScreenChange = useCallback(
     (screen: AppStartScreen) => {
       void updateSettings({ appStartScreen: screen });
+    },
+    [updateSettings],
+  );
+
+  const handleSuggestedTasksEnabledChange = useCallback(
+    (enabled: boolean) => {
+      void updateSettings({ suggestedTasksEnabled: enabled });
+    },
+    [updateSettings],
+  );
+
+  const handleSuggestedTasksDefaultModeChange = useCallback(
+    (mode: SuggestedTasksDefaultMode) => {
+      void updateSettings({ suggestedTasksDefaultMode: mode });
     },
     [updateSettings],
   );
@@ -1888,6 +1972,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               isDesktopApp={isDesktopApp}
               handleInterfaceModeChange={handleInterfaceModeChange}
               handleAppStartScreenChange={handleAppStartScreenChange}
+              handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
+              handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}

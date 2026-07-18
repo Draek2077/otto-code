@@ -316,7 +316,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Zero-size anchor for the collapsed mode — exists only so the dropdown has
   // a position to open from; must never take layout space or catch pointers.
+  // `position: absolute` keeps it out of flex flow: a zero-size *flex item* still
+  // consumes a `gap` slot on both sides, which would silently double the gap
+  // between its siblings (e.g. the header "..." menu and the Visualizer button).
   hiddenTrigger: {
+    position: "absolute",
     width: 0,
     height: 0,
     opacity: 0,

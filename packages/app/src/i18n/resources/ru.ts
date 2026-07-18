@@ -65,6 +65,16 @@ export const ru: TranslationResources = {
     },
   },
   composer: {
+    rateLimit: {
+      approaching: "Approaching your Claude {{window}} limit",
+      reached: "Claude {{window}} limit reached",
+      usedPercent: "{{percent}}% used",
+      resets: "resets {{time}}",
+      usingOverage: "using extra usage",
+      windowFiveHour: "5-hour",
+      windowSevenDay: "7-day",
+      windowPlan: "plan",
+    },
     placeholders: {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
       mobile: "Сообщение,@files,/commands",
@@ -525,8 +535,6 @@ export const ru: TranslationResources = {
       subtitle: "Agent orchestration graph",
       placeholder: "The Visualizer is coming soon.",
       openAction: "Open Visualizer",
-      demoLoad: "Load demo scenario",
-      demoExit: "Exit demo",
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
@@ -2199,6 +2207,16 @@ export const ru: TranslationResources = {
           hint: "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
           accessibilityLabel: "Всегда разворачивать размышления",
         },
+        promptSuggestions: {
+          title: "AI prompt suggestions",
+          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents",
+          accessibilityLabel: "AI prompt suggestions",
+        },
+        rateLimitWarnings: {
+          title: "Plan rate-limit warnings",
+          hint: "Show a warning above the message box when your Claude plan usage nears or hits a rate limit. Available on Claude agents",
+          accessibilityLabel: "Plan rate-limit warnings",
+        },
         hideMessageDetails: {
           title: "Скрывать детали сообщений до наведения",
           hint: "Отметки времени, статистика и действия сообщений скрыты, пока вы не наведёте на них курсор; на сенсорных устройствах они видны всегда",
@@ -2254,11 +2272,6 @@ export const ru: TranslationResources = {
       },
       visualizer: {
         title: "Visualizer",
-        hexGrid: {
-          title: "Hex grid",
-          hint: "Show the background hex grid on the Visualizer canvas",
-          accessibilityLabel: "Hex grid",
-        },
         timeline: {
           title: "Timeline",
           hint: "Show the timeline panel",

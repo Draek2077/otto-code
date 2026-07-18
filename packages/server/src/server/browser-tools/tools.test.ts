@@ -25,6 +25,7 @@ interface RegisteredTool {
 
 class FakeBrowserBroker {
   public readonly calls: BrowserToolsExecuteInput[] = [];
+  private readonly queued: BrowserToolsResponsePayload[] = [];
 
   public constructor(private response: BrowserToolsResponsePayload = listTabsPayload()) {}
 
@@ -32,9 +33,14 @@ class FakeBrowserBroker {
     this.response = response;
   }
 
+  /** Responses consumed in order before falling back to the setResponse value. */
+  public queueResponses(...responses: BrowserToolsResponsePayload[]): void {
+    this.queued.push(...responses);
+  }
+
   public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
     this.calls.push(input);
-    return this.response;
+    return this.queued.shift() ?? this.response;
   }
 }
 
@@ -467,6 +473,54 @@ const routedToolCases = [
     },
     content: [{ type: "text", text: `Closed browser tab ${BROWSER_ID}.` }],
   },
+  {
+    name: "focus_tab",
+    toolName: "browser_focus_tab",
+    input: { browserId: BROWSER_ID },
+    command: {
+      command: "focus_tab",
+      args: { browserId: BROWSER_ID },
+    },
+    payload: {
+      requestId: "req-focus-tab",
+      ok: true,
+      result: {
+        command: "focus_tab",
+        browserId: BROWSER_ID,
+      },
+    },
+    content: [
+      { type: "text", text: `Focused browser tab ${BROWSER_ID} — it is now visible to the user.` },
+    ],
+  },
+  {
+    name: "page_text",
+    toolName: "browser_page_text",
+    input: { browserId: BROWSER_ID },
+    command: {
+      command: "page_text",
+      args: { browserId: BROWSER_ID, maxChars: 20_000 },
+    },
+    payload: {
+      requestId: "req-page-text",
+      ok: true,
+      result: {
+        command: "page_text",
+        browserId: BROWSER_ID,
+        url: "https://example.com/docs",
+        title: "Docs",
+        source: "article",
+        text: "Hello world",
+        truncated: false,
+      },
+    },
+    content: [
+      {
+        type: "text",
+        text: "Extracted 11 characters of page text from <article>.\nTitle: Docs\nURL: https://example.com/docs\n\nHello world",
+      },
+    ],
+  },
 ] satisfies Array<{
   name: string;
   toolName: string;
@@ -566,6 +620,8 @@ describe("registerBrowserTools", () => {
       "browser_evaluate",
       "browser_scroll",
       "browser_resize",
+      "browser_focus_tab",
+      "browser_page_text",
       "browser_close_tab",
     ]);
   });
@@ -819,6 +875,255 @@ describe("registerBrowserTools", () => {
       });
     },
   );
+
+  test("screenshot with ref captures the element through screenshot_element", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse({
+      requestId: "req-screenshot-element",
+      ok: true,
+      result: {
+        command: "screenshot_element",
+        browserId: BROWSER_ID,
+        ref: "@e2",
+        mimeType: "image/png",
+        dataBase64: "iVBORw0KGgo=",
+        width: 648,
+        height: 348,
+        scale: 3,
+      },
+    });
+
+    const response = await harness.execute("browser_screenshot", {
+      browserId: BROWSER_ID,
+      ref: "@e2",
+    });
+
+    expect(harness.broker.calls.map((call) => call.command)).toEqual([
+      { command: "screenshot_element", args: { browserId: BROWSER_ID, ref: "@e2" } },
+    ]);
+    expect(response.content).toEqual([
+      { type: "text", text: "Captured element @e2 (648x348) at 3x zoom." },
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ]);
+    expect(response.structuredContent).toMatchObject({
+      ok: true,
+      result: {
+        command: "screenshot_element",
+        ref: "@e2",
+        width: 648,
+        height: 348,
+        scale: 3,
+      },
+    });
+    expect(
+      (response.structuredContent as { result: Record<string, unknown> }).result.dataBase64,
+    ).toBeUndefined();
+  });
+
+  test("screenshot rejects ref combined with fullPage", async () => {
+    const harness = new BrowserToolHarness();
+
+    const response = await harness.execute("browser_screenshot", {
+      browserId: BROWSER_ID,
+      ref: "@e2",
+      fullPage: true,
+    });
+
+    expect(harness.broker.calls).toEqual([]);
+    expect(response.structuredContent).toMatchObject({
+      ok: false,
+      error: {
+        message:
+          "browser_screenshot captures either an element (ref) or the page (fullPage) — not both.",
+      },
+    });
+  });
+
+  test("screenshot warns when a page was captured below legible scale", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse({
+      requestId: "req-screenshot",
+      ok: true,
+      result: {
+        command: "screenshot",
+        browserId: BROWSER_ID,
+        mimeType: "image/png",
+        dataBase64: "iVBORw0KGgo=",
+        width: 157,
+        height: 1568,
+        scale: 0.196,
+      },
+    });
+
+    const response = await harness.execute("browser_screenshot", {
+      browserId: BROWSER_ID,
+      fullPage: true,
+    });
+
+    expect(response.content[0]).toEqual({
+      type: "text",
+      text:
+        "Captured browser screenshot (157x1568). The page was captured at 20% scale to fit — small text may be unreadable. " +
+        "For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.",
+    });
+  });
+
+  test("resize expands presets to their viewport dimensions", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse({
+      requestId: "req-resize",
+      ok: true,
+      result: { command: "resize", browserId: BROWSER_ID, width: 375, height: 812 },
+    });
+
+    const response = await harness.execute("browser_resize", {
+      browserId: BROWSER_ID,
+      preset: "mobile",
+    });
+
+    expect(harness.broker.calls).toEqual([
+      {
+        agentId: "agent-1",
+        cwd: "/repo",
+        workspaceId: "wks_workspace_a",
+        command: {
+          command: "resize",
+          args: { browserId: BROWSER_ID, width: 375, height: 812 },
+        },
+      },
+    ]);
+    expect(response.content).toEqual([
+      { type: "text", text: "Resized browser viewport to 375x812." },
+    ]);
+  });
+
+  test("resize with colorScheme only emulates without resizing", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse({
+      requestId: "req-color-scheme",
+      ok: true,
+      result: { command: "set_color_scheme", browserId: BROWSER_ID, colorScheme: "dark" },
+    });
+
+    const response = await harness.execute("browser_resize", {
+      browserId: BROWSER_ID,
+      colorScheme: "dark",
+    });
+
+    expect(harness.broker.calls).toEqual([
+      {
+        agentId: "agent-1",
+        cwd: "/repo",
+        workspaceId: "wks_workspace_a",
+        command: {
+          command: "set_color_scheme",
+          args: { browserId: BROWSER_ID, colorScheme: "dark" },
+        },
+      },
+    ]);
+    expect(response.content).toEqual([
+      { type: "text", text: "Emulated prefers-color-scheme: dark." },
+    ]);
+  });
+
+  test("resize with preset and colorScheme issues both commands and notes the scheme", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.queueResponses(
+      {
+        requestId: "req-resize",
+        ok: true,
+        result: { command: "resize", browserId: BROWSER_ID, width: 768, height: 1024 },
+      },
+      {
+        requestId: "req-color-scheme",
+        ok: true,
+        result: { command: "set_color_scheme", browserId: BROWSER_ID, colorScheme: "dark" },
+      },
+    );
+
+    const response = await harness.execute("browser_resize", {
+      browserId: BROWSER_ID,
+      preset: "tablet",
+      colorScheme: "dark",
+    });
+
+    expect(harness.broker.calls.map((call) => call.command)).toEqual([
+      { command: "resize", args: { browserId: BROWSER_ID, width: 768, height: 1024 } },
+      { command: "set_color_scheme", args: { browserId: BROWSER_ID, colorScheme: "dark" } },
+    ]);
+    expect(response.content).toEqual([
+      {
+        type: "text",
+        text: "Resized browser viewport to 768x1024.\nEmulated prefers-color-scheme: dark.",
+      },
+    ]);
+  });
+
+  test("resize reports the partial state when color-scheme emulation fails after resizing", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.queueResponses(
+      {
+        requestId: "req-resize",
+        ok: true,
+        result: { command: "resize", browserId: BROWSER_ID, width: 375, height: 812 },
+      },
+      {
+        requestId: "req-color-scheme",
+        ok: false,
+        error: {
+          code: "browser_unsupported",
+          message:
+            'Browser automation command "set_color_scheme" is not supported by the desktop app.',
+          retryable: false,
+        },
+      },
+    );
+
+    const response = await harness.execute("browser_resize", {
+      browserId: BROWSER_ID,
+      preset: "mobile",
+      colorScheme: "dark",
+    });
+
+    expect(response.structuredContent).toMatchObject({
+      ok: false,
+      error: {
+        code: "browser_unsupported",
+        message:
+          'Viewport resized to 375x812, but color-scheme emulation failed: Browser automation command "set_color_scheme" is not supported by the desktop app.',
+      },
+    });
+  });
+
+  test("resize rejects width without height", async () => {
+    const harness = new BrowserToolHarness();
+
+    const response = await harness.execute("browser_resize", {
+      browserId: BROWSER_ID,
+      width: 1024,
+    });
+
+    expect(harness.broker.calls).toEqual([]);
+    expect(response.structuredContent).toMatchObject({
+      ok: false,
+      error: { message: "browser_resize needs width and height together — or use a preset." },
+    });
+  });
+
+  test("resize rejects calls with no dimensions and no color scheme", async () => {
+    const harness = new BrowserToolHarness();
+
+    const response = await harness.execute("browser_resize", { browserId: BROWSER_ID });
+
+    expect(harness.broker.calls).toEqual([]);
+    expect(response.structuredContent).toMatchObject({
+      ok: false,
+      error: {
+        message:
+          "browser_resize requires a preset, an explicit width and height, or a colorScheme.",
+      },
+    });
+  });
 
   test.each(brokerErrorCases)(
     "$name keep broker error summaries model-actionable",

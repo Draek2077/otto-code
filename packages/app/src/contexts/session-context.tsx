@@ -39,6 +39,7 @@ import type { AgentPermissionResponse } from "@otto-code/protocol/agent-types";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
+import { formatToMimeType } from "@/voice/audio-format";
 import {
   useSessionStore,
   type Agent,
@@ -187,15 +188,10 @@ function buildAudioPlaybackSource(chunks: BufferedAudioChunk[]): AudioPlaybackSo
   }
 
   const format = chunks[0]?.format ?? "pcm";
-  let mimeType: string;
-  if (format === "pcm") mimeType = "audio/pcm;rate=24000;bits=16";
-  else if (format === "mp3") mimeType = "audio/mpeg";
-  else mimeType = `audio/${format}`;
-
   const bytes = output.slice();
   return {
     size: bytes.byteLength,
-    type: mimeType,
+    type: formatToMimeType(format),
     async arrayBuffer() {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     },
@@ -1335,6 +1331,20 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
             notification: event.notification,
           });
         }
+      }
+
+      // AI prompt suggestion (composer ghost text): store the latest, and clear a
+      // stale one when the next turn begins so it never lingers across turns.
+      if (event.type === "prompt_suggestion") {
+        useSessionStore.getState().setAgentPromptSuggestion(serverId, agentId, event.suggestion);
+      } else if (event.type === "turn_started") {
+        useSessionStore.getState().setAgentPromptSuggestion(serverId, agentId, null);
+      }
+
+      // Plan rate-limit status: keep the latest per agent. A recovery ("allowed")
+      // is stored too so the composer's warning strip clears itself.
+      if (event.type === "rate_limit_updated") {
+        useSessionStore.getState().setAgentRateLimit(serverId, agentId, event.info);
       }
 
       agentStreamReducerQueue.enqueue(agentId, {

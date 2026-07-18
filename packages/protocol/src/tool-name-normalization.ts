@@ -82,6 +82,33 @@ export function getOttoToolLeafName(name: string): string | null {
   return null;
 }
 
+/**
+ * Strip a leading MCP namespace for DISPLAY, returning the bare tool id.
+ *
+ * Tools hosted over MCP arrive namespaced as `mcp__<server>__<tool>` (Claude
+ * Code format). The `mcp__<server>__` part is transport plumbing that means
+ * nothing to a reader — "Create Issue", not "mcp__linear__create_issue". This
+ * generalizes {@link getOttoToolLeafName} to ANY server so every MCP tool reads
+ * cleanly, not just Otto's own.
+ *
+ * Returns `null` when the name carries no `mcp__…__` namespace, so callers keep
+ * plain tool names (`Read`, `bash`) and dotted/other forms untouched. Case is
+ * preserved — MCP tool ids are already snake_case and callers humanize after.
+ * `speak` is never treated as namespaced (it renders as a chat bubble, not an
+ * action row).
+ */
+export function getMcpToolLeafName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed || isSpeakToolName(trimmed) || !trimmed.includes("__")) {
+    return null;
+  }
+  const segments = trimmed.split("__").filter((segment) => segment.length > 0);
+  if (segments.length >= 3 && segments[0].toLowerCase() === "mcp") {
+    return segments.slice(2).join("__");
+  }
+  return null;
+}
+
 export function isLikelyExternalToolName(name: string): boolean {
   const normalized = normalizeToolName(name);
   if (!normalized) {

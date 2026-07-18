@@ -4,9 +4,11 @@
 // See docs/visualizer.md for the mapping table this file implements.
 import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import { deriveObservedSubagentTitle } from "@otto-code/protocol/observed-subagent-title";
+import { getToolDisplayName } from "@otto-code/protocol/tool-call-display";
 import type {
   AgentTimelineItem,
   AgentUsage,
+  ContextComposition,
   ToolCallDetail,
   ToolCallTimelineItem,
 } from "@otto-code/protocol/agent-types";
@@ -86,12 +88,96 @@ export function resolveAgentNodeName(input: {
 export interface AgentNodeContext {
   name: string;
   sessionId: string;
+  /** The agent's own working directory (root of its file operations). When
+   * present, tool-call file paths are displayed relative to it (root → `.`) —
+   * a Read of `C:\Users\me\proj\src\foo.ts` shows as `.\src\foo.ts` (Windows
+   * separators preserved) instead of a truncated `C:\Users\me\pr...`. Absent ⇒
+   * paths are shown verbatim. See `relativizeStringPaths`. */
+  workspaceRoot?: string;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Rewrites the workspace root wherever it literally appears in a string — a
+ * structured file path (`detail.filePath`) OR a freeform command/search string —
+ * to `.`, so a tool node reads `cd "."` / `read_file: .\src\foo.ts` instead of
+ * `cd "C:/…/proj"` / `read_file: C:\…\proj\src\foo.ts`.
+ *
+ * SEPARATOR FIDELITY (load-bearing): the match is separator-agnostic but the
+ * output preserves whatever separators the path was AUTHORED with — a Windows
+ * `C:\…\proj\src\foo.ts` becomes `.\src\foo.ts` (backslashes kept), a POSIX
+ * `/home/me/proj/src/foo.ts` becomes `./src/foo.ts`. We deliberately do NOT run
+ * paths through `resolveWorkspaceFilePaths`/`normalizeWorkspaceFileLocation`
+ * here: those normalize `\` → `/` for host resolution, which is correct for
+ * OPENING a file but wrong for DISPLAY — it mixed backslash (out-of-workspace,
+ * shown verbatim) and forward-slash (relativized) rows in the same panel.
+ * Windows paths stay Windows; POSIX paths stay POSIX. Only the root prefix is
+ * replaced; separators in the remainder are left exactly as-is.
+ *
+ * Other rules (matching the user's spec: root → `.`, root+`sep`+rest → `./rest`):
+ * - Matches the root in EITHER separator style, case-insensitively for a
+ *   Windows drive path (the reported path and the `cwd` can disagree on case).
+ * - Requires a path BOUNDARY right after the root — a separator, a delimiter
+ *   like a quote/space/paren, or end-of-string — so the bare/quoted root
+ *   collapses AND a sibling dir that merely shares the prefix (`…/proj-backup`,
+ *   `…/project`) is never touched.
+ * - Never tries to *detect* arbitrary paths, so it can't mangle non-path prose —
+ *   a full absolute root is effectively never a false-positive substring. Files
+ *   outside the workspace have no matching prefix and are left verbatim.
+ */
+function relativizeStringPaths(text: string, workspaceRoot: string | undefined): string {
+  if (!workspaceRoot || !text) {
+    return text;
+  }
+  const root = workspaceRoot.trim().replace(/[\\/]+$/, "");
+  if (!root) {
+    return text;
+  }
+  const isWindows = /^[A-Za-z]:/.test(root);
+  // Split on separators and rejoin the escaped segments with a separator class,
+  // so `C:\Users\me\proj` matches both `C:\Users\me\proj…` and `C:/Users/me/proj…`.
+  const rootPattern = root
+    .split(/[\\/]+/)
+    .map(escapeRegExp)
+    .join("[\\\\/]");
+  // Boundary lookahead: next char is a separator, a non-path-name delimiter
+  // (anything but a word char / dot / dash), or the string end.
+  const pattern = new RegExp(`${rootPattern}(?=[\\\\/]|[^\\w.-]|$)`, isWindows ? "gi" : "g");
+  return text.replace(pattern, ".");
+}
+
+/** The two identity colors of an Agent Personality (the daemon's spinner
+ * glowA/glowB pair, carried on the agent snapshot as `personalitySpinner`). */
+export interface PersonalityNodeColors {
+  glowA: string;
+  glowB: string;
+}
+
+/** Spawn-payload leaf for a personality's colors. The vendor page tints a
+ * node's idle (muted) / thinking (vivid) states in these when both are present
+ * (see vendor draw-agents.ts `resolveNodeAppearance`); a node with no
+ * personality omits them and stays state-colored. Both must be present to
+ * count — a partial pair is dropped. */
+function personaColorPayload(colors: PersonalityNodeColors | null | undefined):
+  | {
+      colorA: string;
+      colorB: string;
+    }
+  | Record<string, never> {
+  if (colors?.glowA && colors.glowB) {
+    return { colorA: colors.glowA, colorB: colors.glowB };
+  }
+  return {};
 }
 
 export function buildRootAgentSpawnEvent(input: {
   ctx: AgentNodeContext;
   model: string | null;
   provider: string;
+  personalityColors?: PersonalityNodeColors | null;
   time: number;
 }): SimulationEvent {
   const runtime = resolveVisualizerRuntime(input.provider);
@@ -104,6 +190,7 @@ export function buildRootAgentSpawnEvent(input: {
       isMain: true,
       ...(input.model ? { model: input.model } : {}),
       ...(runtime ? { runtime } : {}),
+      ...personaColorPayload(input.personalityColors),
     },
   };
 }
@@ -112,6 +199,7 @@ export function buildObservedSubagentSpawnEvent(input: {
   ctx: AgentNodeContext;
   parentName: string;
   task?: string | null;
+  personalityColors?: PersonalityNodeColors | null;
   time: number;
 }): SimulationEvent {
   return {
@@ -122,7 +210,28 @@ export function buildObservedSubagentSpawnEvent(input: {
       name: input.ctx.name,
       parent: input.parentName,
       ...(input.task ? { task: input.task } : {}),
+      ...personaColorPayload(input.personalityColors),
     },
+  };
+}
+
+/** Relabel an already-spawned node's DISPLAY name (the vendor page keeps the
+ * node keyed on its original spawn `name`, so this only changes the drawn
+ * label — see the `agent_rename` handler in handle-agent-events.ts). Emitted
+ * when a root chat's title changes after spawn (the auto-title writer rewrites
+ * the provisional first-line title), so the graph node tracks the chat title
+ * the same way the toolbar's `session-updated` label does. `agent` is the
+ * stable node key (the frozen spawn name); `label` is the new full title. */
+export function buildAgentRenameEvent(input: {
+  ctx: AgentNodeContext;
+  label: string;
+  time: number;
+}): SimulationEvent {
+  return {
+    time: input.time,
+    sessionId: input.ctx.sessionId,
+    type: "agent_rename",
+    payload: { agent: input.ctx.name, label: input.label },
   };
 }
 
@@ -214,11 +323,54 @@ export function buildPermissionRequestedEvent(input: {
   };
 }
 
-/** `contextBreakdown` has no Otto source — omit it; the page tolerates
- * missing fields. `tokens`/`tokensMax` are context OCCUPANCY (drives the
- * ring); `cumulativeTokens` is the agent's honest lifetime total (drives the
- * page's token/cost sums — Otto vendor patch). Returns null when neither
- * reading is present (nothing worth emitting). */
+/** The vendor page's 5-category context breakdown (`ContextBreakdown`). All
+ * five keys must be present as numbers — the page only accepts a breakdown
+ * whose object literally carries `systemPrompt` (`'systemPrompt' in raw`). */
+interface VisualizerContextBreakdown {
+  systemPrompt: number;
+  userMessages: number;
+  toolResults: number;
+  reasoning: number;
+  subagentResults: number;
+}
+
+/** Turn the daemon's estimated {@link ContextComposition} into the page
+ * breakdown, scaled so the segments sum to the authoritative occupancy — the
+ * ring draws each arc as `value / tokensMax` and the bar as `value / tokensUsed`,
+ * so the proportions must total the real fill. Missing categories default to 0
+ * (Otto doesn't track `systemPrompt`, so it's typically 0). Returns null when
+ * the composition is empty (nothing to color). */
+function buildContextBreakdown(
+  composition: ContextComposition,
+  occupancyTokens: number | undefined,
+): VisualizerContextBreakdown | null {
+  const raw: VisualizerContextBreakdown = {
+    systemPrompt: composition.systemPrompt ?? 0,
+    userMessages: composition.userMessages ?? 0,
+    toolResults: composition.toolResults ?? 0,
+    reasoning: composition.reasoning ?? 0,
+    subagentResults: composition.subagentResults ?? 0,
+  };
+  const sum =
+    raw.systemPrompt + raw.userMessages + raw.toolResults + raw.reasoning + raw.subagentResults;
+  if (sum <= 0) return null;
+  if (occupancyTokens == null || occupancyTokens <= 0) return raw;
+  const scale = occupancyTokens / sum;
+  return {
+    systemPrompt: Math.round(raw.systemPrompt * scale),
+    userMessages: Math.round(raw.userMessages * scale),
+    toolResults: Math.round(raw.toolResults * scale),
+    reasoning: Math.round(raw.reasoning * scale),
+    subagentResults: Math.round(raw.subagentResults * scale),
+  };
+}
+
+/** `tokens`/`tokensMax` are context OCCUPANCY (drives the ring/bar fill);
+ * `cumulativeTokens` is the agent's honest lifetime total (drives the page's
+ * token/cost sums — Otto vendor patch); `breakdown` is the daemon's estimated
+ * context composition (drives the colored ring/bar segments — absent when the
+ * provider couldn't attribute anything, so the page shows occupancy only).
+ * Returns null when no reading is present (nothing worth emitting). */
 export function buildContextUpdateEvent(input: {
   ctx: AgentNodeContext;
   usage?: AgentUsage;
@@ -229,6 +381,9 @@ export function buildContextUpdateEvent(input: {
   if (contextTokens == null && input.cumulativeTokens == null) {
     return null;
   }
+  const breakdown = input.usage?.contextComposition
+    ? buildContextBreakdown(input.usage.contextComposition, contextTokens ?? undefined)
+    : null;
   return {
     time: input.time,
     sessionId: input.ctx.sessionId,
@@ -240,6 +395,7 @@ export function buildContextUpdateEvent(input: {
         ? { tokensMax: input.usage.contextWindowMaxTokens }
         : {}),
       ...(input.cumulativeTokens != null ? { cumulativeTokens: input.cumulativeTokens } : {}),
+      ...(breakdown ? { breakdown } : {}),
     },
   };
 }
@@ -330,6 +486,193 @@ export function summarizeToolCallResult(detail: ToolCallDetail): string {
   }
 }
 
+/** A notable finding surfaced from a completed tool call, rendered as a floating
+ * discovery card near the node (vendor `Discovery`; the page consumes this via
+ * the OTTO-PATCHES "discovery cards" wire on `tool_call_end`). */
+export interface DerivedDiscovery {
+  type: "file" | "pattern" | "finding" | "code";
+  label: string;
+  content: string;
+}
+
+const DISCOVERY_LABEL_MAX = 40;
+const DISCOVERY_LINE_MAX = 44;
+
+function discoveryLine(text: string, max = DISCOVERY_LINE_MAX): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  return trimmed.length > max ? `${trimmed.slice(0, max).trimEnd()}…` : trimmed;
+}
+
+/** First non-empty content lines, each length-clamped, at most `count`. */
+function firstContentLines(content: string, count: number): string[] {
+  return content
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, count)
+    .map((l) => discoveryLine(l));
+}
+
+/** Count added/removed lines in a unified diff (ignoring the +++/--- headers). */
+function summarizeUnifiedDiff(diff: string): string {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) added++;
+    else if (line.startsWith("-")) removed++;
+  }
+  if (added === 0 && removed === 0) return "edited";
+  return `+${added} −${removed} lines`;
+}
+
+const TEST_RESULT_RE =
+  /(\d+\s+(?:passed|failed|passing|failing))|(tests?:)|(\bpass(?:ed)?\b|\bfail(?:ed)?\b)|coverage|(\d+\s+of\s+\d+)/i;
+
+/** Pull the most informative test/coverage lines out of shell output. */
+function summarizeTestOutput(output: string): { label: string; content: string } | null {
+  const lines = output
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const hits = lines.filter((l) => TEST_RESULT_RE.test(l)).slice(0, 3);
+  if (hits.length === 0) return null;
+  const failed = /fail/i.test(output) && !/0\s+fail/i.test(output);
+  const label = failed ? "Tests failed" : "Tests pass";
+  return { label, content: hits.map((l) => discoveryLine(l)).join("\n") };
+}
+
+type RelFn = (p: string) => string;
+
+function searchDiscovery(
+  detail: Extract<ToolCallDetail, { type: "search" }>,
+  rel: RelFn,
+): DerivedDiscovery | null {
+  // Web search → the top result titles are the finding.
+  if (detail.webResults && detail.webResults.length > 0) {
+    return {
+      type: "finding",
+      label: discoveryLine(detail.query || "Web search", DISCOVERY_LABEL_MAX),
+      content: detail.webResults
+        .slice(0, 3)
+        .map((r) => discoveryLine(r.title))
+        .join("\n"),
+    };
+  }
+  // Grep/Glob → match/file counts + a few paths.
+  if (detail.numMatches == null && detail.numFiles == null) return null;
+  const counts: string[] = [];
+  if (detail.numMatches != null)
+    counts.push(`${detail.numMatches} match${detail.numMatches === 1 ? "" : "es"}`);
+  if (detail.numFiles != null)
+    counts.push(`${detail.numFiles} file${detail.numFiles === 1 ? "" : "s"}`);
+  const paths = (detail.filePaths ?? []).slice(0, 3).map((p) => discoveryLine(rel(p)));
+  return {
+    type: "pattern",
+    label: discoveryLine(detail.query || "Search", DISCOVERY_LABEL_MAX),
+    content: [counts.join(" · "), ...paths].filter(Boolean).join("\n"),
+  };
+}
+
+function writeDiscovery(
+  detail: Extract<ToolCallDetail, { type: "write" }>,
+  rel: RelFn,
+): DerivedDiscovery {
+  const lineCount = detail.content ? detail.content.split("\n").length : 0;
+  const peek = detail.content ? firstContentLines(detail.content, 2) : [];
+  return {
+    type: "code",
+    label: `NEW: ${discoveryLine(rel(detail.filePath), DISCOVERY_LABEL_MAX)}`,
+    content: [lineCount > 0 ? `${lineCount} lines` : "created", ...peek].filter(Boolean).join("\n"),
+  };
+}
+
+function shellDiscovery(
+  detail: Extract<ToolCallDetail, { type: "shell" }>,
+  isError: boolean | undefined,
+): DerivedDiscovery | null {
+  const test = detail.output ? summarizeTestOutput(detail.output) : null;
+  if (test) return { type: "finding", label: test.label, content: test.content };
+  // A failed command is a finding even when it's not a test run.
+  if (!isError && !(detail.exitCode != null && detail.exitCode !== 0)) return null;
+  return {
+    type: "finding",
+    label: "Command failed",
+    content: [
+      discoveryLine(detail.command, DISCOVERY_LABEL_MAX),
+      detail.exitCode != null ? `exit ${detail.exitCode}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
+function fetchDiscovery(
+  detail: Extract<ToolCallDetail, { type: "fetch" }>,
+): DerivedDiscovery | null {
+  if (!detail.result) return null;
+  let host = detail.url;
+  try {
+    host = new URL(detail.url).host || detail.url;
+  } catch {
+    // keep the raw url
+  }
+  return {
+    type: "finding",
+    label: discoveryLine(host, DISCOVERY_LABEL_MAX),
+    content: firstContentLines(detail.result, 2).join("\n") || "fetched",
+  };
+}
+
+/** Heuristic: turn a *notable* completed tool call into a discovery card, or
+ * null for the ordinary majority. Deliberately excludes Read (the most frequent
+ * tool — reads would spray low-value cards) and anything already represented as
+ * its own node (sub_agent → subagent_return particle). Locked to "heuristic on
+ * notable results" (projects/visualizer-node-richness). Pure over `detail`;
+ * paths are relativized to the agent cwd, matching the rest of the graph. */
+export function deriveToolCallDiscovery(
+  detail: ToolCallDetail,
+  opts?: { workspaceRoot?: string; isError?: boolean },
+): DerivedDiscovery | null {
+  const rel: RelFn = (p) => relativizeStringPaths(p, opts?.workspaceRoot);
+  switch (detail.type) {
+    case "search":
+      return searchDiscovery(detail, rel);
+    case "write":
+      return writeDiscovery(detail, rel);
+    case "edit":
+      return {
+        type: "code",
+        label: discoveryLine(rel(detail.filePath), DISCOVERY_LABEL_MAX),
+        content: detail.unifiedDiff ? summarizeUnifiedDiff(detail.unifiedDiff) : "edited",
+      };
+    case "shell":
+      return shellDiscovery(detail, opts?.isError);
+    case "fetch":
+      return fetchDiscovery(detail);
+    // Read (too frequent), sub_agent (own node), plan/plain_text/worktree/unknown.
+    default:
+      return null;
+  }
+}
+
+/** Estimated tokens a finished tool call consumed, at ~4 chars/token over the
+ * serialized detail payload — the same heuristic as turn-time.ts. Otto's
+ * protocol carries no per-tool usage (providers only report it at request
+ * boundaries), so this estimate is what feeds the page's `tokenCost` (the
+ * "N tok" line on completed cards, file-attention totals). The page's context
+ * ring self-corrects: every `context_update` sets occupancy absolutely. */
+export function estimateToolCallTokenCost(detail: ToolCallDetail): number | undefined {
+  let chars = 0;
+  try {
+    chars = JSON.stringify(detail)?.length ?? 0;
+  } catch {
+    return undefined;
+  }
+  const tokens = Math.round(chars / 4);
+  return tokens > 0 ? tokens : undefined;
+}
+
 function stringifyToolCallError(error: unknown): string {
   if (typeof error === "string") {
     return error;
@@ -398,7 +741,14 @@ function toolCallStartEvents(input: {
   time: number;
 }): SimulationEvent[] {
   const { ctx, item, time } = input;
-  const filePath = toolCallDetailFilePath(item.detail);
+  const rawFilePath = toolCallDetailFilePath(item.detail);
+  const filePath = rawFilePath ? relativizeStringPaths(rawFilePath, ctx.workspaceRoot) : undefined;
+  // For a file tool (read/edit/write) the args summary IS the file path, so
+  // reuse the same workspace-relative form. Other tools carry a freeform summary
+  // (shell command, search query) that may EMBED an absolute path — the same
+  // rewrite handles both. Separators are preserved either way.
+  const args =
+    filePath ?? relativizeStringPaths(summarizeToolCallArgs(item.detail), ctx.workspaceRoot);
   const events: SimulationEvent[] = [
     {
       time,
@@ -406,8 +756,10 @@ function toolCallStartEvents(input: {
       type: "tool_call_start",
       payload: {
         agent: ctx.name,
-        tool: item.name,
-        args: summarizeToolCallArgs(item.detail),
+        // Friendly, namespace-stripped label ("mcp__otto__spawn_task" ->
+        // "Spawn Task") — shared with the chat rows so nodes read the same way.
+        tool: getToolDisplayName(item.name),
+        args,
         ...(filePath ? { inputData: { file_path: filePath } } : {}),
       },
     },
@@ -441,15 +793,26 @@ function toolCallToSimulationEvents(input: {
     ? toolCallStartEvents({ ctx, item, time })
     : [];
   const isError = item.status === "failed";
+  const tokenCost = estimateToolCallTokenCost(item.detail);
+  // Notable outcomes surface as a floating discovery card (page-side vendor
+  // wire consumes payload.discovery). Null for the ordinary majority.
+  const discovery = deriveToolCallDiscovery(item.detail, {
+    workspaceRoot: ctx.workspaceRoot,
+    isError,
+  });
   events.push({
     time,
     sessionId: ctx.sessionId,
     type: "tool_call_end",
     payload: {
       agent: ctx.name,
-      tool: item.name,
+      // Friendly, namespace-stripped label ("mcp__otto__spawn_task" ->
+      // "Spawn Task") — shared with the chat rows so nodes read the same way.
+      tool: getToolDisplayName(item.name),
       result: summarizeToolCallResult(item.detail),
       isError,
+      ...(tokenCost != null ? { tokenCost } : {}),
+      ...(discovery ? { discovery } : {}),
       ...(isError ? { errorMessage: stringifyToolCallError(item.error) } : {}),
     },
   });

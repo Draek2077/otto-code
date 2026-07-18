@@ -92,7 +92,7 @@ import {
 } from "@/background-tasks";
 import { BackgroundTasksTrack } from "@/background-tasks/track";
 import {
-  SuggestedTasksTrack,
+  SuggestedTasksOverlay,
   useSuggestedTaskActions,
   useSuggestedTasksForParent,
 } from "@/suggested-tasks";
@@ -1206,6 +1206,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     }),
     [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
   );
+  const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
+  const hasSuggestedTasks = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
+  );
+  const suggestedTaskActions = useSuggestedTaskActions({ serverId, parentAgentId: agentId });
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1241,7 +1246,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const streamContent = (
     <ReanimatedAnimated.View style={animatedContentStyle}>{streamSection}</ReanimatedAnimated.View>
   );
-  const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
+  const contentContainer = (
+    <View style={styles.contentContainer}>
+      {streamContent}
+      {hasSuggestedTasks ? (
+        <SuggestedTasksOverlay rows={suggestedTaskRows} actions={suggestedTaskActions} />
+      ) : null}
+    </View>
+  );
 
   return (
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
@@ -1496,11 +1508,6 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
-  const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
-  const hasSuggestedTasks = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
-  );
-  const suggestedTaskActions = useSuggestedTaskActions({ serverId, parentAgentId: agentId });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1649,9 +1656,6 @@ function ActiveAgentComposer({
           onStopTask={handleStopBackgroundTask}
           onClearCompleted={handleClearCompletedBackgroundTasks}
         />
-      ) : null}
-      {hasSuggestedTasks ? (
-        <SuggestedTasksTrack rows={suggestedTaskRows} actions={suggestedTaskActions} />
       ) : null}
       <Composer
         agentId={agentId}
