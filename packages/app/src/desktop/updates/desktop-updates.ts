@@ -106,6 +106,14 @@ export async function getDesktopRuntimeInfo(): Promise<DesktopRuntimeInfo> {
   return parseDesktopRuntimeInfo(result);
 }
 
+// Clear the desktop shell's software-rendering fallback and relaunch into
+// hardware acceleration. The app quits and relaunches as part of the command,
+// so this promise typically never resolves — the caller should treat the call
+// as fire-and-forget (show a pending state; the relaunch is the completion).
+export async function reenableGpuAcceleration(): Promise<void> {
+  await invokeDesktopCommand<unknown>("desktop_reenable_gpu_acceleration");
+}
+
 export async function checkDesktopAppUpdate({
   releaseChannel,
   intent,

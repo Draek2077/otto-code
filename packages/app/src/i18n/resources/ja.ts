@@ -2664,6 +2664,11 @@ export const ja: TranslationResources = {
         showSelectorLabel: "チャットに自動圧縮を表示",
         showSelectorDescription:
           "オフにすると、チャットでは自動圧縮のセレクターが非表示になり、常に上記のデフォルトが使用されます。",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "エージェント設定の保存に失敗しました",
       },
       connection: {

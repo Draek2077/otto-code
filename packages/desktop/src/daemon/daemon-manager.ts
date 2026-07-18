@@ -39,7 +39,11 @@ import {
 } from "../settings/desktop-settings-commands.js";
 import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
-import { isSoftwareRenderingActive } from "../gpu-fallback.js";
+import {
+  forceReenableHardwareAcceleration,
+  isSoftwareRenderingActive,
+  stripSoftwareRenderingArgs,
+} from "../gpu-fallback.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
 import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
 import { tailFile } from "../diagnostics/tail-file.js";
@@ -570,6 +574,19 @@ export function createDaemonCommandHandlers(options?: {
       runningUnderARM64Translation: isRunningUnderARM64Translation(),
       softwareRendering: isSoftwareRenderingActive(),
     }),
+    // Clear the software-rendering fallback and relaunch into hardware
+    // acceleration. Surfaced as the "Re-enable GPU acceleration" action for a
+    // user whose GPU has recovered (e.g. a transient driver TDR that latched
+    // the marker) so they don't have to wait out the re-probe backoff or find
+    // the OTTO_FORCE_GPU env var. The relaunch strips any software-rendering
+    // switches this process was started with so the fresh one honors the
+    // cleared marker.
+    desktop_reenable_gpu_acceleration: () => {
+      forceReenableHardwareAcceleration(app.getPath("userData"));
+      app.relaunch({ args: stripSoftwareRenderingArgs(process.argv.slice(1)) });
+      app.exit(0);
+      return { relaunching: true };
+    },
     desktop_daemon_status: () => resolveDesktopDaemonStatus(),
     start_desktop_daemon: () => startDaemon(),
     stop_desktop_daemon: (args) => stopDesktopDaemon(parseDesktopDaemonStopReason(args)),

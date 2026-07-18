@@ -34,6 +34,7 @@ import {
   type RunWithHost,
 } from "@/hooks/use-runs";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
+import { useFeatureEnabled } from "@/features/use-feature-enabled";
 
 // ── Pure presentation helpers ───────────────────────────────────────────────
 
@@ -552,6 +553,7 @@ function RunCard({
   }, [cancelMutation, run.id]);
   const workspaceId = run.workspaceId;
   const runId = run.id;
+  const visualizerEnabled = useFeatureEnabled("visualizer");
   const handleVisualize = useCallback(() => {
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId, runId });
@@ -630,7 +632,7 @@ function RunCard({
         <RunFooterMeta run={run} totalTokens={totalTokens} />
       </View>
 
-      {workspaceId ? (
+      {workspaceId && visualizerEnabled ? (
         <View style={styles.gateRow}>
           <Button
             variant="ghost"

@@ -21,8 +21,12 @@ echo "  Daemon:  ${DAEMON_ENDPOINT}"
 echo "  Home:    ${OTTO_HOME}"
 echo "══════════════════════════════════════════════════════"
 
+# Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
+# in-memory module graph + transform cache until it walks into V8's ~4 GB default
+# old-space ceiling and dies with "Ineffective mark-compacts near heap limit".
 exec cross-env \
   BROWSER="${BROWSER:-none}" \
   APP_VARIANT=development \
   EXPO_PUBLIC_LOCAL_DAEMON="$DAEMON_ENDPOINT" \
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192" \
   npm run start:expo --workspace=@otto-code/app -- --port "$EXPO_PORT"

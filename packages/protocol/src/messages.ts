@@ -3602,6 +3602,12 @@ export const ServerInfoStatusPayloadSchema = z
         // Set when the daemon emits agent_stream `rate_limit_updated` events (Claude
         // plan rate-limit status). Warnings degrade silently on an old daemon (no event).
         rateLimitEvents: z.boolean().optional(),
+        // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon honors the provider-level `maxToolRounds` override for
+        // openai-compat agents. The client gates the Agents-tab control on this so an
+        // old daemon (which silently ignores the field and keeps the fixed 50-round
+        // cap) shows "Update the host" instead of a knob that does nothing.
+        openaiCompatMaxToolRounds: z.boolean().optional(),
       })
       .optional(),
   })

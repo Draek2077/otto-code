@@ -255,6 +255,12 @@ interface ProviderEnabledFlag {
    * null = resolved as unset.
    */
   compaction?: ProviderCompactionConfig | null;
+  /**
+   * Provider-level max-tool-rounds override for daemon-hosted providers.
+   * Undefined = caller didn't resolve it (leave live sessions untouched);
+   * null = resolved as unset (built-in default).
+   */
+  maxToolRounds?: number | null;
 }
 type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
 type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
@@ -928,12 +934,19 @@ export class AgentManager {
       }
     }
     // Live sessions absorb provider-level compaction edits (default level,
-    // hidden selector) so open chats reflect settings changes immediately.
+    // hidden selector) and the max-tool-rounds override so open chats reflect
+    // settings changes immediately.
     for (const agent of this.agents.values()) {
-      if (!agent.session?.applyCompactionConfig) continue;
       const definition = input.providerDefinitions[agent.provider];
-      if (!definition || definition.compaction === undefined) continue;
-      if (agent.session.applyCompactionConfig(definition.compaction)) {
+      if (!definition) continue;
+      let changed = false;
+      if (agent.session?.applyCompactionConfig && definition.compaction !== undefined) {
+        changed = agent.session.applyCompactionConfig(definition.compaction) || changed;
+      }
+      if (agent.session?.applyMaxToolRounds && definition.maxToolRounds !== undefined) {
+        changed = agent.session.applyMaxToolRounds(definition.maxToolRounds) || changed;
+      }
+      if (changed) {
         this.emitState(agent);
       }
     }

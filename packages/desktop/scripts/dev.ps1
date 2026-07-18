@@ -116,10 +116,16 @@ Write-Host @"
 ======================================================
 "@
 
+# Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
+# in-memory module graph + transform cache until it walks into V8's ~4 GB default
+# old-space ceiling and dies with "Ineffective mark-compacts near heap limit"
+# (exit 134). Scoped to the Expo/Metro process only — Electron keeps its default.
+$MetroNodeOptions = if ($env:NODE_OPTIONS) { "$($env:NODE_OPTIONS) --max-old-space-size=8192" } else { "--max-old-space-size=8192" }
+
 # Launch Metro + Electron together, kill both on exit
 concurrently `
     --kill-others `
     --names "metro,electron" `
     --prefix-colors "magenta,cyan" `
-    "cd `"$AppDir`" && cross-env OTTO_WEB_PLATFORM=electron npx expo start --port $($env:EXPO_PORT)" `
+    "cd `"$AppDir`" && cross-env OTTO_WEB_PLATFORM=electron NODE_OPTIONS=`"$MetroNodeOptions`" npx expo start --port $($env:EXPO_PORT)" `
     "npx wait-on tcp:$($env:EXPO_PORT) && npx electron `"$DesktopDir`""

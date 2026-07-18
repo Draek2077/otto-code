@@ -1,4 +1,5 @@
 import { supportsDesktopPaneSplits } from "@/constants/layout";
+import { getFeatureEnabledSnapshot } from "@/features/use-feature-enabled";
 import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceTabTarget,
@@ -61,6 +62,12 @@ function findVisualizerSplitTarget(
  * to watch alongside, it opens/focuses in place.
  */
 export function openVisualizerTab(input: OpenVisualizerTabInput): boolean {
+  // Central gate: the Visualizer feature must be enabled to open its tab. Every
+  // entry point (header button, Runs "Visualize") funnels through here, so this
+  // one check covers them all even if a caller forgets to hide its control.
+  if (!getFeatureEnabledSnapshot("visualizer")) {
+    return false;
+  }
   const workspaceKey = buildWorkspaceTabPersistenceKey({
     serverId: input.serverId,
     workspaceId: input.workspaceId,

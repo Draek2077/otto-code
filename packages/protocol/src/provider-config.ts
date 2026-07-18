@@ -130,6 +130,17 @@ export const MCP_TOOL_PERMISSION_MODES = ["always-ask", "trust-read-only"] as co
 export const COMPACTION_THRESHOLD_PERCENTS = [50, 60, 70, 80, 90] as const;
 
 /**
+ * Max model→tool→model rounds per turn for providers whose tool loop the
+ * daemon owns (openai-compat). The turn stops with an error after this many
+ * rounds without a final answer — a runaway-loop safety valve, most often hit
+ * by smaller local models that keep calling tools instead of converging.
+ * Bounds keep the setting a sane guard rail rather than an off switch.
+ */
+export const MAX_TOOL_ROUNDS_DEFAULT = 50;
+export const MAX_TOOL_ROUNDS_MIN = 1;
+export const MAX_TOOL_ROUNDS_MAX = 1000;
+
+/**
  * Compaction tuning for providers whose conversation the daemon owns
  * (openai-compat). These set the provider-level defaults; the per-agent
  * "Auto-compact" feature select overrides them at runtime.
@@ -180,6 +191,11 @@ export const ProviderOverrideSchema = z.object({
    * (openai-compat). Per-agent feature values win over these.
    */
   compaction: ProviderCompactionConfigSchema.optional(),
+  /**
+   * Max model→tool→model rounds per turn for daemon-hosted providers
+   * (openai-compat). Omitted = the built-in default (MAX_TOOL_ROUNDS_DEFAULT).
+   */
+  maxToolRounds: z.number().int().min(MAX_TOOL_ROUNDS_MIN).max(MAX_TOOL_ROUNDS_MAX).optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });

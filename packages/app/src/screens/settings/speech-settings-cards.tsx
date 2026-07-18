@@ -729,6 +729,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   triggerAnchor: {
     maxWidth: "60%",
+    // Keep the dropdown clear of a preceding trailing control (e.g. the voice
+    // preview button) so its hover surface never overlaps the combobox.
+    marginLeft: theme.spacing[2],
   },
   trigger: {
     flexDirection: "row",

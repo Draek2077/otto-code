@@ -2677,6 +2677,11 @@ export const ru: TranslationResources = {
         showSelectorLabel: "Показывать автосжатие в чатах",
         showSelectorDescription:
           "Если выключено, в чатах скрывается селектор автосжатия и всегда используется значение по умолчанию выше.",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "Не удалось сохранить настройки агентов",
       },
       connection: {

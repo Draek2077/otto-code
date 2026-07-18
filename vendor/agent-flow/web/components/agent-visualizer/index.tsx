@@ -15,7 +15,6 @@ import { DiscoveryDetailPopup } from "./discovery-detail-popup"
 import { FileAttentionPanel } from "./file-attention-panel"
 import { CostPanel } from "./cost-panel"
 import { TimelinePanel } from "./timeline-panel"
-import { AgentChatPanel } from "./chat-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
 import { TimelineEvent, TIMING } from "@/lib/agent-types"
@@ -294,15 +293,6 @@ export function AgentVisualizer() {
   }, [agents, retiredTokens])
 
   const selectedAgent = selection.selectedAgentId ? agents.get(selection.selectedAgentId) : null
-  const selectedConversation = selection.selectedAgentId ? (conversations.get(selection.selectedAgentId) || []) : []
-
-  // Session runtime — drives the assistant label (CLAUDE vs CODEX) in the per-agent chat panel
-  const sessionRuntime = useMemo(() => {
-    for (const a of agents.values()) {
-      if (a.runtime === 'codex') return 'codex' as const
-    }
-    return 'claude' as const
-  }, [agents])
 
   // OTTO PATCH (OTTO-PATCHES.md): the in-canvas right-click context menu was
   // removed — every one of its actions (Zoom to Fit / Toggle Stats / Restart)
@@ -442,15 +432,10 @@ export function AgentVisualizer() {
         </div>
       )}
 
-      {/* Chat panel (bottom-right, shown when agent selected) */}
-      <AgentChatPanel
-        visible={!!selectedAgent}
-        agentName={selectedAgent?.name ?? ''}
-        agentState={selectedAgent?.state ?? 'idle'}
-        conversation={selectedConversation}
-        runtime={selectedAgent?.runtime ?? sessionRuntime}
-        onClose={selection.clearAgent}
-      />
+      {/* OTTO PATCH (OTTO-PATCHES.md): the per-node chat panel (bottom-right,
+          click a node → that agent's messages) was removed — it duplicated the
+          real chat transcript the user already has open, same rationale as the
+          Chat/message-feed panels. Only the node detail card remains on click. */}
 
       {/* OTTO PATCH (OTTO-PATCHES.md): the right-click GlassContextMenu was
           removed — its actions moved to the native Otto toolbar. */}

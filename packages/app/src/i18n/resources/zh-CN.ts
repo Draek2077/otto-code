@@ -2617,6 +2617,11 @@ export const zhCN: TranslationResources = {
         compactionAtPercent: "达到 {{percent}}% 时",
         showSelectorLabel: "在聊天中显示自动压缩",
         showSelectorDescription: "关闭后，聊天将隐藏自动压缩选择器并始终使用上面的默认值。",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "保存代理设置失败",
       },
       connection: {

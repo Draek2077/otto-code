@@ -9,7 +9,7 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
+import Animated, { useSharedValue, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { DocumentSearch, Files, X } from "@/components/icons/material-icons";
@@ -46,6 +46,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
+import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { isWeb } from "@/constants/platform";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -236,15 +237,16 @@ export function ExplorerSidebar({
     [closeGesture, resizeGesture],
   );
 
-  const resizeAnimatedStyle = useAnimatedStyle(() => ({
-    width: resizeWidth.value,
-  }));
+  // Open/close slide (width + opacity) layered on top of the resize width;
+  // `rendered` keeps the panel mounted through the close animation. Snaps shut
+  // like the old `!isOpen` return-null when animations are off.
+  const { rendered, slideStyle } = useSidebarSlide({ isOpen, width: resizeWidth });
   const desktopSidebarStyle = useMemo(
-    () => [explorerStaticStyles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insets.top }],
-    [resizeAnimatedStyle, insets.top],
+    () => [explorerStaticStyles.desktopSidebar, slideStyle, { paddingTop: insets.top }],
+    [slideStyle, insets.top],
   );
 
-  if (!isOpen) {
+  if (!rendered) {
     return null;
   }
 
@@ -668,6 +670,9 @@ function PrTabContent({
 const explorerStaticStyles = RNStyleSheet.create({
   desktopSidebar: {
     position: "relative" as const,
+    // Clip the inner content while the outer width animates during the
+    // open/close slide, so the panel edge reveals cleanly.
+    overflow: "hidden" as const,
   },
 });
 

@@ -3,13 +3,11 @@ import { Animated, Easing, Text, useColorScheme, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
-import { Waypoints } from "@/components/icons/material-icons";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -25,17 +23,6 @@ import type {
   VisualizerViewHandle,
 } from "@/visualizer/visualizer-view-types";
 import { normalizeWorkspaceFileLocation } from "@/workspace/file-open";
-
-function useVisualizerPanelDescriptor(): PanelDescriptor {
-  const { t } = useTranslation();
-  return {
-    label: t("workspace.visualizer.tabLabel"),
-    subtitle: t("workspace.visualizer.subtitle"),
-    titleState: "ready",
-    icon: Waypoints,
-    statusBucket: null,
-  };
-}
 
 // The demo scenario (the vendored bundle's built-in mock run — see
 // docs/visualizer.md "Risks / gotchas") is retained in the bundle and reachable
@@ -74,7 +61,10 @@ const LOAD_COVER_FADE_MS = 200;
 // instead. The bundle is local (no network), so a healthy load is far faster.
 const READY_HANDSHAKE_TIMEOUT_MS = 15_000;
 
-function VisualizerPanel() {
+// Exported so the thin registration module (visualizer-panel-registration.tsx)
+// can pull it via React.lazy — the boundary that keeps this whole module (and
+// the vendored render bundle it transitively loads) out of the startup graph.
+export function VisualizerPanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "visualizer", "VisualizerPanel requires visualizer target");
@@ -119,7 +109,14 @@ function VisualizerPanel() {
   // The last chat that actually held focus. Focusing the Visualizer's own pane
   // (or a terminal) reports focusedAgentId = null; we keep following the last
   // real chat rather than blanking the selection when you click the canvas.
-  const [followTargetAgentId, setFollowTargetAgentId] = useState<string | null>(null);
+  // Seeded lazily from the store's CURRENT focused chat so a companion
+  // Visualizer targets the chat it was opened beside even in the edge case
+  // where its own pane grabs focus (focusedAgentId -> null) before the effect
+  // below captures it — otherwise nothing drives selection and the page's
+  // most-recently-active auto-select can land on the wrong/empty chat.
+  const [followTargetAgentId, setFollowTargetAgentId] = useState<string | null>(
+    () => useSessionStore.getState().sessions[serverId]?.focusedAgentId ?? null,
+  );
   useEffect(() => {
     if (focusedAgentId) {
       setFollowTargetAgentId(focusedAgentId);
@@ -544,15 +541,6 @@ function VisualizerPanel() {
     </View>
   );
 }
-
-export const visualizerPanelRegistration: PanelRegistration<"visualizer"> = {
-  kind: "visualizer",
-  component: VisualizerPanel,
-  useDescriptor: useVisualizerPanelDescriptor,
-  confirmClose() {
-    return Promise.resolve(true);
-  },
-};
 
 const styles = StyleSheet.create((theme) => ({
   container: {

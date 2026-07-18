@@ -154,6 +154,13 @@ function canConnect(port, host) {
 process.on("SIGINT", () => stopAll("SIGTERM"));
 process.on("SIGTERM", () => stopAll("SIGTERM"));
 
+// Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
+// in-memory module graph + transform cache until it walks into V8's ~4 GB default
+// old-space ceiling and dies with "Ineffective mark-compacts near heap limit"
+// (exit 134). Scoped to the Expo/Metro process only — Electron keeps its default.
+const metroNodeOptions = [process.env.NODE_OPTIONS, "--max-old-space-size=8192"]
+  .filter(Boolean)
+  .join(" ");
 spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
   cwd: appDir,
   detached: true,
@@ -163,6 +170,7 @@ spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
     BROWSER: "none",
     APP_VARIANT: "development",
     OTTO_WEB_PLATFORM: "electron",
+    NODE_OPTIONS: metroNodeOptions,
   },
 });
 
