@@ -26,7 +26,7 @@ interface WorkspaceVisualizerButtonProps {
 }
 
 /** Opens the Visualizer tab. Sits in the workspace header's title cluster,
- * immediately left of the "..." workspace menu (developer mode, desktop only). */
+ * immediately right of the "..." workspace menu (developer mode, desktop only). */
 export function WorkspaceVisualizerButton({
   serverId,
   workspaceId,

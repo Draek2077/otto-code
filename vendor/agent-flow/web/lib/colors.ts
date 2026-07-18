@@ -11,7 +11,6 @@ import type { AgentState, ContextBreakdown } from './agent-types'
 export const COLORS = {
   // Background
   void: '#050510',
-  hexGrid: '#0d0d1f',
 
   // Primary Hologram
   holoBase: '#66ccff',

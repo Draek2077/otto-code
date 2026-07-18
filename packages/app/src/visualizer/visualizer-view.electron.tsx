@@ -80,38 +80,6 @@ const INJECT_POST_BRIDGE_SCRIPT = `
   true;
 `;
 
-// Dev-only on-screen FPS meter, injected into the guest (the rAF loop must run
-// where the canvas renders). Pinned bottom-right, just above the host-side
-// debug buttons the panel overlays in that corner. Counts guest rAF ticks —
-// the same loop the vendor's draw scheduler rides — so it reflects real
-// render throughput, not the host's frame rate.
-const INJECT_FPS_METER_SCRIPT = `
-  (function () {
-    if (window.__ottoVisualizerFpsMeter) return true;
-    var el = document.createElement("div");
-    el.style.cssText = "position:fixed;bottom:48px;right:12px;z-index:99999;" +
-      "font:11px ui-monospace,monospace;color:#7fd4ff;background:rgba(5,10,20,0.7);" +
-      "border:1px solid rgba(102,204,255,0.25);border-radius:4px;padding:2px 8px;" +
-      "pointer-events:none;";
-    el.textContent = "FPS: --";
-    document.body.appendChild(el);
-    window.__ottoVisualizerFpsMeter = el;
-    var frames = 0;
-    var last = performance.now();
-    function tick(now) {
-      frames++;
-      if (now - last >= 1000) {
-        el.textContent = "FPS: " + Math.round((frames * 1000) / (now - last));
-        frames = 0;
-        last = now;
-      }
-      requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-    return true;
-  })();
-`;
-
 /** Electron renderer for the Visualizer. Renders into a <webview> guest (its own
  * session, exempt from the app-shell CSP) so the bundle's inline scripts run. */
 export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewProps>(
@@ -215,17 +183,36 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       webview.style.height = `${Math.max(1, Math.round(initialRect.height))}px`;
       webview.style.border = "0";
       webview.style.background = themeBackgroundRef.current ?? "#000";
+      // Hide the guest until it has painted its own (themed) first frame. An
+      // Electron <webview>'s guest webContents has an opaque WHITE base color
+      // that Chromium paints during the gap between attach and the guest's
+      // first paint — and being opaque, it occludes the themed element
+      // background above. WebContents has no setBackgroundColor to kill that
+      // white, so instead the element starts transparent (opacity 0), letting
+      // the themed host div behind it show through the gap, and is revealed on
+      // dom-ready once the guest is painting its own themed background. Covers
+      // reloads too (theme/scale swap, and a reattach-triggered reload that the
+      // panel's load cover doesn't re-raise) via the did-start-loading handler.
+      webview.style.opacity = "0";
       webview.src = toDataUrl(html);
       webviewRef.current = webview;
       domReadyRef.current = false;
       pendingMessagesRef.current = [];
 
+      // Re-hide on the START of any later navigation (guest reload after a
+      // renderer crash, or the reload Electron does when the <webview> node is
+      // detached/reattached during a layout change) so its white base never
+      // shows; the matching dom-ready below reveals it again once painted.
+      const handleStartLoading = () => {
+        webview.style.opacity = "0";
+      };
       const handleDomReady = () => {
         domReadyRef.current = true;
+        // Guest has parsed its document (html/body + the shell's inline theme
+        // script have applied the themed background), so it now paints themed,
+        // not white — safe to reveal.
+        webview.style.opacity = "1";
         void executeWebviewJavaScript(webview, INJECT_POST_BRIDGE_SCRIPT);
-        if (isDev) {
-          void executeWebviewJavaScript(webview, INJECT_FPS_METER_SCRIPT);
-        }
         const pending = pendingMessagesRef.current;
         pendingMessagesRef.current = [];
         for (const payload of pending) {
@@ -288,6 +275,7 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
         });
       };
 
+      webview.addEventListener("did-start-loading", handleStartLoading);
       webview.addEventListener("dom-ready", handleDomReady);
       webview.addEventListener("console-message", handleConsoleMessage);
       webview.addEventListener("did-fail-load", handleFailLoad);
@@ -311,9 +299,18 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
 
       return () => {
         resizeObserver.disconnect();
+        webview.removeEventListener("did-start-loading", handleStartLoading);
         webview.removeEventListener("dom-ready", handleDomReady);
         webview.removeEventListener("console-message", handleConsoleMessage);
         webview.removeEventListener("did-fail-load", handleFailLoad);
+        // Take the guest out of the compositor BEFORE destroying it. An
+        // Electron <webview> guest is a cross-process surface; releasing it on
+        // .remove() can briefly clear its region to white (the guest webContents
+        // base color) before whatever is behind repaints — the flash seen when
+        // the Visualizer tab closes or its html swaps (theme/scale). Hiding it
+        // first detaches it from the visible layer tree, so the region falls
+        // back to the themed content behind it instead of flashing white.
+        webview.style.visibility = "hidden";
         webview.remove();
         webviewRef.current = null;
       };
@@ -323,6 +320,14 @@ export const VisualizerView = forwardRef<VisualizerViewHandle, VisualizerViewPro
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [html]);
 
-    return createElement("div", { ref: hostRef, style: HOST_STYLE });
+    // Paint the host container the theme background so the brief window before
+    // the guest is revealed (opacity gate above) reads as the theme color, not
+    // the app-shell default — the "themeBackground painted host-side" the props
+    // contract already promises. Memoized so only a theme change re-styles it.
+    const hostStyle = useMemo<CSSProperties>(
+      () => ({ ...HOST_STYLE, background: themeBackground ?? "#000" }),
+      [themeBackground],
+    );
+    return createElement("div", { ref: hostRef, style: hostStyle });
   },
 );

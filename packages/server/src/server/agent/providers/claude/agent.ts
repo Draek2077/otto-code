@@ -53,6 +53,7 @@ import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./quer
 import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 import { claudeProjectDirSync } from "./project-dir.js";
+import { WorkflowTranscriptWatcher } from "./workflow-transcript-watcher.js";
 import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
@@ -80,6 +81,7 @@ import {
   type AgentPersonalityUpdate,
   type AgentProviderNotice,
   type AgentPromptInput,
+  type AgentRateLimitInfo,
   type AgentRunOptions,
   type AgentRunResult,
   type AgentSession,
@@ -1064,6 +1066,16 @@ function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUp
   return Array.isArray(rules) && typeof behavior === "string" && typeof destination === "string";
 }
 
+// Otto tools that only draw or withdraw a suggestion card — they have no side
+// effect until the user clicks Start on the card, so the real approval gate is
+// that Start button, not the act of suggesting. Auto-approved in every mode
+// (including Always-ask) so the model never has to ask permission to suggest.
+// The suggestion still appears in the transcript, so full visibility is kept.
+const AUTO_APPROVED_OTTO_TOOL_NAMES = new Set<string>([
+  "mcp__otto__spawn_task",
+  "mcp__otto__dismiss_task",
+]);
+
 function resolvePermissionKind(
   toolName: string,
   input: Record<string, unknown>,
@@ -1654,6 +1666,34 @@ export class ClaudeAgentClient implements AgentClient {
   }
 }
 
+type ClaudeRateLimitInfo = Extract<SDKMessage, { type: "rate_limit_event" }>["rate_limit_info"];
+
+function mapClaudeRateLimitInfo(info: ClaudeRateLimitInfo): AgentRateLimitInfo {
+  let status: AgentRateLimitInfo["status"] = "allowed";
+  if (info.status === "rejected") {
+    status = "rejected";
+  } else if (info.status === "allowed_warning") {
+    status = "warning";
+  }
+  const mapped: AgentRateLimitInfo = { status };
+  // SDK utilization is 0-100 percent (see SDKControlGetUsageResponse docs);
+  // absent unless the session is near the limit.
+  if (typeof info.utilization === "number" && Number.isFinite(info.utilization)) {
+    mapped.utilizationPercent = Math.min(100, Math.max(0, Math.round(info.utilization)));
+  }
+  if (info.rateLimitType) {
+    mapped.limitType = info.rateLimitType;
+  }
+  // SDK resetsAt is epoch seconds (verified against a live rate_limit_event).
+  if (typeof info.resetsAt === "number" && Number.isFinite(info.resetsAt)) {
+    mapped.resetsAt = new Date(info.resetsAt * 1000).toISOString();
+  }
+  if (typeof info.isUsingOverage === "boolean") {
+    mapped.isUsingOverage = info.isUsingOverage;
+  }
+  return mapped;
+}
+
 async function resolveClaudeBinary(runtimeSettings?: ProviderRuntimeSettings): Promise<string> {
   const launch = await resolveProviderLaunch({
     commandConfig: runtimeSettings?.command,
@@ -2059,7 +2099,31 @@ class ClaudeAgentSession implements AgentSession {
   // Workflow runs are backgrounded (they legitimately outlive the turn) —
   // exempt from the turn-end sweep; they settle via their own task_notification.
   private readonly workflowObservedKeys = new Set<string>();
+  // Synthetic-event sources for Workflow (ultracode) runs: the live SDK stream
+  // carries no per-internal-agent identity, so a watcher tails each run's
+  // on-disk transcripts and re-emits observed-subagent events per internal
+  // agent, nested under the workflow row. See
+  // projects/workflow-decomposition/workflow-decomposition.md. Keyed by the
+  // workflow observed key; claimedDirs is shared so two concurrent runs in one
+  // session never bind the same on-disk dir.
+  private readonly workflowWatchers = new Map<string, WorkflowTranscriptWatcher>();
+  private readonly workflowClaimedDirs = new Set<string>();
+  // Workflow keys whose task_started arrived before claudeSessionId existed
+  // (the watcher needs the session id to resolve the on-disk dir). Drained by
+  // drainPendingWorkflowArms() at every point a session id gets assigned.
+  // Value = the SDK task_id used for on-disk identity confirmation.
+  private readonly pendingWorkflowArms = new Map<string, string | undefined>();
   private pendingObservedEvents: AgentStreamEvent[] = [];
+  // Serialized last-emitted rate-limit payload; rate_limit_event fires per API
+  // request, so only meaningful changes are forwarded to clients.
+  private lastRateLimitEventKey: string | null = null;
+  // Task ids from the last system/background_tasks_changed level payload
+  // (REPLACE semantics). An id present in the previous payload but absent from
+  // the next has settled even if its task_notification edge was lost — the
+  // reconcile in appendBackgroundTasksChangedEvents is the safety net that
+  // guarantees stuck workflow/background rows eventually settle. Edge events
+  // still own row creation and rich terminal status.
+  private lastBackgroundTaskIds = new Set<string>();
   // Background-shell-task bookkeeping, same shape as the observed-subagent
   // maps above but for Bash run_in_background tasks (not AI subagents).
   private readonly announcedBackgroundShellTasks = new Set<string>();
@@ -2609,12 +2673,24 @@ class ClaudeAgentSession implements AgentSession {
     this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.cancelCurrentTurn?.();
+    // Disarm workflow watchers BEFORE dropping subscribers: disarm emits the
+    // terminal 'closed' observed_subagent_updated events for still-running
+    // workflow children via pushEvent → notifySubscribers, which is a no-op
+    // against an empty subscriber set (the child rows would stay "running"
+    // forever after a mid-run close).
+    for (const watcher of this.workflowWatchers.values()) {
+      watcher.disarm("closed");
+    }
+    this.workflowWatchers.clear();
+    this.workflowClaimedDirs.clear();
+    this.pendingWorkflowArms.clear();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
     this.autonomousTurn = null;
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.sidechainTracker.clear();
+    this.workflowObservedKeys.clear();
     this.announcedObservedSubagents.clear();
     this.observedKeyByTaskId.clear();
     this.pendingObservedEvents = [];
@@ -2901,6 +2977,7 @@ class ClaudeAgentSession implements AgentSession {
     this.emittedUserMessageIds.clear();
     this.rewindTurnAnchors.length = 0;
     this.loadPersistedHistory(sessionId);
+    this.drainPendingWorkflowArms();
     if (oldSessionId && oldSessionId !== sessionId) {
       this.dispatchEvents([
         {
@@ -2929,6 +3006,7 @@ class ClaudeAgentSession implements AgentSession {
     this.userMessageIds = [];
     this.emittedUserMessageIds.clear();
     this.rewindTurnAnchors.length = 0;
+    this.drainPendingWorkflowArms();
   }
 
   private rememberUserMessageId(messageId: string | null | undefined): void {
@@ -3225,6 +3303,10 @@ class ClaudeAgentSession implements AgentSession {
       // projects/observed-subagents/observed-subagents.md.
       forwardSubagentText: true,
       agentProgressSummaries: true,
+      // Predicted next-user-prompt suggestions, emitted after each turn's result.
+      // Nearly free (piggyback on the parent prompt cache); the app decides whether
+      // to render them as composer ghost text via the promptSuggestions setting.
+      promptSuggestions: true,
       permissionMode: this.currentMode,
       // Dynamic mode switching can recreate the underlying Claude query. Keep the
       // bypass launch capability available so later setPermissionMode("bypassPermissions")
@@ -3674,6 +3756,37 @@ class ClaudeAgentSession implements AgentSession {
         },
         "provider.claude.raw_event",
       );
+      // OTTO_DEBUG_WORKFLOW: standing env-gated diagnostic for Claude
+      // workflow / subagent routing. This is the single point upstream of
+      // routeSdkMessageFromPump that sees every raw SDK message before Otto
+      // reclassifies or drops it, so it dumps the per-message identity axes
+      // (task_id, tool_use_id, task_type, workflow_name, subagent_type,
+      // task_description, parent_tool_use_id, isSidechain) at info level.
+      // Off by default (zero cost); set OTTO_DEBUG_WORKFLOW=1 in the daemon
+      // env to enable. Primary use: decide whether a Workflow's internal
+      // agent() fan-out carries per-agent identity on the live stream (the
+      // "Path A" question) — group sidechain messages by parent_tool_use_id
+      // and see whether subagent_type/task_description vary per child. See
+      // docs/visualizer.md (Debugging) and projects/workflow-decomposition.
+      if (process.env.OTTO_DEBUG_WORKFLOW) {
+        const raw = message as Record<string, unknown>;
+        this.logger.info(
+          {
+            agentId: this.agentId,
+            type: raw.type,
+            subtype: raw.subtype,
+            task_id: raw.task_id,
+            tool_use_id: raw.tool_use_id,
+            task_type: raw.task_type,
+            workflow_name: raw.workflow_name,
+            subagent_type: raw.subagent_type,
+            task_description: raw.task_description,
+            parent_tool_use_id: readClaudeParentToolUseId(message),
+            isSidechain: raw.isSidechain,
+          },
+          "OTTO_DEBUG_WORKFLOW",
+        );
+      }
     };
     const handlePumpedMessage = async (message: SDKMessage): Promise<boolean> => {
       logRawMessage(message);
@@ -3904,8 +4017,22 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.pendingInterruptAbort = true;
     try {
+      // interrupt_receipt_v1 CLIs resolve interrupt() with the uuids of queued
+      // async user messages that survive this interrupt and WILL still run
+      // unless cancelled. Nothing consumes it yet — logged for the steer-queue
+      // charter, which needs exactly this to reconcile its queue after an
+      // interrupt. See projects/steer-queue/steer-queue.md.
+      const interruptAndLogReceipt = async (): Promise<void> => {
+        const receipt = await queryToInterrupt.interrupt();
+        if (receipt && receipt.still_queued.length > 0) {
+          this.logger.debug(
+            { agentId: this.agentId, stillQueued: receipt.still_queued },
+            "provider.claude.interrupt.still_queued",
+          );
+        }
+      };
       await this.awaitWithTimeout(
-        queryToInterrupt.interrupt(),
+        interruptAndLogReceipt(),
         "interruptActiveTurn query.interrupt()",
       );
     } catch (error) {
@@ -3969,6 +4096,22 @@ class ClaudeAgentSession implements AgentSession {
       case "result":
         this.appendResultEvents(message, events);
         break;
+      case "prompt_suggestion": {
+        const suggestion = message.suggestion.trim();
+        if (suggestion) {
+          events.push({ type: "prompt_suggestion", provider: "claude", suggestion });
+        }
+        break;
+      }
+      case "rate_limit_event": {
+        const info = mapClaudeRateLimitInfo(message.rate_limit_info);
+        const key = JSON.stringify(info);
+        if (key !== this.lastRateLimitEventKey) {
+          this.lastRateLimitEventKey = key;
+          events.push({ type: "rate_limit_updated", provider: "claude", info });
+        }
+        break;
+      }
       default:
         break;
     }
@@ -4133,6 +4276,10 @@ class ClaudeAgentSession implements AgentSession {
       events.push(this.contextUsage.buildCompactionUsageEvent(compactMetadata?.postTokens));
       return;
     }
+    if (message.subtype === "background_tasks_changed") {
+      this.appendBackgroundTasksChangedEvents(message, events);
+      return;
+    }
     if (message.subtype === "task_notification") {
       this.appendTaskNotificationEvents(message, events);
       return;
@@ -4199,6 +4346,7 @@ class ClaudeAgentSession implements AgentSession {
       isClaudeWorkflowTaskType(message.task_type) || isClaudeWorkflowToolName(cachedTool?.name);
     if (isWorkflowStart && message.tool_use_id) {
       this.workflowObservedKeys.add(message.tool_use_id);
+      this.armWorkflowWatcher(message.tool_use_id, message.task_id);
     }
     this.appendObservedSubagentTaskEvent(message, events, {
       taskId: message.task_id,
@@ -4212,11 +4360,124 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Arm a WorkflowTranscriptWatcher for a just-started Workflow run. It tails
+   * the run's on-disk transcripts and re-emits observed-subagent events per
+   * internal agent (nested under the workflow row via parentKey) — the live SDK
+   * stream carries none of that. Idempotent; without a session id (the watcher
+   * needs it to resolve the on-disk dir) the arm is buffered and drained when
+   * one is assigned.
+   */
+  private armWorkflowWatcher(workflowKey: string, taskId?: string): void {
+    if (this.workflowWatchers.has(workflowKey)) {
+      return;
+    }
+    if (!this.claudeSessionId) {
+      this.pendingWorkflowArms.set(workflowKey, taskId);
+      this.logger.debug(
+        { agentId: this.agentId, workflowKey },
+        "workflow watcher arm buffered — no session id yet",
+      );
+      return;
+    }
+    this.pendingWorkflowArms.delete(workflowKey);
+    const watcher = new WorkflowTranscriptWatcher({
+      workflowKey,
+      taskId,
+      sessionId: this.claudeSessionId,
+      cwd: this.config.cwd,
+      emit: (event) => this.pushEvent(event),
+      logger: this.logger,
+      claimedDirs: this.workflowClaimedDirs,
+    });
+    this.workflowWatchers.set(workflowKey, watcher);
+    watcher.arm();
+  }
+
+  /** Arm any workflow watchers buffered while claudeSessionId was unset. */
+  private drainPendingWorkflowArms(): void {
+    if (!this.claudeSessionId || this.pendingWorkflowArms.size === 0) {
+      return;
+    }
+    const pending = [...this.pendingWorkflowArms.entries()];
+    this.pendingWorkflowArms.clear();
+    for (const [workflowKey, taskId] of pending) {
+      this.armWorkflowWatcher(workflowKey, taskId);
+    }
+  }
+
+  /** Tear down a workflow watcher, settling any still-running child rows. */
+  private disarmWorkflowWatcher(
+    workflowKey: string | undefined,
+    status: "idle" | "error" | "closed",
+  ): void {
+    if (!workflowKey) {
+      return;
+    }
+    // A workflow that settles before a session id ever appears must not arm later.
+    this.pendingWorkflowArms.delete(workflowKey);
+    const watcher = this.workflowWatchers.get(workflowKey);
+    if (!watcher) {
+      return;
+    }
+    this.workflowWatchers.delete(workflowKey);
+    watcher.disarm(status);
+  }
+
+  /**
    * True when a task_* system message belongs to a Bash run_in_background
    * call rather than a Task-tool subagent. See
    * isClaudeBackgroundShellToolName and projects/observed-subagents/observed-subagents.md's
    * note that Otto previously ignored shell task events entirely.
    */
+  /**
+   * Reconcile against the CLI's background-task level signal (REPLACE
+   * semantics — the payload is the full set of live background tasks). Edge
+   * events (task_started/task_progress/task_notification) own row creation and
+   * rich terminal status; this settles any known background row whose task id
+   * vanished from the level set — the case where a lost or garbled
+   * task_notification otherwise left it running forever (workflow rows are
+   * exempt from the turn-end sweep, so they previously had no safety net).
+   * Never creates rows and never touches foreground subagents: only ids seen
+   * in a previous payload are eligible, and foreground tasks never appear in
+   * the level set. A later-arriving edge for the same transition still lands
+   * and refines the terminal status (idle → error/closed).
+   */
+  private appendBackgroundTasksChangedEvents(
+    message: Extract<SDKMessage, { type: "system"; subtype: "background_tasks_changed" }>,
+    events: AgentStreamEvent[],
+  ): void {
+    const liveTaskIds = new Set(message.tasks.map((task) => task.task_id));
+    for (const taskId of this.lastBackgroundTaskIds) {
+      if (liveTaskIds.has(taskId)) {
+        continue;
+      }
+      if (this.backgroundShellKeyByTaskId.has(taskId)) {
+        this.appendBackgroundShellTaskEvent(events, {
+          taskId,
+          toolUseId: undefined,
+          status: "idle",
+        });
+        continue;
+      }
+      const key = this.observedKeyByTaskId.get(taskId);
+      if (key && !this.settledObservedSubagents.has(key)) {
+        this.settledObservedSubagents.add(key);
+        events.push({
+          type: "observed_subagent_updated",
+          provider: "claude",
+          update: {
+            key,
+            status: "idle",
+            ...(this.observedParentKeyByToolUseId.has(key)
+              ? { parentKey: this.observedParentKeyByToolUseId.get(key) }
+              : {}),
+          },
+        });
+      }
+    }
+    this.lastBackgroundTaskIds = liveTaskIds;
+  }
+
   private isBackgroundShellTask(toolUseId: string | undefined, taskId: string): boolean {
     const cachedTool = toolUseId ? this.toolUseCache.get(toolUseId) : undefined;
     return (
@@ -4383,6 +4644,12 @@ class ClaudeAgentSession implements AgentSession {
         requiresAttention: message.status === "failed",
         cumulativeTokens: message.usage?.total_tokens,
       });
+      // A workflow run settling here is also where its watcher tears down: do a
+      // final transcript tail + run-state reconcile and settle the child rows.
+      this.disarmWorkflowWatcher(
+        taskUseId ?? this.observedKeyByTaskId.get(message.task_id),
+        status,
+      );
       return;
     }
     const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
@@ -4575,6 +4842,7 @@ class ClaudeAgentSession implements AgentSession {
       this.claudeSessionId = sessionId;
       this.pendingFreshSessionId = null;
       this.persistence = null;
+      this.drainPendingWorkflowArms();
       return { threadStartedSessionId: sessionId, notice: null };
     }
     if (this.claudeSessionId === sessionId) {
@@ -4623,6 +4891,7 @@ class ClaudeAgentSession implements AgentSession {
       this.claudeSessionId = newSessionId;
       this.pendingFreshSessionId = null;
       threadStartedSessionId = newSessionId;
+      this.drainPendingWorkflowArms();
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID set for the first time");
     } else if (existingSessionId === newSessionId) {
       this.pendingFreshSessionId = null;
@@ -4693,6 +4962,10 @@ class ClaudeAgentSession implements AgentSession {
     input,
     options,
   ): Promise<PermissionResult> => {
+    // Suggestion tools never prompt — the Start button on the card is the gate.
+    if (AUTO_APPROVED_OTTO_TOOL_NAMES.has(toolName)) {
+      return { behavior: "allow", updatedInput: input };
+    }
     const requestId = `permission-${randomUUID()}`;
     const kind = resolvePermissionKind(toolName, input);
     const requestInput = normalizeClaudeAskUserQuestionRequestInput(toolName, input);
@@ -4800,6 +5073,10 @@ class ClaudeAgentSession implements AgentSession {
             provider: "claude",
             update: { key: id, status: "closed" },
           });
+          // Interrupted in-flight workflow → tear down its transcript watcher too.
+          if (isClaudeWorkflowToolName(entry.name)) {
+            this.disarmWorkflowWatcher(id, "closed");
+          }
         }
         // Same teardown for an in-flight background shell task — the process
         // dies with the interrupted turn, so settle its row instead of

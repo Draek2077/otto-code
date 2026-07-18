@@ -182,20 +182,29 @@ export class AgentStorage {
 
   async upsert(record: StoredAgentRecord): Promise<void> {
     await this.load();
-    await this.queueRecordWrite(record);
+    await this.queueRecordWrite(record.id, () => record);
   }
 
-  private queueRecordWrite(record: StoredAgentRecord): Promise<void> {
-    const agentId = record.id;
+  /**
+   * Serialize a per-agent record write. The record is BUILT inside the chained
+   * callback (after the previous write for this agent has fully settled — its
+   * `writeRecord` cache.set included), not captured before enqueuing. That
+   * closes a lost-update race for read-modify-write callers like
+   * {@link applySnapshot}/{@link setTitle}: a title-less background persist that
+   * would otherwise read a stale title before a concurrent `setTitle`, then
+   * write it back afterwards, now re-reads the latest persisted title at the
+   * moment it runs — so the newer title survives. The build callback returning
+   * `null` skips the write (record vanished); throwing surfaces to the caller.
+   */
+  private queueRecordWrite(agentId: string, build: () => StoredAgentRecord | null): Promise<void> {
     const prev = this.pendingWrites.get(agentId) ?? Promise.resolve();
-    const next = prev.then(async () => {
-      if (this.deleting.has(agentId)) {
-        return undefined;
-      }
-
-      await this.writeRecord(record);
-      return undefined;
-    });
+    // Sequence after the previous op settles either way, so one failed write
+    // never poisons the writes queued behind it (the caller still observes this
+    // op's own outcome via `tracked`).
+    const next = prev.then(
+      () => this.runRecordWrite(agentId, build),
+      () => this.runRecordWrite(agentId, build),
+    );
 
     const tracked = next.finally(() => {
       if (this.pendingWrites.get(agentId) === tracked) {
@@ -205,6 +214,20 @@ export class AgentStorage {
 
     this.pendingWrites.set(agentId, tracked);
     return tracked;
+  }
+
+  private async runRecordWrite(
+    agentId: string,
+    build: () => StoredAgentRecord | null,
+  ): Promise<void> {
+    if (this.deleting.has(agentId)) {
+      return;
+    }
+    const record = build();
+    if (!record) {
+      return;
+    }
+    await this.writeRecord(record);
   }
 
   private async writeRecord(record: StoredAgentRecord): Promise<void> {
@@ -263,37 +286,43 @@ export class AgentStorage {
     options?: { title?: string | null; internal?: boolean },
   ): Promise<void> {
     await this.load();
-    await this.waitForPendingWrite(agent.id);
-    const existing = (await this.get(agent.id)) ?? null;
     const hasTitleOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "title");
     const hasInternalOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "internal");
-    const record = toStoredAgentRecord(agent, {
-      title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
-      createdAt: existing?.createdAt,
-      internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),
+    // Build inside the serialized write chain (see queueRecordWrite): `existing`
+    // is read at the moment this write runs, so a title we mean to preserve
+    // reflects any concurrent setTitle that has since landed instead of a stale
+    // pre-enqueue snapshot.
+    await this.queueRecordWrite(agent.id, () => {
+      const existing = this.cache.get(agent.id) ?? null;
+      const record = toStoredAgentRecord(agent, {
+        title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
+        createdAt: existing?.createdAt,
+        internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),
+      });
+
+      // Preserve soft-delete/archive status across snapshot flushes.
+      // `archivedAt` is not part of the ManagedAgent snapshot, so a naive projection
+      // would wipe it during normal persistence (including on daemon restart).
+      if (existing && existing.archivedAt !== undefined) {
+        record.archivedAt = existing.archivedAt;
+      }
+
+      preserveGuardrailFields(record, existing);
+      return record;
     });
-
-    // Preserve soft-delete/archive status across snapshot flushes.
-    // `archivedAt` is not part of the ManagedAgent snapshot, so a naive projection
-    // would wipe it during normal persistence (including on daemon restart).
-    if (existing && existing.archivedAt !== undefined) {
-      record.archivedAt = existing.archivedAt;
-    }
-
-    preserveGuardrailFields(record, existing);
-    await this.upsert(record);
   }
 
   async setTitle(agentId: string, title: string): Promise<void> {
     await this.load();
-    await this.waitForPendingWrite(agentId);
-    const record = await this.get(agentId);
-    if (!record) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
-    await this.upsert({ ...record, title });
+    await this.queueRecordWrite(agentId, () => {
+      const record = this.cache.get(agentId) ?? null;
+      if (!record) {
+        throw new Error(`Agent ${agentId} not found`);
+      }
+      return { ...record, title };
+    });
   }
 
   async flush(): Promise<void> {
@@ -418,10 +447,6 @@ export class AgentStorage {
     if (paths.size === 0) {
       this.pathsById.delete(agentId);
     }
-  }
-
-  private async waitForPendingWrite(agentId: string): Promise<void> {
-    await (this.pendingWrites.get(agentId) ?? Promise.resolve()).catch(() => undefined);
   }
 }
 

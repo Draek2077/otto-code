@@ -63,6 +63,16 @@ export const en = {
     },
   },
   composer: {
+    rateLimit: {
+      approaching: "Approaching your Claude {{window}} limit",
+      reached: "Claude {{window}} limit reached",
+      usedPercent: "{{percent}}% used",
+      resets: "resets {{time}}",
+      usingOverage: "using extra usage",
+      windowFiveHour: "5-hour",
+      windowSevenDay: "7-day",
+      windowPlan: "plan",
+    },
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",
       mobile: "Message, @files, /commands",
@@ -521,8 +531,6 @@ export const en = {
       subtitle: "Agent orchestration graph",
       placeholder: "The Visualizer is coming soon.",
       openAction: "Open Visualizer",
-      demoLoad: "Load demo scenario",
-      demoExit: "Exit demo",
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
@@ -2176,6 +2184,16 @@ export const en = {
           hint: "Show agent thinking and chain-of-thought blocks fully expanded by default",
           accessibilityLabel: "Always expand reasoning",
         },
+        promptSuggestions: {
+          title: "AI prompt suggestions",
+          hint: "After a turn, show the agent's predicted next prompt as ghost text in the message box; press Tab to accept it. Available on Claude agents",
+          accessibilityLabel: "AI prompt suggestions",
+        },
+        rateLimitWarnings: {
+          title: "Plan rate-limit warnings",
+          hint: "Show a warning above the message box when your Claude plan usage nears or hits a rate limit. Available on Claude agents",
+          accessibilityLabel: "Plan rate-limit warnings",
+        },
         hideMessageDetails: {
           title: "Hide message details until hover",
           hint: "Keep timestamps, stats, and actions on chat messages hidden until you mouse over them; touch devices always show them",
@@ -2231,11 +2249,6 @@ export const en = {
       },
       visualizer: {
         title: "Visualizer",
-        hexGrid: {
-          title: "Hex grid",
-          hint: "Show the background hex grid on the Visualizer canvas",
-          accessibilityLabel: "Hex grid",
-        },
         timeline: {
           title: "Timeline",
           hint: "Show the timeline panel",

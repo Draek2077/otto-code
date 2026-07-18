@@ -48,6 +48,10 @@ export const BROWSER_AUTOMATION_COMMAND_NAMES = [
   "scroll",
   "resize",
   "close_tab",
+  "focus_tab",
+  "page_text",
+  "set_color_scheme",
+  "screenshot_element",
 ] as const;
 
 export const BrowserAutomationCommandNameSchema = z.enum(BROWSER_AUTOMATION_COMMAND_NAMES);
@@ -276,6 +280,34 @@ export const BrowserAutomationCloseTabCommandSchema = z.object({
   args: BrowserAutomationTabTargetSchema,
 });
 
+export const BrowserAutomationFocusTabCommandSchema = z.object({
+  command: z.literal("focus_tab"),
+  args: BrowserAutomationTabTargetSchema,
+});
+
+export const BrowserAutomationPageTextCommandSchema = z.object({
+  command: z.literal("page_text"),
+  args: BrowserAutomationTabTargetSchema.extend({
+    maxChars: z.number().int().positive().max(100_000).default(20_000),
+  }),
+});
+
+export const BrowserAutomationColorSchemeSchema = z.enum(["light", "dark", "auto"]);
+
+export const BrowserAutomationSetColorSchemeCommandSchema = z.object({
+  command: z.literal("set_color_scheme"),
+  args: BrowserAutomationTabTargetSchema.extend({
+    colorScheme: BrowserAutomationColorSchemeSchema,
+  }),
+});
+
+export const BrowserAutomationScreenshotElementCommandSchema = z.object({
+  command: z.literal("screenshot_element"),
+  args: BrowserAutomationTabTargetSchema.extend({
+    ref: BrowserAutomationRefSchema,
+  }),
+});
+
 export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsCommandSchema,
   BrowserAutomationNewTabCommandSchema,
@@ -301,6 +333,10 @@ export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationScrollCommandSchema,
   BrowserAutomationResizeCommandSchema,
   BrowserAutomationCloseTabCommandSchema,
+  BrowserAutomationFocusTabCommandSchema,
+  BrowserAutomationPageTextCommandSchema,
+  BrowserAutomationSetColorSchemeCommandSchema,
+  BrowserAutomationScreenshotElementCommandSchema,
 ]);
 
 export const BrowserAutomationTabInfoSchema = z.object({
@@ -413,6 +449,24 @@ export const BrowserAutomationScreenshotResultSchema = z.object({
   dataBase64: z.string().min(1),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
+  /**
+   * CSS-pixel → image-pixel ratio when the capture was scaled to fit the
+   * vision-model legibility budget. Absent when captured 1:1 (or from hosts
+   * older than this field).
+   */
+  scale: z.number().positive().optional(),
+});
+
+export const BrowserAutomationScreenshotElementResultSchema = z.object({
+  command: z.literal("screenshot_element"),
+  browserId: BrowserAutomationBrowserIdSchema,
+  ref: BrowserAutomationRefSchema,
+  mimeType: z.literal("image/png"),
+  dataBase64: z.string().min(1),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
+  /** Render scale used for the clip — above 1 means the element was re-rendered zoomed in. */
+  scale: z.number().positive().optional(),
 });
 
 export const BrowserAutomationUploadResultSchema = z.object({
@@ -552,6 +606,28 @@ export const BrowserAutomationCloseTabResultSchema = z.object({
   browserId: BrowserAutomationBrowserIdSchema,
 });
 
+export const BrowserAutomationFocusTabResultSchema = z.object({
+  command: z.literal("focus_tab"),
+  browserId: BrowserAutomationBrowserIdSchema,
+});
+
+export const BrowserAutomationPageTextResultSchema = z.object({
+  command: z.literal("page_text"),
+  browserId: BrowserAutomationBrowserIdSchema,
+  url: z.string(),
+  title: z.string(),
+  /** Which container the text came from: reader-mode article/main first, body fallback. */
+  source: z.enum(["article", "main", "body"]),
+  text: z.string(),
+  truncated: z.boolean(),
+});
+
+export const BrowserAutomationSetColorSchemeResultSchema = z.object({
+  command: z.literal("set_color_scheme"),
+  browserId: BrowserAutomationBrowserIdSchema,
+  colorScheme: BrowserAutomationColorSchemeSchema,
+});
+
 export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsResultSchema,
   BrowserAutomationNewTabResultSchema,
@@ -577,6 +653,10 @@ export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationScrollResultSchema,
   BrowserAutomationResizeResultSchema,
   BrowserAutomationCloseTabResultSchema,
+  BrowserAutomationFocusTabResultSchema,
+  BrowserAutomationPageTextResultSchema,
+  BrowserAutomationSetColorSchemeResultSchema,
+  BrowserAutomationScreenshotElementResultSchema,
 ]);
 
 export const BrowserAutomationErrorSchema = z.object({
@@ -624,6 +704,7 @@ export const BrowserAutomationExecuteResponseSchema = z.object({
 });
 
 export type BrowserAutomationErrorCode = z.infer<typeof BrowserAutomationErrorCodeSchema>;
+export type BrowserAutomationColorScheme = z.infer<typeof BrowserAutomationColorSchemeSchema>;
 export type BrowserAutomationCommandName = z.infer<typeof BrowserAutomationCommandNameSchema>;
 export type BrowserAutomationCommand = z.infer<typeof BrowserAutomationCommandSchema>;
 export type BrowserAutomationResult = z.infer<typeof BrowserAutomationResultSchema>;

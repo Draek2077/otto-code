@@ -30,6 +30,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BORDER_WIDTH, SPACING, useIconSize, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import {
   AlignJustify,
   Archive,
@@ -1990,6 +1991,8 @@ function CommitLogButton({
   enabled: boolean;
 }) {
   const { t } = useTranslation();
+  // Doubled on mobile (14 -> 28); unchanged (14) on desktop.
+  const logIconSize = useIconSize(2).sm;
   const handleOpenLog = useCallback(() => {
     if (workspaceId) {
       openGitLogTab({ serverId, workspaceId, operation: "commit" });
@@ -2007,6 +2010,7 @@ function CommitLogButton({
           size="sm"
           variant="ghost"
           leftIcon={SquareTerminal}
+          iconSize={logIconSize}
           onPress={handleOpenLog}
           accessibilityLabel={t("workspace.git.commit.viewLog")}
           testID="changes-commit-log-button"
@@ -2194,6 +2198,14 @@ function ChangesCommitSection({
 
 const EMPTY_DESELECTED_PATHS: ReadonlySet<string> = new Set<string>();
 
+// The diff body reads the raw code-size setting directly, so it bypasses the
+// global compact font patch (apply-appearance bumps theme.fontSize.code +2 on
+// compact). Re-apply that +2 on mobile so the diff code matches the rest of the
+// compact UI — the file list and commit UI get a matching bump in the stylesheet.
+function resolveDiffCodeFontSize(baseCodeFontSize: number, isMobile: boolean): number {
+  return isMobile ? baseCodeFontSize + 2 : baseCodeFontSize;
+}
+
 export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }: GitDiffPaneProps) {
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
@@ -2220,7 +2232,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     });
   }, [changesPreferences.layout, updateChangesPreferences]);
 
-  const codeFontSize = appSettings.codeFontSize;
+  const codeFontSize = resolveDiffCodeFontSize(appSettings.codeFontSize, isMobile);
   const diffBodyLineHeight = Math.round(codeFontSize * 1.5);
   const diffBodyTypographyKey = [appSettings.monoFontFamily, codeFontSize, diffBodyLineHeight].join(
     ":",
@@ -3355,7 +3367,10 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   diffStatusContainer: {
-    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    // Matches the neighboring pane-chrome toolbars (file editor mode bar,
+    // visualizer bar — all PANE_TOOLBAR_HEIGHT) so the divider lines up across a
+    // split rather than sitting a few px high. diffStatusInner centers content.
+    height: PANE_TOOLBAR_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -3552,8 +3567,15 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
+    // Compact bump: +2px on mobile, matching the file list and count text.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    lineHeight: {
+      xs: (theme.fontSize.sm + 2) * 1.4,
+      md: theme.fontSize.sm * 1.4,
+    },
     textAlignVertical: "top",
     ...(isWeb
       ? {
@@ -3586,7 +3608,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   commitSelectionCount: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    // Compact bump: +2px on mobile, matching the file list and commit box.
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     flexShrink: 1,
   },
   commitButtonGroup: {
@@ -3614,14 +3640,22 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.mono,
   },
   fileName: {
-    fontSize: theme.fontSize.sm,
+    // Compact bump: +2px on mobile for readability, matching diffStatusText. The
+    // row is auto-height and already tall enough, so this doesn't grow it.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
     flexShrink: 1,
     minWidth: 0,
   },
   fileDir: {
-    fontSize: theme.fontSize.sm,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     flex: 1,

@@ -146,6 +146,10 @@ export function VisualizerSection() {
     (value: boolean) => setSetting("visualizerRenderBloom", value),
     [setSetting],
   );
+  const handleNodeGlowChange = useCallback(
+    (value: boolean) => setSetting("visualizerRenderNodeGlow", value),
+    [setSetting],
+  );
   const handleStarsChange = useCallback(
     (value: boolean) => setSetting("visualizerRenderStars", value),
     [setSetting],
@@ -154,8 +158,8 @@ export function VisualizerSection() {
     (value: boolean) => setSetting("visualizerRenderBackdrop", value),
     [setSetting],
   );
-  const handleHexGridChange = useCallback(
-    (value: boolean) => setSetting("visualizerPanelHexGrid", value),
+  const handleShowFpsChange = useCallback(
+    (value: boolean) => setSetting("visualizerShowFps", value),
     [setSetting],
   );
   const handleTimelineChange = useCallback(
@@ -172,6 +176,10 @@ export function VisualizerSection() {
   );
   const handleVolumeCommit = useCallback(
     (value: number) => setSetting("visualizerSoundVolume", value),
+    [setSetting],
+  );
+  const handleVoiceCuesChange = useCallback(
+    (value: boolean) => setSetting("visualizerVoiceCues", value),
     [setSetting],
   );
 
@@ -201,6 +209,15 @@ export function VisualizerSection() {
               testID="settings-visualizer-quality"
             />
           </View>
+          <ToggleRow
+            title="FPS meter"
+            hint="Show a small frames-per-second readout in the top-left corner. A performance diagnostic; applies live to open Visualizer tabs."
+            accessibilityLabel="FPS meter"
+            value={settings.visualizerShowFps}
+            withBorder
+            onValueChange={handleShowFpsChange}
+            testID="settings-visualizer-fps-switch"
+          />
           <View style={qualityRowStyle}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Node shape</Text>
@@ -218,13 +235,22 @@ export function VisualizerSection() {
             />
           </View>
           <ToggleRow
-            title="Bloom glow"
+            title="Node glow"
+            hint="The soft holographic halo drawn around each agent node. The node body and ring stay; this only toggles the surrounding glow."
+            accessibilityLabel="Node glow"
+            value={settings.visualizerRenderNodeGlow}
+            withBorder
+            onValueChange={handleNodeGlowChange}
+            testID="settings-visualizer-node-glow-switch"
+          />
+          <ToggleRow
+            title="Bloom"
             hint={
               isSoftwareRendering
                 ? "Forced off — this machine is running without GPU acceleration, and bloom is the single most expensive visual effect."
-                : "The soft holographic glow composited over the whole scene. The single most expensive visual effect — turning it off also removes the blurry 'echo' of bright elements."
+                : "A whole-viewport blurred echo of the scene, composited over everything for a holographic haze. The single most expensive visual effect. (The per-node halo is the separate 'Node glow' toggle above.)"
             }
-            accessibilityLabel="Bloom glow"
+            accessibilityLabel="Bloom"
             value={isSoftwareRendering ? false : settings.visualizerRenderBloom}
             withBorder
             onValueChange={handleBloomChange}
@@ -248,15 +274,6 @@ export function VisualizerSection() {
             withBorder
             onValueChange={handleBackdropChange}
             testID="settings-visualizer-backdrop-switch"
-          />
-          <ToggleRow
-            title={t("settings.appearance.visualizer.hexGrid.title")}
-            hint={t("settings.appearance.visualizer.hexGrid.hint")}
-            accessibilityLabel={t("settings.appearance.visualizer.hexGrid.accessibilityLabel")}
-            value={settings.visualizerPanelHexGrid}
-            withBorder
-            onValueChange={handleHexGridChange}
-            testID="settings-visualizer-hex-grid-switch"
           />
         </View>
       </SettingsSection>
@@ -301,6 +318,15 @@ export function VisualizerSection() {
             accessibilityLabel="Visualizer sound volume"
             value={settings.visualizerSoundVolume}
             onCommit={handleVolumeCommit}
+          />
+          <ToggleRow
+            title="Voice cues"
+            hint="Speak a short line in the agent's personality voice when its node joins the graph, first starts thinking, and finishes. Only the main agent speaks, only for personality-backed agents, and only on a host with text-to-speech. Follows the volume above."
+            accessibilityLabel="Visualizer voice cues"
+            value={settings.visualizerVoiceCues}
+            withBorder
+            onValueChange={handleVoiceCuesChange}
+            testID="settings-visualizer-voice-cues-switch"
           />
         </View>
       </SettingsSection>

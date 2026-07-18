@@ -24,6 +24,13 @@ export function handleAgentSpawn(
   const runtime = KNOWN_RUNTIMES.includes(payload.runtime as typeof KNOWN_RUNTIMES[number])
     ? (payload.runtime as typeof KNOWN_RUNTIMES[number])
     : undefined
+  // OTTO PATCH (OTTO-PATCHES.md): the personality's two identity colors, when
+  // this agent was spawned from an Agent Personality. Both must be present to
+  // count (a personality always carries a glow pair); otherwise the node stays
+  // a normal state-driven one.
+  const colorA = typeof payload.colorA === 'string' ? payload.colorA : undefined
+  const colorB = typeof payload.colorB === 'string' ? payload.colorB : undefined
+  const personaColor = colorA && colorB ? { a: colorA, b: colorB } : undefined
 
   // If the agent already exists (e.g. session resuming after inactivity),
   // reactivate it instead of replacing — preserves accumulated stats.
@@ -35,6 +42,7 @@ export function handleAgentSpawn(
       ...(task ? { task } : {}),
       ...(model ? { model, tokensMax: ctx.getContextWindowSize(model) } : {}),
       ...(runtime ? { runtime } : {}),
+      ...(personaColor ? { personaColor } : {}),
     })
     return
   }
@@ -87,6 +95,7 @@ export function handleAgentSpawn(
     pinned: false, isMain,
     ...(runtime ? { runtime } : {}),
     ...(model ? { model } : {}),
+    ...(personaColor ? { personaColor } : {}),
     task,
     spawnTime: currentTime,
     opacity: 0, scale: 0.3,
@@ -112,6 +121,33 @@ export function handleAgentSpawn(
 
   if (!ctx.skipForceSync) {
     setTimeout(() => ctx.syncForceSimulation(state.agents, state.edges), 0)
+  }
+}
+
+// OTTO PATCH (see OTTO-PATCHES.md): relabel a node's DISPLAY name in place.
+// The agents map is keyed by the node's spawn name (`agent.id`), and every
+// event/edge/timeline reference uses that same key — so a title change (the
+// chat auto-title writer rewriting the root chat title after spawn) must NOT
+// re-key the node. It only updates the shown label: `agent.name` (drawn under
+// the node, see draw-agents.ts) and the timeline entry's `agentName`. Lookups
+// stay keyed on the unchanged `payload.agent`.
+export function handleAgentRename(
+  payload: Record<string, unknown>,
+  state: MutableEventState,
+): void {
+  const key = asString(payload.agent)
+  const label = asString(payload.label)
+  if (!key || !label) {
+    return
+  }
+  const agent = state.agents.get(key)
+  if (!agent || agent.name === label) {
+    return
+  }
+  state.agents.set(key, { ...agent, name: label })
+  const entry = state.timelineEntries.get(key)
+  if (entry && entry.agentName !== label) {
+    state.timelineEntries.set(key, { ...entry, agentName: label })
   }
 }
 

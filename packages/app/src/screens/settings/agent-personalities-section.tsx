@@ -4,7 +4,15 @@
 //
 // i18n: copy here is English-only pending a translation pass (build-first,
 // translate-last). Do not add keys to the locale resources for this surface yet.
-import { useCallback, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -12,10 +20,11 @@ import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type {
   AgentPersonality,
   AgentPersonalityVoice,
+  CueMoment,
   PersonalityRole,
   SpeechSettingsOptions,
 } from "@otto-code/protocol/messages";
-import { PERSONALITY_ROLES } from "@otto-code/protocol/messages";
+import { CUE_MOMENTS, PERSONALITY_ROLES } from "@otto-code/protocol/messages";
 import { DEFAULT_AGENT_PERSONALITIES } from "@otto-code/protocol/default-personalities";
 import {
   checkPersonalityAvailability,
@@ -24,19 +33,22 @@ import {
 import { EFFORT_LEVELS } from "@otto-code/protocol/effort";
 import { isUserSelectableMode } from "@otto-code/protocol/provider-manifest";
 import { ChevronDown, Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { BlobLoader } from "@/components/blob-loader";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { Button } from "@/components/ui/button";
 import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   useSpeechSettingsFeature,
@@ -61,6 +73,18 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 export function useAgentPersonalitiesFeature(serverId: string): boolean {
   return useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.agentPersonalities === true,
+  );
+}
+
+/**
+ * Whether the host can author voice-cue lines (the Writer chain). Playback in
+ * the Visualizer separately requires ttsPreview; this only gates the editor's
+ * "Generate" action + save-time auto-generation.
+ * COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when floor >= v0.6.3.
+ */
+export function useVisualizerVoiceCuesFeature(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.visualizerVoiceCues === true,
   );
 }
 
@@ -94,6 +118,26 @@ function isHexColor(value: string): boolean {
   return HEX_COLOR_PATTERN.test(value.trim());
 }
 
+// A cue line carries a stable id so the editor's list rows key on identity, not
+// array index (keeps focus stable across add/remove and satisfies list-key
+// lint). `text` is the editable content.
+interface CueLineDraft {
+  id: string;
+  text: string;
+}
+
+interface DraftVoiceCues {
+  join: CueLineDraft[];
+  thinking: CueLineDraft[];
+  done: CueLineDraft[];
+}
+
+let cueLineSeq = 0;
+function newCueLine(text: string): CueLineDraft {
+  cueLineSeq += 1;
+  return { id: `cue_${cueLineSeq}`, text };
+}
+
 interface PersonalityDraft {
   name: string;
   provider: string;
@@ -106,6 +150,85 @@ interface PersonalityDraft {
   glowA: string;
   glowB: string;
   voice: AgentPersonalityVoice | null;
+  // Pre-generated (editable) spoken cue lines, always present as arrays for
+  // simple list editing; persisted only when non-empty.
+  voiceCues: DraftVoiceCues;
+}
+
+// The editor is split into tabs (the form grew long). Identity = who it is,
+// Model = its brain, Voice = spoken voice + the voice-cue lines.
+type EditorTab = "identity" | "personality" | "model" | "voice";
+const EDITOR_TABS: SegmentedControlOption<EditorTab>[] = [
+  { value: "identity", label: "Identity" },
+  { value: "personality", label: "Personality" },
+  { value: "model", label: "Model" },
+  { value: "voice", label: "Voice" },
+];
+
+const CUE_KIND_LABELS: Record<CueMoment, string> = {
+  join: "Starting",
+  thinking: "Thinking",
+  done: "Completed",
+};
+
+// Distinct examples per moment — a line should sound wrong at the other two.
+// (The old “All set” example read equally as starting/thinking/done, which is
+// exactly the ambiguity the generator now avoids too.)
+const CUE_KIND_HINTS: Record<CueMoment, string> = {
+  join: "Just picked up the task, about to begin — e.g. “On it”.",
+  thinking: "In the middle of working it out — e.g. “Working on it”.",
+  done: "Finished, handing back the result — e.g. “Done”.",
+};
+
+function draftVoiceCuesFrom(cues: AgentPersonality["voiceCues"]): DraftVoiceCues {
+  const lines = (group: string[] | undefined): CueLineDraft[] =>
+    (group ?? []).map((text) => newCueLine(text));
+  return {
+    join: lines(cues?.join),
+    thinking: lines(cues?.thinking),
+    done: lines(cues?.done),
+  };
+}
+
+// Trim + drop blank lines; returns undefined when every group is empty (so the
+// personality stores no voiceCues at all rather than empty arrays).
+function draftVoiceCuesToPersistable(
+  cues: DraftVoiceCues,
+): AgentPersonality["voiceCues"] | undefined {
+  const clean = (lines: CueLineDraft[]): string[] =>
+    lines.map((line) => line.text.trim()).filter((text) => text.length > 0);
+  const join = clean(cues.join);
+  const thinking = clean(cues.thinking);
+  const done = clean(cues.done);
+  if (join.length === 0 && thinking.length === 0 && done.length === 0) {
+    return undefined;
+  }
+  return {
+    ...(join.length > 0 ? { join } : {}),
+    ...(thinking.length > 0 ? { thinking } : {}),
+    ...(done.length > 0 ? { done } : {}),
+  };
+}
+
+function draftVoiceCuesAreEmpty(cues: DraftVoiceCues): boolean {
+  return draftVoiceCuesToPersistable(cues) === undefined;
+}
+
+// Per-moment merge of freshly generated lines into the current draft: only
+// moments that actually produced lines are overwritten, so a partial
+// generation failure never wipes hand-written lines for the failed moments.
+function mergeGeneratedCues(
+  current: DraftVoiceCues,
+  generated: Partial<Record<CueMoment, string[]>>,
+): DraftVoiceCues {
+  const next = { ...current };
+  for (const moment of CUE_MOMENTS) {
+    const lines = generated[moment];
+    if (lines && lines.length > 0) {
+      next[moment] = lines.map((text) => newCueLine(text));
+    }
+  }
+  return next;
 }
 
 // Voice options ride the wire as { provider, model, name }; the picker encodes
@@ -175,6 +298,7 @@ function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
     glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,
     glowB: personality.spinner?.glowB ?? DEFAULT_GLOW_B,
     voice: personality.voice ?? null,
+    voiceCues: draftVoiceCuesFrom(personality.voiceCues),
   };
 }
 
@@ -200,6 +324,10 @@ function draftToPersonality(draft: PersonalityDraft, id: string): AgentPersonali
   }
   if (draft.voice) {
     personality.voice = draft.voice;
+  }
+  const voiceCues = draftVoiceCuesToPersistable(draft.voiceCues);
+  if (voiceCues) {
+    personality.voiceCues = voiceCues;
   }
   return personality;
 }
@@ -229,6 +357,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     glowA: DEFAULT_GLOW_A,
     glowB: DEFAULT_GLOW_B,
     voice: null,
+    voiceCues: { join: [], thinking: [], done: [] },
   };
 }
 
@@ -766,6 +895,36 @@ function PersonalityEditModal({
   onSave,
 }: PersonalityEditModalProps): ReactElement {
   const canPreviewVoice = useTtsPreviewFeature(serverId);
+  const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const [activeTab, setActiveTab] = useState<EditorTab>("identity");
+  const [isGeneratingCues, setIsGeneratingCues] = useState(false);
+  // Determinate progress for cue generation — one unit per moment (join /
+  // thinking / done), each its own request. Null when not generating; the bar
+  // hides. Any result that lands after the editor closes is dropped on the
+  // floor (the draft never saved), which is exactly the intended behavior.
+  const [cueGenProgress, setCueGenProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
+  // Human-readable failure notice for the last generation attempt (partial or
+  // total) — cleared when a new generation starts.
+  const [cueGenError, setCueGenError] = useState<string | null>(null);
+  // Scope cue generation's provider resolution to the user's active (last
+  // selected) workspace on this host — without a cwd the daemon falls back to
+  // an arbitrary agent's cwd. Null when the last selection is another host's.
+  const lastWorkspace = useLastWorkspaceSelection();
+  const cueGenCwd = useWorkspaceDirectory(
+    lastWorkspace?.serverId === serverId ? serverId : null,
+    lastWorkspace?.serverId === serverId ? lastWorkspace.workspaceId : null,
+  );
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   // Normalize the seed so an existing personality whose stored mode can't run on
   // its model (Claude "auto" on Haiku) opens already coerced (→ "dontAsk") rather
   // than showing a phantom "auto" the picker no longer offers. The dirty check
@@ -919,6 +1078,142 @@ function PersonalityEditModal({
     setDraft((current) => ({ ...current, roles: all ? [...PERSONALITY_ROLES] : [] }));
   }, []);
 
+  const setCueLine = useCallback((kind: CueMoment, id: string, value: string) => {
+    setDraft((current) => ({
+      ...current,
+      voiceCues: {
+        ...current.voiceCues,
+        [kind]: current.voiceCues[kind].map((line) =>
+          line.id === id ? { ...line, text: value } : line,
+        ),
+      },
+    }));
+  }, []);
+  const addCueLine = useCallback((kind: CueMoment) => {
+    setDraft((current) => ({
+      ...current,
+      voiceCues: { ...current.voiceCues, [kind]: [...current.voiceCues[kind], newCueLine("")] },
+    }));
+  }, []);
+  const removeCueLine = useCallback((kind: CueMoment, id: string) => {
+    setDraft((current) => ({
+      ...current,
+      voiceCues: {
+        ...current.voiceCues,
+        [kind]: current.voiceCues[kind].filter((line) => line.id !== id),
+      },
+    }));
+  }, []);
+
+  // Author cue lines for the current draft (name + prompt) via the Writer
+  // chain. One request per moment (join / thinking / done) so each moment gets
+  // a focused prompt — distinct lines — and the caller can report determinate
+  // progress as each lands. Returns the lines per SUCCEEDED moment plus the
+  // moments that failed (errored, or came back empty) so callers can merge
+  // without wiping hand-written lines and can tell the user what failed.
+  const generateCuesFor = useCallback(
+    async (
+      source: PersonalityDraft,
+      onProgress?: (completed: number) => void,
+    ): Promise<{
+      generated: Partial<Record<CueMoment, string[]>>;
+      failedMoments: CueMoment[];
+    }> => {
+      if (!client) return { generated: {}, failedMoments: [...CUE_MOMENTS] };
+      const name = source.name.trim() || "Agent";
+      const prompt = source.personalityPrompt.trim();
+      const roles = source.roles;
+      let completed = 0;
+      const results = await Promise.all(
+        CUE_MOMENTS.map(async (moment) => {
+          try {
+            const result = await client.generateVisualizerVoiceCues({
+              name,
+              ...(prompt ? { prompt } : {}),
+              ...(cueGenCwd ? { cwd: cueGenCwd } : {}),
+              ...(roles.length > 0 ? { roles } : {}),
+              moment,
+            });
+            return { moment, lines: result.cues?.[moment] ?? [] };
+          } catch {
+            return { moment, lines: [] as string[] };
+          } finally {
+            completed += 1;
+            onProgress?.(completed);
+          }
+        }),
+      );
+      const generated: Partial<Record<CueMoment, string[]>> = {};
+      const failedMoments: CueMoment[] = [];
+      for (const { moment, lines } of results) {
+        if (lines.length > 0) {
+          generated[moment] = lines;
+        } else {
+          failedMoments.push(moment);
+        }
+      }
+      return { generated, failedMoments };
+    },
+    [client, cueGenCwd],
+  );
+
+  // The generation ritual both callers (the Generate button and the save-time
+  // auto-fill) share: owns the progress bar, the mounted guard, and surfacing
+  // partial/total failure. Resolves with the per-moment lines that succeeded.
+  const runCueGeneration = useCallback(
+    async (source: PersonalityDraft): Promise<Partial<Record<CueMoment, string[]>>> => {
+      setCueGenError(null);
+      setCueGenProgress({ completed: 0, total: CUE_MOMENTS.length });
+      try {
+        const { generated, failedMoments } = await generateCuesFor(source, (done) => {
+          if (isMountedRef.current) {
+            setCueGenProgress({ completed: done, total: CUE_MOMENTS.length });
+          }
+        });
+        if (isMountedRef.current && failedMoments.length > 0) {
+          setCueGenError(
+            failedMoments.length === CUE_MOMENTS.length
+              ? "Voice cue generation failed. Any existing lines were kept."
+              : `Couldn't generate ${failedMoments
+                  .map((moment) => CUE_KIND_LABELS[moment])
+                  .join(", ")} lines. Existing lines for those moments were kept.`,
+          );
+        }
+        return generated;
+      } finally {
+        if (isMountedRef.current) {
+          setCueGenProgress(null);
+        }
+      }
+    },
+    [generateCuesFor],
+  );
+
+  const handleGenerateCues = useCallback(() => {
+    if (!client || isGeneratingCues) return;
+    setIsGeneratingCues(true);
+    void (async () => {
+      try {
+        const generated = await runCueGeneration(draft);
+        // Merge per moment — only moments that succeeded overwrite; a failed
+        // moment keeps the draft's existing (possibly hand-written) lines.
+        // Drop late results if the editor already closed (draft is gone).
+        if (isMountedRef.current && Object.keys(generated).length > 0) {
+          setDraft((current) => ({
+            ...current,
+            voiceCues: mergeGeneratedCues(current.voiceCues, generated),
+          }));
+        }
+      } catch {
+        // Best-effort — leave the fields as-is.
+      } finally {
+        if (isMountedRef.current) {
+          setIsGeneratingCues(false);
+        }
+      }
+    })();
+  }, [client, isGeneratingCues, runCueGeneration, draft]);
+
   const nameCollides = takenNames.includes(draft.name.trim().toLowerCase());
   const glowsValid = isHexColor(draft.glowA) && isHexColor(draft.glowB);
   const canSave =
@@ -936,12 +1231,28 @@ function PersonalityEditModal({
     // a double-click cannot mint a duplicate personality.
     void (async () => {
       try {
-        await onSave(draft);
+        // Auto-generate cues on save when the user never filled them, so every
+        // personality ends up with stored cues. Best-effort — a generation
+        // failure saves without (or with partial) cues rather than blocking
+        // the save. Same per-moment merge as the Generate button: only
+        // moments that succeeded land.
+        let toSave = draft;
+        if (canGenerateCues && client && draftVoiceCuesAreEmpty(draft.voiceCues)) {
+          try {
+            const generated = await runCueGeneration(draft);
+            if (Object.keys(generated).length > 0) {
+              toSave = { ...draft, voiceCues: mergeGeneratedCues(draft.voiceCues, generated) };
+            }
+          } catch {
+            // fall through and save without cues
+          }
+        }
+        await onSave(toSave);
       } finally {
-        setIsSaving(false);
+        if (isMountedRef.current) setIsSaving(false);
       }
     })();
-  }, [canSave, draft, isSaving, onSave]);
+  }, [canSave, draft, isSaving, onSave, canGenerateCues, client, runCueGeneration]);
 
   // Cancel/backdrop-close confirms before discarding a dirty draft. The draft
   // is plain JSON-safe data seeded from initialDraft, so a stringify comparison
@@ -963,124 +1274,162 @@ function PersonalityEditModal({
     })();
   }, [draft, seedDraft, onClose]);
 
+  const footer = useMemo(
+    () => (
+      <View style={styles.editorActions}>
+        <Button variant="secondary" size="sm" style={FLEX_1} onPress={handleClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          style={FLEX_1}
+          onPress={handleSave}
+          disabled={!canSave || isSaving}
+          testID="agent-personality-save-button"
+        >
+          Save
+        </Button>
+      </View>
+    ),
+    [handleClose, handleSave, canSave, isSaving],
+  );
+
   return (
-    <AdaptiveModalSheet
+    <TabbedModalSheet
       header={header}
       visible
       onClose={handleClose}
+      tabs={EDITOR_TABS}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      footer={footer}
       webScrollbar
+      tabsTestID="agent-personality-tabs"
       testID="agent-personality-edit-modal"
     >
-      <View style={styles.editorBody}>
-        <FieldLabel label="Name" />
-        <TextInput
-          value={draft.name}
-          onChangeText={setName}
-          placeholder="e.g. Sparky"
-          placeholderTextColor={styles.placeholder.color}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={MAX_PERSONALITY_NAME_LENGTH}
-          style={styles.textInput}
-          testID="agent-personality-name-input"
-        />
-        <Text style={styles.fieldHint}>
-          One word — letters, numbers, - or _ — up to {MAX_PERSONALITY_NAME_LENGTH} characters.
-        </Text>
-        {nameCollides ? (
-          <Text style={styles.fieldError} testID="agent-personality-name-collision">
-            Another personality already uses this name.
-          </Text>
-        ) : null}
-
-        <PickerRow
-          label="Provider"
-          value={draft.provider}
-          options={providerOptions}
-          onChange={handleProviderChange}
-          testID="agent-personality-provider-picker"
-        />
-        <PickerRow
-          label="Model"
-          value={draft.model}
-          options={modelOptions}
-          onChange={setModel}
-          testID="agent-personality-model-picker"
-        />
-        <PickerRow
-          label="Mode"
-          value={draft.modeId}
-          options={modeOptions}
-          onChange={setMode}
-          displayLabel={modeDisplayLabel}
-          testID="agent-personality-mode-picker"
-        />
-        <PickerRow
-          label="Effort"
-          value={draft.effortLevel}
-          options={effortOptions}
-          onChange={setEffort}
-          testID="agent-personality-effort-picker"
-        />
-
-        <FieldLabel label="Personality prompt" />
-        <TextInput
-          value={draft.personalityPrompt}
-          onChangeText={setPrompt}
-          placeholder="How this personality should behave (fun, optional)."
-          placeholderTextColor={styles.placeholder.color}
-          multiline
-          style={styles.textArea}
-          testID="agent-personality-prompt-input"
-        />
-
-        <View style={styles.toggleRow}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Respect global append prompt</Text>
-            <Text style={settingsStyles.rowHint}>
-              When off, the personality prompt stands alone (no host-wide append stacked on top).
+      <>
+        {activeTab === "identity" ? (
+          <>
+            <FieldLabel label="Name" />
+            <TextInput
+              value={draft.name}
+              onChangeText={setName}
+              placeholder="e.g. Sparky"
+              placeholderTextColor={styles.placeholder.color}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={MAX_PERSONALITY_NAME_LENGTH}
+              style={styles.textInput}
+              testID="agent-personality-name-input"
+            />
+            <Text style={styles.fieldHint}>
+              One word — letters, numbers, - or _ — up to {MAX_PERSONALITY_NAME_LENGTH} characters.
             </Text>
-          </View>
-          <Switch value={draft.respectGlobalAppendPrompt} onValueChange={setRespectAppend} />
-        </View>
+            {nameCollides ? (
+              <Text style={styles.fieldError} testID="agent-personality-name-collision">
+                Another personality already uses this name.
+              </Text>
+            ) : null}
 
-        <RolesField roles={draft.roles} onToggle={toggleRole} onSetAll={setAllRoles} />
+            <RolesField roles={draft.roles} onToggle={toggleRole} onSetAll={setAllRoles} />
 
-        <SpinnerField
-          glowA={draft.glowA}
-          glowB={draft.glowB}
-          onGlowAChange={setGlowA}
-          onGlowBChange={setGlowB}
-        />
-
-        {showVoice ? (
-          <PickerRow
-            label="Voice"
-            value={encodeVoice(draft.voice)}
-            options={voiceOptions}
-            onChange={setVoice}
-            testID="agent-personality-voice-picker"
-            trailing={voicePreview}
-          />
+            <SpinnerField
+              glowA={draft.glowA}
+              glowB={draft.glowB}
+              onGlowAChange={setGlowA}
+              onGlowBChange={setGlowB}
+            />
+          </>
         ) : null}
 
-        <View style={styles.editorActions}>
-          <Button variant="secondary" size="sm" style={FLEX_1} onPress={handleClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            style={FLEX_1}
-            onPress={handleSave}
-            disabled={!canSave || isSaving}
-            testID="agent-personality-save-button"
-          >
-            Save
-          </Button>
-        </View>
-      </View>
-    </AdaptiveModalSheet>
+        {activeTab === "personality" ? (
+          <>
+            <FieldLabel label="Personality prompt" />
+            <TextInput
+              value={draft.personalityPrompt}
+              onChangeText={setPrompt}
+              placeholder="How this personality should behave (fun, optional)."
+              placeholderTextColor={styles.placeholder.color}
+              multiline
+              style={styles.textArea}
+              testID="agent-personality-prompt-input"
+            />
+
+            <View style={styles.toggleRow}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>Respect global append prompt</Text>
+                <Text style={settingsStyles.rowHint}>
+                  When off, the personality prompt stands alone (no host-wide append stacked on
+                  top).
+                </Text>
+              </View>
+              <Switch value={draft.respectGlobalAppendPrompt} onValueChange={setRespectAppend} />
+            </View>
+          </>
+        ) : null}
+
+        {activeTab === "model" ? (
+          <>
+            <PickerRow
+              label="Provider"
+              value={draft.provider}
+              options={providerOptions}
+              onChange={handleProviderChange}
+              testID="agent-personality-provider-picker"
+            />
+            <PickerRow
+              label="Model"
+              value={draft.model}
+              options={modelOptions}
+              onChange={setModel}
+              testID="agent-personality-model-picker"
+            />
+            <PickerRow
+              label="Mode"
+              value={draft.modeId}
+              options={modeOptions}
+              onChange={setMode}
+              displayLabel={modeDisplayLabel}
+              testID="agent-personality-mode-picker"
+            />
+            <PickerRow
+              label="Effort"
+              value={draft.effortLevel}
+              options={effortOptions}
+              onChange={setEffort}
+              testID="agent-personality-effort-picker"
+            />
+          </>
+        ) : null}
+
+        {activeTab === "voice" ? (
+          <>
+            {showVoice ? (
+              <PickerRow
+                label="Voice"
+                value={encodeVoice(draft.voice)}
+                options={voiceOptions}
+                onChange={setVoice}
+                testID="agent-personality-voice-picker"
+                trailing={voicePreview}
+              />
+            ) : null}
+            <VoiceCuesEditor
+              cues={draft.voiceCues}
+              canGenerate={canGenerateCues && client !== null}
+              isGenerating={isGeneratingCues}
+              progress={cueGenProgress}
+              error={cueGenError}
+              onGenerate={handleGenerateCues}
+              onSetLine={setCueLine}
+              onAddLine={addCueLine}
+              onRemoveLine={removeCueLine}
+            />
+          </>
+        ) : null}
+      </>
+    </TabbedModalSheet>
   );
 }
 
@@ -1090,6 +1439,164 @@ function PersonalityEditModal({
 
 function FieldLabel({ label }: { label: string }): ReactElement {
   return <Text style={styles.fieldLabel}>{label}</Text>;
+}
+
+// ---------------------------------------------------------------------------
+// Voice cues editor — the three cue groups (join / thinking / done), each an
+// editable list of short spoken lines, with an "Generate with AI" action that
+// authors a set from the draft's name + prompt.
+// ---------------------------------------------------------------------------
+
+interface CueLineRowProps {
+  kind: CueMoment;
+  line: CueLineDraft;
+  index: number;
+  onSetLine: (kind: CueMoment, id: string, value: string) => void;
+  onRemoveLine: (kind: CueMoment, id: string) => void;
+}
+
+function CueLineRow({ kind, line, index, onSetLine, onRemoveLine }: CueLineRowProps): ReactElement {
+  const handleChange = useCallback(
+    (value: string) => onSetLine(kind, line.id, value),
+    [kind, line.id, onSetLine],
+  );
+  const handleRemove = useCallback(
+    () => onRemoveLine(kind, line.id),
+    [kind, line.id, onRemoveLine],
+  );
+  return (
+    <View style={styles.cueRow}>
+      <TextInput
+        value={line.text}
+        onChangeText={handleChange}
+        placeholder="e.g. On it"
+        placeholderTextColor={styles.placeholder.color}
+        style={styles.cueInput}
+        testID={`agent-personality-cue-${kind}-${index}`}
+      />
+      <IconButton Icon={ThemedTrash} label="Remove line" onPress={handleRemove} destructive />
+    </View>
+  );
+}
+
+interface CueGroupEditorProps {
+  kind: CueMoment;
+  lines: CueLineDraft[];
+  onSetLine: (kind: CueMoment, id: string, value: string) => void;
+  onAddLine: (kind: CueMoment) => void;
+  onRemoveLine: (kind: CueMoment, id: string) => void;
+}
+
+function CueGroupEditor({
+  kind,
+  lines,
+  onSetLine,
+  onAddLine,
+  onRemoveLine,
+}: CueGroupEditorProps): ReactElement {
+  const handleAdd = useCallback(() => onAddLine(kind), [kind, onAddLine]);
+  return (
+    <View style={styles.cueGroup}>
+      <FieldLabel label={CUE_KIND_LABELS[kind]} />
+      <Text style={styles.fieldHint}>{CUE_KIND_HINTS[kind]}</Text>
+      {lines.map((line, index) => (
+        <CueLineRow
+          key={line.id}
+          kind={kind}
+          line={line}
+          index={index}
+          onSetLine={onSetLine}
+          onRemoveLine={onRemoveLine}
+        />
+      ))}
+      <Button variant="ghost" size="sm" onPress={handleAdd}>
+        Add line
+      </Button>
+    </View>
+  );
+}
+
+interface VoiceCuesEditorProps {
+  cues: DraftVoiceCues;
+  canGenerate: boolean;
+  isGenerating: boolean;
+  progress: { completed: number; total: number } | null;
+  // Failure notice for the last generation attempt (partial or total).
+  error: string | null;
+  onGenerate: () => void;
+  onSetLine: (kind: CueMoment, id: string, value: string) => void;
+  onAddLine: (kind: CueMoment) => void;
+  onRemoveLine: (kind: CueMoment, id: string) => void;
+}
+
+function VoiceCuesEditor({
+  cues,
+  canGenerate,
+  isGenerating,
+  progress,
+  error,
+  onGenerate,
+  onSetLine,
+  onAddLine,
+  onRemoveLine,
+}: VoiceCuesEditorProps): ReactElement {
+  return (
+    <View style={styles.cuesContainer}>
+      <Text style={styles.fieldHint}>
+        Short lines spoken in this personality&apos;s voice when its node joins the graph, first
+        starts thinking, and finishes (Settings → Visualizer → Sound → Voice cues). Left empty, a
+        set is generated for you on save.
+      </Text>
+      {canGenerate ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={onGenerate}
+          disabled={isGenerating}
+          testID="agent-personality-generate-cues"
+        >
+          {isGenerating ? "Generating…" : "Generate with AI"}
+        </Button>
+      ) : null}
+      {progress ? <CueGenProgress completed={progress.completed} total={progress.total} /> : null}
+      {error ? (
+        <Text style={styles.fieldError} testID="agent-personality-cue-gen-error">
+          {error}
+        </Text>
+      ) : null}
+      {CUE_MOMENTS.map((kind) => (
+        <CueGroupEditor
+          key={kind}
+          kind={kind}
+          lines={cues[kind]}
+          onSetLine={onSetLine}
+          onAddLine={onAddLine}
+          onRemoveLine={onRemoveLine}
+        />
+      ))}
+    </View>
+  );
+}
+
+// Determinate progress bar shown while cue generation is in flight — fills as
+// each moment lands and disappears when the generation finishes.
+function CueGenProgress({ completed, total }: { completed: number; total: number }): ReactElement {
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const width: `${number}%` = `${percent}%`;
+  const fillStyle = useMemo(() => [styles.cueProgressFill, { width }], [width]);
+  return (
+    <View style={styles.cueProgress} accessibilityRole="progressbar">
+      <View style={styles.cueProgressHeader}>
+        <Text style={styles.fieldHint}>Generating voice cues…</Text>
+        <Text style={styles.fieldHint}>
+          {completed} / {total}
+        </Text>
+      </View>
+      <View style={styles.cueProgressTrack}>
+        <View style={fillStyle} />
+      </View>
+    </View>
+  );
 }
 
 interface PickerRowProps {
@@ -1457,8 +1964,47 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.4,
   },
-  editorBody: {
+  cuesContainer: {
     gap: theme.spacing[3],
+  },
+  cueProgress: {
+    gap: theme.spacing[1],
+  },
+  cueProgressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cueProgressTrack: {
+    height: 4,
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.full,
+    overflow: "hidden",
+  },
+  cueProgressFill: {
+    height: "100%",
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.full,
+  },
+  cueGroup: {
+    gap: theme.spacing[2],
+  },
+  cueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  cueInput: {
+    flex: 1,
+    minHeight: 40,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
   },
   fieldLabel: {
     color: theme.colors.foregroundMuted,
@@ -1633,9 +2179,9 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.destructive,
   },
   editorActions: {
+    flex: 1,
     flexDirection: "row",
     gap: theme.spacing[3],
-    marginTop: theme.spacing[2],
   },
   placeholder: {
     color: theme.colors.foregroundMuted,

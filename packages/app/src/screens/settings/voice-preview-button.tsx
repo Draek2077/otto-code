@@ -21,6 +21,7 @@ import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
+import { formatToMimeType } from "@/voice/audio-format";
 
 /**
  * The single detection point for the TTS preview capability.
@@ -30,14 +31,6 @@ export function useTtsPreviewFeature(serverId: string): boolean {
   return useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.ttsPreview === true,
   );
-}
-
-// Local Sherpa returns "pcm;rate=24000"; OpenAI returns "pcm" (24 kHz default).
-// The audio engine parses `rate=` from the mime type and defaults to 24000.
-function formatToMimeType(format: string): string {
-  if (format === "pcm") return "audio/pcm;rate=24000;bits=16";
-  if (format === "mp3") return "audio/mpeg";
-  return `audio/${format}`;
 }
 
 // Default sample read aloud when previewing a voice with no caller-supplied

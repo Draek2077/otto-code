@@ -77,7 +77,10 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
-import { usePublishExplorerSidebarVisibility } from "@/screens/workspace/use-explorer-sidebar-visibility";
+import {
+  usePublishExplorerSidebarVisibility,
+  usePublishFocusModeTabStripVisibility,
+} from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -178,6 +181,7 @@ import {
 import {
   deriveWorkspacePaneState,
   resolveSideFileOpenPlacement,
+  resolveWorkspaceNewChatPlacement,
 } from "@/screens/workspace/workspace-pane-state";
 import {
   buildWorkspacePaneContentModel,
@@ -1477,6 +1481,15 @@ function WorkspaceHeaderMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {/* Host for the "Add artifact" flow (added in fb74fb6b2). There is NO
+          visible artifact button here — the entry point is the "Add artifact"
+          item in the "..." menu above, which flips `artifactsOpen` on. On compact
+          form factors that opens a bottom sheet (the feature's original purpose),
+          which needs no anchor. On desktop the same controlled menu renders as a
+          dropdown, and a dropdown must position against an on-screen element —
+          this is that anchor. `hideTrigger` renders it with no glyph; its style is
+          `position: absolute` so it stays out of the button row's flex flow and
+          can't distort the gap between the buttons. */}
       {supportsArtifacts ? (
         <ArtifactOpenMenu
           serverId={normalizedServerId}
@@ -1598,12 +1611,6 @@ function WorkspaceHeaderTitleBar({
         </View>
       )}
       <View style={styles.compactHeaderMenuCluster}>
-        {isDeveloperMode && !isMobile ? (
-          <WorkspaceVisualizerButton
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
-          />
-        ) : null}
         <WorkspaceHeaderMenu
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -1629,6 +1636,12 @@ function WorkspaceHeaderTitleBar({
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
         />
+        {isDeveloperMode && !isMobile ? (
+          <WorkspaceVisualizerButton
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+          />
+        ) : null}
         {isDeveloperMode && isMobile && workspaceScripts.length > 0 ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
@@ -2815,14 +2828,6 @@ function WorkspaceScreenContent({
       terminalsQueryKey,
     });
 
-  const tabByKey = useMemo(() => {
-    const map = new Map<string, WorkspaceTabDescriptor>();
-    for (const tab of tabs) {
-      map.set(tab.key, tab);
-    }
-    return map;
-  }, [tabs]);
-
   const allTabDescriptorsById = useMemo(() => {
     const map = new Map<string, WorkspaceTabDescriptor>();
     for (const tab of uiTabs) {
@@ -2880,24 +2885,89 @@ function WorkspaceScreenContent({
     [t],
   );
 
-  const tabSwitcherOptions = useMemo(
+  // Mobile collapses the workspace to a single visible pane, but a tab can live
+  // in a *different* pane (e.g. the Visualizer, which splits into its own pane on
+  // desktop/web — see open-visualizer-tab). Those tabs are absent from the
+  // focused-pane `tabs` above, so the mobile switcher enumerates every pane's
+  // tabs as one flat list. Selecting one cross-pane-focuses it (focusTabInLayout
+  // moves `focusedPaneId` to the tab's pane), after which the focused-pane render
+  // shows it — so only the *list* needs widening, not the mount/select paths.
+  const mobileSwitcherTabs = useMemo<WorkspaceTabDescriptor[]>(
     () =>
-      tabs.map((tab) => ({
+      visibleUiTabs.map((tab) => ({
+        key: tab.tabId,
+        tabId: tab.tabId,
+        kind: tab.target.kind,
+        target: tab.target,
+      })),
+    [visibleUiTabs],
+  );
+  const mobileTabByKey = useMemo(() => {
+    const map = new Map<string, WorkspaceTabDescriptor>();
+    for (const tab of mobileSwitcherTabs) {
+      map.set(tab.key, tab);
+    }
+    return map;
+  }, [mobileSwitcherTabs]);
+  const mobileTabSwitcherOptions = useMemo(
+    () =>
+      mobileSwitcherTabs.map((tab) => ({
         id: tab.key,
         label: getFallbackTabOptionLabel(tab, tabFallbackLabels),
         description: getFallbackTabOptionDescription(tab, tabFallbackLabels),
       })),
-    [tabFallbackLabels, tabs],
+    [mobileSwitcherTabs, tabFallbackLabels],
   );
 
   const handleCreateDraftTab = useCallback(
     (input?: { paneId?: string }) => {
-      if (input?.paneId && persistenceKey) {
+      if (!persistenceKey) {
+        openWorkspaceDraftTab();
+        return;
+      }
+
+      // A "New chat" must never open as a second tab inside the Visualizer's
+      // pane — the Visualizer is a companion view that owns its pane. Redirect
+      // the draft to a sibling pane instead: reuse one that's already on screen,
+      // or split a fresh pane to the left of the Visualizer when it stands alone.
+      const placement = resolveWorkspaceNewChatPlacement({
+        layout: workspaceLayout,
+        tabs: uiTabs,
+        requestedPaneId: input?.paneId ?? null,
+        supportsPaneSplits: supportsDesktopPaneSplits(),
+      });
+
+      if (placement.kind === "reuse-pane") {
+        focusWorkspacePane(persistenceKey, placement.paneId);
+        openWorkspaceDraftTab();
+        return;
+      }
+
+      if (placement.kind === "split-left") {
+        const newPaneId = splitWorkspacePaneEmpty(persistenceKey, {
+          targetPaneId: placement.targetPaneId,
+          position: "left",
+        });
+        if (newPaneId) {
+          focusWorkspacePane(persistenceKey, newPaneId);
+        }
+        openWorkspaceDraftTab();
+        return;
+      }
+
+      if (input?.paneId) {
         focusWorkspacePane(persistenceKey, input.paneId);
       }
       openWorkspaceDraftTab();
     },
-    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey],
+    [
+      focusWorkspacePane,
+      openWorkspaceDraftTab,
+      persistenceKey,
+      splitWorkspacePaneEmpty,
+      uiTabs,
+      workspaceLayout,
+    ],
   );
 
   const handleCreateTerminal = useCallback(
@@ -3377,6 +3447,27 @@ function WorkspaceScreenContent({
       await handleCloseOtherTabsInPane(tabId, tabs);
     },
     [handleCloseOtherTabsInPane, tabs],
+  );
+
+  // Mobile switcher variants: "close above/below/others" act on the flattened
+  // all-panes list (mobileSwitcherTabs), matching what that switcher displays.
+  const handleCloseTabsToLeftMobile = useCallback(
+    async (tabId: string) => {
+      await handleCloseTabsToLeftInPane(tabId, mobileSwitcherTabs);
+    },
+    [handleCloseTabsToLeftInPane, mobileSwitcherTabs],
+  );
+  const handleCloseTabsToRightMobile = useCallback(
+    async (tabId: string) => {
+      await handleCloseTabsToRightInPane(tabId, mobileSwitcherTabs);
+    },
+    [handleCloseTabsToRightInPane, mobileSwitcherTabs],
+  );
+  const handleCloseOtherTabsMobile = useCallback(
+    async (tabId: string) => {
+      await handleCloseOtherTabsInPane(tabId, mobileSwitcherTabs);
+    },
+    [handleCloseOtherTabsInPane, mobileSwitcherTabs],
   );
 
   const handleWorkspaceTabAction = useCallback(
@@ -3993,6 +4084,13 @@ function WorkspaceScreenContent({
     workspaceDirectory,
     explorerOpen: isExplorerOpen,
   });
+  // In focus mode the header is hidden and the desktop tab row becomes the top
+  // strip under the native window controls — publish that so the caption strip
+  // color follows the tab-row gutter (surfaceSidebar) rather than surface0.
+  usePublishFocusModeTabStripVisibility({
+    isFocusModeEnabled,
+    isCompact: isMobile,
+  });
   const createTerminalDisabled = useMemo(
     () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
     [createTerminalMutation.isPending, pendingTerminalCreateInput],
@@ -4022,10 +4120,6 @@ function WorkspaceScreenContent({
         fallbackTabOrientation === "vertical" ? "horizontal" : "vertical",
       );
   }, [fallbackTabOrientation, focusedPaneId, persistenceKey]);
-  const desktopFocusModeEnabled = useMemo(
-    () => isFocusModeEnabled && !isMobile,
-    [isFocusModeEnabled, isMobile],
-  );
   const workspaceFloatingPanelPortalHostName = useMemo(
     () =>
       `${WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX}:${normalizedServerId}:${normalizedWorkspaceId}`,
@@ -4038,7 +4132,6 @@ function WorkspaceScreenContent({
     return (
       <SplitContainer
         layout={workspaceLayout}
-        focusModeEnabled={desktopFocusModeEnabled}
         workspaceKey={persistenceKey}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
@@ -4075,7 +4168,6 @@ function WorkspaceScreenContent({
     canRenderDesktopPaneSplits,
     workspaceLayout,
     persistenceKey,
-    desktopFocusModeEnabled,
     normalizedServerId,
     normalizedWorkspaceId,
     isRouteFocused,
@@ -4157,11 +4249,11 @@ function WorkspaceScreenContent({
 
       {isMobile ? (
         <MobileWorkspaceTabSwitcher
-          tabs={tabs}
+          tabs={mobileSwitcherTabs}
           activeTabKey={activeTabKey}
           activeTab={activeTabDescriptor}
-          tabSwitcherOptions={tabSwitcherOptions}
-          tabByKey={tabByKey}
+          tabSwitcherOptions={mobileTabSwitcherOptions}
+          tabByKey={mobileTabByKey}
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           onSelectSwitcherTab={handleSelectSwitcherTab}
@@ -4171,9 +4263,9 @@ function WorkspaceScreenContent({
           onReloadAgent={handleReloadAgent}
           onRenameTab={handleRenameTab}
           onCloseTab={handleCloseTabById}
-          onCloseTabsAbove={handleCloseTabsToLeft}
-          onCloseTabsBelow={handleCloseTabsToRight}
-          onCloseOtherTabs={handleCloseOtherTabs}
+          onCloseTabsAbove={handleCloseTabsToLeftMobile}
+          onCloseTabsBelow={handleCloseTabsToRightMobile}
+          onCloseOtherTabs={handleCloseOtherTabsMobile}
         />
       ) : null}
 
@@ -4374,12 +4466,15 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    // No trailing padding on desktop: the "..." trigger's own hover-chrome
-    // padding already provides the header's 8px rhythm to whatever follows
-    // (tool buttons or the explorer toggle) — padding on top doubled the gap.
+    // Every chrome boundary in the header series is separated by the standard
+    // `spacing[2]` gap (matching the `left`/`right`/headerRight containers). This
+    // cluster sits flush against headerRight, which lives in a different container,
+    // so no shared container-gap spans that seam — the trailing padding supplies
+    // that one standard gap itself. A button's own hover-chrome padding is inside
+    // its box and can't stand in for it (that would leave the boxes touching).
     paddingRight: {
       xs: theme.spacing[2],
-      md: 0,
+      md: theme.spacing[2],
     },
     gap: {
       xs: 0,

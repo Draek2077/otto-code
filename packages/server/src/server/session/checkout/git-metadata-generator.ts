@@ -1,8 +1,7 @@
 import { z } from "zod";
 import {
-  StructuredAgentFallbackError,
-  StructuredAgentResponseError,
   generateStructuredAgentResponseWithFallback,
+  isStructuredGenerationFailure,
 } from "../../agent/agent-response-loop.js";
 import type { AgentManager } from "../../agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "../../agent/provider-snapshot-manager.js";
@@ -269,10 +268,4 @@ function diffChangeTypeFor(file: { isNew?: boolean; isDeleted?: boolean }): "A" 
   if (file.isNew) return "A";
   if (file.isDeleted) return "D";
   return "M";
-}
-
-function isStructuredGenerationFailure(error: unknown): boolean {
-  return (
-    error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
-  );
 }

@@ -1,7 +1,50 @@
 import { COLORS } from '@/lib/colors'
+import { NODE, type Discovery } from '@/lib/agent-types'
 import { TOOL_DEDUP_WINDOW_S } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { appendConversation, asString, asBoolean, LABEL_LEN_PARTICLE, LABEL_LEN_TIMELINE } from './types'
+
+// OTTO PATCH (OTTO-PATCHES.md): distance a discovery card rests from the node
+// center, and the golden-angle used to fan successive cards around it so a burst
+// of findings doesn't stack on one spot.
+const DISCOVERY_ORBIT = NODE.radiusMain + 96
+const DISCOVERY_FAN_ANGLE = 2.399963 // ~137.5°, the golden angle
+
+/** OTTO PATCH (OTTO-PATCHES.md): turn a payload.discovery ({type,label,content})
+ * into a floating Discovery card near the agent. Upstream's web/ never consumed
+ * this field (nothing wrote state.discoveries); Otto's adapter derives notable
+ * findings from tool results and this wire renders them, reusing the existing
+ * draw / hit-test / detail-popup / theming and the DISCOVERY_HOLD_S fade. */
+function pushDiscovery(
+  raw: unknown,
+  agent: { x: number; y: number },
+  agentName: string,
+  currentTime: number,
+  state: MutableEventState,
+): void {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
+  const d = raw as Record<string, unknown>
+  const type = asString(d.type)
+  if (type !== 'file' && type !== 'pattern' && type !== 'finding' && type !== 'code') return
+  const label = asString(d.label)
+  const content = asString(d.content)
+  if (!label && !content) return
+  const index = state.discoveries.reduce((n, x) => (x.agentId === agentName ? n + 1 : n), 0)
+  const angle = -Math.PI / 2 + index * DISCOVERY_FAN_ANGLE
+  state.discoveries.push({
+    id: `disc-${agentName}-${currentTime}-${index}`,
+    agentId: agentName,
+    type: type as Discovery['type'],
+    label,
+    content,
+    x: agent.x,
+    y: agent.y,
+    targetX: agent.x + Math.cos(angle) * DISCOVERY_ORBIT,
+    targetY: agent.y + Math.sin(angle) * DISCOVERY_ORBIT,
+    opacity: 0,
+    timestamp: currentTime,
+  })
+}
 
 /** Extract file path from tool input data or fall back to first token of args */
 function extractFilePath(inputData?: Record<string, unknown>, args?: string): string {
@@ -168,5 +211,8 @@ export function handleToolCallEnd(
       timestamp: currentTime,
       toolName,
     })
+
+    // OTTO PATCH (OTTO-PATCHES.md): render a discovery card for a notable result.
+    pushDiscovery(payload.discovery, agent, agentName, currentTime, state)
   }
 }

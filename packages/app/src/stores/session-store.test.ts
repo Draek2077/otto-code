@@ -516,3 +516,78 @@ describe("patchWorkspaceScripts", () => {
     expect(next.get(workspace.id)).toBe(workspace);
   });
 });
+
+describe("prompt suggestions", () => {
+  function readSuggestion(agentId: string): string | undefined {
+    return useSessionStore.getState().sessions["test-server"]?.agentPromptSuggestions.get(agentId);
+  }
+
+  it("stores, trims, and clears a per-agent suggestion", () => {
+    initializeTestSession();
+    const { setAgentPromptSuggestion } = useSessionStore.getState();
+
+    setAgentPromptSuggestion("test-server", "agent-1", "  Run the tests  ");
+    expect(readSuggestion("agent-1")).toBe("Run the tests");
+
+    // A blank/whitespace value clears the suggestion (drops the map entry).
+    setAgentPromptSuggestion("test-server", "agent-1", "   ");
+    expect(readSuggestion("agent-1")).toBeUndefined();
+
+    setAgentPromptSuggestion("test-server", "agent-1", "Ship it");
+    setAgentPromptSuggestion("test-server", "agent-1", null);
+    expect(readSuggestion("agent-1")).toBeUndefined();
+  });
+
+  it("keeps suggestions isolated per agent", () => {
+    initializeTestSession();
+    const { setAgentPromptSuggestion } = useSessionStore.getState();
+    setAgentPromptSuggestion("test-server", "agent-1", "one");
+    setAgentPromptSuggestion("test-server", "agent-2", "two");
+    expect(readSuggestion("agent-1")).toBe("one");
+    expect(readSuggestion("agent-2")).toBe("two");
+  });
+});
+
+describe("sent-prompt history", () => {
+  function readHistory(agentId: string): string[] | undefined {
+    return useSessionStore.getState().sessions["test-server"]?.sentPromptHistory.get(agentId);
+  }
+
+  it("appends sent prompts oldest→newest and clones an edited recall as the newest", () => {
+    initializeTestSession();
+    const { appendSentPrompt } = useSessionStore.getState();
+
+    appendSentPrompt("test-server", "agent-1", "first");
+    appendSentPrompt("test-server", "agent-1", "second");
+    // Editing a recalled "first" and sending it clones a fresh top entry rather
+    // than mutating the original.
+    appendSentPrompt("test-server", "agent-1", "first edited");
+
+    expect(readHistory("agent-1")).toEqual(["first", "second", "first edited"]);
+  });
+
+  it("trims entries and skips an immediate duplicate of the newest", () => {
+    initializeTestSession();
+    const { appendSentPrompt } = useSessionStore.getState();
+
+    appendSentPrompt("test-server", "agent-1", "  same  ");
+    appendSentPrompt("test-server", "agent-1", "same");
+    appendSentPrompt("test-server", "agent-1", "   ");
+
+    expect(readHistory("agent-1")).toEqual(["same"]);
+  });
+
+  it("caps the stack at the newest 100 entries", () => {
+    initializeTestSession();
+    const { appendSentPrompt } = useSessionStore.getState();
+
+    for (let i = 0; i < 105; i++) {
+      appendSentPrompt("test-server", "agent-1", `msg-${i}`);
+    }
+
+    const history = readHistory("agent-1");
+    expect(history).toHaveLength(100);
+    expect(history?.[0]).toBe("msg-5");
+    expect(history?.[99]).toBe("msg-104");
+  });
+});

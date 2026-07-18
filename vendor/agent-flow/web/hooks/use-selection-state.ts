@@ -19,11 +19,10 @@ export interface DiscoveryDataSnapshot {
   agentId: string
 }
 
-export interface ContextMenuState {
-  x: number
-  y: number
-  agentId?: string
-}
+// OTTO PATCH (OTTO-PATCHES.md): the ContextMenuState interface and the
+// contextMenu/setContextMenu/handleContextMenu members were removed along with
+// the in-canvas right-click GlassContextMenu — its actions live in the native
+// Otto toolbar and nothing read the state anymore.
 
 export interface ScreenPos {
   x: number
@@ -49,8 +48,6 @@ export function useSelectionState(deps: {
   const [selectedDiscoveryScreenPos, setSelectedDiscoveryScreenPos] = useState<ScreenPos | null>(null)
   const [selectedDiscoveryData, setSelectedDiscoveryData] = useState<DiscoveryDataSnapshot | null>(null)
 
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-
   const clearAgent = useCallback(() => {
     setSelectedAgentId(null)
     setSelectedAgentWorldPos(null)
@@ -72,7 +69,6 @@ export function useSelectionState(deps: {
     if (keep !== 'agent') clearAgent()
     if (keep !== 'tool') clearTool()
     if (keep !== 'discovery') clearDiscovery()
-    setContextMenu(null)
   }, [clearAgent, clearTool, clearDiscovery])
 
   const handleAgentClick = useCallback((agentId: string | null) => {
@@ -128,21 +124,10 @@ export function useSelectionState(deps: {
     }
   }, [discoveries, clearOtherSelections])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, type: 'agent' | 'edge' | 'canvas', id?: string) => {
-    if (type === 'agent' && id) {
-      setContextMenu({ x: e.clientX, y: e.clientY, agentId: id })
-    } else if (type === 'canvas') {
-      setContextMenu({ x: e.clientX, y: e.clientY })
-    } else {
-      setContextMenu(null)
-    }
-  }, [])
-
   const clearAllSelections = useCallback(() => {
     clearAgent()
     clearTool()
     clearDiscovery()
-    setContextMenu(null)
   }, [clearAgent, clearTool, clearDiscovery])
 
   return {
@@ -156,12 +141,9 @@ export function useSelectionState(deps: {
     selectedDiscoveryId,
     selectedDiscoveryScreenPos,
     selectedDiscoveryData,
-    contextMenu,
-    setContextMenu,
     handleAgentClick,
     handleToolCallClick,
     handleDiscoveryClick,
-    handleContextMenu,
     clearAgent,
     clearTool,
     clearDiscovery,

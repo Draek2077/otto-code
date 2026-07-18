@@ -720,6 +720,20 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handlePromptSuggestionsEnabledChange = useCallback(
+    (promptSuggestionsEnabled: boolean) => {
+      void updateSettings({ promptSuggestionsEnabled });
+    },
+    [updateSettings],
+  );
+
+  const handleRateLimitWarningsEnabledChange = useCallback(
+    (rateLimitWarningsEnabled: boolean) => {
+      void updateSettings({ rateLimitWarningsEnabled });
+    },
+    [updateSettings],
+  );
+
   const handleGroupConsecutiveActionsChange = useCallback(
     (groupConsecutiveActions: boolean) => {
       void updateSettings({ groupConsecutiveActions });
@@ -751,6 +765,13 @@ export function AppearanceSection() {
   const handleWrapCodeLinesChange = useCallback(
     (wrapCodeLines: boolean) => {
       void updateSettings({ wrapCodeLines });
+    },
+    [updateSettings],
+  );
+
+  const handleChatBubbleGradientChange = useCallback(
+    (chatBubbleGradient: boolean) => {
+      void updateSettings({ chatBubbleGradient });
     },
     [updateSettings],
   );
@@ -929,6 +950,28 @@ export function AppearanceSection() {
             testID="settings-auto-expand-reasoning-switch"
           />
           <LayoutToggleRow
+            title={t("settings.appearance.agents.promptSuggestions.title")}
+            hint={t("settings.appearance.agents.promptSuggestions.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.promptSuggestions.accessibilityLabel",
+            )}
+            value={settings.promptSuggestionsEnabled}
+            withBorder
+            onValueChange={handlePromptSuggestionsEnabledChange}
+            testID="settings-prompt-suggestions-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.rateLimitWarnings.title")}
+            hint={t("settings.appearance.agents.rateLimitWarnings.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.rateLimitWarnings.accessibilityLabel",
+            )}
+            value={settings.rateLimitWarningsEnabled}
+            withBorder
+            onValueChange={handleRateLimitWarningsEnabledChange}
+            testID="settings-rate-limit-warnings-switch"
+          />
+          <LayoutToggleRow
             title={t("settings.appearance.agents.hideMessageDetails.title")}
             hint={t("settings.appearance.agents.hideMessageDetails.hint")}
             accessibilityLabel={t(
@@ -942,6 +985,16 @@ export function AppearanceSection() {
           <MessageTimestampRow
             value={settings.chatTimestampDisplay}
             onChange={handleChatTimestampDisplayChange}
+          />
+          {/* i18n: English-only pending a translation pass (bubble gradient). */}
+          <LayoutToggleRow
+            title="Gradient"
+            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
+            accessibilityLabel="Gradient"
+            value={settings.chatBubbleGradient}
+            withBorder
+            onValueChange={handleChatBubbleGradientChange}
+            testID="settings-chat-bubble-gradient-switch"
           />
           {/* i18n: English-only pending a translation pass (wrap long lines). */}
           <LayoutToggleRow

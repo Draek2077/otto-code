@@ -42,6 +42,7 @@ import type {
 } from "./activity-stats/activity-stats-store.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
+import type { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { buildWorkspaceGitMetadataFromSnapshot } from "./workspace-git-metadata.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
@@ -439,6 +440,10 @@ export class VoiceAssistantWebSocketServer {
   private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
+  // Daemon-wide shared AgentAutoTitle (bootstrap-owned); handed to every
+  // Session so auto-titling state is never split across instances. Null only
+  // in test harnesses that predate the parameter.
+  private readonly agentAutoTitle: AgentAutoTitle | null;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
@@ -544,6 +549,7 @@ export class VoiceAssistantWebSocketServer {
     onActivity?: ActivityIncrementFn,
     getActivityRollups?: () => Promise<ActivityRollups>,
     projectLinkStore?: ProjectLinkStore,
+    agentAutoTitle?: AgentAutoTitle | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -576,6 +582,7 @@ export class VoiceAssistantWebSocketServer {
     this.gitHostingResolver = gitHostingResolver ?? null;
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.workspaceAutoName = workspaceAutoName;
+    this.agentAutoTitle = agentAutoTitle ?? null;
     this.downloadTokenStore = downloadTokenStore;
     this.ottoHome = ottoHome;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
@@ -1090,6 +1097,7 @@ export class VoiceAssistantWebSocketServer {
       ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
       workspaceGitService: this.workspaceGitService,
       workspaceAutoName: this.workspaceAutoName,
+      ...(this.agentAutoTitle ? { agentAutoTitle: this.agentAutoTitle } : {}),
       daemonConfigStore: this.daemonConfigStore,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
@@ -1336,6 +1344,10 @@ export class VoiceAssistantWebSocketServer {
         agentPersonalities: true,
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: this.speech !== null,
+        // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        // Marks that the daemon can AUTHOR cue lines (Writer chain, always
+        // available). Speaking them at runtime separately requires ttsPreview.
+        visualizerVoiceCues: true,
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: true,
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
@@ -1362,6 +1374,10 @@ export class VoiceAssistantWebSocketServer {
         projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
         fileOutsideWorkspace: true,
+        // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        promptSuggestions: true,
+        // COMPAT(rateLimitEvents): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
+        rateLimitEvents: true,
       },
     };
   }

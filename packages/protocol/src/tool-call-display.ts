@@ -1,5 +1,5 @@
 import type { ToolCallTimelineItem } from "./agent-types.js";
-import { getOttoToolLeafName, isOttoToolName } from "./tool-name-normalization.js";
+import { getMcpToolLeafName, getOttoToolLeafName } from "./tool-name-normalization.js";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<
@@ -28,27 +28,74 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function humanizeToolName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return name;
-  }
-  if (isOttoToolName(trimmed)) {
-    const leaf = getOttoToolLeafName(trimmed);
-    if (leaf) {
-      return humanizeToolName(leaf);
-    }
-  }
-  if (/[:./]/.test(trimmed) || trimmed.includes("__")) {
-    return trimmed;
-  }
+// Curated display names — the registry of tools we explicitly "know about".
+// Keyed by the lowercased leaf name (transport namespace already stripped).
+//
+// Only tools whose bare id does NOT title-case cleanly on its own need an entry
+// here: lowercase compound names ("websearch") a splitter can't segment, or
+// ones we want to word deliberately. Well-formed snake_case ("spawn_task") and
+// camelCase ("WebSearch") names are handled by the algorithmic humanizer below
+// and do NOT need listing.
+//
+// Anything not here falls through to the humanizer and still renders readably —
+// so an unmapped tool shows up looking slightly generic (e.g. a stray provider
+// tool), which is the cue to add it here. Extend this map to teach Otto a tool.
+const KNOWN_TOOL_DISPLAY_NAMES: Record<string, string> = {
+  websearch: "Web Search",
+  web_search: "Web Search",
+  webfetch: "Web Fetch",
+  web_fetch: "Web Fetch",
+  todowrite: "Update Todos",
+  todoread: "Read Todos",
+  multiedit: "Multi Edit",
+  notebookedit: "Edit Notebook",
+  notebookread: "Read Notebook",
+  bashoutput: "Bash Output",
+  killshell: "Kill Shell",
+  exitplanmode: "Exit Plan Mode",
+  applypatch: "Apply Patch",
+  ls: "List Files",
+};
 
-  return trimmed
+// Split camelCase / PascalCase and separator-delimited identifiers into words,
+// then Title-Case them: "WebSearch" -> "Web Search", "spawn_task" -> "Spawn
+// Task", "HTTPServer" -> "HTTP Server".
+function titleCaseToolId(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .replace(/[._-]+/g, " ")
     .split(" ")
     .filter((segment) => segment.length > 0)
     .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
     .join(" ");
+}
+
+function humanizeToolName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return name;
+  }
+  // Strip the transport namespace first ("mcp__otto__spawn_task" ->
+  // "spawn_task", "otto.list_agents" -> "list_agents") so both the known-tool
+  // lookup and the fallback operate on the bare tool id.
+  const leaf = getMcpToolLeafName(trimmed) ?? getOttoToolLeafName(trimmed);
+  if (leaf) {
+    return humanizeToolName(leaf);
+  }
+  return KNOWN_TOOL_DISPLAY_NAMES[trimmed.toLowerCase()] ?? titleCaseToolId(trimmed);
+}
+
+/**
+ * Friendly display name for a bare tool identifier, used at every surface that
+ * shows a tool/action name without a full timeline item to run through
+ * {@link buildToolCallDisplayModel} (the visualizer's action labels, sub-agent
+ * activity rows). Strips the MCP/Otto namespace, consults the known-tool
+ * registry, then title-cases as a fallback — so "mcp__otto__spawn_task",
+ * "otto.spawn_task", and a bare "spawn_task" all render as "Spawn Task".
+ */
+export function getToolDisplayName(name: string): string {
+  return humanizeToolName(name);
 }
 
 function formatErrorText(error: unknown): string | undefined {

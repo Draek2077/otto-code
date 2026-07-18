@@ -105,6 +105,12 @@ Unlike an observed subagent, a background shell task is **not** an `Agent` recor
 
 On the Claude adapter (`packages/server/src/server/agent/providers/claude/agent.ts`), background shell tasks ride the exact same `task_started`/`task_progress`/`task_notification` system-message stream as observed subagents — see [observed-subagents.md](../projects/observed-subagents/observed-subagents.md) — discriminated by the originating tool being `Bash` rather than `Task`/`Agent`. Gated behind `server_info.features.backgroundShellTasks`.
 
+### Edge events vs. the native level signal (Claude)
+
+The `task_*` edge stream is the provider-neutral spine — it owns row creation and rich terminal status, and it is the shape other providers are mapped onto. On Claude it has one structural weakness: a lost or garbled `task_notification` leaves a row running forever. Foreground `Task` rows are covered by the turn-end sweep (a foreground task cannot outlive its turn), but backgrounded rows — Workflow runs, background shells — are exempt from the sweep and had no other safety net.
+
+Claude Agent SDK ≥ 0.3.212 emits `system/background_tasks_changed`: a **level signal** carrying the full set of live background tasks with REPLACE semantics, fired on every membership change. `appendBackgroundTasksChangedEvents` reconciles against it: any task id present in the previous payload but absent from the current one is settled (`idle`), covering the lost-edge case. The reconcile never creates rows and never touches foreground rows (only ids seen in a prior payload are eligible; foreground tasks never appear in the level set), and a late-arriving edge for the same transition still lands to refine the status (`idle` → `error`/`closed`). Keep this division when extending: **edges create and describe, the level signal guarantees eventual settle**. Other providers without a level signal keep the edge-only behavior.
+
 ## Why this shape
 
 The decision was to **decouple "close tab" from "archive" only for subagents**, rather than universally:

@@ -45,7 +45,11 @@ import {
   killTerminalsForWorkspace,
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
-import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
+import {
+  createAgentCommand,
+  type CreateAgentCommandDependencies,
+  type CreateAgentFromMcpInput,
+} from "../create-agent/create.js";
 import { RunPlanSchema } from "@otto-code/protocol/orchestration";
 import { summarizeRunOutput } from "../../orchestration/run-engine.js";
 import type { RunService, RunSpawnPort } from "../../orchestration/run-service.js";
@@ -162,6 +166,9 @@ export interface OttoToolHostDependencies {
     cwd: string,
     firstAgentContext?: FirstAgentContext,
   ) => Promise<string>;
+  // Schedules an AI-written short chat title for a spawned chat that had no
+  // explicit title. Absent when structured generation isn't wired.
+  scheduleAutoTitle?: CreateAgentCommandDependencies["scheduleAutoTitle"];
   browserToolsEnabled?: boolean;
   browserToolsBroker?: BrowserToolsBroker | null;
   previewDevServers?: DevServerManager | null;
@@ -1685,6 +1692,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
             : {}),
+          scheduleAutoTitle: options.scheduleAutoTitle,
         },
         {
           kind: "mcp",
@@ -2371,26 +2379,36 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Suggest a task",
       description:
-        "Suggest a follow-up task as a chip the user can start in one click — in a new " +
-        "worktree workspace, locally, or in this session — or dismiss. A chip appears in the " +
-        "session; your current turn continues uninterrupted and the task is NOT started " +
-        "automatically. Returns a task_id you can later pass to dismiss_task.",
+        "Suggest a follow-up task the user can start later as its own agent — a card they act " +
+        "on asynchronously (start in a new worktree, locally, or in this session, or dismiss). " +
+        "Call this when you notice worthwhile out-of-scope work that would bloat the current " +
+        "change: dead code, stale docs, missing test coverage, a confirmed TODO, a refactor, " +
+        "or a bug spotted in passing — and whenever the user asks you to line up or queue work " +
+        "to do next. Don't flag vague code-smell hunches, trivial fixes you can just do inline, " +
+        "or low-confidence guesses. A card appears for the user; your current turn continues " +
+        "uninterrupted and the task is NOT started automatically. You can suggest several back " +
+        "to back — each returns a task_id you can later pass to dismiss_task.",
       inputSchema: {
         title: z
           .string()
           .describe(
-            "Imperative verb phrase, under 60 chars. Used as the chip label and the spawned " +
-              'session title, e.g. "Fix the flaky auth test".',
+            "A short imperative action phrase, under 60 chars, starting with a verb — the card " +
+              'label and the spawned session\'s title. E.g. "Fix the flaky auth test", "Add ' +
+              'parser tests".',
           ),
         prompt: z
           .string()
           .describe(
-            "Self-contained initial message for the spawned session. Not shown to the user " +
-              "directly — include all the context needed to do the task without this conversation.",
+            "The self-contained initial message for the spawned session — NOT shown to the user " +
+              "directly. Include file paths and enough context to do the task without this " +
+              "conversation.",
           ),
         tldr: z
           .string()
-          .describe("1-2 sentence plain-English summary of the task, shown in the chip's tooltip."),
+          .describe(
+            "A 1-2 sentence plain-English summary of what the task will do and why, shown to the " +
+              "user on the card. No file paths or code.",
+          ),
         cwd: z
           .string()
           .optional()
@@ -2426,9 +2444,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Dismiss a suggested task",
       description:
-        "Withdraw a suggested-task chip the user hasn't acted on yet — e.g. it's now stale, " +
-        "superseded, or already handled. If the task was already started or dismissed, this " +
-        "reports that and does nothing.",
+        "Withdraw a suggested-task card you created with spawn_task, when the suggestion is now " +
+        "stale, superseded, or already handled — e.g. you or the user fixed it this session, or " +
+        "you're replacing it with a better-scoped one (spawn the replacement first, then dismiss " +
+        "the old task_id). Only cards the user hasn't acted on can be withdrawn; if the task was " +
+        "already started or dismissed, the result says so — don't retry.",
       inputSchema: {
         task_id: z.string(),
         reason: z
@@ -4115,6 +4135,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }
             : {}),
+          scheduleAutoTitle: options.scheduleAutoTitle,
         },
         {
           kind: "mcp",

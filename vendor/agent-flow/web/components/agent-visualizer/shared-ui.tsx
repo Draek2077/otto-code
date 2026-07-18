@@ -39,7 +39,10 @@ export function CloseButton({ onClick, className = '' }: CloseButtonProps) {
 
 interface PanelHeaderProps {
   children: ReactNode
-  onClose: () => void
+  // OTTO patch (OTTO-PATCHES.md): optional. Panels driven by an external
+  // toggle button (Files/Cost/Timeline in Otto's toolbar) render no ✕ — the
+  // toggle already closes them. Node-tethered popups still pass onClose.
+  onClose?: () => void
   className?: string
   actions?: ReactNode
 }
@@ -50,10 +53,12 @@ export function PanelHeader({ children, onClose, className = 'mb-2', actions }: 
       <div className="flex items-center gap-2 min-w-0">
         {children}
       </div>
-      <div className="flex items-center gap-1">
-        {actions}
-        <CloseButton onClick={onClose} />
-      </div>
+      {(actions || onClose) && (
+        <div className="flex items-center gap-1">
+          {actions}
+          {onClose && <CloseButton onClick={onClose} />}
+        </div>
+      )}
     </div>
   )
 }

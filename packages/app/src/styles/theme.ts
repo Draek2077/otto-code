@@ -231,7 +231,12 @@ function lightenHex(hex: string, amount: number): string {
 // white would wash out — the Graphite/Powder near-white accents. Net effect:
 // accent pills read as bright chips in most themes and invert on pale accents,
 // matching how a chip "should" look at each end.
-function accentFillInk(accentHex: string): string {
+//
+// Exported as the design system's single ink-on-fill formula — other colored
+// fills (avatar badges via `readableTextColor`) delegate here so they never
+// disagree with accent chips about black-vs-white ink on the same color.
+// Expects a normalized "#rrggbb" string.
+export function accentFillInk(accentHex: string): string {
   const value = Number.parseInt(accentHex.slice(1, 7), 16);
   const r = (value >> 16) & 0xff;
   const g = (value >> 8) & 0xff;

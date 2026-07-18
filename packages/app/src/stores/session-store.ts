@@ -29,6 +29,7 @@ import type {
   WorkspaceProjectDescriptorPayload,
   BackgroundShellTaskInfo,
   SuggestedTaskInfo,
+  AgentRateLimitInfo,
 } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceOpaqueId,
@@ -418,6 +419,22 @@ export interface SessionState {
     string,
     Array<{ id: string; text: string; attachments: ComposerAttachment[] }>
   >;
+
+  // Latest AI prompt suggestion per agent (native Claude next-prompt prediction).
+  // Transient: set on a prompt_suggestion event, cleared on the next turn_started.
+  // The composer renders it as ghost-text watermark (Tab to accept).
+  agentPromptSuggestions: Map<string, string>;
+
+  // Latest provider-reported plan rate-limit status per agent. Transient: set
+  // on a rate_limit_updated event, replaced by the next one. The composer
+  // shows a warning strip for warning/rejected states (suppressible via the
+  // rateLimitWarningsEnabled setting).
+  agentRateLimits: Map<string, AgentRateLimitInfo>;
+
+  // Per-agent stack of prompts the user has sent in this chat, oldest→newest.
+  // Powers ArrowUp/ArrowDown shell-style history recall in the composer. Sending
+  // always appends (an edited recall clones as a new top entry). Capped length.
+  sentPromptHistory: Map<string, string[]>;
 }
 
 // Global store state
@@ -586,6 +603,16 @@ interface SessionStoreActions {
         ) => Map<string, Array<{ id: string; text: string; attachments: ComposerAttachment[] }>>),
   ) => void;
 
+  // AI prompt suggestions (ghost text). Pass null to clear the agent's suggestion.
+  setAgentPromptSuggestion: (serverId: string, agentId: string, suggestion: string | null) => void;
+
+  // Plan rate-limit status. Pass null to clear the agent's entry.
+  setAgentRateLimit: (serverId: string, agentId: string, info: AgentRateLimitInfo | null) => void;
+
+  // Sent-message history stack. Appends text as the newest entry (deduping an
+  // immediate repeat of the current tail); caps the stack length.
+  appendSentPrompt: (serverId: string, agentId: string, text: string) => void;
+
   // Hydration
   setHasHydratedAgents: (serverId: string, hydrated: boolean) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
@@ -597,6 +624,9 @@ interface SessionStoreActions {
 type SessionStore = SessionStoreState & SessionStoreActions;
 
 const agentLastActivityCoalescer = createAgentLastActivityCoalescer();
+
+// Cap on the per-agent sent-message history stack (ArrowUp/ArrowDown recall).
+const SENT_PROMPT_HISTORY_LIMIT = 100;
 
 // Helper to create initial session state
 function createInitialSessionState(serverId: string, client: DaemonClient): SessionState {
@@ -631,6 +661,9 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     pendingPermissions: new Map(),
     fileExplorer: new Map(),
     queuedMessages: new Map(),
+    agentPromptSuggestions: new Map(),
+    agentRateLimits: new Map(),
+    sentPromptHistory: new Map(),
   };
 }
 
@@ -1669,6 +1702,94 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, queuedMessages: nextValue },
+            },
+          };
+        });
+      },
+
+      // AI prompt suggestions (ghost text)
+      setAgentPromptSuggestion: (serverId, agentId, suggestion) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const current = session.agentPromptSuggestions.get(agentId) ?? null;
+          const trimmed = suggestion?.trim() ? suggestion.trim() : null;
+          if (current === trimmed) {
+            return prev;
+          }
+          const next = new Map(session.agentPromptSuggestions);
+          if (trimmed === null) {
+            next.delete(agentId);
+          } else {
+            next.set(agentId, trimmed);
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, agentPromptSuggestions: next },
+            },
+          };
+        });
+      },
+
+      // Plan rate-limit status
+      setAgentRateLimit: (serverId, agentId, info) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const current = session.agentRateLimits.get(agentId) ?? null;
+          if (JSON.stringify(current) === JSON.stringify(info)) {
+            return prev;
+          }
+          const next = new Map(session.agentRateLimits);
+          if (info === null) {
+            next.delete(agentId);
+          } else {
+            next.set(agentId, info);
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, agentRateLimits: next },
+            },
+          };
+        });
+      },
+
+      // Sent-message history stack
+      appendSentPrompt: (serverId, agentId, text) => {
+        const trimmed = text.trim();
+        if (!trimmed) {
+          return;
+        }
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const existing = session.sentPromptHistory.get(agentId) ?? [];
+          // Skip an immediate duplicate of the newest entry (resending unchanged).
+          if (existing.length > 0 && existing[existing.length - 1] === trimmed) {
+            return prev;
+          }
+          const appended = [...existing, trimmed];
+          const capped =
+            appended.length > SENT_PROMPT_HISTORY_LIMIT
+              ? appended.slice(appended.length - SENT_PROMPT_HISTORY_LIMIT)
+              : appended;
+          const next = new Map(session.sentPromptHistory);
+          next.set(agentId, capped);
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, sentPromptHistory: next },
             },
           };
         });

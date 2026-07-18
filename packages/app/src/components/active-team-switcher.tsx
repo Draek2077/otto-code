@@ -23,7 +23,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { useHosts, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
-import type { Theme } from "@/styles/theme";
+import { deriveAvatarAcronym, readableTextColor } from "@/utils/avatar-badge";
+import { compactUp, type Theme } from "@/styles/theme";
 
 const NO_TEAM_OPTION_ID = "__no-team__";
 const EDIT_TEAMS_OPTION_ID = "__edit-teams__";
@@ -38,13 +39,16 @@ const spinnerMapping = (theme: Theme) => ({
   size: "small" as const,
 });
 
+// Sized to iconSize.lg so the "No active team" fallback glyph fills the same
+// box as the active-team circle (styles.sidebarAvatarDot) and doesn't read as an
+// undersized icon floating next to the larger circle.
 const sidebarIconMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
+  size: theme.iconSize.lg,
 });
 const sidebarIconForegroundMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
-  size: theme.iconSize.sm,
+  size: theme.iconSize.lg,
 });
 const chevronMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -265,6 +269,22 @@ function SwitcherTrigger({
     () => (avatarColor ? [styles.avatarDot, { backgroundColor: avatarColor }] : null),
     [avatarColor],
   );
+  // Sidebar variant uses a larger circle, sized to the workspace list's project
+  // icon squares (theme.iconSize.lg), so the top-left control reads at parity.
+  const sidebarAvatarStyle = useMemo(
+    () => (avatarColor ? [styles.sidebarAvatarDot, { backgroundColor: avatarColor }] : null),
+    [avatarColor],
+  );
+  // Acronym drawn inside the circle (from the team name, not the host suffix),
+  // in a black/white color picked to contrast against the circle's fill.
+  const avatarAcronym = useMemo(() => deriveAvatarAcronym(label), [label]);
+  const avatarTextStyle = useMemo(
+    () =>
+      avatarColor
+        ? [styles.sidebarAvatarText, { color: readableTextColor(avatarColor) }]
+        : styles.sidebarAvatarText,
+    [avatarColor],
+  );
   const displayLabel = hostLabel ? `${label} · ${hostLabel}` : label;
 
   const renderSidebarChildren = useCallback(
@@ -272,8 +292,14 @@ function SwitcherTrigger({
       const isHighlighted = Boolean(state.hovered) || open;
       return (
         <>
-          {avatarStyle ? (
-            <View style={avatarStyle} />
+          {sidebarAvatarStyle ? (
+            <View style={sidebarAvatarStyle}>
+              {avatarAcronym ? (
+                <Text style={avatarTextStyle} numberOfLines={1} allowFontScaling={false}>
+                  {avatarAcronym}
+                </Text>
+              ) : null}
+            </View>
           ) : (
             <ThemedLayers
               uniProps={isHighlighted ? sidebarIconForegroundMapping : sidebarIconMutedMapping}
@@ -293,7 +319,7 @@ function SwitcherTrigger({
         </>
       );
     },
-    [avatarStyle, displayLabel, isSwitching, open],
+    [sidebarAvatarStyle, avatarAcronym, avatarTextStyle, displayLabel, isSwitching, open],
   );
 
   if (variant === "sidebar") {
@@ -359,9 +385,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarLabel: {
     flexShrink: 1,
+    // Match the workspace list's project header font size (sidebar-workspace-list
+    // `projectTitle`) so the top-left team control reads at the same scale.
     fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
+      xs: theme.fontSize.base + 2,
+      md: theme.fontSize.base,
     },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
@@ -369,8 +397,8 @@ const styles = StyleSheet.create((theme) => ({
   sidebarLabelHighlighted: {
     flexShrink: 1,
     fontSize: {
-      xs: theme.fontSize.sm + 2,
-      md: theme.fontSize.sm,
+      xs: theme.fontSize.base + 2,
+      md: theme.fontSize.base,
     },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
@@ -406,5 +434,27 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
+  },
+  // Exactly the workspace list's project icon square box (theme.iconSize.lg) so
+  // the circle reads at the same size as the project squares — and tracks the
+  // appearance icon-scale setting the same way, unlike a fixed literal. The
+  // smaller fixed-size acronym leaves the breathing room around the letters.
+  sidebarAvatarDot: {
+    width: theme.iconSize.lg,
+    height: theme.iconSize.lg,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  sidebarAvatarText: {
+    // Explicit compact bump (like the project icon fallback text) since the
+    // iconSize.lg circle doubles on compact but fontSize tokens don't.
+    fontSize: compactUp(10),
+    fontWeight: theme.fontWeight.semibold,
+    lineHeight: compactUp(12),
+    textAlign: "center",
   },
 }));

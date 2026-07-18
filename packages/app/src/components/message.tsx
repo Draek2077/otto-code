@@ -85,8 +85,14 @@ import { formatDuration } from "@/utils/time";
 export { LiveElapsed } from "@/components/live-elapsed";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
+
+// Module-level selectors for useAppSettingValue so memoized message components
+// subscribe narrowly: they re-render when these specific values change, not on
+// every settings write.
+const selectChatBubbleGradient = (settings: AppSettings) => settings.chatBubbleGradient;
+const selectHideChatMessageDetails = (settings: AppSettings) => settings.hideChatMessageDetails;
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import {
@@ -461,7 +467,8 @@ export const UserMessage = memo(function UserMessage({
   // Hover-to-reveal is an appearance preference; with it off, details are
   // always visible. Hover doesn't exist on native/compact, so those always
   // show the row either way.
-  const hideMessageDetails = useAppSettings().settings.hideChatMessageDetails;
+  const hideMessageDetails = useAppSettingValue(selectHideChatMessageDetails);
+  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const showTrailingRow = hasText && (!hideMessageDetails || isCompact || isNative || isHovered);
   const formattedTimestamp = useChatTimestampLabel(timestamp);
   const rewindMutation = useRewindAgentMutation({ serverId, agentId, client, messageId });
@@ -519,7 +526,7 @@ export const UserMessage = memo(function UserMessage({
         onPointerLeave={handlePointerLeave}
       >
         <View style={userMessageStylesheet.bubble}>
-          <BubbleCornerSheen corner="right" />
+          {showBubbleGradient ? <BubbleCornerSheen corner="right" /> : null}
           {hasImages ? (
             <View style={imagePreviewContainerStyle}>
               {images.map((image) => (
@@ -1595,6 +1602,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   blockGroupId,
   blockIndex,
 }: AssistantMessageProps) {
+  const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const displayMessage =
     revealBudget === undefined || revealBudget >= message.length
       ? message
@@ -1986,7 +1994,9 @@ export const AssistantMessage = memo(function AssistantMessage({
   // at their own top edge.
   const isContinuationSegment = spacing === "compactTop" || spacing === "compactBoth";
   let sheen: ReactNode = null;
-  if (!isContinuationSegment) {
+  if (!showBubbleGradient) {
+    sheen = null;
+  } else if (!isContinuationSegment) {
     sheen = <BubbleCornerSheen corner="left" />;
   } else if (groupOffsetTop > 0) {
     sheen = <BubbleCornerSheen corner="left" offsetTop={groupOffsetTop} />;

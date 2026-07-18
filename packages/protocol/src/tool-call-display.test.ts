@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildToolCallDisplayModel } from "./tool-call-display.js";
+import { buildToolCallDisplayModel, getToolDisplayName } from "./tool-call-display.js";
 
 describe("shared tool-call display mapping", () => {
   it("builds summary from canonical detail", () => {
@@ -165,6 +165,16 @@ describe("shared tool-call display mapping", () => {
     expect(display.displayName).toBe("List Agents");
   });
 
+  it("humanizes a non-Otto MCP tool by dropping its namespace", () => {
+    const display = buildToolCallDisplayModel({
+      name: "mcp__linear__create_issue",
+      status: "running",
+      error: null,
+      detail: { type: "unknown", input: null, output: null },
+    });
+    expect(display.displayName).toBe("Create Issue");
+  });
+
   it("does not override speak tool display name", () => {
     const display = buildToolCallDisplayModel({
       name: "speak",
@@ -173,6 +183,30 @@ describe("shared tool-call display mapping", () => {
       detail: { type: "unknown", input: null, output: null },
     });
     expect(display.displayName).toBe("Speak");
+  });
+
+  describe("getToolDisplayName", () => {
+    it("strips the MCP/Otto namespace and title-cases the leaf", () => {
+      expect(getToolDisplayName("mcp__otto__spawn_task")).toBe("Spawn Task");
+      expect(getToolDisplayName("otto.list_agents")).toBe("List Agents");
+      expect(getToolDisplayName("spawn_task")).toBe("Spawn Task");
+    });
+
+    it("splits camelCase / PascalCase tool ids into words", () => {
+      expect(getToolDisplayName("WebSearch")).toBe("Web Search");
+      expect(getToolDisplayName("MultiEdit")).toBe("Multi Edit");
+      expect(getToolDisplayName("ExitPlanMode")).toBe("Exit Plan Mode");
+    });
+
+    it("prefers curated names for lowercase compound tools the splitter can't segment", () => {
+      expect(getToolDisplayName("websearch")).toBe("Web Search");
+      expect(getToolDisplayName("todowrite")).toBe("Update Todos");
+      expect(getToolDisplayName("ls")).toBe("List Files");
+    });
+
+    it("falls back to a readable name for unknown tools", () => {
+      expect(getToolDisplayName("some_new_tool")).toBe("Some New Tool");
+    });
   });
 
   it("labels plan detail rows as Plan", () => {

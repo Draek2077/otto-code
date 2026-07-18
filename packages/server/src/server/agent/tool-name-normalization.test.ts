@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getOttoToolLeafName, isOttoToolName } from "@otto-code/protocol/tool-name-normalization";
+import {
+  getMcpToolLeafName,
+  getOttoToolLeafName,
+  isOttoToolName,
+} from "@otto-code/protocol/tool-name-normalization";
 
 describe("isOttoToolName", () => {
   it("detects Claude Code format", () => {
@@ -42,5 +46,22 @@ describe("getOttoToolLeafName", () => {
 
   it("returns null for non-otto tools", () => {
     expect(getOttoToolLeafName("Bash")).toBeNull();
+  });
+});
+
+describe("getMcpToolLeafName", () => {
+  it("strips the namespace from any MCP server, not just otto", () => {
+    expect(getMcpToolLeafName("mcp__otto__spawn_task")).toBe("spawn_task");
+    expect(getMcpToolLeafName("mcp__linear__create_issue")).toBe("create_issue");
+    expect(getMcpToolLeafName("mcp__otto_voice__create_agent")).toBe("create_agent");
+  });
+
+  it("returns null for plain, non-namespaced tool names", () => {
+    expect(getMcpToolLeafName("Bash")).toBeNull();
+    expect(getMcpToolLeafName("read_file")).toBeNull();
+  });
+
+  it("never treats a speak tool as namespaced", () => {
+    expect(getMcpToolLeafName("mcp__otto__speak")).toBeNull();
   });
 });

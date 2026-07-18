@@ -43,6 +43,15 @@ export interface Agent {
   /** Model ID last reported for this agent (agent_spawn / model_detected).
    *  Drives context-window sizing and the per-family cost rate. */
   model?: string
+  /** OTTO PATCH (OTTO-PATCHES.md): the two identity colors of the Agent
+   *  Personality this node was spawned from (the host's spinner glowA/glowB
+   *  pair). When present, the node's `idle` state renders in these colors
+   *  MUTED and its `thinking` state renders them VIVID, instead of the theme's
+   *  state color — so a personality-backed agent is recognizable at a glance.
+   *  Every other state (tool_calling, waiting_permission, complete, error)
+   *  keeps its prescribed state color. Absent (agents not started from a
+   *  personality) = a normal state-driven node. */
+  personaColor?: { a: string; b: string }
   currentTool?: string
   task?: string
   spawnTime: number
@@ -160,6 +169,10 @@ export interface SimulationEvent {
   time: number
   type:
     | 'agent_spawn'
+    // OTTO PATCH (OTTO-PATCHES.md): relabel a node's display name in place
+    // (e.g. the chat auto-title writer rewrites the root chat title after
+    // spawn) without re-keying it — the map key / edge id stays the spawn name.
+    | 'agent_rename'
     | 'agent_complete'
     | 'agent_idle'
     | 'message'
@@ -172,6 +185,11 @@ export interface SimulationEvent {
     | 'permission_requested'
   payload: Record<string, unknown>
   sessionId?: string
+  /** OTTO PATCH (OTTO-PATCHES.md): set on backfilled history the user did not
+   *  watch happen live (the host's attach / visibility-regain reset+replay).
+   *  The simulation applies a hydrate-flagged batch to the settled end state
+   *  instead of animating each event. Absent = a live event, animated. */
+  hydrate?: boolean
 }
 
 export interface DepthParticle {
@@ -181,6 +199,15 @@ export interface DepthParticle {
   brightness: number
   speed: number
   depth: number
+  // OTTO PATCH (see OTTO-PATCHES.md): true for the far star layer — smaller,
+  // denser, slightly brighter stars that parallax-scroll slower than the near
+  // layer. Absent/false = the historical near layer.
+  far?: boolean
+  // OTTO PATCH (see OTTO-PATCHES.md): per-star twinkle — a random phase offset
+  // and angular speed so each star's brightness oscillates independently over
+  // time. Absent = no twinkle (historical steady stars).
+  twinklePhase?: number
+  twinkleSpeed?: number
 }
 
 // ─── Layout Constants ────────────────────────────────────────────────────────

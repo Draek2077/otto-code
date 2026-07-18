@@ -13,9 +13,21 @@ export type VisualizerHostMessage =
   // The in-page speaker button was toggled; the host persists it as
   // visualizerSoundMuted and re-seeds it via config.soundVolume (OTTO PATCH).
   | { type: "sound-muted"; muted: boolean }
-  // The in-page HUD toggle was flipped; the host persists it as
-  // visualizerHudHidden and re-seeds it via config.hudHidden (OTTO PATCH).
-  | { type: "hud-hidden"; hidden: boolean };
+  // A page keyboard shortcut (t/f/$/s) asked to toggle a panel. Host settings
+  // are the source of truth for panel visibility (config.panels), so the page
+  // forwards the request instead of flipping page-local state — the host flips
+  // the matching device-local setting and the change round-trips back to the
+  // page via the config.panels push (OTTO PATCH).
+  | { type: "panel-toggle"; panel: "timeline" | "files" | "cost" | "stats" }
+  // The page's live session list + selection, mirrored to the host so the Otto
+  // toolbar's chats dropdown can render + drive them (OTTO PATCH). Emitted
+  // whenever the page's sessions, selection, or unseen-activity set changes.
+  | {
+      type: "session-state";
+      sessions: { id: string; label: string; status: "active" | "completed" }[];
+      selectedId: string | null;
+      activityIds: string[];
+    };
 
 // The vendored page's SimulationEvent shape (web/lib/agent-types.ts). Payloads
 // are intentionally loose records — each handle-*.ts hook in the vendored page
@@ -26,6 +38,7 @@ export type VisualizerHostMessage =
 // vendored page's own inconsistency.
 export type SimulationEventType =
   | "agent_spawn"
+  | "agent_rename"
   | "agent_complete"
   | "agent_idle"
   | "message"
@@ -63,7 +76,14 @@ export type VisualizerHostToPageMessage =
   | { type: "session-ended"; sessionId: string }
   | { type: "session-updated"; sessionId: string; label: string }
   | { type: "agent-event"; event: SimulationEvent }
-  | { type: "agent-event-batch"; events: SimulationEvent[] }
+  // `hydrate: true` marks a batch as backfilled history the user did NOT watch
+  // happen live (the initial attach / visibility-regain reset+replay). The page
+  // applies it to the settled end state instead of animating each event (no
+  // spawn/tool bursts, no sound, transient tool cards / message bubbles dropped)
+  // — the full event content still lands in the timeline + per-node chat panels.
+  // Absent/false = a live batch, animated normally. See docs/visualizer.md
+  // "Hydrate on attach" and vendor OTTO-PATCHES.md.
+  | { type: "agent-event-batch"; events: SimulationEvent[]; hydrate?: boolean }
   | {
       type: "connection-status";
       status: "connected" | "disconnected" | "watching";
@@ -80,15 +100,22 @@ export type VisualizerHostToPageMessage =
           timeline: boolean;
           fileAttention: boolean;
           costOverlay: boolean;
-          hexGrid: boolean;
+          // Per-node stats readout overlay, driven by the toolbar's "Toggle
+          // Stats" button (OTTO PATCH).
+          stats: boolean;
         }>;
         render: Partial<{
           bloom: boolean;
+          // Per-node glow halo, distinct from the whole-viewport bloom pass
+          // (OTTO PATCH).
+          nodeGlow: boolean;
           stars: boolean;
           backdrop: boolean;
           // Agent-node silhouette. Omitted → the page's historical hexagon
           // (OTTO PATCH).
           nodeShape: "square" | "hexagon" | "octagon" | "circle";
+          // Bottom-right HUD FPS meter (OTTO PATCH).
+          showFps: boolean;
         }>;
         // Master audio volume (0..1). 0 mutes; > 0 is audible at that level.
         soundVolume: number;
@@ -96,7 +123,16 @@ export type VisualizerHostToPageMessage =
         // toggle button. Authoritative when present (OTTO PATCH).
         hudHidden: boolean;
       }>;
-    };
+    }
+  // Remote-control the page's session switcher from the Otto toolbar (OTTO
+  // PATCH). The page owns the session state machine; these just drive the same
+  // selectSession / removeSession paths a HUD tab click used.
+  | { type: "select-session"; sessionId: string }
+  | { type: "close-session"; sessionId: string }
+  // One-shot viewport actions from the Otto toolbar's "Zoom to Fit" / "Restart"
+  // buttons (OTTO PATCH). Stateless — the page just runs the action. The
+  // stateful counterparts (grid/stats toggles) flow through config.panels.
+  | { type: "viewport-command"; action: "zoom-to-fit" | "restart" };
 
 export interface VisualizerViewProps {
   /** Fires for every page -> host message, including the initial handshake `ready`. */

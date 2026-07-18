@@ -17,7 +17,7 @@ import {
   drawParticles, buildEdgeMap,
   drawToolCalls,
   drawDiscoveries, drawDiscoveryConnections,
-  drawCostLabels, drawCostSummaryPanel,
+  drawCostLabels,
   detectStateChanges as detectStateChangesPure,
 } from './canvas/index'
 import { useCanvasCamera } from '@/hooks/use-canvas-camera'
@@ -29,13 +29,15 @@ interface CanvasProps {
   selectedAgentId: string | null
   hoveredAgentId: string | null
   showStats: boolean
-  showHexGrid: boolean
   zoomToFitTrigger?: number
   pauseAutoFit?: boolean
   onAgentClick: (agentId: string | null) => void
   onAgentHover: (agentId: string | null) => void
   onAgentDrag: (agentId: string, x: number, y: number) => void
-  onContextMenu: (e: React.MouseEvent, type: 'agent' | 'edge' | 'canvas', id?: string) => void
+  /** OTTO PATCH (OTTO-PATCHES.md): optional — the right-click menu was removed
+   * from Otto's embed, so no callback is passed. Right-click still calls
+   * preventDefault (use-canvas-interaction) to swallow the browser's menu. */
+  onContextMenu?: (e: React.MouseEvent, type: 'agent' | 'edge' | 'canvas', id?: string) => void
   onToolCallClick?: (toolCallId: string | null) => void
   selectedToolCallId?: string | null
   onDiscoveryClick?: (discoveryId: string | null) => void
@@ -44,12 +46,12 @@ interface CanvasProps {
   /** OTTO PATCH (see OTTO-PATCHES.md): host-toggleable render layers plus the
    * agent-node silhouette. Omitted keys (and an omitted object) keep every
    * layer on and the node shape at its historical hexagon. */
-  renderOptions?: { bloom?: boolean; stars?: boolean; backdrop?: boolean; nodeShape?: NodeShape }
+  renderOptions?: { bloom?: boolean; nodeGlow?: boolean; stars?: boolean; backdrop?: boolean; nodeShape?: NodeShape }
 }
 
 export function AgentCanvas({
   simulationRef,
-  selectedAgentId, hoveredAgentId, showStats, showHexGrid, zoomToFitTrigger, pauseAutoFit,
+  selectedAgentId, hoveredAgentId, showStats, zoomToFitTrigger, pauseAutoFit,
   onAgentClick, onAgentHover, onAgentDrag, onContextMenu, onToolCallClick, selectedToolCallId, onDiscoveryClick, selectedDiscoveryId, showCostOverlay,
   renderOptions,
 }: CanvasProps) {
@@ -97,7 +99,7 @@ export function AgentCanvas({
   const makeDrawProps = (prev?: { isDragging: boolean }) => ({
     agents: sim.agents, toolCalls: sim.toolCalls,
     particles: sim.particles, edges: sim.edges, discoveries: sim.discoveries,
-    selectedAgentId, hoveredAgentId, showStats, showHexGrid,
+    selectedAgentId, hoveredAgentId, showStats,
     showCostOverlay, selectedToolCallId, selectedDiscoveryId,
     simTime: sim.currentTime, pauseAutoFit, dimensions,
     onAgentDrag, onAgentClick, onAgentHover, onContextMenu,
@@ -196,13 +198,14 @@ export function AgentCanvas({
 
       const {
         agents, toolCalls, particles, edges, discoveries,
-        selectedAgentId, hoveredAgentId, showStats, showHexGrid,
+        selectedAgentId, hoveredAgentId, showStats,
         showCostOverlay, selectedToolCallId, selectedDiscoveryId,
         simTime, pauseAutoFit, dimensions, onAgentDrag,
         isDragging, renderOptions,
       } = drawPropsRef.current
       // OTTO PATCH: host-toggleable render layers (default all on) + node shape
       const showBloom = renderOptions?.bloom !== false
+      const showNodeGlow = renderOptions?.nodeGlow !== false
       const showStars = renderOptions?.stars !== false
       const showBackdrop = renderOptions?.backdrop !== false
       const nodeShape = renderOptions?.nodeShape ?? 'hexagon'
@@ -257,7 +260,7 @@ export function AgentCanvas({
         }
       }
 
-      drawBackground(ctx, w, h, showStars ? depthParticlesRef.current : [], transform, showHexGrid, timeRef.current, activeAgentPos, showBackdrop)
+      drawBackground(ctx, w, h, showStars ? depthParticlesRef.current : [], transform, timeRef.current, activeAgentPos, showBackdrop)
 
       ctx.save()
       ctx.translate(transform.x, transform.y)
@@ -280,11 +283,11 @@ export function AgentCanvas({
       drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape)
+      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape, showNodeGlow)
       drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
-      if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls)
+      if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls, showStats)
       drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)
-      drawEffects(ctx, effectsRef.current)
+      drawEffects(ctx, effectsRef.current, nodeShape)
 
       if (selectedAgentId) {
         const agent = agents.get(selectedAgentId)
@@ -293,7 +296,9 @@ export function AgentCanvas({
 
       ctx.restore()
 
-      if (showCostOverlay) drawCostSummaryPanel(ctx, agents, toolCalls)
+      // OTTO PATCH (OTTO-PATCHES.md): the cost summary panel moved to the DOM
+      // (cost-panel.tsx) to match the Files panel; only the on-node cost pills
+      // (drawCostLabels, above) still draw on the canvas.
       if (showBloom && bloomRef.current) bloomRef.current.apply(canvas, ctx)
 
       // ─── Performance overlay (enabled via ?perf or ?stress) ──────────

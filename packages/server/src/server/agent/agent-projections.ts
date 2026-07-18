@@ -15,6 +15,7 @@ import type {
   AgentSessionConfig,
   AgentRuntimeInfo,
   AgentUsage,
+  ContextComposition,
   ImportableProviderSession,
   ObservedSubagentUpdate,
 } from "./agent-sdk-types.js";
@@ -570,7 +571,7 @@ function sanitizeMetadataArray(value: unknown): AgentMetadata[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-type UsageNumericField = Exclude<keyof AgentUsage, never>;
+type UsageNumericField = Exclude<keyof AgentUsage, "contextComposition">;
 
 function assignFiniteNumber(
   source: { [key: string]: JsonValue },
@@ -583,6 +584,28 @@ function assignFiniteNumber(
     return true;
   }
   return raw === undefined || raw === null;
+}
+
+const CONTEXT_COMPOSITION_FIELDS: (keyof ContextComposition)[] = [
+  "systemPrompt",
+  "userMessages",
+  "toolResults",
+  "reasoning",
+  "subagentResults",
+];
+
+function sanitizeContextComposition(value: JsonValue | undefined): ContextComposition | undefined {
+  if (value === undefined || value === null || !isJsonObject(value)) {
+    return undefined;
+  }
+  const result: ContextComposition = {};
+  for (const field of CONTEXT_COMPOSITION_FIELDS) {
+    const raw = value[field];
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      result[field] = raw;
+    }
+  }
+  return Object.keys(result).length ? result : undefined;
 }
 
 function sanitizeUsage(value: unknown): AgentUsage | undefined {
@@ -603,6 +626,10 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
     if (!assignFiniteNumber(sanitized, result, field)) {
       return undefined;
     }
+  }
+  const composition = sanitizeContextComposition(sanitized["contextComposition"]);
+  if (composition) {
+    result.contextComposition = composition;
   }
   return Object.keys(result).length ? result : undefined;
 }

@@ -9,6 +9,7 @@ import {
   buildObservedSubagentSpawnEvent,
   buildPermissionRequestedEvent,
   buildRootAgentSpawnEvent,
+  deriveToolCallDiscovery,
   isVisualizerAgentTerminal,
   resolveAgentNodeName,
   resolveVisualizerRuntime,
@@ -195,6 +196,53 @@ describe("spawn/lifecycle event builders", () => {
     });
   });
 
+  test("spawn carries personality colors as colorA/colorB when both present", () => {
+    const root = buildRootAgentSpawnEvent({
+      ctx: CTX,
+      model: null,
+      provider: "claude",
+      personalityColors: { glowA: "#ff0000", glowB: "#00ff00" },
+      time: 0,
+    });
+    expect(root.payload).toEqual({
+      name: "Main Agent",
+      isMain: true,
+      runtime: "claude",
+      colorA: "#ff0000",
+      colorB: "#00ff00",
+    });
+
+    const observed = buildObservedSubagentSpawnEvent({
+      ctx: { name: "Sub Agent", sessionId: "agent-root" },
+      parentName: "Main Agent",
+      personalityColors: { glowA: "#111", glowB: "#222" },
+      time: 5,
+    });
+    expect(observed.payload).toEqual({
+      name: "Sub Agent",
+      parent: "Main Agent",
+      colorA: "#111",
+      colorB: "#222",
+    });
+  });
+
+  test("spawn omits color leaves with no (or partial) personality colors", () => {
+    // Custom provider (unmapped runtime) keeps the assertion about colors only.
+    expect(
+      buildRootAgentSpawnEvent({ ctx: CTX, model: null, provider: "my-custom", time: 0 }).payload,
+    ).toEqual({ name: "Main Agent", isMain: true });
+    // A partial pair is dropped — the page needs both to tint.
+    expect(
+      buildRootAgentSpawnEvent({
+        ctx: CTX,
+        model: null,
+        provider: "my-custom",
+        personalityColors: { glowA: "#ff0000", glowB: "" },
+        time: 0,
+      }).payload,
+    ).toEqual({ name: "Main Agent", isMain: true });
+  });
+
   test("agent_complete and agent_idle key on `name`, not `agent`", () => {
     expect(buildAgentCompleteEvent({ ctx: CTX, time: 1 }).payload).toEqual({ name: "Main Agent" });
     expect(buildAgentIdleEvent({ ctx: CTX, time: 1 }).payload).toEqual({ name: "Main Agent" });
@@ -244,6 +292,61 @@ describe("buildContextUpdateEvent", () => {
       cumulativeTokens: 55000,
     });
   });
+
+  test("scales a context composition into a full 5-key breakdown summing to occupancy", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: {
+        contextWindowUsedTokens: 1000,
+        contextWindowMaxTokens: 200000,
+        contextComposition: { userMessages: 100, toolResults: 300 },
+      },
+      time: 1,
+    });
+    // sum 400 scaled to occupancy 1000 (×2.5); every key present (the page only
+    // accepts a breakdown object that literally carries `systemPrompt`).
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      tokens: 1000,
+      tokensMax: 200000,
+      breakdown: {
+        systemPrompt: 0,
+        userMessages: 250,
+        toolResults: 750,
+        reasoning: 0,
+        subagentResults: 0,
+      },
+    });
+  });
+
+  test("emits the raw composition (padded to 5 keys) when occupancy is unknown", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      cumulativeTokens: 5000,
+      usage: { contextComposition: { reasoning: 42 } },
+      time: 1,
+    });
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      cumulativeTokens: 5000,
+      breakdown: {
+        systemPrompt: 0,
+        userMessages: 0,
+        toolResults: 0,
+        reasoning: 42,
+        subagentResults: 0,
+      },
+    });
+  });
+
+  test("an all-empty composition produces no breakdown", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: { contextWindowUsedTokens: 1000, contextComposition: {} },
+      time: 1,
+    });
+    expect(event?.payload).toEqual({ agent: "Main Agent", tokens: 1000 });
+  });
 });
 
 describe("tool call detail summaries", () => {
@@ -268,6 +371,110 @@ describe("tool call detail summaries", () => {
 
   test("unknown detail summarizes to an empty string", () => {
     expect(summarizeToolCallArgs({ type: "unknown", input: {}, output: {} })).toBe("");
+  });
+});
+
+describe("deriveToolCallDiscovery", () => {
+  const ROOT = "/home/me/proj";
+
+  test("search with counts → a pattern card with counts and relativized paths", () => {
+    expect(
+      deriveToolCallDiscovery(
+        {
+          type: "search",
+          query: "payment",
+          numMatches: 28,
+          numFiles: 9,
+          filePaths: ["/home/me/proj/src/pay.ts"],
+        },
+        { workspaceRoot: ROOT },
+      ),
+    ).toEqual({
+      type: "pattern",
+      label: "payment",
+      content: "28 matches · 9 files\n./src/pay.ts",
+    });
+  });
+
+  test("singular counts are not pluralized", () => {
+    expect(
+      deriveToolCallDiscovery({ type: "search", query: "x", numMatches: 1, numFiles: 1 }),
+    ).toMatchObject({ content: "1 match · 1 file" });
+  });
+
+  test("web search → a finding card of result titles", () => {
+    expect(
+      deriveToolCallDiscovery({
+        type: "search",
+        query: "how to",
+        webResults: [
+          { title: "First", url: "https://a" },
+          { title: "Second", url: "https://b" },
+        ],
+      }),
+    ).toEqual({ type: "finding", label: "how to", content: "First\nSecond" });
+  });
+
+  test("search with no counts is not notable", () => {
+    expect(deriveToolCallDiscovery({ type: "search", query: "x" })).toBeNull();
+  });
+
+  test("write → a NEW: code card with a line count", () => {
+    expect(
+      deriveToolCallDiscovery(
+        { type: "write", filePath: "/home/me/proj/a.ts", content: "one\ntwo\nthree" },
+        { workspaceRoot: ROOT },
+      ),
+    ).toEqual({ type: "code", label: "NEW: ./a.ts", content: "3 lines\none\ntwo" });
+  });
+
+  test("edit → a code card summarizing the diff", () => {
+    expect(
+      deriveToolCallDiscovery({
+        type: "edit",
+        filePath: "/a.ts",
+        unifiedDiff: "--- a\n+++ b\n+added1\n+added2\n-removed",
+      }),
+    ).toEqual({ type: "code", label: "/a.ts", content: "+2 −1 lines" });
+  });
+
+  test("shell test output → a Tests pass/failed finding", () => {
+    expect(
+      deriveToolCallDiscovery({
+        type: "shell",
+        command: "npm test",
+        output: "Tests: 18 passed, 18 total\nCoverage: 91%",
+      }),
+    ).toEqual({
+      type: "finding",
+      label: "Tests pass",
+      content: "Tests: 18 passed, 18 total\nCoverage: 91%",
+    });
+
+    expect(
+      deriveToolCallDiscovery({
+        type: "shell",
+        command: "npm test",
+        output: "Tests: 2 failed, 16 passed",
+      }),
+    ).toMatchObject({ label: "Tests failed" });
+  });
+
+  test("a plain successful shell command is not a discovery", () => {
+    expect(deriveToolCallDiscovery({ type: "shell", command: "ls" })).toBeNull();
+  });
+
+  test("a failed command becomes a finding", () => {
+    expect(deriveToolCallDiscovery({ type: "shell", command: "make", exitCode: 2 })).toEqual({
+      type: "finding",
+      label: "Command failed",
+      content: "make\nexit 2",
+    });
+  });
+
+  test("Read and sub_agent are deliberately excluded", () => {
+    expect(deriveToolCallDiscovery({ type: "read", filePath: "/a.ts", content: "x" })).toBeNull();
+    expect(deriveToolCallDiscovery({ type: "sub_agent", log: "", description: "x" })).toBeNull();
   });
 });
 
@@ -317,6 +524,169 @@ describe("timelineItemToSimulationEvents", () => {
     ]);
   });
 
+  test("shows a friendly, namespace-stripped tool label", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-mcp",
+      name: "mcp__otto__spawn_task",
+      status: "running",
+      error: null,
+      detail: { type: "unknown", input: null, output: null },
+    };
+    const events = timelineItemToSimulationEvents({ ctx: CTX, item, time: 10 });
+    expect(events[0]?.payload).toMatchObject({ tool: "Spawn Task" });
+  });
+
+  test("relativizes a Windows file path and KEEPS its backslashes", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-rel",
+      name: "Read",
+      status: "running",
+      error: null,
+      detail: { type: "read", filePath: "C:\\Users\\me\\proj\\packages\\app\\src\\foo.ts" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\me\\proj" },
+      item,
+      time: 10,
+    });
+    // Windows path stays Windows — separators are NOT converted to `/`.
+    expect(events[0]?.payload).toMatchObject({
+      args: ".\\packages\\app\\src\\foo.ts",
+      inputData: { file_path: ".\\packages\\app\\src\\foo.ts" },
+    });
+  });
+
+  test("relativizes a POSIX file path and keeps its forward slashes", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-rel-posix",
+      name: "Read",
+      status: "running",
+      error: null,
+      detail: { type: "read", filePath: "/home/me/proj/packages/app/src/foo.ts" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "/home/me/proj" },
+      item,
+      time: 10,
+    });
+    expect(events[0]?.payload).toMatchObject({
+      args: "./packages/app/src/foo.ts",
+      inputData: { file_path: "./packages/app/src/foo.ts" },
+    });
+  });
+
+  test("keeps a file path verbatim when it lives outside the workspaceRoot", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-out",
+      name: "Read",
+      status: "running",
+      error: null,
+      detail: { type: "read", filePath: "C:\\Users\\me\\.claude\\plan.md" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\me\\proj" },
+      item,
+      time: 10,
+    });
+    // Outside the workspace → no matching prefix → verbatim (backslashes kept).
+    expect(events[0]?.payload).toMatchObject({
+      args: "C:\\Users\\me\\.claude\\plan.md",
+      inputData: { file_path: "C:\\Users\\me\\.claude\\plan.md" },
+    });
+  });
+
+  test("replaces the workspace root with '.' inside a freeform shell command", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-sh",
+      name: "Bash",
+      status: "running",
+      error: null,
+      detail: { type: "shell", command: 'cat "C:\\Users\\me\\proj\\src\\foo.ts"' },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\me\\proj" },
+      item,
+      time: 10,
+    });
+    // Root → '.', remainder keeps its authored backslashes.
+    expect(events[0]?.payload.args).toBe('cat ".\\src\\foo.ts"');
+  });
+
+  test("replaces a bare/quoted workspace root (no trailing separator) with '.'", () => {
+    // The screenshot case: `cd "<root>"` — the root itself, quoted, forward-
+    // slashed, with nothing after it. Must still collapse to `cd "."`.
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-cd",
+      name: "Bash",
+      status: "running",
+      error: null,
+      detail: { type: "shell", command: 'cd "C:/Users/phili/Projects/otto-code"' },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\phili\\Projects\\otto-code" },
+      item,
+      time: 10,
+    });
+    expect(events[0]?.payload.args).toBe('cd "."');
+  });
+
+  test("leaves a sibling dir that merely shares the root prefix untouched", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-sib",
+      name: "Bash",
+      status: "running",
+      error: null,
+      detail: { type: "shell", command: "ls C:/Users/me/proj-backup/x" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\me\\proj" },
+      item,
+      time: 10,
+    });
+    expect(events[0]?.payload.args).toBe("ls C:/Users/me/proj-backup/x");
+  });
+
+  test("leaves a shell command with no in-workspace path untouched", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-sh2",
+      name: "Bash",
+      status: "running",
+      error: null,
+      detail: { type: "shell", command: "npm run build" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "C:\\Users\\me\\proj" },
+      item,
+      time: 10,
+    });
+    expect(events[0]?.payload.args).toBe("npm run build");
+  });
+
+  test("relativizes a forward-slashed path in a POSIX search query", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-se",
+      name: "Glob",
+      status: "running",
+      error: null,
+      detail: { type: "search", query: "/home/me/proj/packages/app/**/*.ts" },
+    };
+    const events = timelineItemToSimulationEvents({
+      ctx: { ...CTX, workspaceRoot: "/home/me/proj" },
+      item,
+      time: 10,
+    });
+    expect(events[0]?.payload.args).toBe("./packages/app/**/*.ts");
+  });
+
   test("failed tool_call emits tool_call_end with isError and errorMessage", () => {
     const item: AgentTimelineItem = {
       type: "tool_call",
@@ -336,10 +706,30 @@ describe("timelineItemToSimulationEvents", () => {
           tool: "Bash",
           result: "",
           isError: true,
+          // ~4 chars/token over the serialized detail (32 chars here).
+          tokenCost: 8,
+          // A failed command surfaces a "Command failed" discovery card.
+          discovery: { type: "finding", label: "Command failed", content: "foo" },
           errorMessage: "command not found",
         },
       },
     ]);
+  });
+
+  test("terminal tool_call carries an estimated tokenCost from the detail payload", () => {
+    const item: AgentTimelineItem = {
+      type: "tool_call",
+      callId: "call-8",
+      name: "Read",
+      status: "completed",
+      error: null,
+      detail: { type: "read", filePath: "/src/auth.ts", content: "x".repeat(400) },
+    };
+    const events = timelineItemToSimulationEvents({ ctx: CTX, item, time: 12 });
+    expect(events[0]?.type).toBe("tool_call_end");
+    expect(events[0]?.payload).toMatchObject({
+      tokenCost: Math.round(JSON.stringify(item.detail).length / 4),
+    });
   });
 
   test("sub_agent tool_call additionally emits subagent_dispatch/return", () => {

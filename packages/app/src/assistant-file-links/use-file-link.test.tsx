@@ -177,7 +177,7 @@ describe("useFileLink", () => {
             lineStart: undefined,
             lineEnd: undefined,
           },
-          disposition: "main",
+          disposition: "side",
         },
       ]);
     });

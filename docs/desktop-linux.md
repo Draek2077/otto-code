@@ -88,8 +88,14 @@ wired in `main.ts` before `app.whenReady()`. Three independent nets:
 2. **Proactive startup sentinel** — a `startup-in-progress` file is armed right before
    the first window is created (GUI path only) and cleared on the window's first
    paint. A sentinel that survives to the next launch means the previous launch never
-   painted (hang or hard crash, no GPU event fired) → promote it to the marker. This
-   catches the blank-window-no-crash case the reactive net misses on the _next_ boot.
+   painted (hang or hard crash, no GPU event fired). This catches the blank-window-no-crash
+   case the reactive net misses on the _next_ boot. **Two-strikes:** a _single_ surviving
+   sentinel retries hardware once more instead of latching software — a lone never-paint is
+   usually a launch killed/restarted before first paint (routine in dev), not a dead GPU.
+   Only `NEVER_PAINTED_STRIKE_LIMIT` (2) consecutive never-paints promote to the marker; a
+   healthy paint in between resets the strike counter. (The Linux paint watchdog, net #3,
+   still latches a genuine first-launch hang immediately — the softening only affects the
+   sentinel path, which is the false-positive-prone one.)
 3. **First-launch paint watchdog** (Linux only, `armGpuStartupPaintWatchdog`) — a 15s
    timer armed alongside the sentinel and cleared on first paint. If the first window
    never paints within 15s, it writes the marker and relaunches into software rendering
@@ -121,11 +127,31 @@ so they can't crash boot.
 > the escape hatches below are the workaround. A real Linux compositor-visibility
 > watchdog (like macOS's `setupDarwinCompositorWatchdog`) would be needed to close it.
 
+**Self-healing (the marker is no longer a one-way latch).** Historically the marker was
+sticky forever — once written, only `OTTO_FORCE_GPU=1` cleared it — so one transient hiccup
+(a dev launch killed before paint; a single Modern-Standby GPU lock) pinned software
+rendering, and its most visible symptom was the Visualizer permanently force-disabling its
+bloom pass. A sibling `gpu-fallback-state.json` now lets the fallback recover on its own,
+via two mechanisms in `applyPersistedHardwareAccelerationFallback` /
+`markGpuStartupHealthy` / the recovery listener:
+
+- **Two-strikes** on the never-paint promotion (above), so the common false positive never
+  latches in the first place.
+- **Periodic hardware re-probe** for an _already-written_ marker. You can't tell a GPU has
+  recovered from within software mode — a CPU rasterizer always paints — so after
+  `REPROBE_BASE_LAUNCHES` (8) software launches, the next launch runs **hardware** despite
+  the marker (`probing: true`, and `isSoftwareRenderingActive()` reports hardware for that
+  launch so the renderer doesn't needlessly trim visuals). If it paints → clear the marker
+  for good. If it crashes/hangs → the recovery/watchdog/next-startup path backs off,
+  doubling `reprobeAfter` up to `REPROBE_MAX_LAUNCHES` (256) so a genuinely dead GPU
+  re-probes ever less often instead of flapping. Missing/corrupt state degrades to the old
+  behavior, so it can never make the fallback worse.
+
 **Escape hatches** (env vars, read at boot in `main.ts`):
 
 | Var                         | Effect                                                                                                                                                                                                                                                                              |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OTTO_FORCE_GPU=1`          | Clears the marker + sentinel and keeps hardware acceleration on (for a machine that later gets a real GPU)                                                                                                                                                                          |
+| `OTTO_FORCE_GPU=1`          | Clears the marker + sentinel + self-heal state and keeps hardware acceleration on — the immediate override. (Even without it, the fallback now self-heals: see "Self-healing" above.)                                                                                               |
 | `OTTO_ELECTRON_FLAGS="..."` | Appends arbitrary Chromium switches; a one-shot manual workaround. On a no-3D Linux guest use `--ozone-platform=x11 --use-gl=disabled` (the same combo the auto-fallback relaunches with). Only applies when launched from a shell that has the var set — not from the desktop icon |
 
 ## Deferred window reveal (software-rendering flicker)

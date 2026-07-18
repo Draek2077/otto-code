@@ -24,6 +24,14 @@ export interface ControlInteractionStyleMap {
 
 const COMPACT_CONTROL_HEIGHT = 32;
 const FIELD_CONTROL_HEIGHT = 44;
+
+// Shared height for pane-chrome toolbars (the file editor's view/mode bar and
+// the visualizer's chat/toggle bar) so they line up pixel-for-pixel across a
+// split. = compact control height (32) + 8px vertical padding (2×spacing[1]).
+// Pin every pane toolbar's `minHeight` to this; don't let content drive it, or
+// the bars drift apart when their tallest child differs (a 32px combobox vs a
+// 30px mode-bar pill vs a 24px icon button).
+export const PANE_TOOLBAR_HEIGHT = COMPACT_CONTROL_HEIGHT + 8;
 const SEGMENTED_COMPACT_INSET = 2;
 const SEGMENTED_FIELD_INSET = 3;
 const SWITCH_TRACK_WIDTH = 34;

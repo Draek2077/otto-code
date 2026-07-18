@@ -91,12 +91,15 @@ export function drawToolCalls(
     } else {
       // Completed card: show action + file path (most useful info at a glance)
       ctx.fillStyle = COLORS.return
-      ctx.fillText(truncatedLabel, tool.x, tool.y - TOOL_DRAW.twoLineOffset)
       if (tool.tokenCost) {
+        ctx.fillText(truncatedLabel, tool.x, tool.y - TOOL_DRAW.twoLineOffset)
         // Token cost as dim text below
         ctx.fillStyle = COLORS.tool + '90'
         ctx.font = `${TOOL_DRAW.tokenFontSize}px monospace`
         ctx.fillText(`${tool.tokenCost} tok`, tool.x, tool.y + TOOL_DRAW.twoLineOffset + 2)
+      } else {
+        // No token line — the card stays collapsed, so center the single line
+        ctx.fillText(truncatedLabel, tool.x, tool.y)
       }
     }
 

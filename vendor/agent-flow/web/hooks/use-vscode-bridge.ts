@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig } from '@/lib/vscode-bridge'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type SessionStateReport, type TogglablePanel } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
@@ -33,9 +33,23 @@ interface BridgeHookResult {
   /** OTTO PATCH: report the in-page mute toggle to the host so it persists the
    *  preference and re-seeds it via `config.soundVolume` on the next open. */
   bridgeSetSoundMuted: (muted: boolean) => void
-  /** OTTO PATCH: report the in-page HUD-visibility toggle to the host so it
-   *  persists the preference and re-seeds it via `config.hudHidden`. */
-  bridgeSetHudHidden: (hidden: boolean) => void
+  /** OTTO PATCH: ask the host to toggle a panel's visibility (page keyboard
+   *  shortcuts). Host settings own panel visibility via `config.panels`, so
+   *  the page defers to the host instead of flipping local state. */
+  bridgeTogglePanel: (panel: TogglablePanel) => void
+  /** OTTO PATCH: mirror the page's session list/selection/activity to the host
+   *  so the Otto toolbar's chats dropdown can render them. */
+  bridgeReportSessionState: (report: SessionStateReport) => void
+  /** OTTO PATCH: subscribe to host -> page session commands (select/close a
+   *  chat) issued by the Otto toolbar. Returns an unsubscribe fn. */
+  subscribeSessionCommand: (
+    callback: (command: 'select' | 'close', sessionId: string) => void,
+  ) => () => void
+  /** OTTO PATCH: subscribe to host -> page viewport commands (zoom to fit /
+   *  restart) issued by the Otto toolbar. Returns an unsubscribe fn. */
+  subscribeViewportCommand: (
+    callback: (command: 'zoom-to-fit' | 'restart') => void,
+  ) => () => void
   /** Known sessions from the extension */
   sessions: SessionInfo[]
   /** Currently selected session ID */
@@ -140,6 +154,12 @@ export function useVSCodeBridge(): BridgeHookResult {
         type: event.type as SimulationEvent['type'],
         payload: event.payload,
         sessionId: event.sessionId,
+        // OTTO PATCH (OTTO-PATCHES.md): carry the hydrate flag through so the
+        // simulation settles backfilled history instead of animating it. Flows
+        // through the normal per-session buffer + pending paths — the animate
+        // loop keys the settle on the flag, so it works regardless of whether
+        // the event reaches the sim live or via a buffered session replay.
+        ...(event.hydrate ? { hydrate: true } : {}),
       }
 
       // Always buffer by session (for replay on session switch)
@@ -232,9 +252,12 @@ export function useVSCodeBridge(): BridgeHookResult {
         setSessions(prev => {
           const existing = prev.find(s => s.id === session.id)
           if (existing) {
-            // Session resumed after inactivity — mark active again
+            // Session resumed after inactivity — mark active again.
+            // OTTO PATCH (OTTO-PATCHES.md): also take the incoming label — a
+            // re-added session (un-archive) may carry a fresher chat title than
+            // the entry it left behind.
             return prev.map(s => s.id === session.id
-              ? { ...s, status: 'active' as const, lastActivityTime: Date.now() }
+              ? { ...s, label: session.label, status: 'active' as const, lastActivityTime: Date.now() }
               : s)
           }
           return [...prev, session]
@@ -331,10 +354,29 @@ export function useVSCodeBridge(): BridgeHookResult {
     vscodeBridge?.setSoundMuted(muted)
   }, [])
 
-  // OTTO PATCH: forward the in-page HUD-visibility toggle to the host (see BridgeHookResult).
-  const bridgeSetHudHidden = useCallback((hidden: boolean) => {
-    vscodeBridge?.setHudHidden(hidden)
+  // OTTO PATCH: forward a keyboard panel-toggle to the host (see BridgeHookResult).
+  const bridgeTogglePanel = useCallback((panel: TogglablePanel) => {
+    vscodeBridge?.togglePanel(panel)
   }, [])
+
+  // OTTO PATCH: mirror session state to the host (see BridgeHookResult).
+  const bridgeReportSessionState = useCallback((report: SessionStateReport) => {
+    vscodeBridge?.reportSessionState(report)
+  }, [])
+
+  // OTTO PATCH: subscribe to host -> page session commands (see BridgeHookResult).
+  const subscribeSessionCommand = useCallback(
+    (callback: (command: 'select' | 'close', sessionId: string) => void) =>
+      vscodeBridge?.onSessionCommand(callback) ?? (() => {}),
+    [],
+  )
+
+  // OTTO PATCH: subscribe to host -> page viewport commands (see BridgeHookResult).
+  const subscribeViewportCommand = useCallback(
+    (callback: (command: 'zoom-to-fit' | 'restart') => void) =>
+      vscodeBridge?.onViewportCommand(callback) ?? (() => {}),
+    [],
+  )
 
   return {
     isVSCode,
@@ -349,7 +391,10 @@ export function useVSCodeBridge(): BridgeHookResult {
     hudHidden,
     bridgeOpenFile,
     bridgeSetSoundMuted,
-    bridgeSetHudHidden,
+    bridgeTogglePanel,
+    bridgeReportSessionState,
+    subscribeSessionCommand,
+    subscribeViewportCommand,
     sessions,
     selectedSessionId,
     selectedSessionIdRef,

@@ -99,7 +99,7 @@ import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subage
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { AgentRateLimitInfo, GitHubSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -483,6 +483,8 @@ interface DispatchComposerKeyboardActionArgs {
   isConnected: boolean;
   handleCancelAgent: () => void;
   focusMessageInputForKeyboardAction: () => void;
+  hasComposerText: boolean;
+  clearComposerText: () => void;
 }
 
 function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs): boolean {
@@ -495,10 +497,18 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     isConnected,
     handleCancelAgent,
     focusMessageInputForKeyboardAction,
+    hasComposerText,
+    clearComposerText,
   } = args;
   if (!isPaneFocused) return false;
 
   if (action.id === "agent.interrupt") {
+    // Escape clears a typed message first; only a second Escape (empty box) begins
+    // cancelling anything (dictation, then the running agent).
+    if (hasComposerText) {
+      clearComposerText();
+      return true;
+    }
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
     if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
     handleCancelAgent();
@@ -1057,6 +1067,21 @@ export function Composer({
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
 
+  // AI prompt suggestion (ghost-text watermark) + sent-message history stack.
+  const promptSuggestion = useSessionStore((state) =>
+    state.sessions[serverId]?.agentPromptSuggestions.get(agentId),
+  );
+  // Latest provider-reported plan rate-limit status (warning strip above the
+  // input; hidden entirely via the rateLimitWarningsEnabled setting).
+  const rateLimitInfo = useSessionStore((state) =>
+    state.sessions[serverId]?.agentRateLimits.get(agentId),
+  );
+  const sentPromptHistory = useSessionStore((state) =>
+    state.sessions[serverId]?.sentPromptHistory.get(agentId),
+  );
+  const setAgentPromptSuggestion = useSessionStore((state) => state.setAgentPromptSuggestion);
+  const appendSentPrompt = useSessionStore((state) => state.appendSentPrompt);
+
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompactLayout = resolveCompactLayout(isCompactLayoutOverride, isCompactFormFactor);
   const isDesktopWebBreakpoint = resolveIsDesktopWebBreakpoint(isCompactFormFactor);
@@ -1367,17 +1392,26 @@ export function Composer({
         result,
         outgoingAttachments,
       });
+      // The prompt reached the chat (sent or queued): push it onto the recall
+      // stack, exit history navigation, and drop any stale ghost suggestion.
+      if ((result === "submitted" || result === "queued") && outgoingMessage.trim()) {
+        appendSentPrompt(serverId, agentId, outgoingMessage);
+        historyNavRef.current = { index: null, stashed: "" };
+        setAgentPromptSuggestion(serverId, agentId, null);
+      }
       return true;
     },
     [
       agentId,
       allowEmptySubmit,
+      appendSentPrompt,
       clearDraft,
       completeSubmit,
       hasExternalContent,
       isAgentRunning,
       queueMessage,
       serverId,
+      setAgentPromptSuggestion,
       setSelectedAttachments,
       setUserInput,
       submitBehavior,
@@ -1546,6 +1580,11 @@ export function Composer({
     focusMessageInputWithPlatformStrategy(messageInputRef);
   }, []);
 
+  const clearComposerText = useCallback(() => {
+    historyNavRef.current = { index: null, stashed: "" };
+    setUserInput("");
+  }, [setUserInput]);
+
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean =>
       dispatchComposerKeyboardAction({
@@ -1557,8 +1596,13 @@ export function Composer({
         isConnected,
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
+        // Read from a ref so per-keystroke text changes don't re-register the
+        // keyboard handler; evaluated fresh each time the action fires.
+        hasComposerText: userInputRef.current.trim().length > 0,
+        clearComposerText,
       }),
     [
+      clearComposerText,
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isAgentRunning,
@@ -1672,11 +1716,90 @@ export function Composer({
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete.
+  // Live values mirrored into refs so the key handler stays referentially stable
+  // (MessageInput is memoized; a changing onKeyPress identity defeats that memo).
+  const promptSuggestionRef = useRef(promptSuggestion);
+  promptSuggestionRef.current = promptSuggestion;
+  const promptSuggestionsEnabledRef = useRef(appSettings.promptSuggestionsEnabled);
+  promptSuggestionsEnabledRef.current = appSettings.promptSuggestionsEnabled;
+  const sentPromptHistoryRef = useRef(sentPromptHistory);
+  sentPromptHistoryRef.current = sentPromptHistory;
+  const userInputRef = useRef(userInput);
+  userInputRef.current = userInput;
+  const selectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+  // History-recall navigation cursor. `index === null` means "showing the live
+  // draft"; `stashed` holds the draft text saved before the first ArrowUp.
+  const historyNavRef = useRef<{ index: number | null; stashed: string }>({
+    index: null,
+    stashed: "",
+  });
+
+  // Tab accepts the ghost-text suggestion (only when the box is empty).
+  const acceptPromptSuggestion = useCallback(() => {
+    if (!promptSuggestionsEnabledRef.current) return false;
+    const suggestion = promptSuggestionRef.current;
+    if (!suggestion || userInputRef.current.length > 0) return false;
+    historyNavRef.current = { index: null, stashed: "" };
+    setUserInput(suggestion);
+    setAgentPromptSuggestion(serverId, agentId, null);
+    messageInputRef.current?.focus();
+    return true;
+  }, [agentId, serverId, setAgentPromptSuggestion, setUserInput]);
+
+  // ArrowUp/ArrowDown walk the sent-message stack (shell-history semantics). The
+  // first ArrowUp requires the caret at the very start so it never hijacks
+  // multiline cursor movement; once navigating, arrows own the box.
+  const recallSentPrompt = useCallback(
+    (direction: "prev" | "next") => {
+      const history = sentPromptHistoryRef.current;
+      if (!history || history.length === 0) return false;
+      const nav = historyNavRef.current;
+      if (direction === "prev") {
+        if (nav.index === null) {
+          const sel = selectionRef.current;
+          if (sel.start !== 0 || sel.end !== 0) return false;
+          historyNavRef.current = { index: history.length - 1, stashed: userInputRef.current };
+        } else if (nav.index > 0) {
+          historyNavRef.current = { index: nav.index - 1, stashed: nav.stashed };
+        }
+        setUserInput(history[historyNavRef.current.index ?? 0]);
+        return true;
+      }
+      if (nav.index === null) return false;
+      if (nav.index < history.length - 1) {
+        const nextIndex = nav.index + 1;
+        historyNavRef.current = { index: nextIndex, stashed: nav.stashed };
+        setUserInput(history[nextIndex]);
+      } else {
+        const { stashed } = nav;
+        historyNavRef.current = { index: null, stashed: "" };
+        setUserInput(stashed);
+      }
+      return true;
+    },
+    [setUserInput],
+  );
+
+  // Compose the composer key handler: autocomplete popover first (it consumes
+  // navigation keys while open), then ghost-text accept, then history recall.
   const handleCommandKeyPress = useCallback(
-    (event: { key: string; preventDefault: () => void }) =>
-      autocompleteOnKeyPressRef.current(event),
-    [],
+    (event: { key: string; preventDefault: () => void }) => {
+      if (autocompleteOnKeyPressRef.current(event)) return true;
+      if (event.key === "Tab" && acceptPromptSuggestion()) {
+        event.preventDefault();
+        return true;
+      }
+      if (event.key === "ArrowUp" && recallSentPrompt("prev")) {
+        event.preventDefault();
+        return true;
+      }
+      if (event.key === "ArrowDown" && recallSentPrompt("next")) {
+        event.preventDefault();
+        return true;
+      }
+      return false;
+    },
+    [acceptPromptSuggestion, recallSentPrompt],
   );
 
   const cancelButtonStyle = useMemo(
@@ -1906,8 +2029,19 @@ export function Composer({
   }, []);
 
   const handleSelectionChange = useCallback((selection: { start: number; end: number }) => {
+    selectionRef.current = selection;
     setCursorIndex(selection.start);
   }, []);
+
+  // Manual typing exits history-recall mode: the edited text becomes the new draft
+  // (so editing a recalled prompt and sending it clones a fresh top entry).
+  const handleComposerChangeText = useCallback(
+    (text: string) => {
+      historyNavRef.current = { index: null, stashed: "" };
+      setUserInput(text);
+    },
+    [setUserInput],
+  );
 
   const handleFocusChange = useCallback(
     (focused: boolean) => {
@@ -2024,6 +2158,26 @@ export function Composer({
     () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
     [sendError],
   );
+  const rateLimitNode = useMemo(() => {
+    if (!appSettings.rateLimitWarningsEnabled || !rateLimitInfo) {
+      return null;
+    }
+    if (rateLimitInfo.status === "allowed") {
+      return null;
+    }
+    return (
+      <Text
+        style={
+          rateLimitInfo.status === "rejected"
+            ? styles.rateLimitTextRejected
+            : styles.rateLimitTextWarning
+        }
+        testID="composer-rate-limit-warning"
+      >
+        {formatRateLimitWarning(t, rateLimitInfo)}
+      </Text>
+    );
+  }, [appSettings.rateLimitWarningsEnabled, rateLimitInfo, t]);
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
     : t("composer.github.noResults");
@@ -2041,6 +2195,7 @@ export function Composer({
           <ChatWidthBounds style={styles.inputAreaContent}>
             {queueList}
             {sendErrorNode}
+            {rateLimitNode}
 
             <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
               <AutocompletePopover
@@ -2059,7 +2214,7 @@ export function Composer({
               <StableMessageInput
                 ref={messageInputRef}
                 value={userInput}
-                onChangeText={setUserInput}
+                onChangeText={handleComposerChangeText}
                 onSubmit={handleSubmit}
                 hasExternalContent={hasExternalContent}
                 allowEmptySubmit={allowEmptySubmit}
@@ -2076,7 +2231,11 @@ export function Composer({
                 onAddImages={addImages}
                 client={client}
                 isReadyForDictation={isDictationReady && !isPersonalitySwitching}
-                placeholder={messagePlaceholder}
+                placeholder={
+                  appSettings.promptSuggestionsEnabled && promptSuggestion && userInput.length === 0
+                    ? promptSuggestion
+                    : messagePlaceholder
+                }
                 autoFocus={messageInputAutoFocus}
                 autoFocusKey={`${serverId}:${agentId}`}
                 disabled={isSubmitLoading}
@@ -2300,9 +2459,55 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.palette.red[500],
     fontSize: theme.fontSize.sm,
   },
+  rateLimitTextWarning: {
+    color: theme.colors.statusWarning,
+    fontSize: theme.fontSize.sm,
+  },
+  rateLimitTextRejected: {
+    color: theme.colors.palette.red[500],
+    fontSize: theme.fontSize.sm,
+  },
 })) as unknown as Record<string, object>;
 
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
+
+// One compact line, segments joined with " · ": headline (window-specific),
+// then percent used, reset time, and overage note when reported.
+function formatRateLimitWarning(t: TFunction, info: AgentRateLimitInfo): string {
+  let windowLabel = t("composer.rateLimit.windowPlan");
+  if (info.limitType === "five_hour") {
+    windowLabel = t("composer.rateLimit.windowFiveHour");
+  } else if (info.limitType?.startsWith("seven_day")) {
+    windowLabel = t("composer.rateLimit.windowSevenDay");
+  }
+  const parts = [
+    info.status === "rejected"
+      ? t("composer.rateLimit.reached", { window: windowLabel })
+      : t("composer.rateLimit.approaching", { window: windowLabel }),
+  ];
+  if (typeof info.utilizationPercent === "number") {
+    parts.push(t("composer.rateLimit.usedPercent", { percent: info.utilizationPercent }));
+  }
+  if (info.resetsAt) {
+    const resetDate = new Date(info.resetsAt);
+    if (!Number.isNaN(resetDate.getTime())) {
+      const withinDay = resetDate.getTime() - Date.now() < 24 * 60 * 60 * 1000;
+      const time = withinDay
+        ? resetDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+        : resetDate.toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          });
+      parts.push(t("composer.rateLimit.resets", { time }));
+    }
+  }
+  if (info.isUsingOverage) {
+    parts.push(t("composer.rateLimit.usingOverage"));
+  }
+  return parts.join(" · ");
+}
 
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);

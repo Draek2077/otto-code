@@ -8,23 +8,31 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { AgentCanvas } from "./canvas"
 import { ControlBar } from "./control-bar"
 import { AgentDetailCard } from "./agent-detail-card"
-import { GlassContextMenu } from "./glass-context-menu"
+// OTTO PATCH (OTTO-PATCHES.md): GlassContextMenu removed — the right-click menu's
+// actions moved to the native Otto toolbar, so the menu is no longer rendered.
 import { ToolDetailPopup } from "./tool-detail-popup"
 import { DiscoveryDetailPopup } from "./discovery-detail-popup"
 import { FileAttentionPanel } from "./file-attention-panel"
+import { CostPanel } from "./cost-panel"
 import { TimelinePanel } from "./timeline-panel"
 import { AgentChatPanel } from "./chat-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
-import { TimelineEvent, TIMING, Z } from "@/lib/agent-types"
+import { TimelineEvent, TIMING } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 
 import { MOCK_DURATION } from "@/lib/mock-scenario"
 import { TopBar } from "./top-bar"
+import { FpsMeter } from "./fps-meter"
 import { useAudioEffects } from "@/hooks/use-audio-effects"
 
 export function AgentVisualizer() {
   const bridge = useVSCodeBridge()
+
+  // OTTO PATCH (OTTO-PATCHES.md): set by the simulation on a frame that settled
+  // hydrate-flagged (backfilled) events; read-and-cleared by useAudioEffects to
+  // mute the spawn/tool sounds a bring-into-view replay would otherwise fire.
+  const suppressAudioRef = useRef(false)
 
   const {
     frameRef,
@@ -58,12 +66,14 @@ export function AgentVisualizer() {
     // so the animation frame never uses a stale filter value.
     sessionFilterRef: bridge.selectedSessionIdRef,
     disable1MContext: bridge.disable1MContext,
+    // OTTO PATCH: the animate loop raises this when it settles a hydrate batch
+    // so useAudioEffects can mute that frame's spawn/tool sounds.
+    suppressAudioRef,
   })
 
   const selection = useSelectionState({ agents, toolCalls, discoveries })
 
   const [showStats, setShowStats] = useState(false)
-  const [showHexGrid, setShowHexGrid] = useState(true)
   const [showCostOverlay, setShowCostOverlay] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
@@ -74,17 +84,13 @@ export function AgentVisualizer() {
   // `config.hudHidden` on every config that carries it (mirrors the panels
   // seed), and reported back on the in-page toggle so it persists across every
   // Visualizer tab.
+  // OTTO PATCH: the show/hide-HUD "eye" now lives in the native Otto toolbar
+  // (it drives the device-local visualizerHudHidden setting → config.hudHidden),
+  // so this state is purely config-driven — no in-page toggle button anymore.
   const [hudHidden, setHudHidden] = useState(false)
   useEffect(() => {
     if (bridge.hudHidden != null) setHudHidden(bridge.hudHidden)
   }, [bridge.hudHidden])
-  const handleToggleHud = useCallback(() => {
-    setHudHidden(prev => {
-      const next = !prev
-      bridge.bridgeSetHudHidden(next)
-      return next
-    })
-  }, [bridge.bridgeSetHudHidden])
 
   // Mutually exclusive panel toggling — opening one closes the others.
   // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") panel was removed
@@ -103,7 +109,10 @@ export function AgentVisualizer() {
   useEffect(() => {
     const panels = bridge.panelsConfig
     if (!panels) return
-    if (panels.hexGrid !== undefined) setShowHexGrid(panels.hexGrid)
+    // OTTO PATCH (OTTO-PATCHES.md): the "Toggle Stats" toolbar button is a
+    // config-driven follower like the other panels — seeded from the host's
+    // visualizerPanelStats setting on every config that carries it.
+    if (panels.stats !== undefined) setShowStats(panels.stats)
     if (panels.timeline !== undefined) setShowTimeline(panels.timeline)
     // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") and message-feed
     // panels were removed from Otto's embed, so only the files/cost exclusive
@@ -123,7 +132,11 @@ export function AgentVisualizer() {
   const [zoomToFitTrigger, setZoomToFitTrigger] = useState(0)
 
   const [isReviewing, setIsReviewing] = useState(false)
-  const { isMuted, seekingRef, handleToggleMute } = useAudioEffects(agents, toolCalls, isReviewing, bridge.soundVolume, bridge.bridgeSetSoundMuted)
+  // `isMuted` (the mute display state) is intentionally not read here anymore —
+  // the mute toggle moved to the native Otto toolbar; the page's audio stays
+  // config-driven (config.soundVolume). handleToggleMute is still wired to the
+  // keyboard shortcut.
+  const { seekingRef, handleToggleMute } = useAudioEffects(agents, toolCalls, isReviewing, bridge.soundVolume, bridge.bridgeSetSoundMuted, suppressAudioRef)
 
   // Auto-play on mount
   useEffect(() => {
@@ -160,6 +173,14 @@ export function AgentVisualizer() {
       }
 
       prevSelectedRef.current = bridge.selectedSessionId
+    } else if (bridge.selectedSessionId === null && prevSelectedRef.current !== null) {
+      // OTTO PATCH (OTTO-PATCHES.md): the last session was closed (e.g. the
+      // visualized chat was archived, so the host sent close-session and no
+      // session remains to auto-select). Cold-restart the simulation so the
+      // canvas empties and the "Waiting for chat activity" empty state shows,
+      // instead of leaving the final agent frozen in the center.
+      restart()
+      prevSelectedRef.current = null
     }
   }, [bridge.selectedSessionId, restart, bridge.flushSessionEvents, saveSnapshot, restoreSnapshot, bridge.getSessionEventCount])
 
@@ -226,20 +247,40 @@ export function AgentVisualizer() {
   }, [restart])
 
   // Keyboard shortcuts
+  // OTTO PATCH (OTTO-PATCHES.md): when a bridge host is attached, panel
+  // visibility is host-owned — the host's settings seed `config.panels`, and
+  // this component follows them (the seed effect above). A keyboard toggle
+  // that flipped page-LOCAL state desynced the host's toolbar buttons and got
+  // snapped back closed by the very next config push. So with a host attached
+  // the shortcuts forward a `panel-toggle` request (the host flips its setting
+  // and the change round-trips via config.panels); the local flip remains only
+  // as the standalone/demo fallback where no host exists.
+  const { bridgeTogglePanel, isVSCode: hasBridgeHost } = bridge
   const keyboardActions = useMemo(() => ({
     togglePlayPause: handlePlayPause,
-    toggleFilePanel: () => toggleExclusivePanel('files'),
-    toggleTimeline: () => { setShowTimeline(prev => !prev) },
-    toggleHexGrid: () => { setShowHexGrid(prev => !prev) },
-    toggleStats: () => { setShowStats(prev => !prev) },
-    toggleCostOverlay: () => toggleExclusivePanel('cost'),
+    toggleFilePanel: () => {
+      if (hasBridgeHost) bridgeTogglePanel('files')
+      else toggleExclusivePanel('files')
+    },
+    toggleTimeline: () => {
+      if (hasBridgeHost) bridgeTogglePanel('timeline')
+      else setShowTimeline(prev => !prev)
+    },
+    toggleStats: () => {
+      if (hasBridgeHost) bridgeTogglePanel('stats')
+      else setShowStats(prev => !prev)
+    },
+    toggleCostOverlay: () => {
+      if (hasBridgeHost) bridgeTogglePanel('cost')
+      else toggleExclusivePanel('cost')
+    },
     zoomToFit: () => { setZoomToFitTrigger(n => n + 1) },
     clearSelection: () => { selection.clearAllSelections() },
     deselectAgent: () => { selection.clearAgent() },
     toggleMute: handleToggleMute,
     setSpeed,
     selectedAgentId: selection.selectedAgentId,
-  }), [handlePlayPause, selection.clearAllSelections, selection.clearAgent, selection.selectedAgentId, setSpeed, handleToggleMute, toggleExclusivePanel])
+  }), [handlePlayPause, selection.clearAllSelections, selection.clearAgent, selection.selectedAgentId, setSpeed, handleToggleMute, toggleExclusivePanel, hasBridgeHost, bridgeTogglePanel])
 
   useKeyboardShortcuts(keyboardActions)
 
@@ -263,18 +304,12 @@ export function AgentVisualizer() {
     return 'claude' as const
   }, [agents])
 
-  // Context menu items
-  const contextMenuItems = selection.contextMenu ? (
-    selection.contextMenu.agentId ? [
-      { label: '📊  Toggle Stats', onClick: () => setShowStats(prev => !prev) },
-    ] : [
-      { label: '🔍  Zoom to Fit', onClick: () => setZoomToFitTrigger(n => n + 1) },
-      { label: '📊  Toggle Stats', onClick: () => setShowStats(prev => !prev) },
-      { label: '⬡  Toggle Grid', onClick: () => setShowHexGrid(prev => !prev) },
-      { label: '', onClick: () => {}, separator: true },
-      { label: '⟲  Restart', onClick: restart },
-    ]
-  ) : []
+  // OTTO PATCH (OTTO-PATCHES.md): the in-canvas right-click context menu was
+  // removed — every one of its actions (Zoom to Fit / Toggle Stats / Restart)
+  // now lives in the native Otto toolbar above the tab, so the menu had
+  // nothing left to offer. Right-click is a no-op that still swallows the
+  // browser's native menu (use-canvas-interaction's preventDefault); the
+  // canvas's onContextMenu prop is simply not passed anymore.
 
   const handleCloseSession = useCallback((id: string) => {
     bridge.removeSession(id)
@@ -283,9 +318,51 @@ export function AgentVisualizer() {
       const remaining = bridge.sessions.filter(s => s.id !== id)
       if (remaining.length > 0) {
         bridge.selectSession(remaining[remaining.length - 1].id)
+      } else {
+        // OTTO PATCH (OTTO-PATCHES.md): no session left — clear selection so the
+        // useLayoutEffect above cold-restarts the simulation and the canvas
+        // returns to the "Waiting for chat activity" empty state. Without this
+        // the last agent stayed frozen in the center after archiving the chat.
+        bridge.selectSession(null)
       }
     }
   }, [bridge])
+
+  // OTTO PATCH (OTTO-PATCHES.md): mirror the live session list/selection/activity
+  // to the host so the Otto toolbar's chats dropdown can render + drive them.
+  // The session TABS themselves were removed from the HUD — the toolbar owns the
+  // switcher now. No loop: a host select command changes selection → one report
+  // → the host mirror updates; the host doesn't re-emit on that.
+  const { bridgeReportSessionState, subscribeSessionCommand } = bridge
+  useEffect(() => {
+    bridgeReportSessionState({
+      sessions: bridge.sessions.map(s => ({ id: s.id, label: s.label, status: s.status })),
+      selectedId: bridge.selectedSessionId,
+      activityIds: [...bridge.sessionsWithActivity],
+    })
+  }, [bridgeReportSessionState, bridge.sessions, bridge.selectedSessionId, bridge.sessionsWithActivity])
+
+  // OTTO PATCH: run the Otto toolbar's chats-dropdown commands through the same
+  // paths a HUD tab click used — select flows through selectSession (+ the
+  // useLayoutEffect save/restore/flush above); close reuses handleCloseSession.
+  useEffect(() => {
+    return subscribeSessionCommand((command, sessionId) => {
+      if (command === 'select') bridge.selectSession(sessionId)
+      else handleCloseSession(sessionId)
+    })
+  }, [subscribeSessionCommand, bridge, handleCloseSession])
+
+  // OTTO PATCH (OTTO-PATCHES.md): run the Otto toolbar's viewport commands
+  // (Zoom to Fit / Restart) — the imperative counterparts of the panel toggles.
+  // These used to live in the in-canvas right-click context menu, which was
+  // removed once every one of its actions had a home in the toolbar.
+  const { subscribeViewportCommand } = bridge
+  useEffect(() => {
+    return subscribeViewportCommand((command) => {
+      if (command === 'zoom-to-fit') setZoomToFitTrigger(n => n + 1)
+      else handleRestart()
+    })
+  }, [subscribeViewportCommand, handleRestart])
 
   const openFile = useCallback((filePath: string, line?: number) => {
     bridge.bridgeOpenFile(filePath, line)
@@ -312,13 +389,10 @@ export function AgentVisualizer() {
         selectedAgentId={selection.selectedAgentId}
         hoveredAgentId={selection.hoveredAgentId}
         showStats={showStats}
-        showHexGrid={showHexGrid}
         zoomToFitTrigger={zoomToFitTrigger}
-        pauseAutoFit={selection.contextMenu !== null}
         onAgentClick={selection.handleAgentClick}
         onAgentHover={selection.setHoveredAgentId}
         onAgentDrag={updateAgentPosition}
-        onContextMenu={selection.handleContextMenu}
         onToolCallClick={selection.handleToolCallClick}
         selectedToolCallId={selection.selectedToolCallId}
         onDiscoveryClick={selection.handleDiscoveryClick}
@@ -378,14 +452,8 @@ export function AgentVisualizer() {
         onClose={selection.clearAgent}
       />
 
-      {/* Context menu */}
-      {selection.contextMenu && (
-        <GlassContextMenu
-          position={selection.contextMenu}
-          items={contextMenuItems}
-          onClose={() => selection.setContextMenu(null)}
-        />
-      )}
+      {/* OTTO PATCH (OTTO-PATCHES.md): the right-click GlassContextMenu was
+          removed — its actions moved to the native Otto toolbar. */}
 
       {/* Floating control strip */}
       {!hudHidden && (
@@ -416,89 +484,46 @@ export function AgentVisualizer() {
       />
       )}
 
-      {/* File attention panel (slide-in from right) */}
+      {/* File attention panel (slide-in from right). OTTO PATCH: closed by the
+          Files toolbar toggle, so no onClose ✕. */}
       <FileAttentionPanel
         visible={showFileAttention}
         fileAttention={fileAttention}
-        onClose={() => setShowFileAttention(false)}
         onOpenFile={bridge.isVSCode ? openFile : undefined}
+      />
+
+      {/* Cost panel (slide-in from right, same top-right anchor as Files —
+          they're mutually exclusive). OTTO PATCH (OTTO-PATCHES.md): a DOM
+          re-implementation of the former canvas cost summary panel. */}
+      <CostPanel
+        visible={showCostOverlay}
+        agents={agents}
+        toolCalls={toolCalls}
       />
 
       {/* OTTO PATCH (OTTO-PATCHES.md): the session transcript ("Chat") panel
           was removed from Otto's embed — it duplicated the real chat the user
           already has open. */}
 
-      {/* Timeline panel (slide-in from bottom) */}
+      {/* Timeline panel (slide-in from bottom). OTTO PATCH: closed by the
+          Timeline toolbar toggle, so no onClose ✕. */}
       <TimelinePanel
         visible={showTimeline}
         timelineEntries={timelineEntries}
         currentTime={currentTime}
-        onClose={() => setShowTimeline(false)}
       />
 
-      {/* Top bar: session tabs + info/controls */}
-      {!hudHidden && (
-      <TopBar
-        sessions={bridge.sessions}
-        selectedSessionId={bridge.selectedSessionId}
-        sessionsWithActivity={bridge.sessionsWithActivity}
-        onSelectSession={bridge.selectSession}
-        onCloseSession={handleCloseSession}
-        agentCount={agents.size}
-        totalTokens={totalTokens}
-        showFileAttention={showFileAttention}
-        showCostOverlay={showCostOverlay}
-        showTimeline={showTimeline}
-        isMuted={isMuted}
-        onTogglePanel={toggleExclusivePanel}
-        onToggleTimeline={() => setShowTimeline(prev => !prev)}
-        onToggleMute={handleToggleMute}
-      />
-      )}
+      {/* Top bar: stats readout only. OTTO PATCH (OTTO-PATCHES.md): the
+          session-tab column and every control button (Files/Cost/Audio/eye and
+          the Timeline toggle) were pulled OUT into the native Otto toolbar above
+          the tab; only the stats readout remains in the HUD. */}
+      {!hudHidden && <TopBar agentCount={agents.size} totalTokens={totalTokens} />}
 
-      {/* Otto patch (OTTO-PATCHES.md): HUD visibility toggle — the one control
-          that stays put when the HUD is hidden. Bottom-left, clear of the
-          control strip (bottom-center) and message feed (top-left). */}
-      <button
-        onClick={handleToggleHud}
-        title={hudHidden ? 'Show HUD' : 'Hide HUD'}
-        aria-label={hudHidden ? 'Show HUD' : 'Hide HUD'}
-        className="absolute bottom-3 left-3 p-1.5 rounded transition-all"
-        style={{
-          zIndex: Z.info,
-          lineHeight: 0,
-          background: COLORS.holoBg03,
-          border: `1px solid ${COLORS.holoBorder06}`,
-          // Prominent while hidden (so it's findable to restore the HUD), quiet
-          // while the HUD is shown.
-          color: hudHidden ? COLORS.holoBright : COLORS.textMuted,
-        }}
-      >
-        {hudHidden ? <HudHiddenIcon /> : <HudVisibleIcon />}
-      </button>
+      {/* OTTO PATCH (OTTO-PATCHES.md): host-toggleable FPS meter
+          (config.render.showFps), pinned bottom-right. Independent of the HUD
+          visibility toggle — it's a perf diagnostic, useful even in clean view. */}
+      {bridge.renderConfig?.showFps && <FpsMeter />}
     </div>
     </OpenFileProvider>
-  )
-}
-
-// ─── HUD visibility icons (OTTO PATCH) ───────────────────────────────────────
-
-function HudVisibleIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
-
-function HudHiddenIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-      <line x1="2" x2="22" y1="2" y2="22" />
-    </svg>
   )
 }

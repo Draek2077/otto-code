@@ -131,8 +131,11 @@ function LiveControlBar({
           {formatTime(currentTime)}
         </span>
 
-        {/* Read-only event track */}
-        <div className="flex-1 relative h-6 flex items-center">
+        {/* Read-only event track. OTTO PATCH: h-9 (not h-6) matches the Review
+            bar's 36px play button — the tallest child there — so the glass card
+            is the same height in both modes; items-center keeps the thin track
+            line vertically centered. */}
+        <div className="flex-1 relative h-9 flex items-center">
           <div
             className="w-full rounded-full relative"
             style={{ height: 3, background: COLORS.holoBg10 }}
@@ -307,6 +310,8 @@ function ReviewControlBar({
         {isReviewing && (
           <button
             onClick={onRestart}
+            title="Restart"
+            aria-label="Restart"
             className="text-sm transition-all shrink-0 hover:scale-110"
             style={{ color: COLORS.textDim }}
           >

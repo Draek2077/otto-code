@@ -92,7 +92,6 @@ function hex8(hex: string, aa: string): string {
  * map (and under the lint complexity ceiling). */
 interface SchemeProfile {
   voidBg: string;
-  hexGrid: string;
   cardBase: string;
   holoBright: string;
   holoHot: string;
@@ -151,7 +150,6 @@ function darkProfile(c: VisualizerPaletteInput["colors"]): SchemeProfile {
   const holoBright = mix(holo, "#ffffff", 0.4);
   return {
     voidBg,
-    hexGrid: mix(voidBg, holo, 0.1),
     cardBase,
     holoBright,
     holoHot: "#ffffff",
@@ -198,7 +196,6 @@ function lightProfile(c: VisualizerPaletteInput["colors"]): SchemeProfile {
   const cardBase = c.surface1;
   return {
     voidBg,
-    hexGrid: mix(voidBg, c.foreground, 0.08),
     cardBase,
     holoBright: mix(holo, c.foreground, 0.35),
     holoHot: mix(holo, c.foreground, 0.7),
@@ -246,7 +243,6 @@ export function buildVisualizerPalette(theme: VisualizerPaletteInput): Visualize
   const holo = c.accent;
   const {
     voidBg,
-    hexGrid,
     cardBase,
     holoBright,
     holoHot,
@@ -266,7 +262,6 @@ export function buildVisualizerPalette(theme: VisualizerPaletteInput): Visualize
   const colors: Record<string, string> = {
     // Background
     void: voidBg,
-    hexGrid,
 
     // Primary hologram
     holoBase: holo,

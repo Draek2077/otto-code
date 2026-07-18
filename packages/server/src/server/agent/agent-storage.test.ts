@@ -390,6 +390,42 @@ describe("AgentStorage", () => {
     expect(record?.title).toBe("Generated title");
   });
 
+  test("a concurrent streaming persist never rolls a fresh title back to the provisional", async () => {
+    const agentId = "agent-title-race";
+    // Chat starts with the provisional first-line title.
+    await storage.applySnapshot(createManagedAgent({ id: agentId }), {
+      title: "First prompt line",
+    });
+
+    // The auto-title writer's setTitle and a streaming background persist (a
+    // title-less applySnapshot, which is meant to PRESERVE the stored title)
+    // fire around the same tick. The persist must not read the stale provisional
+    // title and write it back over the freshly generated one — the lost-update
+    // race that made the visualizer/chat title snap back to the first prompt.
+    await Promise.all([
+      storage.setTitle(agentId, "AI Title"),
+      storage.applySnapshot(createManagedAgent({ id: agentId, lifecycle: "running" })),
+    ]);
+    expect((await storage.get(agentId))?.title).toBe("AI Title");
+
+    // Same guarantee with the enqueue order reversed (persist first, then the
+    // title write).
+    await Promise.all([
+      storage.applySnapshot(
+        createManagedAgent({
+          id: agentId,
+          lifecycle: "idle",
+          updatedAt: new Date("2025-02-01T00:00:00.000Z"),
+        }),
+      ),
+      storage.setTitle(agentId, "AI Title v2"),
+    ]);
+    expect((await storage.get(agentId))?.title).toBe("AI Title v2");
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    expect((await reloaded.get(agentId))?.title).toBe("AI Title v2");
+  });
+
   test("list returns all agents including internal ones", async () => {
     // Create a normal agent
     await storage.applySnapshot(

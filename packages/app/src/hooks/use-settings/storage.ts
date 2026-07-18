@@ -1,4 +1,5 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@otto-code/highlight";
+import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ChatWidth } from "@/constants/layout";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
@@ -44,6 +45,10 @@ export type InterfaceMode = "user" | "developer";
 // project/workspace list. "dashboard" always opens the activity-stats screen.
 // Device-local presentation only — never synced to the daemon.
 export type AppStartScreen = "dashboard" | "home" | "workspaces";
+// The action pre-selected as the primary of a suggested-task card's split button
+// (the caret still offers the rest). Mirrors the daemon's TasksSuggestedStartMode
+// wire enum. Device-local presentation only — never synced to the daemon.
+export type SuggestedTasksDefaultMode = TasksSuggestedStartMode;
 
 const LIGHT_THEME_NAMES: readonly LightThemeName[] = [
   "daylight",
@@ -78,6 +83,12 @@ const VALID_CHAT_WIDTHS = new Set<ChatWidth>(["default", "wide", "full"]);
 const VALID_CHAT_TIMESTAMP_DISPLAYS = new Set<ChatTimestampDisplay>(["absolute", "relative"]);
 const VALID_INTERFACE_MODES = new Set<InterfaceMode>(["user", "developer"]);
 const VALID_APP_START_SCREENS = new Set<AppStartScreen>(["dashboard", "home", "workspaces"]);
+const VALID_SUGGESTED_TASKS_DEFAULT_MODES = new Set<SuggestedTasksDefaultMode>([
+  "new_chat",
+  "subagent",
+  "worktree",
+  "in_session",
+]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
@@ -95,6 +106,14 @@ export interface AppSettings {
   darkTheme: DarkThemeName;
   language: AppLanguage;
   sendBehavior: SendBehavior;
+  // Show AI-predicted next-prompt suggestions as composer ghost-text watermark
+  // (Tab to accept). Native Claude prompt suggestions; gated on the host's
+  // promptSuggestions capability. Device-local presentation only. Default on.
+  promptSuggestionsEnabled: boolean;
+  // Show provider-reported plan rate-limit warnings (e.g. Claude claude.ai
+  // plan windows) as a strip above the composer. Device-local presentation
+  // only — the daemon keeps emitting events either way. Default on.
+  rateLimitWarningsEnabled: boolean;
   serviceUrlBehavior: ServiceUrlBehavior;
   // See LinkOpenBehavior. Device-local presentation only.
   linkOpenBehavior: LinkOpenBehavior;
@@ -137,6 +156,10 @@ export interface AppSettings {
   hideChatMessageDetails: boolean;
   // Chat message timestamps render as exact clock time or relative "5m ago".
   chatTimestampDisplay: ChatTimestampDisplay;
+  // Diagonal sheen/gradient painted into the top corner of every chat message
+  // bubble (see components/bubble-corner-sheen.tsx). Device-local presentation
+  // only. Default on; off renders flat bubbles with no corner gradient.
+  chatBubbleGradient: boolean;
   // Animation theme for the "working" text sweep on activity labels (tool
   // calls, reasoning, action groups). Device-local presentation only. See
   // styles/text-effects.ts and projects/text-effects/text-effects.md.
@@ -170,6 +193,12 @@ export interface AppSettings {
   hasCompletedSetupWizard: boolean;
   // What screen the app opens to. See AppStartScreen.
   appStartScreen: AppStartScreen;
+  // Show suggested-task cards when an agent proposes follow-up work. Off fully
+  // suppresses the card on this device (the tool still runs; tasks just aren't
+  // surfaced). Device-local presentation only. Default on.
+  suggestedTasksEnabled: boolean;
+  // Default primary action of a suggested-task card. See SuggestedTasksDefaultMode.
+  suggestedTasksDefaultMode: SuggestedTasksDefaultMode;
   // Which Visualizer page panels start visible when a Visualizer tab attaches
   // (seeded via the bridge `config.panels` message — see
   // packages/app/src/panels/visualizer-panel.tsx and
@@ -179,18 +208,33 @@ export interface AppSettings {
   visualizerPanelTimeline: boolean;
   visualizerPanelFileAttention: boolean;
   visualizerPanelCostOverlay: boolean;
-  visualizerPanelHexGrid: boolean;
+  // Whether the per-node stats readout overlay is drawn on the canvas (sent to
+  // the page as config.panels.stats — see vendor/agent-flow/OTTO-PATCHES.md).
+  // Off by default, mirroring the vendored page's showStats default. Toggled
+  // from the visualizer toolbar's "Toggle Stats" button. Device-local.
+  visualizerPanelStats: boolean;
   // Visualizer canvas render controls (bridge `config.render` + the shell's
   // devicePixelRatio cap — see docs/visualizer.md "Risks / gotchas"). All
   // decorative layers default on to match upstream; quality defaults to the
   // fastest tier (a maximized 2x pane measured 14 FPS at native dpr).
   visualizerRenderBloom: boolean;
+  // Per-node glow halo (sent to the page as config.render.nodeGlow — see
+  // vendor/agent-flow/OTTO-PATCHES.md). Distinct from bloom: this is the soft
+  // halo hugging each agent node, bloom is the whole-viewport blurred echo.
+  // Defaults on to match the page's historical always-on glow. Device-local.
+  visualizerRenderNodeGlow: boolean;
   visualizerRenderStars: boolean;
   visualizerRenderBackdrop: boolean;
   visualizerRenderQuality: VisualizerRenderQuality;
+  // Whether the bottom-right on-screen FPS meter is shown (sent to the page as
+  // config.render.showFps — see vendor/agent-flow/OTTO-PATCHES.md). A perf
+  // diagnostic, off by default like the other debug overlays; opt in when
+  // investigating render throughput. Device-local.
+  visualizerShowFps: boolean;
   // Silhouette drawn for agent nodes on the canvas (sent to the page as
   // config.render.nodeShape — see vendor/agent-flow/OTTO-PATCHES.md). Defaults
-  // to "hexagon" to match the vendored page's historical look. Device-local.
+  // to "circle" (the vendored page's own omitted-config fallback remains
+  // "hexagon", its historical look). Device-local.
   visualizerNodeShape: VisualizerNodeShape;
   // Visualizer master audio volume as a 0-100 percent — the LEVEL used when the
   // page is unmuted (sent to the page as a 0..1 `config.soundVolume`, gated by
@@ -205,12 +249,20 @@ export interface AppSettings {
   // webview partition. Defaults unmuted so first-time users hear the feature
   // at the default 50% level; muting is one click away in the page.
   visualizerSoundMuted: boolean;
-  // Whether the Visualizer's whole HUD (every panel, bar, and popup) is hidden,
-  // leaving just the canvas graph and the in-page HUD toggle button. Toggled by
-  // that button (reported back via the `hud-hidden` page->host message) and
-  // persisted here so it applies to every Visualizer tab at once and survives
-  // restarts (the page's own state resets on Otto's fresh webview partition).
-  // Sent to the page as `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
+  // Whether the Visualizer speaks short personality "voice cues" — a spoken line
+  // in the agent's own personality voice when its node joins the graph, first
+  // starts thinking, and completes. Only the main (root) agent speaks, only for
+  // personality-backed agents, and only when the host advertises the
+  // visualizerVoiceCues + ttsPreview capabilities. Off by default (it makes
+  // sound proactively); the effective volume follows visualizerSoundVolume and
+  // is silenced by visualizerSoundMuted. See docs/visualizer.md "Voice cues".
+  visualizerVoiceCues: boolean;
+  // Whether the Visualizer's HUD chrome (top bar + bottom control bar) is
+  // hidden, leaving just the canvas graph and its informational surfaces.
+  // Toggled by the native toolbar's HUD-eye and persisted here so it applies to
+  // every Visualizer tab at once and survives restarts (the page's own state
+  // resets on Otto's fresh webview partition). Sent to the page as
+  // `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
   visualizerHudHidden: boolean;
 }
 
@@ -243,6 +295,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   darkTheme: "dark",
   language: "system",
   sendBehavior: "interrupt",
+  promptSuggestionsEnabled: true,
+  rateLimitWarningsEnabled: true,
   serviceUrlBehavior: "ask",
   linkOpenBehavior: "external",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -266,6 +320,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
+  chatBubbleGradient: true,
   textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
   wrapCodeLines: true,
   autoClearCompletedSubagents: false,
@@ -273,17 +328,22 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   interfaceMode: null,
   hasCompletedSetupWizard: false,
   appStartScreen: "workspaces",
+  suggestedTasksEnabled: true,
+  suggestedTasksDefaultMode: "new_chat",
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
   visualizerPanelCostOverlay: false,
-  visualizerPanelHexGrid: true,
+  visualizerPanelStats: false,
   visualizerRenderBloom: false,
+  visualizerRenderNodeGlow: true,
   visualizerRenderStars: true,
   visualizerRenderBackdrop: true,
   visualizerRenderQuality: "sharp",
-  visualizerNodeShape: "hexagon",
+  visualizerShowFps: false,
+  visualizerNodeShape: "circle",
   visualizerSoundVolume: 50,
   visualizerSoundMuted: false,
+  visualizerVoiceCues: false,
   visualizerHudHidden: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -613,6 +673,18 @@ function pickOnboardingSettings(stored: Partial<AppSettings>): Partial<AppSettin
   ) {
     result.appStartScreen = stored.appStartScreen as AppStartScreen;
   }
+  if (typeof stored.suggestedTasksEnabled === "boolean") {
+    result.suggestedTasksEnabled = stored.suggestedTasksEnabled;
+  }
+  if (
+    typeof stored.suggestedTasksDefaultMode === "string" &&
+    VALID_SUGGESTED_TASKS_DEFAULT_MODES.has(
+      stored.suggestedTasksDefaultMode as SuggestedTasksDefaultMode,
+    )
+  ) {
+    result.suggestedTasksDefaultMode =
+      stored.suggestedTasksDefaultMode as SuggestedTasksDefaultMode;
+  }
   return result;
 }
 
@@ -635,6 +707,15 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   }
   if (typeof stored.autoClearCompletedSubagents === "boolean") {
     result.autoClearCompletedSubagents = stored.autoClearCompletedSubagents;
+  }
+  if (typeof stored.chatBubbleGradient === "boolean") {
+    result.chatBubbleGradient = stored.chatBubbleGradient;
+  }
+  if (typeof stored.promptSuggestionsEnabled === "boolean") {
+    result.promptSuggestionsEnabled = stored.promptSuggestionsEnabled;
+  }
+  if (typeof stored.rateLimitWarningsEnabled === "boolean") {
+    result.rateLimitWarningsEnabled = stored.rateLimitWarningsEnabled;
   }
   return result;
 }
@@ -679,17 +760,23 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   if (typeof stored.visualizerPanelCostOverlay === "boolean") {
     result.visualizerPanelCostOverlay = stored.visualizerPanelCostOverlay;
   }
-  if (typeof stored.visualizerPanelHexGrid === "boolean") {
-    result.visualizerPanelHexGrid = stored.visualizerPanelHexGrid;
+  if (typeof stored.visualizerPanelStats === "boolean") {
+    result.visualizerPanelStats = stored.visualizerPanelStats;
   }
   if (typeof stored.visualizerRenderBloom === "boolean") {
     result.visualizerRenderBloom = stored.visualizerRenderBloom;
+  }
+  if (typeof stored.visualizerRenderNodeGlow === "boolean") {
+    result.visualizerRenderNodeGlow = stored.visualizerRenderNodeGlow;
   }
   if (typeof stored.visualizerRenderStars === "boolean") {
     result.visualizerRenderStars = stored.visualizerRenderStars;
   }
   if (typeof stored.visualizerRenderBackdrop === "boolean") {
     result.visualizerRenderBackdrop = stored.visualizerRenderBackdrop;
+  }
+  if (typeof stored.visualizerShowFps === "boolean") {
+    result.visualizerShowFps = stored.visualizerShowFps;
   }
   if (
     typeof stored.visualizerRenderQuality === "string" &&
@@ -711,6 +798,9 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   }
   if (typeof stored.visualizerSoundMuted === "boolean") {
     result.visualizerSoundMuted = stored.visualizerSoundMuted;
+  }
+  if (typeof stored.visualizerVoiceCues === "boolean") {
+    result.visualizerVoiceCues = stored.visualizerVoiceCues;
   }
   if (typeof stored.visualizerHudHidden === "boolean") {
     result.visualizerHudHidden = stored.visualizerHudHidden;

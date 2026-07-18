@@ -126,6 +126,7 @@ import type {
   ProjectLink,
   SpeechSettingsOptions,
   SpeechTtsPreviewResult,
+  VisualizerVoiceCuesResult,
 } from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
@@ -4617,6 +4618,39 @@ export class DaemonClient {
         text: params.text,
         ...(params.voice ? { voice: params.voice } : {}),
       },
+    });
+  }
+
+  // Author short spoken cue lines (join / thinking / done) for a persona,
+  // described inline (name + prompt) so it works for an unsaved editor draft.
+  // Routed through the Writer chain; the caller stores the result on the
+  // personality's `voiceCues`.
+  async generateVisualizerVoiceCues(
+    params: {
+      name: string;
+      prompt?: string;
+      cwd?: string;
+      // Persona roles (e.g. "researcher", "coder") to flavor the lines.
+      roles?: string[];
+      // One of "join" | "thinking" | "done" to author just that moment (the
+      // editor fans out one request per moment for progress + distinctness).
+      moment?: "join" | "thinking" | "done";
+    },
+    requestId?: string,
+  ): Promise<VisualizerVoiceCuesResult> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "visualizer.voiceCues.generate.request",
+        name: params.name,
+        ...(params.prompt ? { prompt: params.prompt } : {}),
+        ...(params.cwd ? { cwd: params.cwd } : {}),
+        ...(params.roles && params.roles.length > 0 ? { roles: params.roles } : {}),
+        ...(params.moment ? { moment: params.moment } : {}),
+      },
+      // The daemon spawns a structured-generation agent for this; provider SDK
+      // cold starts can blow well past the 60s default.
+      timeout: 180000,
     });
   }
 

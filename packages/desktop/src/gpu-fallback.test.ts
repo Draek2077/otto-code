@@ -38,7 +38,9 @@ import {
   isSoftwareRenderingMarked,
   isStartupSentinelPresent,
   markGpuStartupHealthy,
+  readGpuFallbackState,
   registerGpuFallbackRecovery,
+  writeGpuFallbackState,
   writeSoftwareRenderingMarker,
   writeStartupSentinel,
 } from "./gpu-fallback";
@@ -117,23 +119,101 @@ describe("applyPersistedHardwareAccelerationFallback", () => {
     expect(mocks.app.disableHardwareAcceleration).not.toHaveBeenCalled();
   });
 
-  it("promotes a stale startup sentinel into software rendering", () => {
-    // A sentinel that survived from a prior launch means that launch never
-    // painted a window — recover by falling back this launch.
+  it("retries hardware on a lone stale startup sentinel instead of latching software", () => {
+    // A single surviving sentinel is usually a launch killed/restarted before
+    // first paint (routine in dev), not a GPU hang — retry hardware once more.
+    writeStartupSentinel(tempDir);
+    applyPersistedHardwareAccelerationFallback();
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+    expect(mocks.app.disableHardwareAcceleration).not.toHaveBeenCalled();
+  });
+
+  it("latches software only after two consecutive never-painted launches", () => {
+    // apply() does not clear the sentinel on the retry, so a sentinel that is
+    // still present on the next call models a second consecutive never-paint.
+    writeStartupSentinel(tempDir);
+    applyPersistedHardwareAccelerationFallback(); // strike 1 → retry hardware
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+    applyPersistedHardwareAccelerationFallback(); // strike 2 → latch software
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
+  });
+
+  it("resets the never-painted strike once a launch paints healthily", () => {
+    writeStartupSentinel(tempDir);
+    applyPersistedHardwareAccelerationFallback(); // strike 1
+    // A healthy paint clears the sentinel and the strike counter.
+    markGpuStartupHealthy();
+    expect(readGpuFallbackState(tempDir).neverPaintedStrikes).toBe(0);
+    // A fresh lone sentinel is therefore back to strike 1, not strike 2.
+    writeStartupSentinel(tempDir);
+    applyPersistedHardwareAccelerationFallback();
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+  });
+
+  it("re-probes hardware after enough software launches instead of staying software forever", () => {
+    writeSoftwareRenderingMarker(tempDir, "crashed");
+    // One launch short of the re-probe threshold.
+    writeGpuFallbackState(tempDir, {
+      neverPaintedStrikes: 0,
+      softwareLaunches: 7,
+      reprobeAfter: 8,
+      probing: false,
+    });
+    applyPersistedHardwareAccelerationFallback();
+    // Hardware runs this launch (marker kept on disk, but not applied).
+    expect(mocks.app.disableHardwareAcceleration).not.toHaveBeenCalled();
+    expect(readGpuFallbackState(tempDir).probing).toBe(true);
+    // The renderer must see hardware during the probe, not software.
+    expect(isSoftwareRenderingActive()).toBe(false);
+  });
+
+  it("heals for good when the hardware re-probe paints", () => {
+    writeSoftwareRenderingMarker(tempDir, "crashed");
+    writeGpuFallbackState(tempDir, {
+      neverPaintedStrikes: 0,
+      softwareLaunches: 0,
+      reprobeAfter: 8,
+      probing: true,
+    });
+    markGpuStartupHealthy();
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+    expect(isSoftwareRenderingActive()).toBe(false);
+  });
+
+  it("backs off and stays software when a re-probe never paints", () => {
+    writeSoftwareRenderingMarker(tempDir, "crashed");
+    writeGpuFallbackState(tempDir, {
+      neverPaintedStrikes: 0,
+      softwareLaunches: 0,
+      reprobeAfter: 8,
+      probing: true,
+    });
+    // Next startup with the probe's sentinel still present (it never painted).
     writeStartupSentinel(tempDir);
     applyPersistedHardwareAccelerationFallback();
     expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
-    expect(mocks.app.disableHardwareAcceleration).toHaveBeenCalledTimes(1);
+    const state = readGpuFallbackState(tempDir);
+    expect(state.probing).toBe(false);
+    expect(state.reprobeAfter).toBe(16); // doubled
   });
 
-  it("clears the marker and sentinel and keeps acceleration on when OTTO_FORCE_GPU=1", () => {
+  it("clears the marker, sentinel, and self-heal state when OTTO_FORCE_GPU=1", () => {
     writeSoftwareRenderingMarker(tempDir, "crashed");
     writeStartupSentinel(tempDir);
+    writeGpuFallbackState(tempDir, {
+      neverPaintedStrikes: 1,
+      softwareLaunches: 3,
+      reprobeAfter: 16,
+      probing: true,
+    });
     process.env.OTTO_FORCE_GPU = "1";
     applyPersistedHardwareAccelerationFallback();
     expect(mocks.app.disableHardwareAcceleration).not.toHaveBeenCalled();
     expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
     expect(isStartupSentinelPresent(tempDir)).toBe(false);
+    // State resets to defaults (file gone → readGpuFallbackState returns them).
+    expect(readGpuFallbackState(tempDir).probing).toBe(false);
+    expect(readGpuFallbackState(tempDir).softwareLaunches).toBe(0);
   });
 });
 
@@ -177,6 +257,27 @@ describe("registerGpuFallbackRecovery", () => {
     emitChildProcessGone({ type: "GPU", reason: "crashed" });
     expect(mocks.app.relaunch).not.toHaveBeenCalled();
     expect(mocks.app.exit).not.toHaveBeenCalled();
+  });
+
+  it("backs off and relaunches into software when a hardware re-probe crashes", () => {
+    // Marker present but a re-probe is running hardware this launch — a crash
+    // means the GPU is still bad, so relaunch back into software (unlike a
+    // steady-state software launch, which must not relaunch).
+    writeSoftwareRenderingMarker(tempDir, "crashed");
+    writeGpuFallbackState(tempDir, {
+      neverPaintedStrikes: 0,
+      softwareLaunches: 0,
+      reprobeAfter: 8,
+      probing: true,
+    });
+    registerGpuFallbackRecovery();
+    emitChildProcessGone({ type: "GPU", reason: "crashed" });
+    expect(mocks.app.relaunch).toHaveBeenCalledTimes(1);
+    expect(mocks.app.exit).toHaveBeenCalledWith(0);
+    const state = readGpuFallbackState(tempDir);
+    expect(state.probing).toBe(false);
+    expect(state.reprobeAfter).toBe(16);
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
   });
 
   it("ignores clean GPU exits and non-GPU process failures", () => {

@@ -13,7 +13,10 @@ interface InteractionCallbacks {
   onAgentClick: (agentId: string | null) => void
   onAgentHover: (agentId: string | null) => void
   onAgentDrag: (agentId: string, x: number, y: number) => void
-  onContextMenu: (e: React.MouseEvent, type: 'agent' | 'edge' | 'canvas', id?: string) => void
+  /** OTTO PATCH (OTTO-PATCHES.md): optional — the right-click menu was removed
+   * from Otto's embed. preventDefault still fires so the browser's own menu
+   * stays suppressed even with no callback. */
+  onContextMenu?: (e: React.MouseEvent, type: 'agent' | 'edge' | 'canvas', id?: string) => void
   onToolCallClick?: (toolCallId: string | null) => void
   onDiscoveryClick?: (discoveryId: string | null) => void
 }
@@ -210,7 +213,7 @@ export function useCanvasInteraction({
     e.preventDefault()
     const pos = screenToCanvas(e.clientX, e.clientY)
     const agentId = findAgentAt(pos.x, pos.y)
-    drawPropsRef.current.onContextMenu(e, agentId ? 'agent' : 'canvas', agentId ?? undefined)
+    drawPropsRef.current.onContextMenu?.(e, agentId ? 'agent' : 'canvas', agentId ?? undefined)
   }, [screenToCanvas, findAgentAt, drawPropsRef])
 
   const handleMouseLeave = useCallback(() => {

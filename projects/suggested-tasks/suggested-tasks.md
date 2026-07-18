@@ -48,6 +48,26 @@ Every piece below mirrors an existing, shipped Otto subsystem. The closest analo
 in-memory list pushed via a dedicated `*_changed` notification with dotted-namespace action
 RPCs — exactly the shape this feature needs. We mirror it end-to-end.
 
+### 0. Prerequisites & discoverability (why it "didn't work at all")
+
+Two runtime facts gate the whole feature, independent of the code:
+
+- **The daemon must be rebuilt and restarted.** All server-side pieces (the `spawn_task`
+  tool, `features.suggestedTasks`, the RPC handlers) are compiled into the daemon — they
+  don't exist at runtime until `npm run build:server` + a daemon restart. Until then the
+  agent can't call the tool and the chip's mount gate (`features.suggestedTasks === true`)
+  fails, so nothing renders. The app half hot-reloads; the daemon half does not.
+- **Otto tool injection must be on.** `mcp.injectIntoAgents` defaults to `false`
+  (`config.ts`). While off, a Claude agent never receives the Otto MCP server, so
+  `mcp__otto__spawn_task` isn't in its toolset at all. It must be enabled (it usually is, if
+  browser/preview/create_agent tools work).
+- **The model has to be given a reason to call it.** Discovery is purely via the tool
+  description — there is no system-prompt preamble. The descriptions are written
+  trigger-first (matching Claude Desktop: out-of-scope work that would bloat the current
+  change — dead code, stale docs, missing coverage, a confirmed TODO — _and_ "whenever the
+  user asks you to line up or queue work"), so a capable model calls it when appropriate and
+  the user can always trigger it explicitly ("suggest a task to do X").
+
 ### 1. Agent-facing tools (all providers, one registration)
 
 Register `spawn_task` and `dismiss_task` in the shared tool catalog —
@@ -144,15 +164,18 @@ nothing when the flag is absent).
   `setBackgroundShellTasksForParent`).
 - `packages/app/src/suggested-tasks/`: `select.ts` (selector + `useSuggestedTasksForParent`),
   `use-suggested-task-actions.ts` (one hook exposing `startTasks`/`dismissTasks`, both
-  array-based, with toast feedback), `track.tsx` (the chip UI + collective header),
-  `index.ts` barrel — mirroring `packages/app/src/background-tasks/`.
-- Mount `<SuggestedTasksTrack>` as a sibling above `<Composer>` in `ActiveAgentComposer`
-  (`packages/app/src/panels/agent-panel.tsx`), gated on
-  `useHostFeature(serverId, "suggestedTasks")`, alongside the Subagents and Background Tasks
-  tracks. Each chip: title, tldr tooltip, a **Start** `DropdownMenu` (New worktree / Local /
-  This session) with in-flight `pending`/`success` states, and a Dismiss icon button (every
-  icon button wrapped in a `Tooltip`). Reuse the track card styles verbatim so it seats into
-  the composer top like the sibling tracks.
+  array-based, with toast feedback), `overlay.tsx` (the floating card + collective header),
+  `index.ts` barrel.
+- **Floating popover card, not an inline strip.** Mount `<SuggestedTasksOverlay>` inside the
+  chat `contentContainer` in `ChatAgentReadyContent` (`agent-panel.tsx`), gated on
+  `features.suggestedTasks`. It's an absolutely-positioned card (`pointerEvents="box-none"`
+  wrapper, bottom-anchored, `surface2` + `borderAccent` + `shadow.md`, `FadeIn`/`FadeOut`)
+  that floats over the bottom of the chat above the composer — **non-blocking** (never steals
+  composer focus) and **persistent** (stays until the queue empties), so the choice is async.
+  It must live inside `contentContainer` (the flex:1 chat area), not floated above the short
+  composer view, or Android hit-testing drops touches (docs/floating-panels Gotcha 1). Each
+  card row: title + **tldr shown inline** (prominent, not tooltip-only), a **Start**
+  `DropdownMenu` (New worktree / Local / This session), and a Dismiss icon button.
 
 ### 6. Queue & collective actions
 
@@ -213,3 +236,48 @@ this.
 Once shipped, fold the durable design facts into `docs/` (likely a short section in
 `docs/agent-lifecycle.md` or a new `docs/suggested-tasks.md`) and delete this folder, per the
 projects/ lifecycle rule.
+
+## Iteration 4 (2026-07-17) — auto-approve, 4 modes, top card + split button
+
+Proven live on Claude (raw Always-ask card → chip). Four changes landed on top of the built
+feature:
+
+1. **Auto-approve the suggestion itself.** `spawn_task`/`dismiss_task` only draw or withdraw a
+   card — nothing runs until the user clicks Start, so the _Start button is the gate_, not the
+   act of suggesting. They now bypass the permission prompt in **every** mode (including
+   Always-ask), matching Claude Desktop where a suggestion just appears. The tool call still
+   shows in the transcript, so "see everything" visibility is preserved. Implemented at the one
+   Claude chokepoint — an `AUTO_APPROVED_OTTO_TOOL_NAMES` early-return in
+   `handlePermissionRequest` (claude/agent.ts) — plus adding the bare names to
+   `READ_ONLY_TOOLS` in `openai-compat-otto-tool-permissions.ts` for cross-provider parity.
+
+2. **Four start modes** (was worktree | local | in_session). Only **one** links to the parent:
+   - `new_chat` _(default)_ — independent agent, own tab, **no** parent link; `detached:true`.
+   - `subagent` — bound child in the Subagents track, archive-cascades; `detached:false`.
+   - `worktree` — independent agent on a new git worktree (auto `branch-off`); `detached:true`.
+   - `in_session` — steers the parent (unchanged).
+     The whole switch is the `detached` flag on the MCP `createAgentCommand` (the parent-id label
+     is stamped iff `!detached && callerAgentId`). We keep `callerAgentId` set even when detached
+     so the new agent still inherits the parent's cwd/workspace/brain — only the label is dropped.
+     `notifyOnFinish` now tracks `detached` (a detached chat isn't watchable via the track).
+     **Worktree branch question (resolved):** a worktree _must_ have its own branch;
+     `branch-off` auto-creates a fresh one off HEAD, so we never reuse the parent branch (not the
+     forbidden shared-tree branch case). The user never picks a branch.
+
+3. **Card UX rework** (`suggested-tasks/overlay.tsx`): **top-anchored** (was bottom — it hid the
+   text being read), **title-bar X** on the right that dismisses the whole visible queue (was an
+   X in the content), and a **split button** per row — primary half fires the user's default
+   mode, the caret opens the other modes + a destructive **Dismiss**. Header "Start all" split
+   button appears when 2+ are queued (in_session excluded from bulk). Cloned the structure of
+   `git/actions-split-button.tsx`.
+
+4. **"Suggested tasks default" setting** — device-local `suggestedTasksDefaultMode` (AppSettings,
+   default `new_chat`), a General-section `SegmentedControl` (New chat / Sub-agent / Worktree /
+   In session). The overlay reads it via `useSettings` to pick the split-button primary; bulk
+   falls back to `new_chat` when the default is `in_session`.
+
+Verification: stock `tsc` clean, `oxlint` clean, storage settings tests green (incl. 3 new).
+NOTE: the app's `tsgo` (preview Go typechecker) panics with an internal `Debug.Fail`
+("generalized source shouldn't be assignable") — reproduces with overlay.tsx stubbed to a
+no-op and only 3 app files touch the enum, so it is a **pre-existing tsgo bug in the concurrent
+uncommitted changeset, not this work**; real `tsc` passes.

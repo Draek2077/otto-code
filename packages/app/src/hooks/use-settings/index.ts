@@ -42,6 +42,7 @@ import {
   type ChatTimestampDisplay,
   type InterfaceMode,
   type AppStartScreen,
+  type SuggestedTasksDefaultMode,
   type PreviewServerCloseBehavior,
   type VisualizerRenderQuality,
   type VisualizerNodeShape,
@@ -72,6 +73,7 @@ export type {
   ChatTimestampDisplay,
   InterfaceMode,
   AppStartScreen,
+  SuggestedTasksDefaultMode,
   DesktopSettingsBridge,
   KeyValueStorage,
   LinkOpenBehavior,
@@ -171,6 +173,12 @@ function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSetti
   if (updates.interfaceMode !== undefined) {
     appUpdates.interfaceMode = updates.interfaceMode;
   }
+  if (updates.suggestedTasksEnabled !== undefined) {
+    appUpdates.suggestedTasksEnabled = updates.suggestedTasksEnabled;
+  }
+  if (updates.suggestedTasksDefaultMode !== undefined) {
+    appUpdates.suggestedTasksDefaultMode = updates.suggestedTasksDefaultMode;
+  }
   return appUpdates;
 }
 
@@ -213,6 +221,29 @@ export function useAppSettings(): UseAppSettingsReturn {
     updateSettings,
     resetSettings,
   };
+}
+
+/**
+ * Narrow subscription to a single derived AppSettings value. Unlike
+ * `useAppSettings()` — a bare query subscription that re-renders its consumer
+ * on every settings write — this applies `select` inside the query, so the
+ * consumer re-renders only when the selected value itself changes. Use it in
+ * hot paths (per-message components, list rows). Pass a stable (module-level)
+ * selector that returns a defined value; while the settings are still loading
+ * the selector runs against `DEFAULT_CLIENT_SETTINGS`.
+ */
+export function useAppSettingValue<TSelected>(
+  select: (settings: AppSettings) => TSelected,
+): TSelected {
+  const { data } = useQuery({
+    queryKey: APP_SETTINGS_QUERY_KEY,
+    queryFn: () => loadAppSettingsFromStorage(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    select,
+    notifyOnChangeProps: ["data"],
+  });
+  return data === undefined ? select(DEFAULT_CLIENT_SETTINGS) : data;
 }
 
 export function useSettings(): UseSettingsReturn;

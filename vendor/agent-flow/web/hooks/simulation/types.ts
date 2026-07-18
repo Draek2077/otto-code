@@ -128,4 +128,9 @@ export interface UseAgentSimulationOptions {
   sessionFilterRef?: React.RefObject<string | null>
   /** If true, CLAUDE_CODE_DISABLE_1M_CONTEXT is set — cap context window to 200k */
   disable1MContext?: boolean
+  /** OTTO PATCH (OTTO-PATCHES.md): the animate loop sets this true on any frame
+   *  that settled hydrate-flagged (backfilled) events, so the audio layer can
+   *  skip the spawn/tool sounds those would otherwise fire. Consumed (reset to
+   *  false) by useAudioEffects. */
+  suppressAudioRef?: React.RefObject<boolean>
 }

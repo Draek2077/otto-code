@@ -98,6 +98,10 @@ Five primitives. The pick is determined by option count, the need to search, and
 
 `<AdaptiveModalSheet>` owns compact bottom safe-area padding inside the sheet so the sheet background still reaches the screen bottom. If a sheet's first snap point is shorter than its header, content, and safe-area clearance, raise that snap point rather than moving the sheet container.
 
+The title is always pinned. Action buttons (Save/Cancel) belong in the sheet's `footer` slot, not stacked at the end of the scrolling body — a footer stays pinned to the bottom of both the desktop card and the mobile bottom sheet while the content between scrolls. A fixed strip that must stay visible above the content (a tab bar, a filter row) goes in the `subHeader` slot. `desktopHeight` fixes the card height so it does not resize as content or tabs change; without it the card hugs content up to 85% of the viewport, then scrolls. This is the hybrid every dialog gets: pinned title, scrollable content, pinned footer. `provider-diagnostic-sheet.tsx` is the reference.
+
+A **tabbed** dialog uses `<TabbedModalSheet>` (`packages/app/src/components/ui/tabbed-modal-sheet.tsx`), which builds that layout in one component: pinned title, a pinned tab strip, per-tab content that scrolls internally (`<TabScrollView>`), and a pinned footer, at a stable bounded height so the dialog does not jump size between tabs. Pass `tabs`/`activeTab`/`onTabChange` and switch the `children` on the active tab. `agent-personalities-section.tsx` (the personality editor) is the reference. Reach for it instead of hand-rolling a `SegmentedControl` and action row inside a scrolling body.
+
 `confirmDialog` is for destructive yes/no and imperative confirmation. Promise-based: `await confirmDialog({ destructive: true, ... })`. Anything where a wrong click loses work.
 
 Three themes is `DropdownMenu`. Thirty hosts is `Combobox`. A label and a value is `AdaptiveModalSheet`. "Are you sure?" is `confirmDialog`.
@@ -225,6 +229,7 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 - Destructive actions without `confirmDialog`. Restart, remove, and future destructive actions are confirmed. Archive workspace is confirmed only when its worktree backing reports uncommitted changes or unpushed commits; otherwise it archives immediately.
 - Bespoke status pills. `<StatusBadge>` is the pill primitive.
 - Raw `Modal` for a focused task. `<AdaptiveModalSheet>` is the modal primitive.
+- Action buttons or a tab bar stacked inside a dialog's scrolling body. Buttons go in the `footer` slot, a tab bar in the `subHeader` slot (or use `<TabbedModalSheet>`), so they stay pinned instead of scrolling out of view.
 - Importing `ActivityIndicator` directly. `<LoadingSpinner>` is the loading primitive.
 
 ---

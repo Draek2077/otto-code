@@ -1,8 +1,11 @@
 import { Agent, ToolCallNode, NODE } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
-import { COST_RATE, MODEL_FAMILY_COST, COST_DRAW, COST_PANEL, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
-import { formatTokens } from '@/lib/utils'
-import { truncateText } from './draw-misc'
+import { COST_RATE, MODEL_FAMILY_COST, COST_DRAW, STATS_OVERLAY, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
+// OTTO PATCH (OTTO-PATCHES.md): the top-right cost SUMMARY panel moved to the
+// DOM (../cost-panel.tsx). Only the on-node cost pills (drawCostLabels) remain
+// on the canvas, so drawCostSummaryPanel and its formatTokens/truncateText/
+// COST_PANEL imports were removed here. agentCost/toolTypeColor are still
+// exported and are now reused by the DOM cost panel.
 
 /** Blended $/M-token rate for a model ID — first matching family wins,
  *  unknown models fall back to the Sonnet-class rate. */
@@ -45,6 +48,9 @@ export function drawCostLabels(
   ctx: CanvasRenderingContext2D,
   agents: Map<string, Agent>,
   toolCalls: Map<string, ToolCallNode>,
+  // OTTO PATCH (OTTO-PATCHES.md): whether the stats overlay is also on, so the
+  // cost pill can lift above the stats box instead of overlapping it.
+  showStats = false,
 ) {
   const toolsByAgent = groupToolsByAgent(toolCalls)
 
@@ -55,7 +61,23 @@ export function drawCostLabels(
     if (cost < COST_DRAW.minDisplayCost) continue
 
     const r = agent.isMain ? NODE.radiusMain : NODE.radiusSub
-    const pillY = agent.y - r - COST_DRAW.pillYOffset
+    // Mini tool-type bar draws below the pill only when this agent has tools
+    // with token cost (groupToolsByAgent already filters out zero-cost tools).
+    const agentTools = toolsByAgent.get(agent.id)
+    const hasMiniBar = !!agentTools && agentTools.length > 0
+    // OTTO PATCH (OTTO-PATCHES.md): stats box sits just above the node radius
+    // (drawStatsOverlay); when it's showing for this node, lift the cost pill —
+    // and the mini tool-type bar that hangs below it — clear above the stats
+    // box, leaving STATS_OVERLAY.stackGap of clearance between them. Reserve the
+    // mini bar's height only when it actually draws, so a node without one isn't
+    // pushed needlessly far from the stats box. Stats only draws for non-complete
+    // nodes, mirroring drawAgents.
+    const liftAboveStats = showStats && agent.state !== 'complete'
+    const miniBarReserve = hasMiniBar ? COST_DRAW.miniBarGap + COST_DRAW.miniBarHeight : 0
+    const pillYOffset = liftAboveStats
+      ? STATS_OVERLAY.yOffset + STATS_OVERLAY.stackGap + COST_DRAW.pillHeight + miniBarReserve
+      : COST_DRAW.pillYOffset
+    const pillY = agent.y - r - pillYOffset
 
     // Floating cost pill
     const label = `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
@@ -84,8 +106,7 @@ export function drawCostLabels(
     ctx.fillText(label, agent.x, pillY + pillH / 2)
 
     // Mini tool-type cost bar below the pill
-    const agentTools = toolsByAgent.get(agent.id)
-    if (agentTools && agentTools.length > 0) {
+    if (hasMiniBar && agentTools) {
       // Group by tool type
       const byType = new Map<string, number>()
       let totalToolTokens = 0
@@ -124,157 +145,4 @@ export function drawCostLabels(
 
     ctx.restore()
   }
-}
-
-export function drawCostSummaryPanel(
-  ctx: CanvasRenderingContext2D,
-  agents: Map<string, Agent>,
-  toolCalls: Map<string, ToolCallNode>,
-) {
-  // OTTO PATCH (OTTO-PATCHES.md): the cost panel prefers each agent's honest
-  // lifetime total (cumulativeTokens) over context occupancy.
-  const agentTokens = (a: Agent) => a.cumulativeTokens ?? a.tokensUsed
-  const agentList = Array.from(agents.values()).filter(a => agentTokens(a) > 0)
-  if (agentList.length === 0) return
-
-  // Compute totals
-  const totalTokens = agentList.reduce((s, a) => s + agentTokens(a), 0)
-
-  // Per-agent breakdown sorted by cost desc
-  const agentBreakdown = agentList
-    .map(a => ({ name: a.name, tokens: agentTokens(a), cost: agentCost(agentTokens(a), a.model) }))
-    .sort((a, b) => b.cost - a.cost)
-  const totalCost = agentBreakdown.reduce((s, a) => s + a.cost, 0)
-
-  // Per-tool-type breakdown, costed at the owning agent's model rate
-  const toolBreakdown = new Map<string, { tokens: number; cost: number }>()
-  for (const [, tc] of toolCalls) {
-    if (tc.tokenCost) {
-      const entry = toolBreakdown.get(tc.toolName) || { tokens: 0, cost: 0 }
-      entry.tokens += tc.tokenCost
-      entry.cost += agentCost(tc.tokenCost, agents.get(tc.agentId)?.model)
-      toolBreakdown.set(tc.toolName, entry)
-    }
-  }
-  const toolList = Array.from(toolBreakdown.entries())
-    .map(([name, { tokens, cost }]) => ({ name, tokens, cost }))
-    .sort((a, b) => b.cost - a.cost)
-
-  // Panel dimensions — positioned top-right
-  const dpr = ctx.canvas.width / ctx.canvas.offsetWidth
-  const canvasW = ctx.canvas.width / dpr
-  const panelW = COST_PANEL.width
-  const panelX = canvasW - panelW - COST_PANEL.xMargin
-  const panelY = COST_PANEL.yStart
-  const lineH = COST_PANEL.lineHeight
-  const headerH = COST_PANEL.headerHeight
-  const sectionGap = COST_PANEL.sectionGap
-  const agentRows = Math.min(agentBreakdown.length, COST_PANEL.maxRows)
-  const toolRows = Math.min(toolList.length, COST_PANEL.maxRows)
-  const panelH = headerH + (agentRows * lineH) + sectionGap + (toolRows > 0 ? 14 + toolRows * lineH : 0) + 12
-
-  ctx.save()
-
-  // Panel background
-  ctx.fillStyle = COLORS.panelBg
-  ctx.strokeStyle = COLORS.glassBorder
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.roundRect(panelX, panelY, panelW, panelH, COST_PANEL.borderRadius)
-  ctx.fill()
-  ctx.stroke()
-
-  let y = panelY + 8
-
-  // Header: total cost
-  ctx.font = 'bold 11px monospace'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'top'
-  ctx.fillStyle = COLORS.costText
-  ctx.fillText(`$${totalCost.toFixed(3)}`, panelX + COST_PANEL.contentPadding, y)
-
-  ctx.font = '9px monospace'
-  ctx.fillStyle = COLORS.textMuted
-  ctx.fillText(`${formatTokens(totalTokens)} tokens`, panelX + COST_PANEL.contentPadding + ctx.measureText(`$${totalCost.toFixed(3)}`).width + 14, y + 2)
-
-  y += headerH
-
-  // Per-agent breakdown
-  const barW = panelW - COST_PANEL.contentPadding * 2
-  for (let i = 0; i < agentRows; i++) {
-    const a = agentBreakdown[i]
-
-    // Mini bar background
-    const ratio = totalCost > 0 ? a.cost / totalCost : 0
-    ctx.fillStyle = COLORS.holoBorder06
-    ctx.beginPath()
-    ctx.roundRect(panelX + COST_PANEL.contentPadding, y + 1, barW, lineH - 3, COST_PANEL.barRadius)
-    ctx.fill()
-
-    // Bar fill
-    ctx.fillStyle = a.name.includes('main') || agentBreakdown.length === 1
-      ? COLORS.barFillMain
-      : COLORS.barFillSub
-    ctx.beginPath()
-    ctx.roundRect(panelX + COST_PANEL.contentPadding, y + 1, barW * ratio, lineH - 3, COST_PANEL.barRadius)
-    ctx.fill()
-
-    // Agent name
-    ctx.font = '8px monospace'
-    ctx.fillStyle = COLORS.textPrimary
-    ctx.textAlign = 'left'
-    ctx.fillText(truncateText(ctx, a.name, barW - 50), panelX + COST_PANEL.contentPadding + COST_PANEL.barInset, y + 3)
-
-    // Cost
-    ctx.textAlign = 'right'
-    ctx.fillStyle = COLORS.costText
-    ctx.fillText(`$${a.cost.toFixed(3)}`, panelX + COST_PANEL.contentPadding + barW - COST_PANEL.barInset, y + 3)
-
-    y += lineH
-  }
-
-  // Per-tool-type breakdown
-  if (toolList.length > 0) {
-    y += sectionGap
-
-    ctx.font = '8px monospace'
-    ctx.fillStyle = COLORS.textMuted
-    ctx.textAlign = 'left'
-    ctx.fillText('BY TOOL', panelX + COST_PANEL.contentPadding, y)
-    y += 14
-
-    for (let i = 0; i < toolRows; i++) {
-      const t = toolList[i]
-      const ratio = totalCost > 0 ? t.cost / totalCost : 0
-
-      // Background
-      ctx.fillStyle = COLORS.panelSeparator
-      ctx.beginPath()
-      ctx.roundRect(panelX + COST_PANEL.contentPadding, y + 1, barW, lineH - 3, COST_PANEL.barRadius)
-      ctx.fill()
-
-      // Fill
-      ctx.fillStyle = toolTypeColor(t.name)
-      ctx.globalAlpha = 0.2
-      ctx.beginPath()
-      ctx.roundRect(panelX + COST_PANEL.contentPadding, y + 1, barW * ratio, lineH - 3, COST_PANEL.barRadius)
-      ctx.fill()
-      ctx.globalAlpha = 1
-
-      // Tool name
-      ctx.font = '8px monospace'
-      ctx.fillStyle = toolTypeColor(t.name)
-      ctx.textAlign = 'left'
-      ctx.fillText(truncateText(ctx, t.name, barW - 50), panelX + COST_PANEL.contentPadding + COST_PANEL.barInset, y + 3)
-
-      // Cost
-      ctx.textAlign = 'right'
-      ctx.fillStyle = COLORS.costTextDim
-      ctx.fillText(`$${t.cost.toFixed(3)}`, panelX + COST_PANEL.contentPadding + barW - COST_PANEL.barInset, y + 3)
-
-      y += lineH
-    }
-  }
-
-  ctx.restore()
 }

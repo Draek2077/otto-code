@@ -145,3 +145,15 @@ to queue-by-default.
 - **Fold-in on ship:** fold the durable "interrupt vs queue" delivery semantics into
   [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md) (turn lifecycle / steering section), then
   delete this folder.
+
+## SDK note — interrupt receipt (added 2026-07-17)
+
+Claude Agent SDK ≥ 0.3.212: `query.interrupt()` resolves to an **interrupt receipt** —
+`{ still_queued: string[] }`, the uuids of async user messages that survive the interrupt and WILL
+still run unless cancelled first (`cancel_async_message` handles individual uuids; see the
+SDK typedoc for coalesced-batch caveats). Availability is feature-detected via the
+`interrupt_receipt_v1` entry in the `system/init` message's `capabilities` array — older CLIs
+resolve `undefined`. The daemon already captures and debug-logs the receipt
+(`provider.claude.interrupt.still_queued` in claude/agent.ts); Phase 1's queue reconciliation
+should consume it on the Claude provider instead of re-deriving queue state, while other
+providers keep the daemon-owned queue as the source of truth.

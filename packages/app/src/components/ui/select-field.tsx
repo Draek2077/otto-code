@@ -5,7 +5,9 @@ import {
   View,
   type NativeSyntheticEvent,
   type PressableStateCallbackType,
+  type StyleProp,
   type TargetedEvent,
+  type ViewStyle,
 } from "react-native";
 import { ChevronDown } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -59,6 +61,10 @@ export interface SelectFieldProps<TValue> {
   getValueKey?: (value: TValue) => string;
   renderOption?: (input: SelectFieldRenderOptionInput<TValue>) => ReactElement;
   triggerLeading?: ReactNode;
+  // Override the trigger's box geometry (e.g. a shorter min-height / tighter
+  // vertical padding for dense toolbars) without changing the shared `size`
+  // presets. Applied last, so it wins over the size style.
+  triggerStyle?: StyleProp<ViewStyle>;
   field?: boolean;
   testID?: string;
   triggerTestID?: string;
@@ -76,6 +82,7 @@ export interface SelectFieldTriggerProps {
   loading?: boolean;
   leading?: ReactNode;
   size?: FieldControlSize;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
@@ -127,6 +134,7 @@ export function SelectFieldTrigger({
   loading = false,
   leading,
   size = "md",
+  style,
   testID,
 }: SelectFieldTriggerProps): ReactElement {
   const sizeStyle = size === "sm" ? styles.triggerSm : styles.triggerMd;
@@ -144,8 +152,9 @@ export function SelectFieldTrigger({
         },
         { hovered, focused, active, disabled },
       ),
+      style,
     ],
-    [active, disabled, focused, hovered, sizeStyle],
+    [active, disabled, focused, hovered, sizeStyle, style],
   );
   const label = explicitLabel ?? display?.label ?? placeholder;
   const isPlaceholder = explicitIsPlaceholder ?? display == null;
@@ -189,6 +198,7 @@ export function SelectField<TValue>({
   getValueKey,
   renderOption,
   triggerLeading,
+  triggerStyle,
   field = true,
   testID,
   triggerTestID,
@@ -310,6 +320,7 @@ export function SelectField<TValue>({
               loading={loading}
               leading={triggerLeading}
               size={size}
+              style={triggerStyle}
             />
           )}
         </Pressable>

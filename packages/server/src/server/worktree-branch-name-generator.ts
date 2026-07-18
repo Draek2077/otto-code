@@ -3,8 +3,8 @@ import type { FirstAgentContext } from "@otto-code/protocol/messages";
 import type { AgentManager } from "./agent/agent-manager.js";
 import {
   StructuredAgentFallbackError,
-  StructuredAgentResponseError,
   generateStructuredAgentResponseWithFallback,
+  isStructuredGenerationFailure,
 } from "./agent/agent-response-loop.js";
 import {
   resolveStructuredGenerationProviders,
@@ -140,7 +140,7 @@ export async function generateBranchNameFromFirstAgentContext(
     const attempts = error instanceof StructuredAgentFallbackError ? error.attempts : undefined;
     options.logger.error(
       { err: error, attempts },
-      error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
+      isStructuredGenerationFailure(error)
         ? "Structured branch name generation failed"
         : "Branch name generation failed",
     );

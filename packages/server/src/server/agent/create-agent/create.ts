@@ -25,6 +25,7 @@ import type {
   ResolvedProviderCreateConfig,
 } from "../provider-snapshot-manager.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
+import type { AgentAutoTitleRequest } from "../agent-auto-title.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { normalizeClientMessageId, resolveClientMessageId } from "../../client-message-id.js";
 import { resolveRequiredProviderModel, type ResolvedProviderModel } from "../mcp-shared.js";
@@ -52,6 +53,10 @@ export interface CreateAgentCommandDependencies {
   createOttoWorktree?: CreateOttoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
+  // Schedules an AI-written short chat title from the first message, off the
+  // create hot path. Absent in contexts that don't wire structured generation
+  // (e.g. tests) — the chat then keeps its provisional first-line title.
+  scheduleAutoTitle?: (request: AgentAutoTitleRequest) => void;
 }
 
 export type EnsureWorkspaceForCreate = (
@@ -165,6 +170,10 @@ interface ResolvedCreateAgent {
   background: boolean;
   promptFailure: CreateAgentPromptFailureMode;
   promptLogger?: Logger;
+  // Present when this chat should get an AI-written title from its first
+  // message. Omitted for internal/utility agents, which never carry a
+  // user-facing title.
+  autoTitle?: Omit<AgentAutoTitleRequest, "agentId">;
 }
 
 export async function createAgentCommand(
@@ -194,6 +203,10 @@ export async function createAgentCommand(
     initialPromptStarted = sendResult.started;
     liveSnapshot = sendResult.liveSnapshot;
     initialPromptError = sendResult.error ?? null;
+  }
+
+  if (resolved.autoTitle && dependencies.scheduleAutoTitle) {
+    dependencies.scheduleAutoTitle({ agentId: snapshot.id, ...resolved.autoTitle });
   }
 
   if (input.kind === "mcp" && input.notifyOnFinish && input.callerAgentId && initialPromptStarted) {
@@ -258,6 +271,16 @@ async function resolveSessionCreateAgent(
     promptLogger: dependencies.logger.child({
       clientMessageId: resolveClientMessageId(input.clientMessageId),
     }),
+    // Auto-name only a normal new chat: skip when the caller pinned an explicit
+    // title or the agent is internal (its title is a fixed utility label).
+    autoTitle:
+      hasPromptContent && !input.config.title && !input.config.internal
+        ? {
+            cwd: sessionConfig.cwd,
+            firstAgentContext: input.firstAgentContext,
+            provisionalTitle: input.provisionalTitle,
+          }
+        : undefined,
   };
 }
 
@@ -303,6 +326,13 @@ async function resolveMcpCreateAgent(
   });
 
   const trimmedPrompt = input.initialPrompt?.trim() ?? "";
+  // Only auto-name when the caller left the title blank: an explicit MCP/caller
+  // title (a spawned subagent's task name, an orchestration phase, …) must win.
+  const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
+    configTitle: input.config?.title ?? input.title,
+    initialPrompt: trimmedPrompt,
+  });
+  const isInternal = input.internal ?? input.config?.internal ?? false;
   return {
     config: buildMcpSessionConfig({
       input,
@@ -322,6 +352,14 @@ async function resolveMcpCreateAgent(
     setupContinuation,
     background: input.background,
     promptFailure: input.promptFailure ?? "log",
+    autoTitle:
+      trimmedPrompt && !explicitTitle && !isInternal
+        ? {
+            cwd: resolvedCwd,
+            firstAgentContext: { prompt: trimmedPrompt },
+            provisionalTitle,
+          }
+        : undefined,
   };
 }
 

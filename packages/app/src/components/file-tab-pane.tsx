@@ -17,10 +17,11 @@ import {
   WrapText,
   X,
 } from "@/components/icons/material-icons";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { createControlGeometry } from "@/components/ui/control-geometry";
+import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
+import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
+import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { CodeEditor } from "@/editor/code-editor";
@@ -83,9 +84,6 @@ const SPLIT_DOC_SYNC_DEBOUNCE_MS = 250;
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-const foregroundIconColorMapping = (theme: Theme) => ({
-  color: theme.colors.foreground,
-});
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
 const ThemedSave = withUnistyles(Save);
@@ -142,62 +140,6 @@ const INITIAL_FIND_STATE: FindStripState = {
   regexp: false,
   replaceOpen: false,
 };
-
-// Icon-only toolbar button with a tooltip carrying its label (the
-// file-view-mode-bar pattern). `loading` swaps the glyph for a spinner.
-function ToolbarIconButton({
-  label,
-  testID,
-  Icon,
-  onPress,
-  disabled = false,
-  selected = false,
-  loading = false,
-}: {
-  label: string;
-  testID: string;
-  Icon: typeof ThemedSave;
-  onPress: () => void;
-  disabled?: boolean;
-  selected?: boolean;
-  loading?: boolean;
-}) {
-  const buttonStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.iconButton,
-      !disabled && (Boolean(hovered) || pressed) && styles.iconButtonActive,
-      selected && styles.iconButtonSelected,
-      disabled && styles.iconButtonDisabled,
-    ],
-    [disabled, selected],
-  );
-  const accessibilityState = useMemo(() => ({ disabled, selected }), [disabled, selected]);
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={accessibilityState}
-        testID={testID}
-        onPress={onPress}
-        disabled={disabled || loading}
-        style={buttonStyle}
-      >
-        {loading ? (
-          <ThemedLoadingSpinner size={16} uniProps={foregroundMutedIconColorMapping} />
-        ) : (
-          <Icon
-            size={16}
-            uniProps={selected ? foregroundIconColorMapping : foregroundMutedIconColorMapping}
-          />
-        )}
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 function FindToggle({
   label,
@@ -922,6 +864,7 @@ function EditorModeView({
           onPress={toggleWordWrap}
           selected={wordWrap}
         />
+        <ToolbarSeparator />
         {hasCodeIndex ? (
           <ToolbarIconButton
             label={t("codeOutline.open")}
@@ -1218,11 +1161,6 @@ function OutOfProjectBanner({ projectName }: { projectName: string | null }) {
 }
 
 const styles = StyleSheet.create((theme) => {
-  // Keep the preview toolbar at button height even when the mode bar is
-  // hidden (images, binaries, loading) so the chrome doesn't jump.
-  const buttonHeight = createControlGeometry(theme).buttonSm.minHeight;
-  const toolbarPadding = theme.spacing[1] * 2;
-
   return {
     container: {
       flex: 1,
@@ -1269,6 +1207,9 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[2],
       paddingHorizontal: theme.spacing[2],
       paddingVertical: theme.spacing[1],
+      // Pinned so every pane toolbar (this, the preview variant below, and the
+      // visualizer bar) shares one height and lines up across a split.
+      minHeight: PANE_TOOLBAR_HEIGHT,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
     },
@@ -1278,7 +1219,9 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[2],
       paddingHorizontal: theme.spacing[2],
       paddingVertical: theme.spacing[1],
-      minHeight: buttonHeight + toolbarPadding,
+      // Keep the preview toolbar at full height even when the mode bar is
+      // hidden (images, binaries, loading) so the chrome doesn't jump.
+      minHeight: PANE_TOOLBAR_HEIGHT,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
     },
@@ -1291,16 +1234,6 @@ const styles = StyleSheet.create((theme) => {
     },
     iconButtonActive: {
       backgroundColor: theme.colors.surfaceHover,
-    },
-    iconButtonSelected: {
-      backgroundColor: theme.colors.surface2,
-    },
-    iconButtonDisabled: {
-      opacity: 0.4,
-    },
-    tooltipText: {
-      color: theme.colors.foreground,
-      fontSize: theme.fontSize.sm,
     },
     findStrip: {
       gap: theme.spacing[1],

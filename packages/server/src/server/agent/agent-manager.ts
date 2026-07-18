@@ -68,6 +68,7 @@ import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
+import { estimateContextComposition } from "./context-composition.js";
 import type {
   AgentTimelineFetchOptions,
   AgentTimelineFetchResult,
@@ -1250,6 +1251,40 @@ export class AgentManager {
       this.requireAgent(id);
     }
     return this.timelineStore.getItems(id);
+  }
+
+  /**
+   * Attach an estimated context-window composition (derived from the agent's
+   * own timeline) to a usage reading, powering the visualizer's context ring/bar
+   * segments. Real daemon-side accounting, provider-neutral (see
+   * context-composition.ts). Skipped when the provider already supplied a
+   * composition directly, or the timeline isn't available yet. This scans the
+   * whole timeline — call it at turn boundaries, not on every streaming delta
+   * (see `carryContextComposition`).
+   */
+  private withContextComposition(
+    agentId: string,
+    usage: AgentUsage | undefined,
+  ): AgentUsage | undefined {
+    if (!usage || usage.contextComposition || !this.timelineStore.has(agentId)) {
+      return usage;
+    }
+    const composition = estimateContextComposition(this.timelineStore.getItems(agentId));
+    return composition ? { ...usage, contextComposition: composition } : usage;
+  }
+
+  /**
+   * Per-delta path: carry the previous reading's composition onto a fresh usage
+   * event so the ring's segments stay put between turns instead of blinking off
+   * on every streaming `usage_updated` (recomputing each delta would rescan the
+   * whole timeline). The total occupancy still updates live; the composition
+   * refreshes at the next turn boundary via `withContextComposition`.
+   */
+  private carryContextComposition(previous: AgentUsage | undefined, usage: AgentUsage): AgentUsage {
+    if (usage.contextComposition || !previous?.contextComposition) {
+      return usage;
+    }
+    return { ...usage, contextComposition: previous.contextComposition };
   }
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
@@ -3889,7 +3924,7 @@ export class AgentManager {
         this.onStreamThreadStarted(agent);
         return undefined;
       case "usage_updated":
-        agent.lastUsage = event.usage;
+        agent.lastUsage = this.carryContextComposition(agent.lastUsage, event.usage);
         this.emitState(agent);
         return undefined;
       case "mode_changed":
@@ -4038,7 +4073,7 @@ export class AgentManager {
       },
       "agent.manager.turn.completed",
     );
-    agent.lastUsage = event.usage;
+    agent.lastUsage = this.withContextComposition(agent.id, event.usage);
     agent.cumulativeTokens = accumulateAgentTokens(
       agent.cumulativeTokens,
       event.usage,

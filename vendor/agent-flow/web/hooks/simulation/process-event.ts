@@ -7,7 +7,7 @@ import {
   type TimelineBlock,
 } from '@/lib/agent-types'
 import type { SimulationState, ConversationMessage } from './types'
-import { handleAgentSpawn, handleAgentComplete, handleAgentIdle, handlePermissionRequested, handleModelDetected } from './handle-agent-events'
+import { handleAgentSpawn, handleAgentRename, handleAgentComplete, handleAgentIdle, handlePermissionRequested, handleModelDetected } from './handle-agent-events'
 import { handleToolCallStart, handleToolCallEnd } from './handle-tool-events'
 import { handleMessage, handleContextUpdate } from './handle-message-events'
 import { handleSubagentDispatch, handleSubagentReturn } from './handle-subagent-events'
@@ -72,6 +72,7 @@ export function processEvent(event: SimulationEvent, prev: SimulationState, ctx:
 
       switch (event.type) {
         case 'agent_spawn':       handleAgentSpawn(event.payload, prev.currentTime, state, ctx); break
+        case 'agent_rename':      handleAgentRename(event.payload, state); break
         case 'agent_complete':    handleAgentComplete(event.payload, prev.currentTime, state, ctx); break
         case 'agent_idle':        handleAgentIdle(event.payload, state); break
         case 'model_detected':    handleModelDetected(event.payload, state, ctx); break

@@ -29,6 +29,10 @@ class FakeImage implements TabImage {
   public getSize(): { width: number; height: number } {
     return this.size;
   }
+
+  public resize(options: { width: number; height: number }): TabImage {
+    return new FakeImage(this.bytes, { width: options.width, height: options.height });
+  }
 }
 
 class FakeTab implements TabContents {
@@ -52,6 +56,9 @@ class FakeTab implements TabContents {
   }> = [];
   public actionScriptResult: unknown = true;
   public inspectScriptResult: unknown = null;
+  public viewportMetricsResult: unknown = null;
+  public elementRectResult: unknown = null;
+  public captureSize = { width: 640, height: 480 };
   public capturedNetworkRequests: CapturedNetworkRequest[] = [];
   public networkBodies: Record<string, { body: string; base64Encoded: boolean }> = {};
   public networkCaptureStarts = 0;
@@ -117,6 +124,12 @@ class FakeTab implements TabContents {
 
   public async executeJavaScript(code: string): Promise<unknown> {
     this.scripts.push(code);
+    if (code.includes("__OTTO_VIEWPORT_METRICS__")) {
+      return this.viewportMetricsResult;
+    }
+    if (code.includes("__OTTO_ELEMENT_RECT__")) {
+      return this.elementRectResult;
+    }
     if (code.includes("document.body.innerText")) {
       return this.bodyText;
     }
@@ -185,7 +198,7 @@ class FakeTab implements TabContents {
         this.deferredCaptures.push(resolve);
       });
     }
-    return new FakeImage();
+    return new FakeImage(undefined, this.captureSize);
   }
 
   public invalidate(): void {
@@ -1813,6 +1826,245 @@ describe("executeAutomationCommand", () => {
       "debug:Page.getLayoutMetrics",
       "debug:Page.captureScreenshot",
     ]);
+  });
+
+  test("screenshot normalizes a high-DPR capture back to CSS pixels", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.viewportMetricsResult = { cssWidth: 320, cssHeight: 240 };
+    browser.tab.captureSize = { width: 640, height: 480 };
+
+    const result = await browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A },
+    });
+
+    expect(result).toMatchObject({
+      requestId: "req-screenshot",
+      ok: true,
+      result: {
+        command: "screenshot",
+        browserId: BROWSER_A,
+        mimeType: "image/png",
+        width: 320,
+        height: 240,
+      },
+    });
+    if (!result.ok || result.result.command !== "screenshot") {
+      throw new Error("Expected screenshot result");
+    }
+    expect(result.result.scale).toBeUndefined();
+  });
+
+  test("screenshot scales an oversized viewport down to the legibility budget", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.viewportMetricsResult = { cssWidth: 2000, cssHeight: 500 };
+    browser.tab.captureSize = { width: 2000, height: 500 };
+
+    const result = await browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        command: "screenshot",
+        width: 1568,
+        height: 392,
+        scale: 0.784,
+      },
+    });
+  });
+
+  test("screenshot with fullPage renders tall pages at reduced scale and reports it", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.layoutMetrics = {
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssContentSize: { width: 800, height: 8000 },
+    };
+
+    const result = await browser.execute({
+      command: "screenshot",
+      args: { browserId: BROWSER_A, fullPage: true },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        command: "screenshot",
+        width: 157,
+        height: 1568,
+        scale: 0.196,
+      },
+    });
+    const capture = browser.tab.debugCommands.find(
+      (entry) => entry.command === "Page.captureScreenshot",
+    );
+    expect(capture?.params).toEqual({
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width: 800, height: 8000, scale: 0.196 },
+    });
+  });
+
+  test("screenshot_element re-renders the element clip zoomed to the budget", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.snapshotNodes = formElements();
+    requireSnapshotRefs(await browser.snapshot());
+    browser.tab.elementRectResult = { x: 100, y: 50, width: 200, height: 100 };
+
+    const result = await browser.execute({
+      command: "screenshot_element",
+      args: { browserId: BROWSER_A, ref: "@e1" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-screenshot_element",
+      ok: true,
+      result: {
+        command: "screenshot_element",
+        browserId: BROWSER_A,
+        ref: "@e1",
+        mimeType: "image/png",
+        dataBase64: "fullPagePng",
+        width: 648,
+        height: 348,
+        scale: 3,
+      },
+    });
+    const capture = browser.tab.debugCommands.find(
+      (entry) => entry.command === "Page.captureScreenshot",
+    );
+    expect(capture?.params).toEqual({
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 92, y: 42, width: 216, height: 116, scale: 3 },
+    });
+  });
+
+  test("screenshot_element returns stale_ref for an unknown ref", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "screenshot_element",
+      args: { browserId: BROWSER_A, ref: "@e9" },
+    });
+
+    expect(result).toMatchObject({
+      requestId: "req-screenshot_element",
+      ok: false,
+      error: { code: "browser_stale_ref" },
+    });
+  });
+
+  test("page_text extracts reader-mode text with source and truncation metadata", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.actionScriptResult = JSON.stringify({
+      source: "article",
+      text: "Reader text",
+      truncated: false,
+    });
+
+    const result = await browser.execute({
+      command: "page_text",
+      args: { browserId: BROWSER_A, maxChars: 20_000 },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-page_text",
+      ok: true,
+      result: {
+        command: "page_text",
+        browserId: BROWSER_A,
+        url: "https://a.test/form",
+        title: "Fixture",
+        source: "article",
+        text: "Reader text",
+        truncated: false,
+      },
+    });
+    expect(browser.tab.scripts.at(-1)).toContain("20000");
+  });
+
+  test("page_text fails cleanly on an unexpected script result", async () => {
+    const browser = new BrowserAutomationHarness();
+    browser.tab.actionScriptResult = 42;
+
+    const result = await browser.execute({
+      command: "page_text",
+      args: { browserId: BROWSER_A, maxChars: 20_000 },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-page_text",
+      ok: false,
+      error: {
+        code: "browser_unknown_error",
+        message: "page_text returned an unexpected result",
+        retryable: false,
+      },
+    });
+  });
+
+  test("set_color_scheme emulates prefers-color-scheme over CDP", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "set_color_scheme",
+      args: { browserId: BROWSER_A, colorScheme: "dark" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-set_color_scheme",
+      ok: true,
+      result: { command: "set_color_scheme", browserId: BROWSER_A, colorScheme: "dark" },
+    });
+    expect(browser.tab.debugCommands).toEqual([
+      {
+        command: "Emulation.setEmulatedMedia",
+        params: { features: [{ name: "prefers-color-scheme", value: "dark" }] },
+      },
+    ]);
+  });
+
+  test("set_color_scheme auto clears the emulated preference", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "set_color_scheme",
+      args: { browserId: BROWSER_A, colorScheme: "auto" },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-set_color_scheme",
+      ok: true,
+      result: { command: "set_color_scheme", browserId: BROWSER_A, colorScheme: "auto" },
+    });
+    expect(browser.tab.debugCommands).toEqual([
+      {
+        command: "Emulation.setEmulatedMedia",
+        params: { features: [{ name: "prefers-color-scheme", value: "" }] },
+      },
+    ]);
+  });
+
+  test("focus_tab is delegated to the app runtime", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const result = await browser.execute({
+      command: "focus_tab",
+      args: { browserId: BROWSER_A },
+    });
+
+    expect(result).toEqual({
+      requestId: "req-focus_tab",
+      ok: false,
+      error: {
+        code: "browser_unsupported",
+        message: "browser_focus_tab is handled by the app runtime.",
+        retryable: false,
+      },
+    });
   });
 
   test("screenshot with fullPage retries UnknownVizError until the first CDP frame appears", async () => {

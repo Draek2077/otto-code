@@ -724,9 +724,24 @@ function detachTabFromTree(
     return { root, tab: null, sourcePaneId: paneNode.pane.id };
   }
 
+  // When the tab being detached is the source pane's focused tab, hand focus to
+  // the adjacent tab (prefer the one before it, else the one after) rather than
+  // letting normalizePaneAfterTabChange fall back to the last tab in the set.
+  // This keeps splits/moves from yanking the source pane's selection to the end
+  // — e.g. opening the Visualizer inserts its tab after the focused one and then
+  // splits it out; focus should return to the tab that was focused before.
+  const remainingTabs = paneNode.pane.tabs.filter((entry) => entry.tabId !== input.tabId);
+  let nextFocusedTabId = paneNode.pane.focusedTabId;
+  if (paneNode.pane.focusedTabId === input.tabId) {
+    const detachedIndex = paneNode.pane.tabs.findIndex((entry) => entry.tabId === input.tabId);
+    nextFocusedTabId =
+      remainingTabs[detachedIndex - 1]?.tabId ?? remainingTabs[detachedIndex]?.tabId ?? null;
+  }
+
   const nextPane = normalizePaneAfterTabChange({
     ...paneNode.pane,
-    tabs: paneNode.pane.tabs.filter((entry) => entry.tabId !== input.tabId),
+    tabs: remainingTabs,
+    focusedTabId: nextFocusedTabId,
   });
 
   const nextRoot = replaceNodeAtPath(root, panePath, () => ({ kind: "pane", pane: nextPane }));

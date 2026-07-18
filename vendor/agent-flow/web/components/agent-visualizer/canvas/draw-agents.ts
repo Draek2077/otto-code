@@ -3,9 +3,29 @@ import { COLORS, getStateColor, contextSegments } from '@/lib/colors'
 import {
   AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY,
 } from '@/lib/canvas-constants'
-import { alphaHex, formatTokens } from '@/lib/utils'
+import { alphaHex, formatTokens, mixHex } from '@/lib/utils'
 import { truncateText, drawNodeShape, CLAUDE_SPARK_D, OPENAI_LOGO_D, OPENAI_LOGO_VIEWBOX } from './draw-misc'
 import { getAgentGlowSprite } from './render-cache'
+
+// OTTO PATCH (OTTO-PATCHES.md): stable per-node phase in [0, 1), hashed from the
+// agent id. Periodic node animations (scanline sweep, orbiting dots) add this as
+// a phase offset so each node runs on its own timing instead of every node moving
+// in lockstep. Keyed off the id (not spawnTime) so nodes dispatched in the same
+// frame — a parent and its subagents — still desync. Cached because it's queried
+// every frame for every node.
+const _nodePhaseCache = new Map<string, number>()
+function nodePhase(id: string): number {
+  const cached = _nodePhaseCache.get(id)
+  if (cached !== undefined) return cached
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  const phase = ((h >>> 0) % 10000) / 10000
+  _nodePhaseCache.set(id, phase)
+  return phase
+}
 
 let _claudeSparkPath: Path2D | null = null
 export function getClaudeSparkPath() {
@@ -202,12 +222,18 @@ function drawDepthShadow(ctx: CanvasRenderingContext2D, agent: Agent, r: number,
   ctx.restore()
 }
 
-function drawAgentGlow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean, shape: NodeShape) {
-  const glowR = r + AGENT_DRAW.glowPadding
-  const glowAlpha = isHovered || isSelected ? 0.35 : isWaiting ? 0.3 : agent.state === 'thinking' ? 0.2 : 0.1
-  // Pre-rendered glow sprite instead of per-frame gradient creation
-  const sprite = getAgentGlowSprite(color, Math.round(r * 0.5), Math.ceil(glowR), alphaHex(glowAlpha))
-  ctx.drawImage(sprite, agent.x - Math.ceil(glowR), agent.y - Math.ceil(glowR))
+function drawAgentGlow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isSelected: boolean, isWaiting: boolean, shape: NodeShape, fill: { a: string; b: string } | null, showGlow: boolean) {
+  // OTTO PATCH: the soft radial halo ("glow on things") is the host-toggleable
+  // per-node glow (config.render.nodeGlow). Only the halo sprite is gated — the
+  // ambient outer ring and the node-body fill below always draw, so a node with
+  // glow off still renders fully, just without the surrounding bloom-like halo.
+  if (showGlow) {
+    const glowR = r + AGENT_DRAW.glowPadding
+    const glowAlpha = isHovered || isSelected ? 0.35 : isWaiting ? 0.3 : agent.state === 'thinking' ? 0.2 : 0.1
+    // Pre-rendered glow sprite instead of per-frame gradient creation
+    const sprite = getAgentGlowSprite(color, Math.round(r * 0.5), Math.ceil(glowR), alphaHex(glowAlpha))
+    ctx.drawImage(sprite, agent.x - Math.ceil(glowR), agent.y - Math.ceil(glowR))
+  }
 
   // Ambient outer ring
   drawNodeShape(ctx, agent.x, agent.y, r + AGENT_DRAW.outerRingOffset, shape)
@@ -215,15 +241,56 @@ function drawAgentGlow(ctx: CanvasRenderingContext2D, agent: Agent, r: number, c
   ctx.lineWidth = 1
   ctx.stroke()
 
-  // Inner fill
-  drawNodeShape(ctx, agent.x, agent.y, r, shape)
-  ctx.fillStyle = COLORS.nodeInterior
-  ctx.fill()
+  // Inner fill. OTTO PATCH (OTTO-PATCHES.md): a personality-backed node in its
+  // idle/thinking state fills with a top→bottom gradient of the personality's
+  // two identity colors (already muted/vivid by resolveNodeAppearance);
+  // everything else keeps the neutral dark interior. The gradient is cached and
+  // origin-centered (drawn under a translate) so the steady state allocates no
+  // CanvasGradient per node per frame.
+  if (fill) {
+    ctx.save()
+    ctx.translate(agent.x, agent.y)
+    drawNodeShape(ctx, 0, 0, r, shape)
+    ctx.fillStyle = getPersonaFillGradient(ctx, fill, r)
+    ctx.fill()
+    ctx.restore()
+  } else {
+    drawNodeShape(ctx, agent.x, agent.y, r, shape)
+    ctx.fillStyle = COLORS.nodeInterior
+    ctx.fill()
+  }
+}
+
+// OTTO PATCH: persona fill gradients keyed by color pair + quantized radius.
+// The node radius breathes by fractions of a pixel each frame; quantizing to
+// half-pixel buckets keeps the cache tiny while the gradient endpoints stay
+// visually indistinguishable from the exact radius. CanvasGradient objects are
+// context-independent, so one cache serves every draw.
+const personaFillGradientCache = new Map<string, CanvasGradient>()
+
+function getPersonaFillGradient(ctx: CanvasRenderingContext2D, fill: { a: string; b: string }, r: number): CanvasGradient {
+  const qr = Math.round(r * 2) / 2
+  const key = `${fill.a}|${fill.b}|${qr}`
+  let grad = personaFillGradientCache.get(key)
+  if (!grad) {
+    if (personaFillGradientCache.size > 256) personaFillGradientCache.clear()
+    grad = ctx.createLinearGradient(0, -qr, 0, qr)
+    grad.addColorStop(0, fill.a)
+    grad.addColorStop(1, fill.b)
+    personaFillGradientCache.set(key, grad)
+  }
+  return grad
 }
 
 function drawScanline(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, isHovered: boolean, isWaiting: boolean, time: number, shape: NodeShape) {
-  const scanSpeed = agent.state === 'thinking' || isHovered || isWaiting ? ANIM.scanline.thinking : ANIM.scanline.normal
-  const scanY = agent.y - r + ((time * scanSpeed) % (r * 2))
+  const baseScanSpeed = agent.state === 'thinking' || isHovered || isWaiting ? ANIM.scanline.thinking : ANIM.scanline.normal
+  // OTTO PATCH: per-node phase AND per-node speed so each node's scanline runs on
+  // its own timing. Phase (in px over the r*2 sweep) shifts where the line starts;
+  // the speed jitter (±25%, hashed from the id) makes the up/down cadence itself
+  // differ, so nodes drift apart over time instead of sweeping in lockstep.
+  const phase = nodePhase(agent.id)
+  const scanSpeed = baseScanSpeed * (0.75 + nodePhase(agent.id + '~') * 0.5)
+  const scanY = agent.y - r + ((time * scanSpeed + phase * r * 2) % (r * 2))
   ctx.save()
   drawNodeShape(ctx, agent.x, agent.y, r, shape)
   ctx.clip()
@@ -283,8 +350,11 @@ function drawCenterIcon(ctx: CanvasRenderingContext2D, agent: Agent, r: number, 
 }
 
 function drawOrbitingParticles(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, time: number) {
+  // OTTO PATCH: per-node angular phase so each node's dots orbit on their own
+  // timing instead of every node's ring being rotationally in sync.
+  const phaseAngle = nodePhase(agent.id) * Math.PI * 2
   for (let i = 0; i < 4; i++) {
-    const angle = time * ANIM.orbitSpeed + (i / 4) * Math.PI * 2
+    const angle = time * ANIM.orbitSpeed + (i / 4) * Math.PI * 2 + phaseAngle
     ctx.beginPath()
     ctx.fillStyle = color + '80'
     ctx.arc(
@@ -297,9 +367,12 @@ function drawOrbitingParticles(ctx: CanvasRenderingContext2D, agent: Agent, r: n
 }
 
 function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: number, color: string, time: number, shape: NodeShape) {
+  // OTTO PATCH: per-node phase so waiting ripples/dots run on their own timing.
+  const phase = nodePhase(agent.id)
+  const phaseAngle = phase * Math.PI * 2
   // Radar ripples — 2 concentric rings expanding outward, staggered
   for (let i = 0; i < 2; i++) {
-    const ripplePhase = ((time * 0.65 + i * 0.5) % 1.0)
+    const ripplePhase = ((time * 0.65 + i * 0.5 + phase) % 1.0)
     const rippleR = r + AGENT_DRAW.rippleInnerOffset + ripplePhase * AGENT_DRAW.rippleMaxExpand
     const rippleAlpha = (1 - ripplePhase) * AGENT_DRAW.rippleMaxAlpha
     drawNodeShape(ctx, agent.x, agent.y, rippleR, shape)
@@ -310,7 +383,7 @@ function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: numb
 
   // Slower orbiting particles in amber
   for (let i = 0; i < 3; i++) {
-    const angle = time * AGENT_DRAW.waitingOrbitSpeed + (i / 3) * Math.PI * 2
+    const angle = time * AGENT_DRAW.waitingOrbitSpeed + (i / 3) * Math.PI * 2 + phaseAngle
     ctx.beginPath()
     ctx.fillStyle = color + '70'
     ctx.arc(
@@ -332,7 +405,9 @@ function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, labelR: num
   ctx.font = '10px monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  const maxLabelW = labelR * AGENT_DRAW.labelWidthMultiplier
+  // OTTO PATCH (see OTTO-PATCHES.md): per-tier multiplier so sub-agent labels
+  // aren't disproportionately short just because their radius is smaller.
+  const maxLabelW = labelR * (agent.isMain ? AGENT_DRAW.labelWidthMultiplier : AGENT_DRAW.labelWidthMultiplierSub)
   const agentLabel = truncateText(ctx, agent.name, maxLabelW)
   ctx.fillText(agentLabel, agent.x, agent.y + labelR + AGENT_DRAW.labelYOffset)
 }
@@ -353,6 +428,42 @@ function drawStatsOverlay(ctx: CanvasRenderingContext2D, agent: Agent, r: number
   ctx.fillText(`${agent.toolCalls} tools \u00B7 ${agent.timeAlive.toFixed(1)}s`, agent.x, sy + STATS_OVERLAY.textPaddingY)
 }
 
+/** OTTO PATCH (OTTO-PATCHES.md): resolve a node's accent color (border/glow/
+ *  scanline/brand glyph) and interior fill. A personality-backed agent
+ *  (`agent.personaColor` set) tints ONLY its idle and thinking states in the
+ *  personality's identity colors — muted when idle, vivid when thinking — so it
+ *  reads as that personality without hiding activity. Every other state
+ *  (tool_calling, waiting_permission, complete, error), and every agent with no
+ *  personality, keeps the theme's state color and the neutral dark interior. */
+function resolveNodeAppearance(agent: Agent): NodeAppearance {
+  const persona = agent.personaColor
+  if (persona && (agent.state === 'thinking' || agent.state === 'idle')) {
+    const key = `${persona.a}|${persona.b}|${agent.state}`
+    let cached = appearanceCache.get(key)
+    if (!cached) {
+      if (appearanceCache.size > 256) appearanceCache.clear()
+      cached = agent.state === 'thinking'
+        ? {
+            accent: mixHex(persona.a, '#ffffff', 0.12),
+            fill: { a: mixHex(persona.a, '#000000', 0.66), b: mixHex(persona.b, '#000000', 0.66) },
+          }
+        : {
+            accent: mixHex(persona.a, '#3a3b40', 0.5),
+            fill: { a: mixHex(persona.a, '#000000', 0.8), b: mixHex(persona.b, '#000000', 0.8) },
+          }
+      appearanceCache.set(key, cached)
+    }
+    return cached
+  }
+  return { accent: getStateColor(agent.state), fill: null }
+}
+
+// OTTO PATCH: the tints above are pure in (persona colors, state) and idle/
+// thinking is the steady state, so memoize them — mixHex re-parses and
+// re-formats hex strings on every call, which is pure churn at 60fps.
+interface NodeAppearance { accent: string; fill: { a: string; b: string } | null }
+const appearanceCache = new Map<string, NodeAppearance>()
+
 export function drawAgents(
   ctx: CanvasRenderingContext2D,
   agents: Map<string, Agent>,
@@ -362,10 +473,13 @@ export function drawAgents(
   time: number,
   // OTTO PATCH: host-selected node silhouette (defaults to the historical hex).
   shape: NodeShape = 'hexagon',
+  // OTTO PATCH: host toggle for the per-node glow halo sprite (config.render
+  // .nodeGlow). Defaults on; gates only the soft halo, not the node body/ring.
+  showNodeGlow: boolean = true,
 ) {
   for (const [id, agent] of agents) {
     const radius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
-    const color = getStateColor(agent.state)
+    const { accent: color, fill } = resolveNodeAppearance(agent)
     const isHovered = id === hoveredAgentId
     const isSelected = id === selectedAgentId
 
@@ -387,7 +501,7 @@ export function drawAgents(
     ctx.globalAlpha = agent.opacity
 
     drawDepthShadow(ctx, agent, r, shape)
-    drawAgentGlow(ctx, agent, r, color, isHovered, isSelected, isWaiting, shape)
+    drawAgentGlow(ctx, agent, r, color, isHovered, isSelected, isWaiting, shape, fill, showNodeGlow)
     drawScanline(ctx, agent, r, color, isHovered, isWaiting, time, shape)
     drawStateRing(ctx, agent, r, color, isHovered, isSelected, isWaiting, time, shape)
     drawCenterIcon(ctx, agent, r, color, isWaiting)

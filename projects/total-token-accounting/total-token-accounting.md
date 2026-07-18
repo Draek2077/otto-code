@@ -1,9 +1,69 @@
 # Charter: Total token accounting — one honest number per chat
 
-**Status:** Not started — charter drafted 2026-07-16.
+**Status:** Deep-dive audit in progress — charter drafted 2026-07-16, audit findings added 2026-07-17.
 **Lineage:** Builds on the universal `cumulativeTokens` accumulator (shipped 2026-07-13, any
 provider/spawn path — see [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md)) and the subagents
 track's per-row/header token readouts.
+
+## 2026-07-17 audit — why the numbers feel wrong (they mostly are)
+
+Live-audited this exact session (agent `99ea86a`, "Evening check-in") against the daemon's real
+`get_agent_status` snapshot rather than trusting the display. Confirmed the visualizer's number is
+**not lying about the accumulator** — `cumulativeTokens: 1,287,817` matched the displayed "1.3M"
+essentially exactly, and $7.7 ≈ 1,287,817 × the hardcoded $6/M blended Sonnet rate. The problem is
+what the accumulator and the rate both **mean**, not arithmetic. Four independent, stacking sources
+of distortion, found by tracing `accumulateAgentTokens` in `agent-manager.ts` and the rate table in
+`vendor/agent-flow/web/lib/canvas-constants.ts`:
+
+1. **`cumulativeTokens` sums resent context, not distinct spend.** The Messages API is stateless —
+   every turn resends the _entire_ conversation so far as input. `accumulateAgentTokens` does
+   `existing + turnTokens` every turn (`agent-manager.ts:488-501`), so a long chat's total isn't "how
+   much this chat cost," it's "how many tokens got reprocessed across every resend of an
+   ever-growing prefix." A chat that loads one big document early (this session loaded the entire
+   `claude-api` skill, tens of thousands of tokens) pays for that document again on every subsequent
+   turn, compounding fast with no ceiling — the number never goes down (no compaction ran this
+   session).
+2. **One logical "turn" can be many billed round-trips.** A single user message that triggers several
+   sequential tool/MCP calls is _several_ separate API requests, each resending the full (growing)
+   context independently. Confirmed empirically: one reply that made 4 tool calls (`ToolSearch`,
+   `list_agents`, `get_agent_activity`, `get_agent_status`) jumped the total from 1.3M → 4.2M tokens
+   (+2.9M) in that single exchange — partly because one tool result (`get_agent_activity`) quoted
+   most of the conversation back into context as a JSON blob, inflating every subsequent resend in
+   the same turn. Tool-heavy turns spike the total far harder than plain conversational turns, for
+   reasons invisible to the user.
+3. **The accumulator discards the input/cached/output split before it's ever priced.**
+   `sumTurnUsageTokens(usage)` collapses a turn's usage to one scalar before `accumulateAgentTokens`
+   adds it in — the breakdown needed to price cache reads at their ~10%-of-input rate exists on
+   `lastUsage` for the _current_ turn only and is thrown away historically. The $/M rate is then
+   applied to the flattened total as if every token were fresh input/output at full price. For a
+   session shaped like this one (one large stable prefix, small per-turn deltas — exactly what
+   prompt caching is for), the true cost is very plausibly a third or less of the displayed figure.
+4. **The rate table itself is stale against live list pricing.** Separately verified (same session):
+   `canvas-constants.ts`'s hardcoded blended rates (`0.75×input + 0.25×output`) matched Anthropic's
+   published list price for Fable 5, Opus 4.6/4.7/4.8, and Haiku 4.5 exactly, but Sonnet 5 currently
+   ships with a temporary intro discount ($2/$10 vs list $3/$15, through 2026-08-31) that the
+   hardcoded `6` doesn't reflect — a further ~1.5x overstatement on top of (3).
+
+**Net effect:** the displayed $ figure is compounding three multiplicative overestimates (stale rate,
+no cache-discount accounting, no distinct-vs-resent token distinction) on top of a token _count_ that
+already means something other than what the label implies. None of this is a display glitch — every
+number is computed exactly as designed; the design just isn't answering "what did this chat cost."
+
+**Full deep-dive scope (this pass), building on the design sketch below:**
+
+- Confirm whether Claude Code's own reported per-turn `usage` (the thing `sumTurnUsageTokens` reads)
+  is _itself_ the full resent-context count, or something smaller — trace it back to the SDK/CLI
+  event that populates `event.usage` in `agent.ts` before assuming (2) generalizes to every provider.
+- Decide the right _distinct_ metric: likely "tokens billed this session" needs either (a) per-turn
+  cache-aware cost computed and summed at accumulation time (before the split is discarded), or (b)
+  giving up on a derived $ figure client-side entirely per the open question below.
+- Check whether other providers (Codex, ACP, OpenCode, openai-compat, Pi) have the same resend-sum
+  behavior or something saner — Pi is already special-cased (`Math.max`, since its own stat is a
+  lifetime total) per `accumulateAgentTokens`'s doc comment; audit the others before assuming Claude's
+  shape is universal.
+- Prototype a corrected per-turn cost calc: `cost = input_tokens × rate_in + cached_input_tokens ×
+rate_in × 0.1 + output_tokens × rate_out`, summed at the point usage is first observed (not after
+  flattening), and compare against today's number on a real long session to quantify the gap.
 
 ## The report
 
@@ -63,7 +123,15 @@ descendants.cumulativeTokens` (walk `parentAgentId`, both observed and attended 
 - Is the in/out split worth a protocol addition, or is one total enough? (User literally said "TOTAL
   token in and out" — ask.)
 - Should the visualizer's `~$` cost estimate ride the new total or disappear (it's a guess at
-  per-model rates)?
+  per-model rates)? **2026-07-17: leaning disappear-or-rebuild** — see audit above; today's figure is
+  wrong by three stacking multipliers, not just "a guess."
+- Is `cumulativeTokens` (sum-of-resends) salvageable as "total tokens," or does it need a rename/second
+  metric once users see how fast it compounds on tool-heavy turns? Candidate: keep it as an internal
+  "tokens processed" number but surface "current context" (`contextWindowUsedTokens`) as the
+  headline instead, since that's the number that maps to intuition.
+- Does a corrected per-turn cache-aware cost calc belong in the daemon accumulator (so it's available
+  to every surface) or purely in the client selector? Daemon-side means the discarded-split problem
+  (finding 3) gets fixed at the source instead of patched per-surface.
 
 ## Cross-cutting
 

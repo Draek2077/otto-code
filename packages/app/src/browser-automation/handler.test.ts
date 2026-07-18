@@ -227,6 +227,19 @@ function browserCloseTabRequest(browserId: string): BrowserAutomationExecuteRequ
   };
 }
 
+function browserFocusTabRequest(browserId: string): BrowserAutomationExecuteRequest {
+  return {
+    type: "browser.automation.execute.request",
+    requestId: "req-focus-tab",
+    agentId: "agent-1",
+    workspaceId: "wks_workspace_a",
+    command: {
+      command: "focus_tab",
+      args: { browserId },
+    },
+  };
+}
+
 function emptyListTabsPayload(requestId = "req-new:list_tabs"): BrowserAutomationResponsePayload {
   return {
     requestId,
@@ -585,6 +598,61 @@ describe("mountBrowserAutomationHandler", () => {
       error: {
         code: "browser_tab_not_found",
         message: `No browser tab found for ID: ${result.browserId}`,
+        retryable: false,
+      },
+    });
+  });
+
+  test("browser_focus_tab fronts a background browser tab for the user", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    });
+    if (!workspaceKey) {
+      throw new Error("Expected workspace key");
+    }
+    const previousFocusedTabId = useWorkspaceLayoutStore
+      .getState()
+      .openTabFocused(workspaceKey, { kind: "draft", draftId: "human-draft" });
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+
+    browser.receive(browserFocusTabRequest(result.browserId));
+    await flushAsyncWork();
+
+    expect(browser.client.payloadAt(1)).toEqual({
+      requestId: "req-focus-tab",
+      ok: true,
+      result: { command: "focus_tab", browserId: result.browserId },
+    });
+    const openedTab = workspaceBrowserTabs(workspaceKey, result.browserId)[0];
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(layout?.root).toEqual(
+      expect.objectContaining({
+        kind: "pane",
+        pane: expect.objectContaining({ focusedTabId: openedTab?.tabId }),
+      }),
+    );
+    expect(openedTab?.tabId).not.toBe(previousFocusedTabId);
+  });
+
+  test("browser_focus_tab returns not found for an unknown tab", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(browserFocusTabRequest("33333333-3333-4333-8333-333333333333"));
+    await flushAsyncWork();
+
+    expect(browser.client.payloadAt(0)).toEqual({
+      requestId: "req-focus-tab",
+      ok: false,
+      error: {
+        code: "browser_tab_not_found",
+        message: "No browser tab found for ID: 33333333-3333-4333-8333-333333333333",
         retryable: false,
       },
     });

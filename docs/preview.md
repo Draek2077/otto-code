@@ -38,8 +38,18 @@ Claude Code's preview MCP server; they explain why the tools look the way
 they do and must survive future changes:
 
 - **Token economy is a first-class design axis, not an afterthought.**
-  Screenshots return JPEG (never PNG); `browser_snapshot` returns a pruned
+  Screenshots are normalized for vision-model legibility and cost: captures
+  are scaled back to CSS pixels (undoing device-pixel-ratio inflation) and
+  fitted to a ~1568px-long-edge / ~1.15-megapixel budget — the size past
+  which vision APIs downscale images anyway, with token cost growing by
+  pixel area the whole way; full-page captures render the CDP clip at
+  reduced scale and the tool warns the agent when the result falls below
+  legible size; `browser_screenshot` with a `ref` re-renders just that
+  element at up to 3x zoom for readable small text (a vector re-render, not
+  pixel magnification). `browser_snapshot` returns a pruned
   accessibility tree with stable element refs, never a DOM serialization;
+  `browser_page_text` returns reader-mode text (article/main first) so
+  reading a page doesn't pay for structure;
   network capture is split into a summary listing (method/url/status/
   `requestId`) with response bodies fetched on demand by `requestId` and
   capped at 30k chars; every log tool takes `lines` caps plus `level`/`search`

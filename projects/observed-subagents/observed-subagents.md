@@ -182,3 +182,18 @@ Set expectations before building — these bound what "bridge the gap" can deliv
 4. **Client, read-only pane:** gate the composer + parameter controls + permission UI off `attend === "observed"`, visibly disabled; add the **Stop** action.
 5. **Verify** end-to-end with a real ultracode run that fans out subagents and one that fails on usage; confirm each is watchable and the failure is visible.
 6. **Generalize:** lift the adapter interface and repeat per provider.
+
+## SDK notes (added 2026-07-17, SDK 0.3.212)
+
+- **Level-signal reconcile shipped:** `system/background_tasks_changed` (full live-set, REPLACE
+  semantics) now settles background rows whose `task_notification` edge was lost — see
+  "Edge events vs. the native level signal" in [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md).
+  The edge stream stays the provider-neutral spine.
+- **Structured Task output (queued incorporation):** user messages carrying a Task tool*result now
+  expose `tool_use_result` typed as `AgentToolCompletedOutput` — the subagent's final report
+  without the model-directed agentId/usage trailer, plus run totals. `handleToolResult` /
+  `mapClaudeCompletedToolCall` currently parse the report from the tool_result \_text*; switch the
+  Claude path to the structured object (with text fallback for older CLIs and other providers).
+- **Observer agents (new capability, uncharted):** `AgentDefinition.observer`/`observerMessage`
+  auto-spawn a read-only observer that receives activity digests and reports via an
+  ObserverReport tool; message origins gain `observer`/`observer-activity` kinds.

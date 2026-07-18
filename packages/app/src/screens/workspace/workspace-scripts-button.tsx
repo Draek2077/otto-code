@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
 import { isNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { useIconSize } from "@/styles/theme";
 import { openServiceUrl } from "@/utils/open-service-url";
 import { resolveWorkspaceScriptLink } from "@/utils/workspace-script-links";
 import type { Theme } from "@/styles/theme";
@@ -89,12 +91,14 @@ function ScriptActionButtonChildren({
   icon,
   label,
 }: ScriptActionButtonChildrenProps): ReactElement {
+  const isCompact = useIsCompactFormFactor();
+  const actionIconSize = isCompact ? 20 : 10;
   const colorMapping = hovered ? foregroundColorMapping : mutedColorMapping;
   const iconElement =
     icon === "view" ? (
-      <ThemedSquareTerminal size={10} uniProps={colorMapping} />
+      <ThemedSquareTerminal size={actionIconSize} uniProps={colorMapping} />
     ) : (
-      <ThemedPlay size={10} uniProps={colorMapping} />
+      <ThemedPlay size={actionIconSize} uniProps={colorMapping} />
     );
   const labelStyle = hovered ? actionButtonLabelHoveredStyle : styles.actionButtonLabel;
   return (
@@ -161,6 +165,7 @@ interface HostLinkChildrenProps {
 }
 
 function HostLinkChildren({ hovered, disabled, label }: HostLinkChildrenProps): ReactElement {
+  const isCompact = useIsCompactFormFactor();
   const showIcon = !disabled && (hovered || isNative);
   const isActive = Boolean(hovered) && !disabled;
   const colorMapping = isActive ? foregroundColorMapping : mutedColorMapping;
@@ -171,7 +176,9 @@ function HostLinkChildren({ hovered, disabled, label }: HostLinkChildrenProps): 
         {label}
       </Text>
       <View style={styles.hostIconSlot}>
-        {showIcon ? <ThemedExternalLink size={10} uniProps={colorMapping} /> : null}
+        {showIcon ? (
+          <ThemedExternalLink size={isCompact ? 20 : 10} uniProps={colorMapping} />
+        ) : null}
       </View>
     </>
   );
@@ -269,6 +276,8 @@ function ScriptRow({
   onOpenUrlInBrowserTab,
 }: ScriptRowProps): ReactElement {
   const { t } = useTranslation();
+  // Script icon doubles on mobile (14 -> 28) via useIconSize's compact scaling.
+  const scriptIconSize = useIconSize().sm;
   const isRunning = script.lifecycle === "running";
   const isService = (script.type ?? "service") === "service";
   const exitCode = script.exitCode ?? null;
@@ -354,7 +363,7 @@ function ScriptRow({
       style={styles.scriptItem}
     >
       <View style={styles.scriptHeader}>
-        <ScriptIcon size={14} uniProps={iconColorMapping} style={styles.scriptIcon} />
+        <ScriptIcon size={scriptIconSize} uniProps={iconColorMapping} style={styles.scriptIcon} />
         <Text style={scriptNameStyle} numberOfLines={1}>
           {script.scriptName}
         </Text>
@@ -589,9 +598,16 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   scriptName: {
-    fontSize: theme.fontSize.sm,
+    // Compact bump: +2px on mobile for the scripts dropdown.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
     fontWeight: theme.fontWeight.normal,
-    lineHeight: 18,
+    lineHeight: {
+      xs: 22,
+      md: 18,
+    },
     flexShrink: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
@@ -616,16 +632,28 @@ const styles = StyleSheet.create((theme) => ({
   },
   hostLabel: {
     flexShrink: 1,
-    fontSize: theme.fontSize.xs,
-    lineHeight: 14,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    lineHeight: {
+      xs: 18,
+      md: 14,
+    },
     color: theme.colors.foregroundMuted,
   },
   hostLabelActive: {
     color: theme.colors.foreground,
   },
   hostIconSlot: {
-    width: 10,
-    height: 10,
+    width: {
+      xs: 20,
+      md: 10,
+    },
+    height: {
+      xs: 20,
+      md: 10,
+    },
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -637,8 +665,14 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   exitBadgeText: {
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: {
+      xs: 12,
+      md: 10,
+    },
+    lineHeight: {
+      xs: 14,
+      md: 12,
+    },
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },
@@ -651,7 +685,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: 3,
   },
   actionButtonLabel: {
-    fontSize: theme.fontSize.xs,
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
