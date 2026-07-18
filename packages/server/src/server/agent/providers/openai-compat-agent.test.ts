@@ -818,6 +818,63 @@ describe("OpenAICompatAgentSession reasoning effort", () => {
   });
 });
 
+describe("OpenAICompatAgentSession image attachments", () => {
+  function userContent(body: Record<string, unknown> | undefined): unknown {
+    const messages = (body as { messages?: Array<{ role: string; content: unknown }> })?.messages;
+    return messages?.find((message) => message.role === "user")?.content;
+  }
+
+  test("forwards an attached image as an OpenAI vision content part", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run([
+      { type: "text", text: "What is in this image?" },
+      { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+    ]);
+
+    expect(userContent(endpoint.completionBodies[0])).toEqual([
+      { type: "text", text: "What is in this image?" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,aGVsbG8=" } },
+    ]);
+  });
+
+  test("sends an image-only prompt without a blank text part", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run([{ type: "image", data: "aW1n", mimeType: "image/jpeg" }]);
+
+    expect(userContent(endpoint.completionBodies[0])).toEqual([
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,aW1n" } },
+    ]);
+  });
+
+  test("keeps a text-only prompt as a plain string", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run("Just text");
+
+    expect(userContent(endpoint.completionBodies[0])).toBe("Just text");
+  });
+});
+
 describe("OpenAICompatAgentSession rewind", () => {
   function userMessageIds(events: AgentStreamEvent[]): string[] {
     return events.flatMap((event) =>

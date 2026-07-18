@@ -170,6 +170,12 @@ export interface AgentManagerProviderState {
          * edits without a restart.
          */
         compaction: ProviderCompactionConfig | null;
+        /**
+         * Provider-level max-tool-rounds override for daemon-hosted providers
+         * (openai-compat). Forwarded so live sessions absorb settings edits
+         * without a restart. null = resolved as unset (built-in default).
+         */
+        maxToolRounds: number | null;
       }
     >
   >;
@@ -298,6 +304,7 @@ export class ProviderSnapshotManager {
         enabled: definition.enabled,
         derivedFromProviderId: definition.derivedFromProviderId,
         compaction: this.providerOverrides?.[provider]?.compaction ?? null,
+        maxToolRounds: this.providerOverrides?.[provider]?.maxToolRounds ?? null,
       };
       if (definition.enabled) {
         clients[provider] = this.ensureClient(provider, definition);

@@ -115,6 +115,52 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatWidth).toBe("default");
   });
 
+  it("defaults featureEnabled to an empty map when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.featureEnabled).toEqual({});
+  });
+
+  it("loads an explicit disabled feature flag from app settings", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ featureEnabled: { visualizer: false } }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.featureEnabled).toEqual({ visualizer: false });
+  });
+
+  it("drops a non-object featureEnabled back to the empty default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ featureEnabled: ["visualizer"] }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.featureEnabled).toEqual({});
+  });
+
+  it("drops unknown keys and non-boolean values from featureEnabled", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          featureEnabled: { visualizer: "yes", bogusFeature: true },
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.featureEnabled).toEqual({});
+  });
+
   it("loads configured chat width from app settings", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

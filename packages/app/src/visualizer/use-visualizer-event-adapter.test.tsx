@@ -295,6 +295,57 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     ).toEqual(["Explore", "Explore"]);
   });
 
+  it("prunes a node whose agent has left the authoritative set", async () => {
+    // A child fades and a vanished root closes only AFTER hydration settles —
+    // during the attach window the set is a partial pre-refresh view.
+    setAgents([
+      makeAgent({ id: "root-1", title: "My chat" }),
+      makeAgent({
+        id: "root-1::sub::toolu_1",
+        title: "Explore",
+        attend: "observed",
+        status: "running",
+        parentAgentId: "root-1",
+        createdAt: new Date(BASE_TIME.getTime() + 5_000),
+        lastActivityAt: new Date(BASE_TIME.getTime() + 5_000),
+      }),
+      makeAgent({
+        id: "root-2",
+        title: "Other chat",
+        createdAt: new Date(BASE_TIME.getTime() + 1_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+    expect(collectEvents(messages).some((e) => e.type === "agent_spawn")).toBe(true);
+    messages.length = 0;
+
+    // The subagent disappears from the store (closed + swept). Its node must
+    // fade via agent_complete — not linger as a phantom "still working" node.
+    setAgents([
+      makeAgent({ id: "root-1", title: "My chat" }),
+      makeAgent({
+        id: "root-2",
+        title: "Other chat",
+        createdAt: new Date(BASE_TIME.getTime() + 1_000),
+      }),
+    ]);
+    await settle();
+    const completes = collectEvents(messages).filter((e) => e.type === "agent_complete");
+    expect(completes.map((e) => e.payload.name)).toEqual(["Explore"]);
+    expect(messages.some((m) => m.type === "close-session")).toBe(false);
+
+    // A whole root chat vanishing drives close-session (its session is gone),
+    // not agent_complete (which would leave a green "completed" node selected).
+    messages.length = 0;
+    setAgents([makeAgent({ id: "root-1", title: "My chat" })]);
+    await settle();
+    const closes = messages.filter((m) => m.type === "close-session");
+    expect(closes).toHaveLength(1);
+    expect(closes[0]).toMatchObject({ type: "close-session", sessionId: "root-2" });
+    expect(collectEvents(messages).filter((e) => e.type === "agent_complete")).toEqual([]);
+  });
+
   it("relabels the node and the session when the root chat title changes", async () => {
     // Spawned with the provisional first-line title (the graph node is keyed on
     // it), then the auto-title writer rewrites it to a terser title.

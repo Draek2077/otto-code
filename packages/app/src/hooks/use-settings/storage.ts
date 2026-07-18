@@ -2,6 +2,7 @@ import { isSyntaxThemeId, type SyntaxThemeId } from "@otto-code/highlight";
 import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ChatWidth } from "@/constants/layout";
+import { FEATURE_IDS, type FeatureId } from "@/features/feature-catalog";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
 import {
@@ -156,6 +157,12 @@ export interface AppSettings {
   hideChatMessageDetails: boolean;
   // Chat message timestamps render as exact clock time or relative "5m ago".
   chatTimestampDisplay: ChatTimestampDisplay;
+  // Master switch for the app's chrome motion: page-transition cross-fades and
+  // the desktop sidebar open/close slide. Device-local presentation only.
+  // Default on; off restores the instant, no-animation behavior (which is what
+  // shipped before this setting). See constants/animation.ts and
+  // hooks/use-animations-enabled.ts.
+  animationsEnabled: boolean;
   // Diagonal sheen/gradient painted into the top corner of every chat message
   // bubble (see components/bubble-corner-sheen.tsx). Device-local presentation
   // only. Default on; off renders flat bubbles with no corner gradient.
@@ -264,6 +271,13 @@ export interface AppSettings {
   // resets on Otto's fresh webview partition). Sent to the page as
   // `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
   visualizerHudHidden: boolean;
+  // Per-feature enable/disable flags for the gated-feature registry (see
+  // features/feature-catalog.ts). A disabled feature is kept out of memory — its
+  // panel sits behind a React.lazy boundary that never fires while off. Sparse
+  // by design: a MISSING key resolves to the feature's own `defaultEnabled` (see
+  // resolveFeatureEnabled), so new features default on and existing devices are
+  // unaffected. Device-local presentation only. Keyed by FeatureId.
+  featureEnabled: Partial<Record<FeatureId, boolean>>;
 }
 
 export type VisualizerRenderQuality = "performance" | "balanced" | "sharp" | "native";
@@ -320,6 +334,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
+  animationsEnabled: true,
   chatBubbleGradient: true,
   textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
   wrapCodeLines: true,
@@ -345,6 +360,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerSoundMuted: false,
   visualizerVoiceCues: false,
   visualizerHudHidden: false,
+  featureEnabled: {},
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -717,6 +733,9 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   if (typeof stored.rateLimitWarningsEnabled === "boolean") {
     result.rateLimitWarningsEnabled = stored.rateLimitWarningsEnabled;
   }
+  if (typeof stored.animationsEnabled === "boolean") {
+    result.animationsEnabled = stored.animationsEnabled;
+  }
   return result;
 }
 
@@ -808,6 +827,26 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   return result;
 }
 
+// Validates the sparse per-feature enable map: only known FeatureId keys with a
+// boolean value survive, so a corrupt/legacy blob can't inject junk. Returns a
+// partial only when at least one valid flag was found, matching the other
+// pickers' "absent ⇒ keep the default" contract.
+function pickFeatureFlagSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const raw: unknown = stored.featureEnabled;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const source = raw as Record<string, unknown>;
+  const result: Partial<Record<FeatureId, boolean>> = {};
+  for (const id of FEATURE_IDS) {
+    const value = source[id];
+    if (typeof value === "boolean") {
+      result[id] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? { featureEnabled: result } : {};
+}
+
 function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   return {
     ...pickThemeAndBehaviorSettings(stored),
@@ -819,6 +858,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickOnboardingSettings(stored),
     ...pickPreviewSettings(stored),
     ...pickVisualizerSettings(stored),
+    ...pickFeatureFlagSettings(stored),
   };
 }
 

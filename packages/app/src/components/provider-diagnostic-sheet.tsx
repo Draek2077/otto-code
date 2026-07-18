@@ -50,6 +50,7 @@ import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/p
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import {
   COMPACTION_THRESHOLD_PERCENTS,
+  MAX_TOOL_ROUNDS_DEFAULT,
   OTTO_TOOL_GROUPS,
   type OttoToolGroup,
 } from "@otto-code/protocol/provider-config";
@@ -686,19 +687,33 @@ function readProviderCompactionSettings(entry: Record<string, unknown> | null): 
   return { level, hideSelector };
 }
 
+// Selectable max-tool-rounds presets. The schema accepts any 1–1000 value
+// (config.json can hold an off-preset number); the dropdown covers the useful
+// range and always renders the current value even when it isn't a preset.
+const MAX_TOOL_ROUNDS_PRESETS = [25, 50, 100, 200, 500] as const;
+
+function readProviderMaxToolRounds(entry: Record<string, unknown> | null): number {
+  const raw = entry?.["maxToolRounds"];
+  return typeof raw === "number" && Number.isFinite(raw)
+    ? Math.round(raw)
+    : MAX_TOOL_ROUNDS_DEFAULT;
+}
+
 /**
  * Agent-behavior defaults for daemon-hosted providers (openai-compatible):
- * the default Auto-compact level applied to new chats, and whether each chat
- * shows its own Auto-compact selector or silently uses that default.
+ * the default Auto-compact level applied to new chats, whether each chat shows
+ * its own Auto-compact selector, and the per-turn max tool-rounds safety valve.
  */
 function ProviderAgentsSection({
   provider,
   configEntry,
+  supportsMaxToolRounds,
   patchConfig,
   refresh,
 }: {
   provider: string;
   configEntry: Record<string, unknown> | null;
+  supportsMaxToolRounds: boolean;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
@@ -764,6 +779,41 @@ function ProviderAgentsSection({
     [applyPatch],
   );
 
+  const maxToolRounds = readProviderMaxToolRounds(configEntry);
+  const maxToolRoundsOptions = useMemo<SelectFieldOption<number>[]>(() => {
+    const presets: number[] = [...MAX_TOOL_ROUNDS_PRESETS];
+    // Surface an off-preset config.json value as its own selectable entry so the
+    // dropdown never silently drops it.
+    if (!presets.includes(maxToolRounds)) {
+      presets.push(maxToolRounds);
+      presets.sort((a, b) => a - b);
+    }
+    return presets.map((rounds) => ({
+      id: String(rounds),
+      value: rounds,
+      label: t("settings.providers.agents.maxToolRoundsValue", { rounds }),
+      testID: `provider-max-tool-rounds-${rounds}`,
+    }));
+  }, [maxToolRounds, t]);
+  const maxToolRoundsDisplay = useMemo(
+    () => ({ label: t("settings.providers.agents.maxToolRoundsValue", { rounds: maxToolRounds }) }),
+    [maxToolRounds, t],
+  );
+
+  const handleMaxToolRoundsChange = useCallback(
+    (next: number) => {
+      setSaving(true);
+      setError(null);
+      void patchConfig({ providers: { [provider]: { maxToolRounds: next } } })
+        .then(() => refresh([provider]))
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : t("settings.providers.agents.saveFailed"));
+        })
+        .finally(() => setSaving(false));
+    },
+    [patchConfig, provider, refresh, t],
+  );
+
   return (
     <View style={sheetStyles.section}>
       <View style={sheetStyles.connectionCard}>
@@ -798,6 +848,26 @@ function ProviderAgentsSection({
               testID="provider-compaction-show-selector"
             />
           </View>
+          {supportsMaxToolRounds ? (
+            <SelectField<number>
+              label={t("settings.providers.agents.maxToolRoundsLabel")}
+              hint={t("settings.providers.agents.maxToolRoundsHint")}
+              value={maxToolRounds}
+              selectedDisplay={maxToolRoundsDisplay}
+              options={maxToolRoundsOptions}
+              onChange={handleMaxToolRoundsChange}
+              placeholder={t("settings.providers.agents.maxToolRoundsLabel")}
+              emptyText={t("settings.providers.agents.maxToolRoundsLabel")}
+              disabled={saving}
+              size="sm"
+              testID="provider-max-tool-rounds"
+              triggerTestID="provider-max-tool-rounds-trigger"
+            />
+          ) : (
+            <Text style={sheetStyles.mutedText}>
+              {t("settings.providers.agents.maxToolRoundsRequiresUpdate")}
+            </Text>
+          )}
           {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
         </View>
       </View>
@@ -1424,6 +1494,10 @@ export function ProviderDiagnosticSheet({
   const supportsModelTierOverrides = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.modelTierOverrides === true,
   );
+  // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+  const supportsMaxToolRounds = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.openaiCompatMaxToolRounds === true,
+  );
   const handleRemoved = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -1637,6 +1711,7 @@ export function ProviderDiagnosticSheet({
               key={`agents-${provider}`}
               provider={provider}
               configEntry={providerConfigEntry}
+              supportsMaxToolRounds={supportsMaxToolRounds}
               patchConfig={patchConfig}
               refresh={refresh}
             />

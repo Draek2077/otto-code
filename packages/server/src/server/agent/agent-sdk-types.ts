@@ -840,6 +840,12 @@ export interface AgentSession {
    * effective settings changed so the manager knows to re-emit agent state.
    */
   applyCompactionConfig?(compaction: ProviderCompactionConfig | null): boolean;
+  /**
+   * Apply the updated provider-level max-tool-rounds override to a live session
+   * (providers whose tool loop the daemon owns). Returns true when the effective
+   * bound changed so the manager knows to re-emit agent state.
+   */
+  applyMaxToolRounds?(maxToolRounds: number | null): boolean;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;

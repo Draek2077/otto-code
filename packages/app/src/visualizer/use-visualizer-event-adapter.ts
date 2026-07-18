@@ -9,12 +9,14 @@
 // cursor dedup, and batching. See docs/visualizer.md.
 import { useEffect, useRef } from "react";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   buildAgentCompleteEvent,
+  buildAgentIdleEvent,
   buildAgentRenameEvent,
   buildContextUpdateEvent,
   buildModelDetectedEvent,
@@ -63,6 +65,12 @@ interface TrackedNode {
    * re-emits the spawn with the new tint. Null when the agent has no bound
    * personality. */
   lastPersonaColorKey: string | null;
+  /** The agent's most recent lifecycle status, refreshed every reconcile. Read
+   * at the tail of backfill to settle a resting (idle, non-terminal) node at
+   * 'idle' — a finished turn's `turn_completed` is live-only and absent from
+   * the replayed timeline, so without this a reopened idle chat ends the replay
+   * pulsing 'thinking'. See `backfillAgentTimeline`. */
+  lastStatus: AgentLifecycleStatus;
   terminalEmitted: boolean;
   /** True once a root node's session has been removed from the page because the
    * chat was archived. Archiving is a removal, not a completion — the session
@@ -305,6 +313,7 @@ function ensureNode(
     lastModel: agent.model,
     lastTitle: agent.title,
     lastPersonaColorKey: personaColorKey(personaColors),
+    lastStatus: agent.status,
     terminalEmitted: false,
     sessionRemoved: false,
     cursor: null,
@@ -352,6 +361,30 @@ function ensureNode(
     );
   }
   return node;
+}
+
+/** Removes a tracked node whose agent has genuinely left the authoritative
+ * set — the graph must stop showing an agent that no longer exists, or the
+ * canvas drifts out of sync with the chat's real state ("too many agents").
+ * A root drives the page's close-session (its whole session is gone, same as
+ * archive); a non-root fades via agent_complete (the page's only node-removal
+ * signal). The node is dropped from tracking and its name freed so a later
+ * re-appearance registers fresh. */
+function pruneVanishedNode(
+  state: AdapterState,
+  agentId: string,
+  node: TrackedNode,
+  time: number,
+): void {
+  if (node.isRoot) {
+    if (!node.sessionRemoved) {
+      state.pendingSessionMessages.push({ type: "close-session", sessionId: node.sessionId });
+    }
+  } else if (!node.terminalEmitted) {
+    state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
+  }
+  state.nodes.delete(agentId);
+  state.sessionNames.get(node.sessionId)?.delete(node.name);
 }
 
 /** Diffs the workspace's current agent snapshots against tracked nodes:
@@ -417,6 +450,30 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
     reconcileNodeTokens(state, node, agent);
     reconcileNodeLifecycle(state, node, agent);
   }
+
+  // Prune-to-truth: any tracked node whose agent is no longer in the
+  // authoritative set has genuinely left (closed + swept from the store,
+  // moved workspace, dropped from a run-scoped filter) — remove it so the
+  // canvas matches the chat's current reality instead of lingering.
+  //
+  // Gated on `!hydrating`: during the initial attach window
+  // `selectWorkspaceAgents` is a partial, pre-`refreshAgentDirectory` view,
+  // and pruning against it would drop agents the refresh is about to add
+  // (churn / "not enough agents"). Once hydration settles, every reconcile is
+  // driven by an authoritative whole-map store replace, so an absent agent is
+  // a real removal. Collect ids first — pruneVanishedNode mutates state.nodes.
+  if (!state.hydrating) {
+    const time = toSimTime(state, Date.now());
+    const vanished: [string, TrackedNode][] = [];
+    for (const [agentId, node] of state.nodes) {
+      if (!agentsById.has(agentId)) {
+        vanished.push([agentId, node]);
+      }
+    }
+    for (const [agentId, node] of vanished) {
+      pruneVanishedNode(state, agentId, node, time);
+    }
+  }
 }
 
 /** Context ring + honest totals: the page draws the main node's context
@@ -454,6 +511,9 @@ function reconcileNodeTokens(state: AdapterState, node: TrackedNode, agent: Agen
  * -finished (idle) observed subagent still completes it instead of leaving
  * the node stuck active forever. */
 function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: Agent): void {
+  // Track the freshest status so backfill can settle a resting node at 'idle'
+  // (see TrackedNode.lastStatus).
+  node.lastStatus = agent.status;
   // Archiving a root chat is a REMOVAL, not a completion. The user threw the
   // chat away — its session should disappear from the visualizer (the page
   // returns to "Waiting for chat activity" or auto-selects a remaining chat),
@@ -739,6 +799,17 @@ async function backfillAgentTimeline(input: {
   // Archived roots were REMOVED (close-session), not completed — skip those.
   if (node.terminalEmitted && !node.sessionRemoved) {
     state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time: lastReplayTime }));
+  } else if (!node.terminalEmitted && node.lastStatus === "idle") {
+    // A resting (idle, non-terminal) agent finished its last turn, but that
+    // turn's `turn_completed` is a LIVE-only stream event — it never lands in
+    // the replayed timeline. So the replay above ends on the last assistant/
+    // tool item and leaves the node pulsing 'thinking'. Re-assert the resting
+    // idle at the tail so a reopened idle chat settles at 'idle', exactly as a
+    // live turn_completed would. (A `running` agent is genuinely mid-turn — its
+    // node stays 'thinking' and the live turn_completed idles it later.)
+    state.pending.push(
+      buildAgentIdleEvent({ ctx: nodeCtx(node), time: lastReplayTime, resting: true }),
+    );
   }
 }
 

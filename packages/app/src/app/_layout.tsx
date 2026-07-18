@@ -60,6 +60,7 @@ import {
 } from "@/navigation/host-runtime-bootstrap";
 import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-route-navigation";
 import { ThemedStack } from "@/navigation/themed-stack";
+import { RouteFadeContainer } from "@/components/route-fade-container";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { signalDesktopWindowReady, updateDesktopWindowControls } from "@/desktop/electron/window";
@@ -524,10 +525,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       {!isCompactLayout ? sidebarChrome : null}
       {isCompactLayout && chromeEnabled ? (
         <CompactExplorerSidebarHost enabled={chromeEnabled}>
-          <View style={flexStyle}>{children}</View>
+          <RouteFadeContainer>{children}</RouteFadeContainer>
         </CompactExplorerSidebarHost>
       ) : (
-        <View style={flexStyle}>{children}</View>
+        <RouteFadeContainer>{children}</RouteFadeContainer>
       )}
     </View>
   );

@@ -1190,6 +1190,29 @@ it, so the lift reserves that bar's full height too.
 
 Host-only otherwise; no protocol or settings change. Needs `npm run build:visualizer`.
 
+## 2026-07-17 — `context_update` stops forcing `thinking` (idle nodes stayed "Thinking" forever)
+
+Companion to the 2026-07-16 `resting` patch above. Even with `resting`, a node
+that finished its turn snapped straight back to a permanent "Thinking" pulse.
+Upstream's `handleContextUpdate` set `state: agent.state === 'complete' ?
+'complete' : 'thinking'` on every token update, assuming a context update only
+arrives mid-reasoning. Otto's host pushes a `context_update` from a store
+reconcile (`use-visualizer-event-adapter.ts` `reconcileNodeTokens`) whenever
+usage moves — and the final turn usage lands right AFTER `turn_completed` has
+already rested the node at `idle`. That trailing update flipped the just-rested
+node back to `thinking`, and nothing idled it again. Reproduced on every
+provider (Claude and openai-compat alike) since the trailing usage push is
+provider-agnostic.
+
+- `web/hooks/simulation/handle-message-events.ts` — `handleContextUpdate` no
+  longer writes `state`; it updates only the token/breakdown fields and
+  preserves `agent.state`. Lifecycle transitions into `thinking`/`tool_calling`
+  are already owned by real activity (`handleMessage`, `handleToolCallStart`,
+  `handleToolCallEnd`), so the removed write was redundant during a live turn
+  and destructive at rest.
+
+No Otto-side counterpart. Needs `npm run build:visualizer`.
+
 ## 2026-07-17 — wire discovery cards (consume payload.discovery)
 
 The whole discovery-card subsystem — `draw-discoveries.ts`, hit-detection,
@@ -1216,3 +1239,70 @@ Host-side counterpart: `deriveToolCallDiscovery` in
 emitted as `payload.discovery` on the `tool_call_end` SimulationEvent. Read is
 excluded (too frequent) and `sub_agent` is skipped (already its own node/particle).
 Needs `npm run build:visualizer`.
+
+## 2026-07-17 — remove the per-node chat panel; move + enrich the node detail card
+
+Clicking a node opened two surfaces: the `AgentDetailCard` (pinned middle-LEFT)
+and the `AgentChatPanel` (bottom-right, replaying that one agent's messages). The
+chat panel duplicated the real chat transcript the user already has open — the
+same rationale that removed the "Chat" transcript and message-feed panels
+(2026-07-16 patch above). Removed it, moved the surviving detail card to the
+now-free right edge, and enriched it with info the graph doesn't spell out (user
+feedback: the card "didn't show anything new"):
+
+- `web/components/agent-visualizer/index.tsx` — dropped the `AgentChatPanel`
+  import + render site, and the now-dead `selectedConversation` memo and
+  `sessionRuntime` memo (the latter only fed the chat panel's CLAUDE/CODEX
+  assistant label). `conversations` is retained — it still feeds `timelineEvents`.
+- `web/components/agent-visualizer/agent-detail-card.tsx` — pinned to the middle
+  -RIGHT (`right: CARD.margin`) instead of middle-left (vertical centering
+  unchanged), and enriched: a **task** line (`agent.task`, 3-line clamp), a **cost**
+  estimate (`agentCost(cumulativeTokens ?? tokensUsed, model)`, reused from
+  `canvas/draw-cost.ts`), a **lifetime-tokens** stat when `cumulativeTokens`
+  exceeds context occupancy, and a labeled **context-composition** mini-bar +
+  legend (`contextSegments(agent.contextBreakdown)` from `lib/colors.ts`, with
+  per-segment token counts) shown only when the host has sent a non-zero
+  breakdown. The prop type widened to carry `cumulativeTokens` / `contextBreakdown`
+  / `task`. Reuses existing tokens only (`COLORS.holoBg10` track, `COLORS.complete`
+  for the cost).
+- `web/components/agent-visualizer/canvas/draw-misc.ts` + `canvas.tsx` — the
+  dashed **tether line + dot** that connects the selected node to the card
+  followed the card to the right: `drawTetherLine` gains a `canvasW` param and
+  ends at the card's LEFT edge (`canvasW - CARD.margin - CARD.detail.width`) at
+  its vertical center (`screenTop + CARD.detail.height / 2`), instead of the old
+  middle-left edge at 30% down.
+
+`chat-panel.tsx` is left in the tree (now unimported, tree-shaken out of the
+bundle) to keep the subtree-pull diff small — same convention as
+`session-transcript-panel.tsx` / `message-feed-panel.tsx`. No Otto-side
+counterpart (no bridge/config change — all fields already ride the `Agent`
+object). Needs `npm run build:visualizer`.
+
+## 2026-07-17 — suppress the floating on-canvas message bubbles (keep the record)
+
+The graph still drew a floating popup bubble for every assistant/user/thinking
+message (`draw-bubbles.ts`, framed by the camera, click-tested by
+`hit-detection.ts`). With the chat/message PANELS already gone (2026-07-16 +
+2026-07-17 patches above), these popups were the last surface duplicating the
+real chat the user already has open — and they obscured the orchestration the
+graph exists to show. Removed them, but **only the visual popup** — the message
+data is untouched.
+
+- `web/hooks/simulation/handle-message-events.ts` — `handleMessage` no longer
+  pushes onto `msgAgent.messageBubbles` (dropped the dedup + `MAX_BUBBLES` slice
+  block and the now-unused `LABEL_LEN_BUBBLE` / `MAX_BUBBLES` imports). The two
+  things that make a message part of the RECORD are kept verbatim: the
+  `appendConversation(state.conversations, …)` call (feeds `timelineEvents` and
+  any per-node history — the message still "really happened"), and the node's
+  `state → 'thinking'` transition on real message activity (that's activity, not
+  a popup). `messageBubbles` is now fed nowhere, so it stays an empty array and
+  every consumer (`draw-bubbles`, `hit-detection`, camera auto-fit,
+  `animate.ts` pruning) short-circuits on the empty array — no further edits
+  needed.
+
+Distinct from the earlier panel removals: this is the difference the user drew —
+the chat should stay in the timeline/record ("it's what really happened"); only
+the visual popups go. No Otto-side / bridge / config change (the host keeps
+emitting `message` events exactly as before — the adapter's streaming-message
+coalescing is unchanged). To re-enable, restore the `updates.messageBubbles`
+push. Needs `npm run build:visualizer`.

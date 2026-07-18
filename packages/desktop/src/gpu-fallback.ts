@@ -178,6 +178,20 @@ export function clearStartupSentinel(userDataDir: string): void {
   rmSync(startupSentinelPath(userDataDir), { force: true });
 }
 
+// Clear every trace of the software-rendering fallback so the next launch runs
+// with hardware acceleration: the marker, the self-heal counters, and any stale
+// startup sentinel. This is the on-demand equivalent of OTTO_FORCE_GPU=1 — the
+// user-facing "Re-enable GPU acceleration" action calls it when their GPU is
+// working again, instead of making them discover the env var or wait out the
+// re-probe backoff. The caller relaunches so the cleared marker takes effect
+// (hardware acceleration is chosen before app.whenReady() and can't be toggled
+// live).
+export function forceReenableHardwareAcceleration(userDataDir: string): void {
+  clearSoftwareRenderingMarker(userDataDir);
+  clearStartupSentinel(userDataDir);
+  clearGpuFallbackState(userDataDir);
+}
+
 // The recovery flags for a Linux guest with no 3D acceleration (VMware
 // "No 3D enabled"). app.disableHardwareAcceleration() (--disable-gpu) is NOT
 // a working fallback there: on a Wayland session presentation falls into the
@@ -274,6 +288,21 @@ export function hasSoftwareRenderingArgv(argv: readonly string[]): boolean {
     (arg) =>
       SOFTWARE_RENDERING_ARGV_EXACT.has(arg) ||
       SOFTWARE_RENDERING_ARGV_PREFIXES.some((prefix) => arg.startsWith(prefix)),
+  );
+}
+
+// Drop every software-rendering switch from an argv so a relaunch back into
+// hardware acceleration doesn't inherit them. Covers both the CPU-raster
+// switches above and the Linux fallback's Ozone/GL args (a process that was
+// relaunched into --ozone-platform=x11 --use-gl=disabled would otherwise stay
+// software even after the marker is cleared, since those live in argv, not the
+// marker).
+export function stripSoftwareRenderingArgs(argv: readonly string[]): string[] {
+  return argv.filter(
+    (arg) =>
+      !SOFTWARE_RENDERING_ARGV_EXACT.has(arg) &&
+      !LINUX_SOFTWARE_RENDERING_ARGS.includes(arg) &&
+      !SOFTWARE_RENDERING_ARGV_PREFIXES.some((prefix) => arg.startsWith(prefix)),
   );
 }
 

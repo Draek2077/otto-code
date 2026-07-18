@@ -291,7 +291,7 @@ export function AgentCanvas({
 
       if (selectedAgentId) {
         const agent = agents.get(selectedAgentId)
-        if (agent) drawTetherLine(ctx, agent, transform, h)
+        if (agent) drawTetherLine(ctx, agent, transform, w, h)
       }
 
       ctx.restore()

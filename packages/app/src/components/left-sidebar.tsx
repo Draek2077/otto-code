@@ -28,7 +28,7 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, { runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
@@ -40,6 +40,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useSidebarSlide } from "@/hooks/use-sidebar-slide";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -924,9 +925,11 @@ function DesktopSidebar({
     [closeGesture, resizeGesture],
   );
 
-  const resizeAnimatedStyle = useAnimatedStyle(() => ({
-    width: resizeWidth.value,
-  }));
+  // Open/close slide (width + opacity) layered on top of the resize width.
+  // `rendered` keeps the sidebar mounted through the close animation so the
+  // exit can play; when animations are off it snaps shut exactly like the old
+  // `!isOpen` return-null behavior.
+  const { rendered, slideStyle } = useSidebarSlide({ isOpen, width: resizeWidth });
 
   // The raw window-controls guess overshoots the actual overlay strip; trim the
   // spacer so the menu sits a touch higher while still clearing the controls.
@@ -935,8 +938,8 @@ function DesktopSidebar({
     [padding.top],
   );
   const desktopSidebarStyle = useMemo(
-    () => [staticStyles.desktopSidebar, resizeAnimatedStyle],
-    [resizeAnimatedStyle],
+    () => [staticStyles.desktopSidebar, slideStyle],
+    [slideStyle],
   );
   const desktopSidebarBorderStyle = useMemo(
     () => [styles.desktopSidebarBorder, { flex: 1, paddingTop: insetsTop }],
@@ -947,7 +950,7 @@ function DesktopSidebar({
     [],
   );
 
-  if (!isOpen) {
+  if (!rendered) {
     return null;
   }
 
@@ -1110,6 +1113,9 @@ function WorkspacesSectionHeader() {
 const staticStyles = RNStyleSheet.create({
   desktopSidebar: {
     position: "relative" as const,
+    // Clip the fixed-width inner content while the outer width animates during
+    // the open/close slide, so the panel edge reveals cleanly.
+    overflow: "hidden" as const,
   },
 });
 

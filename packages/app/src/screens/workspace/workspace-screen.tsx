@@ -77,6 +77,8 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
+import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
+import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import {
   usePublishExplorerSidebarVisibility,
   usePublishFocusModeTabStripVisibility,
@@ -1587,6 +1589,9 @@ function WorkspaceHeaderTitleBar({
   // User mode hides the developer surfaces (scripts run in terminals; the menu's
   // terminal/copy-path items are developer affordances).
   const isDeveloperMode = useIsDeveloperMode();
+  // Hide the Visualizer entry point when the feature is disabled (openVisualizerTab
+  // also refuses centrally, but the button shouldn't linger).
+  const visualizerEnabled = useFeatureEnabled("visualizer");
   // Match the Explorer toggle's icon sizing so the mobile Play button beside the
   // "..." menu shares the same chrome and glyph size.
   const headerActionIconSize = useIconSize(1.5);
@@ -1636,7 +1641,7 @@ function WorkspaceHeaderTitleBar({
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
         />
-        {isDeveloperMode && !isMobile ? (
+        {isDeveloperMode && !isMobile && visualizerEnabled ? (
           <WorkspaceVisualizerButton
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}
@@ -2034,6 +2039,9 @@ function WorkspaceScreenContent({
   const { t } = useTranslation();
   const _insets = useSafeAreaInsets();
   const toast = useToast();
+  // Close any open tabs belonging to a feature the user just turned off, across
+  // every workspace (see docs/feature-flags or the features/ registry).
+  useCloseDisabledFeatureTabs();
   const isMobile = useIsCompactFormFactor();
   // User interface mode hides the developer surfaces (explorer, terminals, file
   // tabs, git actions, scripts). Presentation only — the stores/daemon are

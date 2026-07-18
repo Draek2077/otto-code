@@ -754,6 +754,7 @@ function resolveOpenAICompatProvider(
         mcpServers: override.mcpServers,
         mcpToolPermissions: override.mcpToolPermissions,
         compaction: override.compaction,
+        maxToolRounds: override.maxToolRounds,
         managedProcesses: options.managedProcesses,
       }),
   };

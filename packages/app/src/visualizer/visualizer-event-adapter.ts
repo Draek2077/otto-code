@@ -90,7 +90,7 @@ export interface AgentNodeContext {
   sessionId: string;
   /** The agent's own working directory (root of its file operations). When
    * present, tool-call file paths are displayed relative to it (root → `.`) —
-   * a Read of `C:\Users\me\proj\src\foo.ts` shows as `.\src\foo.ts` (Windows
+   * a Read of `C:\Users\me\proj\src\foo.ts` shows as `src\foo.ts` (Windows
    * separators preserved) instead of a truncated `C:\Users\me\pr...`. Absent ⇒
    * paths are shown verbatim. See `relativizeStringPaths`. */
   workspaceRoot?: string;
@@ -103,21 +103,24 @@ function escapeRegExp(value: string): string {
 /**
  * Rewrites the workspace root wherever it literally appears in a string — a
  * structured file path (`detail.filePath`) OR a freeform command/search string —
- * to `.`, so a tool node reads `cd "."` / `read_file: .\src\foo.ts` instead of
- * `cd "C:/…/proj"` / `read_file: C:\…\proj\src\foo.ts`.
+ * to a workspace-relative form, so a tool node reads `cd "."` /
+ * `read_file: src\foo.ts` instead of `cd "C:/…/proj"` /
+ * `read_file: C:\…\proj\src\foo.ts`. A child path drops the root entirely
+ * (`…\proj\src\foo.ts` → `src\foo.ts`); a bare root collapses to `.`.
  *
  * SEPARATOR FIDELITY (load-bearing): the match is separator-agnostic but the
  * output preserves whatever separators the path was AUTHORED with — a Windows
- * `C:\…\proj\src\foo.ts` becomes `.\src\foo.ts` (backslashes kept), a POSIX
- * `/home/me/proj/src/foo.ts` becomes `./src/foo.ts`. We deliberately do NOT run
+ * `C:\…\proj\src\foo.ts` becomes `src\foo.ts` (backslashes kept), a POSIX
+ * `/home/me/proj/src/foo.ts` becomes `src/foo.ts`. We deliberately do NOT run
  * paths through `resolveWorkspaceFilePaths`/`normalizeWorkspaceFileLocation`
  * here: those normalize `\` → `/` for host resolution, which is correct for
  * OPENING a file but wrong for DISPLAY — it mixed backslash (out-of-workspace,
  * shown verbatim) and forward-slash (relativized) rows in the same panel.
- * Windows paths stay Windows; POSIX paths stay POSIX. Only the root prefix is
- * replaced; separators in the remainder are left exactly as-is.
+ * Windows paths stay Windows; POSIX paths stay POSIX. Only the root prefix (plus
+ * its trailing separator, for a child path) is removed; separators in the
+ * remainder are left exactly as-is.
  *
- * Other rules (matching the user's spec: root → `.`, root+`sep`+rest → `./rest`):
+ * Other rules (root → `.`, root+`sep`+rest → `rest`):
  * - Matches the root in EITHER separator style, case-insensitively for a
  *   Windows drive path (the reported path and the `cwd` can disagree on case).
  * - Requires a path BOUNDARY right after the root — a separator, a delimiter
@@ -143,10 +146,15 @@ function relativizeStringPaths(text: string, workspaceRoot: string | undefined):
     .split(/[\\/]+/)
     .map(escapeRegExp)
     .join("[\\\\/]");
-  // Boundary lookahead: next char is a separator, a non-path-name delimiter
-  // (anything but a word char / dot / dash), or the string end.
-  const pattern = new RegExp(`${rootPattern}(?=[\\\\/]|[^\\w.-]|$)`, isWindows ? "gi" : "g");
-  return text.replace(pattern, ".");
+  // Consume the root and, when a child follows, its leading separator too — so
+  // `C:\…\proj\src\foo.ts` collapses straight to `src\foo.ts` rather than the
+  // noisier `.\src\foo.ts`. Two boundary cases, in one pass:
+  //   - root followed by a separator → capture the separator and drop it with the
+  //     root (remainder is left verbatim, keeping its authored separators).
+  //   - bare root, at end-of-string or before a non-path delimiter (quote/space/
+  //     paren) → lookahead only, and the root collapses to `.` (`cd "."`).
+  const pattern = new RegExp(`${rootPattern}(?:([\\\\/])|(?=[^\\w.-]|$))`, isWindows ? "gi" : "g");
+  return text.replace(pattern, (_match, sep: string | undefined) => (sep ? "" : "."));
 }
 
 /** The two identity colors of an Agent Personality (the daemon's spinner

@@ -392,7 +392,7 @@ describe("deriveToolCallDiscovery", () => {
     ).toEqual({
       type: "pattern",
       label: "payment",
-      content: "28 matches · 9 files\n./src/pay.ts",
+      content: "28 matches · 9 files\nsrc/pay.ts",
     });
   });
 
@@ -425,7 +425,7 @@ describe("deriveToolCallDiscovery", () => {
         { type: "write", filePath: "/home/me/proj/a.ts", content: "one\ntwo\nthree" },
         { workspaceRoot: ROOT },
       ),
-    ).toEqual({ type: "code", label: "NEW: ./a.ts", content: "3 lines\none\ntwo" });
+    ).toEqual({ type: "code", label: "NEW: a.ts", content: "3 lines\none\ntwo" });
   });
 
   test("edit → a code card summarizing the diff", () => {
@@ -551,10 +551,11 @@ describe("timelineItemToSimulationEvents", () => {
       item,
       time: 10,
     });
-    // Windows path stays Windows — separators are NOT converted to `/`.
+    // Windows path stays Windows — separators are NOT converted to `/`. The root
+    // and its trailing separator are dropped, so the child path leads with `packages`.
     expect(events[0]?.payload).toMatchObject({
-      args: ".\\packages\\app\\src\\foo.ts",
-      inputData: { file_path: ".\\packages\\app\\src\\foo.ts" },
+      args: "packages\\app\\src\\foo.ts",
+      inputData: { file_path: "packages\\app\\src\\foo.ts" },
     });
   });
 
@@ -573,8 +574,8 @@ describe("timelineItemToSimulationEvents", () => {
       time: 10,
     });
     expect(events[0]?.payload).toMatchObject({
-      args: "./packages/app/src/foo.ts",
-      inputData: { file_path: "./packages/app/src/foo.ts" },
+      args: "packages/app/src/foo.ts",
+      inputData: { file_path: "packages/app/src/foo.ts" },
     });
   });
 
@@ -599,7 +600,7 @@ describe("timelineItemToSimulationEvents", () => {
     });
   });
 
-  test("replaces the workspace root with '.' inside a freeform shell command", () => {
+  test("strips the workspace root prefix from a path inside a freeform shell command", () => {
     const item: AgentTimelineItem = {
       type: "tool_call",
       callId: "call-sh",
@@ -613,8 +614,8 @@ describe("timelineItemToSimulationEvents", () => {
       item,
       time: 10,
     });
-    // Root → '.', remainder keeps its authored backslashes.
-    expect(events[0]?.payload.args).toBe('cat ".\\src\\foo.ts"');
+    // Root + separator dropped, remainder keeps its authored backslashes.
+    expect(events[0]?.payload.args).toBe('cat "src\\foo.ts"');
   });
 
   test("replaces a bare/quoted workspace root (no trailing separator) with '.'", () => {
@@ -684,7 +685,7 @@ describe("timelineItemToSimulationEvents", () => {
       item,
       time: 10,
     });
-    expect(events[0]?.payload.args).toBe("./packages/app/**/*.ts");
+    expect(events[0]?.payload.args).toBe("packages/app/**/*.ts");
   });
 
   test("failed tool_call emits tool_call_end with isError and errorMessage", () => {

@@ -40,7 +40,13 @@ import {
   type CompatToolSpec,
 } from "./openai-compat-tools.js";
 import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../tools/types.js";
-import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import {
+  ottoToolGroupForName,
+  MAX_TOOL_ROUNDS_DEFAULT,
+  MAX_TOOL_ROUNDS_MIN,
+  MAX_TOOL_ROUNDS_MAX,
+  type OttoToolGroup,
+} from "@otto-code/protocol/provider-config";
 import {
   buildOpenAICompatFeatures,
   normalizeOpenAICompatAutoCompact,
@@ -77,8 +83,21 @@ import type {
 export const OPENAI_COMPAT_EXTENDS = "openai-compatible";
 
 const DEFAULT_CATALOG_TIMEOUT_MS = 10_000;
-/** Upper bound on model→tool→model rounds within a single turn. */
-const MAX_TOOL_ROUNDS = 50;
+
+/**
+ * Upper bound on model→tool→model rounds within a single turn. Defaults to
+ * MAX_TOOL_ROUNDS_DEFAULT; the provider-level `maxToolRounds` override raises or
+ * lowers it (clamped to the schema's [min, max] as a defense-in-depth guard so a
+ * hand-edited config.json can't disable the safety valve). Out-of-range or
+ * missing values fall back to the default rather than failing the session.
+ */
+function resolveMaxToolRounds(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return MAX_TOOL_ROUNDS_DEFAULT;
+  }
+  const rounded = Math.round(value);
+  return Math.min(MAX_TOOL_ROUNDS_MAX, Math.max(MAX_TOOL_ROUNDS_MIN, rounded));
+}
 
 /**
  * Per-tool-result budget for the compaction payload. Large results keep their
@@ -240,14 +259,34 @@ interface ToolCallPayload {
   function: { name: string; arguments: string };
 }
 
+/**
+ * A base64-encoded image attached to a user message. Sent to the model as an
+ * OpenAI-vision `image_url` content part (a `data:` URL), and persisted with
+ * the conversation so the image stays in context across resume — vision APIs
+ * keep the image in the running conversation, not just the turn it arrived on.
+ */
+interface PromptImage {
+  data: string;
+  mimeType: string;
+}
+
 type ChatMessage =
   /**
    * messageId is provider-internal bookkeeping for user messages: it ties the
    * persisted conversation to the durable timeline's user_message items so
    * revertConversation can find its truncation point. Stripped from the wire
    * payload before requests — strict servers reject unknown message fields.
+   *
+   * images carries attached pictures (user role only); when present, the wire
+   * message uses OpenAI's content-array vision format instead of a bare string.
    */
-  | { role: "system" | "user"; content: string; messageId?: string; isCompactionSummary?: boolean }
+  | {
+      role: "system" | "user";
+      content: string;
+      messageId?: string;
+      isCompactionSummary?: boolean;
+      images?: PromptImage[];
+    }
   // reasoning is the round's accumulated thinking text, kept only so a
   // resumed session can redisplay it — never sent back to the model (most
   // reasoning APIs don't want their own thinking echoed back as input, and
@@ -275,6 +314,22 @@ function parseSlashCommandInput(text: string): { commandName: string; args: stri
 
 function toWireMessage(message: ChatMessage): Record<string, unknown> {
   if (message.role === "system" || message.role === "user") {
+    if (message.role === "user" && message.images && message.images.length > 0) {
+      // OpenAI vision format: content becomes an array of typed parts. The
+      // text part is omitted when empty (image-only prompt) so we never send a
+      // blank text block that some strict servers reject.
+      const parts: Array<Record<string, unknown>> = [];
+      if (message.content) {
+        parts.push({ type: "text", text: message.content });
+      }
+      for (const image of message.images) {
+        parts.push({
+          type: "image_url",
+          image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+        });
+      }
+      return { role: message.role, content: parts };
+    }
     return { role: message.role, content: message.content };
   }
   if (message.role === "assistant") {
@@ -360,6 +415,8 @@ export interface OpenAICompatAgentClientOptions {
   mcpToolPermissions?: McpToolPermissionMode | null;
   /** Provider-level compaction defaults; per-agent feature values win. */
   compaction?: ProviderCompactionConfig | null;
+  /** Max tool rounds per turn; undefined/null = the built-in default. */
+  maxToolRounds?: number | null;
   managedProcesses?: ManagedProcessRegistry | null;
 }
 
@@ -410,6 +467,22 @@ function promptToText(prompt: AgentPromptInput): string {
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("\n")
     .trim();
+}
+
+/**
+ * Pull image attachments out of a structured prompt so they can ride along as
+ * OpenAI-vision `image_url` parts. Non-image mime types are dropped — a `data:`
+ * URL with a non-image type wouldn't be interpreted as an image by the server.
+ */
+function promptToImages(prompt: AgentPromptInput): PromptImage[] {
+  if (typeof prompt === "string") {
+    return [];
+  }
+  return prompt.flatMap((block) =>
+    block.type === "image" && block.mimeType.startsWith("image/")
+      ? [{ data: block.data, mimeType: block.mimeType }]
+      : [],
+  );
 }
 
 async function* readLines(body: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
@@ -616,6 +689,23 @@ function parseToolCallPayloads(raw: unknown): ToolCallPayload[] | null {
   return calls.length > 0 ? calls : null;
 }
 
+/** Restore persisted image attachments, dropping any malformed entries. */
+function parsePromptImages(raw: unknown): PromptImage[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap((entry): PromptImage[] => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    if (typeof record.data === "string" && typeof record.mimeType === "string") {
+      return [{ data: record.data, mimeType: record.mimeType }];
+    }
+    return [];
+  });
+}
+
 function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMessage[] {
   const raw = metadata?.["messages"];
   if (!Array.isArray(raw)) {
@@ -633,12 +723,14 @@ function restoreMessages(metadata: Record<string, unknown> | undefined): ChatMes
     if (role === "system" || role === "user") {
       const messageId = typeof record.messageId === "string" ? record.messageId : undefined;
       const isCompactionSummary = record.isCompactionSummary === true;
+      const images = parsePromptImages(record.images);
       return [
         {
           role,
           content,
           ...(messageId ? { messageId } : {}),
           ...(isCompactionSummary ? { isCompactionSummary: true } : {}),
+          ...(images.length > 0 ? { images } : {}),
         },
       ];
     }
@@ -714,6 +806,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly mcpServers: Record<string, McpServerConfig> | null;
   private readonly mcpToolPermissions: McpToolPermissionMode;
   private readonly compaction: ProviderCompactionConfig | null;
+  private readonly maxToolRounds: number | null;
   private readonly managedProcesses: ManagedProcessRegistry | null;
 
   constructor(options: OpenAICompatAgentClientOptions) {
@@ -725,6 +818,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.mcpServers = options.mcpServers ?? null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
     this.compaction = options.compaction ?? null;
+    this.maxToolRounds = options.maxToolRounds ?? null;
     this.managedProcesses = options.managedProcesses ?? null;
   }
 
@@ -838,6 +932,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       mcpServers: this.mcpServers,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
+      maxToolRounds: this.maxToolRounds,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -869,6 +964,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       mcpServers: this.mcpServers,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
+      maxToolRounds: this.maxToolRounds,
       managedProcesses: this.managedProcesses,
     });
   }
@@ -987,6 +1083,8 @@ export class OpenAICompatAgentSession implements AgentSession {
   private autoCompactDisarmed = false;
   /** Recent-conversation budget kept verbatim through compaction. */
   private keepRecentTokens: number;
+  /** Resolved max model→tool→model rounds per turn (default or provider override). */
+  private maxToolRounds: number;
   private activeTurn: ActiveTurn | null = null;
   /** Resolved context window for the active model; null until (or unless) discovered. */
   private contextWindowMaxTokens: number | null = null;
@@ -1010,6 +1108,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     mcpServers?: Record<string, McpServerConfig> | null;
     mcpToolPermissions?: McpToolPermissionMode;
     compaction?: ProviderCompactionConfig | null;
+    maxToolRounds?: number | null;
     managedProcesses?: ManagedProcessRegistry | null;
   }) {
     this.provider = options.providerId;
@@ -1064,6 +1163,7 @@ export class OpenAICompatAgentSession implements AgentSession {
           this.autoCompactDefault,
         );
     this.keepRecentTokens = resolveKeepRecentTokens(options.compaction);
+    this.maxToolRounds = resolveMaxToolRounds(options.maxToolRounds);
 
     // The system message is always rebuilt so cwd/mode/config changes take
     // effect on resume; restored copies of it are dropped first.
@@ -1219,6 +1319,20 @@ export class OpenAICompatAgentSession implements AgentSession {
       this.autoCompactHidden !== previousHidden ||
       this.autoCompactDefault !== previousDefault
     );
+  }
+
+  /**
+   * Live re-apply of the provider-level max-tool-rounds override so a settings
+   * edit reaches running chats without a restart. Takes effect on the next turn
+   * (a turn already mid-loop keeps the bound it started with).
+   */
+  applyMaxToolRounds(maxToolRounds: number | null): boolean {
+    const next = resolveMaxToolRounds(maxToolRounds);
+    if (next === this.maxToolRounds) {
+      return false;
+    }
+    this.maxToolRounds = next;
+    return true;
   }
 
   private buildSystemPrompt(config: AgentSessionConfig): string {
@@ -1995,6 +2109,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     this.activeTurn = turn;
 
     const promptText = promptToText(prompt);
+    const promptImages = promptToImages(prompt);
     // One id shared by the timeline item and the conversation entry so
     // revertConversation can map a timeline user_message back to its message.
     const userMessageId = options?.messageId ?? randomUUID();
@@ -2009,7 +2124,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       },
     });
 
-    void this.executeTurn(turn, promptText, userMessageId);
+    void this.executeTurn(turn, promptText, userMessageId, promptImages);
     return { turnId };
   }
 
@@ -2017,6 +2132,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     turn: ActiveTurn,
     promptText: string,
     userMessageId: string,
+    promptImages: PromptImage[],
   ): Promise<void> {
     this.emit({ type: "turn_started", provider: this.provider, turnId: turn.turnId });
 
@@ -2071,7 +2187,12 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // entire conversation"), the instruction the model is about to act on
       // must not be folded into the summary with it.
       await this.maybeAutoCompact(turn);
-      this.messages.push({ role: "user", content: modelText, messageId: userMessageId });
+      this.messages.push({
+        role: "user",
+        content: modelText,
+        messageId: userMessageId,
+        ...(promptImages.length > 0 ? { images: promptImages } : {}),
+      });
       await this.runToolLoop(turn);
     } catch (error) {
       this.settleTurnFailure(turn, error);
@@ -2106,7 +2227,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     // context ring (agent.lastUsage is replaced wholesale, and the ring
     // needs both bounds). Cached per model, so this is one probe per session.
     await this.resolveContextWindowMaxTokens();
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    for (let round = 0; round < this.maxToolRounds; round += 1) {
       // Round 0 was already checked at turn start; re-check between tool
       // rounds so a long tool loop compacts mid-turn instead of overflowing.
       if (round > 0) {
@@ -2164,7 +2285,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       turnId: turn.turnId,
       item: {
         type: "error",
-        message: `Stopped after ${MAX_TOOL_ROUNDS} tool rounds without a final answer.`,
+        message: `Stopped after ${this.maxToolRounds} tool rounds without a final answer.`,
       },
     });
   }

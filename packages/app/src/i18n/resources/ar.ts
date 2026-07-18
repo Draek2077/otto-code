@@ -2642,6 +2642,11 @@ export const ar: TranslationResources = {
         showSelectorLabel: "إظهار الضغط التلقائي في المحادثات",
         showSelectorDescription:
           "عند الإيقاف، تُخفي المحادثات محدد الضغط التلقائي وتستخدم دائمًا الإعداد الافتراضي أعلاه.",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "فشل حفظ إعدادات الوكلاء",
       },
       connection: {

@@ -1,6 +1,6 @@
 import type { ContextBreakdown } from '@/lib/agent-types'
 import type { ConversationMessage } from './types'
-import { appendConversation, asString, LABEL_LEN_BUBBLE, MAX_BUBBLES } from './types'
+import { appendConversation, asString } from './types'
 import type { MutableEventState } from './process-event'
 
 export function handleMessage(
@@ -28,30 +28,26 @@ export function handleMessage(
   // Removed outright; `task` was written only here for main agents and is not
   // read by any Otto-embedded surface.
 
-  // Update agent state and push message bubble to queue
+  // Update agent state (but NOT the floating canvas bubbles).
+  //
+  // OTTO PATCH (OTTO-PATCHES.md): the on-canvas message bubbles are suppressed.
+  // The visualizer is a companion to the real chat the user already has open,
+  // so the floating per-message popups duplicated that chat and obscured the
+  // orchestration the graph exists to show. Only the visual popup is dropped —
+  // the message still flows through this handler into `state.conversations`
+  // below (`appendConversation`), so the message REMAINS part of the record
+  // (per-node history / timeline) and a node's account of what it did is
+  // unchanged. The node's lifecycle state (→ 'thinking' on real message
+  // activity) is preserved too; that's activity, not a popup. `messageBubbles`
+  // is fed nowhere else, so it simply stays empty (draw-bubbles/hit-detection/
+  // camera framing all short-circuit on the empty array). To re-enable, restore
+  // the removed `updates.messageBubbles` push.
   const msgAgent = state.agents.get(agentName)
   if (msgAgent) {
-    const bubbleRole: 'user' | 'thinking' | 'assistant' = role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant'
-    const updates: Partial<typeof msgAgent> = {}
-
-    {
-      // Truncate thinking for graph bubbles (full text in message feed panel)
-      const bubbleText = bubbleRole === 'thinking' ? content.slice(0, LABEL_LEN_BUBBLE) + (content.length > LABEL_LEN_BUBBLE ? '...' : '') : content
-      // Dedup: skip if last bubble has the same text (dual event source race)
-      const lastBubble = msgAgent.messageBubbles[msgAgent.messageBubbles.length - 1]
-      if (!lastBubble || lastBubble.text !== bubbleText) {
-        const newBubbles = [...msgAgent.messageBubbles, { text: bubbleText, time: currentTime, role: bubbleRole }]
-        updates.messageBubbles = newBubbles.length > MAX_BUBBLES ? newBubbles.slice(-MAX_BUBBLES) : newBubbles
-      }
-    }
-
     if (msgAgent.state !== 'complete' && msgAgent.state !== 'tool_calling') {
       if (role === 'user' || role === 'thinking' || role === 'assistant') {
-        updates.state = 'thinking'
+        state.agents.set(agentName, { ...msgAgent, state: 'thinking' })
       }
-    }
-    if (Object.keys(updates).length > 0) {
-      state.agents.set(agentName, { ...msgAgent, ...updates })
     }
   }
 
@@ -79,13 +75,21 @@ export function handleContextUpdate(
     : undefined
   const agent = state.agents.get(agentName)
   if (agent) {
+    // OTTO PATCH (OTTO-PATCHES.md): a context_update is pure token accounting —
+    // it must NOT drive the lifecycle state. Upstream forced 'thinking' here,
+    // assuming context updates only arrive mid-reasoning. Otto's host pushes a
+    // context_update from a store reconcile whenever usage moves, and the final
+    // turn usage lands right AFTER the turn ends (the `resting` agent_idle has
+    // already rested the node at 'idle'). Forcing 'thinking' flipped that just
+    // -rested node back to a permanent "Thinking" pulse — the agent looked busy
+    // forever once it went idle. Preserve `agent.state`; real activity
+    // (message/tool events) is what moves a node into 'thinking'/'tool_calling'.
     state.agents.set(agentName, {
       ...agent,
       tokensUsed: tokens ?? agent.tokensUsed,
       ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
       tokensMax: tokensMaxOverride ?? agent.tokensMax,
       contextBreakdown: breakdown || agent.contextBreakdown,
-      state: agent.state === 'complete' ? 'complete' : 'thinking'
     })
   }
 }

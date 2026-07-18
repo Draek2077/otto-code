@@ -7,7 +7,7 @@ import { gitLogPanelRegistration } from "@/panels/git-log-panel";
 import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
-import { visualizerPanelRegistration } from "@/panels/visualizer-panel";
+import { visualizerPanelRegistration } from "@/panels/visualizer-panel-registration";
 
 let panelsRegistered = false;
 

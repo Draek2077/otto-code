@@ -776,6 +776,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleAnimationsEnabledChange = useCallback(
+    (animationsEnabled: boolean) => {
+      void updateSettings({ animationsEnabled });
+    },
+    [updateSettings],
+  );
+
   const handleAutoClearCompletedSubagentsChange = useCallback(
     (autoClearCompletedSubagents: boolean) => {
       void updateSettings({ autoClearCompletedSubagents });
@@ -911,6 +918,22 @@ export function AppearanceSection() {
             list={scopedThemeList}
             value={scopedThemeValue}
             onChange={handleThemeVariantChange}
+          />
+        </View>
+      </SettingsSection>
+      {/* i18n: English-only pending a translation pass (Animations). Kept as its
+          own section (not the desktop-only Layout section) because it also gates
+          native page-transition fades. */}
+      <SettingsSection title="Animations">
+        <View style={settingsStyles.card}>
+          <LayoutToggleRow
+            title="Animate transitions"
+            hint="Cross-fade between pages and slide the sidebars open and closed instead of switching instantly. Turn off for immediate, no-animation transitions."
+            accessibilityLabel="Animate transitions"
+            value={settings.animationsEnabled}
+            withBorder={false}
+            onValueChange={handleAnimationsEnabledChange}
+            testID="settings-animations-enabled-switch"
           />
         </View>
       </SettingsSection>

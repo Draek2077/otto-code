@@ -2687,6 +2687,11 @@ export const es: TranslationResources = {
         showSelectorLabel: "Mostrar autocompactación en los chats",
         showSelectorDescription:
           "Si está desactivado, los chats ocultan el selector de autocompactación y siempre usan el valor predeterminado anterior.",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "Error al guardar la configuración de agentes",
       },
       connection: {

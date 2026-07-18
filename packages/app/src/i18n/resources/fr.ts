@@ -2691,6 +2691,11 @@ export const fr: TranslationResources = {
         showSelectorLabel: "Afficher l'auto-compactage dans les discussions",
         showSelectorDescription:
           "Si désactivé, les discussions masquent le sélecteur d'auto-compactage et utilisent toujours la valeur par défaut ci-dessus.",
+        maxToolRoundsLabel: "Max tool rounds per turn",
+        maxToolRoundsHint:
+          "The turn stops with an error after this many tool rounds without a final answer — a safety valve against runaway loops.",
+        maxToolRoundsValue: "{{rounds}} rounds",
+        maxToolRoundsRequiresUpdate: "Update the host to configure max tool rounds.",
         saveFailed: "Échec de l'enregistrement des paramètres des agents",
       },
       connection: {

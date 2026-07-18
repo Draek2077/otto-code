@@ -14,16 +14,19 @@ export function truncateText(ctx: CanvasRenderingContext2D, text: string, maxWid
   return lo > 0 ? text.slice(0, lo) + '\u2026' : '\u2026'
 }
 
-export function drawTetherLine(ctx: CanvasRenderingContext2D, agent: Agent, transform: { x: number; y: number; scale: number }, canvasH: number) {
+export function drawTetherLine(ctx: CanvasRenderingContext2D, agent: Agent, transform: { x: number; y: number; scale: number }, canvasW: number, canvasH: number) {
   const r = agent.isMain ? NODE.radiusMain : NODE.radiusSub
 
-  // Match the detail card's fixed middle-left position (glass-card.tsx)
-  const screenLeft = CARD.margin
+  // OTTO PATCH (OTTO-PATCHES.md): the detail card now pins middle-RIGHT
+  // (agent-detail-card.tsx), so the tether ends at the card's LEFT edge —
+  // canvasW - margin - width — at its vertical center (the card is anchored so
+  // its nominal center sits at canvasH/2, i.e. screenTop + height/2).
+  const screenLeft = canvasW - CARD.margin - CARD.detail.width
   const screenTop = Math.max(100, (canvasH - CARD.detail.height) / 2)
 
   // Convert card position (screen space) back to world coords for the tether endpoint
   const endX = (screenLeft - transform.x) / transform.scale
-  const endY = (screenTop + CARD.detail.height * 0.3 - transform.y) / transform.scale
+  const endY = (screenTop + CARD.detail.height / 2 - transform.y) / transform.scale
 
   // Start from hex edge toward the card
   const angle = Math.atan2(endY - agent.y, endX - agent.x)

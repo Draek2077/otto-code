@@ -1378,6 +1378,8 @@ export class VoiceAssistantWebSocketServer {
         promptSuggestions: true,
         // COMPAT(rateLimitEvents): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         rateLimitEvents: true,
+        // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        openaiCompatMaxToolRounds: true,
       },
     };
   }
