@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.3 - 2026-07-17
+
+### Added
+
+- Chats now get a short AI-generated title from your first message, replacing the placeholder first-line title
+- After a turn, the agent's predicted next prompt appears as ghost text in the message box — press Tab to accept (Claude agents), with a new Settings toggle
+- A warning strip above the message box when your Claude plan usage nears or hits a rate limit, with a new Settings toggle
+- Press Up and Down in an empty message box to recall messages you've already sent
+- The personality editor is now organized into Identity, Personality, Model, and Voice tabs
+- Voice cues let a personality speak a short line when its agent joins, first starts thinking, and finishes — write them yourself or generate with AI, off by default
+- Choose how a suggested task starts by default — New chat, Sub-agent, Worktree, or In session
+- Pick the shape of Visualizer agent nodes — hexagon, square, octagon, or circle
+- A new Visualizer toolbar collects its controls at the top of the tab
+- An FPS meter toggle for the Visualizer, and a Gradient toggle for chat message bubbles in Appearance settings
+
+### Improved
+
+- Press Escape once to clear a typed-but-unsent message, and again to cancel the running agent
+- Tool calls now show a single friendly name everywhere they appear
+- Clicking a file link in chat opens it in a side pane instead of taking over your conversation
+- Responses stream in with a smoother typewriter reveal and a live token count for the turn
+- Completed sub-agents can auto-clear from a chat's track once they settle, with their token totals still counted in the header
+- The Visualizer's per-node glow and full-scene bloom are now independent toggles
+- A Claude Workflow run breaks out into one Visualizer row per agent it spawns
+- Visualizer file paths now display relative to the agent's folder
+- New chats no longer open inside the Visualizer pane
+- The model picker groups your personalities into a drill-down submenu
+- Refreshed the bundled versions of several third-party coding agents
+
+### Fixed
+
+- Sub-agent nodes in the Visualizer now settle correctly at the end of a run instead of lingering
+- Archiving a chat now clears its Visualizer session
+
 ## 0.6.2 - 2026-07-16
 
 ### Added
