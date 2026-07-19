@@ -31,7 +31,7 @@ export default defineConfig({
   projects: [
     {
       name: "Desktop Chrome",
-      testIgnore: ["**/*.real.spec.ts"],
+      testIgnore: ["**/*.real.spec.ts", "**/*.local.spec.ts"],
       // E2E_BROWSER_CHANNEL lets local runs drive an installed browser (e.g.
       // "msedge" on Windows) instead of Playwright's downloaded chromium.
       use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
@@ -39,6 +39,15 @@ export default defineConfig({
     {
       name: "real-provider",
       testMatch: ["**/*.real.spec.ts"],
+      use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
+    },
+    {
+      // Live agent-loop specs against the local LM Studio model (free inference).
+      // Local inference is slow and nondeterministic: generous timeout, one retry.
+      name: "local-ai",
+      testMatch: ["**/*.local.spec.ts"],
+      timeout: 240_000,
+      retries: 1,
       use: { ...devices["Desktop Chrome"], channel: process.env.E2E_BROWSER_CHANNEL },
     },
   ],

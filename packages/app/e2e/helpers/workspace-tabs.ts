@@ -21,7 +21,9 @@ export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
   await expect(visibleTestId(page, "workspace-tabs-row").first()).toBeVisible({
     timeout: 30_000,
   });
-  await expect(visibleTestId(page, "workspace-new-agent-tab-inline").first()).toBeVisible({
+  // The inline new-agent tab was replaced by the always-present "+" tab menu;
+  // its trigger is the stable signal that the tab bar has fully rendered.
+  await expect(visibleTestId(page, "workspace-new-tab-menu-trigger").first()).toBeVisible({
     timeout: 30_000,
   });
 }

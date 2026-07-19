@@ -91,7 +91,10 @@ export async function openSettingsHostSection(
   section: HostSection,
 ): Promise<void> {
   await page.getByTestId(`settings-host-section-${section}`).click();
-  await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, section));
+  // The settings sidebar appends a redundant ?hostSection=<section> query to
+  // the URL; assert the pathname so the section route is validated regardless.
+  const expectedPath = buildSettingsHostSectionRoute(serverId, section);
+  await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 }).toBe(expectedPath);
 }
 
 export async function expectSettingsHeader(page: Page, title: string): Promise<void> {
