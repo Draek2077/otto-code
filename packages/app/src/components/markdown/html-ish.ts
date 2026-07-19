@@ -30,6 +30,13 @@ const BACKTICK_RUN_RE = /`+/g;
 const SAFE_IMAGE_SRC_RE = /^(https?:\/\/|data:image\/(?:png|gif|jpe?g);base64,)/i;
 const SAFE_LINK_HREF_RE = /^(https?:\/\/|#(?:$|[\w-]))/i;
 const VOID_HTML_TAGS = new Set(["br", "img"]);
+/**
+ * Layout-only containers that carry no meaning we can express in the RN renderer — GitHub
+ * renders them invisibly (alignment, wrapping). Echoing their raw markup as literal text is
+ * strictly worse than dropping the tag and keeping the content, so these unwrap to children.
+ */
+const BLOCK_LAYOUT_HTML_TAGS = new Set(["p", "div", "center"]);
+const INLINE_LAYOUT_HTML_TAGS = new Set(["span"]);
 
 interface ProtectedMarkdownRange {
   start: number;
@@ -318,8 +325,14 @@ function renderInlineTokens(tokens: HtmlToken[]): string {
       index = closeIndex;
       continue;
     }
-    if (token.name === "sub") {
+    if (token.name === "sub" || INLINE_LAYOUT_HTML_TAGS.has(token.name)) {
       output += renderInlineTokens(children);
+      index = closeIndex;
+      continue;
+    }
+    if (BLOCK_LAYOUT_HTML_TAGS.has(token.name)) {
+      // Keep the block boundary markdown-it needs; surplus blank lines are harmless.
+      output += `\n\n${renderInlineTokens(children).trim()}\n\n`;
       index = closeIndex;
       continue;
     }
@@ -415,6 +428,11 @@ function getSingleImageChild(tokens: HtmlToken[]): HtmlTagToken | null {
 
 function renderUnknownTag(token: HtmlTagToken): string {
   if (token.name === "script" || token.name === "style") {
+    return "";
+  }
+  // An unmatched layout tag still carries no meaning — most often its close tag landed in the
+  // next part after an inline image split the token run. Drop it rather than echo raw markup.
+  if (BLOCK_LAYOUT_HTML_TAGS.has(token.name) || INLINE_LAYOUT_HTML_TAGS.has(token.name)) {
     return "";
   }
   return token.raw;
