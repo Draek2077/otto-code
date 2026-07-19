@@ -296,6 +296,30 @@ describe("splitHtmlishMarkdown", () => {
     );
   });
 
+  it("unwraps layout-only containers instead of echoing their raw markup", () => {
+    expect(normalizeHtmlishMarkdown('<p align="center">Centered</p>').trim()).toBe("Centered");
+    expect(normalizeHtmlishMarkdown("<div><center>Wrapped</center></div>").trim()).toBe("Wrapped");
+    expect(normalizeHtmlishMarkdown('Inline <span class="x">value</span> kept')).toBe(
+      "Inline value kept",
+    );
+  });
+
+  it("keeps a block boundary when unwrapping block layout containers", () => {
+    expect(normalizeHtmlishMarkdown("<p>One</p><p>Two</p>")).toBe("\n\nOne\n\n\n\nTwo\n\n");
+  });
+
+  it("drops unmatched layout tags left behind by an inline image split", () => {
+    expect(
+      splitHtmlishMarkdown(
+        '<p align="center"><img alt="Logo" src="https://example.com/logo.png"></p>',
+      ),
+    ).toEqual([{ kind: "inlineImage", alt: "Logo", src: "https://example.com/logo.png" }]);
+  });
+
+  it("still echoes unknown non-layout tags as inert text", () => {
+    expect(normalizeHtmlishMarkdown('<iframe src="x"></iframe>')).toBe('<iframe src="x"></iframe>');
+  });
+
   it("leaves complex code tags inert instead of parsing HTML", () => {
     expect(normalizeHtmlishMarkdown('<code onclick="evil()"><script>x</script></code>')).toBe(
       '<code onclick="evil()"><script>x</script></code>',

@@ -26,6 +26,10 @@ subset, sized inline images, highlighted fences, YAML frontmatter as a metadata 
 - **Task lists** — `- [ ]` / `- [x]` render as checkbox glyphs in both chat and viewer.
   Token-level markdown-it rule (`markdown/task-lists.ts`) so fenced examples are untouched.
   Read-only glyphs (☐/☑); icon or interactive checkboxes are polish tracked below.
+- **Layout-only HTML unwrapping** — `<p>`, `<div>`, `<center>`, `<span>` no longer echo their raw
+  markup as literal text in the viewer; they unwrap to their children (block tags keep a paragraph
+  boundary). GitHub renders these invisibly, so showing the tags was strictly worse than dropping
+  them. `markdown/html-ish.ts`; unknown non-layout tags are still passed through inert.
 - **SVG on native** — `image/svg+xml` renders through `SvgXml` (react-native-svg) on iOS/Android
   instead of a blank `Image`; parse failures fall back to the binary message. Web keeps the
   blob-URL `<img>` path, which tolerates more of the SVG spec.
@@ -54,10 +58,14 @@ Render ` ```mermaid ` fences (chat + viewer) and standalone `.mmd`/`.mermaid` fi
 
 ### 2. Relative image resolution in markdown files
 
-`![](docs/diagram.png)` in a repo markdown file doesn't resolve — the renderer has no base path.
-The viewer knows its cwd: resolve relative srcs through the existing daemon file-read RPC and the
-attachment blob pipeline (`attachments/service.ts`), same as image previews. Only workstream that
-touches the daemon path, and only via existing RPCs. Moderate.
+`![](docs/diagram.png)` and `<img src="packages/website/public/logo.svg">` in a repo markdown file
+don't resolve — the renderer has no base path, and the two forms fail in two different places.
+Resolve relative srcs through the existing daemon file-read RPC and the attachment blob pipeline
+(`attachments/service.ts`), same as image previews. Only workstream that touches the daemon path,
+and only via existing RPCs. Moderate.
+
+Broken out in full: **[relative-image-resolution.md](relative-image-resolution.md)** — the two
+code paths, the containment boundary, and the open fallback-behavior decision.
 
 ### 3. CSV/TSV table view
 
@@ -73,6 +81,9 @@ high perceived value.
 ### 5. Markdown polish (smaller items, batch as convenient)
 
 - Icon (or interactive) checkboxes replacing the ☐/☑ glyphs.
+- GitHub alerts — `> [!NOTE]` / `[!WARNING]` / `[!TIP]` blockquotes currently render the literal
+  marker text. Token-level markdown-it rule mapping the five kinds onto themed callouts; lights up
+  chat and viewer at once. Common in READMEs, so higher value than its size suggests.
 - Footnotes.
 - Math (KaTeX): feasible on web; native needs the webview approach — piggyback on the mermaid
   payload infrastructure if demand shows up.
