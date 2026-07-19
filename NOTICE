@@ -14,9 +14,31 @@ Attribution and license
 
 Otto is derived from Paseo and is distributed under the same license, the GNU
 Affero General Public License version 3 (AGPL-3.0), in accordance with the
-copyleft terms of the original work. The original copyright notice and the full
-text of the license are preserved verbatim in the LICENSE file at the root of
-this repository and are NOT removed or altered by this fork.
+copyleft terms of the original work. The original copyright notice is preserved
+verbatim in this file (above), and the full, unmodified text of the license is
+preserved verbatim in the LICENSE file at the root of this repository. Neither
+is removed or altered by this fork.
+
+The scope statement that originally accompanied the copyright notice is
+preserved here verbatim:
+
+  Copyright (c) 2025-present Mohamed Boudra
+
+  Portions of this software are licensed as follows:
+
+  * All third party components incorporated into the Paseo Software are
+    licensed under the original license provided by the owner of the
+    applicable component.
+  * All content outside of the above mentioned restrictions is available
+    under the "AGPLv3" license as defined below.
+
+(That notice previously sat at the top of the LICENSE file. It lives here so
+that LICENSE contains the AGPL-3.0 text and nothing else, which is what license
+scanners — GitHub/licensee, SPDX tooling, npm, F-Droid, Flathub, and
+distribution package metadata — require in order to identify the license
+correctly. Relocating it changes nothing about the terms, the copyright holder,
+or what is licensed; "as defined below" should now be read as referring to the
+LICENSE file.)
 
 As required by section 5 of the AGPL-3.0 ("Conveying Modified Source Versions"),
 this file provides prominent notice that Otto is a modified version of Paseo and
@@ -37,8 +59,9 @@ autonomous AI coding IDE. Changes so far include, but are not limited to:
     (npm scope "@getpaseo/*" -> "@otto-code/*", CLI command "paseo" -> "otto",
     environment-variable prefix "PASEO_" -> "OTTO_", default data directory
     "~/.paseo" -> "~/.otto", default daemon port 6767 -> 6868, marketing domain
-    paseo.sh -> otto-code.ai, application bundle identifiers "sh.paseo*" ->
-    "ai.ottocode*").
+    paseo.sh -> otto-code.me, application bundle identifiers "sh.paseo*" ->
+    "me.ottocode*" for the mobile app and "ai.ottocode.desktop" for the desktop
+    app).
   * Associated documentation, configuration, and asset updates for the new name.
 
 Further functional changes made after the fork are recorded in the project's
@@ -50,7 +73,20 @@ Third-party components
 
 All third-party components incorporated into this software remain licensed under
 the original license provided by the owner of the applicable component, as noted
-in the LICENSE file and in the respective dependency manifests.
+in the scope statement above and in the respective dependency manifests.
+
+  Agent Flow
+  Copyright (c) Simon Patole
+  Source: https://github.com/patoles/agent-flow
+  License: Apache License, Version 2.0
+
+Otto's "Visualizer" feature incorporates the render layer of Agent Flow, vendored
+as a git subtree under vendor/agent-flow/ and driven by Otto's own event stream
+rather than Agent Flow's own ingestion. As required by section 4 of the Apache
+License 2.0, modifications carried against the vendored tree are enumerated with
+rationale in vendor/agent-flow/OTTO-PATCHES.md, which serves as the notice of
+state changes. The Agent Flow name and logos are trademarks of their owner and
+are not used as Otto branding or as a user-facing feature label.
 
 Otto is an independent project. It is not endorsed by, sponsored by, or
 affiliated with the Paseo project or its authors.

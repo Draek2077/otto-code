@@ -2,6 +2,7 @@
   "name": "@otto-code/protocol",
   "version": "0.6.3",
   "description": "Otto shared protocol schemas and wire types",
+  "license": "AGPL-3.0-or-later",
   "files": [
     "dist",
     "!dist/**/*.map",

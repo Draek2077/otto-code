@@ -2,6 +2,7 @@
   "name": "@otto-code/website",
   "version": "0.6.3",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",

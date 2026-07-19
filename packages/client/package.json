@@ -2,6 +2,7 @@
   "name": "@otto-code/client",
   "version": "0.6.3",
   "description": "Otto client SDK package",
+  "license": "AGPL-3.0-or-later",
   "files": [
     "dist",
     "!dist/**/*.map",
