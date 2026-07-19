@@ -45,6 +45,32 @@ function assistantToolUse(
   };
 }
 
+// A frame carrying an explicit usage block (and optional model), for exercising
+// the full in/out/cache accounting — shapes mirror the real on-disk transcript.
+function usageFrame(opts: {
+  uuid: string;
+  messageId: string;
+  model?: string;
+  usage: {
+    input_tokens?: number;
+    output_tokens: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+}) {
+  return {
+    type: "assistant",
+    uuid: opts.uuid,
+    message: {
+      id: opts.messageId,
+      role: "assistant",
+      ...(opts.model ? { model: opts.model } : {}),
+      content: [{ type: "text", text: "…" }],
+      usage: opts.usage,
+    },
+  };
+}
+
 function toolResult(toolUseId: string, content: string, isError = false) {
   return {
     type: "user",
@@ -147,5 +173,85 @@ describe("WorkflowSubagentTranscriptMapper", () => {
     // Turn 2: a second message → out=50.
     mapper.mapEntry(assistantText("done", "a7", "msg_B", 50));
     expect(mapper.cumulativeOutputTokens()).toBe(152);
+  });
+
+  it("sums the full in/out/cache split, deduped by message.id (final frame wins)", () => {
+    const mapper = new WorkflowSubagentTranscriptMapper();
+    // msg_A streams twice (values from the real captured Haiku transcript): the
+    // final frame (out=913) carries the authoritative cache split, not the first.
+    mapper.mapEntry(
+      usageFrame({
+        uuid: "a1",
+        messageId: "msg_A",
+        usage: {
+          input_tokens: 3,
+          output_tokens: 1,
+          cache_creation_input_tokens: 7178,
+          cache_read_input_tokens: 13644,
+        },
+      }),
+    );
+    mapper.mapEntry(
+      usageFrame({
+        uuid: "a2",
+        messageId: "msg_A",
+        usage: {
+          input_tokens: 4,
+          output_tokens: 913,
+          cache_creation_input_tokens: 726,
+          cache_read_input_tokens: 68161,
+        },
+      }),
+    );
+    // A second message adds on top of the first.
+    mapper.mapEntry(
+      usageFrame({
+        uuid: "a3",
+        messageId: "msg_B",
+        usage: { input_tokens: 2, output_tokens: 40, cache_read_input_tokens: 100 },
+      }),
+    );
+
+    expect(mapper.usageTotals()).toEqual({
+      inputTokens: 4 + 2,
+      cacheCreationInputTokens: 726 + 0,
+      cacheReadInputTokens: 68161 + 100,
+      outputTokens: 913 + 40,
+    });
+  });
+
+  it("treats missing cache fields as zero", () => {
+    const mapper = new WorkflowSubagentTranscriptMapper();
+    mapper.mapEntry(
+      usageFrame({ uuid: "a1", messageId: "m1", usage: { input_tokens: 10, output_tokens: 7 } }),
+    );
+    expect(mapper.usageTotals()).toEqual({
+      inputTokens: 10,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      outputTokens: 7,
+    });
+  });
+
+  it("captures the sub-agent's model (first seen wins)", () => {
+    const mapper = new WorkflowSubagentTranscriptMapper();
+    expect(mapper.model()).toBeUndefined();
+    mapper.mapEntry(
+      usageFrame({
+        uuid: "a1",
+        messageId: "m1",
+        model: "claude-haiku-4-5-20251001",
+        usage: { output_tokens: 1 },
+      }),
+    );
+    mapper.mapEntry(
+      usageFrame({
+        uuid: "a2",
+        messageId: "m2",
+        model: "claude-sonnet-5",
+        usage: { output_tokens: 5 },
+      }),
+    );
+    expect(mapper.model()).toBe("claude-haiku-4-5-20251001");
   });
 });

@@ -220,8 +220,10 @@ function buildRunOutput(params: {
 
 type ScheduleAgentManager = Pick<
   AgentManager,
+  | "captureRetainedTranscript"
   | "closeAgent"
   | "createAgent"
+  | "deleteRetainedTranscriptsForOwner"
   | "getAgent"
   | "getRegisteredProviderIds"
   | "hasInFlightRun"
@@ -533,6 +535,9 @@ export class ScheduleService {
 
   async delete(id: string): Promise<void> {
     await this.store.delete(id);
+    // Cascade: drop every retained run transcript this schedule produced so its
+    // chats don't outlive it.
+    await this.agentManager.deleteRetainedTranscriptsForOwner({ kind: "schedule", id });
   }
 
   async completeForAgent(agentId: string): Promise<number> {
@@ -987,6 +992,10 @@ export class ScheduleService {
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
     let succeeded = false;
+    // Whether the run produced any chat content (assistant/tool activity). Drives
+    // "reveal a failed run's workspace only if there's something to see" — a run
+    // that failed before doing anything leaves no empty workspace behind.
+    let hasContent = false;
     try {
       workspace = await this.createScheduleRunWorkspace(config, schedule.prompt);
       await this.recordRunWorkspace({
@@ -1082,6 +1091,23 @@ export class ScheduleService {
       // generator tears down its internal agent. Without this the finished agent
       // would leak in-memory (internal agents are never persisted or listed).
       if (agentId) {
+        // Snapshot the run's chat before teardown so it can be reopened
+        // read-only from the schedule run's "…" menu, and learn whether the run
+        // produced any content to gate the workspace reveal below. Internal
+        // agents are never persisted, so this is the only place the transcript
+        // survives. See docs/safe-unattended.md.
+        try {
+          const captured = await this.agentManager.captureRetainedTranscript(agentId, {
+            kind: "schedule",
+            id: schedule.id,
+          });
+          hasContent = captured.hasContent;
+        } catch (error) {
+          this.logger.warn(
+            { err: error, agentId, scheduleId: schedule.id, runId },
+            "Failed to capture scheduled run transcript",
+          );
+        }
         try {
           await this.agentManager.closeAgent(agentId);
         } catch (error) {
@@ -1096,6 +1122,7 @@ export class ScheduleService {
           workspace,
           agentId,
           succeeded,
+          hasContent,
           archiveOnFinish: config.archiveOnFinish,
           repoRoot: config.cwd,
           scheduleId: schedule.id,
@@ -1106,10 +1133,15 @@ export class ScheduleService {
   }
 
   // Disposition of a schedule-run workspace once the run settles. The workspace
-  // was created hidden, so exactly one of three things happens:
-  //   - error (run threw): REVEAL and never archive — the failure must surface,
-  //     and archiving would hide the very problem the user needs to see, even
-  //     when archiveOnFinish is set.
+  // was created hidden, so exactly one of these happens:
+  //   - error WITH content (run did work, then threw): REVEAL and never archive
+  //     — the failure has substance the user can inspect (the checkout state and
+  //     the retained transcript).
+  //   - error WITHOUT content (run failed before doing anything — spawn error,
+  //     personality unavailable, immediate provider error): ARCHIVE the hidden
+  //     workspace. Revealing it would leave an empty workspace in the sidebar
+  //     with nothing to see; the failure still surfaces on the schedule card
+  //     (lastRunError) and in the run's retained (if any) transcript.
   //   - success + archiveOnFinish: archive as before — it was never revealed, so
   //     the user never sees the transient workspace.
   //   - success + keep (archiveOnFinish=false): REVEAL so the kept result shows.
@@ -1117,13 +1149,28 @@ export class ScheduleService {
     workspace: PersistedWorkspaceRecord;
     agentId: string | null;
     succeeded: boolean;
+    hasContent: boolean;
     archiveOnFinish?: boolean;
     repoRoot: string;
     scheduleId: string;
     runId: string;
   }): Promise<void> {
-    const { workspace, agentId, succeeded, archiveOnFinish, repoRoot, scheduleId, runId } = params;
-    if (succeeded && shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish })) {
+    const {
+      workspace,
+      agentId,
+      succeeded,
+      hasContent,
+      archiveOnFinish,
+      repoRoot,
+      scheduleId,
+      runId,
+    } = params;
+    // A failed run only earns a visible workspace when it actually produced
+    // content; otherwise it's an empty shell and we archive it like a clean run.
+    const archive = succeeded
+      ? shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish })
+      : !hasContent;
+    if (archive) {
       try {
         await this.archiveWorkspace(workspace.workspaceId, repoRoot);
       } catch (error) {

@@ -179,6 +179,19 @@ const MOCK_LOAD_TEST_MODES: AgentProviderModeDefinition[] = [
     icon: "ShieldOff",
     colorTier: "dangerous",
   },
+  {
+    id: "dontAsk",
+    label: "Don't Ask",
+    description: "Runs without prompting — actions not pre-approved are denied",
+    icon: "ShieldCheck",
+    colorTier: "moderate",
+    // Dev-only mirror of Claude's guarded unattended mode so deterministic E2E
+    // specs can exercise the system-assigned surfaces: the unattended coercion
+    // target for mock schedule runs, and the locked mode badge on a live agent
+    // stuck in a non-user-selectable mode.
+    isUnattended: true,
+    userSelectable: false,
+  },
 ];
 
 const MOCK_SLOW_MODES: AgentProviderModeDefinition[] = [

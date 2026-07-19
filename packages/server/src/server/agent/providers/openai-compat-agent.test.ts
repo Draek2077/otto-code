@@ -142,8 +142,20 @@ function createClient(baseUrl: string): OpenAICompatAgentClient {
  * Endpoint that serves a two-round tool turn — a write_file call, then a
  * final text round — reporting usage on each round's last chunk so per-round
  * usage_updated emission can be asserted.
+ *
+ * `cachedTokens` optionally injects `prompt_tokens_details.cached_tokens` into
+ * each round's usage (a cache-hit endpoint), so the fresh/cached input split can
+ * be asserted across rounds.
  */
-async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> {
+async function startToolRoundUsageEndpoint(
+  args: string,
+  options?: { cachedTokens?: [number, number] },
+): Promise<TestEndpoint & { completionBodies: Array<Record<string, unknown>> }> {
+  const completionBodies: Array<Record<string, unknown>> = [];
+  const cachedDetails = (cached: number | undefined): Record<string, unknown> =>
+    typeof cached === "number" && cached > 0
+      ? { prompt_tokens_details: { cached_tokens: cached } }
+      : {};
   const writeSseRound = (res: ServerResponse, body: string): void => {
     const parsed = JSON.parse(body) as { messages: Array<{ role: string }> };
     const isFirstRound = !parsed.messages.some((message) => message.role === "tool");
@@ -178,7 +190,11 @@ async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> 
               },
             },
           ],
-          usage: { prompt_tokens: 50, completion_tokens: 10 },
+          usage: {
+            prompt_tokens: 50,
+            completion_tokens: 10,
+            ...cachedDetails(options?.cachedTokens?.[0]),
+          },
         }),
       );
     } else {
@@ -186,7 +202,11 @@ async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> 
       res.write(
         sseChunk({
           choices: [{ delta: {}, finish_reason: "stop" }],
-          usage: { prompt_tokens: 80, completion_tokens: 4 },
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 4,
+            ...cachedDetails(options?.cachedTokens?.[1]),
+          },
         }),
       );
     }
@@ -206,6 +226,7 @@ async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> 
         body += chunk;
       });
       req.on("end", () => {
+        completionBodies.push(JSON.parse(body) as Record<string, unknown>);
         res.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -223,7 +244,7 @@ async function startToolRoundUsageEndpoint(args: string): Promise<TestEndpoint> 
     server.listen(0, "127.0.0.1", resolve);
   });
   const { port } = server.address() as AddressInfo;
-  return { server, baseUrl: `http://127.0.0.1:${port}` };
+  return { server, baseUrl: `http://127.0.0.1:${port}`, completionBodies };
 }
 
 describe("normalizeOpenAICompatBaseUrl", () => {
@@ -416,10 +437,57 @@ describe("OpenAICompatAgentClient", () => {
     // Two model rounds → two usage_updated events
     expect(usageEvents.length).toBe(2);
 
+    // Live usage_updated tracks the current context occupancy = the latest
+    // round only (its prompt already holds the whole conversation).
     // Round 1: 50 prompt + 10 completion = 60 used tokens
     expect(usageEvents[0]?.usage.contextWindowUsedTokens).toBe(60);
     // Round 2: 80 prompt + 4 completion = 84 used tokens (incremental for that round)
     expect(usageEvents[1]?.usage.contextWindowUsedTokens).toBe(84);
+
+    // The final turn_completed usage is the BILLED total across both rounds
+    // (each round is a separate charge), not just the last round: input
+    // 50 + 80 = 130, output 10 + 4 = 14. Context occupancy stays last-round (84).
+    const turnCompleted = events.find((event) => event.type === "turn_completed");
+    expect(turnCompleted?.usage?.inputTokens).toBe(130);
+    expect(turnCompleted?.usage?.outputTokens).toBe(14);
+    expect(turnCompleted?.usage?.contextWindowUsedTokens).toBe(84);
+
+    await session.close();
+  });
+
+  test("sends a stable prompt_cache_key and splits cached input across rounds", async () => {
+    const args = JSON.stringify({ path: "note.txt", content: "hello tools" });
+    // Round 1 is a cold prefill (0 cached); round 2 hits the cache for 60 of its
+    // 80 prompt tokens — the shape an implicit-cache endpoint reports once the
+    // per-session prompt_cache_key lets it reuse the shared prefix.
+    const endpoint = await startToolRoundUsageEndpoint(args, { cachedTokens: [0, 60] });
+    const client = createClient(endpoint.baseUrl);
+    const cwd = await makeTempCwd();
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd,
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.run("Create note.txt");
+
+    // Every request carries the same per-session cache key so caching endpoints
+    // can reuse the prefix instead of re-billing it every round.
+    expect(endpoint.completionBodies.length).toBe(2);
+    for (const body of endpoint.completionBodies) {
+      expect(body.prompt_cache_key).toBe(session.id);
+    }
+
+    // Billed input is split into fresh vs cache-read and summed across rounds:
+    // fresh = (50 - 0) + (80 - 60) = 70; cached = 0 + 60 = 60; output = 10 + 4.
+    const turnCompleted = events.find((event) => event.type === "turn_completed");
+    expect(turnCompleted?.usage?.inputTokens).toBe(70);
+    expect(turnCompleted?.usage?.cachedInputTokens).toBe(60);
+    expect(turnCompleted?.usage?.outputTokens).toBe(14);
 
     await session.close();
   });
@@ -689,6 +757,61 @@ async function startTwoToolCallEndpoint(): Promise<TestEndpoint & { requests: Re
             sseChunk({ choices: [{ delta: { content: "Done." }, finish_reason: "stop" }] }),
           );
         }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
+/**
+ * Fake server that streams a fresh list_dir tool call on every completion
+ * round and never a final answer — the only thing that can end the turn is
+ * the max-tool-rounds safety valve.
+ */
+async function startEndlessToolEndpoint(): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+  const requests: RecordedRequest[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "test-model-a" }] }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as RecordedRequest);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(
+          sseChunk({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `call_${requests.length}`,
+                      function: { name: "list_dir", arguments: JSON.stringify({ path: "." }) },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
+              },
+            ],
+          }),
+        );
         res.write("data: [DONE]\n\n");
         res.end();
       });
@@ -1345,6 +1468,64 @@ describe("OpenAICompatAgentSession tool loop", () => {
     for (const id of assistantCalls) {
       expect(answered.has(id), `expected a tool result for ${id}`).toBe(true);
     }
+    await session.close();
+  });
+
+  test("the max-tool-rounds cap stops a turn that never produces a final answer", async () => {
+    const endpoint = await startEndlessToolEndpoint();
+    const client = new OpenAICompatAgentClient({
+      providerId: "lmstudio",
+      label: "LM Studio",
+      env: { OPENAI_BASE_URL: endpoint.baseUrl },
+      maxToolRounds: 2,
+    });
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    const result = await session.run("Keep listing files");
+
+    // Exactly the capped number of model rounds went out, then the turn ended
+    // cleanly (completed, not failed) with the exhaustion error on the timeline.
+    expect(endpoint.requests).toHaveLength(2);
+    expect(result.canceled).toBe(false);
+    const errorItems = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
+    );
+    expect(errorItems).toEqual(["Stopped after 2 tool rounds without a final answer."]);
+    expect(events.at(-1)?.type).toBe("turn_completed");
+    await session.close();
+  });
+
+  test("applyMaxToolRounds live-updates the cap and clamps out-of-range values", async () => {
+    const endpoint = await startEndlessToolEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: await makeTempCwd(),
+      model: "test-model-a",
+      modeId: "bypassPermissions",
+    });
+
+    expect(session.applyMaxToolRounds?.(1)).toBe(true);
+    // 0 is below the schema minimum and resolves to the same clamped value (1),
+    // so there is no change to report — the valve can never be disabled.
+    expect(session.applyMaxToolRounds?.(0)).toBe(false);
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    await session.run("Keep listing files");
+
+    expect(endpoint.requests).toHaveLength(1);
+    const errorItems = events.flatMap((event) =>
+      event.type === "timeline" && event.item.type === "error" ? [event.item.message] : [],
+    );
+    expect(errorItems).toEqual(["Stopped after 1 tool rounds without a final answer."]);
     await session.close();
   });
 });

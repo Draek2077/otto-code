@@ -139,6 +139,72 @@ function buildTailScenarioEvents(actionCount: number): unknown[] {
   ];
 }
 
+// A plain Task sub-agent whose live sidechain assistant frame carries the full
+// `message.usage` split + a (cheaper) model — the real per-frame API numbers.
+function buildSidechainUsageEvents(): unknown[] {
+  return [
+    {
+      type: "system",
+      subtype: "init",
+      session_id: "sidechain-usage-session",
+      permissionMode: "default",
+      model: "opus",
+    },
+    {
+      type: "stream_event",
+      parent_tool_use_id: null,
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "task-usage-1",
+          name: "Task",
+          input: { subagent_type: "Explore", description: "Summarize the module" },
+        },
+      },
+    },
+    // The sub-agent's assistant turn on the sidechain, carrying real usage + model.
+    {
+      type: "assistant",
+      parent_tool_use_id: "task-usage-1",
+      message: {
+        id: "sub-usage-msg-1",
+        role: "assistant",
+        model: "claude-haiku-4-5-20251001",
+        content: [{ type: "text", text: "Subagent narration." }],
+        usage: {
+          input_tokens: 4,
+          output_tokens: 913,
+          cache_creation_input_tokens: 726,
+          cache_read_input_tokens: 68161,
+        },
+      },
+    },
+    {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "task-usage-1",
+            tool_name: "Task",
+            content: "done",
+            is_error: false,
+          },
+        ],
+      },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      usage: { input_tokens: 1, cache_read_input_tokens: 0, output_tokens: 1 },
+      total_cost_usd: 0,
+    },
+  ];
+}
+
 function buildWorkflowScenarioEvents(
   notificationStatus: "completed" | "failed" | "stopped",
 ): unknown[] {
@@ -464,6 +530,43 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
           event.item.text.includes("Sub-agent narration"),
       ),
     ).toBe(true);
+  });
+
+  test("emits the plain Task sub-agent's real usage split + model from the live sidechain", async () => {
+    queryFactory.mockImplementation(() => buildQueryMock(buildSidechainUsageEvents()));
+
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
+    await session.close();
+
+    const withUsage = events.findLast(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated" &&
+        event.update.key === "task-usage-1" &&
+        event.update.usage !== undefined,
+    );
+
+    expect(withUsage).toBeDefined();
+    // cache_read → cachedInputTokens, cache_creation → cacheCreationInputTokens.
+    expect(withUsage?.update.usage).toMatchObject({
+      inputTokens: 4,
+      cachedInputTokens: 68161,
+      cacheCreationInputTokens: 726,
+      outputTokens: 913,
+    });
+    // Priced on the subagent's own (Haiku) model, not the parent's (opus).
+    expect(withUsage?.update.usage?.totalCostUsd).toBeGreaterThan(0);
+    // The sub-agent ran a cheaper model than the parent (opus) — pricing must
+    // use THIS model, so it has to be reported.
+    expect(withUsage?.update.model).toBe("claude-haiku-4-5-20251001");
   });
 
   test("tails sub-agent actions instead of dropping latest entries at cap", async () => {

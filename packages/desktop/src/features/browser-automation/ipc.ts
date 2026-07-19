@@ -25,6 +25,13 @@ import {
 } from "../browser-webviews/index.js";
 
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
+/**
+ * Per-message length cap. The tab retains up to 200 entries, but a single
+ * console line (a serialized object, a stack trace, a data URL) can be huge and
+ * enters an agent's transcript verbatim via browser_logs. Truncate with a
+ * marker so the head is kept and nothing is silently dropped.
+ */
+const MAX_CONSOLE_MESSAGE_CHARS = 2_000;
 const consoleMessagesByContentsId = new Map<number, BrowserAutomationConsoleLogEntry[]>();
 const cdpQueuesByContentsId = new Map<number, CdpSessionQueue>();
 const dialogMonitorsByContentsId = new Map<number, DialogMonitor>();
@@ -456,10 +463,20 @@ function parsePromptShimDialogs(value: unknown): BrowserAutomationDialogEvent[] 
   });
 }
 
+function capConsoleMessage(message: string): string {
+  if (message.length <= MAX_CONSOLE_MESSAGE_CHARS) {
+    return message;
+  }
+  const removed = message.length - MAX_CONSOLE_MESSAGE_CHARS;
+  return `${message.slice(0, MAX_CONSOLE_MESSAGE_CHARS)} [... ${removed} characters truncated ...]`;
+}
+
 function normalizeConsoleMessage(input: ConsoleMessageEvent): BrowserAutomationConsoleLogEntry {
   return {
     level: typeof input.level === "string" ? input.level : String(input.level ?? "log"),
-    message: typeof input.message === "string" ? input.message : String(input.message ?? ""),
+    message: capConsoleMessage(
+      typeof input.message === "string" ? input.message : String(input.message ?? ""),
+    ),
     ...(typeof input.sourceId === "string" && input.sourceId.length > 0
       ? { source: input.sourceId }
       : {}),

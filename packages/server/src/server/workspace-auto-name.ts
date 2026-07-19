@@ -108,11 +108,21 @@ export class WorkspaceAutoName {
     firstAgentContext: FirstAgentContext;
     currentSelection: CurrentSelection;
   }): Promise<void> {
+    if (!this.isMetadataGenerationEnabled()) {
+      return;
+    }
     let generated: GeneratedWorkspaceName | null = null;
+    // Whether the branch-rename path actually invoked the generator. A null
+    // result from a generation that DID run must not re-trigger the whole
+    // ladder — only a short-circuit that never generated (e.g. the branch was
+    // already renamed, so attemptFirstAgentBranchAutoName skipped the callback)
+    // should fall through to the direct generation below for the title.
+    let generatorInvoked = false;
     const result: AttemptFirstAgentBranchAutoNameResult = await attemptFirstAgentBranchAutoName({
       cwd: input.workspace.cwd,
       firstAgentContext: input.firstAgentContext,
       generateBranchNameFromContext: ({ cwd, firstAgentContext }) => {
+        generatorInvoked = true;
         return this.generateFromContext({
           cwd,
           firstAgentContext,
@@ -124,7 +134,7 @@ export class WorkspaceAutoName {
       },
     });
 
-    if (!generated) {
+    if (!generated && !generatorInvoked) {
       generated = await this.generateFromContext({
         cwd: input.workspace.cwd,
         firstAgentContext: input.firstAgentContext,
@@ -157,6 +167,9 @@ export class WorkspaceAutoName {
     firstAgentContext: FirstAgentContext;
     currentSelection: CurrentSelection;
   }): Promise<void> {
+    if (!this.isMetadataGenerationEnabled()) {
+      return;
+    }
     const generated = await this.generateFromContext({
       cwd: input.cwd,
       firstAgentContext: input.firstAgentContext,
@@ -193,6 +206,13 @@ export class WorkspaceAutoName {
       ...(input.branch ? { branch: input.branch } : {}),
       updatedAt: new Date().toISOString(),
     });
+  }
+
+  // Host opt-out (WP-A metadataGeneration.enabled=false): skip workspace/branch
+  // auto-naming entirely. User-initiated generations (commit/PR/voice) are
+  // unaffected — this gate only covers the automatic naming paths.
+  private isMetadataGenerationEnabled(): boolean {
+    return this.readDaemonConfig().metadataGeneration?.enabled !== false;
   }
 
   private generateFromContext(input: {

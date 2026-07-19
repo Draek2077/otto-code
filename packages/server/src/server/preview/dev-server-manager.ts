@@ -24,6 +24,13 @@ import {
  */
 
 const DEFAULT_MAX_LOG_LINES = 2000;
+/**
+ * Per-line length cap. preview_logs / preview_start's logTail bound the number
+ * of lines but not their width, so one giant line (a minified bundle path, a
+ * serialized error, a data URL) enters an agent's transcript verbatim.
+ * Truncate with a marker so the head is kept and nothing is silently dropped.
+ */
+const MAX_LOG_LINE_CHARS = 1_000;
 const DEFAULT_READINESS_TIMEOUT_MS = 60_000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
 const DEFAULT_STOP_TIMEOUT_MS = 5_000;
@@ -377,7 +384,16 @@ export class DevServerManager {
   }
 
   private appendLog(record: PreviewServerRecord, text: string): void {
-    const lines = text.split(/\r?\n/u).filter((line) => line.length > 0);
+    const lines = text
+      .split(/\r?\n/u)
+      .filter((line) => line.length > 0)
+      .map((line) =>
+        line.length > MAX_LOG_LINE_CHARS
+          ? `${line.slice(0, MAX_LOG_LINE_CHARS)} [... ${
+              line.length - MAX_LOG_LINE_CHARS
+            } characters truncated ...]`
+          : line,
+      );
     record.log.push(...lines);
     if (record.log.length > this.maxLogLines) {
       record.log.splice(0, record.log.length - this.maxLogLines);

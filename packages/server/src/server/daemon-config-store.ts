@@ -8,6 +8,7 @@ import {
   type PersistedAgentTeam,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
+import { OTTO_TOOL_GROUPS, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
@@ -383,7 +384,10 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 }): PersistedConfig {
   const { persisted, mutable, removedProviderIds } = params;
   const browserToolsEnabled = readBrowserToolsEnabled(mutable);
+  const mcpToolGroups = readMcpToolGroups(mutable);
+  const agentBehaviors = readAgentBehaviors(mutable);
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
+  const metadataGenerationFlags = readMetadataGenerationFlags(mutable);
   const agentPersonalities = readAgentPersonalities(mutable);
   const removedProviders = new Set(removedProviderIds);
   const persistedOverrides = persisted.agents?.providers as
@@ -404,9 +408,14 @@ function mergeMutableConfigIntoPersistedConfig(params: {
   const persistedAgents = persisted.agents as Record<string, unknown> | undefined;
   const persistedMetadataGeneration = {
     providers: metadataGenerationProviders,
+    enabled: metadataGenerationFlags.enabled,
+    preferWriterPersonalities: metadataGenerationFlags.preferWriterPersonalities,
   };
-  const shouldPersistMetadataGeneration =
-    metadataGenerationProviders.length > 0 || persisted.agents?.metadataGeneration !== undefined;
+  const shouldPersistMetadataGeneration = computeShouldPersistMetadataGeneration({
+    providerCount: metadataGenerationProviders.length,
+    hadSection: persisted.agents?.metadataGeneration !== undefined,
+    flags: metadataGenerationFlags,
+  });
 
   let nextAgents = persisted.agents as PersistedConfig["agents"];
   if (providerOverrides && Object.keys(providerOverrides).length > 0) {
@@ -462,13 +471,18 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     ...persisted,
     daemon: {
       ...persisted.daemon,
-      mcp: {
-        ...persisted.daemon?.mcp,
+      mcp: buildPersistedMcpSection({
+        persistedMcp: persisted.daemon?.mcp,
         injectIntoAgents: mutable.mcp.injectIntoAgents,
-      },
+        toolGroups: mcpToolGroups,
+      }),
       browserTools: {
         ...persisted.daemon?.browserTools,
         enabled: browserToolsEnabled,
+      },
+      agentBehaviors: {
+        ...persisted.daemon?.agentBehaviors,
+        ...agentBehaviors,
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
@@ -781,6 +795,89 @@ function readBrowserToolsEnabled(mutable: MutableDaemonConfig): boolean {
     return false;
   }
   return browserTools["enabled"] === true;
+}
+
+const OTTO_TOOL_GROUP_SET = new Set<string>(OTTO_TOOL_GROUPS);
+
+// Read the Otto tool-group allowlist off the MCP section. undefined = all
+// groups enabled (never written to disk); a defined array is validated against
+// the known group set so a stray value can never wedge config.json.
+function readMcpToolGroups(mutable: MutableDaemonConfig): OttoToolGroup[] | undefined {
+  const mcp = mutable.mcp;
+  if (!isRecord(mcp)) {
+    return undefined;
+  }
+  const groups = mcp["toolGroups"];
+  if (!Array.isArray(groups)) {
+    return undefined;
+  }
+  return groups.filter(
+    (g): g is OttoToolGroup => typeof g === "string" && OTTO_TOOL_GROUP_SET.has(g),
+  );
+}
+
+interface AgentBehaviorsPersistShape {
+  promptSuggestions: boolean;
+  agentProgressSummaries: boolean;
+  notifyOnFinishDefault: boolean;
+}
+
+// Read the agent-behavior toggles off the mutable config. The wire schema
+// defaults every field, so the mutable always carries them; a rollback that
+// dropped a field reads as its implicit default (on).
+function readAgentBehaviors(mutable: MutableDaemonConfig): AgentBehaviorsPersistShape {
+  const behaviors: Record<string, unknown> = isRecord(mutable.agentBehaviors)
+    ? mutable.agentBehaviors
+    : {};
+  return {
+    promptSuggestions: behaviors["promptSuggestions"] !== false,
+    agentProgressSummaries: behaviors["agentProgressSummaries"] !== false,
+    notifyOnFinishDefault: behaviors["notifyOnFinishDefault"] !== false,
+  };
+}
+
+interface MetadataGenerationFlags {
+  enabled: boolean;
+  preferWriterPersonalities: boolean;
+}
+
+// Persist the mcp section, carrying an explicit toolGroups allowlist only when
+// defined (undefined = all groups enabled — never frozen onto disk).
+function buildPersistedMcpSection(params: {
+  persistedMcp: NonNullable<PersistedConfig["daemon"]>["mcp"] | undefined;
+  injectIntoAgents: boolean;
+  toolGroups: OttoToolGroup[] | undefined;
+}): Record<string, unknown> {
+  const { persistedMcp, injectIntoAgents, toolGroups } = params;
+  return {
+    ...persistedMcp,
+    injectIntoAgents,
+    ...(toolGroups !== undefined ? { toolGroups } : {}),
+  };
+}
+
+function computeShouldPersistMetadataGeneration(params: {
+  providerCount: number;
+  hadSection: boolean;
+  flags: MetadataGenerationFlags;
+}): boolean {
+  const { providerCount, hadSection, flags } = params;
+  return (
+    providerCount > 0 ||
+    hadSection ||
+    flags.enabled === false ||
+    flags.preferWriterPersonalities === true
+  );
+}
+
+function readMetadataGenerationFlags(mutable: MutableDaemonConfig): MetadataGenerationFlags {
+  const metadataGeneration: Record<string, unknown> = isRecord(mutable.metadataGeneration)
+    ? mutable.metadataGeneration
+    : {};
+  return {
+    enabled: metadataGeneration["enabled"] !== false,
+    preferWriterPersonalities: metadataGeneration["preferWriterPersonalities"] === true,
+  };
 }
 
 function readMetadataGenerationProviders(

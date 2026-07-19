@@ -13,6 +13,7 @@ import {
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
+import { deltaAgentUsage } from "./subagent-usage.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -20,8 +21,10 @@ import type { TerminalManager } from "../../terminal/terminal-manager.js";
 
 import {
   getAgentStreamEventTurnId,
+  type AgentBareCompletionOptions,
   type AgentCapabilityFlags,
   type AgentClient,
+  type AgentBehaviorSettings,
   type AgentCreateSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
@@ -59,11 +62,20 @@ import type {
 import {
   deriveObservedSubagentTitle,
   observedUpdateHasTitleSource,
+  toAgentPayload,
   toObservedSubagentPayload,
 } from "./agent-projections.js";
+import type {
+  RetainedTranscriptOwner,
+  RetainedTranscriptStore,
+} from "./retained-transcript-store.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
-import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
+import type {
+  ActivityCounterField,
+  ActivityIncrementFn,
+} from "../activity-stats/activity-stats-store.js";
+import type { UsageEvent } from "@otto-code/protocol/messages";
 import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
@@ -127,6 +139,26 @@ interface TimeoutOptions {
 
 function formatProviderList(providers: readonly string[]): string {
   return providers.length > 0 ? providers.join(", ") : "none";
+}
+
+// Resolve the daemon-wide behavior toggles from their optional config shape.
+// Mirrors the persist-layer rule (daemon-config-store.readAgentBehaviors): a
+// field is on unless it is explicitly `false`, so absent/undefined preserves
+// today's all-on behavior.
+function resolveAgentBehaviorSettings(
+  behaviors:
+    | {
+        promptSuggestions?: boolean;
+        agentProgressSummaries?: boolean;
+        notifyOnFinishDefault?: boolean;
+      }
+    | undefined,
+): AgentBehaviorSettings {
+  return {
+    promptSuggestions: behaviors?.promptSuggestions !== false,
+    agentProgressSummaries: behaviors?.agentProgressSummaries !== false,
+    notifyOnFinishDefault: behaviors?.notifyOnFinishDefault !== false,
+  };
 }
 
 function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
@@ -290,13 +322,29 @@ export interface AgentManagerOptions {
   onPersonalitySpawn?: (personalityId: string) => void;
   /** Fun-stats counters — see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
+  /**
+   * Itemized usage ledger row for one token/cost-bearing activity (usage-ledger
+   * project). Emitted from the same chokepoint as {@link onActivity}: the counters
+   * are the rollup of this event stream. Fire-and-forget.
+   */
+  onUsageEvent?: (event: UsageEvent) => void;
   durableTimelineStore?: AgentTimelineStore;
+  retainedTranscripts?: RetainedTranscriptStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
   mcpAuthToken?: string;
   ottoToolsEnabled?: boolean;
   ottoToolCatalogFactory?: OttoToolCatalogFactory;
   appendSystemPrompt?: string;
+  /**
+   * Initial daemon-wide agent behavior toggles (undefined fields = on). Hot
+   * reloaded via setAgentBehaviors from the daemon config store.
+   */
+  agentBehaviors?: {
+    promptSuggestions?: boolean;
+    agentProgressSummaries?: boolean;
+    notifyOnFinishDefault?: boolean;
+  };
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   logger: Logger;
@@ -340,6 +388,15 @@ interface ObservedSubagentDerivedState {
   title: string;
   titleFrozen: boolean;
   cumulativeTokens?: number;
+  // Latest full usage split (in/out/cache) reported for this subagent. Carried
+  // forward when a later update omits it (e.g. a run-state reconcile that only
+  // refreshes the scalar total) so the ledger never loses the real breakdown.
+  lastUsage?: AgentUsage;
+  // The subagent's own model (may differ from the parent's). Sticky once seen.
+  model?: string;
+  // Cumulative model round-trips reported for this subagent; monotonic like
+  // cumulativeTokens so a final update without it can't drop the count.
+  usageRounds?: number;
 }
 
 /**
@@ -357,15 +414,77 @@ function resolveObservedSubagentDerivedState(
   const title = shouldFreeze
     ? deriveObservedSubagentTitle(update)
     : (existing?.title ?? deriveObservedSubagentTitle(update));
-  const updateTokens = update.cumulativeTokens;
-  const cumulativeTokens =
-    typeof updateTokens === "number" && Number.isFinite(updateTokens)
-      ? Math.max(existing?.cumulativeTokens ?? 0, updateTokens)
-      : existing?.cumulativeTokens;
+  const cumulativeTokens = monotonicCount(update.cumulativeTokens, existing?.cumulativeTokens);
+  // Carry the full split + model forward: a later update that only refreshes the
+  // scalar (run-state reconcile) must not blank the breakdown a prior tail set.
+  const lastUsage = update.usage ?? existing?.lastUsage;
+  const model = update.model ?? existing?.model;
+  const usageRounds = monotonicCount(update.usageRounds, existing?.usageRounds);
   return {
     title,
     titleFrozen: existing?.titleFrozen || shouldFreeze,
     ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
+    ...(lastUsage !== undefined ? { lastUsage } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(usageRounds !== undefined ? { usageRounds } : {}),
+  };
+}
+
+/**
+ * Carry a monotonic non-decreasing counter (cumulative tokens, model rounds)
+ * across observed-subagent updates: a fresh value only ever raises the running
+ * figure, and an update that omits it keeps what we had — so a final
+ * status-only notification can never drop the readout.
+ */
+function monotonicCount(
+  update: number | undefined,
+  existing: number | undefined,
+): number | undefined {
+  return typeof update === "number" && Number.isFinite(update)
+    ? Math.max(existing ?? 0, update)
+    : existing;
+}
+
+/**
+ * What an observed subagent has already contributed to the itemized ledger, so
+ * a later settle records only the increment above it. `rounds` is the model
+ * round-trip count at the time of that write.
+ */
+interface RecordedSubagentLedger {
+  usage: AgentUsage;
+  rounds: number;
+}
+
+/** An observed subagent's run has ended once it reports a terminal status. */
+function isTerminalObservedSubagentStatus(status: ObservedSubagentUpdate["status"]): boolean {
+  return status === "idle" || status === "error" || status === "closed";
+}
+
+/**
+ * The optional observed-subagent fields the registry record and the emitted
+ * payload input carry identically (parentKey + the resolved token/usage/model
+ * accounting). Built once and spread into both so onObservedSubagentUpdated
+ * doesn't repeat the same four presence checks twice.
+ */
+function observedSubagentOptionalFields(input: {
+  parentKey?: string;
+  cumulativeTokens?: number;
+  lastUsage?: AgentUsage;
+  model?: string;
+  usageRounds?: number;
+}): {
+  parentKey?: string;
+  cumulativeTokens?: number;
+  lastUsage?: AgentUsage;
+  model?: string;
+  usageRounds?: number;
+} {
+  return {
+    ...(input.parentKey ? { parentKey: input.parentKey } : {}),
+    ...(input.cumulativeTokens !== undefined ? { cumulativeTokens: input.cumulativeTokens } : {}),
+    ...(input.lastUsage !== undefined ? { lastUsage: input.lastUsage } : {}),
+    ...(input.model !== undefined ? { model: input.model } : {}),
+    ...(input.usageRounds !== undefined ? { usageRounds: input.usageRounds } : {}),
   };
 }
 
@@ -476,7 +595,10 @@ function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
     return undefined;
   }
   const total =
-    (usage.inputTokens ?? 0) + (usage.cachedInputTokens ?? 0) + (usage.outputTokens ?? 0);
+    (usage.inputTokens ?? 0) +
+    (usage.cachedInputTokens ?? 0) +
+    (usage.cacheCreationInputTokens ?? 0) +
+    (usage.outputTokens ?? 0);
   return total > 0 ? total : undefined;
 }
 
@@ -505,6 +627,51 @@ function accumulateAgentTokens(
     return Math.max(existing ?? 0, turnTokens);
   }
   return (existing ?? 0) + turnTokens;
+}
+
+/**
+ * The activity counters each usage category writes to (WP-G). Kept as a table so
+ * recordUsageActivity stays branch-light. Compaction is handled inline (it has no
+ * real cost) and the provider split (claudeTokens*) is applied separately.
+ */
+const USAGE_CATEGORY_FIELDS: Record<
+  "mainChat" | "generations" | "subagent",
+  { in: ActivityCounterField; out: ActivityCounterField; cost: ActivityCounterField }
+> = {
+  mainChat: {
+    in: "mainChatTokensIn",
+    out: "mainChatTokensOut",
+    cost: "mainChatCostMicroUsd",
+  },
+  generations: {
+    in: "generationsTokensIn",
+    out: "generationsTokensOut",
+    cost: "generationsCostMicroUsd",
+  },
+  subagent: {
+    in: "subagentTokensIn",
+    out: "subagentTokensOut",
+    cost: "subagentCostMicroUsd",
+  },
+};
+
+/** The itemized-ledger `kind` each aggregate category maps to (usage-ledger). */
+const USAGE_CATEGORY_KIND: Record<"mainChat" | "generations" | "subagent", string> = {
+  mainChat: "chat",
+  generations: "generation",
+  subagent: "subagent",
+};
+
+/**
+ * Convert a real provider dollar cost to an integer count of micro-USD (usd*1e6),
+ * the summable form stored in the activity counters (WP-G). Non-positive or
+ * non-finite costs (or providers that report none) contribute 0.
+ */
+function usdToMicroUsd(usd: number | undefined): number {
+  if (typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) {
+    return 0;
+  }
+  return Math.round(usd * 1_000_000);
 }
 
 interface StreamEventFlags {
@@ -801,6 +968,18 @@ function getFirstUserMessageTextFromRows(rows: readonly AgentTimelineRow[]): str
   return null;
 }
 
+// Whether a retained-transcript row represents work the agent actually did,
+// versus just its seed prompt. Used to decide if a failed scheduled run has
+// enough substance to reveal its workspace (see docs/safe-unattended.md).
+function isRetainedContentItem(item: AgentTimelineItem): boolean {
+  return (
+    item.type === "assistant_message" ||
+    item.type === "reasoning" ||
+    item.type === "tool_call" ||
+    item.type === "todo"
+  );
+}
+
 export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly providerEnabled = new Map<AgentProvider, boolean>();
@@ -813,7 +992,27 @@ export class AgentManager {
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
+  // Retained transcripts of internal generation agents (schedule / artifact),
+  // keyed by generation agent id. Captured at run end before closeAgent so the
+  // chat survives the internal agent's teardown, and served back through the
+  // normal fetch_agent / fetch_agent_timeline paths for a read-only viewer. See
+  // docs/safe-unattended.md. Optional: absent on hosts that don't wire it.
+  private readonly retainedTranscripts?: RetainedTranscriptStore;
+  // Ids whose retained rows have been seeded into the in-memory timeline store
+  // so fetchTimeline can serve them like an observed subagent (no ManagedAgent,
+  // no requireAgent throw).
+  private readonly retainedTimelineIds = new Set<string>();
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
+  // Owning-chat agent id -> sum of its observed sub-agents' priced cost (micro-USD)
+  // not yet backed out of the parent. Provider-agnostic de-inflation: whenever a
+  // provider reports a WHOLE-TREE cost on the parent turn (parent + in-process
+  // sub-agents) while its parent-turn tokens are parent-only, the parent row is
+  // priced as the RESIDUAL (tree cost − Σ sub-agent) to avoid double-counting
+  // sub-agent spend. The provider prices each sub-agent (on the sub-agent's own
+  // model) into update.usage.totalCostUsd; this sink just sums and subtracts.
+  // Claude is the reference (its `total_cost_usd` is whole-tree). Accumulated as
+  // each sub-agent settles, drained at the parent's next turn. See [[subagent-real-accounting]].
+  private readonly pendingSubagentCostMicroUsdByParent = new Map<string, number>();
   // Observed subagents (Claude Task / ultracode fan-out): id -> resolution info
   // for the stop RPC. These are ephemeral projections, not ManagedAgents. See
   // projects/observed-subagents/observed-subagents.md.
@@ -839,6 +1038,22 @@ export class AgentManager {
       // Kept monotonic so a final notification without usage can't drop the
       // readout. See docs/agent-lifecycle.md (Item 3).
       cumulativeTokens?: number;
+      // Latest full usage split (in/out/cache) + the subagent's own model, both
+      // carried forward across updates so the ledger prices this row on its real
+      // per-frame numbers even when the final update omits them. See
+      // [[subagent-real-accounting]].
+      lastUsage?: AgentUsage;
+      model?: string;
+      // Cumulative model round-trips reported for this subagent, remembered so a
+      // later status-only update (which omits it) can still attribute the count.
+      usageRounds?: number;
+      // Watermark of what has already been written to the itemized ledger. Each
+      // time the subagent settles, only the DELTA above this is recorded — so a
+      // duplicate terminal update writes nothing, while a genuine second stream
+      // (a continued/steered subagent, or a late frame raising its totals) gets
+      // its own row instead of being dropped. One row per stream, mirroring the
+      // "one query, one row" rule chats follow.
+      recorded?: RecordedSubagentLedger;
       // Set when the user archives the row. The entry is retired, not deleted:
       // a late provider update (final task_notification after an archive-while-
       // running) must not resurrect the row, so every subsequent emission keeps
@@ -868,11 +1083,16 @@ export class AgentManager {
   private ottoToolsEnabled = true;
   private ottoToolCatalogFactory: OttoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
+  // Resolved daemon-wide behavior toggles (Claude tier). Hot-reloaded via
+  // setAgentBehaviors; injected into each launch via buildLaunchContext and
+  // read by the Otto tools for the notify-on-finish default.
+  private agentBehaviors: AgentBehaviorSettings;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private onPersonalitySpawn?: (personalityId: string) => void;
   private onActivity?: ActivityIncrementFn;
+  private onUsageEvent?: (event: UsageEvent) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private acceptingAgentRegistrations = true;
@@ -881,14 +1101,17 @@ export class AgentManager {
     this.idFactory = options?.idFactory ?? (() => randomUUID());
     this.registry = options?.registry;
     this.durableTimelineStore = options?.durableTimelineStore;
+    this.retainedTranscripts = options.retainedTranscripts;
     this.onAgentAttention = options?.onAgentAttention;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.onPersonalitySpawn = options?.onPersonalitySpawn;
     this.onActivity = options.onActivity;
+    this.onUsageEvent = options.onUsageEvent;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
     this.configureOttoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
+    this.agentBehaviors = resolveAgentBehaviorSettings(options.agentBehaviors);
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -992,6 +1215,30 @@ export class AgentManager {
 
   setAppendSystemPrompt(prompt: string | null | undefined): void {
     this.appendSystemPrompt = prompt ?? "";
+  }
+
+  /**
+   * Hot-reload the daemon-wide agent behavior toggles. New/resumed agents pick
+   * up the change on their next launch (values are injected via
+   * buildLaunchContext); the notify-on-finish default is read live per tool
+   * call. Accepts the raw partial config shape — absent/undefined fields resolve
+   * to "on".
+   */
+  setAgentBehaviors(
+    behaviors:
+      | {
+          promptSuggestions?: boolean;
+          agentProgressSummaries?: boolean;
+          notifyOnFinishDefault?: boolean;
+        }
+      | undefined,
+  ): void {
+    this.agentBehaviors = resolveAgentBehaviorSettings(behaviors);
+  }
+
+  /** Resolved daemon-wide behavior toggles (read by the Otto tool catalog). */
+  getAgentBehaviors(): AgentBehaviorSettings {
+    return this.agentBehaviors;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {
@@ -1315,10 +1562,81 @@ export class AgentManager {
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     if (this.observedSubagents.has(id)) {
       this.ensureObservedTimelineState(id);
+    } else if (this.retainedTimelineIds.has(id)) {
+      // Retained transcript already seeded into the in-memory store (via
+      // ensureRetainedTranscriptLoaded); serve it without a ManagedAgent.
     } else {
       this.requireAgent(id);
     }
     return this.timelineStore.fetch(id, options);
+  }
+
+  /**
+   * Snapshot a finishing internal generation agent's chat so it survives the
+   * agent's teardown. Called by the schedule / artifact services right before
+   * closeAgent, while the agent and its in-memory timeline are still live.
+   * Returns whether the run produced any content (assistant/tool/reasoning
+   * activity beyond its seed prompt), which the schedule runner uses to decide
+   * whether a failed run's workspace is worth revealing. No-op (returns false)
+   * when no retained-transcript store is wired. See docs/safe-unattended.md.
+   */
+  async captureRetainedTranscript(
+    agentId: string,
+    owner: RetainedTranscriptOwner,
+    options?: { title?: string | null },
+  ): Promise<{ hasContent: boolean }> {
+    if (!this.retainedTranscripts) {
+      return { hasContent: false };
+    }
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return { hasContent: false };
+    }
+    const rows = this.timelineStore.has(agentId) ? this.timelineStore.getRows(agentId) : [];
+    const hasContent = rows.some((row) => isRetainedContentItem(row.item));
+    try {
+      await this.retainedTranscripts.save({
+        version: 1,
+        agentId,
+        owner,
+        capturedAt: new Date().toISOString(),
+        payload: toAgentPayload(agent, { title: options?.title ?? agent.config.title ?? null }),
+        rows,
+        hasContent,
+      });
+    } catch (error) {
+      this.logger.warn({ err: error, agentId, owner }, "Failed to capture retained transcript");
+    }
+    return { hasContent };
+  }
+
+  /** Agent payload of a retained transcript, or null when the id has none. */
+  async getRetainedTranscriptPayload(agentId: string): Promise<AgentSnapshotPayload | null> {
+    const record = await this.retainedTranscripts?.get(agentId);
+    return record?.payload ?? null;
+  }
+
+  /**
+   * Load a retained transcript's rows into the in-memory timeline store so a
+   * subsequent fetchTimeline serves them (idempotent). Returns true when the id
+   * is a retained transcript, false otherwise — the caller falls back to the
+   * normal live/persisted agent path.
+   */
+  async ensureRetainedTranscriptLoaded(agentId: string): Promise<boolean> {
+    const record = await this.retainedTranscripts?.get(agentId);
+    if (!record) {
+      return false;
+    }
+    if (!this.timelineStore.has(agentId)) {
+      this.timelineStore.initialize(agentId, { rows: record.rows });
+    }
+    this.retainedTimelineIds.add(agentId);
+    return true;
+  }
+
+  /** Drop every retained transcript produced by one artifact/schedule. */
+  async deleteRetainedTranscriptsForOwner(owner: RetainedTranscriptOwner): Promise<void> {
+    await this.retainedTranscripts?.deleteForOwner(owner);
   }
 
   /**
@@ -1367,6 +1685,54 @@ export class AgentManager {
     options: CreateAgentOptions,
   ): Promise<ManagedAgent> {
     return this.trackAgentRegistrationOperation(this.createAgentInternal(config, agentId, options));
+  }
+
+  /**
+   * Run a single tool-less provider completion for the internal
+   * metadata-generation path (chat titles, branch/workspace names, commit/PR
+   * text, voice cues, run summaries). This deliberately does NOT go through
+   * createAgent → runAgent → closeAgent: no agent lifecycle, no
+   * prepareSessionConfig/buildLaunchContext (which inject the Otto tool catalog
+   * + MCP with no internal-agent exemption), and on Claude no `claude_code`
+   * preset or CLAUDE.md. The prompt is self-contained, so a title costs a few
+   * hundred tokens instead of the 15–25K a full spawn carries.
+   *
+   * Providers without a `generateBareCompletion` throw here; the structured
+   * generation fallback ladder catches that and moves to the next provider, so
+   * a provider that can't do a tool-less completion falls through instead of
+   * erroring the whole generation.
+   */
+  async generateBareCompletion(
+    config: AgentSessionConfig,
+    prompt: string,
+    // Optional finer label for the ledger row (e.g. "auto-title", "commit").
+    // Callers may omit it; the row then reads as a generic generation.
+    subtype?: string,
+  ): Promise<string> {
+    const normalized = await this.normalizeConfig(config, { resolveDefaultModel: true });
+    this.requireEnabledProvider(normalized.provider);
+    const client = await this.requireAvailableClient({ provider: normalized.provider });
+    if (!client.generateBareCompletion) {
+      throw new Error(`Provider '${normalized.provider}' does not support tool-less completion`);
+    }
+    const options: AgentBareCompletionOptions = {
+      cwd: normalized.cwd,
+      prompt,
+      ...(normalized.model ? { model: normalized.model } : {}),
+      ...(normalized.thinkingOptionId ? { thinkingOptionId: normalized.thinkingOptionId } : {}),
+      ...(normalized.systemPrompt ? { systemPrompt: normalized.systemPrompt } : {}),
+    };
+    const result = await client.generateBareCompletion(options);
+    // These bare completions bypass the turn path (WP-B), so their spend is
+    // invisible to onStreamTurnCompleted's token counting. Record it here under
+    // the "generations" category so the headline generation cost isn't zero. (WP-G)
+    this.recordUsageActivity(result.usage, {
+      category: "generations",
+      provider: normalized.provider,
+      ...(normalized.model ? { model: normalized.model } : {}),
+      ...(subtype ? { subtype } : {}),
+    });
+    return result.text;
   }
 
   private async createAgentInternal(
@@ -4068,6 +4434,157 @@ export class AgentManager {
     flags.shouldNotifyWaiters = true;
   }
 
+  /**
+   * Roll a turn's provider-reported usage into the agent's lifetime token total
+   * and the daemon activity counters. Shared by turn_completed and the
+   * failed/canceled paths so a turn that errors or is interrupted after burning
+   * tokens still counts (retry storms would otherwise be invisible to the cost
+   * ledger). No-op when the provider reports no usage. (WP-D)
+   *
+   * The category is derived from the agent's kind: a turn on a child agent (one
+   * with a parent-agent label) is attributed to `subagent`, everything else to
+   * `mainChat`. Compaction spend is broken out within recordUsageActivity. (WP-G)
+   */
+  private recordTurnUsage(
+    agent: ActiveManagedAgent,
+    usage: AgentUsage | undefined,
+    provider: AgentProvider,
+  ): void {
+    agent.cumulativeTokens = accumulateAgentTokens(agent.cumulativeTokens, usage, provider);
+    const category = agent.labels[PARENT_AGENT_ID_LABEL] ? "subagent" : "mainChat";
+    const model = agent.config.model ?? agent.runtimeInfo?.model ?? undefined;
+    // De-inflate a parent chat: its Claude `total_cost_usd` is the WHOLE tree,
+    // but its tokens are parent-only, so book its cost as the residual (tree −
+    // Σ its settled sub-agents, priced on their own models). Drains the bucket so
+    // the next turn starts clean; clamps at 0 if the sub-agent table over-priced.
+    const costOverrideMicroUsd =
+      category === "mainChat" ? this.residualParentCostMicroUsd(agent.id, usage) : undefined;
+    this.recordUsageActivity(usage, {
+      category,
+      provider,
+      agentId: agent.id,
+      model,
+      ...(costOverrideMicroUsd !== undefined ? { costOverrideMicroUsd } : {}),
+    });
+  }
+
+  /**
+   * A parent chat's real own-cost for this turn: the whole-tree `total_cost_usd`
+   * minus the priced cost of the sub-agents that settled under it since the last
+   * turn (drained here). Returns undefined when nothing was accumulated, so the
+   * normal `usage.totalCostUsd` path is used unchanged. Clamped at 0 — a negative
+   * residual would mean the sub-agent price table over-charged, which the
+   * verify-against-modelUsage diagnostic surfaces separately.
+   */
+  private residualParentCostMicroUsd(
+    agentId: string,
+    usage: AgentUsage | undefined,
+  ): number | undefined {
+    const pending = this.pendingSubagentCostMicroUsdByParent.get(agentId);
+    if (!pending) {
+      return undefined;
+    }
+    this.pendingSubagentCostMicroUsdByParent.delete(agentId);
+    const treeMicroUsd = usdToMicroUsd(usage?.totalCostUsd);
+    return Math.max(0, treeMicroUsd - pending);
+  }
+
+  /**
+   * Record one usage measurement into the daemon-wide activity counters, split by
+   * cost category and provider (WP-G). Feeds the two-column Usage & Cost page.
+   *
+   * - Grand totals (`tokensSent`/`tokensReceived`/`costMicroUsd`) always get the
+   *   FULL spend, so the headline stays honest and complete.
+   * - The mid-turn compaction slice (openai-compat only, reported on
+   *   `usage.compaction*Tokens`) is attributed to `compaction` and backed out of
+   *   the turn's own category, so the categories partition the total rather than
+   *   overlap.
+   * - Cost is real only where the provider reports it (Claude's `totalCostUsd`);
+   *   stored as integer micro-USD so it stays summable. Token-only categories
+   *   leave their cost leaf at 0.
+   * - Provider split: Claude (the real-cost provider) gets its own in/out
+   *   counters; "other" is derived in the UI as the grand total minus Claude.
+   */
+  private recordUsageActivity(
+    usage: AgentUsage | undefined,
+    meta: {
+      category: "mainChat" | "generations" | "subagent";
+      provider: AgentProvider;
+      agentId?: string;
+      model?: string;
+      subtype?: string;
+      // Model round-trips this measurement aggregates (sub-agent rows cover many;
+      // a chat turn is one query). Makes a large cumulative cache-read legible.
+      rounds?: number;
+      // Explicit cost for this measurement, overriding `usage.totalCostUsd`. Used
+      // to book a parent chat as the residual after its sub-agents' cost is backed
+      // out (parent-residual de-inflation). Applies to BOTH the ledger row and the
+      // aggregate counters so they stay consistent.
+      costOverrideMicroUsd?: number;
+    },
+  ): void {
+    if (!usage) {
+      return;
+    }
+    const bump = (field: ActivityCounterField, by: number): void => {
+      if (by > 0) {
+        this.onActivity?.(field, by);
+      }
+    };
+    const cachedInputTokens = usage.cachedInputTokens ?? 0;
+    const inputTokens =
+      (usage.inputTokens ?? 0) + cachedInputTokens + (usage.cacheCreationInputTokens ?? 0);
+    const outputTokens = usage.outputTokens ?? 0;
+    const costMicroUsd = meta.costOverrideMicroUsd ?? usdToMicroUsd(usage.totalCostUsd);
+    const compactionIn = usage.compactionInputTokens ?? 0;
+    const compactionOut = usage.compactionOutputTokens ?? 0;
+
+    // Grand headline totals — full spend (compaction included).
+    bump("tokensSent", inputTokens);
+    bump("tokensReceived", outputTokens);
+    bump("costMicroUsd", costMicroUsd);
+
+    // Provider split (Claude vs. derived "other").
+    if (meta.provider === "claude") {
+      bump("claudeTokensIn", inputTokens);
+      bump("claudeTokensOut", outputTokens);
+    }
+
+    // Compaction is its own category, disjoint from the turn's main/subagent share.
+    bump("compactionTokensIn", compactionIn);
+    bump("compactionTokensOut", compactionOut);
+
+    const fields = USAGE_CATEGORY_FIELDS[meta.category];
+    bump(fields.in, Math.max(0, inputTokens - compactionIn));
+    bump(fields.out, Math.max(0, outputTokens - compactionOut));
+    bump(fields.cost, costMicroUsd);
+
+    // Second sink: the itemized ledger row for this same activity (usage-ledger).
+    // Skip zero-usage measurements — an empty row is noise, not accounting.
+    if (this.onUsageEvent && (inputTokens > 0 || outputTokens > 0)) {
+      const event: UsageEvent = {
+        id: randomUUID(),
+        at: Date.now(),
+        kind: USAGE_CATEGORY_KIND[meta.category],
+        provider: meta.provider,
+        tokensIn: inputTokens,
+        tokensOut: outputTokens,
+        costMicroUsd,
+      };
+      // Break out the cache-read slice so the ledger can show fresh vs. cached
+      // (a Claude turn is mostly cache-read; the "in" total alone overstates
+      // fresh send by ~10x). Fresh is derived client-side as tokensIn - cached.
+      if (cachedInputTokens > 0) event.cachedTokensIn = cachedInputTokens;
+      if (meta.subtype) event.subtype = meta.subtype;
+      if (meta.rounds) event.rounds = meta.rounds;
+      if (meta.model) event.model = meta.model;
+      if (meta.agentId) event.agentId = meta.agentId;
+      if (compactionIn > 0) event.compactionTokensIn = compactionIn;
+      if (compactionOut > 0) event.compactionTokensOut = compactionOut;
+      this.onUsageEvent(event);
+    }
+  }
+
   private onStreamTurnCompleted(params: {
     agent: ActiveManagedAgent;
     event: Extract<AgentStreamEvent, { type: "turn_completed" }>;
@@ -4087,16 +4604,7 @@ export class AgentManager {
       "agent.manager.turn.completed",
     );
     agent.lastUsage = this.withContextComposition(agent.id, event.usage);
-    agent.cumulativeTokens = accumulateAgentTokens(
-      agent.cumulativeTokens,
-      event.usage,
-      event.provider,
-    );
-    if (event.usage) {
-      const inputTokens = (event.usage.inputTokens ?? 0) + (event.usage.cachedInputTokens ?? 0);
-      this.onActivity?.("tokensSent", inputTokens);
-      this.onActivity?.("tokensReceived", event.usage.outputTokens ?? 0);
-    }
+    this.recordTurnUsage(agent, event.usage, event.provider);
     agent.lastError = undefined;
     if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
@@ -4132,6 +4640,7 @@ export class AgentManager {
       agent.lifecycle = "error";
     }
     agent.lastError = event.error;
+    this.recordTurnUsage(agent, event.usage, event.provider);
     await this.appendSystemErrorTimelineMessage(
       agent,
       event.provider,
@@ -4172,6 +4681,7 @@ export class AgentManager {
       agent.lifecycle = "idle";
     }
     agent.lastError = undefined;
+    this.recordTurnUsage(agent, event.usage, event.provider);
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Interrupted");
     if (!isForegroundEvent) {
       this.emitState(agent);
@@ -4314,6 +4824,9 @@ export class AgentManager {
     createdAt: string;
     title: string;
     cumulativeTokens?: number;
+    lastUsage?: AgentUsage;
+    model?: string;
+    usageRounds?: number;
     update: ObservedSubagentUpdate;
   }): void {
     const payload = toObservedSubagentPayload({
@@ -4348,34 +4861,107 @@ export class AgentManager {
     }
     const createdAt = existing?.createdAt ?? new Date().toISOString();
     const parentKey = event.update.parentKey ?? existing?.parentKey;
-    const { title, titleFrozen, cumulativeTokens } = resolveObservedSubagentDerivedState(
-      existing,
-      event.update,
-    );
+    const { title, titleFrozen, cumulativeTokens, lastUsage, model, usageRounds } =
+      resolveObservedSubagentDerivedState(existing, event.update);
+    const optional = observedSubagentOptionalFields({
+      parentKey,
+      cumulativeTokens,
+      lastUsage,
+      model,
+      usageRounds,
+    });
+    // Record the subagent's real usage to the itemized ledger on every settle,
+    // but only the delta above what was already written (side effect inside the
+    // helper). Returns the new watermark when a row was written, so a second
+    // stream gets its own row and a duplicate terminal update gets none.
+    // See [[subagent-real-accounting]].
+    const priorRecorded = existing?.recorded;
+    const recorded =
+      this.recordObservedSubagentUsageIfSettled({
+        status: event.update.status,
+        recorded: priorRecorded,
+        ownerAgentId: agent.id,
+        provider: event.provider,
+        lastUsage,
+        usageRounds,
+        model,
+        title,
+      }) ?? priorRecorded;
     this.observedSubagents.set(id, {
       parentAgentId: agent.id,
       taskId: event.update.taskId ?? existing?.taskId,
-      ...(parentKey ? { parentKey } : {}),
       provider: event.provider,
       createdAt,
       title,
       titleFrozen,
-      ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
+      ...optional,
+      ...(recorded ? { recorded } : {}),
       ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
       lastPayload: existing?.lastPayload,
     });
     this.emitObservedSubagentState({
       id,
       parentAgentId: agent.id,
-      ...(parentKey ? { parentKey } : {}),
       provider: event.provider,
       cwd: agent.cwd,
       ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
       createdAt,
       title,
-      ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
+      ...optional,
       update: event.update,
     });
+  }
+
+  /**
+   * Write an observed subagent's real usage into the itemized ledger, once, when
+   * it first settles. Returns true iff a row was written (so the caller can mark
+   * the entry recorded). No split ⇒ no row — an honest blank, never a fabricated
+   * one. The row is attributed to the OWNING chat (`agentId`) so it traces back
+   * to — and groups under — the parent chat in the Log; `subtype` carries the
+   * subagent's name and `model` its own (possibly cheaper) model for pricing.
+   * Cost is left to recordUsageActivity (0 until per-subagent pricing lands).
+   */
+  private recordObservedSubagentUsageIfSettled(params: {
+    status: ObservedSubagentUpdate["status"];
+    recorded: RecordedSubagentLedger | undefined;
+    ownerAgentId: string;
+    provider: AgentProvider;
+    lastUsage: AgentUsage | undefined;
+    usageRounds: number | undefined;
+    model: string | undefined;
+    title: string;
+  }): RecordedSubagentLedger | undefined {
+    const { status, recorded, ownerAgentId, provider, lastUsage, usageRounds, model, title } =
+      params;
+    if (!isTerminalObservedSubagentStatus(status) || !lastUsage) {
+      return undefined;
+    }
+    // Only the increment above what the ledger already holds: a duplicate
+    // terminal update yields nothing, a genuine second stream yields its own row.
+    const delta = deltaAgentUsage(lastUsage, recorded?.usage);
+    if (!delta) {
+      return undefined;
+    }
+    const rounds = Math.max(0, (usageRounds ?? 0) - (recorded?.rounds ?? 0));
+    this.recordUsageActivity(delta, {
+      category: "subagent",
+      provider,
+      agentId: ownerAgentId,
+      ...(rounds > 0 ? { rounds } : {}),
+      ...(model ? { model } : {}),
+      ...(title ? { subtype: title } : {}),
+    });
+    // Stage this increment's priced cost so the owning chat's next turn can back
+    // it out of the whole-tree total (parent-residual de-inflation). Priced
+    // upstream against the sub-agent's own model; absent when unpriceable, in
+    // which case that spend simply stays on the parent (no fabrication).
+    const subagentCostMicroUsd = usdToMicroUsd(delta.totalCostUsd);
+    if (subagentCostMicroUsd > 0) {
+      const prior = this.pendingSubagentCostMicroUsdByParent.get(ownerAgentId) ?? 0;
+      this.pendingSubagentCostMicroUsdByParent.set(ownerAgentId, prior + subagentCostMicroUsd);
+    }
+    // The new watermark is the full running total we just caught up to.
+    return { usage: lastUsage, rounds: usageRounds ?? recorded?.rounds ?? 0 };
   }
 
   private onObservedSubagentTimeline(
@@ -5196,6 +5782,10 @@ export class AgentManager {
         ...env,
         OTTO_AGENT_ID: agentId,
       },
+      // Resolved daemon-wide behavior toggles for this launch. Providers that
+      // don't support a behavior ignore it (Claude reads promptSuggestions /
+      // agentProgressSummaries).
+      agentBehaviors: this.agentBehaviors,
     };
     if (
       this.ottoToolsEnabled &&

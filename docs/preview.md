@@ -132,19 +132,36 @@ restored preview tabs to behave_.
 
 ### Daemon-level (Host settings screen, requires a connected daemon)
 
-| Setting               | Config key                                      | Where it's rendered                                                        |
-| --------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
-| **Browser tools**     | `daemon.browserTools.enabled` (default `false`) | `BrowserToolsOptInCard`, `packages/app/src/screens/settings/host-page.tsx` |
-| **Enable Otto tools** | `daemon.mcp.injectIntoAgents` (default `true`)  | `InjectOttoToolsCard`, `packages/app/src/screens/settings/host-page.tsx`   |
+| Setting               | Config key                                      | Where it's rendered                                                                                  |
+| --------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Browser tools**     | `daemon.browserTools.enabled` (default `false`) | `BrowserToolsMasterRow` (master of `BrowserToolsSection`), `screens/settings/otto-tools-section.tsx` |
+| **Enable Otto tools** | `daemon.mcp.injectIntoAgents` (default `true`)  | `OttoToolsMasterRow` (master of `OttoToolsSection`), `screens/settings/otto-tools-section.tsx`       |
 
-"Browser tools" is the master switch: agents can access and control Otto
-browser tabs, including logged-in browser state, so it ships off and carries
-an explicit trust warning in the UI. With it off, `browser_*` tools (and by
-extension the verification half of Preview) aren't registered for any
-provider, regardless of that provider's own tool-group selection below.
-"Enable Otto tools" is the broader switch for all daemon-injected tools
-(agent/worktree/schedule management as well as preview/browser) — turning it
-off removes the whole Otto tool catalog from agents on this daemon.
+The Host **Agents** sidebar section renders three grouped cards, each with the
+standard split-line rows: **Agents** (append system prompt, then agent-behavior +
+metadata toggles), **Otto Tools** (the "Enable Otto tools" master over the core
+`mcp.toolGroups` category rows — workspace, agents, terminals, web, schedules,
+artifacts), and **Browser Tools** (the "Browser tools" master over its two
+browser categories, Browser Control = `browser` and Preview = `preview`). Each
+master's category rows grey out when that master is off. (Agent personalities,
+teams, and voices live on a separate **Teams** sidebar section.)
+
+"Browser tools" is the master switch over the **whole** Preview subsystem —
+both halves. Agents can access and control Otto browser tabs, including
+logged-in browser state, so it ships off and carries an explicit trust warning
+in the UI. With it off, neither `browser_*` (verification) nor `preview_*`
+(dev-server lifecycle) tools are registered for any provider, regardless of that
+provider's own tool-group selection below — the single enforcement point is
+`if (options.browserToolsEnabled && …)` around both `registerBrowserTools` and
+`registerPreviewTools` in `createOttoToolCatalog`
+(`packages/server/src/server/agent/tools/otto-tools.ts`). Because the master
+defaults off, Preview is off by default until a user opts in. The UI mirrors
+this exactly: the Browser Control and Preview category rows grey out when the
+"Browser tools" master is off, and that grey-out is a true functional gate, not
+just a grouping convenience. "Enable Otto tools" is the
+broader switch for all daemon-injected tools (agent/worktree/schedule management
+as well as preview/browser) — turning it off removes the whole Otto tool catalog
+from agents on this daemon.
 
 ### Per-provider (provider details screen, natively-injected providers only)
 

@@ -40,6 +40,7 @@ import type {
   ActivityIncrementFn,
   ActivityRollups,
 } from "./activity-stats/activity-stats-store.js";
+import type { UsageLogPage, UsageLogPageQuery } from "./activity-stats/usage-log-store.js";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import type { AgentAutoTitle } from "./agent/agent-auto-title.js";
@@ -487,6 +488,10 @@ export class VoiceAssistantWebSocketServer {
   private readonly previewDevServers: DevServerManager | null;
   private readonly onActivity: ActivityIncrementFn | undefined;
   private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
+  private readonly getUsageLogPage:
+    | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
+    | undefined;
+  private readonly resetActivityStats: (() => Promise<void>) | undefined;
   private acceptingConnections = true;
 
   constructor(
@@ -550,6 +555,8 @@ export class VoiceAssistantWebSocketServer {
     getActivityRollups?: () => Promise<ActivityRollups>,
     projectLinkStore?: ProjectLinkStore,
     agentAutoTitle?: AgentAutoTitle | null,
+    getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>,
+    resetActivityStats?: () => Promise<void>,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -577,6 +584,8 @@ export class VoiceAssistantWebSocketServer {
     this.runService = runService ?? null;
     this.onActivity = onActivity;
     this.getActivityRollups = getActivityRollups;
+    this.getUsageLogPage = getUsageLogPage;
+    this.resetActivityStats = resetActivityStats;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
     this.gitHostingResolver = gitHostingResolver ?? null;
@@ -1109,6 +1118,8 @@ export class VoiceAssistantWebSocketServer {
       providerUsageService: this.providerUsageService,
       onActivity: this.onActivity,
       getActivityRollups: this.getActivityRollups,
+      getUsageLogPage: this.getUsageLogPage,
+      resetActivityStats: this.resetActivityStats,
       serviceProxy: this.serviceProxy ?? undefined,
       scriptRuntimeStore: this.scriptRuntimeStore ?? undefined,
       workspaceSetupSnapshots: this.workspaceSetupSnapshots,
@@ -1328,6 +1339,8 @@ export class VoiceAssistantWebSocketServer {
         artifacts: true,
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
         observedSubagents: true,
+        // COMPAT(retainedTranscripts): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        retainedTranscripts: true,
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: true,
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -1380,6 +1393,22 @@ export class VoiceAssistantWebSocketServer {
         rateLimitEvents: true,
         // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         openaiCompatMaxToolRounds: true,
+        // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        mcpToolGroups: true,
+        // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        agentBehaviorToggles: true,
+        // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        metadataGenerationEnabled: true,
+        // COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Gated on the same store the rollups come from — a daemon that can serve
+        // activity rollups at this version also populates the per-category counters.
+        usageCostCategories: this.getActivityRollups !== undefined,
+        // COMPAT(usageLog): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon serves the itemized usage ledger (usage.log.get).
+        usageLog: this.getUsageLogPage !== undefined,
+        // COMPAT(statsReset): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon handles stats.activity.reset (wipe counters + ledger).
+        statsReset: this.resetActivityStats !== undefined,
       },
     };
   }

@@ -19,17 +19,24 @@
 
 import type { AgentTimelineItem } from "../../agent-sdk-types.js";
 
+import { SubagentUsageAccumulator, type SubagentUsageTotals } from "../../subagent-usage.js";
+
+import { readUsageTotals } from "./claude-subagent-usage.js";
 import {
   mapClaudeCompletedToolCall,
   mapClaudeFailedToolCall,
   mapClaudeRunningToolCall,
 } from "./tool-call-mapper.js";
 
+export type { SubagentUsageTotals } from "../../subagent-usage.js";
+
 interface RawTranscriptEntry {
   type?: unknown;
   uuid?: unknown;
   attachment?: unknown;
-  message?: { role?: unknown; content?: unknown; usage?: unknown; id?: unknown } | undefined;
+  message?:
+    | { role?: unknown; content?: unknown; usage?: unknown; id?: unknown; model?: unknown }
+    | undefined;
 }
 
 interface RawBlock {
@@ -58,29 +65,19 @@ function isRawBlock(value: unknown): value is RawBlock {
   return Boolean(value) && typeof value === "object";
 }
 
-function readOutputTokens(entry: RawTranscriptEntry): number | undefined {
-  const usage = entry.message?.usage;
-  if (!usage || typeof usage !== "object") {
-    return undefined;
-  }
-  const output = (usage as { output_tokens?: unknown }).output_tokens;
-  return typeof output === "number" && Number.isFinite(output) ? output : undefined;
-}
-
 /**
  * Stateful per-subagent transcript mapper. Feed it each parsed JSONL line in
  * order; it emits the timeline items for that line (assistant text, reasoning,
  * running tool_calls, settled tool_calls, the initial user prompt) and keeps a
- * best-effort running output-token total the watcher can surface as
- * cumulativeTokens (the run-state file provides the authoritative total at
- * completion, which wins via the daemon's monotonic Math.max).
+ * running per-message usage total (in/out + cache read/creation) the watcher and
+ * ledger surface as the sub-agent's real, authoritative token footprint.
  */
 export class WorkflowSubagentTranscriptMapper {
   private readonly toolUseCache = new Map<string, CachedToolUse>();
-  // Dedup output_tokens by message.id: one assistant turn spans multiple lines
-  // sharing an id, each repeating a usage object whose output_tokens grows to
-  // the turn's final value on the last line. Keep the max per id, sum the maxes.
-  private readonly outputTokensByMessageId = new Map<string, number>();
+  // Real per-frame token accounting (dedup by message.id, keep max-output frame,
+  // sum across ids) — shared with the live sidechain path so both surface the
+  // sub-agent's usage identically. See ../../subagent-usage.ts.
+  private readonly usage = new SubagentUsageAccumulator();
 
   mapEntry(entry: RawTranscriptEntry): AgentTimelineItem[] {
     this.accumulateUsage(entry);
@@ -101,28 +98,36 @@ export class WorkflowSubagentTranscriptMapper {
     return [];
   }
 
+  /**
+   * The sub-agent's real token footprint so far: input/output plus the cache
+   * read/creation split, straight from the API `usage` on each frame. Summed
+   * across deduped messages — no roll-up, no estimation.
+   */
+  usageTotals(): SubagentUsageTotals {
+    return this.usage.totals();
+  }
+
   /** Best-effort running total of output tokens across the transcript so far. */
   cumulativeOutputTokens(): number {
-    let total = 0;
-    for (const value of this.outputTokensByMessageId.values()) {
-      total += value;
-    }
-    return total;
+    return this.usage.totals().outputTokens;
+  }
+
+  /** The model this sub-agent ran on (first seen), e.g. "claude-haiku-4-5-…". */
+  /** Model round-trips seen in this sub-agent's transcript so far. */
+  roundCount(): number {
+    return this.usage.roundCount();
+  }
+
+  model(): string | undefined {
+    return this.usage.model();
   }
 
   private accumulateUsage(entry: RawTranscriptEntry): void {
-    const output = readOutputTokens(entry);
-    if (output === undefined) {
-      return;
-    }
-    const messageId = readString(entry.message?.id) ?? readString(entry.uuid);
-    if (!messageId) {
-      return;
-    }
-    const prior = this.outputTokensByMessageId.get(messageId) ?? 0;
-    if (output > prior) {
-      this.outputTokensByMessageId.set(messageId, output);
-    }
+    this.usage.observe({
+      messageId: readString(entry.message?.id) ?? readString(entry.uuid),
+      usage: readUsageTotals(entry.message?.usage),
+      model: readString(entry.message?.model),
+    });
   }
 
   private mapUserEntry(content: unknown, messageId: string | undefined): AgentTimelineItem[] {

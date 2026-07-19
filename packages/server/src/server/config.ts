@@ -430,6 +430,15 @@ function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedCo
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
 
+function resolveMcpToolGroups(persisted: ReturnType<typeof loadPersistedConfig>) {
+  // undefined = all groups enabled (mirrors openai-compat per-provider semantics).
+  return persisted.daemon?.mcp?.toolGroups;
+}
+
+function resolveAgentBehaviors(persisted: ReturnType<typeof loadPersistedConfig>) {
+  return persisted.daemon?.agentBehaviors;
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -440,6 +449,8 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    mcpToolGroups: resolveMcpToolGroups(persisted),
+    agentBehaviors: resolveAgentBehaviors(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -472,6 +483,8 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    mcpToolGroups,
+    agentBehaviors,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -511,6 +524,8 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    mcpToolGroups,
+    agentBehaviors,
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,
     appendSystemPrompt,

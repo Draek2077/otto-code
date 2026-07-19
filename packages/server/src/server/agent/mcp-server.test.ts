@@ -52,6 +52,7 @@ import type { GeneratedWorkspaceName } from "../worktree-branch-name-generator.j
 import type { GitHubService } from "../../services/github-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "../browser-tools/broker.js";
 import type { BrowserToolsResponsePayload } from "../browser-tools/errors.js";
 import { readOttoWorktreeMetadata } from "../../utils/worktree-metadata.js";
@@ -225,6 +226,11 @@ function buildAgentManagerSpies() {
     getPendingPermissions: vi.fn(),
     getRegisteredProviderIds: vi.fn().mockReturnValue(["claude"]),
     listDraftFeatures: vi.fn(),
+    getAgentBehaviors: vi.fn().mockReturnValue({
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    }),
   };
 }
 
@@ -800,7 +806,7 @@ describe("browser MCP tools", () => {
         agents: [],
       });
       expectSingleTextContent(browserResult);
-      expect(expectSingleTextContent(listAgentsResult)).toContain('"agents": []');
+      expect(expectSingleTextContent(listAgentsResult)).toContain('{"agents":[]}');
 
       const listedTools = await client.listTools();
       expect(listedTools.tools.map((tool) => tool.name)).toEqual(
@@ -1137,6 +1143,33 @@ describe("create_agent MCP tool", () => {
         (issue: { path: Array<string | number> }) => issue.path[0] === "initialPrompt",
       ),
     ).toBe(true);
+  });
+
+  it("gates the tool catalog by enabledOttoToolGroups (mcp.toolGroups)", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const baseDeps = {
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      ensureWorkspaceForCreate,
+      logger,
+    };
+
+    // undefined groups = all enabled: create_agent (the "agents" group) registers.
+    const full = await createAgentMcpServer(baseDeps);
+    expect(lookupTool(full, "create_agent")).toBeDefined();
+
+    // Excluding "agents" drops create_agent while leaving the rest of the catalog.
+    const withoutAgents = await createAgentMcpServer({
+      ...baseDeps,
+      enabledOttoToolGroups: OTTO_TOOL_GROUPS.filter((group) => group !== "agents"),
+    });
+    expect(lookupTool(withoutAgents, "create_agent")).toBeUndefined();
+
+    // An empty allowlist registers no Otto tools at all.
+    const none = await createAgentMcpServer({ ...baseDeps, enabledOttoToolGroups: [] });
+    const noneTools: Record<string, unknown> = Reflect.get(none, "_registeredTools");
+    expect(Object.keys(noneTools)).toHaveLength(0);
   });
 
   it("rejects partial explicit workspace shape", async () => {
@@ -2887,11 +2920,15 @@ describe("create_agent MCP tool", () => {
     if (!parsed.success) {
       throw new Error("Expected caller create_agent input to parse");
     }
+    // notifyOnFinish is no longer schema-defaulted (WP-E moved the default to
+    // the handler so it can honor the daemon agentBehaviors.notifyOnFinishDefault
+    // toggle); an omitted arg parses as absent here and resolves on at the
+    // handler. The default-on behavior is covered by the guidance test below.
     expect(parsed.data).toMatchObject({
       relationship: { kind: "subagent" },
       workspace: { kind: "current" },
-      notifyOnFinish: true,
     });
+    expect(parsed.data).not.toHaveProperty("notifyOnFinish");
   });
 
   it("returns notify-on-finish guidance for caller-created agents", async () => {
@@ -3385,10 +3422,14 @@ describe("send_agent_prompt MCP tool", () => {
     if (!parsed.success) {
       throw new Error("Expected caller send_agent_prompt input to parse");
     }
+    // background still schema-defaults to true for agent-scoped sends;
+    // notifyOnFinish is no longer schema-defaulted (WP-E moved that default to
+    // the handler so it can honor agentBehaviors.notifyOnFinishDefault). The
+    // handler still resolves it on by default — asserted via the guidance below.
     expect(parsed.data).toMatchObject({
       background: true,
-      notifyOnFinish: true,
     });
+    expect(parsed.data).not.toHaveProperty("notifyOnFinish");
 
     const response = await tool.handler(parsed.data as Record<string, unknown>);
 

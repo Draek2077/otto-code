@@ -9,6 +9,17 @@ const DEFAULT_MAX_ITEMS = 0;
 const MAX_TOOL_INPUT_CHARS = 400;
 const MAX_TOOL_SUMMARY_CHARS = 200;
 
+/**
+ * Size cap for a fork-context attachment. `buildAgentForkContextAttachment`
+ * curates the *entire* parent timeline with untruncated message text, so a long
+ * chat became an unbounded blob baked into the forked agent's first message.
+ * Keep the head (how the conversation started) and a tail (the recent context
+ * you're continuing from), eliding the middle with a marker — never drop
+ * silently.
+ */
+const FORK_CONTEXT_HEAD_CHARS = 48_000;
+const FORK_CONTEXT_TAIL_CHARS = 12_000;
+
 interface ActivityCuratorOptions {
   maxItems?: number;
   labelAssistantMessages?: boolean;
@@ -266,6 +277,18 @@ function buildForkContextText(input: {
   return `${header.join("\n")}\n\n${input.body}`;
 }
 
+function capForkContextBody(body: string): string {
+  if (body.length <= FORK_CONTEXT_HEAD_CHARS + FORK_CONTEXT_TAIL_CHARS) {
+    return body;
+  }
+  const removed = body.length - FORK_CONTEXT_HEAD_CHARS - FORK_CONTEXT_TAIL_CHARS;
+  return (
+    `${body.slice(0, FORK_CONTEXT_HEAD_CHARS)}\n\n` +
+    `[... history truncated: ${removed} characters of earlier chat omitted ...]\n\n` +
+    body.slice(-FORK_CONTEXT_TAIL_CHARS)
+  );
+}
+
 export function buildAgentForkContextAttachment(input: {
   rows: readonly AgentTimelineRow[];
   boundaryMessageId?: string | null;
@@ -284,7 +307,7 @@ export function buildAgentForkContextAttachment(input: {
   });
   const body =
     entries.length > 0
-      ? entries.map((entry) => entry.text).join("\n")
+      ? capForkContextBody(entries.map((entry) => entry.text).join("\n"))
       : "No chat history to display.";
   return {
     attachment: {

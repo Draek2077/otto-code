@@ -1,5 +1,5 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
+import type { AgentProviderNotice, ModelTier } from "@otto-code/protocol/agent-types";
 import type {
   AgentAttachment,
   AgentContextUsage,
@@ -93,6 +93,13 @@ export interface AgentModelDefinition {
   contextWindowMaxTokens?: number;
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
+  /**
+   * Capability tier stamped by the provider snapshot manager at ingest (user
+   * override → shipped catalog, else undefined = "Unknown"). Mirrors the
+   * protocol `AgentModelDefinition.tier`. Read by cheap-tier metadata-generation
+   * routing to prefer the cheapest capable model. See model-tiers.ts.
+   */
+  tier?: ModelTier;
   /**
    * False when this model cannot run the provider's "auto" permission mode
    * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku, and on
@@ -245,11 +252,32 @@ export interface ContextComposition {
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
+  /**
+   * Prompt tokens spent writing (not reading) the prompt cache this turn —
+   * Anthropic's `cache_creation_input_tokens`, billed at a premium over normal
+   * input. Disjoint from `inputTokens`/`cachedInputTokens` (the three input
+   * categories sum to total input). Claude-specific today; other providers omit
+   * it. Additive/optional — a consumer that ignores it loses only cache-write
+   * visibility. Powers WP-G's cost ledger.
+   */
+  cacheCreationInputTokens?: number;
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
   contextComposition?: ContextComposition;
+  /**
+   * Server-internal only (WP-G): how much of this turn's billed input/output was
+   * spent by the mid-turn auto-compaction summarizer, so the activity ledger can
+   * break "compaction" out as its own cost category without double-counting.
+   * WP-D folds the summarizer's spend into the turn's billed total; these two
+   * fields report that folded-in slice so the manager can attribute it to
+   * `compaction` and the remainder to `mainChat`/`subagent`. Deliberately NOT
+   * projected to the wire (`sanitizeUsage` drops it) — the client reads
+   * compaction from the daemon-computed counters, not from live usage.
+   */
+  compactionInputTokens?: number;
+  compactionOutputTokens?: number;
 }
 
 export const TOOL_CALL_ICON_NAMES = [
@@ -442,8 +470,21 @@ export type AgentStreamEvent =
       code?: string;
       diagnostic?: string;
       turnId?: string;
+      // Provider-reported spend up to the point of failure, when known. Fed into
+      // the same token accounting as turn_completed so retry storms aren't
+      // invisible. Optional — providers that can't attribute partial-turn usage
+      // omit it. (WP-D)
+      usage?: AgentUsage;
     }
-  | { type: "turn_canceled"; provider: AgentProvider; reason: string; turnId?: string }
+  | {
+      type: "turn_canceled";
+      provider: AgentProvider;
+      reason: string;
+      turnId?: string;
+      // Spend accrued before the interrupt, when the provider can report it. See
+      // the turn_failed note above. (WP-D)
+      usage?: AgentUsage;
+    }
   | {
       type: "timeline";
       item: AgentTimelineItem;
@@ -537,6 +578,16 @@ export interface ObservedSubagentUpdate {
   status: "initializing" | "running" | "idle" | "error" | "closed";
   requiresAttention?: boolean;
   usage?: AgentUsage;
+  // The model this subagent actually ran on (e.g. "claude-haiku-4-5-…"). A
+  // subagent can run a DIFFERENT, cheaper model than its parent, so this is
+  // required to price its usage correctly — never assume the parent's model. A
+  // neutral field any provider sets; the owning provider prices it (Claude reads
+  // it from the subagent's frames). Optional/additive.
+  model?: string;
+  // Model round-trips this subagent has made so far (cumulative, like `usage`).
+  // A neutral field any provider can set; it makes the row's cumulative
+  // cache-read figure legible ("622k cached · 10 rounds"). Optional/additive.
+  usageRounds?: number;
   // Cumulative token total for this subagent's run so far, from the provider's
   // per-task usage (Claude: task_progress/task_notification `usage.total_tokens`,
   // which is already cumulative-per-subagent). Honest cost for the track readout.
@@ -762,6 +813,23 @@ export interface AgentPersonalityUpdate {
   daemonAppendSystemPrompt: string | undefined;
 }
 
+/**
+ * Fully-resolved daemon-wide agent behavior toggles (Claude is the reference
+ * tier). Every field is a concrete boolean — the daemon config carries these
+ * as optional-with-default, and the manager resolves "absent/undefined = on"
+ * before handing them to a session. Providers that cannot honor a given
+ * behavior simply ignore it (no-op, no error) per the provider-parity rule.
+ * See docs and projects/token-cost-fixes/wp-e-behavior-toggles.md.
+ */
+export interface AgentBehaviorSettings {
+  /** Emit predicted next-user-prompt suggestions after each turn (Claude). */
+  promptSuggestions: boolean;
+  /** Emit periodic AI progress summaries for observed subagents (Claude). */
+  agentProgressSummaries: boolean;
+  /** Default for agent-to-agent create/send finish notifications (Otto tools). */
+  notifyOnFinishDefault: boolean;
+}
+
 export interface AgentLaunchContext {
   agentId?: string;
   env?: Record<string, string>;
@@ -770,6 +838,11 @@ export interface AgentLaunchContext {
    * AgentSessionConfig; providers may adapt it to their native tool surface.
    */
   ottoTools?: OttoToolCatalog;
+  /**
+   * Resolved daemon-wide behavior toggles for this launch. Runtime-only (never
+   * persisted); providers that don't support a behavior ignore it.
+   */
+  agentBehaviors?: AgentBehaviorSettings;
 }
 
 export interface AgentCreateSessionOptions {
@@ -862,6 +935,39 @@ export interface AgentSession {
   } | null;
 }
 
+/**
+ * Input for a one-shot, tool-less text completion used by the internal
+ * metadata-generation path (chat titles, branch/workspace names, commit/PR
+ * text, voice cues, run summaries). The prompt is fully self-contained — it
+ * carries its own contract and JSON-schema instructions and explicitly forbids
+ * tool use — so this deliberately bypasses the full agent session: no Otto tool
+ * catalog, no MCP mount, and (on Claude) no `claude_code` preset or
+ * CLAUDE.md/settingSources. That is the whole point: a title costs a few
+ * hundred tokens instead of the 15–25K a full spawn carries.
+ */
+export interface AgentBareCompletionOptions {
+  cwd: string;
+  prompt: string;
+  model?: string;
+  thinkingOptionId?: string;
+  systemPrompt?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Result of a tool-less metadata generation (WP-G). `text` is the completion the
+ * callers consume; `usage` is the spend the provider reported for the call, so
+ * the manager can record it into the activity ledger under the "generations"
+ * cost category — these bare completions bypass the turn path entirely (WP-B),
+ * so without capturing usage here their spend is invisible to accounting.
+ * Providers that cannot report usage omit it (tokens simply go uncounted, never
+ * erroring).
+ */
+export interface AgentBareCompletionResult {
+  text: string;
+  usage?: AgentUsage;
+}
+
 export type FetchCatalogOptions =
   | {
       scope: "global";
@@ -900,6 +1006,15 @@ export interface AgentClient {
    * The registry is responsible for merging configured model overrides.
    */
   fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog>;
+  /**
+   * One-shot, tool-less structured-text completion for internal metadata
+   * generation. Bypasses `createSession` entirely — no agent lifecycle, no tool
+   * catalog, no MCP, no `claude_code` preset/CLAUDE.md. Providers that cannot do
+   * a tool-less completion omit this; the generation fallback ladder then skips
+   * them without erroring (parity is preserved by falling through, not by
+   * forcing every provider to implement it). See AgentBareCompletionOptions.
+   */
+  generateBareCompletion?(options: AgentBareCompletionOptions): Promise<AgentBareCompletionResult>;
   resolveCreateConfig?(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult;
   isCreateConfigUnattended?(input: AgentCreateConfigUnattendedInput): boolean;
   listCommands?(config: AgentSessionConfig): Promise<AgentSlashCommand[]>;

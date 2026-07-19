@@ -393,6 +393,65 @@ describe("WorkflowTranscriptWatcher", () => {
     watcher.disarm("idle");
   });
 
+  it("emits the full usage split + subagent model from the live transcript", () => {
+    vi.useFakeTimers();
+    watcher.arm();
+
+    const runDir = writeRunDir("wf_usage-1", "a1", "Do the thing");
+    fs.writeFileSync(
+      path.join(runDir, "agent-a1.meta.json"),
+      JSON.stringify({ agentType: "Explore" }),
+    );
+    vi.advanceTimersByTime(700); // bind + announce
+    const childKey = `${WORKFLOW_KEY}::wfagent:a1`;
+    expect(announcesFor(events, childKey)).toHaveLength(1);
+
+    // A real assistant frame carrying the full cache split + a cheaper model
+    // than a parent would run (values mirror the captured Haiku transcript).
+    fs.appendFileSync(
+      path.join(runDir, "agent-a1.jsonl"),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "as1",
+        message: {
+          id: "m1",
+          role: "assistant",
+          model: "claude-haiku-4-5-20251001",
+          content: [{ type: "text", text: "done" }],
+          usage: {
+            input_tokens: 4,
+            output_tokens: 913,
+            cache_creation_input_tokens: 726,
+            cache_read_input_tokens: 68161,
+          },
+        },
+      }) + "\n",
+    );
+    vi.advanceTimersByTime(700); // tail scan → token emit with usage + model
+
+    const withUsage = events.findLast(
+      (e) =>
+        e.type === "observed_subagent_updated" &&
+        e.update.key === childKey &&
+        e.update.usage !== undefined,
+    );
+    expect(withUsage?.type).toBe("observed_subagent_updated");
+    if (withUsage?.type === "observed_subagent_updated") {
+      expect(withUsage.update.usage).toMatchObject({
+        inputTokens: 4,
+        cachedInputTokens: 68161,
+        cacheCreationInputTokens: 726,
+        outputTokens: 913,
+      });
+      // Priced on the subagent's own (Haiku) model.
+      expect(withUsage.update.usage?.totalCostUsd).toBeGreaterThan(0);
+      expect(withUsage.update.model).toBe("claude-haiku-4-5-20251001");
+      // Grand total = every input class + output, matching native rollup.
+      expect(withUsage.update.cumulativeTokens).toBe(4 + 68161 + 726 + 913);
+    }
+    watcher.disarm("idle");
+  });
+
   it("disarm binds by run-state identity when the dir was claimed away the whole run", () => {
     // Starvation case: our dir is held by a mis-bound sibling for the entire
     // run, so tick-time discovery never binds. At disarm, the run-state's

@@ -182,7 +182,7 @@ describe("getStructuredAgentResponse (e2e)", () => {
     await shutdownProviders(logger);
   }, 60000);
 
-  test("returns schema-valid JSON from a real Codex agent", async (context) => {
+  test("falls through for a provider without tool-less completion (Codex)", async (context) => {
     if (!canRunCodex) {
       context.skip();
     }
@@ -191,24 +191,27 @@ describe("getStructuredAgentResponse (e2e)", () => {
       count: z.number(),
     });
 
-    const result = await generateStructuredAgentResponse({
-      manager,
-      agentConfig: {
-        provider: "codex",
-        model: CODEX_TEST_MODEL,
-        ...(CODEX_TEST_THINKING_OPTION_ID
-          ? { thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID }
-          : {}),
-        cwd,
-        title: "Structured Response Test",
-      },
-      prompt: "Return JSON with a short title and count 2.",
-      schema,
-      maxRetries: 1,
-    });
-
-    expect(result.title.length).toBeGreaterThan(0);
-    expect(typeof result.count).toBe("number");
+    // WP-B replaced the full-spawn generation path with a direct, tool-less
+    // provider completion (generateBareCompletion). Codex is a CLI provider that
+    // does not implement it, so the single-provider entry throws rather than
+    // spawning a full agent — the fallback ladder is what skips such providers.
+    await expect(
+      generateStructuredAgentResponse({
+        manager,
+        agentConfig: {
+          provider: "codex",
+          model: CODEX_TEST_MODEL,
+          ...(CODEX_TEST_THINKING_OPTION_ID
+            ? { thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID }
+            : {}),
+          cwd,
+          title: "Structured Response Test",
+        },
+        prompt: "Return JSON with a short title and count 2.",
+        schema,
+        maxRetries: 1,
+      }),
+    ).rejects.toThrow(/does not support tool-less completion/);
   }, 180000);
 
   test("returns schema-valid JSON from Claude Haiku", async (context) => {

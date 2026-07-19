@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
 import type {
+  AgentBareCompletionOptions,
+  AgentBareCompletionResult,
   AgentCapabilityFlags,
   AgentClient,
   AgentContextUsage,
@@ -108,6 +110,60 @@ const TOOL_RESULT_HEAD_CHARS = 3000;
 const TOOL_RESULT_TAIL_CHARS = 1000;
 
 /**
+ * Hard cap on the text of a single Otto tool result fed back to the model.
+ * Otto tool outputs (activity dumps, browser snapshots, log tails) were
+ * previously uncapped, so one large result entered the transcript verbatim and
+ * was replayed on every subsequent round of the turn. Builtins cap at 30K/16K
+ * and MCP at 30K; match that with a head-heavy head/tail window (the head
+ * carries the summary and structure, the tail the most recent lines) plus a
+ * clear truncation marker so nothing is silently dropped.
+ */
+const OTTO_RESULT_HEAD_CHARS = 26_000;
+const OTTO_RESULT_TAIL_CHARS = 4_000;
+
+/** Keep the head (and a tail where it matters) of an oversized string, marking the elision. */
+function truncateHeadTail(text: string, headChars: number, tailChars: number): string {
+  if (text.length <= headChars + tailChars) {
+    return text;
+  }
+  const removed = text.length - headChars - tailChars;
+  return `${text.slice(0, headChars)}\n[... ${removed} characters truncated ...]\n${text.slice(
+    -tailChars,
+  )}`;
+}
+
+/**
+ * `.int()` in Zod v4 clamps to the safe-integer range, so `z.toJSONSchema`
+ * emits `minimum: -9007199254740991` / `maximum: 9007199254740991` on every
+ * integer field — pure serialization noise the model re-reads on every request.
+ * Strip only those sentinel bounds (real `.min()`/`.max()` constraints differ
+ * from the safe-integer limits and are preserved), keeping `.int()` validation.
+ */
+function stripSafeIntegerBounds(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      stripSafeIntegerBounds(child);
+    }
+    return;
+  }
+  if (!node || typeof node !== "object") {
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  if (record.type === "integer") {
+    if (record.maximum === Number.MAX_SAFE_INTEGER) {
+      delete record.maximum;
+    }
+    if (record.minimum === -Number.MAX_SAFE_INTEGER) {
+      delete record.minimum;
+    }
+  }
+  for (const value of Object.values(record)) {
+    stripSafeIntegerBounds(value);
+  }
+}
+
+/**
  * Compaction keeps the most recent slice of the conversation verbatim and only
  * summarizes the older history before it. Summarization is lossy, so we confine
  * it to the distant past where the loss is cheap; recent turns (the files just
@@ -153,6 +209,34 @@ const PRUNE_TOOL_RESULT_MIN_CHARS = 2_000;
 const PRUNE_TOOL_RESULT_HEAD_CHARS = 800;
 const PRUNE_TOOL_RESULT_TAIL_CHARS = 400;
 const UNEVENTFUL_RESULT_PLACEHOLDER = "[Uneventful result elided]";
+
+/**
+ * How many of the most recent image-bearing user messages keep their base64
+ * `image_url` parts through pruning. Older images are dropped (replaced with a
+ * text marker) so a growing conversation stops re-uploading every screenshot
+ * on every round — base64 images are among the largest things in the payload.
+ */
+const PRUNE_PROTECT_RECENT_IMAGE_MESSAGES = 2;
+const PRUNED_IMAGE_PLACEHOLDER = "[Earlier image removed to save context]";
+
+/**
+ * Assumed context window used only for the auto-compaction threshold when the
+ * server reports no context length (`resolveContextWindowMaxTokens()` is null).
+ * Without a denominator there is no percentage, so history would otherwise grow
+ * unbounded until the endpoint errors. This is a fallback for the compaction
+ * math only — it is never reported to the client as a real window, so the
+ * context ring still stays hidden for windowless endpoints.
+ */
+const AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS = 8_192;
+
+/**
+ * Once auto-compaction disarms (a compaction failed or reclaimed too little),
+ * re-arm after context grows by at least this much beyond the disarm point —
+ * enough fresh material has accumulated that a retry has something new to
+ * summarize. Prevents a single bad compaction from disarming the trigger
+ * forever while still avoiding a re-summarize-every-round storm.
+ */
+const AUTO_COMPACT_REARM_GROWTH_TOKENS = 8_000;
 
 /**
  * True when a tool result carries no signal worth keeping in context — empty
@@ -459,6 +543,26 @@ function unreachableError(label: string, endpoint: ResolvedEndpoint, cause: unkn
   );
 }
 
+// Pull the assistant text out of a non-streaming /chat/completions response.
+// Best-effort and defensive — a server that returns an unexpected shape yields
+// "" so the structured-generation retry loop reports a clean validation failure
+// rather than throwing on a property access.
+function extractOpenAICompletionText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const choices = (payload as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return "";
+  }
+  const message = (choices[0] as { message?: unknown }).message;
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  return typeof content === "string" ? content.trim() : "";
+}
+
 function promptToText(prompt: AgentPromptInput): string {
   if (typeof prompt === "string") {
     return prompt;
@@ -510,12 +614,20 @@ interface StreamToolCallDelta {
   argumentsChunk?: string;
 }
 
+interface RoundUsage {
+  /** OpenAI `prompt_tokens` — total input incl. any cached prefix. */
+  inputTokens?: number;
+  /** `prompt_tokens_details.cached_tokens` — the cache-read portion of input. */
+  cachedInputTokens?: number;
+  outputTokens?: number;
+}
+
 interface StreamDelta {
   content: string | null;
   reasoning: string | null;
   toolCalls: StreamToolCallDelta[];
   finishReason: string | null;
-  usage: { inputTokens?: number; outputTokens?: number } | null;
+  usage: RoundUsage | null;
 }
 
 function parseToolCallDeltas(deltaRecord: Record<string, unknown>): StreamToolCallDelta[] {
@@ -575,19 +687,67 @@ function parseStreamChunk(json: unknown): StreamDelta {
       result.toolCalls = parseToolCallDeltas(deltaRecord);
     }
   }
-  const usage = chunk.usage;
-  if (usage && typeof usage === "object") {
-    const usageRecord = usage as Record<string, unknown>;
-    result.usage = {
-      ...(typeof usageRecord.prompt_tokens === "number"
-        ? { inputTokens: usageRecord.prompt_tokens }
-        : {}),
-      ...(typeof usageRecord.completion_tokens === "number"
-        ? { outputTokens: usageRecord.completion_tokens }
-        : {}),
-    };
-  }
+  result.usage = parseStreamUsage(chunk.usage);
   return result;
+}
+
+/**
+ * Map an OpenAI `usage` object onto a RoundUsage. `prompt_tokens` is total
+ * input (incl. any cached prefix); `prompt_tokens_details.cached_tokens` is the
+ * cache-read slice, reported only by servers that honor prompt_cache_key.
+ */
+function parseStreamUsage(usage: unknown): RoundUsage | null {
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+  const usageRecord = usage as Record<string, unknown>;
+  const promptDetails =
+    usageRecord.prompt_tokens_details && typeof usageRecord.prompt_tokens_details === "object"
+      ? (usageRecord.prompt_tokens_details as Record<string, unknown>)
+      : undefined;
+  const cachedTokens = promptDetails?.cached_tokens;
+  return {
+    ...(typeof usageRecord.prompt_tokens === "number"
+      ? { inputTokens: usageRecord.prompt_tokens }
+      : {}),
+    ...(typeof cachedTokens === "number" && cachedTokens > 0
+      ? { cachedInputTokens: cachedTokens }
+      : {}),
+    ...(typeof usageRecord.completion_tokens === "number"
+      ? { outputTokens: usageRecord.completion_tokens }
+      : {}),
+  };
+}
+
+/**
+ * Map a non-streaming `/chat/completions` response's `usage` onto AgentUsage for
+ * the metadata-generation ledger (WP-G). Splits `prompt_tokens` into non-cached
+ * input + cache-read so the input categories stay disjoint (same rule as the
+ * streaming turn's accumulateBilledUsage). Token-only — openai-compat reports no
+ * dollar cost.
+ */
+function parseBareCompletionUsage(payload: unknown): AgentUsage | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const round = parseStreamUsage((payload as Record<string, unknown>).usage);
+  if (!round) {
+    return undefined;
+  }
+  const totalInput = round.inputTokens ?? 0;
+  const cached = round.cachedInputTokens ?? 0;
+  const nonCachedInput = Math.max(0, totalInput - cached);
+  const usage: AgentUsage = {};
+  if (nonCachedInput > 0) {
+    usage.inputTokens = nonCachedInput;
+  }
+  if (cached > 0) {
+    usage.cachedInputTokens = cached;
+  }
+  if ((round.outputTokens ?? 0) > 0) {
+    usage.outputTokens = round.outputTokens;
+  }
+  return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 function parseModelList(json: unknown): string[] {
@@ -870,6 +1030,78 @@ export class OpenAICompatAgentClient implements AgentClient {
     return { models, modes: OPENAI_COMPAT_MODES };
   }
 
+  /**
+   * Tool-less one-shot completion for internal metadata generation. A plain
+   * POST to /chat/completions with only system+user text and NO `tools` payload
+   * — no Otto tool catalog, no MCP, no daemon tool loop. Everything the model
+   * needs is in the self-contained prompt, so this is a single cheap request
+   * instead of a full session spawn.
+   */
+  async generateBareCompletion(
+    options: AgentBareCompletionOptions,
+  ): Promise<AgentBareCompletionResult> {
+    const endpoint = resolveEndpoint(this.env, this.label);
+    const model = options.model?.trim() || (await this.resolveDefaultModelId(endpoint));
+    if (!model) {
+      throw new Error(`${this.label} has no model available for metadata generation.`);
+    }
+    const messages: Array<{ role: "system" | "user"; content: string }> = [];
+    const systemPrompt = options.systemPrompt?.trim();
+    if (systemPrompt) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    messages.push({ role: "user", content: options.prompt });
+    const effort = normalizeOpenAICompatReasoningEffort(options.thinkingOptionId);
+    let response: Response;
+    try {
+      response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: buildHeaders(endpoint),
+        ...(options.signal ? { signal: options.signal } : {}),
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          ...(effort !== "off" ? { reasoning_effort: effort } : {}),
+        }),
+      });
+    } catch (error) {
+      throw unreachableError(this.label, endpoint, error);
+    }
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => "");
+      throw new Error(
+        `${this.label} responded ${response.status} to /chat/completions${
+          bodyText ? `: ${bodyText.slice(0, 400)}` : ""
+        }`,
+      );
+    }
+    const payload: unknown = await response.json();
+    const text = extractOpenAICompletionText(payload);
+    // Capture usage so the manager attributes this generation to the
+    // "generations" cost category (WP-G). openai-compat reports no real dollar
+    // cost, so this is token-only; the same prompt_tokens/cached split used by
+    // the streaming turn path keeps the input categories disjoint.
+    const usage = parseBareCompletionUsage(payload);
+    return { text, ...(usage ? { usage } : {}) };
+  }
+
+  private async resolveDefaultModelId(endpoint: ResolvedEndpoint): Promise<string | null> {
+    let response: Response;
+    try {
+      response = await fetch(`${endpoint.baseUrl}/models`, {
+        headers: buildHeaders(endpoint),
+        signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw unreachableError(this.label, endpoint, error);
+    }
+    if (!response.ok) {
+      return null;
+    }
+    return parseModelList(await response.json())[0] ?? null;
+  }
+
   async getDiagnostic(): Promise<{ diagnostic: string }> {
     let endpoint: ResolvedEndpoint;
     try {
@@ -988,7 +1220,29 @@ interface ActiveTurn {
   finalTextParts: string[];
   pendingToolCalls: Map<number, AccumulatedToolCall>;
   finishReason: string | null;
+  /**
+   * Latest round's server-measured usage — the current context-window
+   * occupancy. Replaced each round (the last round's prompt already holds the
+   * whole conversation), so it drives the context ring / auto-compact
+   * threshold. NOT the turn's billed cost — see `billedUsage`.
+   */
   usage: { inputTokens?: number; outputTokens?: number } | null;
+  /**
+   * Billed spend summed across every model round of the turn (plus any
+   * mid-turn compaction call). A tool loop bills each round's prompt+completion
+   * separately, so the cost total is the sum, not the last round. Input is
+   * split into non-cached (`inputTokens`) and cache-read (`cachedInputTokens`)
+   * to match Otto's disjoint usage semantics. (WP-D)
+   */
+  billedUsage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
+  /**
+   * The slice of `billedUsage` that was spent by mid-turn auto-compaction
+   * summarizer calls (WP-G). Already included in `billedUsage` above; surfaced
+   * separately on `buildTurnUsage` so the activity ledger can break "compaction"
+   * out as its own cost category and attribute the remainder to main chat,
+   * without double-counting.
+   */
+  compactionUsage: { inputTokens: number; outputTokens: number };
   resolve: (result: AgentRunResult) => void;
   reject: (error: Error) => void;
   completed: Promise<AgentRunResult>;
@@ -1013,6 +1267,7 @@ function ottoToolParameters(tool: OttoToolDefinition): Record<string, unknown> {
     const zodSchema = isZodType(schema) ? schema : z.object(schema);
     const jsonSchema = z.toJSONSchema(zodSchema) as Record<string, unknown>;
     delete jsonSchema.$schema;
+    stripSafeIntegerBounds(jsonSchema);
     return jsonSchema;
   } catch {
     // A schema JSON Schema can't represent (e.g. transforms) still leaves the
@@ -1027,11 +1282,17 @@ function ottoResultToText(result: OttoToolResult): string {
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text as string);
   if (texts.length > 0) {
-    return texts.join("\n");
+    return truncateHeadTail(texts.join("\n"), OTTO_RESULT_HEAD_CHARS, OTTO_RESULT_TAIL_CHARS);
   }
   if (result.structuredContent !== undefined) {
     try {
-      return JSON.stringify(result.structuredContent, null, 2);
+      // Compact (not 2-space) JSON: the model reads it fine and the indentation
+      // was pure token inflation replayed every round.
+      return truncateHeadTail(
+        JSON.stringify(result.structuredContent),
+        OTTO_RESULT_HEAD_CHARS,
+        OTTO_RESULT_TAIL_CHARS,
+      );
     } catch {
       return String(result.structuredContent);
     }
@@ -1081,6 +1342,13 @@ export class OpenAICompatAgentSession implements AgentSession {
    * (rewind, manual /compact, model switch to a larger window).
    */
   private autoCompactDisarmed = false;
+  /**
+   * Measured context size at the moment auto-compaction disarmed. The trigger
+   * re-arms once usage grows AUTO_COMPACT_REARM_GROWTH_TOKENS beyond this — a
+   * fresh summarizable region has accumulated, so a single bad compaction can't
+   * disarm the trigger permanently. Null whenever armed.
+   */
+  private autoCompactDisarmedAtTokens: number | null = null;
   /** Recent-conversation budget kept verbatim through compaction. */
   private keepRecentTokens: number;
   /** Resolved max model→tool→model rounds per turn (default or provider override). */
@@ -1286,7 +1554,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       this.autoCompact = value as OpenAICompatAutoCompact;
       // A deliberate setting change is a fresh mandate — retry even if a
       // previous auto-compaction was paused for lack of gain.
-      this.autoCompactDisarmed = false;
+      this.armAutoCompact();
       return;
     }
     throw new Error(`Unknown feature: ${featureId}`);
@@ -1312,7 +1580,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     if (this.autoCompact !== previousValue) {
       // Same fresh-mandate rule as setFeature: a deliberate settings change
       // re-arms a paused auto-compaction.
-      this.autoCompactDisarmed = false;
+      this.armAutoCompact();
     }
     return (
       this.autoCompact !== previousValue ||
@@ -1323,8 +1591,10 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Live re-apply of the provider-level max-tool-rounds override so a settings
-   * edit reaches running chats without a restart. Takes effect on the next turn
-   * (a turn already mid-loop keeps the bound it started with).
+   * edit reaches running chats without a restart. Applies immediately: the tool
+   * loop re-reads the bound every round, so a turn already mid-loop picks up
+   * the new cap for its remaining rounds (lowering it stops a runaway loop
+   * sooner instead of letting it run out its original allowance).
    */
   applyMaxToolRounds(maxToolRounds: number | null): boolean {
     const next = resolveMaxToolRounds(maxToolRounds);
@@ -1630,22 +1900,33 @@ export class OpenAICompatAgentSession implements AgentSession {
     return usage;
   }
 
+  private armAutoCompact(): void {
+    this.autoCompactDisarmed = false;
+    this.autoCompactDisarmedAtTokens = null;
+  }
+
+  private disarmAutoCompact(atTokens: number | null): void {
+    this.autoCompactDisarmed = true;
+    this.autoCompactDisarmedAtTokens = typeof atTokens === "number" ? atTokens : null;
+  }
+
   /**
    * Auto-compaction check, run at turn start (before the new user message
    * joins the conversation, so it always survives verbatim) and before every
    * subsequent model round. Uses the freshest server-measured context size —
    * the active turn's last round, falling back to the previous turn's final
-   * figure. Endpoints that report no context length never auto-compact:
-   * without a denominator there is no percentage (manual /compact still
-   * works).
+   * figure. Endpoints that report no context length fall back to an assumed
+   * window (AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS) for the threshold math so
+   * history can't grow unbounded; the client still sees no real max.
    *
    * Loop protection: a compaction that fails or can't bring usage back under
    * the threshold disarms the trigger. Without that, a conversation whose
    * retained tail alone exceeds the threshold would re-summarize on every
    * round, burning a model call each time for no reclaimed space. The trigger
-   * re-arms once measured usage drops below the threshold by other means
-   * (rewind, manual /compact, a model switch to a larger window) or when the
-   * user changes the auto-compact setting.
+   * re-arms once measured usage drops below the threshold, once the user
+   * changes the auto-compact setting, OR once context grows
+   * AUTO_COMPACT_REARM_GROWTH_TOKENS past the disarm point (fresh material
+   * worth retrying) — so a single bad compaction can't disarm forever.
    *
    * Auto-compaction failures never fail the user's turn — the turn proceeds
    * with the uncompacted conversation (interrupts still propagate).
@@ -1655,22 +1936,33 @@ export class OpenAICompatAgentSession implements AgentSession {
       return;
     }
     const maxTokens = await this.resolveContextWindowMaxTokens();
-    if (maxTokens === null) {
-      return;
-    }
-    const threshold = Math.floor((Number(this.autoCompact) / 100) * maxTokens);
+    // Windowless endpoints report no context length. Rather than skip
+    // auto-compaction entirely (letting history grow until the server errors),
+    // fall back to an assumed window for the threshold math only — the real
+    // (null) max is still what the client sees, so no fabricated ring.
+    const effectiveMax = maxTokens ?? AUTO_COMPACT_FALLBACK_CONTEXT_TOKENS;
+    const threshold = Math.floor((Number(this.autoCompact) / 100) * effectiveMax);
     const used =
       turn.usage && typeof turn.usage.inputTokens === "number"
         ? turn.usage.inputTokens + (turn.usage.outputTokens ?? 0)
         : this.lastContextTokens;
     if (used === null || used < threshold) {
       if (used !== null) {
-        this.autoCompactDisarmed = false;
+        this.armAutoCompact();
       }
       return;
     }
     if (this.autoCompactDisarmed) {
-      return;
+      // Re-arm once the conversation has grown well past the disarm point:
+      // enough new material now exists that a retry has something fresh to
+      // summarize, so a single low-yield compaction can't disarm forever.
+      const grewSinceDisarm =
+        this.autoCompactDisarmedAtTokens !== null &&
+        used >= this.autoCompactDisarmedAtTokens + AUTO_COMPACT_REARM_GROWTH_TOKENS;
+      if (!grewSinceDisarm) {
+        return;
+      }
+      this.armAutoCompact();
     }
     let usage: AgentUsage;
     try {
@@ -1686,7 +1978,7 @@ export class OpenAICompatAgentSession implements AgentSession {
       if (turn.abort.signal.aborted) {
         throw error;
       }
-      this.autoCompactDisarmed = true;
+      this.disarmAutoCompact(used);
       const message = error instanceof Error ? error.message : String(error);
       this.emit({
         type: "timeline",
@@ -1699,12 +1991,13 @@ export class OpenAICompatAgentSession implements AgentSession {
       });
       return;
     }
+    this.foldCompactionUsage(turn, usage);
     // The pre-compaction round figures no longer describe the conversation;
     // the next round's stream re-measures it.
     turn.usage = null;
     const postTokens = usage.contextWindowUsedTokens ?? this.lastContextTokens;
     if (typeof postTokens === "number" && postTokens >= threshold) {
-      this.autoCompactDisarmed = true;
+      this.disarmAutoCompact(postTokens);
       this.emit({
         type: "timeline",
         provider: this.provider,
@@ -1713,19 +2006,33 @@ export class OpenAICompatAgentSession implements AgentSession {
           type: "error",
           message:
             `Auto-compaction reclaimed too little space (still ~${postTokens} of ` +
-            `${maxTokens} tokens). Auto-compaction is paused until usage ` +
-            `drops below the ${this.autoCompact}% threshold — run /compact with an ` +
-            `instruction, rewind, or start a fresh agent.`,
+            `${effectiveMax} tokens). Auto-compaction is paused until enough new ` +
+            `context accumulates to retry — run /compact with an instruction, ` +
+            `rewind, or start a fresh agent.`,
         },
       });
     }
   }
 
   /**
+   * Fold a mid-turn compaction summarizer call's spend into the turn's billed
+   * total (so the cost ledger sees it — WP-D) and, separately, into the
+   * compaction accumulator (so WP-G can break it out as its own category and back
+   * it out of main chat without double-counting).
+   */
+  private foldCompactionUsage(turn: ActiveTurn, usage: AgentUsage): void {
+    turn.billedUsage.inputTokens += usage.inputTokens ?? 0;
+    turn.billedUsage.outputTokens += usage.outputTokens ?? 0;
+    turn.compactionUsage.inputTokens += usage.inputTokens ?? 0;
+    turn.compactionUsage.outputTokens += usage.outputTokens ?? 0;
+  }
+
+  /**
    * Pre-summarization pruning (zero-LLM). Mutates the message array in place:
-   * elides uneventful tool results everywhere, then truncates oversized tool
-   * results older than the protected-recent window to head + tail. Structure is
-   * never changed (only tool `content`), so tool_call ordering stays valid.
+   * elides uneventful tool results everywhere, truncates oversized tool results
+   * older than the protected-recent window to head + tail, and drops base64
+   * images off older user messages. Structure is never changed (only tool
+   * `content` and stale `images`), so tool_call ordering stays valid.
    */
   private pruneToolOutputs(): void {
     for (const message of this.messages) {
@@ -1752,6 +2059,33 @@ export class OpenAICompatAgentSession implements AgentSession {
           content.length - PRUNE_TOOL_RESULT_HEAD_CHARS - PRUNE_TOOL_RESULT_TAIL_CHARS
         } chars pruned ...]\n${content.slice(-PRUNE_TOOL_RESULT_TAIL_CHARS)}`;
       }
+    }
+    this.pruneAgedImages();
+  }
+
+  /**
+   * Drop base64 `image_url` parts from all but the most recent
+   * PRUNE_PROTECT_RECENT_IMAGE_MESSAGES image-bearing user messages. Without
+   * this, every attached screenshot is re-uploaded on every subsequent round —
+   * base64 images dwarf the text payload. The stripped message keeps a text
+   * marker so the model still knows an image was there; the recent images the
+   * live work depends on are untouched. Mirrors pruneToolOutputs' recency rule.
+   */
+  private pruneAgedImages(): void {
+    let imageMessagesSeen = 0;
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      const message = this.messages[index]!;
+      if (message.role !== "user" || !message.images || message.images.length === 0) {
+        continue;
+      }
+      imageMessagesSeen += 1;
+      if (imageMessagesSeen <= PRUNE_PROTECT_RECENT_IMAGE_MESSAGES) {
+        continue;
+      }
+      message.images = undefined;
+      message.content = message.content
+        ? `${message.content}\n\n${PRUNED_IMAGE_PLACEHOLDER}`
+        : PRUNED_IMAGE_PLACEHOLDER;
     }
   }
 
@@ -2102,6 +2436,8 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       pendingToolCalls: new Map(),
       finishReason: null,
       usage: null,
+      billedUsage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+      compactionUsage: { inputTokens: 0, outputTokens: 0 },
       resolve,
       reject,
       completed,
@@ -2606,6 +2942,13 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         messages: this.messages.map(toWireMessage),
         stream: true,
         stream_options: { include_usage: true },
+        // Stable per-session key so servers that support prompt caching (OpenAI
+        // and compatible gateways) can reuse the large shared prefix — the
+        // system prompt + ~10-15K-token tool catalog + history — across rounds
+        // instead of re-billing it every round. A standard Chat Completions
+        // field; servers that don't support it ignore it. Cache hits come back
+        // as prompt_tokens_details.cached_tokens (see parseStreamChunk).
+        prompt_cache_key: this.id,
         ...(this.reasoningEffort !== "off" ? { reasoning_effort: this.reasoningEffort } : {}),
         ...(toolsPayload.length > 0 ? { tools: toolsPayload, tool_choice: "auto" } : {}),
       }),
@@ -2676,9 +3019,33 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       turn.finishReason = delta.finishReason;
     }
     if (delta.usage) {
-      turn.usage = delta.usage;
+      // Latest round = current context occupancy (drives the ring / threshold).
+      turn.usage = {
+        ...(typeof delta.usage.inputTokens === "number"
+          ? { inputTokens: delta.usage.inputTokens }
+          : {}),
+        ...(typeof delta.usage.outputTokens === "number"
+          ? { outputTokens: delta.usage.outputTokens }
+          : {}),
+      };
+      // Billed cost accumulates every round (each round is a separate charge).
+      this.accumulateBilledUsage(turn, delta.usage);
       this.emitStreamUsageUpdated(turn);
     }
+  }
+
+  /**
+   * Add one model round's reported usage to the turn's running billed total.
+   * OpenAI's `prompt_tokens` is the whole input including any cache-read prefix;
+   * split it into non-cached input + cached input so the three sum back to the
+   * full prompt (Otto treats the categories as disjoint). (WP-D)
+   */
+  private accumulateBilledUsage(turn: ActiveTurn, roundUsage: RoundUsage): void {
+    const totalInput = roundUsage.inputTokens ?? 0;
+    const cached = Math.min(roundUsage.cachedInputTokens ?? 0, totalInput);
+    turn.billedUsage.inputTokens += totalInput - cached;
+    turn.billedUsage.cachedInputTokens += cached;
+    turn.billedUsage.outputTokens += roundUsage.outputTokens ?? 0;
   }
 
   /**
@@ -2747,6 +3114,31 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
   }
 
+  /**
+   * Synchronous billed-usage snapshot for the failed/canceled paths: the tokens
+   * already spent across this turn's rounds (plus any mid-turn compaction). No
+   * async context-window probe — this runs on the error/interrupt path. Fed
+   * into the same accounting as a completed turn so retry storms and interrupted
+   * long turns aren't invisible to the cost ledger. (WP-D)
+   */
+  private buildBilledUsageSnapshot(turn: ActiveTurn): AgentUsage | undefined {
+    const billed = turn.billedUsage;
+    if (billed.inputTokens <= 0 && billed.cachedInputTokens <= 0 && billed.outputTokens <= 0) {
+      return undefined;
+    }
+    const usage: AgentUsage = {};
+    if (billed.inputTokens > 0) {
+      usage.inputTokens = billed.inputTokens;
+    }
+    if (billed.cachedInputTokens > 0) {
+      usage.cachedInputTokens = billed.cachedInputTokens;
+    }
+    if (billed.outputTokens > 0) {
+      usage.outputTokens = billed.outputTokens;
+    }
+    return usage;
+  }
+
   private settleTurnFailure(turn: ActiveTurn, error: unknown): void {
     if (this.activeTurn !== turn) {
       return;
@@ -2754,12 +3146,14 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     this.activeTurn = null;
     this.failPendingPermissions();
     this.repairDanglingToolCalls();
+    const billedUsage = this.buildBilledUsageSnapshot(turn);
     if (turn.abort.signal.aborted) {
       this.emit({
         type: "turn_canceled",
         provider: this.provider,
         reason: "Interrupted",
         turnId: turn.turnId,
+        ...(billedUsage ? { usage: billedUsage } : {}),
       });
       if (turn.roundText || turn.roundReasoning) {
         if (turn.roundText) {
@@ -2792,6 +3186,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       provider: this.provider,
       error: message,
       turnId: turn.turnId,
+      ...(billedUsage ? { usage: billedUsage } : {}),
     });
     turn.reject(error instanceof Error ? error : new Error(message));
   }
@@ -2876,16 +3271,43 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   }
 
   /**
-   * Promote the raw per-request token counts into AgentUsage. The final
-   * round's prompt already contains the full conversation, so prompt +
-   * completion tokens is the context content size as the server measured it.
+   * Promote the turn's token counts into AgentUsage. Two distinct quantities:
+   *
+   * - **Billed cost** (`inputTokens`/`cachedInputTokens`/`outputTokens`): the
+   *   sum across every round of the tool loop, so a 50-round turn reports all
+   *   50 rounds' spend rather than only the last. Fed into the cost ledger.
+   * - **Context occupancy** (`contextWindowUsedTokens`): the *last* round's
+   *   prompt (+ its output), because the final round's prompt already contains
+   *   the whole conversation. Drives the context ring — must not be the billed
+   *   sum, which would balloon past the window after a few rounds. (WP-D)
    */
   private async buildTurnUsage(turn: ActiveTurn): Promise<AgentUsage | undefined> {
-    if (!turn.usage) {
+    const billed = turn.billedUsage;
+    const hasBilled =
+      billed.inputTokens > 0 || billed.cachedInputTokens > 0 || billed.outputTokens > 0;
+    if (!turn.usage && !hasBilled) {
       return undefined;
     }
-    const usage: AgentUsage = { ...turn.usage };
-    if (typeof turn.usage.inputTokens === "number") {
+    const usage: AgentUsage = {};
+    if (billed.inputTokens > 0) {
+      usage.inputTokens = billed.inputTokens;
+    }
+    if (billed.cachedInputTokens > 0) {
+      usage.cachedInputTokens = billed.cachedInputTokens;
+    }
+    if (billed.outputTokens > 0) {
+      usage.outputTokens = billed.outputTokens;
+    }
+    // Report the compaction slice of the billed total (WP-G) so the manager can
+    // split it into its own cost category. Server-internal — sanitizeUsage drops
+    // it before the wire.
+    if (turn.compactionUsage.inputTokens > 0) {
+      usage.compactionInputTokens = turn.compactionUsage.inputTokens;
+    }
+    if (turn.compactionUsage.outputTokens > 0) {
+      usage.compactionOutputTokens = turn.compactionUsage.outputTokens;
+    }
+    if (turn.usage && typeof turn.usage.inputTokens === "number") {
       const usedTokens = turn.usage.inputTokens + (turn.usage.outputTokens ?? 0);
       usage.contextWindowUsedTokens = usedTokens;
       this.lastContextTokens = usedTokens;
@@ -2894,7 +3316,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     if (maxTokens !== null) {
       usage.contextWindowMaxTokens = maxTokens;
     }
-    return usage;
+    return Object.keys(usage).length > 0 ? usage : undefined;
   }
 
   /**

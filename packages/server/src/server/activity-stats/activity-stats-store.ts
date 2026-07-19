@@ -16,6 +16,36 @@ export interface ActivityCounters {
   toolsCalled: number;
   artifactsCreated: number;
   schedulesExecuted: number;
+  // --- Usage & cost accounting (WP-G) ---------------------------------------
+  // All additive leaves, default 0 like every other counter, so they ride the
+  // existing rollup/persist/wire machinery. "In" = input+cached+cache-write
+  // tokens; "Out" = output tokens (same split recordUsageActivity uses for the
+  // tokensSent/tokensReceived grand totals). Cost is stored as an INTEGER count
+  // of micro-USD (usd * 1e6, rounded) so it stays summable like every other
+  // counter — never a float in the store. Cost is only populated for turns that
+  // report a real provider cost (Claude's totalCostUsd today); token-only
+  // categories leave their cost leaf at 0.
+  /** Grand real spend across all categories, micro-USD. Claude-backed today. */
+  costMicroUsd: number;
+  /** User-facing agent turns (a turn's own compaction spend is broken back out). */
+  mainChatTokensIn: number;
+  mainChatTokensOut: number;
+  mainChatCostMicroUsd: number;
+  /** Bare-completion metadata generation (titles, names, commit/PR, summaries). */
+  generationsTokensIn: number;
+  generationsTokensOut: number;
+  generationsCostMicroUsd: number;
+  /** Observed/child subagent turns. */
+  subagentTokensIn: number;
+  subagentTokensOut: number;
+  subagentCostMicroUsd: number;
+  /** openai-compat auto-compaction summarizer spend (token-only; no real cost). */
+  compactionTokensIn: number;
+  compactionTokensOut: number;
+  /** Provider split for the in/out totals: Claude (real-cost) vs. everything
+   *  else (derive "other" as tokensSent/Received minus these). */
+  claudeTokensIn: number;
+  claudeTokensOut: number;
 }
 
 export type ActivityCounterField = keyof ActivityCounters;
@@ -44,6 +74,20 @@ const COUNTER_FIELDS: readonly ActivityCounterField[] = [
   "toolsCalled",
   "artifactsCreated",
   "schedulesExecuted",
+  "costMicroUsd",
+  "mainChatTokensIn",
+  "mainChatTokensOut",
+  "mainChatCostMicroUsd",
+  "generationsTokensIn",
+  "generationsTokensOut",
+  "generationsCostMicroUsd",
+  "subagentTokensIn",
+  "subagentTokensOut",
+  "subagentCostMicroUsd",
+  "compactionTokensIn",
+  "compactionTokensOut",
+  "claudeTokensIn",
+  "claudeTokensOut",
 ];
 
 // Comfortably covers the "last 30 days" rollup with room for clock/timezone
@@ -200,6 +244,28 @@ export class ActivityStatsStore {
         await writeJsonFileAtomic(this.filePath, state);
       } catch (error) {
         this.logger?.warn({ err: error, field }, "Failed to persist activity stats");
+      }
+      return undefined;
+    });
+    return this.queue;
+  }
+
+  /**
+   * Wipe every counter back to zero (all-time totals and all day buckets) and
+   * persist the empty state — the daemon side of the Metrics "Reset" button.
+   * Serialized through the same queue as increment() so it can't race a
+   * concurrent write, and fires the coalesced change notification so connected
+   * clients re-fetch and see the cleared tiles.
+   */
+  reset(): Promise<void> {
+    this.queue = this.queue.then(async () => {
+      const empty: PersistedShape = { version: 1, allTime: zeroCounters(), daily: {} };
+      this.cache = empty;
+      this.scheduleChangeNotification();
+      try {
+        await writeJsonFileAtomic(this.filePath, empty);
+      } catch (error) {
+        this.logger?.warn({ err: error }, "Failed to persist activity stats reset");
       }
       return undefined;
     });
