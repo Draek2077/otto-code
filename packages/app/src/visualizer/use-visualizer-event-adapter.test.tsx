@@ -346,6 +346,71 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     expect(collectEvents(messages).filter((e) => e.type === "agent_complete")).toEqual([]);
   });
 
+  it("stamps backfilled history at real relative times from the session start", async () => {
+    // The whole point of Part 2: a reopened chat's Execution Timeline + scrubber
+    // must show the REAL shape of what happened while away, not a zero-width
+    // sliver. Times are anchored at the root's createdAt, so a tool call 6s
+    // after the chat started lands at ~6, one 30s after at ~30 — not both at 0.
+    const rootCreatedAt = new Date(BASE_TIME.getTime());
+    client.fetchAgentTimeline.mockImplementation(async (agentId: string) => {
+      if (agentId !== "root-1") {
+        return { entries: [], epoch: "epoch-1", endCursor: { seq: 0 }, window: { maxSeq: 0 } };
+      }
+      return {
+        entries: [
+          {
+            timestamp: new Date(BASE_TIME.getTime() + 6_000).toISOString(),
+            item: {
+              type: "tool_call",
+              callId: "call-early",
+              name: "Read",
+              status: "completed",
+              detail: { type: "read", filePath: "a.ts" },
+            },
+          },
+          {
+            timestamp: new Date(BASE_TIME.getTime() + 30_000).toISOString(),
+            item: {
+              type: "tool_call",
+              callId: "call-late",
+              name: "Read",
+              status: "completed",
+              detail: { type: "read", filePath: "b.ts" },
+            },
+          },
+        ],
+        epoch: "epoch-1",
+        endCursor: { seq: 9 },
+        window: { maxSeq: 9 },
+      };
+    });
+    setAgents([
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        createdAt: rootCreatedAt,
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    const events = collectEvents(messages);
+    // The root spawn anchors the session at t=0.
+    const spawn = events.find((e) => e.type === "agent_spawn" && e.payload.name === "My chat");
+    expect(spawn?.time).toBe(0);
+    // Each backfilled tool call keeps its real offset from the session start —
+    // proof the history is spread, not clamped to 0.
+    const early = events.find((e) => e.type === "tool_call_end" && e.payload.tool === "Read");
+    const times = events
+      .filter((e) => e.type === "tool_call_end")
+      .map((e) => e.time)
+      .sort((a, b) => a - b);
+    expect(times).toEqual([6, 30]);
+    expect(early).toBeDefined();
+  });
+
   it("relabels the node and the session when the root chat title changes", async () => {
     // Spawned with the provisional first-line title (the graph node is keyed on
     // it), then the auto-title writer rewrites it to a terser title.
@@ -824,6 +889,73 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     expect(lastCompleteIdx).toBeGreaterThan(lastToolEventIdx);
   });
 
+  it("settles a reopened idle chat at resting idle after backfill", async () => {
+    // The exact "stuck Thinking" regression: a root/attended chat is idle at
+    // attach (non-terminal — roots never complete on idle), and its replayed
+    // timeline ends on a tool/assistant item because `turn_completed` is a
+    // live-only stream event that never lands in the persisted timeline.
+    // Without the backfill-tail resting-idle re-assertion, the replay leaves
+    // the node pulsing 'thinking' forever and nothing ever settles it.
+    client.fetchAgentTimeline.mockImplementation(async (agentId: string) => {
+      if (agentId !== "root-1") {
+        return { entries: [], epoch: "epoch-1", endCursor: { seq: 0 }, window: { maxSeq: 0 } };
+      }
+      return {
+        entries: [
+          {
+            timestamp: new Date(BASE_TIME.getTime() + 6_000).toISOString(),
+            item: {
+              type: "tool_call",
+              callId: "call-1",
+              name: "Read",
+              status: "completed",
+              detail: { type: "read", filePath: "src/index.ts" },
+            },
+          },
+        ],
+        epoch: "epoch-1",
+        endCursor: { seq: 9 },
+        window: { maxSeq: 9 },
+      };
+    });
+    setAgents([
+      makeAgent({
+        id: "root-1",
+        title: "My chat",
+        status: "idle",
+        lastActivityAt: new Date(BASE_TIME.getTime() + 30_000),
+      }),
+    ]);
+    renderAdapter();
+    await settle();
+
+    const events = collectEvents(messages);
+    const lastToolEventIdx = events.reduce(
+      (last, e, i) =>
+        (e.type === "tool_call_start" || e.type === "tool_call_end") &&
+        e.payload.agent === "My chat"
+          ? i
+          : last,
+      -1,
+    );
+    const lastRestingIdleIdx = events.reduce(
+      (last, e, i) =>
+        e.type === "agent_idle" && e.payload.name === "My chat" && e.payload.resting === true
+          ? i
+          : last,
+      -1,
+    );
+    // The replayed history is present…
+    expect(lastToolEventIdx).toBeGreaterThanOrEqual(0);
+    // …and the page's LAST word on the resting chat is a resting idle — after
+    // the replayed tool activity that would otherwise leave it 'thinking'.
+    expect(lastRestingIdleIdx).toBeGreaterThan(lastToolEventIdx);
+    // Roots never complete on idle — settling must be an idle, not a completion.
+    expect(
+      events.filter((e) => e.type === "agent_complete" && e.payload.name === "My chat"),
+    ).toEqual([]);
+  });
+
   it("does not resurrect a completed node when its personality colors change", async () => {
     // A live persona-color change re-emits the spawn (re-tint), but a node
     // that already completed must keep its old colors: spawn of an existing
@@ -998,5 +1130,90 @@ describe("useVisualizerEventAdapter (stateful)", () => {
     );
     expect(refreshed).toHaveLength(2);
     expect(refreshed[1]?.payload).toMatchObject({ cumulativeTokens: 24_500 });
+  });
+
+  // ── Draft sessions (chat tabs with no agent yet) ───────────────────────────
+  interface DraftInput {
+    draftId: string;
+    label: string;
+  }
+  interface AdapterProps {
+    active: boolean;
+    draftSessions?: readonly DraftInput[];
+  }
+
+  function renderAdapterWithProps(initialProps: AdapterProps) {
+    return renderHook(
+      (props: AdapterProps) =>
+        useVisualizerEventAdapter({
+          serverId: SERVER_ID,
+          workspaceId: WORKSPACE_ID,
+          active: props.active,
+          draftSessions: props.draftSessions,
+          postMessage: (message) => messages.push(message),
+        }),
+      { initialProps },
+    );
+  }
+
+  function startedSession(id: string) {
+    return messages.find(
+      (m): m is Extract<VisualizerHostToPageMessage, { type: "session-started" }> =>
+        m.type === "session-started" && m.session.id === id,
+    );
+  }
+
+  it("surfaces a draft chat tab as an empty session so it shows in the dropdown", async () => {
+    setAgents([]);
+    renderAdapterWithProps({ active: true, draftSessions: [{ draftId: "d1", label: "New chat" }] });
+    await settle();
+
+    const draft = startedSession("draft:d1");
+    expect(draft).toBeDefined();
+    // Empty session — a "New chat" label, active, and no events (the page shows
+    // "Waiting for chat activity" when this session is selected).
+    expect(draft?.session.label).toBe("New chat");
+    expect(draft?.session.status).toBe("active");
+    expect(collectEvents(messages)).toEqual([]);
+  });
+
+  it("closes a draft session when its tab goes away (closed, or became an agent)", async () => {
+    setAgents([]);
+    const view = renderAdapterWithProps({
+      active: true,
+      draftSessions: [{ draftId: "d1", label: "New chat" }],
+    });
+    await settle();
+    expect(startedSession("draft:d1")).toBeDefined();
+    messages.length = 0;
+
+    // Draft tab retargets to an agent (first message) or is closed → it leaves
+    // the draft set, so its empty session is torn down.
+    view.rerender({ active: true, draftSessions: [] });
+    await settle();
+    expect(messages.some((m) => m.type === "close-session" && m.sessionId === "draft:d1")).toBe(
+      true,
+    );
+  });
+
+  it("re-emits draft sessions after an active-transition reset", async () => {
+    setAgents([]);
+    const view = renderAdapterWithProps({
+      active: true,
+      draftSessions: [{ draftId: "d1", label: "New chat" }],
+    });
+    await settle();
+    messages.length = 0;
+
+    // Deactivate then reactivate. The main effect re-runs and posts `reset`,
+    // which clears the page's whole session list — the draft must be re-emitted
+    // against the fresh page (else a hidden-then-shown pane loses its drafts).
+    view.rerender({ active: false, draftSessions: [{ draftId: "d1", label: "New chat" }] });
+    await settle();
+    view.rerender({ active: true, draftSessions: [{ draftId: "d1", label: "New chat" }] });
+    await settle();
+
+    expect(messages.some((m) => m.type === "reset")).toBe(true);
+    expect(startedSession("draft:d1")).toBeDefined();
   });
 });

@@ -221,9 +221,20 @@ export function AgentVisualizer() {
       pause()
       setIsReviewing(true)
     } else {
+      // OTTO PATCH (OTTO-PATCHES.md): "replay from the start when play is hit at
+      // the end." After the host's attach/hydrate the sim clock rests at
+      // maxTimeReached (the settled present), so a bare play() resumes past the
+      // last event and nothing visibly replays — the button just toggles. Match
+      // standard media-player behavior: playing from (or past) the end restarts
+      // the replay from the beginning; a user who scrubbed to the middle first
+      // still resumes from there. (maxTimeReached > 0 guards the empty/degenerate
+      // case where there is nothing to replay.)
+      if (maxTimeReached > 0 && currentTime >= maxTimeReached - 0.05) {
+        seekToTime(0)
+      }
       play()
     }
-  }, [isPlaying, play, pause])
+  }, [isPlaying, play, pause, currentTime, maxTimeReached, seekToTime])
 
   const handleEnterReview = useCallback(() => {
     pause()

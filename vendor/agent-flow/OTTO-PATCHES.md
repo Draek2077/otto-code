@@ -1306,3 +1306,35 @@ the visual popups go. No Otto-side / bridge / config change (the host keeps
 emitting `message` events exactly as before — the adapter's streaming-message
 coalescing is unchanged). To re-enable, restore the `updates.messageBubbles`
 push. Needs `npm run build:visualizer`.
+
+## 2026-07-18 — play at the end replays from the start
+
+`web/components/agent-visualizer/index.tsx` — `handlePlayPause` now seeks to `0`
+before `play()` when the sim clock is already at (or past) `maxTimeReached`. After
+the host's attach/hydrate the clock rests at the settled present (the last
+event's time — see the per-session time anchor in `docs/visualizer.md`), so a
+bare `play()` resumed *past* the last event and nothing visibly replayed: the
+button toggled to ⏸ but the graph sat still. This matches standard media-player
+behavior — pressing play at the end restarts the replay from the beginning, while
+a user who scrubbed to the middle first still resumes from there (`maxTimeReached
+> 0` guards the empty/degenerate case). Reuses the existing `seekToTime` /
+`currentTime` / `maxTimeReached` already in scope; no new state, no bridge or
+config change. Needs `npm run build:visualizer`.
+
+## 2026-07-18 — star field refills the pane on resize (no thin-column collapse)
+
+The parallax star field was laid out once at mount (`createDepthParticles`) and
+never re-laid-out on resize; the draw loop only wraps particles against the live
+width/height (`updateDepthParticles`: `if (p.x > width*1.5) p.x = -width*0.5`).
+Shrinking the pane makes `width*1.5` tiny, so the wrap snaps nearly every star to
+`-width*0.5` and the whole field collapses into a thin column on the left edge —
+and growing the pane back never un-collapses it (the drift is far too slow to
+refill). Fixed by remapping particle positions proportionally whenever the pane
+resizes, so the field stretches/contracts with the pane and stays evenly spread.
+
+- `web/components/agent-visualizer/canvas.tsx` — a new `particleDimsRef` records
+  the dimensions the field was last laid out against; the create effect seeds it,
+  and a new effect keyed on `dimensions` scales every particle's `x`/`y` by the
+  new/old dimension ratio (`sx = width/prev.width`, `sy = height/prev.height`).
+  No change to `background-layer.ts` — the wrap logic is left as-is, it just no
+  longer sees a collapsed field. Needs `npm run build:visualizer`.
