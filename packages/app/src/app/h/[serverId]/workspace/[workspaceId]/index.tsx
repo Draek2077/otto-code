@@ -197,13 +197,26 @@ function WorkspaceDeck() {
         : null,
     [liveServerId, liveWorkspaceId],
   );
-  // Defer the deck's view of the switch: mounting a not-yet-mounted workspace
-  // renders a full WorkspaceScreen, so let the outgoing workspace stay painted
-  // and interactive while the incoming one renders in the background.
-  const activeSelection = useDeferredValue(stableSelection);
+  const deferredSelection = useDeferredValue(stableSelection);
   const [mountedSelections, setMountedSelections] = useState<ActiveWorkspaceSelection[]>(() =>
-    activeSelection ? [activeSelection] : [],
+    stableSelection ? [stableSelection] : [],
   );
+  // Swap the deck's view of the active workspace SYNCHRONOUSLY when the target is
+  // already mounted (a warm switch — both panels live in the deck, so it is just
+  // a RetainedPanel visibility toggle). Only defer a COLD switch: mounting a
+  // not-yet-mounted workspace renders a full WorkspaceScreen, so deferral keeps
+  // the outgoing one painted and interactive while the incoming mounts in the
+  // background. The route-fade veil (RouteFadeContainer) keys off the NON-deferred
+  // selection; deferring a warm switch would decouple the on-screen swap from the
+  // veil, so the fade would play over the old workspace and the new one would pop
+  // in after the fade finished. A synchronous warm swap keeps the veil in lockstep
+  // — one correctly-timed fade.
+  const isTargetMounted =
+    stableSelection != null &&
+    mountedSelections.some((mountedSelection) =>
+      areWorkspaceSelectionsEqual(mountedSelection, stableSelection),
+    );
+  const activeSelection = isTargetMounted ? stableSelection : deferredSelection;
   const unmountWorkspaceSelection = useCallback((selection: ActiveWorkspaceSelection) => {
     setMountedSelections((current) =>
       current.filter(

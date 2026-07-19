@@ -2313,7 +2313,7 @@ export const CompactionMarker = memo(function CompactionMarker({
   const label = getCompactionMarkerLabel({ status, trigger, preTokens });
 
   return (
-    <View style={compactionStylesheet.container}>
+    <View testID="compaction-marker" style={compactionStylesheet.container}>
       <View style={compactionStylesheet.line} />
       <View style={compactionStylesheet.label}>
         {status === "completed" && <Summarize size={12} color="#a1a1aa" />}

@@ -14,6 +14,10 @@ import {
   type ArtifactEditTarget,
 } from "@/components/artifacts/artifact-create-sheet";
 import { ArtifactViewDialog } from "@/components/artifacts/artifact-view-dialog";
+import {
+  TranscriptViewDialog,
+  type TranscriptViewDialogProps,
+} from "@/components/transcript-view-dialog";
 import { useArtifacts, type AggregatedArtifact } from "@/artifacts/use-artifacts";
 import { useArtifactMutations } from "@/artifacts/use-artifact-mutations";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
@@ -71,12 +75,25 @@ function ArtifactsScreenContent(): ReactElement {
   const [statusFilter, setStatusFilter] = useState<ArtifactStatusFilter>("all");
   const [form, setForm] = useState<ArtifactFormState>({ mode: "closed" });
   const [viewingArtifact, setViewingArtifact] = useState<AggregatedArtifact | null>(null);
+  const [transcriptTarget, setTranscriptTarget] =
+    useState<TranscriptViewDialogProps["target"]>(null);
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
   const handleView = useCallback(
     (artifact: AggregatedArtifact) => setViewingArtifact(artifact),
     [],
   );
   const closeView = useCallback(() => setViewingArtifact(null), []);
+  const handleViewGenerationChat = useCallback((artifact: AggregatedArtifact) => {
+    if (!artifact.generationAgentId) {
+      return;
+    }
+    setTranscriptTarget({
+      serverId: artifact.serverId,
+      agentId: artifact.generationAgentId,
+      title: artifact.name || artifact.id,
+    });
+  }, []);
+  const closeTranscript = useCallback(() => setTranscriptTarget(null), []);
   const handleEdit = useCallback(
     (artifact: AggregatedArtifact) => setForm({ mode: "edit", artifact }),
     [],
@@ -163,6 +180,7 @@ function ArtifactsScreenContent(): ReactElement {
         onRetry={refetch}
         onCreate={openCreate}
         onView={handleView}
+        onViewGenerationChat={handleViewGenerationChat}
         onEdit={handleEdit}
         onRegenerate={handleRegenerate}
         onCancel={handleCancel}
@@ -176,6 +194,7 @@ function ArtifactsScreenContent(): ReactElement {
         onClose={closeForm}
       />
       <ArtifactViewDialog artifact={viewingArtifact} onClose={closeView} />
+      <TranscriptViewDialog target={transcriptTarget} onClose={closeTranscript} />
     </View>
   );
 }
@@ -195,6 +214,7 @@ interface ArtifactsBodyProps {
   onRetry: () => void;
   onCreate: () => void;
   onView: (artifact: AggregatedArtifact) => void;
+  onViewGenerationChat: (artifact: AggregatedArtifact) => void;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
@@ -217,6 +237,7 @@ function ArtifactsBody({
   onRetry,
   onCreate,
   onView,
+  onViewGenerationChat,
   onEdit,
   onRegenerate,
   onCancel,
@@ -308,6 +329,7 @@ function ArtifactsBody({
             showHost={showHost}
             projectNameByCwd={projectNameByCwd}
             onView={onView}
+            onViewGenerationChat={onViewGenerationChat}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}
@@ -351,10 +373,11 @@ const styles = StyleSheet.create((theme) => ({
   projectFilterSlot: {
     flexShrink: 1,
   },
-  // Tames the compactUp button doubling so the button and the project filter
-  // beside it share the same field height at every width.
+  // Tames the compactUp button doubling so the button, the project filter
+  // beside it, and the status filter below all share the compact 32px control
+  // height at every width.
   newButton: {
-    minHeight: 44,
+    minHeight: 32,
     paddingHorizontal: theme.spacing[4],
   },
   statusRow: {

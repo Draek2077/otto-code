@@ -41,8 +41,9 @@ const styles = StyleSheet.create((theme) => ({
     height: CHAT_SEAM_FADE_HEIGHT,
     ...({
       backgroundImage:
-        `linear-gradient(to bottom, ${theme.colors.surface0}, ` +
-        `color-mix(in srgb, ${theme.colors.surface0} 0%, transparent))`,
+        `linear-gradient(to bottom, ${theme.colors.surface0} 0%, ` +
+        `color-mix(in srgb, ${theme.colors.surface0} 50%, transparent) 25%, ` +
+        `color-mix(in srgb, ${theme.colors.surface0} 0%, transparent) 100%)`,
     } as object),
   },
   stripBottom: {
@@ -53,8 +54,9 @@ const styles = StyleSheet.create((theme) => ({
     height: CHAT_SEAM_FADE_HEIGHT,
     ...({
       backgroundImage:
-        `linear-gradient(to top, ${theme.colors.surface0}, ` +
-        `color-mix(in srgb, ${theme.colors.surface0} 0%, transparent))`,
+        `linear-gradient(to top, ${theme.colors.surface0} 0%, ` +
+        `color-mix(in srgb, ${theme.colors.surface0} 50%, transparent) 25%, ` +
+        `color-mix(in srgb, ${theme.colors.surface0} 0%, transparent) 100%)`,
     } as object),
   },
 }));

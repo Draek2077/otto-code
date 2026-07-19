@@ -91,6 +91,7 @@ import {
   useStopBackgroundTask,
 } from "@/background-tasks";
 import { BackgroundTasksTrack } from "@/background-tasks/track";
+import { RateLimitWarningTrack } from "@/composer/rate-limit-warning-track";
 import {
   SuggestedTasksOverlay,
   useSuggestedTaskActions,
@@ -150,7 +151,7 @@ const EMPTY_CHAT_AGENT_STATE: ChatAgentSelectedState = {
   attentionReason: null,
 };
 
-function selectChatAgentState(
+export function selectChatAgentState(
   state: ReturnType<typeof useSessionStore.getState>,
   serverId: string,
   agentId: string | undefined,
@@ -178,7 +179,7 @@ function selectChatAgentState(
   };
 }
 
-function buildChatAgentFromState(
+export function buildChatAgentFromState(
   state: ChatAgentStateShape,
   projectPlacement: Agent["projectPlacement"] | null,
 ): AgentScreenAgent | null {
@@ -272,7 +273,7 @@ function shouldStoreFetchedAgentInActiveDirectory(agent: Agent): boolean {
 
 type FetchAgentResult = Awaited<ReturnType<DaemonClient["fetchAgent"]>>;
 
-function storeFetchedAgentDetail(input: {
+export function storeFetchedAgentDetail(input: {
   serverId: string;
   result: NonNullable<FetchAgentResult>;
 }): Agent {
@@ -1641,6 +1642,9 @@ function ActiveAgentComposer({
 
   return (
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
+      {/* Topmost card in the fanned stack (highest), yet painted first so it sits
+          BEHIND every flyout below it and the composer — see RateLimitWarningTrack. */}
+      <RateLimitWarningTrack serverId={serverId} agentId={agentId} />
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}

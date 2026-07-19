@@ -431,6 +431,13 @@ export interface SessionState {
   // rateLimitWarningsEnabled setting).
   agentRateLimits: Map<string, AgentRateLimitInfo>;
 
+  // Per-agent "the user X'd out this warning" mute. Timed, not permanent: it
+  // re-surfaces after `mutedUntil` so a steady near-limit state keeps nudging
+  // (you shouldn't forget). `key` (`status:limitType`) scopes the mute to the
+  // dismissed warning so an escalation (warning→rejected) or a different window
+  // breaks through immediately. Device-local UI state; never synced.
+  dismissedRateLimits: Map<string, RateLimitDismissal>;
+
   // Per-agent stack of prompts the user has sent in this chat, oldest→newest.
   // Powers ArrowUp/ArrowDown shell-style history recall in the composer. Sending
   // always appends (an edited recall clones as a new top entry). Capped length.
@@ -609,6 +616,10 @@ interface SessionStoreActions {
   // Plan rate-limit status. Pass null to clear the agent's entry.
   setAgentRateLimit: (serverId: string, agentId: string, info: AgentRateLimitInfo | null) => void;
 
+  // Record the user X-ing out the agent's current rate-limit warning, so it stays
+  // hidden until the status/window changes. No-op when there's nothing to dismiss.
+  dismissAgentRateLimit: (serverId: string, agentId: string) => void;
+
   // Sent-message history stack. Appends text as the newest entry (deduping an
   // immediate repeat of the current tail); caps the stack length.
   appendSentPrompt: (serverId: string, agentId: string, text: string) => void;
@@ -627,6 +638,24 @@ const agentLastActivityCoalescer = createAgentLastActivityCoalescer();
 
 // Cap on the per-agent sent-message history stack (ArrowUp/ArrowDown recall).
 const SENT_PROMPT_HISTORY_LIMIT = 100;
+
+// How long the X mutes a rate-limit warning before it re-surfaces. Long enough
+// not to nag every turn, short enough that a near-limit state keeps reminding you
+// well before you actually hit the wall. Tune here.
+export const RATE_LIMIT_MUTE_MS = 30 * 60 * 1000; // 30 minutes
+
+export interface RateLimitDismissal {
+  // The `status:limitType` identity that was muted (see rateLimitDismissKey).
+  key: string;
+  // Epoch ms after which the warning re-surfaces.
+  mutedUntil: number;
+}
+
+// Identity of a rate-limit warning for mute purposes: status + window, so a mute
+// survives percent ticks but a change in either breaks through.
+export function rateLimitDismissKey(info: AgentRateLimitInfo): string {
+  return `${info.status}:${info.limitType ?? ""}`;
+}
 
 // Helper to create initial session state
 function createInitialSessionState(serverId: string, client: DaemonClient): SessionState {
@@ -663,6 +692,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     queuedMessages: new Map(),
     agentPromptSuggestions: new Map(),
     agentRateLimits: new Map(),
+    dismissedRateLimits: new Map(),
     sentPromptHistory: new Map(),
   };
 }
@@ -1757,6 +1787,31 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, agentRateLimits: next },
+            },
+          };
+        });
+      },
+
+      dismissAgentRateLimit: (serverId, agentId) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const current = session.agentRateLimits.get(agentId);
+          if (!current) {
+            return prev;
+          }
+          const next = new Map(session.dismissedRateLimits);
+          next.set(agentId, {
+            key: rateLimitDismissKey(current),
+            mutedUntil: Date.now() + RATE_LIMIT_MUTE_MS,
+          });
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, dismissedRateLimits: next },
             },
           };
         });

@@ -7,6 +7,10 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
 import { ScheduleGrid, type ScheduleRowView } from "@/components/schedules/schedule-grid";
+import {
+  TranscriptViewDialog,
+  type TranscriptViewDialogProps,
+} from "@/components/transcript-view-dialog";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -36,7 +40,10 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; serverId: string; schedule: ScheduleSummary };
 
-const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
+type ScheduleStatusFilter = "all" | ScheduleBucket;
+
+const STATUS_FILTER_OPTIONS: { value: ScheduleStatusFilter; label: string; testID: string }[] = [
+  { value: "all", label: "All", testID: "schedules-filter-all" },
   { value: "runnable", label: "Active", testID: "schedules-filter-active" },
   { value: "failed", label: "Failed", testID: "schedules-filter-failed" },
   { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
@@ -86,13 +93,16 @@ function SchedulesScreenContent(): ReactElement {
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
+  const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
+  const [transcriptTarget, setTranscriptTarget] =
+    useState<TranscriptViewDialogProps["target"]>(null);
 
   const openCreate = useCallback(() => setForm({ mode: "create" }), []);
   const openEdit = useCallback((schedule: AggregatedSchedule) => {
     setForm({ mode: "edit", serverId: schedule.serverId, schedule });
   }, []);
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
+  const closeTranscript = useCallback(() => setTranscriptTarget(null), []);
 
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
@@ -149,7 +159,7 @@ function SchedulesScreenContent(): ReactElement {
         ({ resolved }) =>
           (projectFilter === undefined ||
             (resolved.cwd !== null && artifactBelongsToWorkspace(resolved.cwd, projectFilter))) &&
-          resolved.bucket === statusFilter,
+          (statusFilter === "all" || resolved.bucket === statusFilter),
       )
       .sort((a, b) => Date.parse(b.schedule.createdAt) - Date.parse(a.schedule.createdAt))
       .map(({ schedule, resolved }) => ({
@@ -188,7 +198,9 @@ function SchedulesScreenContent(): ReactElement {
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
+        onOpenTranscript={setTranscriptTarget}
       />
+      <TranscriptViewDialog target={transcriptTarget} onClose={closeTranscript} />
       <ScheduleFormSheet
         serverId={form.mode === "edit" ? form.serverId : undefined}
         visible={form.mode === "create" || form.mode === "edit"}
@@ -214,20 +226,22 @@ function SchedulesScreenBody({
   onRetry,
   onCreate,
   onEdit,
+  onOpenTranscript,
 }: {
   rows: ScheduleRowView[];
   hostErrors: ScheduleHostError[];
   hasSchedules: boolean;
   isInitialLoad: boolean;
   showLoadError: boolean;
-  statusFilter: ScheduleBucket;
-  onStatusFilterChange: (value: ScheduleBucket) => void;
+  statusFilter: ScheduleStatusFilter;
+  onStatusFilterChange: (value: ScheduleStatusFilter) => void;
   projectOptions: ProjectFilterOption[];
   projectFilter: string | undefined;
   onProjectFilterChange: (projectId: string | undefined) => void;
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (schedule: AggregatedSchedule) => void;
+  onOpenTranscript: (target: NonNullable<TranscriptViewDialogProps["target"]>) => void;
 }): ReactElement {
   if (isInitialLoad) {
     return (
@@ -266,8 +280,10 @@ function SchedulesScreenBody({
     );
   }
 
-  let emptyFilterText = "No active schedules";
-  if (statusFilter === "ended") {
+  let emptyFilterText = "No schedules for this project";
+  if (statusFilter === "runnable") {
+    emptyFilterText = "No active schedules";
+  } else if (statusFilter === "ended") {
     emptyFilterText = "No ended schedules";
   } else if (statusFilter === "failed") {
     emptyFilterText = "No failed schedules";
@@ -311,7 +327,7 @@ function SchedulesScreenBody({
       >
         {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
         {rows.length > 0 ? (
-          <ScheduleGrid rows={rows} onEditSchedule={onEdit} />
+          <ScheduleGrid rows={rows} onEditSchedule={onEdit} onOpenTranscript={onOpenTranscript} />
         ) : (
           <View style={styles.filterEmpty}>
             <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
@@ -363,10 +379,11 @@ const styles = StyleSheet.create((theme) => ({
   projectFilterSlot: {
     flexShrink: 1,
   },
-  // Tames the compactUp button doubling so the button and the project filter
-  // beside it share the same field height at every width.
+  // Tames the compactUp button doubling so the button, the project filter
+  // beside it, and the status filter below all share the compact 32px control
+  // height at every width.
   newButton: {
-    minHeight: 44,
+    minHeight: 32,
     paddingHorizontal: theme.spacing[4],
   },
   statusRow: {

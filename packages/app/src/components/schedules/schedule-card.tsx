@@ -1,5 +1,6 @@
 import {
   CalendarClock,
+  MessageSquare,
   MoreVertical,
   Pause,
   Pencil,
@@ -8,6 +9,7 @@ import {
   TriangleAlert,
   Trash2,
 } from "@/components/icons/material-icons";
+import { useHostFeature } from "@/runtime/host-features";
 import { useCallback, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -31,6 +33,7 @@ import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
 // Themed lucide wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedPause = withUnistyles(Pause);
 const ThemedPlay = withUnistyles(Play);
 const ThemedRotateCw = withUnistyles(RotateCw);
@@ -62,6 +65,8 @@ export interface ScheduleCardActions {
   onResume: () => void;
   onRunNow: () => void;
   onDelete: () => void;
+  /** Open a read-only view of the most recent run's chat. */
+  onViewLastRunChat: () => void;
 }
 
 interface ScheduleCardProps extends ScheduleCardActions {
@@ -176,6 +181,7 @@ export function ScheduleCard({
   onResume,
   onRunNow,
   onDelete,
+  onViewLastRunChat,
 }: ScheduleCardProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
@@ -185,6 +191,11 @@ export function ScheduleCard({
   const title = resolveScheduleTitle(schedule);
   const meta = buildMeta(schedule, state, serverName, singleHost ?? false);
   const canRun = state === "active" || state === "paused" || state === "failed";
+  // The transcript view needs a host that retains closed run agents and at
+  // least one run to have happened (lastRunAt); the actual last-run agentId is
+  // resolved lazily on click by the grid card.
+  const canViewLastRunChat =
+    useHostFeature(serverId, "retainedTranscripts") && schedule.lastRunAt != null;
   const isErrorCard = state === "failed" || state === "targetGone";
 
   // The last-run executor. Prefer the recorded last run (who actually ran it);
@@ -227,12 +238,14 @@ export function ScheduleCard({
           <ScheduleKebabMenu
             schedule={schedule}
             canRun={canRun}
+            canViewLastRunChat={canViewLastRunChat}
             pending={pending}
             onEdit={onEdit}
             onPause={onPause}
             onResume={onResume}
             onRunNow={onRunNow}
             onDelete={onDelete}
+            onViewLastRunChat={onViewLastRunChat}
           />
         </View>
 
@@ -274,6 +287,7 @@ export function ScheduleCard({
 }
 
 const editLeading = <ThemedPencil size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const chatLeading = <ThemedMessageSquare size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const pauseLeading = <ThemedPause size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const resumeLeading = <ThemedPlay size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const runLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
@@ -297,17 +311,27 @@ function stopPressInPropagation(event: { stopPropagation?: () => void }) {
 function ScheduleKebabMenu({
   schedule,
   canRun,
+  canViewLastRunChat,
   pending,
   onEdit,
   onPause,
   onResume,
   onRunNow,
   onDelete,
+  onViewLastRunChat,
 }: Pick<
   ScheduleCardProps,
-  "schedule" | "pending" | "onEdit" | "onPause" | "onResume" | "onRunNow" | "onDelete"
+  | "schedule"
+  | "pending"
+  | "onEdit"
+  | "onPause"
+  | "onResume"
+  | "onRunNow"
+  | "onDelete"
+  | "onViewLastRunChat"
 > & {
   canRun: boolean;
+  canViewLastRunChat: boolean;
 }): ReactElement {
   return (
     <DropdownMenu>
@@ -329,6 +353,15 @@ function ScheduleKebabMenu({
         >
           Edit schedule
         </DropdownMenuItem>
+        {canViewLastRunChat ? (
+          <DropdownMenuItem
+            leading={chatLeading}
+            onSelect={onViewLastRunChat}
+            testID={`schedule-menu-view-chat-${schedule.id}`}
+          >
+            View last run chat
+          </DropdownMenuItem>
+        ) : null}
         {schedule.status === "paused" ? (
           <DropdownMenuItem
             leading={resumeLeading}

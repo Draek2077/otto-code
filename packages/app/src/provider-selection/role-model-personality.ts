@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { PersonalityRole } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
@@ -96,6 +96,17 @@ export interface UseFormRolePersonalityInput {
   team?: RoleTeamEntryConfig;
   /** Persisted-binding behavior (schedules). Omit for apply-now surfaces. */
   binding?: RolePersonalityBindingConfig;
+  /**
+   * Auto-pick a sensible default on open instead of leaving the form on its
+   * device-last model: the active team's holder of `role` (the "Team's <Role>"
+   * entry) if a team is active, else the first available personality carrying
+   * `role`, else nothing (the user chooses a model). Runs once, only while the
+   * user hasn't touched the picker and no stored binding is being edited; it
+   * also suppresses the remembered-personality preselect so the team pick wins.
+   * Omit (default off) on surfaces that should keep the last-used model, e.g.
+   * the new-chat composer.
+   */
+  autoSelectDefault?: boolean;
 }
 
 /**
@@ -108,7 +119,8 @@ export interface UseFormRolePersonalityInput {
  * existing stored binding across edits and emits resolveSubmitPersonality.
  */
 export function useFormRolePersonality(input: UseFormRolePersonalityInput): RolePersonality {
-  const { serverId, role, entries, onApply, currentSelection, team, binding } = input;
+  const { serverId, role, entries, onApply, currentSelection, team, binding, autoSelectDefault } =
+    input;
   const { config } = useDaemonConfig(serverId);
   const hasTeamsFeature = useAgentTeamsFeature(serverId ?? "");
   const rosterSource = config?.agentPersonalities?.personalities;
@@ -141,6 +153,9 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     onApply,
     currentSelection,
     alwaysIncludePersonalityId: boundRosterId,
+    // A surface with its own deterministic default owns the initial pick; the
+    // remembered-personality preselect must not race ahead of it.
+    preselectRemembered: !autoSelectDefault,
   });
 
   const teamEntryEnabled = team ? (team.enabled ?? true) : false;
@@ -203,6 +218,61 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     setTeamEntrySelected(false);
     clearPersonality();
   }, [clearPersonality]);
+
+  // One-shot default pick for surfaces that opt in (schedule/artifact create):
+  // the active team's holder of `role`, else the first available personality
+  // carrying it, else nothing. Waits for the roster + provider snapshot to load
+  // (deciding on an empty snapshot would wrongly read as "nothing available")
+  // and never overrides a user choice or a stored binding being edited.
+  const defaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!autoSelectDefault || defaultAppliedRef.current) {
+      return;
+    }
+    // Any explicit pick, a seeded team sentinel, or a stored binding under edit
+    // already owns the selection — settle without imposing a default.
+    if (
+      bindingTouched ||
+      teamEntrySelected ||
+      selectedPersonalityId !== null ||
+      binding?.originalBinding
+    ) {
+      defaultAppliedRef.current = true;
+      return;
+    }
+    // Not enough loaded yet to tell what's available — try again next render.
+    if (!config || entries.length === 0) {
+      return;
+    }
+    // Priority 1: the active team's current holder of this role.
+    if (teamEntry?.values) {
+      defaultAppliedRef.current = true;
+      setTeamEntrySelected(true);
+      onApply(teamEntry.values);
+      return;
+    }
+    // Priority 2: the first available personality carrying this role.
+    const firstAvailable = personalities.find((entry) => entry.available);
+    if (firstAvailable) {
+      defaultAppliedRef.current = true;
+      selectPersonality(firstAvailable.id);
+      return;
+    }
+    // Priority 3: leave the model to the user.
+    defaultAppliedRef.current = true;
+  }, [
+    autoSelectDefault,
+    bindingTouched,
+    teamEntrySelected,
+    selectedPersonalityId,
+    binding,
+    config,
+    entries,
+    teamEntry,
+    personalities,
+    onApply,
+    selectPersonality,
+  ]);
 
   // Grouped entries flattened for selection lookups — a personality picked
   // from the browse groups may not be in the up-front (surface-role) list, and

@@ -72,7 +72,12 @@ import { formatLatency } from "@/utils/latency";
 import { useIconSize } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
 import { getProviderIcon } from "@/components/provider-icons";
-import { BrowserToolsOptInCard } from "./browser-tools-card";
+import {
+  AgentBehaviorRows,
+  BrowserToolsSection,
+  MetadataGenerationRows,
+  OttoToolsSection,
+} from "@/screens/settings/otto-tools-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
@@ -285,10 +290,40 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
       {isConnected ? (
         <>
           <SettingsSection title={t("settings.hostSections.agents")}>
-            <InjectOttoToolsCard serverId={serverId} />
-            <BrowserToolsOptInCard serverId={serverId} />
-            <AppendSystemPromptCard serverId={serverId} />
+            <View style={settingsStyles.card}>
+              <AppendSystemPromptCard serverId={serverId} />
+              <AgentBehaviorRows serverId={serverId} />
+              <MetadataGenerationRows serverId={serverId} />
+            </View>
           </SettingsSection>
+          <OttoToolsSection serverId={serverId} />
+          <BrowserToolsSection serverId={serverId} />
+        </>
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Teams host section: agent personalities, teams, and voices — split out of the
+// Agents page onto their own sidebar section (after Agents) so each stays a
+// clean grouped card.
+export function HostTeamsPage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <>
           <AgentPersonalitiesSection serverId={serverId} />
           <AgentTeamsSection serverId={serverId} />
           <SettingsSection title={t("settings.host.speech.sectionTitle")}>
@@ -998,45 +1033,6 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   );
 }
 
-function InjectOttoToolsCard({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-
-  const handleValueChange = useCallback(
-    (next: boolean) => {
-      void patchConfig({
-        mcp: {
-          injectIntoAgents: next,
-        },
-      });
-    },
-    [patchConfig],
-  );
-
-  if (!isConnected) return null;
-
-  return (
-    <View style={settingsStyles.card} testID="host-page-inject-mcp-card">
-      <View style={settingsStyles.row}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
-            {t("settings.host.orchestration.enableTools.title")}
-          </Text>
-          <Text style={settingsStyles.rowHint}>
-            {t("settings.host.orchestration.enableTools.hint")}
-          </Text>
-        </View>
-        <Switch
-          value={config?.mcp.injectIntoAgents !== false}
-          onValueChange={handleValueChange}
-          accessibilityLabel={t("settings.host.orchestration.enableTools.accessibilityLabel")}
-        />
-      </View>
-    </View>
-  );
-}
-
 function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
@@ -1167,25 +1163,23 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
 
   return (
     <>
-      <View style={settingsStyles.card} testID="host-page-append-system-prompt-card">
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
-              {t("settings.host.orchestration.systemPrompt.title")}
-            </Text>
-            <Text style={settingsStyles.rowHint}>
-              {t("settings.host.orchestration.systemPrompt.hint")}
-            </Text>
-          </View>
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={handleOpen}
-            testID="host-page-append-system-prompt-edit"
-          >
-            {t("settings.host.orchestration.systemPrompt.edit")}
-          </Button>
+      <View style={settingsStyles.rowResponsive} testID="host-page-append-system-prompt-card">
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("settings.host.orchestration.systemPrompt.title")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.host.orchestration.systemPrompt.hint")}
+          </Text>
         </View>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={handleOpen}
+          testID="host-page-append-system-prompt-edit"
+        >
+          {t("settings.host.orchestration.systemPrompt.edit")}
+        </Button>
       </View>
 
       {isEditing ? (

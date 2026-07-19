@@ -84,6 +84,13 @@ export interface UsePersonalitySelectionInput {
    * pass a speculative id here.
    */
   alwaysIncludePersonalityId?: string | null;
+  /**
+   * Re-select the device-local last-used personality on mount when it still
+   * matches the form (default true). Surfaces that impose their own
+   * deterministic default (schedule/artifact "Team's <Role>" auto-pick) pass
+   * false so the remembered pick doesn't race ahead of that default.
+   */
+  preselectRemembered?: boolean;
 }
 
 export interface UsePersonalitySelectionResult {
@@ -138,6 +145,7 @@ export function usePersonalitySelection(
   input: UsePersonalitySelectionInput,
 ): UsePersonalitySelectionResult {
   const { serverId, role, entries, onApply, currentSelection, alwaysIncludePersonalityId } = input;
+  const preselectRemembered = input.preselectRemembered ?? true;
   const { config } = useDaemonConfig(serverId);
   const { preferences, isLoading: preferencesLoading, updatePreferences } = useFormPreferences();
   const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(null);
@@ -326,6 +334,9 @@ export function usePersonalitySelection(
   const curThinking = currentSelection?.thinkingOptionId ?? "";
 
   useEffect(() => {
+    if (!preselectRemembered) {
+      return;
+    }
     if (interactedRef.current || selectedPersonalityId !== null) {
       return;
     }
@@ -353,6 +364,7 @@ export function usePersonalitySelection(
     curProvider,
     curThinking,
     preferencesLoading,
+    preselectRemembered,
     rememberedId,
     resolutions,
     selectedPersonalityId,

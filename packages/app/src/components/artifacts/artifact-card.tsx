@@ -4,6 +4,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Eye,
   FileText,
+  MessageSquare,
   MoreVertical,
   RotateCw,
   Star,
@@ -12,6 +13,7 @@ import {
   TriangleAlert,
   X,
 } from "@/components/icons/material-icons";
+import { useHostFeature } from "@/runtime/host-features";
 import type { Theme } from "@/styles/theme";
 import {
   DropdownMenu,
@@ -33,6 +35,7 @@ import type { AggregatedArtifact } from "@/artifacts/use-artifacts";
 // render — see docs/unistyles.md and the schedule-row precedent.
 const ThemedEye = withUnistyles(Eye);
 const ThemedFileText = withUnistyles(FileText);
+const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedX = withUnistyles(X);
 const ThemedTrash2 = withUnistyles(Trash2);
@@ -49,6 +52,7 @@ function stopPressInPropagation(event: { stopPropagation?: () => void }) {
 }
 
 const viewLeading = <ThemedEye size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const chatLeading = <ThemedMessageSquare size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const editLeading = <ThemedFileText size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const regenerateLeading = <ThemedRotateCw size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const cancelLeading = <ThemedX size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
@@ -60,6 +64,8 @@ export interface ArtifactCardProps {
   projectName: string | null;
   /** Open a read-only preview dialog of the rendered artifact. */
   onView: (artifact: AggregatedArtifact) => void;
+  /** Open a read-only view of the chat that generated the artifact. */
+  onViewGenerationChat: (artifact: AggregatedArtifact) => void;
   /** Open the edit dialog (also the card's primary click). */
   onEdit: (artifact: AggregatedArtifact) => void;
   /** Re-run generation with the stored config. */
@@ -89,6 +95,7 @@ function ArtifactCardComponent({
   artifact,
   projectName,
   onView,
+  onViewGenerationChat,
   onEdit,
   onRegenerate,
   onCancel,
@@ -101,7 +108,15 @@ function ArtifactCardComponent({
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
   const handlePointerLeave = useCallback(() => setIsHovered(false), []);
 
+  // The daemon only serves a closed generation agent's transcript when it
+  // advertises retainedTranscripts; older hosts have no record to fetch.
+  const canViewGenerationChat = useHostFeature(artifact.serverId, "retainedTranscripts");
+
   const handleView = useCallback(() => onView(artifact), [artifact, onView]);
+  const handleViewGenerationChat = useCallback(
+    () => onViewGenerationChat(artifact),
+    [artifact, onViewGenerationChat],
+  );
   const handleEdit = useCallback(() => onEdit(artifact), [artifact, onEdit]);
   const handleRegenerate = useCallback(() => onRegenerate(artifact), [artifact, onRegenerate]);
   const handleCancel = useCallback(() => onCancel(artifact), [artifact, onCancel]);
@@ -170,7 +185,9 @@ function ArtifactCardComponent({
           </Pressable>
           <ArtifactKebabMenu
             artifact={artifact}
+            canViewGenerationChat={canViewGenerationChat}
             onView={handleView}
+            onViewGenerationChat={handleViewGenerationChat}
             onEdit={handleEdit}
             onRegenerate={handleRegenerate}
             onCancel={handleCancel}
@@ -216,20 +233,27 @@ function ArtifactCardComponent({
 
 function ArtifactKebabMenu({
   artifact,
+  canViewGenerationChat,
   onView,
+  onViewGenerationChat,
   onEdit,
   onRegenerate,
   onCancel,
   onDelete,
 }: {
   artifact: AggregatedArtifact;
+  canViewGenerationChat: boolean;
   onView: () => void;
+  onViewGenerationChat: () => void;
   onEdit: () => void;
   onRegenerate: () => void;
   onCancel: () => void;
   onDelete: () => void;
 }) {
   const isGenerating = artifact.status === "generating";
+  // Only offer the transcript view once generation has produced an agent to
+  // read and the host can serve its (closed) transcript.
+  const showGenerationChat = canViewGenerationChat && Boolean(artifact.generationAgentId);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -251,6 +275,15 @@ function ArtifactKebabMenu({
         >
           View artifact
         </DropdownMenuItem>
+        {showGenerationChat ? (
+          <DropdownMenuItem
+            leading={chatLeading}
+            onSelect={onViewGenerationChat}
+            testID={`artifact-menu-view-chat-${artifact.id}`}
+          >
+            View generation chat
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           leading={editLeading}
           onSelect={onEdit}

@@ -8,6 +8,7 @@ import { useGitLogStore } from "@/git/log-store";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { activityStatsQueryKey } from "@/hooks/use-activity-stats";
+import { usageLogQueryKey } from "@/hooks/use-usage-log";
 import { refreshAgentInitializationTimeout } from "@/hooks/use-agent-initialization";
 import { prefetchProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { generateMessageId, type StreamItem } from "@/types/stream";
@@ -1767,12 +1768,15 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     // Daemon-coalesced ping that activity counters moved: invalidate the stats
     // query so an open Metrics screen refetches immediately (active query),
-    // while an unmounted one just goes stale and refetches on next mount.
+    // while an unmounted one just goes stale and refetches on next mount. The
+    // itemized usage log is fed from the same chokepoint, so it rides this ping
+    // too (usage-ledger) — no separate push needed.
     const unsubActivityStatsChanged = client.on("activity_stats_changed", (message) => {
       if (message.type !== "activity_stats_changed") {
         return;
       }
       void queryClient.invalidateQueries({ queryKey: activityStatsQueryKey(serverId) });
+      void queryClient.invalidateQueries({ queryKey: usageLogQueryKey(serverId) });
     });
 
     const unsubTerminalAttention = client.on("terminal_attention_required", (message) => {
