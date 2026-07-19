@@ -1,0 +1,47 @@
+= [System name] — System Overview
+:description: One sentence: what this system is for.
+// TEMPLATE — copy into archdocs/pages/, keep every section, delete the comments.
+// Budget: the whole page ≤ 200 lines; every diagram ≤ 15–20 nodes.
+
+== Mission
+
+// 2–4 sentences: what this system guarantees to the rest of Otto, and for whom.
+
+== Boundary
+
+// What is inside vs deliberately outside. Bullets, not prose walls.
+* Inside: …
+* Outside (and where it lives instead): …
+
+== Structure
+
+// One Mermaid flowchart of the subsystems (≤ 15 nodes). If you need more nodes,
+// split a child page and link it — do not grow the diagram.
+[mermaid]
+----
+flowchart LR
+  A["…"] --> B["…"]
+----
+
+[cols="1,2,2"]
+|===
+|Subsystem |Responsibility |Key modules (2–4 paths)
+
+|… |… |…
+|===
+
+== Key flows
+
+// Link process-flow pages (or catalog entries) rather than inlining every sequence.
+* link:…[Flow name] — one line on when it runs.
+
+== Invariants
+
+// Numbered, testable statements. These are the audit surface — write them so a
+// reviewer can check each one against code.
+1. …
+
+== Change & audit checklist
+
+// 3–6 bullets: what to do before changing this system; how to audit a report against it.
+* …

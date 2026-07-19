@@ -1,0 +1,63 @@
+= [Feature name] — Technical Design
+:description: One sentence: the change this design proposes.
+// TEMPLATE — copy into archdocs/pages/ (or projects/<name>/ while in flight).
+// A design that cannot fill the Compatibility section is not ready for review.
+
+== Context
+
+// The problem, in terms of the systems in the link:00-index.html[master ToC].
+// Link the system-overview pages this touches instead of re-explaining them.
+
+== Goals / non-goals
+
+* Goal: …
+* Non-goal: …
+
+== Design
+
+// Prose first, then ONE diagram of the changed shape (≤ 15 nodes) — draw the delta,
+// not the whole world.
+
+[mermaid]
+----
+flowchart LR
+  A["…"] --> B["…"]
+----
+
+== Alternatives considered
+
+[cols="1,2,2"]
+|===
+|Alternative |Why plausible |Why rejected
+
+|… |… |…
+|===
+
+== Compatibility
+
+// The two contracts from CLAUDE.md, answered explicitly:
+* *Protocol contract:* fields added (all optional?), enum values gated behind which
+  client capability, old-client/old-daemon parse story.
+* *Feature contract:* which `server_info.features.*` flag, where the single
+  capability check lives, the `COMPAT(name)` cleanup marker.
+
+== Provider coverage
+
+// A capability isn't done when one provider has it. State the rollout:
+[cols="1,1,2"]
+|===
+|Provider |Status |Notes
+
+|Claude |… |…
+|OpenAI-compat |… |…
+|ACP family |… |…
+|===
+
+== Rollout & verification
+
+// Flags, ordering (daemon before client?), and the proof: which test tier, what
+// the browser-verified evidence is.
+
+== Open questions
+
+* …

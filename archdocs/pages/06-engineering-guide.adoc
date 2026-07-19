@@ -1,0 +1,219 @@
+= Engineering & Audit Guide
+:description: How to use this documentation to implement and audit — deep dives on chat sync, usage accounting, UI performance, and IDE tooling.
+
+This page turns the documentation set into a working method. For each of the four
+historically hardest areas it gives: the drawn system, the *invariants* (statements
+that must stay true — the audit surface), and a checklist for changing or auditing
+the area. The pattern generalizes: every future subsystem doc should end with the
+same three blocks.
+
+== §1 Chat synchronization state
+
+*Read first:* `docs/timeline-sync.md` · link:01-system-overview.html[lifecycle D3].
+
+=== The sync loop (D5)
+
+[mermaid]
+----
+sequenceDiagram
+  participant P as Provider adapter
+  participant AM as AgentManager + timeline store
+  participant S as Session (WS)
+  participant R as Stream reducer (cursor)
+  participant UI as Chat surface
+  P->>AM: AgentStreamEvent
+  AM->>AM: append row {epoch, seq}, persist
+  AM-->>S: broadcast agent_stream
+  S-->>R: unit {epoch, seq}
+  alt seq contiguous with cursor
+    R->>UI: accept (48 ms batched flush)
+  else seq <= cursor end
+    R->>R: drop_stale (duplicate)
+  else epoch mismatch
+    R->>R: drop_epoch (old generation)
+  else gap detected
+    R->>S: fetch_agent_timeline (paged)
+    S-->>R: authoritative rows, to completion
+    R->>UI: reconcile
+  end
+----
+
+=== The persistence contract (D6)
+
+[mermaid]
+----
+erDiagram
+  AGENT_RECORD ||--|{ EPOCH : "one per run"
+  EPOCH ||--|{ TIMELINE_ROW : "monotonic seq"
+  AGENT_RECORD ||--o| PROVIDER_SESSION_HANDLE : "resume"
+  AGENT_RECORD }|--|| WORKSPACE : "cwd-derived path"
+  TIMELINE_ROW ||--o| TOOL_CALL_DETAIL : "normalized"
+  CLIENT_CURSOR }o--|| EPOCH : "tracks {epoch, endSeq}"
+  AGENT_RECORD {
+    string id
+    string lifecycleState
+    string cwd
+  }
+  TIMELINE_ROW {
+    string epoch
+    number seq
+    string timestamp "daemon-owned"
+  }
+----
+
+=== Invariants (the audit surface)
+
+1. The timeline is *append-only*; a new run starts a new epoch, never rewrites one.
+2. `seq` is monotonic within an epoch; the daemon assigns it, clients never invent it.
+3. Live streams exist for *immediacy only*; `fetch_agent_timeline` is authoritative,
+   and catch-up pages *to completion* — a partial catch-up is a bug, not a degraded mode.
+4. Every inbound unit maps to exactly one cursor outcome: accept, drop_stale,
+   drop_epoch, or gap. There is no fifth path.
+5. Row timestamps are daemon-owned canon; clients never trust local clocks for
+   ordering or display gating.
+6. Optimistic client rows (the user's own message) must be reconciled against the
+   authoritative fetch, never double-shown.
+
+=== Checklist
+
+*Changing sync:* state which invariant your change interacts with; add/extend a test
+in the reducer suite for the new decision path; verify reconnect + catch-up on a
+long-running agent, not just fresh streams. *Auditing a "chat is weird" report:*
+identify which invariant would have to be false, then instrument that decision point —
+duplicates ⇒ (2)/(4), missing rows ⇒ (3), interleaved old runs ⇒ epoch handling,
+ghost user messages ⇒ (6).
+
+== §2 Provider usage audit (tokens & cost)
+
+This area has grown into its own first-class page:
+link:05-audit-architecture.html[*Audit Architecture*] — the measurement model (the
+four token classes, model-tagged splits, derived cost), the provider-agnostic
+accounting contract, sub-agent roll-up with parent-residual de-inflation, the two
+sinks, and the *ten audit invariants*. Read that page as the system of record; what
+stays here is the working method.
+
+=== Checklist
+
+*Adding a provider's accounting:* answer the five onboarding questions in
+`docs/subagent-accounting.md` (Claude is the reference implementation), implement
+only the three adapter steps (parse → accumulate → emit), and never price from
+neutral code. Prove the no-inflation invariant with a parent+child fixture and
+confirm one event reaches *both* sinks. *Auditing a number:* pick a day bucket, sum
+the ledger rows for it, and compare to the counters — any mismatch localizes to the
+funnel (missed event) or a store write (double count). *Auditing a reset:* both
+surfaces must be empty afterward; one populated sink is a found bug.
+
+== §3 User-interface performance
+
+*Read first:* `docs/terminal-performance.md` (the daemon-side pipeline),
+link:02-module-map.html[oversized-module inventory].
+
+=== State topology (D10)
+
+[mermaid]
+----
+flowchart LR
+  DC["DaemonClient"]
+  HRC["HostRuntimeController<br/>(connection lifecycle)"]
+  SC["SessionContext"]
+  RQ["Reducer queue<br/>48 ms batched flush"]
+  SS[("session-store<br/>(Zustand, domain core)")]
+  PR["push-router"]
+  QC[("React Query cache<br/>push-fed replica,<br/>refetch disabled")]
+  CHAT["agent-stream<br/>(virtualized chat)"]
+  PANES["Git / terminal / file panes"]
+  DC --> HRC --> SC
+  SC --> RQ --> SS --> CHAT
+  DC --> PR --> QC --> PANES
+  HRC -- "reconnect ⇒ targeted invalidation" --> QC
+----
+
+=== Invariants & budgets
+
+1. The React Query cache is a *replica*: `staleTime`/`gcTime` infinite, all refetch
+   triggers off. Data changes arrive only via push-router writes or explicit
+   invalidation (reconnect). A component adding `refetchOnMount` is a violation.
+2. Stream units batch through the 48 ms reducer flush; nothing writes stream state to
+   a store per-event.
+3. The web chat list virtualizes past 100 items (~50 recent mounted, estimated
+   heights); the bottom-anchor controller owns scroll position — features must not
+   fight it with their own `scrollTo`.
+4. Writers are exclusive: push-router owns query-cache facts, the reducer queue owns
+   stream facts, stores own UI facts. A fact with two writers is a race by design.
+5. Terminal rendering follows the daemon-side coalescing/backpressure invariants;
+   passive rendering never sends resize frames (last-interacting-client-wins).
+6. Hot paths (`message.tsx`, diff pane, workspace screen) are memoized monoliths —
+   measure before touching, and prefer moving code *out* over adding branches *in*.
+
+=== Checklist
+
+*Adding UI state:* name the single writer first; pick store vs query-cache by that
+writer, not by convenience. *Auditing jank:* walk D10 left to right — is the daemon
+coalescing (terminal doc)? is the reducer batching? is the list virtualizing? is a
+component over-rendering (React DevTools on the memo boundaries)? Each stage has a
+budget, so the walk terminates at the guilty one.
+
+== §4 IDE & development-tool systems
+
+*Read first:* `docs/preview.md` — its design principles (token economy,
+guardrail-bearing tool descriptions, daemon-enforced tab binding) are the constitution
+for all IDE tooling. Then `docs/text-editor.md`, `docs/safe-unattended.md`.
+
+=== Service topology (D12)
+
+[mermaid]
+----
+flowchart LR
+  AG["Agent tool call"]
+  CAT["Otto tool catalog<br/>(native injection or MCP)"]
+  PERM["Permission / policy layer"]
+  PREV["DevServerManager<br/>preview_* (launch.json)"]
+  BT["BrowserToolsBroker<br/>browser_*"]
+  TAB["Real browser tab<br/>in a connected client"]
+  FILES["Workspace-files session<br/>file RPCs (read/edit)"]
+  ED["CM6 editor tabs<br/>+ AI refactor"]
+  ART["ArtifactService"]
+  TERM["Terminal workers (PTY)"]
+  AG --> CAT --> PERM
+  PERM --> PREV
+  PERM --> BT --> TAB
+  PERM --> FILES --> ED
+  PERM --> ART
+  PERM --> TERM
+----
+
+=== Invariants
+
+1. *Provider-agnostic by design.* Every IDE capability is defined once in the
+   daemon's tool catalog and reaches all providers — natively where supported, via
+   MCP otherwise. A capability that works for one provider is unfinished, not done.
+2. *The daemon never fakes a browser.* Browser tools broker to a real tab in a
+   connected Otto client, and tab binding is daemon-enforced — an agent can only
+   drive tabs it was handed.
+3. *Guardrails live in the tool descriptions.* The tool text itself carries the
+   contract (what proof to show, when not to act); changing a description is a
+   behavioral change and gets reviewed as one.
+4. *Token economy.* Tool results are engineered for small, high-signal payloads
+   (snapshots over screenshots, filtered logs over dumps). New tools state their
+   result-size discipline.
+5. *Every mutation passes the policy layer.* File edits respect the edit gate
+   (multi-root rules), tool calls respect mode policy (deny-by-default unattended),
+   dev servers spawn only from `launch.json` entries.
+
+=== Checklist
+
+*Adding an IDE capability:* copy the D12 shape — daemon service + catalog tool +
+client surface; write the tool description first (it is the spec); wire the policy
+layer before the happy path; then prove it on a second provider before calling it
+shipped. *Auditing safety:* enumerate the catalog, and for each mutating tool name
+its policy gate — a tool without one is the finding. *Auditing a tool's behavior:*
+diff its description against what it actually does; drift between the two is how
+agents get confused.
+
+== Extending this set
+
+When a new system doc is written (from `archdocs/templates/`), it must end with the
+same three blocks — drawn system, invariants, checklist. Invariants are the load-bearing
+part: they are what turns documentation from description into an audit instrument.
+Propose new diagrams through the link:04-diagram-catalog.html[catalog] with a stated
+*why*; diagrams without a why don't ship.

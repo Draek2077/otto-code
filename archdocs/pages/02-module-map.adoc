@@ -1,0 +1,210 @@
+= Module Map
+:description: Package layering, the frontend/backend split, and the oversized-module inventory.
+
+Otto is an npm workspace monorepo of eleven packages. The split is clean at the
+package boundary: *backend* is everything the daemon process runs, *frontend* is
+everything a client renders, and the two only meet through the shared contract
+packages — never by importing each other.
+
+== Package layering
+
+[mermaid]
+----
+flowchart TD
+  subgraph contract [Shared contract]
+    PROTO["protocol<br/>wire schemas, binary frames,<br/>zod-aot validators"]
+    CLIENT["client<br/>DaemonClient + transports"]
+  end
+  subgraph backend [Backend]
+    SERVER["server<br/>the daemon"]
+    RELAY["relay<br/>E2EE worker"]
+    CLI["cli"]
+  end
+  subgraph frontend [Frontend]
+    APP["app<br/>Expo: iOS · Android · web"]
+    DESKTOP["desktop<br/>Electron shell"]
+    VIS["visualizer<br/>webview bundle"]
+    AUDIO["expo-two-way-audio"]
+  end
+  HL["highlight<br/>shared syntax highlighting"]
+  WEB["website (standalone)"]
+  PROTO --> CLIENT
+  CLIENT --> SERVER
+  CLIENT --> APP
+  CLIENT --> CLI
+  RELAY --> CLIENT
+  RELAY --> SERVER
+  HL --> APP
+  HL --> SERVER
+  VIS --> APP
+  AUDIO --> APP
+  SERVER --> DESKTOP
+  CLI --> DESKTOP
+  APP -- "web export" --> DESKTOP
+----
+
+Rules the diagram encodes:
+
+* `protocol` is the universal dependency and depends on nothing internal. All
+  compatibility guarantees live here (append-only schemas, capability gating).
+* `client` is the only sanctioned way for a client to talk to a daemon. The daemon
+  also consumes it (agent-to-daemon tooling), which is why it sits in the contract
+  layer, not the frontend.
+* `desktop` is an assembler, not a source of features: it bundles the server, the CLI,
+  and the app's web export, adding only Electron-specific glue (window management,
+  embedded-daemon supervision, GPU fallback).
+* `website` shares nothing with the product runtime by design.
+
+== Backend: `packages/server` (~630 files)
+
+The daemon decomposes into the eight governing systems as follows.
+
+[cols="1,2,2"]
+|===
+|Area |Modules |Notes
+
+|Composition root
+|`bootstrap.ts`
+|Constructs every long-lived service in one deliberate order (storage → accounting →
+registries → AgentManager → feature services). The definitive list of "what exists at
+runtime".
+
+|Transport & session
+|`websocket-server.ts`, `session.ts`, `server/session/*`, `relay-transport.ts`
+|`session.ts` is the per-client RPC dispatcher — and the largest module in the repo
+(see inventory below). `server/session/` holds its in-progress decomposition: files,
+checkout, git-mutation, provider, voice sub-handlers.
+
+|Agent runtime
+|`agent/agent-manager.ts`, `agent/create-agent/`, `agent/providers/`,
+`agent/tools/otto-tools.ts`, `agent/mcp-server.ts`
+|Providers split into two loop-ownership models: *provider-owned* loops (Claude,
+Codex, OpenCode, Pi, ACP family — the daemon streams and maps events) and
+*daemon-owned* loops (OpenAI-compatible — the daemon runs the tool rounds, injects
+the Otto catalog, compacts mid-turn, bills per round).
+
+|Timeline & persistence
+|`agent/agent-storage.ts`, `agent/agent-timeline-store.ts`, `timeline-append.ts`,
+`timeline-projection.ts`
+|Append-only rows keyed `{epoch, seq}`, file-backed under `$OTTO_HOME/agents/`.
+
+|Workspace & git
+|`workspace-registry.ts`, `workspace-git-service.ts`, `otto-worktree-service.ts`,
+`checkout-diff-manager.ts`, `services/git-hosting/`, `services/github-service.ts`
+|Git hosting is provider-neutral: a resolver/router in front of GitHub and Bitbucket
+implementations.
+
+|IDE services
+|`terminal/` (PTY worker process), `server/session/files/`, `preview/`,
+`browser-tools/`, `artifact/`, `service-proxy.ts`
+|`browser-tools/broker.ts` is the daemon side of browser verification — it brokers
+agent tool calls to a *connected client's* real browser tab; the daemon never runs a
+browser itself.
+
+|Orchestration & automation
+|`agent/agent-personalities.ts`, `agent/agent-teams.ts`, `orchestration/` (run
+engine), `schedule/`, `loop-service.ts`, `chat/`, `push/`
+|
+
+|Accounting
+|`activity-stats/` (counter store + usage ledger), `agent/subagent-usage.ts`,
+`agent/claude/claude-pricing.ts`, `personality-stats-store.ts`
+|All writes funnel through AgentManager callbacks — the audit chokepoint.
+
+|Speech & voice
+|`speech/`, `agent/stt-manager.ts`, `agent/tts-manager.ts`, `dictation/`
+|
+|===
+
+== Frontend: `packages/app` (~1,700 files)
+
+[cols="1,2,2"]
+|===
+|Area |Modules |Notes
+
+|Shell & routing
+|`app/` (Expo Router tree), `screens/`
+|Host-scoped routes: `/h/[serverId]/workspace/[workspaceId]`. Startup restore resolves
+the redirect from bootstrap state + last-workspace memory.
+
+|Host runtime
+|`runtime/host-runtime.ts`, `desktop/`
+|`HostRuntimeController` owns daemon connections per host: transport selection
+(local, WS, relay), reconnection, exposure via `useSyncExternalStore`.
+
+|Sync engine
+|`contexts/session-context.tsx`, `timeline/`, `data/push-router.ts`, `data/query.ts`
+|The frontend half of Timeline & Sync: reducer queue with a `{epoch, seq}` cursor,
+catch-up planning, and a React Query cache that is a *push-fed replica* — global
+`refetch*: false`, updated only by push-router writes and explicit invalidation.
+
+|Chat surface
+|`agent-stream/`, `components/message.tsx`, `components/markdown/`, `composer/`
+|Custom partial virtualization on web (threshold 100 items, ~50 recent mounted),
+bottom-anchoring, turn grouping, 48 ms batched reducer flushes.
+
+|IDE surfaces
+|`editor/` (CM6), `terminal/` (xterm webview), `git/` (diff pane, PR panel),
+`components/browser-pane.*`, `components/artifacts/`, `visualizer/`
+|Each pairs with a daemon IDE service; the pane/tab system in `stores/` +
+`panels/` hosts them.
+
+|State
+|`stores/` (21 Zustand stores), `hooks/`
+|`session-store` is the domain core (agents, workspaces, live stream items);
+layout/panel/draft/sidebar stores are UI-local; a handful persist to AsyncStorage.
+
+|Platform layer
+|`constants/platform.ts`, `*.web.tsx` / `*.native.tsx` / `*.electron.tsx` splits
+|~37 file-extension splits; the rule is Metro splits for divergent implementations,
+inline `isWeb`/`isNative` gates for small branches.
+
+|Settings & features
+|`hooks/use-settings/`, `features/` (feature catalog + gates), `i18n/` (10 locales)
+|
+|===
+
+== Oversized-module inventory (the cracks)
+
+These modules work, but each one concentrates too many systems in one file. They are
+where "vibe coding" accumulates fastest, and they are the standing refactor backlog.
+Sizes are lines of code at generation time.
+
+[cols="2,1,3"]
+|===
+|Module |LOC |Systems entangled / decomposition status
+
+|`server/session.ts`
+|7,024
+|~186 methods dispatching nearly every inbound RPC. Decomposition *in progress*:
+`server/session/` sub-handlers (files, checkout, git-mutation, provider, voice)
+already exist; the plan is `projects/session-decomposition/`.
+
+|`agent/providers/claude/agent.ts`
+|6,684
+|Provider adapter + tool mapping + subagent observation + rewind in one file. Same
+shape problem in `codex-app-server-agent.ts` (6,329), `opencode-agent.ts` (3,834),
+`openai-compat-agent.ts` (3,563), `acp-agent.ts` (3,403).
+
+|`agent/agent-manager.ts`
+|5,916
+|Lifecycle + broadcast + accounting callbacks + timeline tracking. The chokepoint
+role is intentional; the size is not.
+
+|`screens/workspace/workspace-screen.tsx`
+|4,740
+|The workspace deck: panes, tabs, layout, keyboard, drag-drop. Largest frontend file.
+
+|`agent/tools/otto-tools.ts`
+|4,426
+|The whole tool catalog in one module — each tool is a candidate for per-domain files.
+
+|`git/diff-pane.tsx` / `components/message.tsx`
+|3,862 / 3,371
+|Diff rendering and the chat bubble renderer — both performance-critical, both
+monolithic.
+|===
+
+The rule going forward: new capability code lands in the decomposed shape (per-domain
+session handlers, per-domain tool files), and every substantial touch of a listed
+module should move at least one responsibility *out*.

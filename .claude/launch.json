@@ -29,6 +29,12 @@
         "8090"
       ],
       "port": 8090
+    },
+    {
+      "name": "archdocs",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "archdocs:serve"],
+      "port": 4400
     }
   ]
 }

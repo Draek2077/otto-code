@@ -1,0 +1,41 @@
+= [Domain name] — Data Model (ERD)
+:description: One sentence: what state this domain owns.
+// TEMPLATE — copy into archdocs/pages/, keep every section, delete the comments.
+// Budget: ≤ 10–12 entities per diagram. Attributes: only the identity, ordering, and
+// discriminator fields — never the full schema (the Zod schema is the source of truth).
+
+== Scope
+
+// What state this covers, where it lives at rest ($OTTO_HOME path, store file,
+// AsyncStorage key…), and which module owns writes.
+
+== Diagram
+
+[mermaid]
+----
+erDiagram
+  ENTITY_A ||--|{ ENTITY_B : "relationship"
+  ENTITY_A {
+    string id
+  }
+----
+
+== Entities
+
+[cols="1,2,1,1"]
+|===
+|Entity |Meaning |At rest |Write owner
+
+|… |… |`$OTTO_HOME/…` |`packages/…`
+|===
+
+== Consistency rules
+
+// Keying rules, atomicity, compat constraints (append-only? no migrations? keyed by
+// cwd vs workspaceId?). These are the invariants for this domain.
+1. …
+
+== Source anchors
+
+* `packages/…` — schema
+* `packages/…` — store

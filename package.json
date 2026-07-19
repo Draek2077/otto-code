@@ -43,6 +43,7 @@
     "dev:app": "cross-env OTTO_LISTEN=127.0.0.1:6868 EXPO_PORT=8081 ./scripts/dev-app.sh",
     "dev:website": "npm run dev --workspace=@otto-code/website",
     "demo": "npm run demo --workspace=@otto-code/app --",
+    "demo:run": "npm run demo:run --workspace=@otto-code/app",
     "demo:assets": "npm run demo:assets --workspace=@otto-code/app --",
     "postinstall": "node scripts/postinstall-patches.mjs",
     "prepare": "lefthook install --force",
@@ -117,9 +118,12 @@
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:publish && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:publish && npm run release:push",
     "build:visualizer": "npm run build --workspace=@otto-code/visualizer",
-    "build:visualizer:demo": "npm run build:demo --workspace=@otto-code/visualizer"
+    "build:visualizer:demo": "npm run build:demo --workspace=@otto-code/visualizer",
+    "archdocs:build": "node archdocs/build.mjs",
+    "archdocs:serve": "npm run archdocs:build && node archdocs/serve.mjs"
   },
   "devDependencies": {
+    "@asciidoctor/core": "^4.0.4",
     "@types/ws": "^8.5.14",
     "@typescript/native-preview": "7.0.0-dev.20260423.1",
     "@vercel/nft": "^1.5.0",
@@ -129,6 +133,7 @@
     "js-yaml": "^4.1.1",
     "knip": "^5.82.1",
     "lefthook": "^2.1.6",
+    "mermaid": "^11.16.0",
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",
     "oxlint-tsgolint": "^0.22.1",
