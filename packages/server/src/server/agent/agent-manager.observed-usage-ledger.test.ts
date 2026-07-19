@@ -84,6 +84,36 @@ test("records one subagent ledger row at settle, attributed to the owning chat",
   expect(row.costMicroUsd).toBe(0);
 });
 
+test("stamps spawn-tree identity (startedAt, own key, parent key) on the row", () => {
+  const { usageEvents, internals } = createHarness();
+
+  const before = Date.now();
+  // A nested sub-agent: announced with a parentKey pointing at its spawner.
+  internals.onObservedSubagentUpdated(
+    PARENT,
+    update({ key: "task-child", parentKey: "task-middle", status: "running", usage: HAIKU_SPLIT }),
+  );
+  internals.onObservedSubagentUpdated(PARENT, update({ key: "task-child", status: "idle" }));
+
+  expect(usageEvents).toHaveLength(1);
+  const row = usageEvents[0]!;
+  expect(row.subagentKey).toBe("task-child");
+  expect(row.parentSubagentKey).toBe("task-middle");
+  // startedAt = first-observed time, so the row groups under the turn that
+  // SPAWNED it even when it settles turns later.
+  expect(row.startedAt).toBeGreaterThanOrEqual(before);
+  expect(row.startedAt).toBeLessThanOrEqual(Date.now());
+
+  // A depth-1 sub-agent has no spawning sub-agent — parent key stays absent.
+  internals.onObservedSubagentUpdated(
+    PARENT,
+    update({ key: "task-top", status: "running", usage: HAIKU_SPLIT }),
+  );
+  internals.onObservedSubagentUpdated(PARENT, update({ key: "task-top", status: "idle" }));
+  expect(usageEvents[1]!.subagentKey).toBe("task-top");
+  expect(usageEvents[1]!.parentSubagentKey).toBeUndefined();
+});
+
 test("does not write a second row when a duplicate terminal update arrives", () => {
   const { usageEvents, internals } = createHarness();
 

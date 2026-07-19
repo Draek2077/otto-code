@@ -488,6 +488,55 @@ function observedSubagentOptionalFields(input: {
   };
 }
 
+/**
+ * Assemble the itemized ledger row for one recorded activity. Optional fields
+ * attach only when meaningful: the cache-read slice so the ledger can show
+ * fresh vs. cached (a Claude turn is mostly cache-read; the "in" total alone
+ * overstates fresh send by ~10x — fresh derives client-side as tokensIn −
+ * cached), and the sub-agent spawn-tree identity fields.
+ */
+function buildUsageLedgerEvent(input: {
+  kind: string;
+  meta: {
+    provider: AgentProvider;
+    agentId?: string;
+    model?: string;
+    subtype?: string;
+    rounds?: number;
+    startedAt?: number;
+    subagentKey?: string;
+    parentSubagentKey?: string;
+  };
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  costMicroUsd: number;
+  compactionIn: number;
+  compactionOut: number;
+}): UsageEvent {
+  const { meta } = input;
+  const event: UsageEvent = {
+    id: randomUUID(),
+    at: Date.now(),
+    kind: input.kind,
+    provider: meta.provider,
+    tokensIn: input.inputTokens,
+    tokensOut: input.outputTokens,
+    costMicroUsd: input.costMicroUsd,
+  };
+  if (input.cachedInputTokens > 0) event.cachedTokensIn = input.cachedInputTokens;
+  if (meta.subtype) event.subtype = meta.subtype;
+  if (meta.rounds) event.rounds = meta.rounds;
+  if (meta.model) event.model = meta.model;
+  if (meta.agentId) event.agentId = meta.agentId;
+  if (meta.startedAt !== undefined) event.startedAt = meta.startedAt;
+  if (meta.subagentKey) event.subagentKey = meta.subagentKey;
+  if (meta.parentSubagentKey) event.parentSubagentKey = meta.parentSubagentKey;
+  if (input.compactionIn > 0) event.compactionTokensIn = input.compactionIn;
+  if (input.compactionOut > 0) event.compactionTokensOut = input.compactionOut;
+  return event;
+}
+
 interface BackgroundShellTaskEntry {
   parentAgentId: string;
   taskId?: string;
@@ -4521,6 +4570,12 @@ export class AgentManager {
       // out (parent-residual de-inflation). Applies to BOTH the ledger row and the
       // aggregate counters so they stay consistent.
       costOverrideMicroUsd?: number;
+      // Sub-agent rows only: spawn-tree identity (spawn time, own observed key,
+      // spawning sub-agent's key) so the Log can group rows by who spawned whom
+      // instead of by settle time. See UsageEventSchema.
+      startedAt?: number;
+      subagentKey?: string;
+      parentSubagentKey?: string;
     },
   ): void {
     if (!usage) {
@@ -4562,26 +4617,18 @@ export class AgentManager {
     // Second sink: the itemized ledger row for this same activity (usage-ledger).
     // Skip zero-usage measurements — an empty row is noise, not accounting.
     if (this.onUsageEvent && (inputTokens > 0 || outputTokens > 0)) {
-      const event: UsageEvent = {
-        id: randomUUID(),
-        at: Date.now(),
-        kind: USAGE_CATEGORY_KIND[meta.category],
-        provider: meta.provider,
-        tokensIn: inputTokens,
-        tokensOut: outputTokens,
-        costMicroUsd,
-      };
-      // Break out the cache-read slice so the ledger can show fresh vs. cached
-      // (a Claude turn is mostly cache-read; the "in" total alone overstates
-      // fresh send by ~10x). Fresh is derived client-side as tokensIn - cached.
-      if (cachedInputTokens > 0) event.cachedTokensIn = cachedInputTokens;
-      if (meta.subtype) event.subtype = meta.subtype;
-      if (meta.rounds) event.rounds = meta.rounds;
-      if (meta.model) event.model = meta.model;
-      if (meta.agentId) event.agentId = meta.agentId;
-      if (compactionIn > 0) event.compactionTokensIn = compactionIn;
-      if (compactionOut > 0) event.compactionTokensOut = compactionOut;
-      this.onUsageEvent(event);
+      this.onUsageEvent(
+        buildUsageLedgerEvent({
+          kind: USAGE_CATEGORY_KIND[meta.category],
+          meta,
+          inputTokens,
+          cachedInputTokens,
+          outputTokens,
+          costMicroUsd,
+          compactionIn,
+          compactionOut,
+        }),
+      );
     }
   }
 
@@ -4886,6 +4933,9 @@ export class AgentManager {
         usageRounds,
         model,
         title,
+        subagentKey: event.update.key,
+        parentSubagentKey: parentKey,
+        createdAt,
       }) ?? priorRecorded;
     this.observedSubagents.set(id, {
       parentAgentId: agent.id,
@@ -4930,6 +4980,9 @@ export class AgentManager {
     usageRounds: number | undefined;
     model: string | undefined;
     title: string;
+    subagentKey: string;
+    parentSubagentKey: string | undefined;
+    createdAt: string;
   }): RecordedSubagentLedger | undefined {
     const { status, recorded, ownerAgentId, provider, lastUsage, usageRounds, model, title } =
       params;
@@ -4943,6 +4996,10 @@ export class AgentManager {
       return undefined;
     }
     const rounds = Math.max(0, (usageRounds ?? 0) - (recorded?.rounds ?? 0));
+    // Spawn-tree identity: when the sub-agent was first observed (it belongs to
+    // the turn that SPAWNED it, not the turn it settled in — async sub-agents
+    // routinely settle turns later) and who spawned it.
+    const startedAt = Date.parse(params.createdAt);
     this.recordUsageActivity(delta, {
       category: "subagent",
       provider,
@@ -4950,6 +5007,9 @@ export class AgentManager {
       ...(rounds > 0 ? { rounds } : {}),
       ...(model ? { model } : {}),
       ...(title ? { subtype: title } : {}),
+      ...(Number.isFinite(startedAt) ? { startedAt } : {}),
+      subagentKey: params.subagentKey,
+      ...(params.parentSubagentKey ? { parentSubagentKey: params.parentSubagentKey } : {}),
     });
     // Stage this increment's priced cost so the owning chat's next turn can back
     // it out of the whole-tree total (parent-residual de-inflation). Priced
