@@ -66,10 +66,12 @@ export const es: TranslationResources = {
   },
   composer: {
     rateLimit: {
-      approaching: "Approaching your Claude {{window}} limit",
-      reached: "Claude {{window}} limit reached",
+      approaching: "Approaching your {{provider}} {{window}} limit",
+      reached: "{{provider}} {{window}} limit reached",
       usedPercent: "{{percent}}% used",
       resets: "resets {{time}}",
+      resetsOn: "resets on {{time}}",
+      dismiss: "Dismiss for now",
       usingOverage: "using extra usage",
       windowFiveHour: "5-hour",
       windowSevenDay: "7-day",
@@ -2010,6 +2012,7 @@ export const es: TranslationResources = {
     hostSections: {
       connections: "Conexiones",
       agents: "Agents",
+      teams: "Teams",
       workspaces: "Workspaces",
       gitProviders: "Proveedores de Git",
       providers: "Proveedores",
@@ -2223,7 +2226,7 @@ export const es: TranslationResources = {
         },
         rateLimitWarnings: {
           title: "Plan rate-limit warnings",
-          hint: "Show a warning above the message box when your Claude plan usage nears or hits a rate limit. Available on Claude agents",
+          hint: "Show a warning above the message box when your plan usage nears or hits a rate limit. Available on Claude agents",
           accessibilityLabel: "Plan rate-limit warnings",
         },
         hideMessageDetails: {

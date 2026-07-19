@@ -102,6 +102,7 @@ export const GitPullRequestClosed = createMaterialSymbolIcon("GitPullRequestClos
 export const GitPullRequestDraft = createMaterialSymbolIcon("GitPullRequestDraft");
 export const Github = createMaterialSymbolIcon("Github");
 export const Globe = createMaterialSymbolIcon("Globe");
+export const Groups = createMaterialSymbolIcon("Groups");
 export const Handyman = createMaterialSymbolIcon("Handyman");
 export const Heart = createMaterialSymbolIcon("Heart");
 export const Hexagon = createMaterialSymbolIcon("Hexagon");

@@ -11,6 +11,7 @@ export interface ArtifactGridProps {
   /** Known project roots keyed by `${serverId}:${cwd}`, for the project row. */
   projectNameByCwd: ReadonlyMap<string, string>;
   onView: (artifact: AggregatedArtifact) => void;
+  onViewGenerationChat: (artifact: AggregatedArtifact) => void;
   onEdit: (artifact: AggregatedArtifact) => void;
   onRegenerate: (artifact: AggregatedArtifact) => void;
   onCancel: (artifact: AggregatedArtifact) => void;
@@ -23,6 +24,7 @@ export function ArtifactGrid({
   showHost,
   projectNameByCwd,
   onView,
+  onViewGenerationChat,
   onEdit,
   onRegenerate,
   onCancel,
@@ -41,6 +43,7 @@ export function ArtifactGrid({
               projectNameByCwd,
             })}
             onView={onView}
+            onViewGenerationChat={onViewGenerationChat}
             onEdit={onEdit}
             onRegenerate={onRegenerate}
             onCancel={onCancel}

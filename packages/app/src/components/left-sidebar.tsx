@@ -4,18 +4,14 @@ import {
   FileText,
   FolderPlus,
   History,
-  Home,
   Network,
   Plus,
   Search,
-  Gauge,
   Server,
-  Settings,
   X,
-  type IconComponent,
 } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { useRevealActiveWorkspace } from "@/components/sidebar/use-reveal-active-workspace";
 import {
@@ -24,7 +20,6 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type PressableProps,
   type PressableStateCallbackType,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -34,6 +29,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { FooterIconButton, SidebarFooterNavRow } from "@/components/sidebar/sidebar-footer-nav";
 import { SidebarActiveTeamSwitchers } from "@/components/active-team-switcher";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -360,60 +356,6 @@ function sidebarHostOptionTestID(serverId: string): string {
   return `sidebar-host-row-${serverId}`;
 }
 
-function footerIconButtonStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
-  return [
-    styles.footerIconButton,
-    (Boolean(hovered) || Boolean(pressed)) && styles.footerIconButtonHovered,
-  ];
-}
-
-function FooterIconButton({
-  buttonRef,
-  onPress,
-  testID,
-  accessibilityLabel,
-  icon: Icon,
-  iconSize,
-  theme,
-  ...pressableProps
-}: {
-  onPress: () => void;
-  testID: string;
-  accessibilityLabel: string;
-  icon: IconComponent;
-  iconSize?: number;
-  theme: SidebarTheme;
-  buttonRef?: Ref<View>;
-} & Omit<PressableProps, "onPress" | "testID" | "style" | "children">) {
-  const isCompactLayout = useIsCompactFormFactor();
-  // Footer icons are always scaled up on every form factor, and another 1.5x on
-  // compact so they stay comfortably tappable. Static ICON_SIZE (not
-  // theme.iconSize) — the theme tokens are already doubled on compact by
-  // applyAppearance, which would compound here.
-  const baseIconSize = iconSize ?? ICON_SIZE.md * 1.5;
-  return (
-    <Pressable
-      {...pressableProps}
-      ref={buttonRef}
-      style={footerIconButtonStyle}
-      testID={testID}
-      nativeID={testID}
-      collapsable={false}
-      accessible
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      onPress={onPress}
-    >
-      {({ hovered }) => (
-        <Icon
-          size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
-          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-        />
-      )}
-    </Pressable>
-  );
-}
-
 function SidebarHostPicker({
   theme,
   switchHostLabel,
@@ -592,51 +534,14 @@ function SidebarFooter({
 
   return (
     <View style={styles.sidebarFooter}>
-      <View style={styles.footerIconRow}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild triggerRefProp="buttonRef">
-            <FooterIconButton
-              onPress={handleHome}
-              testID="sidebar-home"
-              accessibilityLabel={labels.home}
-              icon={Home}
-              theme={theme}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={labels.home} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild triggerRefProp="buttonRef">
-            <FooterIconButton
-              buttonRef={settingsAnchorRef}
-              onPress={handleSettings}
-              testID="sidebar-settings"
-              accessibilityLabel={labels.settings}
-              icon={Settings}
-              theme={theme}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={labels.settings} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild triggerRefProp="buttonRef">
-            <FooterIconButton
-              onPress={handleStats}
-              testID="sidebar-stats"
-              accessibilityLabel={labels.stats}
-              icon={Gauge}
-              theme={theme}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <HeaderIconTooltipContent label={labels.stats} />
-          </TooltipContent>
-        </Tooltip>
-      </View>
+      <SidebarFooterNavRow
+        theme={theme}
+        labels={labels}
+        onHome={handleHome}
+        onSettings={handleSettings}
+        onStats={handleStats}
+        settingsButtonRef={settingsAnchorRef}
+      />
       <View style={styles.footerIconRow}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild triggerRefProp="buttonRef">
@@ -1217,18 +1122,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
-  },
-  footerIconButton: {
-    // 1.5x on compact to wrap the icons' matching compact upscale.
-    width: compactUp(theme.spacing[8], 1.5),
-    height: compactUp(theme.spacing[8], 1.5),
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    borderRadius: theme.borderRadius.lg,
-  },
-  footerIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   tooltipRow: {
     flexDirection: "row",

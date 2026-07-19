@@ -97,14 +97,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    // Matches the "New artifact"/"New schedule" button beside it: field-height
-    // touch target at every width.
-    minHeight: 44,
+    paddingVertical: theme.spacing[1],
+    // Matches the "New artifact"/"New schedule" button beside it and the status
+    // filter below it: the compact 32px control height at every width.
+    minHeight: 32,
     maxWidth: 240,
   },
   triggerActive: {

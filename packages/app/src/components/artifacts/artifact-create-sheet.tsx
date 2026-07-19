@@ -269,6 +269,7 @@ function useArtifactPersonalitySelection(input: {
   entries: readonly ProviderSnapshotEntry[];
   onApply: (values: PersonalityFormValues) => void;
   currentSelection: PersonalityCurrentSelection;
+  autoSelectDefault: boolean;
 }): RolePersonality {
   return useFormRolePersonality({
     serverId: input.serverId,
@@ -281,6 +282,9 @@ function useArtifactPersonalitySelection(input: {
       label: "Team's Artificer",
       roleLabel: "Artificer",
     },
+    // New artifacts default to the team's Artificer (or first available
+    // Artificer); editing keeps the artifact's stored model.
+    autoSelectDefault: input.autoSelectDefault,
   });
 }
 
@@ -415,6 +419,8 @@ export function ArtifactCreateSheet({
     entries: allProviderEntries ?? [],
     onApply: applyPersonality,
     currentSelection: personalityCurrentSelection,
+    // Editing prefills the artifact's saved model; only new artifacts default.
+    autoSelectDefault: !isEdit,
   });
   const {
     selectedPersonalityId,
@@ -492,7 +498,13 @@ export function ArtifactCreateSheet({
       setDescription(initialDescription);
       setSubmitError(null);
       setFieldResetKey((key) => key + 1);
-      setSelectedServerId(resolvedInitialServerId);
+      // Models and personalities are host-scoped, not project-scoped. On a
+      // blank open (no seed) the form hook auto-selects the first online host
+      // so the pickers populate before any project is chosen — forcing null
+      // here would stomp that auto-selection in the same commit.
+      if (resolvedInitialServerId) {
+        setSelectedServerId(resolvedInitialServerId);
+      }
       setWorkingDir(resolvedInitialCwd);
     }
     wasVisibleRef.current = visible;
@@ -653,7 +665,7 @@ export function ArtifactCreateSheet({
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Model</Text>
+        <Text style={styles.label}>Agent Personality or Model</Text>
         <RoleModelSelector
           providers={modelSelectorProviders}
           selectedProvider={selectedProvider ?? ""}

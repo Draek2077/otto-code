@@ -16,6 +16,15 @@
 //     choppy. The compositor-driven veil stays smooth regardless of mount cost.
 export const PAGE_TRANSITION_DURATION_MS = 300;
 
+// When a transition targets a workspace, the reveal is HELD until that
+// workspace's panes have actually mounted (RouteFadeContainer gates the reveal on
+// a readiness signal) — otherwise the veil lifts on the bare shell and the panes
+// pop in a beat later. This is the safety net: if a workspace never reports ready
+// (unexpected gate, disconnected host), reveal anyway after this long so the veil
+// can never get stuck covering the screen. Comfortably longer than a normal cold
+// mount, short enough to not read as a hang.
+export const PAGE_TRANSITION_MAX_HOLD_MS = 1500;
+
 // Open/close slide for the desktop left (agent list) and right (file explorer)
 // sidebars. Mobile sidebars already slide via the gesture-driven panel model
 // (mobile-panels/presentation.tsx) and do not use this.

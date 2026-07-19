@@ -47,7 +47,12 @@ const daemonConfig: MutableDaemonConfig = {
   mcp: { injectIntoAgents: true },
   browserTools: { enabled: false },
   providers: {},
-  metadataGeneration: { providers: [] },
+  metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
+  agentBehaviors: {
+    promptSuggestions: true,
+    agentProgressSummaries: true,
+    notifyOnFinishDefault: true,
+  },
   agentPersonalities: { personalities: [] },
   agentTeams: { teams: [] },
   modelTierOverrides: [],

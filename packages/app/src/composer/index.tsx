@@ -99,7 +99,7 @@ import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subage
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { AgentRateLimitInfo, GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { GitHubSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -1070,11 +1070,6 @@ export function Composer({
   // AI prompt suggestion (ghost-text watermark) + sent-message history stack.
   const promptSuggestion = useSessionStore((state) =>
     state.sessions[serverId]?.agentPromptSuggestions.get(agentId),
-  );
-  // Latest provider-reported plan rate-limit status (warning strip above the
-  // input; hidden entirely via the rateLimitWarningsEnabled setting).
-  const rateLimitInfo = useSessionStore((state) =>
-    state.sessions[serverId]?.agentRateLimits.get(agentId),
   );
   const sentPromptHistory = useSessionStore((state) =>
     state.sessions[serverId]?.sentPromptHistory.get(agentId),
@@ -2158,26 +2153,6 @@ export function Composer({
     () => (sendError ? <Text style={styles.sendErrorText}>{sendError}</Text> : null),
     [sendError],
   );
-  const rateLimitNode = useMemo(() => {
-    if (!appSettings.rateLimitWarningsEnabled || !rateLimitInfo) {
-      return null;
-    }
-    if (rateLimitInfo.status === "allowed") {
-      return null;
-    }
-    return (
-      <Text
-        style={
-          rateLimitInfo.status === "rejected"
-            ? styles.rateLimitTextRejected
-            : styles.rateLimitTextWarning
-        }
-        testID="composer-rate-limit-warning"
-      >
-        {formatRateLimitWarning(t, rateLimitInfo)}
-      </Text>
-    );
-  }, [appSettings.rateLimitWarningsEnabled, rateLimitInfo, t]);
   const githubEmptyText = githubSearchResultsQuery.isFetching
     ? t("composer.github.searching")
     : t("composer.github.noResults");
@@ -2195,7 +2170,6 @@ export function Composer({
           <ChatWidthBounds style={styles.inputAreaContent}>
             {queueList}
             {sendErrorNode}
-            {rateLimitNode}
 
             <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
               <AutocompletePopover
@@ -2459,55 +2433,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.palette.red[500],
     fontSize: theme.fontSize.sm,
   },
-  rateLimitTextWarning: {
-    color: theme.colors.statusWarning,
-    fontSize: theme.fontSize.sm,
-  },
-  rateLimitTextRejected: {
-    color: theme.colors.palette.red[500],
-    fontSize: theme.fontSize.sm,
-  },
 })) as unknown as Record<string, object>;
 
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
-
-// One compact line, segments joined with " · ": headline (window-specific),
-// then percent used, reset time, and overage note when reported.
-function formatRateLimitWarning(t: TFunction, info: AgentRateLimitInfo): string {
-  let windowLabel = t("composer.rateLimit.windowPlan");
-  if (info.limitType === "five_hour") {
-    windowLabel = t("composer.rateLimit.windowFiveHour");
-  } else if (info.limitType?.startsWith("seven_day")) {
-    windowLabel = t("composer.rateLimit.windowSevenDay");
-  }
-  const parts = [
-    info.status === "rejected"
-      ? t("composer.rateLimit.reached", { window: windowLabel })
-      : t("composer.rateLimit.approaching", { window: windowLabel }),
-  ];
-  if (typeof info.utilizationPercent === "number") {
-    parts.push(t("composer.rateLimit.usedPercent", { percent: info.utilizationPercent }));
-  }
-  if (info.resetsAt) {
-    const resetDate = new Date(info.resetsAt);
-    if (!Number.isNaN(resetDate.getTime())) {
-      const withinDay = resetDate.getTime() - Date.now() < 24 * 60 * 60 * 1000;
-      const time = withinDay
-        ? resetDate.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-        : resetDate.toLocaleString(undefined, {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          });
-      parts.push(t("composer.rateLimit.resets", { time }));
-    }
-  }
-  if (info.isUsingOverage) {
-    parts.push(t("composer.rateLimit.usingOverage"));
-  }
-  return parts.join(" · ");
-}
 
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);

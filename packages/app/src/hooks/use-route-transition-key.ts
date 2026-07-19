@@ -1,4 +1,5 @@
 import { usePathname } from "expo-router";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 
 /**
@@ -16,6 +17,17 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 export function useRouteTransitionKey(): string {
   const pathname = usePathname();
   const activeWorkspace = useActiveWorkspaceSelection();
+  const isCompact = useIsCompactFormFactor();
+  // Desktop settings is a persistent split view (its own sidebar + a content
+  // pane), and navigating between settings pages swaps only the pane. Collapsing
+  // every /settings* path into one key keeps this app-wide fade from veiling the
+  // settings sidebar on each section change — the settings screen runs its own
+  // pane-scoped fade instead (KeyedFadeContainer in settings-screen.tsx). On
+  // compact layouts every settings page is a full-screen swap, so those keep
+  // per-path keys and the normal full fade.
+  if (!isCompact && pathname.startsWith("/settings")) {
+    return "/settings";
+  }
   return activeWorkspace
     ? `${pathname}::${activeWorkspace.serverId}:${activeWorkspace.workspaceId}`
     : pathname;

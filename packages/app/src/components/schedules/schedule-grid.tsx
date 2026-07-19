@@ -7,6 +7,9 @@ import type { AggregatedSchedule } from "@/hooks/use-schedules";
 import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { resolveScheduleTitle } from "@/utils/schedule-format";
+import { useSessionStore } from "@/stores/session-store";
+import type { TranscriptViewDialogProps } from "@/components/transcript-view-dialog";
+import type { ScheduleRun } from "@otto-code/protocol/schedule/types";
 
 /** A schedule plus the client-derived fields the card renders. */
 export interface ScheduleRowView {
@@ -28,6 +31,27 @@ interface ScheduleGridProps {
    * upward rather than mounting a second sheet here.
    */
   onEditSchedule: (schedule: AggregatedSchedule) => void;
+  /**
+   * Open the read-only transcript dialog (owned by the screen) for a resolved
+   * run agent. The grid card resolves the agentId from the run history first.
+   */
+  onOpenTranscript: (target: NonNullable<TranscriptViewDialogProps["target"]>) => void;
+}
+
+/** Most recent run that actually spawned an agent, or null when none did. */
+function findLatestRunAgentId(runs: readonly ScheduleRun[]): string | null {
+  let best: { agentId: string; startedAt: number } | null = null;
+  for (const run of runs) {
+    if (!run.agentId) {
+      continue;
+    }
+    const startedAt = Date.parse(run.startedAt);
+    const at = Number.isNaN(startedAt) ? 0 : startedAt;
+    if (!best || at >= best.startedAt) {
+      best = { agentId: run.agentId, startedAt: at };
+    }
+  }
+  return best?.agentId ?? null;
 }
 
 /**
@@ -37,12 +61,20 @@ interface ScheduleGridProps {
  * host-scoped mutations (pause/resume/run/delete via the mutations hook + a
  * destructive confirm) and delegate editing upward.
  */
-export function ScheduleGrid({ rows, onEditSchedule }: ScheduleGridProps): ReactElement {
+export function ScheduleGrid({
+  rows,
+  onEditSchedule,
+  onOpenTranscript,
+}: ScheduleGridProps): ReactElement {
   return (
     <View style={styles.grid} testID="schedules-grid">
       {rows.map((row) => (
         <View key={`${row.schedule.serverId}:${row.schedule.id}`} style={styles.cell}>
-          <ScheduleGridCard row={row} onEditSchedule={onEditSchedule} />
+          <ScheduleGridCard
+            row={row}
+            onEditSchedule={onEditSchedule}
+            onOpenTranscript={onOpenTranscript}
+          />
         </View>
       ))}
     </View>
@@ -61,9 +93,11 @@ const NO_PENDING: ScheduleCardPending = {};
 function ScheduleGridCard({
   row,
   onEditSchedule,
+  onOpenTranscript,
 }: {
   row: ScheduleRowView;
   onEditSchedule: (schedule: AggregatedSchedule) => void;
+  onOpenTranscript: (target: NonNullable<TranscriptViewDialogProps["target"]>) => void;
 }): ReactElement {
   const { schedule } = row;
   const { id, serverId } = schedule;
@@ -105,6 +139,27 @@ function ScheduleGridCard({
     void runAction("runNow", () => mutations.runScheduleNow(id));
   }, [runAction, mutations, id]);
 
+  const handleViewLastRunChat = useCallback(() => {
+    void (async () => {
+      const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
+      if (!client) {
+        return;
+      }
+      // ScheduleSummary omits run history, so fetch the runs to resolve the
+      // most recent run's agentId before opening the read-only transcript.
+      const payload = await client.scheduleLogs({ id });
+      const agentId = findLatestRunAgentId(payload.runs);
+      if (!agentId) {
+        return;
+      }
+      onOpenTranscript({
+        serverId,
+        agentId,
+        title: resolveScheduleTitle(schedule),
+      });
+    })();
+  }, [id, serverId, schedule, onOpenTranscript]);
+
   const handleDelete = useCallback(() => {
     void (async () => {
       const confirmed = await confirmDialog({
@@ -136,6 +191,7 @@ function ScheduleGridCard({
       onResume={handleResume}
       onRunNow={handleRunNow}
       onDelete={handleDelete}
+      onViewLastRunChat={handleViewLastRunChat}
     />
   );
 }

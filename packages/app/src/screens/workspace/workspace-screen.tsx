@@ -229,6 +229,11 @@ import {
 import { useCrossProjectFileOpenGate } from "@/projects/use-cross-project-file-open";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
+import {
+  clearWorkspaceContentReady,
+  getWorkspaceContentReadyKey,
+  markWorkspaceContentReady,
+} from "@/stores/workspace-content-readiness";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -2332,6 +2337,24 @@ function WorkspaceScreenContent({
     persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
   );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
+  // Report pane-content readiness for the app-wide route-fade veil. A workspace
+  // is "ready" to reveal once it has a layout — the tab strip and panes render
+  // from it (see desktopSplitContent). On a cold or freshly-seeded workspace this
+  // flips null -> populated a beat after the shell mounts, so the veil holds its
+  // reveal until this fires (RouteFadeContainer) instead of lifting on the bare
+  // shell and letting the panes pop in after. Post-paint so it marks once the
+  // panes have painted; cleared on unmount so a pruned deck entry never reads as
+  // ready.
+  const contentReadyKey = getWorkspaceContentReadyKey(normalizedServerId, normalizedWorkspaceId);
+  const hasWorkspaceLayout = workspaceLayout !== null;
+  useEffect(() => {
+    if (!hasWorkspaceLayout) {
+      clearWorkspaceContentReady(contentReadyKey);
+      return;
+    }
+    markWorkspaceContentReady(contentReadyKey);
+    return () => clearWorkspaceContentReady(contentReadyKey);
+  }, [contentReadyKey, hasWorkspaceLayout]);
   const workspaceSetupSnapshot = useWorkspaceSetupStore((state) =>
     persistenceKey ? (state.snapshots[persistenceKey] ?? null) : null,
   );

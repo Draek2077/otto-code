@@ -28,6 +28,7 @@ import {
   Bot,
   Boxes,
   Gauge,
+  Groups,
   Keyboard,
   Stethoscope,
   Info,
@@ -43,6 +44,8 @@ import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { SidebarFooterNavRow } from "@/components/sidebar/sidebar-footer-nav";
+import { KeyedFadeContainer } from "@/components/route-fade-container";
 import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
@@ -117,6 +120,7 @@ import {
 import {
   HostConnectionsPage,
   HostAgentsPage,
+  HostTeamsPage,
   HostSettingsPage,
   HostProvidersPage,
   HostUsagePage,
@@ -137,6 +141,7 @@ import {
   buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
   buildSetupRoute,
+  buildStatsRoute,
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
@@ -157,6 +162,15 @@ export type SettingsView =
   | { kind: "host"; serverId: string; section: HostSectionSlug }
   | { kind: "projects" }
   | { kind: "project"; projectKey: string };
+
+// Counts mounted SettingsScreen instances. Navigating between settings route
+// groups (app section ↔ host section ↔ projects) replaces one SettingsScreen
+// with another; the incoming screen's first render happens while the outgoing
+// one is still mounted, so a nonzero count at first render means "arrived from
+// inside settings" — the desktop content pane should run its fade even though
+// it just mounted. A fresh entry from outside settings sees zero and skips it
+// (the app-wide route fade already covers that transition).
+let mountedSettingsScreens = 0;
 
 // Stable string identity for a settings view, used as the content error
 // boundary's reset key (navigating to a different view clears a caught error).
@@ -223,6 +237,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
+  { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
@@ -253,6 +268,8 @@ function renderHostSettingsContent(
       return <HostConnectionsPage serverId={view.serverId} />;
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
+    case "teams":
+      return <HostTeamsPage serverId={view.serverId} />;
     case "workspaces":
       return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":
@@ -393,6 +410,8 @@ interface GeneralSectionProps {
   handleAppStartScreenChange: (screen: AppStartScreen) => void;
   handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
+  handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
+  handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
@@ -479,6 +498,8 @@ function GeneralSection({
   handleAppStartScreenChange,
   handleSuggestedTasksEnabledChange,
   handleSuggestedTasksDefaultModeChange,
+  handlePromptSuggestionsEnabledChange,
+  handleRateLimitWarningsEnabledChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLinkOpenBehaviorChange,
@@ -575,48 +596,6 @@ function GeneralSection({
               onValueChange={handleAppStartScreenChange}
               options={appStartScreenOptions}
               testID="settings-app-start-screen"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Suggested tasks</Text>
-              <Text style={settingsStyles.rowHint}>
-                Show a card when an agent proposes follow-up work you can start later. Turn off to
-                suppress these entirely.
-              </Text>
-            </View>
-            <Switch
-              value={settings.suggestedTasksEnabled}
-              onValueChange={handleSuggestedTasksEnabledChange}
-              accessibilityLabel="Suggested tasks"
-              testID="settings-suggested-tasks-enabled-switch"
-            />
-          </View>
-          {settings.suggestedTasksEnabled ? (
-            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Suggested tasks default</Text>
-                <Text style={settingsStyles.rowHint}>{suggestedTasksDefaultModeDescription}</Text>
-              </View>
-              <SegmentedControl
-                size="sm"
-                value={settings.suggestedTasksDefaultMode}
-                onValueChange={handleSuggestedTasksDefaultModeChange}
-                options={SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS}
-                testID="settings-suggested-tasks-default-mode"
-              />
-            </View>
-          ) : null}
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
-              <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
-            </View>
-            <SegmentedControl
-              size="sm"
-              value={settings.sendBehavior}
-              onValueChange={handleSendBehaviorChange}
-              options={sendBehaviorOptions}
             />
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
@@ -728,6 +707,82 @@ function GeneralSection({
               />
             </View>
           ) : null}
+        </View>
+      </SettingsSection>
+      <SettingsSection title="Agents">
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Suggested tasks</Text>
+              <Text style={settingsStyles.rowHint}>
+                Show a card when an agent proposes follow-up work you can start later. Turn off to
+                suppress these entirely.
+              </Text>
+            </View>
+            <Switch
+              value={settings.suggestedTasksEnabled}
+              onValueChange={handleSuggestedTasksEnabledChange}
+              accessibilityLabel="Suggested tasks"
+              testID="settings-suggested-tasks-enabled-switch"
+            />
+          </View>
+          {settings.suggestedTasksEnabled ? (
+            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>Suggested tasks default</Text>
+                <Text style={settingsStyles.rowHint}>{suggestedTasksDefaultModeDescription}</Text>
+              </View>
+              <SegmentedControl
+                size="sm"
+                value={settings.suggestedTasksDefaultMode}
+                onValueChange={handleSuggestedTasksDefaultModeChange}
+                options={SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS}
+                testID="settings-suggested-tasks-default-mode"
+              />
+            </View>
+          ) : null}
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
+              <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
+            </View>
+            <SegmentedControl
+              size="sm"
+              value={settings.sendBehavior}
+              onValueChange={handleSendBehaviorChange}
+              options={sendBehaviorOptions}
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>AI prompt suggestions</Text>
+              <Text style={settingsStyles.rowHint}>
+                After a turn, show the agent&apos;s predicted next prompt as ghost text in the
+                message box; press Tab to accept it.
+              </Text>
+            </View>
+            <Switch
+              value={settings.promptSuggestionsEnabled}
+              onValueChange={handlePromptSuggestionsEnabledChange}
+              accessibilityLabel="AI prompt suggestions"
+              testID="settings-prompt-suggestions-switch"
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Plan rate-limit warnings</Text>
+              <Text style={settingsStyles.rowHint}>
+                Show a warning above the message box when your Claude plan usage nears or hits a
+                rate limit.
+              </Text>
+            </View>
+            <Switch
+              value={settings.rateLimitWarningsEnabled}
+              onValueChange={handleRateLimitWarningsEnabledChange}
+              accessibilityLabel="Plan rate-limit warnings"
+              testID="settings-rate-limit-warnings-switch"
+            />
+          </View>
         </View>
       </SettingsSection>
       {interfaceModeValue === "developer" ? (
@@ -1357,6 +1412,8 @@ interface SettingsSidebarProps {
   onSelectProjects: () => void;
   onAddHost: () => void;
   onBackToWorkspace: () => void;
+  onNavigateHome: () => void;
+  onNavigateStats: () => void;
   activeHostServerId: string | null;
   layout: "desktop" | "mobile";
 }
@@ -1369,6 +1426,8 @@ function SettingsSidebar({
   onSelectProjects,
   onAddHost,
   onBackToWorkspace,
+  onNavigateHome,
+  onNavigateStats,
   activeHostServerId,
   layout,
 }: SettingsSidebarProps) {
@@ -1455,6 +1514,21 @@ function SettingsSidebar({
   const paddingTopStyle = useMemo(
     () => ({ height: Math.max(0, padding.top - SIDEBAR_TOP_SPACER_TRIM) }),
     [padding.top],
+  );
+
+  // The Settings icon marks the surface the user is already on; pressing it
+  // just returns to the General section rather than leaving settings.
+  const handleFooterSettings = useCallback(() => {
+    onSelectSection("general");
+  }, [onSelectSection]);
+  const footerLabels = useMemo(
+    () => ({
+      home: t("sidebar.actions.home"),
+      settings: t("sidebar.actions.settings"),
+      // Temporary label (English-only) — mirrors the workspace sidebar footer.
+      stats: "Metrics",
+    }),
+    [t],
   );
 
   const sidebarBody = (
@@ -1555,6 +1629,19 @@ function SettingsSidebar({
         <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
           {sidebarBody}
         </ScrollView>
+
+        {/* Same Home / Settings / Metrics bar as the workspace sidebar footer,
+            so Home and Metrics remain one click away from inside settings. */}
+        <View style={sidebarStyles.footer}>
+          <SidebarFooterNavRow
+            theme={theme}
+            labels={footerLabels}
+            onHome={onNavigateHome}
+            onSettings={handleFooterSettings}
+            onStats={onNavigateStats}
+            activeItem="settings"
+          />
+        </View>
 
         {/* Resize handle - absolutely positioned over right border */}
         <GestureDetector gesture={resizeGesture}>
@@ -1677,6 +1764,20 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const handleSuggestedTasksDefaultModeChange = useCallback(
     (mode: SuggestedTasksDefaultMode) => {
       void updateSettings({ suggestedTasksDefaultMode: mode });
+    },
+    [updateSettings],
+  );
+
+  const handlePromptSuggestionsEnabledChange = useCallback(
+    (promptSuggestionsEnabled: boolean) => {
+      void updateSettings({ promptSuggestionsEnabled });
+    },
+    [updateSettings],
+  );
+
+  const handleRateLimitWarningsEnabledChange = useCallback(
+    (rateLimitWarningsEnabled: boolean) => {
+      void updateSettings({ rateLimitWarningsEnabled });
     },
     [updateSettings],
   );
@@ -1927,6 +2028,30 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     });
   }, [guardProjectSettingsExit, router]);
 
+  // Sidebar footer nav — leaves settings entirely, mirroring the workspace
+  // sidebar's Home and Metrics buttons.
+  const handleNavigateHome = useCallback(() => {
+    guardProjectSettingsExit(() => {
+      router.push(buildOpenProjectRoute());
+    });
+  }, [guardProjectSettingsExit, router]);
+
+  const handleNavigateStats = useCallback(() => {
+    guardProjectSettingsExit(() => {
+      router.push(buildStatsRoute());
+    });
+  }, [guardProjectSettingsExit, router]);
+
+  // See mountedSettingsScreens: fade the content pane on mount only when this
+  // screen replaced another settings screen (cross-route-group navigation).
+  const [contentFadeOnMount] = useState(() => mountedSettingsScreens > 0);
+  useEffect(() => {
+    mountedSettingsScreens += 1;
+    return () => {
+      mountedSettingsScreens -= 1;
+    };
+  }, []);
+
   const detailHeader = ((): {
     title: string;
     Icon: ComponentType<{ size: number; color: string }>;
@@ -1974,6 +2099,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleAppStartScreenChange={handleAppStartScreenChange}
               handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
+              handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
+              handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
@@ -2083,6 +2210,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               onSelectProjects={handleSelectProjects}
               onAddHost={handleAddHost}
               onBackToWorkspace={handleBackToWorkspace}
+              onNavigateHome={handleNavigateHome}
+              onNavigateStats={handleNavigateStats}
               activeHostServerId={activeHostServerId}
               layout="mobile"
             />
@@ -2130,6 +2259,15 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // Desktop split view — mirrors AppContainer: sidebar owns the titlebar drag
   // region + traffic-light padding; detail pane renders whatever header the
   // selected section provides.
+  const detailHeaderLeft = detailHeader ? (
+    <>
+      <HeaderIconBadge>
+        <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+      </HeaderIconBadge>
+      <ScreenTitle testID="settings-detail-header-title">{detailHeader.title}</ScreenTitle>
+      {detailHeader.titleAccessory}
+    </>
+  ) : null;
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>
@@ -2141,46 +2279,42 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           onSelectProjects={handleSelectProjects}
           onAddHost={handleAddHost}
           onBackToWorkspace={handleBackToWorkspace}
+          onNavigateHome={handleNavigateHome}
+          onNavigateStats={handleNavigateStats}
           activeHostServerId={activeHostServerId}
           layout="desktop"
         />
         <View style={desktopStyles.contentPane}>
-          <ScreenHeader
-            borderless={!detailHeader}
-            windowControlsPaddingRole="detailHeader"
-            left={
-              detailHeader ? (
-                <>
-                  <HeaderIconBadge>
-                    <detailHeader.Icon
-                      size={theme.iconSize.md}
-                      color={theme.colors.foregroundMuted}
-                    />
-                  </HeaderIconBadge>
-                  <ScreenTitle testID="settings-detail-header-title">
-                    {detailHeader.title}
-                  </ScreenTitle>
-                  {detailHeader.titleAccessory}
-                </>
-              ) : null
-            }
-            leftStyle={desktopStyles.detailLeft}
-          />
-          <View style={styles.scrollView}>
-            <ScrollView
-              ref={scrollRef}
-              style={styles.scrollView}
-              contentContainerStyle={insetBottomStyle}
-              onLayout={webScrollbar.onLayout}
-              onScroll={webScrollbar.onScroll}
-              onContentSizeChange={webScrollbar.onContentSizeChange}
-              scrollEventThrottle={16}
-              showsVerticalScrollIndicator={!showWebScrollbar}
-            >
-              <View style={styles.content}>{content}</View>
-            </ScrollView>
-            {webScrollbar.overlay}
-          </View>
+          {/* Pane-scoped page fade: the app-wide RouteFadeContainer treats all
+              /settings* routes as one page on desktop (see
+              use-route-transition-key.ts), so section changes fade only this
+              pane and never veil the settings sidebar. */}
+          <KeyedFadeContainer
+            transitionKey={settingsViewKey(view)}
+            fadeOnMount={contentFadeOnMount}
+          >
+            <ScreenHeader
+              borderless={!detailHeader}
+              windowControlsPaddingRole="detailHeader"
+              left={detailHeaderLeft}
+              leftStyle={desktopStyles.detailLeft}
+            />
+            <View style={styles.scrollView}>
+              <ScrollView
+                ref={scrollRef}
+                style={styles.scrollView}
+                contentContainerStyle={insetBottomStyle}
+                onLayout={webScrollbar.onLayout}
+                onScroll={webScrollbar.onScroll}
+                onContentSizeChange={webScrollbar.onContentSizeChange}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={!showWebScrollbar}
+              >
+                <View style={styles.content}>{content}</View>
+              </ScrollView>
+              {webScrollbar.overlay}
+            </View>
+          </KeyedFadeContainer>
         </View>
       </View>
       {addHostModals}
@@ -2339,6 +2473,16 @@ const sidebarStyles = StyleSheet.create((theme) => ({
   mobileContainer: {
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
+  },
+  // Matches the workspace sidebar's footer chrome (left-sidebar.tsx
+  // `sidebarFooter`) so the nav bar sits identically on both sidebars.
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   list: {
     paddingVertical: theme.spacing[2],

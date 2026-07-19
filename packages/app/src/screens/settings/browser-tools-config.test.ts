@@ -12,7 +12,12 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: browserToolsEnabled },
     providers: {},
-    metadataGeneration: { providers: [] },
+    metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    },
     agentPersonalities: { personalities: [] },
     agentTeams: { teams: [] },
     modelTierOverrides: [],

@@ -547,6 +547,9 @@ function useSchedulePersonalityBinding(input: {
       originalBinding,
       teamSentinel: TEAM_SCHEDULER_PERSONALITY_SENTINEL,
     },
+    // New schedules default to the team's Scheduler (or first available
+    // Scheduler); editing keeps the schedule's stored pick.
+    autoSelectDefault: schedule === undefined && state.targetKind === "new-agent",
   });
 }
 
@@ -849,7 +852,7 @@ function ScheduleTargetFields({
       ) : null}
 
       {state.disclosure.showModelField ? (
-        <Field label="Model">
+        <Field label="Agent Personality or Model">
           <RoleModelSelector
             providers={state.modelSelectorProviders}
             selectedProvider={state.selectedProvider ?? ""}

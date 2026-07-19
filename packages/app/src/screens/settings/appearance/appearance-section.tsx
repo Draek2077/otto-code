@@ -720,20 +720,6 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handlePromptSuggestionsEnabledChange = useCallback(
-    (promptSuggestionsEnabled: boolean) => {
-      void updateSettings({ promptSuggestionsEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handleRateLimitWarningsEnabledChange = useCallback(
-    (rateLimitWarningsEnabled: boolean) => {
-      void updateSettings({ rateLimitWarningsEnabled });
-    },
-    [updateSettings],
-  );
-
   const handleGroupConsecutiveActionsChange = useCallback(
     (groupConsecutiveActions: boolean) => {
       void updateSettings({ groupConsecutiveActions });
@@ -937,111 +923,6 @@ export function AppearanceSection() {
           />
         </View>
       </SettingsSection>
-      <SettingsSection title={t("settings.appearance.agents.title")}>
-        <View style={settingsStyles.card}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.blackChatBackground.title")}
-            hint={t("settings.appearance.agents.blackChatBackground.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
-            )}
-            value={settings.blackTabBackground}
-            withBorder={false}
-            onValueChange={handleBlackTabBackgroundChange}
-            testID="settings-black-tab-background-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
-            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
-            )}
-            value={settings.groupConsecutiveActions}
-            withBorder
-            onValueChange={handleGroupConsecutiveActionsChange}
-            testID="settings-group-consecutive-actions-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.autoExpandReasoning.title")}
-            hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
-            )}
-            value={settings.autoExpandReasoning}
-            withBorder
-            onValueChange={handleAutoExpandReasoningChange}
-            testID="settings-auto-expand-reasoning-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.promptSuggestions.title")}
-            hint={t("settings.appearance.agents.promptSuggestions.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.promptSuggestions.accessibilityLabel",
-            )}
-            value={settings.promptSuggestionsEnabled}
-            withBorder
-            onValueChange={handlePromptSuggestionsEnabledChange}
-            testID="settings-prompt-suggestions-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.rateLimitWarnings.title")}
-            hint={t("settings.appearance.agents.rateLimitWarnings.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.rateLimitWarnings.accessibilityLabel",
-            )}
-            value={settings.rateLimitWarningsEnabled}
-            withBorder
-            onValueChange={handleRateLimitWarningsEnabledChange}
-            testID="settings-rate-limit-warnings-switch"
-          />
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.hideMessageDetails.title")}
-            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
-            )}
-            value={settings.hideChatMessageDetails}
-            withBorder
-            onValueChange={handleHideChatMessageDetailsChange}
-            testID="settings-hide-message-details-switch"
-          />
-          <MessageTimestampRow
-            value={settings.chatTimestampDisplay}
-            onChange={handleChatTimestampDisplayChange}
-          />
-          {/* i18n: English-only pending a translation pass (bubble gradient). */}
-          <LayoutToggleRow
-            title="Gradient"
-            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
-            accessibilityLabel="Gradient"
-            value={settings.chatBubbleGradient}
-            withBorder
-            onValueChange={handleChatBubbleGradientChange}
-            testID="settings-chat-bubble-gradient-switch"
-          />
-          {/* i18n: English-only pending a translation pass (wrap long lines). */}
-          <LayoutToggleRow
-            title="Wrap long lines"
-            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
-            accessibilityLabel="Wrap long lines"
-            value={settings.wrapCodeLines}
-            withBorder
-            onValueChange={handleWrapCodeLinesChange}
-            testID="settings-wrap-code-lines-switch"
-          />
-          {/* i18n: English-only pending a translation pass (auto-clear sub-agents). */}
-          <LayoutToggleRow
-            title="Auto-clear completed sub-agents"
-            hint="Automatically remove finished sub-agents from a chat's track once they settle, instead of leaving them for a manual clear. Their token totals stay counted in the track header."
-            accessibilityLabel="Auto-clear completed sub-agents"
-            value={settings.autoClearCompletedSubagents}
-            withBorder
-            onValueChange={handleAutoClearCompletedSubagentsChange}
-            testID="settings-auto-clear-completed-subagents-switch"
-          />
-          <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
-        </View>
-      </SettingsSection>
       {showLayoutSection ? (
         <SettingsSection title={t("settings.appearance.layout.title")}>
           <View style={settingsStyles.card}>
@@ -1098,6 +979,89 @@ export function AppearanceSection() {
           </View>
         </SettingsSection>
       ) : null}
+      <SettingsSection title="Chats">
+        <View style={settingsStyles.card}>
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.blackChatBackground.title")}
+            hint={t("settings.appearance.agents.blackChatBackground.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
+            )}
+            value={settings.blackTabBackground}
+            withBorder={false}
+            onValueChange={handleBlackTabBackgroundChange}
+            testID="settings-black-tab-background-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
+            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
+            )}
+            value={settings.groupConsecutiveActions}
+            withBorder
+            onValueChange={handleGroupConsecutiveActionsChange}
+            testID="settings-group-consecutive-actions-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.autoExpandReasoning.title")}
+            hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
+            )}
+            value={settings.autoExpandReasoning}
+            withBorder
+            onValueChange={handleAutoExpandReasoningChange}
+            testID="settings-auto-expand-reasoning-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.hideMessageDetails.title")}
+            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
+            )}
+            value={settings.hideChatMessageDetails}
+            withBorder
+            onValueChange={handleHideChatMessageDetailsChange}
+            testID="settings-hide-message-details-switch"
+          />
+          <MessageTimestampRow
+            value={settings.chatTimestampDisplay}
+            onChange={handleChatTimestampDisplayChange}
+          />
+          {/* i18n: English-only pending a translation pass (bubble gradient). */}
+          <LayoutToggleRow
+            title="Gradient"
+            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
+            accessibilityLabel="Gradient"
+            value={settings.chatBubbleGradient}
+            withBorder
+            onValueChange={handleChatBubbleGradientChange}
+            testID="settings-chat-bubble-gradient-switch"
+          />
+          {/* i18n: English-only pending a translation pass (wrap long lines). */}
+          <LayoutToggleRow
+            title="Wrap long lines"
+            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
+            accessibilityLabel="Wrap long lines"
+            value={settings.wrapCodeLines}
+            withBorder
+            onValueChange={handleWrapCodeLinesChange}
+            testID="settings-wrap-code-lines-switch"
+          />
+          {/* i18n: English-only pending a translation pass (auto-clear sub-agents). */}
+          <LayoutToggleRow
+            title="Auto-clear completed sub-agents"
+            hint="Automatically remove finished sub-agents from a chat's track once they settle, instead of leaving them for a manual clear. Their token totals stay counted in the track header."
+            accessibilityLabel="Auto-clear completed sub-agents"
+            value={settings.autoClearCompletedSubagents}
+            withBorder
+            onValueChange={handleAutoClearCompletedSubagentsChange}
+            testID="settings-auto-clear-completed-subagents-switch"
+          />
+          <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
+        </View>
+      </SettingsSection>
       {/* Visualizer settings moved to their own top-level section
           (visualizer-section.tsx) — the rows kept their i18n keys. */}
       <SettingsSection title={t("settings.appearance.fonts.title")}>
