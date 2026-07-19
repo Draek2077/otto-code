@@ -11,14 +11,8 @@
   <a href="https://github.com/Draek2077/otto-code/releases">
     <img src="https://img.shields.io/github/v/release/Draek2077/otto-code?style=flat&logo=github" alt="GitHub release">
   </a>
-  <a href="https://x.com/moboudra">
-    <img src="https://img.shields.io/badge/%40moboudra-555?logo=x" alt="X">
-  </a>
-  <a href="https://discord.gg/jz8T2uahpH">
-    <img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord">
-  </a>
-  <a href="https://www.reddit.com/r/OttoAI/">
-    <img src="https://img.shields.io/badge/Reddit-555?logo=reddit" alt="Reddit">
+  <a href="https://github.com/Draek2077/otto-code/issues">
+    <img src="https://img.shields.io/github/issues/Draek2077/otto-code?style=flat&logo=github" alt="GitHub issues">
   </a>
 </p>
 
@@ -38,8 +32,29 @@
 </p>
 
 > [!NOTE]
-> I'm a solo maintainer and don't always keep up with GitHub Issues daily.
-> If something is urgent or blocking you, [Discord](https://discord.gg/jz8T2uahpH) is the fastest place to reach me.
+> This is a one-person project run in spare time, so Issues don't always get a same-day reply.
+> [Open an issue](https://github.com/Draek2077/otto-code/issues) anyway — it's the only place I track things.
+
+---
+
+## Why I'm building this
+
+I'm Philippe. Otto isn't a startup and I'm not trying to sell you anything — it's the
+environment I want to work in, and the way I'm getting better at agentic coding. Most of
+Otto is written by the agents Otto runs, which is either the point or the joke, depending
+on the day.
+
+The problem I keep hitting: agents can now do an enormous amount of work on their own, and
+it's genuinely hard to see what they did, what it cost, and where it went sideways. So the
+work here leans toward **observability and accounting** — real per-subagent token and cost
+numbers, a live visualizer of the orchestration graph, browser-verified previews so an agent
+proves a change instead of just claiming it — and toward **pulling good open-source pieces
+into one setup that actually works end to end**, instead of five tools that half-talk to
+each other.
+
+That's the whole thesis: let AI do the autonomous work, but make the operation legible while
+it happens. If that matches how you work, I'd like the help — issues, comments, and PRs all
+welcome.
 
 ---
 
@@ -189,11 +204,42 @@ based on. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Credits & attribution
 
+Otto is mostly other people's good work, assembled. Two projects carry it, and I'd rather
+name them properly than bury them in a footer.
+
+### Paseo — by Mohamed Boudra
+
 Otto is a modified fork of **[Paseo](https://github.com/getpaseo)**, created by
 **Mohamed Boudra** and contributors, © 2025–present. Paseo is licensed under
 AGPL-3.0; Otto continues under the same license as required by its copyleft terms.
 
+Mo got the hard parts right before I ever showed up: agent process lifecycle, a clean
+WebSocket protocol, genuinely cross-platform clients, an end-to-end encrypted relay.
+That's why the work here can be features instead of plumbing. Otto keeps the full
+foundation intact with upstream history preserved.
+→ [Sponsor Mo](https://github.com/sponsors/boudra)
+
+### Agent Flow — by Simon Patole
+
+Otto's **Visualizer** — the live node-graph of agents, subagents, tool calls, and timeline
+that makes an autonomous run something you can watch instead of guess at — is the render
+layer of **[Agent Flow](https://github.com/patoles/agent-flow)** (Apache-2.0) by
+**[Simon Patole](https://github.com/patoles)**, vendored as a git subtree.
+
+It's beautiful work, and it fit because Simon kept rendering separate from event collection
+behind a small documented bridge protocol. That one decision let Otto drive the same graph
+from its own provider-neutral event stream, so it lights up for Claude, Codex, OpenCode, or
+a local model alike — not just the runtime the original ingests. Adapting it has been the
+most enjoyable part of building Otto. Carried patches and the Apache-2.0 state-changes
+notice live in `vendor/agent-flow/OTTO-PATCHES.md`; upstream PRs are preferred over carrying
+them. Agent Flow's name and logos are its own and Otto never ships them as its branding —
+the feature is called "Visualizer" for exactly that reason.
+→ [Star Agent Flow](https://github.com/patoles/agent-flow)
+
+### Notices
+
 The original copyright notice is preserved verbatim in [LICENSE](LICENSE). A summary
 of what Otto changes relative to Paseo, along with full attribution, lives in
 [NOTICE](NOTICE). Otto is an independent project and is not endorsed by or affiliated
-with the Paseo project or its authors.
+with the Paseo project, the Agent Flow project, or their authors. Otto takes no
+sponsorships of its own — support goes upstream.

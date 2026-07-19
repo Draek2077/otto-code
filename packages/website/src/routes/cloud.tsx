@@ -69,14 +69,14 @@ function SignupForm() {
     return (
       <section className="space-y-3">
         <p className="text-white/70">
-          Got it. I&apos;ll be in touch. If you don&apos;t hear back within a week, ping me on{" "}
+          Got it. I&apos;ll be in touch. If you don&apos;t hear back within a week, open an{" "}
           <a
-            href="https://discord.gg/jz8T2uahpH"
+            href="https://github.com/Draek2077/otto-code/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Discord
+            issue on GitHub
           </a>
           .
         </p>
@@ -130,8 +130,8 @@ function SignupForm() {
       {error && (
         <p className="text-sm text-red-400">
           {error === "webhook not configured"
-            ? "The form isn't wired up yet. Try Discord for now."
-            : "Something went wrong. Try again or DM me on Discord."}
+            ? "The form isn't wired up yet. Open a GitHub issue for now."
+            : "Something went wrong. Try again, or reach me through GitHub issues."}
         </p>
       )}
 
@@ -146,12 +146,12 @@ function SignupForm() {
         <p className="text-sm text-white/50">
           Or{" "}
           <a
-            href="https://discord.gg/jz8T2uahpH"
+            href="https://github.com/Draek2077/otto-code/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            DM me on Discord
+            reach me on GitHub
           </a>
           .
         </p>
