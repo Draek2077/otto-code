@@ -42,7 +42,6 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  GitPullRequest,
   Settings,
   MoreVertical,
   Plus,
@@ -122,14 +121,12 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attention";
-import type { PrHint } from "@/git/use-pr-status-query";
 import {
   buildSidebarProjectRowModel,
   resolveSidebarProjectIconTarget,
   type SidebarProjectHostTarget,
 } from "@/utils/sidebar-project-row-model";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
-import { openLink } from "@/utils/open-link";
 import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import {
@@ -153,7 +150,6 @@ const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedPlus = withUnistyles(Plus);
@@ -177,29 +173,9 @@ const foregroundMutedSmMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
   size: theme.iconSize.sm,
 });
-const redColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.red[500],
-});
 const amberColorMapping = (theme: Theme) => ({
   color: theme.colors.palette.amber[500],
 });
-const greenColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.green[500],
-});
-const purpleColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.purple[500],
-});
-
-function getPrIconUniMapping(state: PrHint["state"]) {
-  switch (state) {
-    case "merged":
-      return purpleColorMapping;
-    case "open":
-      return greenColorMapping;
-    case "closed":
-      return redColorMapping;
-  }
-}
 
 function isWorkspaceSelected(input: {
   selection: ActiveWorkspaceSelection | null;
@@ -305,57 +281,6 @@ interface WorkspaceRowInnerProps {
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
-export function PrBadge({ hint }: { hint: PrHint }) {
-  const { t } = useTranslation();
-  const [isHovered, setIsHovered] = useState(false);
-
-  const handlePressIn = useCallback((event: GestureResponderEvent) => {
-    event.stopPropagation();
-  }, []);
-
-  const handlePress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
-      void openLink(hint.url);
-    },
-    [hint.url],
-  );
-
-  const handleHoverIn = useCallback(() => setIsHovered(true), []);
-  const handleHoverOut = useCallback(() => setIsHovered(false), []);
-
-  const textStyle = isHovered ? prBadgeTextHoveredCombined : prBadgeStyles.text;
-  const iconUniProps = isHovered ? foregroundColorMapping : getPrIconUniMapping(hint.state);
-
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={t("workspace.git.pr.accessibility.pullRequest", {
-        number: hint.number,
-      })}
-      hitSlop={4}
-      onPressIn={handlePressIn}
-      onPress={handlePress}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
-      style={prBadgePressableStyle}
-    >
-      {isHovered ? (
-        <ThemedExternalLink size={12} uniProps={iconUniProps} />
-      ) : (
-        <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
-      )}
-      <Text style={textStyle} numberOfLines={1}>
-        {hint.number}
-      </Text>
-    </Pressable>
-  );
-}
-
-function prBadgePressableStyle({ pressed }: PressableStateCallbackType) {
-  return [prBadgeStyles.badge, pressed && prBadgeStyles.badgePressed];
-}
-
 function projectKebabStyle({
   hovered = false,
 }: PressableStateCallbackType & { hovered?: boolean }) {
@@ -380,28 +305,6 @@ function getProjectWorkspaceRowStyle({
 }
 
 function noop() {}
-
-const prBadgeStyles = StyleSheet.create((theme) => ({
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  badgePressed: {
-    opacity: 0.82,
-  },
-  text: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    lineHeight: 14,
-    color: theme.colors.foregroundMuted,
-  },
-  textHovered: {
-    color: theme.colors.foreground,
-  },
-}));
-
-const prBadgeTextHoveredCombined = [prBadgeStyles.text, prBadgeStyles.textHovered];
 
 function StatusDotOverlay({
   dotColorStyle,

@@ -35,7 +35,7 @@ import type { PrHint } from "@/git/use-pr-status-query";
 import { openLink } from "@/utils/open-link";
 import { shortenPath } from "@/utils/shorten-path";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
-import { PrBadge } from "@/components/sidebar-workspace-list";
+import { PrBadge } from "@/components/sidebar/pr-badge";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { useIsCompactFormFactor } from "@/constants/layout";

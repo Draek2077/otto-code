@@ -18,7 +18,7 @@ import { isNative } from "@/constants/platform";
 import {
   WorkspaceTabIcon,
   type WorkspaceTabPresentation,
-} from "@/screens/workspace/workspace-tab-presentation";
+} from "@/screens/workspace/workspace-tab-icon";
 import type { Theme } from "@/styles/theme";
 import type { ClearableSubagentRow } from "./clear-completed-subagents";
 import type { SubagentRow } from "./select";
