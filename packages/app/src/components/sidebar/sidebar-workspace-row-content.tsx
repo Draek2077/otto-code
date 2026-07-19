@@ -1,20 +1,7 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-  type GestureResponderEvent,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { ActivityIndicator, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import {
-  ExternalLink,
-  GitPullRequest,
-  Globe,
-  SquareTerminal,
-} from "@/components/icons/material-icons";
+import { Globe, SquareTerminal } from "@/components/icons/material-icons";
 import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-bucket-icon";
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
@@ -25,18 +12,13 @@ import { useAppSettings } from "@/hooks/use-settings";
 import type { Theme } from "@/styles/theme";
 import type { PrHint } from "@/git/use-pr-status-query";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
-import { openLink } from "@/utils/open-link";
+import { PrBadge } from "@/components/sidebar/pr-badge";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const blueColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[500] });
-const greenColorMapping = (theme: Theme) => ({ color: theme.colors.palette.green[500] });
 const redColorMapping = (theme: Theme) => ({ color: theme.colors.palette.red[500] });
-const purpleColorMapping = (theme: Theme) => ({ color: theme.colors.palette.purple[500] });
 
-const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitHostingIcon = withUnistyles(GitHostingIcon);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedGlobe = withUnistyles(Globe);
@@ -206,53 +188,6 @@ function WorkspaceStatusIndicator({
   return <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done" />;
 }
 
-function PrBadge({ hint }: { hint: PrHint }) {
-  const [isHovered, setIsHovered] = useState(false);
-  const handlePress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
-      void openLink(hint.url);
-    },
-    [hint.url],
-  );
-  const textStyle = useMemo(
-    () => (isHovered ? [prBadgeStyles.text, prBadgeStyles.textHovered] : prBadgeStyles.text),
-    [isHovered],
-  );
-  const iconUniProps = isHovered ? foregroundColorMapping : getPrIconUniMapping(hint.state);
-
-  const handlePressIn = useCallback((event: GestureResponderEvent) => event.stopPropagation(), []);
-  const handleHoverIn = useCallback(() => setIsHovered(true), []);
-  const handleHoverOut = useCallback(() => setIsHovered(false), []);
-
-  const pressableStyle = useMemo(
-    () => [prBadgeStyles.badge, isHovered && prBadgeStyles.badgePressed],
-    [isHovered],
-  );
-
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`Pull request #${hint.number}`}
-      hitSlop={4}
-      onPressIn={handlePressIn}
-      onPress={handlePress}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
-      style={pressableStyle}
-    >
-      {isHovered ? (
-        <ThemedExternalLink size={12} uniProps={iconUniProps} />
-      ) : (
-        <ThemedGitPullRequest size={12} uniProps={iconUniProps} />
-      )}
-      <Text style={textStyle} numberOfLines={1}>
-        {hint.number}
-      </Text>
-    </Pressable>
-  );
-}
-
 function ChecksBadge({
   checks,
   provider,
@@ -270,37 +205,6 @@ function ChecksBadge({
     </View>
   );
 }
-
-function getPrIconUniMapping(state: PrHint["state"]) {
-  switch (state) {
-    case "merged":
-      return purpleColorMapping;
-    case "open":
-      return greenColorMapping;
-    case "closed":
-      return redColorMapping;
-  }
-}
-
-const prBadgeStyles = StyleSheet.create((theme) => ({
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  badgePressed: {
-    opacity: 0.82,
-  },
-  text: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-    lineHeight: 14,
-    color: theme.colors.foregroundMuted,
-  },
-  textHovered: {
-    color: theme.colors.foreground,
-  },
-}));
 
 const checksBadgeStyles = StyleSheet.create((theme) => ({
   badge: {
