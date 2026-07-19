@@ -58,6 +58,10 @@ import { claudeProjectDirSync } from "./project-dir.js";
 import { readClaudeModelUsageSlices, verifyClaudeTreePricing } from "./claude-pricing.js";
 import { readUsageTotals, toClaudeSubagentUsage } from "./claude-subagent-usage.js";
 import { WorkflowTranscriptWatcher } from "./workflow-transcript-watcher.js";
+import {
+  TaskTranscriptWatcher,
+  readClaudeSubagentAgentIdFromToolResult,
+} from "./task-transcript-watcher.js";
 import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
@@ -2055,6 +2059,11 @@ class ClaudeContextUsageState {
   private streamRequestOutputTokens: number | undefined;
   private compactedContextWindowUsedTokens: number | undefined;
   private completedResultTurns = 0;
+  // Watermark for de-cumulating `total_cost_usd`: the SDK reports it CUMULATIVE
+  // across all turns of one CLI process (proven 2026-07-19: 0.59 → 1.05 → 1.09
+  // over three turns), while the ledger books usage per turn — passing it
+  // through verbatim inflated a chat ~2.5×. Reset on process init.
+  private lastCumulativeCostUsd = 0;
 
   constructor(initialContextWindowMaxTokens?: number) {
     this.contextWindowMaxTokens = initialContextWindowMaxTokens;
@@ -2064,6 +2073,26 @@ class ClaudeContextUsageState {
     this.streamRequestInputTokens = undefined;
     this.streamRequestOutputTokens = undefined;
     this.compactedContextWindowUsedTokens = undefined;
+  }
+
+  /** A new CLI process started (system init): its cumulative cost restarts at 0. */
+  beginProcess(): void {
+    this.lastCumulativeCostUsd = 0;
+  }
+
+  // The per-turn share of the process-cumulative `total_cost_usd`. A reported
+  // value below the watermark means the process restarted without an observed
+  // init — the report is that process's own spend, so take it whole.
+  private takeTurnCostUsd(cumulative: number | undefined): number | undefined {
+    if (typeof cumulative !== "number" || !Number.isFinite(cumulative) || cumulative < 0) {
+      return cumulative;
+    }
+    const turnCost =
+      cumulative >= this.lastCumulativeCostUsd
+        ? cumulative - this.lastCumulativeCostUsd
+        : cumulative;
+    this.lastCumulativeCostUsd = cumulative;
+    return turnCost;
   }
 
   setInitialContextWindowMaxTokens(contextWindowMaxTokens: number | undefined): void {
@@ -2120,7 +2149,7 @@ class ClaudeContextUsageState {
         // making prompt-cache priming invisible to the cost ledger. (WP-D)
         cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
         outputTokens: message.usage.output_tokens,
-        totalCostUsd: message.total_cost_usd,
+        totalCostUsd: this.takeTurnCostUsd(message.total_cost_usd),
       };
 
       const modelContextWindowMaxTokens = this.recordModelUsage(modelUsage ?? message.modelUsage);
@@ -2255,6 +2284,12 @@ class ClaudeAgentSession implements AgentSession {
   // session never bind the same on-disk dir.
   private readonly workflowWatchers = new Map<string, WorkflowTranscriptWatcher>();
   private readonly workflowClaimedDirs = new Set<string>();
+  // Disk-backed usage source for plain Task/Agent sub-agents: tails each
+  // sub-agent's <sessionId>/subagents/agent-<id>.jsonl once its tool_result
+  // reveals the agentId. Authoritative over the live sidechain accumulator
+  // (real output counts; depth ≥ 2 sub-agents never stream at all). See
+  // task-transcript-watcher.ts.
+  private readonly taskTranscriptWatcher: TaskTranscriptWatcher;
   // Workflow keys whose task_started arrived before claudeSessionId existed
   // (the watcher needs the session id to resolve the on-disk dir). Drained by
   // drainPendingWorkflowArms() at every point a session id gets assigned.
@@ -2311,6 +2346,12 @@ class ClaudeAgentSession implements AgentSession {
     this.contextUsage = new ClaudeContextUsageState(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
     );
+    this.taskTranscriptWatcher = new TaskTranscriptWatcher({
+      cwd: this.config.cwd,
+      getSessionId: () => this.claudeSessionId,
+      emit: (event) => this.pushEvent(event),
+      logger: this.logger,
+    });
     const handle = options.handle;
 
     if (handle) {
@@ -2832,6 +2873,7 @@ class ClaudeAgentSession implements AgentSession {
     this.workflowWatchers.clear();
     this.workflowClaimedDirs.clear();
     this.pendingWorkflowArms.clear();
+    this.taskTranscriptWatcher.close();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
     this.autonomousTurn = null;
@@ -4377,6 +4419,13 @@ class ClaudeAgentSession implements AgentSession {
     if (message.type !== "assistant") {
       return;
     }
+    // Once the on-disk transcript is bound, disk is authoritative: it is a
+    // strict superset of the live sidechain (which only ever carries the
+    // message_start usage snapshot, so its output counts run low). Mixing the
+    // two sources would let a smaller live total overwrite a disk total.
+    if (this.taskTranscriptWatcher.isBound(key)) {
+      return;
+    }
     const betaMessage = message.message;
     let accumulator = this.observedSubagentUsage.get(key);
     if (!accumulator) {
@@ -4691,6 +4740,7 @@ class ClaudeAgentSession implements AgentSession {
       const key = this.observedKeyByTaskId.get(taskId);
       if (key && !this.settledObservedSubagents.has(key)) {
         this.settledObservedSubagents.add(key);
+        this.taskTranscriptWatcher.markSettled(key, "idle");
         events.push({
           type: "observed_subagent_updated",
           provider: "claude",
@@ -4752,6 +4802,7 @@ class ClaudeAgentSession implements AgentSession {
     this.announcedObservedSubagents.add(key);
     if (input.status !== "running") {
       this.settledObservedSubagents.add(key);
+      this.taskTranscriptWatcher.markSettled(key, input.status);
     }
     const parentKey = this.observedParentKeyByToolUseId.get(key);
     events.push({
@@ -5132,6 +5183,9 @@ class ClaudeAgentSession implements AgentSession {
     if (message.subtype !== "init") {
       return { threadStartedSessionId: null, notice: null };
     }
+    // Every init is a fresh CLI process, whose cumulative total_cost_usd
+    // restarts at 0 — reset the per-turn cost watermark with it.
+    this.contextUsage.beginProcess();
 
     const msgRecord = toObjectRecord(message) ?? {};
     const newSessionId = extractSessionIdRaw({
@@ -5733,10 +5787,38 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (typeof block.tool_use_id === "string") {
+      this.bindTaskTranscriptFromToolResult(toolName, block.tool_use_id, block.content);
       this.enqueueObservedSubagentSettled(toolName, block.tool_use_id, Boolean(block.is_error));
       this.toolUseCache.delete(block.tool_use_id);
       this.sidechainTracker.delete(block.tool_use_id);
     }
+  }
+
+  /**
+   * Every Task/Agent tool_result (sync completion or async launch ack, at any
+   * depth) carries "agentId: <id>" — the sub-agent's on-disk transcript name.
+   * Bind the observed row to that transcript so its usage comes from disk (the
+   * live sidechain lacks final output counts, and depth ≥ 2 sub-agents never
+   * stream at all). Timeline is emitted from disk only for nested keys, which
+   * have no live sidechain feed — depth-1 panes are already fed live.
+   */
+  private bindTaskTranscriptFromToolResult(
+    toolName: string,
+    toolUseId: string,
+    content: unknown,
+  ): void {
+    if (!isClaudeSubagentToolName(toolName)) {
+      return;
+    }
+    const agentId = readClaudeSubagentAgentIdFromToolResult(content);
+    if (!agentId) {
+      return;
+    }
+    this.taskTranscriptWatcher.bind({
+      key: toolUseId,
+      agentId,
+      emitTimeline: this.observedParentKeyByToolUseId.has(toolUseId),
+    });
   }
 
   /**
@@ -5786,6 +5868,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.settledObservedSubagents.add(toolUseId);
+    this.taskTranscriptWatcher.markSettled(toolUseId, isError ? "error" : "idle");
     this.pendingObservedEvents.push({
       type: "observed_subagent_updated",
       provider: "claude",

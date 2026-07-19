@@ -1717,6 +1717,45 @@ describe("ClaudeAgentSession context window usage", () => {
     }
   });
 
+  test("books the per-turn delta of the process-cumulative total_cost_usd", async () => {
+    // total_cost_usd is cumulative across the turns of one CLI process; each
+    // turn's usage must carry only its own share, and a fresh init (process
+    // restart) resets the watermark so the new process's first report is
+    // taken whole.
+    const session = await createSessionForTurns([
+      [
+        createInitMessage(),
+        createMessageStartEvent(),
+        createMessageDeltaEvent(25),
+        createSuccessResult({ total_cost_usd: 0.25 }),
+      ],
+      [
+        createMessageStartEvent(),
+        createMessageDeltaEvent(25),
+        createSuccessResult({ total_cost_usd: 0.75, uuid: "result-2" }),
+      ],
+      [
+        createInitMessage(),
+        createMessageStartEvent(),
+        createMessageDeltaEvent(25),
+        createSuccessResult({ total_cost_usd: 0.2, uuid: "result-3" }),
+      ],
+    ]);
+
+    try {
+      const first = await session.run("turn 1");
+      expect(first.usage?.totalCostUsd).toBe(0.25);
+
+      const second = await session.run("turn 2");
+      expect(second.usage?.totalCostUsd).toBe(0.5);
+
+      const third = await session.run("turn 3");
+      expect(third.usage?.totalCostUsd).toBe(0.2);
+    } finally {
+      await session.close();
+    }
+  });
+
   test("uses parent request usage after a real subagent tool result", async () => {
     const getContextUsage = vi.fn(async () => {
       throw new Error("getContextUsage should not be called during result handling");
