@@ -158,6 +158,14 @@ class InMemoryAgentManager {
     return this.observedPayloads.get(id) ?? null;
   }
 
+  async ensureRetainedTranscriptLoaded() {
+    return false;
+  }
+
+  async getRetainedTranscriptPayload() {
+    return null;
+  }
+
   readonly archivedObservedIds: string[] = [];
 
   async archiveObservedSubagent(id: string) {

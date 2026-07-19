@@ -22,6 +22,8 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useHosts } from "@/runtime/host-runtime";
 import {
   useActivityStats,
@@ -33,6 +35,7 @@ import {
 import { useUsageLogFeature } from "@/hooks/use-usage-log";
 import { UsageLogList, UsageTotalsBar, type UsageTotals } from "@/components/usage-log-list";
 import { Button } from "@/components/ui/button";
+import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   AlarmClock,
@@ -153,7 +156,7 @@ function buildTotalsTiles(counters: ActivityCounters): TileDef[] {
   ];
 }
 
-// The real money spent — shown ONLY when a provider actually billed for it
+// The money spent — shown ONLY when a provider actually billed for it
 // (`costMicroUsd > 0`), never as a misleading "$0" for token-only providers
 // (LM Studio, etc.). Rendered as a single full-width tile so money reads as the
 // headline it is, separate from the token totals above and the token breakdown
@@ -162,7 +165,7 @@ function buildCostTiles(counters: ActivityCounters): TileDef[] {
   return [
     {
       key: "cost",
-      label: "Real cost",
+      label: "Estimated cost",
       Icon: ThemedDollarSign,
       value: counters.costMicroUsd,
       format: "usd",
@@ -174,7 +177,7 @@ function buildCostTiles(counters: ActivityCounters): TileDef[] {
 // spent*, so a user staring at "30M tokens" can see where it came from. These
 // four buckets are disjoint and sum to the grand total (compaction is backed out
 // of the turn buckets at the increment site, generations ride their own path):
-//   your conversations + sub-agents they spawned + background auto-text + context
+//   your chats + sub-agent chats they spawned + background auto-text + context
 //   compaction = everything.
 // Deliberately NOT a provider split — "Claude vs other" re-slices the same tokens
 // a second way and reads as $0/"other" noise for anyone not on Claude. Token-
@@ -184,14 +187,14 @@ function buildBreakdownTiles(counters: ActivityCounters): TileDef[] {
   return [
     {
       key: "mainChat",
-      label: "Your conversations",
+      label: "Your chats",
       Icon: ThemedMessageSquare,
       value: counters.mainChatTokensIn + counters.mainChatTokensOut,
       format: "tokens",
     },
     {
       key: "subagents",
-      label: "Sub-agents",
+      label: "Sub-agent chats",
       Icon: ThemedPuzzle,
       value: counters.subagentTokensIn + counters.subagentTokensOut,
       format: "tokens",
@@ -302,19 +305,18 @@ function StatsScreenContent(): ReactElement {
         </View>
       ) : (
         <View style={styles.body}>
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {hosts.map((host) => (
-              <HostStatsSection
-                key={host.serverId}
-                serverId={host.serverId}
-                onLogTotals={handleLogTotals}
-              />
-            ))}
-          </ScrollView>
+          {/* No screen-level scroll: each host section is a full-height panel
+              that pins its own toolbar and scrolls only its content. Stacked
+              hosts split the height between them, each keeping its own toolbar
+              in view. */}
+          {hosts.map((host, index) => (
+            <HostStatsSection
+              key={host.serverId}
+              serverId={host.serverId}
+              onLogTotals={handleLogTotals}
+              divided={index > 0}
+            />
+          ))}
           {pinned.length > 0 && (
             <View style={styles.pinnedTotals}>
               {pinned.map(({ host, totals }) => (
@@ -360,9 +362,12 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 function HostStatsSection({
   serverId,
   onLogTotals,
+  divided,
 }: {
   serverId: string;
   onLogTotals: (serverId: string, totals: UsageTotals | null) => void;
+  /** Rule above the panel, separating it from the host section stacked on top. */
+  divided: boolean;
 }): ReactElement | null {
   const supported = useActivityStatsFeature(serverId);
   const costCategoriesSupported = useUsageCostCategoriesFeature(serverId);
@@ -394,6 +399,14 @@ function HostStatsSection({
     () => [styles.columns, isCompact && styles.columnsStacked],
     [isCompact],
   );
+  const sectionStyle = useMemo(() => [styles.section, divided && styles.sectionDivided], [divided]);
+
+  // The themed auto-hiding overlay scrollbar replaces the web platform
+  // scrollbar at every width — a narrow (compact) window gets the same modern
+  // overlay, not a chunky always-on gutter. Native keeps its own indicator,
+  // which already auto-hides.
+  const scrollRef = useRef<ScrollView>(null);
+  const webScrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
 
   if (!supported) {
     return null;
@@ -432,51 +445,84 @@ function HostStatsSection({
     );
   }
 
+  // One button, two homes: pinned right of the controls row on wide screens,
+  // centered at the bottom of the section on compact.
+  const resetButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      leftIcon={Trash2}
+      onPress={handleReset}
+      loading={isResetting}
+      style={isCompact ? styles.resetBottomButton : undefined}
+      testID="metrics-reset"
+    >
+      Reset
+    </Button>
+  );
+
   return (
-    <View style={styles.section}>
-      {/* Tabs + range filter are centered across the full width. Reset is
+    <View style={sectionStyle}>
+      {/* Toolbar band: pinned above the scroll region and ruled off from it, so
+          the tabs and range filter stay reachable no matter how far the tiles or
+          the ledger scroll. Tabs + range filter are centered across the full
+          width. Reset is
           popped out of the flow (absolutely pinned right) so it doesn't skew
           that centering. The range selector is shared by both tabs — it buckets
-          the Summary rollups and filters the Log's rows to the same window. */}
-      <View style={styles.controlsRow}>
-        <View style={styles.controlsCenter}>
-          {logSupported && (
+          the Summary rollups and filters the Log's rows to the same window.
+          On compact there isn't room for that: the controls stack onto their own
+          full-width lines (segments wrapping inside each), and Reset moves out of
+          this row entirely to the bottom of the section (see below) — a rarely
+          used destructive action shouldn't crowd the controls on a phone. */}
+      <View style={styles.toolbar}>
+        <View style={isCompact ? styles.controlsRowStacked : styles.controlsRow}>
+          <View style={isCompact ? styles.controlsCenterStacked : styles.controlsCenter}>
+            {logSupported && (
+              <SegmentedControl
+                size="sm"
+                wrap={isCompact}
+                options={TAB_OPTIONS}
+                value={tab}
+                onValueChange={setTab}
+                testID="metrics-tab"
+              />
+            )}
             <SegmentedControl
               size="sm"
-              options={TAB_OPTIONS}
-              value={tab}
-              onValueChange={setTab}
-              testID="metrics-tab"
+              wrap={isCompact}
+              options={WINDOW_OPTIONS}
+              value={window}
+              onValueChange={setWindow}
+              testID="activity-stats-window"
             />
-          )}
-          <SegmentedControl
-            size="sm"
-            options={WINDOW_OPTIONS}
-            value={window}
-            onValueChange={setWindow}
-            testID="activity-stats-window"
-          />
-        </View>
-        {canReset && (
-          <View style={styles.resetPinned}>
-            <Button
-              variant="ghost"
-              size="sm"
-              leftIcon={Trash2}
-              onPress={handleReset}
-              loading={isResetting}
-              testID="metrics-reset"
-            >
-              Reset
-            </Button>
           </View>
-        )}
+          {canReset && !isCompact && <View style={styles.resetPinned}>{resetButton}</View>}
+        </View>
       </View>
-      {logSupported && tab === "log" ? (
-        <UsageLogList serverId={serverId} window={window} onTotalsChange={handleTotals} />
-      ) : (
-        body
-      )}
+      {/* The only scroll region on the screen: tiles or ledger rows, nothing
+          else. Wrapped so the overlay scrollbar can position against it. */}
+      <View style={styles.scrollWrap}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          onLayout={webScrollbar.onLayout}
+          onScroll={webScrollbar.onScroll}
+          onContentSizeChange={webScrollbar.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={!isWeb}
+        >
+          {logSupported && tab === "log" ? (
+            <UsageLogList serverId={serverId} window={window} onTotalsChange={handleTotals} />
+          ) : (
+            body
+          )}
+        </ScrollView>
+        {webScrollbar.overlay}
+      </View>
+      {/* Compact-only footer: Reset pins below the scroll rather than riding the
+          content, so it can't collide with the tiles as they scroll past. */}
+      {canReset && isCompact && <View style={styles.resetBottom}>{resetButton}</View>}
     </View>
   );
 }
@@ -490,8 +536,14 @@ function StatColumn({
   subtitle: string;
   children: ReactNode;
 }): ReactElement {
+  // Side by side, each column takes an equal share of the WIDTH (flex: 1 in a
+  // row). Stacked, that same flex: 1 would instead divide the available HEIGHT
+  // between the two columns — squashing each to half and letting its tiles spill
+  // over the divider and the next column's header. Stacked columns size to their
+  // content instead.
+  const isCompact = useIsCompactFormFactor();
   return (
-    <View style={styles.column}>
+    <View style={isCompact ? styles.columnStacked : styles.column}>
       <View style={styles.columnHeader}>
         <Text style={styles.columnTitle}>{title}</Text>
         <Text style={styles.columnSubtitle}>{subtitle}</Text>
@@ -623,6 +675,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.lg,
     textAlign: "center",
   },
+  // Positioning context for the overlay scrollbar, which absolutely fills it.
+  scrollWrap: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+  },
   scroll: {
     flex: 1,
     minHeight: 0,
@@ -647,9 +705,25 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[6],
     gap: theme.spacing[6],
   },
+  // A host panel: pinned toolbar + its own scroll region, claiming a flex share
+  // of the screen. No gap — the toolbar's bottom rule is the seam.
   section: {
     flex: 1,
-    gap: theme.spacing[3],
+    minHeight: 0,
+  },
+  // Second and later host panels are ruled off from the one above them.
+  sectionDivided: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  // The toolbar band above the scroll region. Padding matches scrollContent so
+  // the controls sit on the same margins as the content they filter.
+  toolbar: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingVertical: theme.spacing[3],
   },
   // Positioning context for the popped-out Reset button. The centered cluster
   // fills the row; Reset is absolutely pinned right so it never shifts center.
@@ -669,6 +743,35 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
+  // Compact: the two controls each get their own full-width line, so the range
+  // filter has room to wrap its five options instead of overflowing the screen
+  // on both sides.
+  controlsRowStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: theme.spacing[2],
+  },
+  controlsCenterStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: theme.spacing[2],
+  },
+  // Compact: Reset pins at the very bottom of the panel, centered, ruled off
+  // from the scroll region above it like the toolbar is from below.
+  resetBottom: {
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingVertical: theme.spacing[1],
+  },
+  // Reset opts out of the 1.5x compact touch-target inflation Button applies to
+  // `sm`. A 48px pill plus its footer padding made this rarely-used destructive
+  // action the tallest band on a phone — taller than the pinned totals it sits
+  // beside. Back to the base 32px control height so the footer stays slimmer
+  // than the totals bar.
+  resetBottomButton: {
+    minHeight: COMPACT_CONTROL_HEIGHT,
+  },
   // Reset lifted out of the flow so it doesn't count toward centering the tabs
   // and filter — pinned to the top-right of the controls row.
   resetPinned: {
@@ -682,7 +785,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Two columns side by side (Activity | Usage & Cost); stacked on compact.
   columns: {
-    flex: 1,
     flexDirection: "row",
     gap: theme.spacing[4],
   },
@@ -692,6 +794,10 @@ const styles = StyleSheet.create((theme) => ({
   column: {
     flex: 1,
     minWidth: 0,
+    gap: theme.spacing[3],
+  },
+  columnStacked: {
+    width: "100%",
     gap: theme.spacing[3],
   },
   columnHeader: {

@@ -72,6 +72,11 @@ function sanitizeEvent(value: unknown): UsageEvent | null {
   if (typeof r.rounds === "number") event.rounds = r.rounds;
   if (typeof r.compactionTokensIn === "number") event.compactionTokensIn = r.compactionTokensIn;
   if (typeof r.compactionTokensOut === "number") event.compactionTokensOut = r.compactionTokensOut;
+  if (typeof r.startedAt === "number" && Number.isFinite(r.startedAt)) {
+    event.startedAt = r.startedAt;
+  }
+  if (typeof r.subagentKey === "string") event.subagentKey = r.subagentKey;
+  if (typeof r.parentSubagentKey === "string") event.parentSubagentKey = r.parentSubagentKey;
   return event;
 }
 

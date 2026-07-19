@@ -22,7 +22,7 @@ export interface ControlInteractionStyleMap {
   controlDisabled?: StyleProp<ViewStyle>;
 }
 
-const COMPACT_CONTROL_HEIGHT = 32;
+export const COMPACT_CONTROL_HEIGHT = 32;
 const FIELD_CONTROL_HEIGHT = 44;
 
 // Shared height for pane-chrome toolbars (the file editor's view/mode bar and

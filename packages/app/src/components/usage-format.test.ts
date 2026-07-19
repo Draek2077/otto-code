@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { UsageEvent } from "@otto-code/protocol/messages";
 import {
   computeParentRowTotals,
+  computeSubagentRowDepths,
+  computeUsageRowStamps,
+  formatUsageEventStamp,
   groupUsageRowsByParent,
+  USAGE_STAMP_REPEAT,
   startOfLocalDay,
   usageDayHeaderLabel,
   usageWindowRange,
@@ -70,6 +74,87 @@ describe("usageDayHeaderLabel", () => {
   });
 });
 
+describe("formatUsageEventStamp", () => {
+  // The gutter never prints a date — the day header above the group owns it.
+  // Assert the shape (h:mm with an optional meridiem) rather than a literal, so
+  // the test holds under both 12h and 24h runtime locales.
+  const CLOCK = /^\d{1,2}:\d{2}(\s?[AaPp]\.?[Mm]\.?)?$/;
+
+  it("shows clock time for today's rows by default", () => {
+    const stamp = formatUsageEventStamp(new Date(2026, 6, 18, 9, 5, 0).getTime(), now, "absolute");
+    expect(stamp).toMatch(CLOCK);
+  });
+
+  it("shows elapsed time for today's rows when the viewer prefers relative", () => {
+    expect(formatUsageEventStamp(now - 30_000, now, "relative")).toBe("now");
+    expect(formatUsageEventStamp(now - 5 * 60_000, now, "relative")).toBe("5m");
+    expect(formatUsageEventStamp(now - 3 * 60 * 60_000, now, "relative")).toBe("3h");
+  });
+
+  it("falls back to clock time on past days, where elapsed says nothing new", () => {
+    // "5d" would only repeat what the day header already states; the pairing of
+    // header date + row time is what makes a past row readable.
+    const yesterday = new Date(2026, 6, 17, 14, 20, 0).getTime();
+    expect(formatUsageEventStamp(yesterday, now, "relative")).toMatch(CLOCK);
+    expect(formatUsageEventStamp(yesterday, now, "absolute")).toMatch(CLOCK);
+  });
+});
+
+describe("computeUsageRowStamps", () => {
+  function at(hour: number, minute: number, second = 0): UsageEvent {
+    return {
+      id: `${hour}:${minute}:${second}`,
+      at: new Date(2026, 6, 18, hour, minute, second).getTime(),
+      kind: "chat",
+      provider: "claude",
+      tokensIn: 0,
+      tokensOut: 0,
+      costMicroUsd: 0,
+    };
+  }
+
+  it("anchors a same-time run's label on its LAST row, where the minute began", () => {
+    // Rows render newest-first, so this is a turn at 9:05:41 with two sub-agents
+    // that settled earlier in the same minute, then an older turn at 9:03. The
+    // 9:05 label belongs on the bottom of that run — the moment it started.
+    const stamps = computeUsageRowStamps(
+      [at(9, 5, 41), at(9, 5, 12), at(9, 5, 0), at(9, 3, 0)],
+      now,
+      "absolute",
+    );
+    expect(stamps[0]).toBe(USAGE_STAMP_REPEAT);
+    expect(stamps[1]).toBe(USAGE_STAMP_REPEAT);
+    expect(stamps[2]).not.toBe(USAGE_STAMP_REPEAT);
+    expect(stamps[3]).not.toBe(USAGE_STAMP_REPEAT);
+    expect(stamps[3]).not.toBe(stamps[2]);
+  });
+
+  it("always labels the last row, which has nothing below to defer to", () => {
+    const stamps = computeUsageRowStamps([at(9, 9), at(9, 5)], now, "absolute");
+    expect(stamps.every((stamp) => stamp !== USAGE_STAMP_REPEAT)).toBe(true);
+  });
+
+  it("re-stamps when the time returns to a value seen further up", () => {
+    // Dedupe is against the adjacent row, not everything seen — spawn-tree order
+    // can revisit a minute, and that run needs its own label.
+    const stamps = computeUsageRowStamps([at(9, 5), at(9, 9), at(9, 5)], now, "absolute");
+    expect(stamps[0]).not.toBe(USAGE_STAMP_REPEAT);
+    expect(stamps[0]).toBe(stamps[2]);
+  });
+
+  it("dedupes relative labels too, which repeat far more often", () => {
+    const stamps = computeUsageRowStamps(
+      [
+        { ...at(0, 0), at: now - 60_000 },
+        { ...at(0, 1), at: now - 90_000 },
+      ],
+      now,
+      "relative",
+    );
+    expect(stamps).toEqual([USAGE_STAMP_REPEAT, "1m"]);
+  });
+});
+
 describe("groupUsageRowsByParent", () => {
   function row(id: string, over: Partial<UsageEvent> = {}): UsageEvent {
     return {
@@ -100,6 +185,105 @@ describe("groupUsageRowsByParent", () => {
     // B's cluster stays first (newest), then A's whole cluster (chat + its subs
     // pulled up under it), then the standalone generation cluster.
     expect(ordered).toEqual(["b-chat", "a-chat", "a-sub-2", "a-sub-1", "gen"]);
+  });
+
+  it("groups a fan-out under its SPAWN turn as a tree, not by settle time", () => {
+    // The real failure this fixes: a turn (at=50) spawned two middle agents
+    // (startedAt 40/42), each of which spawned a child (startedAt 60/61, i.e.
+    // after the spawn turn was already booked). Everything settled while the
+    // NEXT turn (at=100) was underway, so settle-time adjacency scattered the
+    // family across two turns. Expected: the whole tree under the spawn turn —
+    // middle A, its child, middle B, its child, in launch order.
+    const events = [
+      row("turn-2", { kind: "chat", agentId: "chat-a", at: 100 }),
+      row("middle-a", {
+        kind: "subagent",
+        agentId: "chat-a",
+        at: 95,
+        startedAt: 40,
+        subagentKey: "K-A",
+      }),
+      row("child-of-a", {
+        kind: "subagent",
+        agentId: "chat-a",
+        at: 94,
+        startedAt: 60,
+        subagentKey: "K-AC",
+        parentSubagentKey: "K-A",
+      }),
+      row("middle-b", {
+        kind: "subagent",
+        agentId: "chat-a",
+        at: 93,
+        startedAt: 42,
+        subagentKey: "K-B",
+      }),
+      row("child-of-b", {
+        kind: "subagent",
+        agentId: "chat-a",
+        at: 92,
+        startedAt: 61,
+        subagentKey: "K-BC",
+        parentSubagentKey: "K-B",
+      }),
+      row("turn-1", { kind: "chat", agentId: "chat-a", at: 50 }),
+    ];
+
+    const ordered = groupUsageRowsByParent(events).map((e) => e.id);
+    expect(ordered).toEqual([
+      "turn-2",
+      "turn-1",
+      "middle-a",
+      "child-of-a",
+      "middle-b",
+      "child-of-b",
+    ]);
+
+    // And the rollup lands on the spawn turn (nearest preceding chat row in the
+    // grouped order), covering the entire family.
+    const totals = computeParentRowTotals(groupUsageRowsByParent(events));
+    expect(totals.has("turn-2")).toBe(false);
+    expect(totals.has("turn-1")).toBe(true);
+  });
+
+  it("hangs a sub-agent spawned after the last booked turn off the newest turn", () => {
+    const events = [
+      row("turn-1", { kind: "chat", agentId: "chat-a", at: 50 }),
+      row("late-sub", {
+        kind: "subagent",
+        agentId: "chat-a",
+        at: 40,
+        startedAt: 80,
+        subagentKey: "K-L",
+      }),
+    ];
+    expect(groupUsageRowsByParent(events).map((e) => e.id)).toEqual(["turn-1", "late-sub"]);
+  });
+
+  it("computes spawn-tree depths from parent links", () => {
+    const events = [
+      row("middle", { kind: "subagent", subagentKey: "K-M", agentId: "chat-a", at: 3 }),
+      row("child", {
+        kind: "subagent",
+        subagentKey: "K-C",
+        parentSubagentKey: "K-M",
+        agentId: "chat-a",
+        at: 2,
+      }),
+      row("grandchild", {
+        kind: "subagent",
+        subagentKey: "K-G",
+        parentSubagentKey: "K-C",
+        agentId: "chat-a",
+        at: 1,
+      }),
+      row("legacy", { kind: "subagent", agentId: "chat-a", at: 0 }),
+    ];
+    const depths = computeSubagentRowDepths(events);
+    expect(depths.get("middle")).toBe(1);
+    expect(depths.get("child")).toBe(2);
+    expect(depths.get("grandchild")).toBe(3);
+    expect(depths.get("legacy")).toBe(1);
   });
 
   it("returns the same rows (pure re-ordering, none dropped or added)", () => {
