@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
 import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
@@ -246,7 +247,7 @@ export function VisualizerPanel() {
         toValue: 0,
         duration: LOAD_COVER_FADE_MS,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: isNative,
       }).start();
     }, LOAD_COVER_SETTLE_MS);
     return () => clearTimeout(timer);
