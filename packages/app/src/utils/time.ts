@@ -63,6 +63,15 @@ function getTimeFormatter(): Intl.DateTimeFormat {
 }
 
 /**
+ * Time-of-day only ("10:11 PM" / "22:11"), in the viewer's locale and OS-level
+ * 12h/24h preference. For surfaces that already carry the date elsewhere (a day
+ * header above a grouped list), so the time itself needn't repeat it.
+ */
+export function formatClockTime(date: Date): string {
+  return getTimeFormatter().format(date);
+}
+
+/**
  * Format a chat-message timestamp for hover-revealed UI.
  * - Same day: "10:11 PM" or "22:11" depending on user preference
  * - Within ~6 days: "Wednesday 10:11 PM"

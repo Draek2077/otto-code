@@ -25,6 +25,10 @@ interface SegmentedControlProps<T extends string> {
   onValueChange: (value: T) => void;
   size?: SegmentedControlSize;
   hideLabels?: boolean;
+  // Let the segments flow onto extra lines instead of overflowing the parent.
+  // Segments never shrink (they'd clip their labels), so a control with many
+  // options is wider than a phone — wrapping is the only way it fits.
+  wrap?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -50,6 +54,7 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   size = "md",
   hideLabels = false,
+  wrap = false,
   style,
   testID,
 }: SegmentedControlProps<T>) {
@@ -59,8 +64,8 @@ export function SegmentedControl<T extends string>({
   const iconSize = segmentedIconSize[size];
 
   const containerStyle = useMemo(
-    () => [styles.container, containerSizeStyle, style],
-    [containerSizeStyle, style],
+    () => [styles.container, containerSizeStyle, wrap && styles.containerWrap, style],
+    [containerSizeStyle, wrap, style],
   );
 
   return (
@@ -170,6 +175,13 @@ const styles = StyleSheet.create((theme) => {
     },
     containerMd: {
       ...geometry.segmentedContainerMd,
+    },
+    // Wrapped mode: rows of segments, centered, with the same 2px gutter between
+    // lines as between segments.
+    containerWrap: {
+      flexWrap: "wrap",
+      justifyContent: "center",
+      rowGap: 2,
     },
     segment: {
       flexDirection: "row",

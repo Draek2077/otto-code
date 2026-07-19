@@ -2203,8 +2203,8 @@ export const en = {
           accessibilityLabel: "Hide message details until hover",
         },
         messageTimestamp: {
-          title: "Message time format",
-          hint: "Show message times as exact clock time or as how long ago",
+          title: "Time format",
+          hint: "Show message and activity-log times as exact clock time or as how long ago",
           options: {
             absolute: "Clock time",
             relative: "Time ago",

@@ -1904,6 +1904,19 @@ export const UsageEventSchema = z.object({
    * provider doesn't report it.
    */
   rounds: z.number().optional(),
+  /**
+   * Sub-agent rows only — the spawn-tree identity that lets the Log group rows
+   * the way a human reads the run (chat turn → its sub-agents → their
+   * sub-agents) instead of by settle time, which async sub-agents crossing turn
+   * boundaries makes wrong. `startedAt` is when the sub-agent was first
+   * observed (epoch ms; a row belongs to the turn that spawned it, not the turn
+   * it happened to settle in), `subagentKey` is its stable observed key, and
+   * `parentSubagentKey` is the spawning sub-agent's key — absent for depth-1
+   * sub-agents spawned by the chat itself.
+   */
+  startedAt: z.number().optional(),
+  subagentKey: z.string().optional(),
+  parentSubagentKey: z.string().optional(),
 });
 
 export const UsageLogGetRequestMessageSchema = z.object({
