@@ -30,9 +30,11 @@ const unmapped = [...diskSpecs].filter((name) => !matrixSpecs.has(name)).sort();
 const sections = matrix.split(/^## /m).slice(1);
 const scoreboard = sections.map((section) => {
   const title = section.slice(0, section.indexOf("\n")).trim();
-  const covered = (section.match(/\| ✅ \|/g) ?? []).length;
-  const partial = (section.match(/\| 🟡 \|/g) ?? []).length;
-  const gaps = (section.match(/\| ❌ \|/g) ?? []).length;
+  // Status cells are matched with flexible padding so oxfmt table reflow
+  // (which pads cells to column width) cannot break the scoreboard.
+  const covered = (section.match(/\|\s*✅\s*\|/g) ?? []).length;
+  const partial = (section.match(/\|\s*🟡\s*\|/g) ?? []).length;
+  const gaps = (section.match(/\|\s*❌\s*\|/g) ?? []).length;
   return { title, covered, partial, gaps, total: covered + partial + gaps };
 });
 

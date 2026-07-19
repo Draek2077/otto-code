@@ -73,18 +73,25 @@ When cutting a release (rides alongside the `release` skill, does not block it y
 
 ## Phases
 
-- **Phase 0 (this change):** charter, coverage matrix seeded from all existing specs, local-AI
-  tier design doc, coverage-check script.
-- **Phase 1 — organize:** add `@cat:*` tags to existing specs; category npm scripts; wire
+- **Phase 0 — DONE:** charter, coverage matrix seeded from all existing specs, local-AI tier
+  design doc, coverage-check script.
+- **Phase 2 — BUILT:** `local-ai` Playwright project + `test:e2e:local-ai`; global-setup
+  preflights LM Studio (`/models`) and injects the openai-compat provider (values from the
+  repo-root `.env.test`, never committed) into the isolated `OTTO_HOME` when `E2E_LOCAL_AI=1`;
+  6 T2 specs written (loop, permissions, max-rounds, compaction, resume, rewind).
+- **Phase 3 — BUILT (unvalidated):** 31 new T1 specs across personalities/teams, permissions +
+  safe-unattended + wizard, chat/composer, git/changes, settings/visualizer, schedules/runs,
+  files/editor. All 🟡 in the matrix until the iron-out pass. Supporting mock-provider
+  extensions: synthetic tool-permission scenario, dev-only `dontAsk` mode, prompt-triggered
+  suggestion/rate-limit/markdown/tool-call scenarios, structured title responder, no-op
+  `applyPersonality`.
+- **Phase 3.5 — NEXT: iron-out.** Run batches per [iron-out.md](iron-out.md), fix
+  selector/timing drift, promote 🟡 → ✅.
+- **Phase 1 — organize (deferred):** add `@cat:*` tags to specs; category npm scripts; wire
   coverage check into CI.
-- **Phase 2 — local-AI bootstrap:** global-setup injects the openai-compat provider (base URL +
-  key from `packages/server/.env.test`, never committed) into the forked `OTTO_HOME` when
-  `E2E_LOCAL_AI=1`; one smoke spec (send prompt → file created → diff visible) proves the tier.
-- **Phase 3 — P0 gaps:** permission modes / safe-unattended flows, personalities + teams,
-  openai-compat native tooling (compaction, image attachments, tool rounds), visualizer
-  open/lifecycle, composer suggestions/history.
-- **Phase 4 — P1/P2 gaps:** work down the ❌ rows in matrix priority order; each new feature PR
-  adds its matrix row + spec together.
+- **Phase 4 — remaining gaps:** work down the 24 ❌ rows in priority order (observed subagents,
+  artifacts/preview, vision, relay pairing, compact-layout smoke, …); each new feature PR adds
+  its matrix row + spec together.
 
 ## Out of Playwright-web scope
 

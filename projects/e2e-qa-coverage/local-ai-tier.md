@@ -15,8 +15,8 @@ production code path, not a stand-in.
 
 ## Connection
 
-Never hardcode endpoint or key in specs or docs. Values live in `packages/server/.env.test`
-(gitignored), read by global setup:
+Never hardcode endpoint or key in specs or docs. Values live in the **repo-root `.env.test`**
+(gitignored; this is the file the app harness's global setup loads), read by global setup:
 
 ```
 E2E_LOCAL_AI_BASE_URL=<LM Studio /v1 endpoint>      # current setup: Tailscale host, port 1235
@@ -70,9 +70,16 @@ multi-step ambiguity. Rules:
 | `rewind-flow.openai-compat.local.spec.ts` | Reuse `rewind-flow.shared.ts` against the local model                                                            |
 | `openai-compat-vision.local.spec.ts`      | Image attachment reaches the model (only if the loaded model has vision; otherwise pin a vision-capable sibling) |
 
-## Open questions for the user
+## Resolved decisions
 
-- Which quant to pin: `qwen3.6-27b-mtp@q4_k_m` or `@q5_k_m`? (q4 is faster — likely the right
-  E2E choice.)
-- Is LM Studio expected to be reachable whenever release validation runs, or should the runbook
-  say "start LM Studio + load model" as step 0? (Preflight will catch it either way.)
+- **Quant pinned:** `qwen3.6-27b-mtp@q4_k_m` (faster; change `E2E_LOCAL_AI_MODEL` in `.env.test`
+  to swap).
+- **Availability:** LM Studio is an always-on server in this setup, so the runbook needs no
+  "start LM Studio" step; the global-setup preflight still fails fast if it's ever down.
+
+## Status
+
+Phase 2 infra is BUILT (uncommitted): `local-ai` Playwright project (240s timeout, 1 retry),
+global-setup preflight + provider injection (`maxToolRounds: 25`), `test:e2e:local-ai` npm
+script, `helpers/local-ai.ts`, repo-root `.env.test` populated. All planned specs below are
+written but not yet run — iron-out pass pending.
