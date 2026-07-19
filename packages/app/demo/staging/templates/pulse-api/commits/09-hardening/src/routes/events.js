@@ -26,6 +26,7 @@ export async function handleIngest(req, res, store) {
 /** GET /events/recent — newest-first slice of the buffer. */
 export function handleRecent(req, res, store) {
   const url = new URL(req.url ?? "/", "http://localhost");
+  // TODO: validate limit — a negative or non-numeric value slices the whole buffer.
   const limit = Number(url.searchParams.get("limit") ?? "50");
   sendJson(res, 200, { events: store.recent(limit) });
 }

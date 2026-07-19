@@ -7,7 +7,61 @@ and MP4/WebM video for slideshows and tutorials on otto-code.me.
 
 **Status:** approved 2026-07-11; pipeline + scenario 03 shipped and verified the same day
 (`npm run demo` → `npm run demo:assets` produces 7 PNGs + MP4/WebM + manifest for
-03-diff-review). Scenarios 01/02/04 are next.
+03-diff-review). Expanded 2026-07-18 into per-feature runs (see "One run, one feature"):
+cast seeding + scenarios 04/05/06 (free) built and verified green, 07/08/09 (real-run)
+built pending a DEMO_REAL capture pass.
+
+**Executing this project? Read [runbook.md](runbook.md) first.** It is the operational
+playbook — commands, isolation guarantees, the scenario-authoring recipe, the verified
+selector map, and the gotchas ledger. It is deliberately prescriptive so any agent (or
+model tier) can run captures and author scenarios without rediscovering anything; keep it
+current in the same edit as any fix it should have prevented.
+
+## One run, one feature (locked 2026-07-18)
+
+Each demo run showcases **exactly one feature**. A run's screenshots are a step-by-step
+guide to using that feature — every `shot()` is one instructional step with a title and
+caption the site renders as a numbered walkthrough. Consequences:
+
+- Small, focused scenarios beat multi-feature tours. If a scenario wants to show a second
+  feature, that's a second scenario (shared seeding makes this cheap).
+- Steps are ordered the way a user would discover the feature: entry point → configuration
+  → payoff. The last shot is always the payoff state.
+- Shared staged data (repos, cast) keeps every scenario's world consistent, so screenshots
+  from different runs look like one product story.
+- **The whole frame is the demo.** A viewer soaks in the entire screenshot, so every
+  visible region must be in a good, contextually sensible state: forms filled top to
+  bottom, both staged repos in the sidebar, no loading/error residue — and only the
+  panels the story needs (the explorer stays closed unless it's the feature; the left
+  sidebar always stays). The runbook's whole-frame rule and checklist are the
+  operational form of this.
+- The end goal is replacing **all** current website screenshots and the mobile
+  slides/animations with these generated assets — desktop passes first, then a mobile pass
+  per scenario (see "Mobile passes").
+
+### The demo cast
+
+People-scenarios (personalities, teams, pickers) share one seeded cast
+(`demo/staging/cast.ts`): seven named personalities with distinct roles, colors, prompts,
+and hand-written voice cues, bound to real Claude model ids (Opus/Sonnet/Haiku mix — an
+unknown id renders every row disabled) so pickers look real without a run — plus two teams
+built from them. Names must not collide with the shipped starter roster (Atlas, Sage,
+Vera, Pixel, Dash, Sprocket / "The Otto Crew"), which shows alongside the cast in
+captures:
+
+| Personality | Roles                        | Team           |
+| ----------- | ---------------------------- | -------------- |
+| Aria        | orchestrator, coder, chatter | Ship Crew      |
+| Forge       | coder                        | Ship Crew      |
+| Argus       | judger, researcher, chatter  | Ship Crew      |
+| Tempo       | scheduler                    | Ship Crew      |
+| Scout       | researcher, chatter          | Research Guild |
+| Quill       | writer, chatter              | Research Guild |
+| Muse        | artificer, chatter           | Research Guild |
+
+Roles are deliberately uneven so role-filtered pickers demo visibly: the schedule form
+offers only Tempo, artifacts only Muse, chat composers the chatter subset — and with a
+team active, pickers lead with the team section and its "Team's <Role>" slots.
 
 ## Learnings from the first shipped scenario (03)
 
@@ -18,13 +72,16 @@ and MP4/WebM video for slideshows and tutorials on otto-code.me.
   providers whose auth lives in Otto's config (openai-compat endpoints, LM Studio keys)
   will need a fork — use a curated config-only source home for those, never
   `.dev/otto-home` directly.
-- **Per-platform capture themes (user decision):** desktop/site assets = Neotokyo
-  (`darkTheme: "cyberpunk"` + `syntaxTheme: "neotokyo"`), Android phone/tablet = stock
-  dark, iOS = light. Wired in `appearanceForProject()` in the spread spec and per-scenario
-  `applyDemoAppearance` options.
+- **Per-platform capture themes (superseded 2026-07-18 — see Locked decisions):**
+  desktop/site assets originally captured Neotokyo only; now every `.demo.ts` and desktop
+  `.spread.ts` run captures both Twilight and Daylight by default via
+  `demo/helpers/theme.ts`'s `resolveDemoTheme(testInfo.project.name)`. Android phone/tablet
+  = stock dark, iOS = light, unchanged (store convention, not site branding). Wired in
+  `appearanceForProject()` in the spread spec and per-scenario `applyDemoAppearance` calls.
 - **Store-listing aspect ratios are strict.** Play phone/tablet shots must be exactly 9:16
   or 16:9 (spread-mobile 360×640@3x → 1080×1920; spread-tablet 1280×720@2x → 2560×1440);
-  the desktop viewport (1440×900) is 16:10 and NOT store-valid. App Store 6.7" =
+  the desktop viewport (2560×1440, 16:9) is not a Play-valid aspect for phone/tablet listings
+  either — use the dedicated spread projects below. App Store 6.7" =
   spread-ios 430×932@3x → 1290×2796. Feature graphic (1024×500) renders from
   demo/assets/feature-graphic.html via `demo:feature-graphic`.
 - **Panel state persists across navigations within a capture session** (explorer
@@ -53,7 +110,38 @@ and MP4/WebM video for slideshows and tutorials on otto-code.me.
 ## Locked decisions
 
 - **Outputs:** PNG screenshots (named per step) + MP4/WebM video. No GIF.
-- **Dark theme only** for the proof pass; a dedicated theming demo comes later.
+- **Desktop capture resolution: 2560×1440, 16:9 (decided 2026-07-18, user preference — dual-pane
+  layouts read better wide, less scrolling in the frame).** Replaces the original 1440×900
+  (16:10). Shared constant: `demo/helpers/resolution.ts`'s `DESKTOP_CAPTURE_RESOLUTION`, used by
+  both lanes:
+  - Web lane (`playwright.demo.config.ts`'s `CAPTURE_VIEWPORT`): deterministic, Playwright's
+    browser context always renders at exactly this size regardless of the host machine's display
+    scaling.
+  - Electron lane: NOT deterministic by default — a real OS window's screenshot reflects the
+    capturing machine's actual display scale factor (e.g. 2x on a HiDPI box), so a window whose
+    content area was set to 2560×1440 can still screenshot oversized. `launchDesktopElectron()`'s
+    `windowSize` option sets the real `BrowserWindow`'s content area via `setContentSize`, and
+    `DemoRecorder.start()`'s `targetSize` option (or `resizePngToTarget()` directly,
+    `e2e/helpers/image.ts`) resizes every captured PNG down to the exact target afterward — so
+    Electron-lane output matches the web lane pixel-for-pixel regardless of which machine ran the
+    capture. Every `.electron.ts` scenario that produces site assets must pass both options.
+- **Twilight (dark) + Daylight (light) captured by default, for every scenario (decided
+  2026-07-18).** These are the site's own default themes, not a special pass — every
+  `.demo.ts` and desktop `.spread.ts` run produces both variants automatically
+  (`demo-twilight`/`demo-daylight` and `spread-twilight`/`spread-daylight` Playwright
+  projects; see `demo/helpers/theme.ts`). Output dirs are theme-suffixed
+  (`.out/04-personalities-twilight/`, `.out/04-personalities-daylight/`), which
+  `demo:assets` treats as independent scenarios — so
+  `packages/website/public/demos/<scenario>-twilight/` and `<scenario>-daylight/` land as
+  parallel manifests. **This is intended to let the site swap the embedded asset by its own
+  dark/light mode**, once real captures replace the current hand-built `HeroMockup`/feature
+  sections — pick the manifest whose suffix matches the visitor's active theme. Neotokyo is
+  reserved for the dedicated Themes showcase (12-themes); it stopped being the default
+  desktop/site capture theme it was in the original proof pass. Store-listing captures
+  (Android/iOS) are unchanged — those follow store convention (stock dark / light), not site
+  branding. Real-run scenarios (07/08/09) now cost 2× tokens per full capture since both
+  themes replay an actual provider turn; use `demo:real:twilight` / `demo:real:daylight` to
+  iterate on one theme without paying for both.
 - **Bare web app capture; window chrome is the site's job** — the website wraps demo media in
   CSS window framing (titlebar etc.), so frames can be restyled without re-recording.
 - **Generated assets stay out of git** — `packages/website/public/demos/` is gitignored and
@@ -66,6 +154,18 @@ and MP4/WebM video for slideshows and tutorials on otto-code.me.
   - Every re-record costs tokens; scenario prompts are kept small and well-scoped.
   - Capture points key on UI state (status chips, streaming indicators, tool-call rows,
     finish state), never fixed timings.
+- **Real-run scenarios choose provider/model via env vars, never a hardcoded value in the
+  scenario file (locked 2026-07-18).** `demo/helpers/provider.ts`'s `resolveDemoProvider()` —
+  `DEMO_PROVIDER` defaults to `"claude"` on Sonnet 5 (user decision, same day: cheap relative to
+  Opus, and the only provider with the full feature set demo captures need — the
+  local-AI/openai-compatible tool catalog has no TodoWrite-equivalent, so planning/todo beats
+  can't run on it, confirmed against `01-agent-live`'s build). `DEMO_PROVIDER=local-ai` opts into
+  the e2e local-AI tier's injected LM Studio/Qwen `"openai-compatible"` provider instead (gated
+  on `E2E_LOCAL_AI=1` + `.env.test`). See `demo/README.md`'s "Choosing a provider for real-run
+  scenarios". `01-agent-live` and `02-preview-verify` use this; `hero-shot`,
+  `07-subagent-track`, `08-visualizer`, and `09-composer-intelligence` predate it and still
+  hardcode `provider: "claude"` directly — functionally the same default, just not routed
+  through `resolveDemoProvider()`; migrating them is a known follow-up.
 - **Proof-pass scenarios (in order):** agent working live, preview verification,
   diff review + git flow, multi-agent / personalities.
 
@@ -87,18 +187,28 @@ packages/app/
                                   # feature branch, deliberate uncommitted changes
       seed.ts                     # register projects/workspaces/agents/personalities/
                                   # schedules over the daemon WS (via e2e seed-client)
+      cast.ts                     # the shared demo cast: named personalities + teams
     helpers/
       capture.ts                  # shot(page, name), step() manifest recorder
+      theme.ts                    # resolveDemoTheme(projectName) — twilight/daylight presets
       pacing.ts                   # humanType/humanClick/pause — natural cadence for video
-      agent-waits.ts              # state-based waits: streaming started, tool call visible,
-                                  # todo list rendered, agent finished
     scenarios/
-      01-agent-live.demo.ts
-      02-preview-verify.demo.ts
-      03-diff-review.demo.ts
-      04-personalities.demo.ts
-  scripts/
-    demo-postprocess.mjs          # ffmpeg: webm → mp4 + webm, trim per manifest timestamps
+      03-diff-review.demo.ts        # shipped
+      04-personalities.demo.ts      # free, cast-seeded
+      05-agent-teams.demo.ts        # free, cast-seeded
+      06-model-picker.demo.ts       # free, cast-seeded
+      07-subagent-track.demo.ts     # real-run (DEMO_REAL=1)
+      08-visualizer.demo.ts         # real-run (DEMO_REAL=1)
+      09-composer-intelligence.demo.ts # real-run (DEMO_REAL=1)
+      hero-shot.demo.ts             # real-run — flagship still, og-image + hero-mockup source
+      feature-spread.spread.ts      # stills sweep (see Feature spreads)
+    assets/
+      feature-graphic.html          # Play Store feature graphic (static HTML render)
+      og-image.html                 # site og:image / twitter:image (static HTML render)
+    scripts/
+      postprocess.mjs               # ffmpeg: webm → mp4 + webm, trim per manifest timestamps
+      feature-graphic.mjs           # renders feature-graphic.html → demos/brand/*.png
+      og-image.mjs                  # renders og-image.html → website/public/og-image.png
 ```
 
 Run: `npm run demo -- --scenario 01-agent-live` (wrapper that boots the stack, runs one
@@ -136,9 +246,11 @@ changes so the diff scenario is runnable standalone without an agent run first).
 
 ### Capture presets
 
-- Desktop 1440×900, dark theme (site default) — proof pass.
-- Light theme and mobile 390×844 are later passes over the same scenarios (presets, not
-  rewrites).
+- Desktop 2560×1440 (16:9 QHD, decided 2026-07-18 — see Locked decisions), Twilight (dark) and
+  Daylight (light), both captured by default per scenario. This is the highest-quality source
+  resolution the pipeline captures at; site delivery downscales from here.
+- Mobile 390×844 is a later pass over the same scenarios (a preset, not a rewrite) — see
+  "Mobile passes".
 
 ## Storyboards (proof pass)
 
@@ -184,39 +296,120 @@ then summarize."_
 3. Open a subagent's read-only view — `shot: subagent-view`
 4. Orchestrator's final synthesis — `shot: orchestrator-summary`
 
-## Scenario catalog (expanded 2026-07-11)
+## Scenario catalog (reworked 2026-07-18, one feature per run)
 
 Tiered by capture cost: **free** scenarios run scripted with no agent tokens and are cheap
 to re-record; **real-run** scenarios execute an actual provider and go through
 `npm run demo:real`. Staged-data opportunities are called out — artifacts and schedules
 persist as files the seeder can plant, so those surfaces demo populated without any run.
 
-| #   | Scenario          | Shows                                                                                                              | Cost     | Status      |
-| --- | ----------------- | ------------------------------------------------------------------------------------------------------------------ | -------- | ----------- |
-| 03  | diff-review       | File explorer, file tabs, changes list, diff views                                                                 | free     | **shipped** |
-| 01  | agent-live        | Create agent, streaming, tool calls, todos, finish + diff stat                                                     | real-run | storyboard  |
-| 02  | preview-verify    | Launch config → dev server → browser pane → agent proof                                                            | real-run | storyboard  |
-| 04  | personalities     | Personality picker, orchestrator spawning subagents, track rows                                                    | real-run | storyboard  |
-| 05  | diff-ai-review    | Extends 03: inline comment on a diff line → agent applies the fix live → diff updates → header Commit              | real-run | storyboard  |
-| 06  | homepage-tour     | Home surface: workspace list, History, Schedules, Artifacts nav, new-workspace entry                               | free     | idea        |
-| 07  | themes            | Theme system: appearance settings, dark ↔ light, syntax themes — same workspace re-captured per theme              | free     | idea        |
-| 08  | artifacts         | Artifacts gallery + artifact tab; seeder plants `.otto/artifacts/*.json+html` in the staged repo so it's populated | free¹    | idea        |
-| 09  | schedules         | Schedule form (the golden form), schedules list; seeder plants `schedules/*.json` in the demo home                 | free     | idea        |
-| 10  | workspace-layouts | Split panes, agent + terminal + file + browser side by side, tab drag, file mode bar (editor/split/preview)        | free     | idea        |
-| 11  | terminals         | Terminal tabs, splits, activity indicators while commands run                                                      | free     | backlog     |
-| 12  | multi-provider    | Provider picker: Claude Code / Codex / OpenCode / LM Studio local — the fork's core pitch                          | free²    | backlog     |
-| 13  | mobile            | Re-run shipped scenarios at 390×844 — the "your pocket" pitch                                                      | free     | backlog     |
-| 14  | worktrees         | Branch-off workspace creation, isolated worktree, setup scripts                                                    | free     | backlog     |
-| 15  | editor-ide        | CM6 editing, split/preview mode bar, project search, file finder                                                   | free     | backlog     |
+| id                       | Feature shown                                                                                                      | Cost     | Status      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------- | ----------- |
+| 03-diff-review           | File explorer, file tabs, changes list, diff views                                                                 | free     | **shipped** |
+| 04-personalities         | Browsing personalities: settings roster, tabbed editor (identity/prompt/model/voice), composer picker selection    | free     | **built**   |
+| 05-agent-teams           | Team creation, active-team switcher, team dynamics ("Team's <Role>" slots leading the picker)                      | free     | **built**   |
+| 06-model-picker          | One combined model/personality picker across chats, schedules, and artifacts                                       | free     | **built**   |
+| 07-subagent-track        | Sub-agent tracking: orchestrator fans out Task subagents → read-only track rows → synthesis                        | real-run | built¹      |
+| 08-visualizer            | Visualizer: live agent constellation during a real run, node detail card, chats toolbar                            | real-run | built¹      |
+| 09-composer-intelligence | Ghost prompts (Tab-accepted suggestion) + suggested-task chips (spawn_task)                                        | real-run | built¹      |
+| hero-shot                | Flagship "everything at once" still: chat + Visualizer split, Atlas (starter roster) on a real turn                | real-run | **shipped** |
+| 01-agent-live            | Create agent, streaming, tool calls, todos, finish + diff stat                                                     | real-run | storyboard  |
+| 02-preview-verify        | Launch config → dev server → browser pane → agent proof                                                            | real-run | **built**   |
+| 10-diff-ai-review        | Inline comment on a diff line → agent applies the fix live → diff updates → header Commit                          | real-run | storyboard  |
+| 11-homepage-tour         | Home surface: workspace list, History, Schedules, Artifacts nav, new-workspace entry                               | free     | idea        |
+| 12-themes                | Theme system: appearance settings, dark ↔ light, syntax themes — same workspace re-captured per theme              | free     | idea        |
+| 13-artifacts             | Artifacts gallery + artifact tab; seeder plants `.otto/artifacts/*.json+html` in the staged repo so it's populated | free²    | idea        |
+| 14-schedules             | Schedule form (the golden form), schedules list; seeder plants `schedules/*.json` in the demo home                 | free     | idea        |
+| 15-workspace-layouts     | Split panes, agent + terminal + file + browser side by side, tab drag, file mode bar (editor/split/preview)        | free     | idea        |
+| 16-terminals             | Terminal tabs, splits, activity indicators while commands run                                                      | free     | backlog     |
+| 17-multi-provider        | Provider picker: Claude Code / Codex / OpenCode / LM Studio local — the fork's core pitch                          | free³    | backlog     |
+| 18-worktrees             | Branch-off workspace creation, isolated worktree, setup scripts                                                    | free     | backlog     |
+| 19-editor-ide            | CM6 editing, split/preview mode bar, project search, file finder                                                   | free     | backlog     |
 
-¹ free if seeded; a real-run variant shows an agent _creating_ an artifact.
-² picker/UI only; running a local model live would need LM Studio reachable at capture time.
+¹ spec written against the e2e selector helpers; needs a `npm run demo:real` capture pass
+to validate the non-deterministic beats before assets ship. **09-composer-intelligence
+(validated 2026-07-18):** the missing `modeId: "dontAsk"` permission-stall bug (same class as
+hero-shot's) is fixed and confirmed — 2 real runs both completed the turn instead of hanging.
+But both runs also failed to trigger `spawn_task`, so the task-chip beat never fired; this
+looks like more than ordinary non-determinism, since the out-of-scope TODO lives in
+`routes/events.js` while the prompt scopes the agent to `routes/health.js` — the agent may
+never read the file with the bug. Before spending more real-run tokens on retries, consider
+narrowing the prompt to nudge the agent toward reading the routes directory, or moving the
+deliberate TODO somewhere the health-route work naturally touches.
+² free if seeded; a real-run variant shows an agent _creating_ an artifact.
+³ picker/UI only; running a local model live would need LM Studio reachable at capture time.
 
-Scenario 05 storyboard (the requested AI-diff beat): open the pending storefront diff as in
-03 → hover a changed line → inline review comment ("also match the product blurb, and
-debounce the filter") → the comment routes to the workspace agent → agent runs visibly,
-edits land → diff refreshes with the new hunks → click header **Commit**. Ends the git
-story on camera. Requires the selective provider fork (below).
+### Storyboards — the people features (04/05/06, free)
+
+All three seed the demo cast (see "The demo cast") and run without any provider tokens.
+
+**04-personalities** — how you browse and shape a personality:
+roster in host settings → open Aria's tabbed editor → Identity (name/roles/colors) →
+Personality (system prompt) → Model (provider/model binding) → Voice (cue lines) → then the
+payoff: the composer picker listing the cast, pick Aria, the trigger wears her name.
+
+**05-agent-teams** — team creation and what a team changes:
+teams list in settings → create "Ship Crew" in the editor, ticking members → saved row with
+member avatars → sidebar active-team switcher → activate Ship Crew → payoff: the workspace
+composer picker now leads with the Ship Crew section and its role slots.
+
+**06-model-picker** — one picker, every surface:
+workspace composer picker open (providers/models + personality groups) → schedules screen,
+new-schedule form, same picker filtered to scheduler-role (Tempo) → artifacts screen, new
+artifact, same picker filtered to artificer-role (Muse). Caption thread: "the same picker,
+role-aware on every surface."
+
+### Storyboards — the live features (07/08/09, real-run)
+
+**07-subagent-track** — repo `pulse-api`. Prompt asks Claude to audit routes + tests with
+two parallel Task subagents. Steps: prompt sent → subagents track header appears with rows
+spawning → row liveness (elapsed/tool) → open one subagent's read-only view → orchestrator
+synthesis with the track settled.
+
+**08-visualizer** — repo `pulse-api`. Open the Visualizer tab from the workspace header
+while a real run streams. Steps: header entry point → constellation with the agent node
+active → node detail card (task/cost/tokens) → chats toolbar dropdown → settled idle state.
+
+**09-composer-intelligence** — repo `pulse-api` (template carries a deliberate,
+out-of-scope `TODO` so the agent has something honest to flag). One short real turn ends →
+ghost-text suggestion appears as the composer placeholder → Tab accepts it into the draft →
+suggested-task chip renders above the composer → chip's spawn affordance.
+
+### Site brand assets (fixed 2026-07-18)
+
+Two website assets were stale pre-fork Paseo screenshots, discovered by inspection rather
+than by a scenario run — worth a recurring check since nothing in the pipeline flags this
+kind of drift automatically:
+
+- **`packages/website/public/og-image.png`** (og:image / twitter:image, the social-preview
+  card) showed the Paseo logo and a Paseo screenshot. Replaced with a **pure brand card**
+  (no app screenshot) in the style the wizard's brand bookends already use (dual
+  indigo/teal glow, faint masked grid, Otto glyph centered on a blurred plasma-ring halo —
+  see `wizard-brand-backdrop.tsx` + `welcome-step.tsx`/`done-step.tsx`). Static HTML render,
+  same pattern as `feature-graphic.mjs`: `demo/assets/og-image.html` →
+  `npm run demo:og-image` → `demo/scripts/og-image.mjs` renders it at exactly 1200×630 (the
+  OG standard) via a headless Chromium screenshot, straight into
+  `packages/website/public/og-image.png`. No daemon needed.
+- **`packages/website/public/hero-mockup.png`** (embedded via `![Otto desktop and mobile
+app](/hero-mockup.png)` in all 7 `packages/website/src/content/alternatives/*.md`
+  competitor-comparison pages) was a real but unrebranded Paseo screenshot (getpaseo/paseo
+  repo names, old provider labels). Replaced with the **hero-shot** scenario's real capture
+  — see below. Unlike og-image, this one stays a genuine app screenshot: it's presented as
+  literal "here's the app" proof on those pages, not a brand card.
+
+**`demo/scenarios/hero-shot.demo.ts`** — the flagship "everything at once" still, not a
+feature tutorial (no numbered walkthrough, one shot). Real-run, `pulse-api` +
+`mango-storefront` seeded (whole-frame rule). Creates the agent as the **shipped starter
+personality Atlas** (`personality_builtin_atlas`, via `connectPersonalitiesClient()`'s
+`personality` field) — not the demo cast, since this is the site's default "meet your
+agent" moment. Prompt: the same hero prompt as storyboard 01 ("Add a request-rate counter
+to the /health endpoint and cover it with a test."). Once the turn is visibly underway
+(composer disabled), opens the Visualizer from the header —
+`openVisualizerTab`/`openVisualizerFromHeader` auto-splits to the right of the focused pane
+whenever that pane has a companion tab (see `src/visualizer/open-visualizer-tab.ts`), so
+chat-then-Visualizer produces the side-by-side split with no explicit split-pane call.
+Ran once on `demo-twilight` only (real-run scenarios cost tokens per theme; Daylight capture
+is a `npm run demo:real:daylight -- hero-shot` away whenever it's wanted).
 
 ## Feature spreads (stills, not stories)
 
@@ -235,6 +428,36 @@ pacing). Used for the website's feature sections and the Android/Play Store list
 - Backlog surfaces to add as their data gets seeded: artifacts gallery, schedules list,
   workspace split layouts, terminals, personalities picker, history.
 
+## Mobile passes
+
+Mobile has the same feature set (sometimes more limited) and showing the same workflows at
+phone size is part of the pitch. The approach mirrors the spread projects: a
+`demo-mobile` Playwright project re-runs mobile-safe scenarios at the phone viewport
+(360×640@3x, stock dark per the platform-theme decision) rather than forking the specs.
+Rules:
+
+- A scenario opts in via a `MOBILE_SAFE` export (or an in-test viewport check) once its
+  selectors are verified against the compact layout — mobile navigation differs (sheets
+  instead of popovers, tab switcher instead of side-by-side panes), so each scenario gets
+  one explicit mobile-verification pass before the project includes it.
+- Desktop-only beats (split diff, side-by-side panes) are skipped, not simulated.
+- The captured steps become the store-listing/mobile-slides material, replacing the current
+  hand-made mobile slides and animations.
+
+## Replacing the current site + store assets (the end goal)
+
+Every screenshot on otto-code.me and every mobile slide/animation gets regenerated from
+this pipeline. Working inventory:
+
+- Website feature sections — from feature spreads + per-feature scenario payoffs.
+- Website hero / tutorial media — from scenario videos (MP4/WebM + chaptered manifests).
+- Play Store phone/tablet + App Store shots — from spread-mobile / spread-tablet /
+  spread-ios (aspect-ratio rules in Learnings).
+- Mobile slides/animations — from the mobile passes above.
+
+The site consumes `manifest.json` per scenario, so slideshows/step-guides update by
+re-running capture — no hand-cropping.
+
 ## Non-determinism playbook (real runs)
 
 - Prompts are small, single-outcome tasks; the staged code is written so the "right" fix is
@@ -247,7 +470,9 @@ pacing). Used for the website's feature sections and the Android/Play Store list
 
 ## Open questions
 
-1. Dark-only for the proof pass, or dark + light from the start?
+1. ~~Dark-only for the proof pass, or dark + light from the start?~~ **Resolved
+   2026-07-18: dark (Twilight) + light (Daylight) from the start, by default, for every
+   scenario.** See Locked decisions.
 2. Should video show the bare web app, or do we want desktop-window framing (fake titlebar /
    device frame) added in post for the site?
 3. Output location `packages/website/public/demos/` — commit the binaries to the repo, or

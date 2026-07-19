@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import {
+  DESKTOP_CAPTURE_RESOLUTION,
+  DESKTOP_CAPTURE_SCALE,
+  DESKTOP_LAYOUT_VIEWPORT,
+} from "./demo/helpers/resolution";
 
 // Demo capture config: reuses the e2e global-setup stack (isolated daemon +
 // temp OTTO_HOME + Metro web on dynamic ports) but records every run — video
@@ -7,7 +12,15 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 
-const CAPTURE_VIEWPORT = { width: 1440, height: 900 };
+// Desktop lanes lay out at DESKTOP_LAYOUT_VIEWPORT (1024×576 logical at the
+// current 2.5× scale) and capture at DESKTOP_CAPTURE_SCALE device pixels, so
+// the app renders at a comfortable size while the PNGs/video still come out at
+// full 16:9 QHD (2560×1440). Setting the viewport straight to the QHD output
+// would make the app lay out as if on a giant screen — every control tiny. The
+// zoom knob and its ceiling live in demo/helpers/resolution.ts.
+const CAPTURE_VIEWPORT = DESKTOP_LAYOUT_VIEWPORT;
+const CAPTURE_SCALE = DESKTOP_CAPTURE_SCALE;
+const CAPTURE_VIDEO_SIZE = DESKTOP_CAPTURE_RESOLUTION;
 // Phone viewport at 3× — portrait PNGs come out 1080×1920, exactly the 9:16
 // aspect the Play Console requires (each side 320–3840px).
 const MOBILE_VIEWPORT = { width: 360, height: 640 };
@@ -34,24 +47,53 @@ export default defineConfig({
     screenshot: "off",
   },
   projects: [
+    // Every step-by-step demo captures both site-default themes — scenarios
+    // read their theme from the project name (see demo/helpers/theme.ts) and
+    // suffix their own .out dir, so this needs no other config plumbing.
     {
-      name: "demo",
+      name: "demo-twilight",
       testMatch: ["**/*.demo.ts"],
       use: {
         ...devices["Desktop Chrome"],
         channel: process.env.E2E_BROWSER_CHANNEL,
         viewport: CAPTURE_VIEWPORT,
-        video: { mode: "on", size: CAPTURE_VIEWPORT },
+        deviceScaleFactor: CAPTURE_SCALE,
+        video: { mode: "on", size: CAPTURE_VIDEO_SIZE },
       },
     },
-    // Feature spreads are stills-only sweeps — no video, faster runs.
     {
-      name: "spread",
+      name: "demo-daylight",
+      testMatch: ["**/*.demo.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: process.env.E2E_BROWSER_CHANNEL,
+        viewport: CAPTURE_VIEWPORT,
+        deviceScaleFactor: CAPTURE_SCALE,
+        video: { mode: "on", size: CAPTURE_VIDEO_SIZE },
+      },
+    },
+    // Feature spreads are stills-only sweeps — no video, faster runs. Desktop
+    // spreads (the website's feature sections) get both themes too;
+    // mobile/tablet/ios keep their store-listing-convention themes untouched.
+    {
+      name: "spread-twilight",
       testMatch: ["**/*.spread.ts"],
       use: {
         ...devices["Desktop Chrome"],
         channel: process.env.E2E_BROWSER_CHANNEL,
         viewport: CAPTURE_VIEWPORT,
+        deviceScaleFactor: CAPTURE_SCALE,
+        video: "off",
+      },
+    },
+    {
+      name: "spread-daylight",
+      testMatch: ["**/*.spread.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: process.env.E2E_BROWSER_CHANNEL,
+        viewport: CAPTURE_VIEWPORT,
+        deviceScaleFactor: CAPTURE_SCALE,
         video: "off",
       },
     },

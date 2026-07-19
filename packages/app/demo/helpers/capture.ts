@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
+import { resizePngToTarget, type ImageSize } from "../../e2e/helpers/image";
 
 /**
  * Capture recorder for demo scenarios. Screenshots and a step manifest land in
@@ -50,11 +51,26 @@ export class DemoRecorder {
     private readonly page: Page,
     private readonly scenario: string,
     private readonly outDir: string,
+    /**
+     * Set for Electron-lane captures only: page.viewportSize() is null for an
+     * Electron window (it isn't a Playwright-managed browser context), and
+     * the raw screenshot reflects the capturing machine's real display scale
+     * factor rather than a fixed logical size. When set, every shot() is
+     * resized down to this exact resolution — see e2e/helpers/image.ts.
+     */
+    private readonly targetSize?: ImageSize,
   ) {}
 
-  static async start(page: Page, scenario: string): Promise<DemoRecorder> {
+  static async start(
+    page: Page,
+    scenario: string,
+    options?: { targetSize?: ImageSize },
+  ): Promise<DemoRecorder> {
     const outDir = path.resolve(__dirname, "../.out", scenario);
-    const recorder = new DemoRecorder(page, scenario, outDir);
+    const recorder = new DemoRecorder(page, scenario, outDir, options?.targetSize);
+    // Wipe the scenario dir first: renamed/renumbered steps from earlier takes
+    // must not linger as stale PNGs beside the current manifest.
+    await rm(outDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     await mkdir(path.join(outDir, "shots"), { recursive: true });
     return recorder;
   }
@@ -68,10 +84,14 @@ export class DemoRecorder {
   async shot(name: string, title: string, caption?: string): Promise<void> {
     this.shotIndex += 1;
     const fileName = `${String(this.shotIndex).padStart(2, "0")}-${name}.png`;
+    const filePath = path.join(this.outDir, "shots", fileName);
     await this.page.screenshot({
-      path: path.join(this.outDir, "shots", fileName),
+      path: filePath,
       animations: "disabled",
     });
+    if (this.targetSize) {
+      await resizePngToTarget(filePath, this.targetSize);
+    }
     this.steps.push({ name, title, caption, screenshot: fileName, epochMs: Date.now() });
   }
 
@@ -79,7 +99,20 @@ export class DemoRecorder {
   async finish(testInfo: TestInfo): Promise<void> {
     const video = this.page.video();
     const videoSourcePath = video ? await video.path().catch(() => null) : null;
-    const viewport = this.page.viewportSize() ?? { width: 0, height: 0 };
+    // Record the *physical* pixel size of the assets so the site manifest
+    // matches the PNGs. On the web lane the viewport is logical (e.g. 1024×576)
+    // but screenshots capture at the deviceScaleFactor, so multiply by the
+    // page's devicePixelRatio to get the real 2560×1440. On the Electron lane
+    // viewportSize() is null and shots are already resized to targetSize.
+    let viewport = this.targetSize ?? { width: 0, height: 0 };
+    const logical = this.page.viewportSize();
+    if (logical) {
+      const dpr = await this.page.evaluate(() => window.devicePixelRatio).catch(() => 1);
+      viewport = {
+        width: Math.round(logical.width * dpr),
+        height: Math.round(logical.height * dpr),
+      };
+    }
     const manifest: DemoManifest = {
       scenario: this.scenario,
       startedEpochMs: this.startedEpochMs,

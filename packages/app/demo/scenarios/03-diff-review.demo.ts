@@ -2,6 +2,7 @@ import { expect, test } from "../../e2e/fixtures";
 import { expectFileTabOpen } from "../../e2e/helpers/file-explorer";
 import { gotoWorkspace } from "../../e2e/helpers/launcher";
 import { applyDemoAppearance } from "../helpers/appearance";
+import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
 import { DemoRecorder } from "../helpers/capture";
 import { beat, humanClick, resetPacingSeed } from "../helpers/pacing";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
@@ -30,7 +31,8 @@ test.afterAll(async () => {
 test("diff review walkthrough", async ({ page }, testInfo) => {
   resetPacingSeed();
   // Site assets run Neotokyo (UI theme + matching syntax highlighting).
-  await applyDemoAppearance(page, { darkTheme: "cyberpunk", syntaxTheme: "neotokyo" });
+  const theme = resolveDemoTheme(testInfo.project.name);
+  await applyDemoAppearance(page, demoThemeAppearance(theme));
   // Pin the walkthrough to a known diff starting state (flat list, unified).
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -43,7 +45,7 @@ test("diff review walkthrough", async ({ page }, testInfo) => {
       }),
     );
   });
-  const recorder = await DemoRecorder.start(page, "03-diff-review");
+  const recorder = await DemoRecorder.start(page, `03-diff-review-${theme}`);
 
   await gotoWorkspace(page, workspace.workspaceId);
   await beat(page);
