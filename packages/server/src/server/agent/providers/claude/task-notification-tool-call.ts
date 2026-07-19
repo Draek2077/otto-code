@@ -177,6 +177,13 @@ function parseTaskNotificationFromSystemRecord(record: unknown): TaskNotificatio
     return null;
   }
   const rawText = toNonEmptyString(systemRecord.content);
+  // A `system`/`task_notification` record is self-identifying. A `queue-operation` record is not:
+  // Claude Code writes bare enqueue/dequeue bookkeeping (no content) as the first lines of every
+  // transcript, and those must not become synthetic notification tool calls. Only queue-operation
+  // records that actually carry a task-notification payload qualify.
+  if (isQueueOperation && !rawText?.includes(TASK_NOTIFICATION_MARKER)) {
+    return null;
+  }
 
   return TaskNotificationEnvelopeSchema.parse({
     messageId: toNonEmptyString(systemRecord.uuid) ?? toNonEmptyString(systemRecord.message_id),

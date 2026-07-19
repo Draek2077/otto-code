@@ -85,4 +85,68 @@ describe("task-notification-tool-call", () => {
 
     expect(item).toBeNull();
   });
+
+  it("ignores bare queue-operation bookkeeping records", () => {
+    // Claude Code writes this enqueue/dequeue pair as the first two lines of every transcript.
+    // Treating them as notifications put a phantom "Background task notification" chip at the
+    // top of every chat.
+    for (const operation of ["enqueue", "dequeue"]) {
+      expect(
+        mapTaskNotificationSystemRecordToToolCall({
+          type: "queue-operation",
+          operation,
+          timestamp: "2026-07-19T18:58:21.421Z",
+          sessionId: "4c431c1d-8c5c-4ff7-96f3-b504ba5b8f4f",
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("ignores queue-operation records whose content is not a task notification", () => {
+    expect(
+      mapTaskNotificationSystemRecordToToolCall({
+        type: "queue-operation",
+        operation: "enqueue",
+        uuid: "queue-plain-1",
+        content: "just a queued prompt",
+      }),
+    ).toBeNull();
+  });
+
+  it("still maps queue-operation records that carry a task notification payload", () => {
+    const content = [
+      "<task-notification>",
+      "<task-id>bg-queue-1</task-id>",
+      "<status>completed</status>",
+      "<summary>Background task completed</summary>",
+      "</task-notification>",
+    ].join("\n");
+
+    expect(
+      mapTaskNotificationSystemRecordToToolCall({
+        type: "queue-operation",
+        operation: "enqueue",
+        uuid: "task-note-queue-1",
+        content,
+      }),
+    ).toEqual({
+      type: "tool_call",
+      callId: "task_notification_task-note-queue-1",
+      name: "task_notification",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        label: "Background task completed",
+        icon: "wrench",
+        text: content,
+      },
+      metadata: {
+        synthetic: true,
+        source: "claude_task_notification",
+        taskId: "bg-queue-1",
+        status: "completed",
+      },
+    });
+  });
 });
