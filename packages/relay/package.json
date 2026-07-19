@@ -2,6 +2,7 @@
   "name": "@otto-code/relay",
   "version": "0.6.3",
   "description": "Otto relay for bridging daemon and client connections",
+  "license": "AGPL-3.0-or-later",
   "files": [
     "dist",
     "!dist/**/*.map"

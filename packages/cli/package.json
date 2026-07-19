@@ -2,6 +2,7 @@
   "name": "@otto-code/cli",
   "version": "0.6.3",
   "description": "Otto CLI - control your AI coding agents from the command line",
+  "license": "AGPL-3.0-or-later",
   "bin": {
     "otto": "bin/otto"
   },

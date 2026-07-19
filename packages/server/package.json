@@ -2,6 +2,7 @@
   "name": "@otto-code/server",
   "version": "0.6.3",
   "description": "Otto backend server",
+  "license": "AGPL-3.0-or-later",
   "files": [
     "dist/server",
     "dist/src",
