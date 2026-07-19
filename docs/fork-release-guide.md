@@ -79,6 +79,7 @@ rebrand-upstream tooling) has been swapped to `otto-code.me`.
 | Direct connection (no relay, no QR)    | Works today, zero cloud dependency                                                                                         | ✅ Yes                        | Nothing — host/port/password against your own daemon, works over LAN or your domain once exposed                                                                                                                                      |
 | macOS code signing                     | N/A (not configured)                                                                                                       | N/A                           | Apple Developer Program ($99/yr) + certs as GH secrets, only if you want signed/notarized Mac builds                                                                                                                                  |
 | Windows code signing                   | N/A (ships unsigned)                                                                                                       | N/A                           | Optional; unsigned Windows builds just show a SmartScreen warning on first run                                                                                                                                                        |
+| iOS build + TestFlight submit (EAS)    | `.github/workflows/ios-release.yml` + `eas.json` ios build/submit profiles wired; gated off, no Apple secrets set yet      | ⚠️ Wired, not enabled         | Same Apple Developer Program membership as macOS signing, plus an App Store Connect app record and an ASC API key as GH secrets — see "iOS release" below                                                                             |
 
 ## Versioning
 
@@ -237,6 +238,63 @@ full `vX.Y.Z` release). Note the `eas submit` guard: it refuses a versionCode Pl
 ("You've already submitted this version"), so if you upload a build to Play by hand first, the
 automated submit of that same build will bounce as a duplicate — a fresh release (new versionCode)
 avoids it.
+
+## iOS release
+
+**Wired but gated off (2026-07-18): `.github/workflows/ios-release.yml` + `eas.json`'s `ios` build
+and `submit.production.ios` profiles exist and are ready to run — they just have no Apple secrets
+configured yet, so the workflow's `ios-signing-gate` job skips `submit-ios` cleanly on every tag
+push, the same pattern `apple-signing-gate` uses for macOS desktop builds.** This is the CI
+plumbing only; none of the Apple-side accounts exist yet.
+
+### What's already done
+
+- `packages/app/app.config.js` → `ios.bundleIdentifier: "me.ottocode.mobile"` (same namespace as
+  Android; different platforms, so no collision).
+- `packages/app/eas.json` → `build.production.ios` (`autoIncrement: "buildNumber"`) and
+  `submit.production.ios` (`ascAppId` — currently the literal placeholder
+  `"REPLACE_WITH_ASC_APP_ID"`).
+- `.github/workflows/ios-release.yml` → triggers on `v*`/`ios-v*` tags (and `workflow_dispatch`
+  with the same submit-only `build_id` retry input as the Android Play workflow); builds via EAS's
+  `production` profile and submits to App Store Connect (which lands the build in **TestFlight**
+  internal testing — going to the public App Store is a separate manual step in ASC, same
+  distinction as Play's internal vs. production track).
+
+### What you need to do (one-time)
+
+1. **Apple Developer Program membership** ($99/yr) — the same one macOS desktop signing needs (see
+   "Desktop release & auto-update" above). One membership covers both.
+2. **Create the App Store Connect app record** for `me.ottocode.mobile`: App Store Connect → My
+   Apps → **+** → New App. Note the numeric **Apple ID** shown on the app's General page (this is
+   the `ascAppId`, not your login) and paste it into `packages/app/eas.json`'s
+   `submit.production.ios.ascAppId`, replacing the placeholder.
+3. **Generate an App Store Connect API key**: App Store Connect → Users and Access →
+   Integrations → Keys → **Generate API Key**, role **Admin** (needed so EAS can manage
+   credentials, not just submit builds). Apple shows the `.p8` file contents exactly once — save it.
+   Note the **Key ID** and **Issuer ID** shown on the same page.
+4. **Add 4 repo secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret                  | Value                                                                                                              |
+   | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+   | `APPLE_TEAM_ID`         | Same 10-char Team ID as macOS signing (Apple Developer portal → Membership) — reuse it, one secret name, one value |
+   | `ASC_API_KEY_P8`        | Full contents of the downloaded `.p8` file                                                                         |
+   | `ASC_API_KEY_ID`        | Key ID from the Keys page                                                                                          |
+   | `ASC_API_KEY_ISSUER_ID` | Issuer ID from the Keys page                                                                                       |
+
+Once `ascAppId` is a real value and those secrets exist, `ios-signing-gate` flips to `enabled` and
+the next `v*` tag push builds and submits to TestFlight automatically — no other workflow change
+needed.
+
+**First-run credential gotcha:** EAS can usually generate the iOS distribution certificate and
+provisioning profile automatically from the ASC API key alone (that's why the key needs the Admin
+role). If the first CI build instead fails asking to re-run in interactive mode for credential
+setup, run `cd packages/app && npx eas credentials` locally once against the real Apple account —
+that generates/stores the cert and profile on Expo's servers, and every CI build afterward picks
+them up non-interactively.
+
+**Not wired:** actually promoting a TestFlight build to the public App Store (screenshots,
+privacy policy, content rating, review submission) is manual in App Store Connect, same as Play
+Store's production track.
 
 ## Local network hosting (recommended path)
 
@@ -431,6 +489,8 @@ Pulling the above into one end-to-end runbook for "ship a new version":
       Play Console internal track. If only the _submit_ step failed on a Google-side issue, fix it
       and re-dispatch with the existing `build_id` (no rebuild) — see "Play internal-track
       auto-submit"
+- [ ] **iOS**: confirm `iOS Release` is green and the build reached TestFlight (skips cleanly until
+      Apple secrets are set — see "iOS release")
 - [ ] **Web app**: confirm `Deploy App` ran on the tag (stable only)
 - [ ] **Website**: confirm `Deploy Website` ran on the published release
 - [ ] **Docker**: confirm the `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` (works
@@ -448,6 +508,7 @@ Being explicit about the open questions rather than picking answers for you:
   GitHub-Release APK sideloading remains the zero-Play-infra alternative.
 - **macOS code signing** — needs an Apple Developer Program membership; without it, scope releases
   to Windows/Linux (and Android) until/unless you decide it's worth $99/year.
-- **iOS distribution** — untouched: no Apple account, and `eas.json` no longer carries upstream's
-  App Store Connect app ID. TestFlight/App Store would need the Apple Developer account plus a
-  fresh ASC app for `me.ottocode.mobile`.
+- **iOS distribution** — CI plumbing is wired (`ios-release.yml`, `eas.json` ios profiles — see
+  "iOS release" above) but gated off: no Apple Developer account, no App Store Connect app record
+  yet, so `ascAppId` is still a placeholder and no ASC API key secrets exist. Same $99/year
+  membership as macOS signing unlocks both.

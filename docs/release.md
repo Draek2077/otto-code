@@ -188,24 +188,29 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 
 ## Mobile builds (EAS)
 
-> **Fork reality (Draek2077/otto-code):** the only mobile release path that exists on this
-> fork is the **Android APK attached to the GitHub Release** via
-> `.github/workflows/android-apk-release.yml` (fork EAS project + `EXPO_TOKEN`, both set up).
-> There are **no store submissions**: the fork has no Apple Developer account, no App Store
-> Connect app, no Play Console listing, and no EAS `Release Mobile` workflow. Everything
-> below describing store builds/submission (`submit_ios`, `submit_ios_for_review`,
-> `submit_android`, the babysit checklist items for them) is **upstream's flow**, kept as
-> reference for if/when store accounts are set up — see
-> [fork-release-guide.md](fork-release-guide.md). Do not attempt `eas submit` for iOS: it
-> would target upstream's App Store app.
+> **Fork reality (Draek2077/otto-code, updated 2026-07-18):** this fork's mobile release paths
+> live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow:
+>
+> - **Android APK (GitHub Release asset)** — `.github/workflows/android-apk-release.yml`. Live and
+>   active; needs only `EXPO_TOKEN`.
+> - **Android (Play Store internal track)** — `.github/workflows/android-play-release.yml`. Live and
+>   active; auto-submits to Play's internal testing track on a `v*` tag. Needs `EXPO_TOKEN` +
+>   `GOOGLE_SERVICE_ACCOUNT_KEY`.
+> - **iOS (TestFlight)** — `.github/workflows/ios-release.yml`. Wired but **gated off**: no Apple
+>   Developer account or App Store Connect app exists yet, so the workflow's signing gate skips it
+>   cleanly on every tag push. See [fork-release-guide.md](fork-release-guide.md)'s "iOS release"
+>   section for the one-time Apple/ASC setup that turns it on.
+>
+> Everything below describing upstream's EAS-GitHub-app flow (`submit_ios_for_review`,
+> `submit_android` to production, Fastlane review submission) is **upstream's flow**, kept as
+> reference — this fork does not have that GitHub app installed and does not use Fastlane.
 
-Upstream's iOS and Android store builds are not in `.github/workflows`. They are triggered by the EAS GitHub app the moment the `v*` tag is pushed:
+Upstream's iOS and Android store builds are not in `.github/workflows` — they're triggered by the EAS GitHub app the moment the `v*` tag is pushed, which this fork does not use:
 
 - **Android (Play Store)** — EAS builds with profile `production` and auto-submits to the Play Store via `eas submit` (EAS-managed credentials, no Fastlane).
 - **iOS (TestFlight + App Store)** — EAS builds with profile `production`, uploads to TestFlight, and a Fastlane lane submits the build for App Store review.
-- **Android APK (GitHub Release asset)** — separate, via `.github/workflows/android-apk-release.yml`. This is the only Android-related workflow that lives in this repo, and the only one active on this fork.
 
-There is no `release-mobile.yml` in this repo. Earlier versions of these docs referenced one — that workflow was removed and the EAS GitHub app handles tag triggering directly.
+This fork instead drives all three mobile release paths from its own `.github/workflows/*.yml` files (listed above), triggered directly by `v*` tag pushes like every other release workflow in this repo.
 
 ### Watching mobile builds from the terminal
 

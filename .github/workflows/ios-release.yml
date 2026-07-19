@@ -1,0 +1,155 @@
+name: iOS Release
+
+# Builds an iOS app via EAS and submits it to App Store Connect (lands in
+# TestFlight internal testing) on a release tag. Mirrors
+# android-play-release.yml's shape: build once via EAS, submit separately so a
+# failed submit can be retried without rebuilding.
+#
+# COMPAT(ios-signing): skipped (not failed) while this fork has no Apple
+# Developer Program account, so tag-push release runs stay green without an
+# App Store Connect API key configured. See ios-signing-gate below and
+# docs/fork-release-guide.md for the one-time Apple/ASC setup this needs.
+#
+# Requires these repo secrets (all gate the workflow via ios-signing-gate):
+#   - EXPO_TOKEN               (already set; authenticates the EAS build)
+#   - APPLE_TEAM_ID             (shared with desktop macOS signing — same team)
+#   - ASC_API_KEY_P8            (contents of the downloaded .p8 API key file)
+#   - ASC_API_KEY_ID            (Key ID from App Store Connect → Users and
+#                                Access → Integrations → Keys)
+#   - ASC_API_KEY_ISSUER_ID     (Issuer ID from the same Keys page)
+#
+# Also requires packages/app/eas.json's submit.production.ios.ascAppId to be
+# set to the real App Store Connect numeric app ID (not a secret — it's
+# public in the ASC URL — but there's no app record yet, so it's a
+# placeholder until one exists).
+#
+# First-run gotcha: EAS can usually generate the iOS distribution certificate
+# and provisioning profile automatically from the ASC API key alone (the key
+# needs the Admin role in App Store Connect). If a build fails asking to
+# re-run in interactive mode for credential setup, run
+# `cd packages/app && npx eas credentials` locally once (with the Apple
+# account) to generate/store them on Expo's servers, then CI builds pick them
+# up automatically from then on.
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "ios-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to check out (e.g. v0.5.1 or ios-v0.5.1)"
+        required: true
+        type: string
+      build_id:
+        description: "Existing EAS build id to submit as-is (skips the build). Leave empty to build from the tag."
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: ios-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Job-level `if` cannot read the secrets context, so this tiny job exposes
+  # whether ASC signing is configured as an output for submit-ios to gate on.
+  ios-signing-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        run: echo "enabled=${{ secrets.ASC_API_KEY_P8 != '' && secrets.ASC_API_KEY_ID != '' && secrets.ASC_API_KEY_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}" >> "$GITHUB_OUTPUT"
+
+  submit-ios:
+    needs: [ios-signing-gate]
+    if: ${{ needs.ios-signing-gate.outputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc-api-key.p8"
+
+      - name: Build iOS app on EAS
+        id: eas_build
+        # Skip the build when a caller supplies an existing build id to submit
+        # as-is (retry-a-failed-submit path). Empty for tag pushes, so they build.
+        if: ${{ github.event.inputs.build_id == '' }}
+        shell: bash
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cd packages/app
+
+          build_json="$(npx eas build --platform ios --profile production --non-interactive --wait --json)"
+          echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
+
+          build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
+          if [ -z "$build_id" ]; then
+            echo "Failed to determine EAS build ID." >&2
+            cat "$RUNNER_TEMP/eas-build.json"
+            exit 1
+          fi
+
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Submit build to App Store Connect (TestFlight)
+        shell: bash
+        env:
+          INPUT_BUILD_ID: ${{ github.event.inputs.build_id }}
+          BUILT_BUILD_ID: ${{ steps.eas_build.outputs.build_id }}
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cd packages/app
+          # Prefer a caller-supplied build id (submit-only retry); otherwise use
+          # the id from the build step above.
+          submit_id="${INPUT_BUILD_ID:-}"
+          if [ -z "$submit_id" ]; then submit_id="${BUILT_BUILD_ID:-}"; fi
+          if [ -z "$submit_id" ]; then
+            echo "No EAS build id to submit (build step skipped and no build_id input)." >&2
+            exit 1
+          fi
+          echo "Submitting EAS build $submit_id to App Store Connect"
+          npx eas submit --platform ios --profile production --id "$submit_id" --non-interactive
+
+      - name: Clean up API key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/asc-api-key.p8"
