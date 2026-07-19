@@ -81,6 +81,11 @@ export class AgentAutoTitle {
   }
 
   private async run(request: AgentAutoTitleRequest): Promise<void> {
+    // Host opt-out (WP-A metadataGeneration.enabled=false): skip auto-titling
+    // entirely; the provisional first-line title stays in place.
+    if (this.readDaemonConfig().metadataGeneration?.enabled === false) {
+      return;
+    }
     const generated = await this.generateAgentTitle({
       agentManager: this.agentManager,
       cwd: request.cwd,

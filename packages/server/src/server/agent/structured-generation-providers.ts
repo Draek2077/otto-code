@@ -4,6 +4,7 @@ import {
 } from "@otto-code/protocol/agent-personalities";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
 import type { AgentPersonality, PersonalityRole } from "@otto-code/protocol/messages";
+import type { ModelTier } from "@otto-code/protocol/agent-types";
 import type {
   AgentModelDefinition,
   AgentProvider,
@@ -15,6 +16,18 @@ import { resolveEffortOption } from "./effort-levels.js";
 
 export interface StructuredGenerationDaemonConfig {
   metadataGeneration?: {
+    /**
+     * WP-A flag (default true). When false the daemon skips the automatic
+     * metadata generations (chat auto-title, workspace/branch auto-name); read
+     * by the auto-title/auto-name schedulers, not by the routing here.
+     */
+    enabled?: boolean;
+    /**
+     * WP-A flag (default false). When true, role-matched Writer personalities
+     * are preferred ahead of the built-in cheap ladder (the pre-cheap-default
+     * behavior). Default false = cheapest-capable first.
+     */
+    preferWriterPersonalities?: boolean;
     providers?: Array<{
       provider: string;
       model?: string;
@@ -99,20 +112,27 @@ export async function resolveStructuredGenerationProviders(
   const entriesByProvider = new Map(enabledEntries.map((entry) => [entry.provider, entry]));
   const providers: StructuredGenerationProvider[] = [];
 
-  // Agent Personalities come first: a role-matched, available personality is the
-  // primary worker for this task. Everything below — configured providers, the
-  // built-in substring list, the current selection — is the legacy fallback that
-  // only runs when no suitable personality exists (or all of them fail).
-  if (role) {
-    for (const resolved of resolvePersonalityProviders(
-      role,
-      readConfiguredPersonalities(options.daemonConfig),
-      providerEntries,
-    )) {
-      providers.push(resolved);
-    }
+  const preferWriterPersonalities = readPreferWriterPersonalities(options.daemonConfig);
+  const personalityProviders = role
+    ? resolvePersonalityProviders(
+        role,
+        readConfiguredPersonalities(options.daemonConfig),
+        providerEntries,
+      )
+    : [];
+
+  // Cheap-tier is the default (WP-B): the cheapness-ordered built-in ladder runs
+  // AHEAD of role-matched Writer personalities, so a mini-task (title, branch,
+  // commit) doesn't pay a standard/deep model's price. A host that opts in via
+  // metadataGeneration.preferWriterPersonalities restores the pre-cheap-default
+  // order — Writers first — which is why the personality push is split around
+  // the ladder rather than moved.
+  if (preferWriterPersonalities) {
+    providers.push(...personalityProviders);
   }
 
+  // Pinned providers (metadataGeneration.providers) are honored above the
+  // built-in ladder in both modes, as before.
   for (const configured of configuredProviders) {
     const resolvedConfigured = resolveConfiguredCandidate(
       configured,
@@ -125,11 +145,23 @@ export async function resolveStructuredGenerationProviders(
     providers.push(resolvedConfigured);
   }
 
+  // The built-in cheap ladder: curated cheapest-known model substrings first,
+  // then a tier-aware cheapest-capable backstop (cheapest advertised `.tier`) so
+  // a host whose local models matched none of the substrings still routes to its
+  // cheapest model instead of an expensive current selection.
   for (const identifier of DEFAULT_STRUCTURED_GENERATION_PROVIDERS) {
     const resolved = resolveByModelSubstring(modelEntries, identifier);
     if (resolved) {
       providers.push(resolved);
     }
+  }
+  const cheapestByTier = resolveCheapestTierProvider(modelEntries);
+  if (cheapestByTier) {
+    providers.push(cheapestByTier);
+  }
+
+  if (!preferWriterPersonalities) {
+    providers.push(...personalityProviders);
   }
 
   const currentSelection = resolveCurrentSelection(
@@ -472,6 +504,54 @@ function readConfiguredProviders(
   }
   const providers = "providers" in metadataGeneration ? metadataGeneration.providers : undefined;
   return Array.isArray(providers) ? providers : [];
+}
+
+function readPreferWriterPersonalities(
+  daemonConfig: ResolveStructuredGenerationProvidersOptions["daemonConfig"],
+): boolean {
+  return daemonConfig?.metadataGeneration?.preferWriterPersonalities === true;
+}
+
+// Cheaper = smaller number, so the cheapest capable model wins a `<` compare.
+// "deep" is deliberately excluded from the cheap backstop below.
+const TIER_COST_RANK: Record<ModelTier, number> = { fast: 0, standard: 1, deep: 2 };
+
+/**
+ * Tier-aware cheapest-capable backstop for the built-in ladder: the cheapest
+ * advertised `.tier` across enabled models, capped at "standard" so a "deep"
+ * model is never elected as the cheap default. Models the daemon couldn't tier
+ * (undefined) are skipped — we never guess. Returns null when no fast/standard
+ * model is available (the curated substring ladder / current selection then
+ * carry the task).
+ */
+function resolveCheapestTierProvider(
+  entries: readonly ProviderSnapshotEntry[],
+): StructuredGenerationProvider | null {
+  let best: { entry: ProviderSnapshotEntry; model: AgentModelDefinition; rank: number } | null =
+    null;
+  for (const entry of entries) {
+    for (const model of entry.models ?? []) {
+      if (!model.tier) {
+        continue;
+      }
+      const rank = TIER_COST_RANK[model.tier];
+      if (rank > TIER_COST_RANK.standard) {
+        continue;
+      }
+      if (!best || rank < best.rank) {
+        best = { entry, model, rank };
+      }
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  const thinkingOptionId = resolveThinkingOptionId(best.model, undefined);
+  return {
+    provider: best.entry.provider,
+    model: best.model.id,
+    ...(thinkingOptionId ? { thinkingOptionId } : {}),
+  };
 }
 
 function readConfiguredPersonalities(

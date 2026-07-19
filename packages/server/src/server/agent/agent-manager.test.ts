@@ -1513,6 +1513,11 @@ test("createAgent passes daemon launch env through the provider launch context",
     env: {
       OTTO_AGENT_ID: snapshot.id,
     },
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    },
   });
 });
 
@@ -2277,6 +2282,11 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     env: {
       OTTO_AGENT_ID: resumed.id,
     },
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    },
   });
 });
 
@@ -2422,6 +2432,11 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
     env: {
       OTTO_AGENT_ID: snapshot.id,
     },
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    },
   });
 
   await manager.reloadAgentSession(snapshot.id, {
@@ -2432,6 +2447,11 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
     agentId: snapshot.id,
     env: {
       OTTO_AGENT_ID: snapshot.id,
+    },
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
     },
   });
 });

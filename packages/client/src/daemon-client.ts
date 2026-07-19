@@ -90,6 +90,8 @@ import type {
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
   StatsActivityGetResponseMessage,
+  StatsActivityResetResponseMessage,
+  UsageLogGetResponseMessage,
   AgentContextGetUsageResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
@@ -4742,6 +4744,34 @@ export class DaemonClient {
       requestId: options?.requestId,
       message: {
         type: "stats.activity.get.request",
+      },
+    });
+  }
+
+  /** Wipe all usage counters AND the itemized ledger back to zero (Metrics "Reset"). */
+  async resetActivityStats(options?: {
+    requestId?: string;
+  }): Promise<StatsActivityResetResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "stats.activity.reset.request",
+      },
+    });
+  }
+
+  /** Itemized usage ledger — the scrollable rows behind the stats tiles (usage-ledger). */
+  async getUsageLog(options?: {
+    limit?: number;
+    before?: number;
+    requestId?: string;
+  }): Promise<UsageLogGetResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "usage.log.get.request",
+        ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+        ...(options?.before !== undefined ? { before: options.before } : {}),
       },
     });
   }

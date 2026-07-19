@@ -363,39 +363,35 @@ export async function getStructuredAgentResponse<T>(
   });
 }
 
+/**
+ * Run one structured generation against a single resolved provider/model.
+ *
+ * This is a **bare completion**: the caller drives `getStructuredAgentResponse`'s
+ * retry loop over `manager.generateBareCompletion`, a direct tool-less provider
+ * call. It intentionally does NOT spawn an agent (no createAgent → runAgent →
+ * closeAgent), so no full session config, no Otto tool catalog / MCP mount, and
+ * on Claude no `claude_code` preset or CLAUDE.md is ever built — the prompt is
+ * self-contained. Behavior contract is preserved: same schemas, same `maxRetries`
+ * handling, and the fallback ladder in
+ * `generateStructuredAgentResponseWithFallback` still applies (a provider that
+ * can't do a tool-less completion throws here and the ladder skips to the next).
+ *
+ * `agentId`/`persistSession` on the options are legacy no-ops for this path —
+ * kept so the runner signature and existing callers stay unchanged.
+ */
 export async function generateStructuredAgentResponse<T>(
   options: StructuredAgentGenerationOptions<T>,
 ): Promise<T> {
-  const { manager, agentConfig, agentId, persistSession, prompt, schema, maxRetries, schemaName } =
-    options;
-  const agent = await manager.createAgent(agentConfig, agentId, {
-    persistSession,
-    workspaceId: undefined,
+  const { manager, agentConfig, prompt, schema, maxRetries, schemaName } = options;
+  const caller: AgentCaller = (nextPrompt) =>
+    manager.generateBareCompletion(agentConfig, nextPrompt);
+  return getStructuredAgentResponse({
+    caller,
+    prompt,
+    schema,
+    maxRetries,
+    schemaName,
   });
-  try {
-    const caller: AgentCaller = async (nextPrompt) => {
-      const result = await manager.runAgent(agent.id, nextPrompt);
-      if (typeof result.finalText === "string" && result.finalText.length > 0) {
-        return result.finalText;
-      }
-      // Fallback for providers that may not populate finalText consistently.
-      const lastAssistant = result.timeline.findLast((item) => item.type === "assistant_message");
-      return lastAssistant?.text ?? "";
-    };
-    return await getStructuredAgentResponse({
-      caller,
-      prompt,
-      schema,
-      maxRetries,
-      schemaName,
-    });
-  } finally {
-    try {
-      await manager.closeAgent(agent.id);
-    } catch {
-      // ignore cleanup errors
-    }
-  }
 }
 
 function errorMessage(error: unknown): string {

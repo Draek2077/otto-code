@@ -628,4 +628,56 @@ describe("toObservedSubagentPayload", () => {
 
     expect(payload.cumulativeTokens).toBeUndefined();
   });
+
+  it("projects the subagent's own model and full usage split", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      // A subagent that ran a cheaper model than its parent, with the carried-
+      // forward split resolved by the manager.
+      model: "claude-haiku-4-5-20251001",
+      lastUsage: {
+        inputTokens: 4,
+        cachedInputTokens: 68_161,
+        cacheCreationInputTokens: 726,
+        outputTokens: 913,
+      },
+      update: { key: "task-1", status: "idle", subAgentType: "code-explorer" },
+    });
+
+    expect(payload.model).toBe("claude-haiku-4-5-20251001");
+    expect(payload.lastUsage).toEqual({
+      inputTokens: 4,
+      cachedInputTokens: 68_161,
+      cacheCreationInputTokens: 726,
+      outputTokens: 913,
+    });
+  });
+
+  it("prefers the carried-forward usage over a scalar-only final update", () => {
+    // The final update refreshes only cumulativeTokens (run-state reconcile) and
+    // carries no split of its own; the resolved lastUsage must still surface.
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      cumulativeTokens: 40_229,
+      lastUsage: { inputTokens: 4, outputTokens: 913, cachedInputTokens: 68_161 },
+      update: { key: "task-1", status: "idle" },
+    });
+
+    expect(payload.lastUsage).toEqual({
+      inputTokens: 4,
+      outputTokens: 913,
+      cachedInputTokens: 68_161,
+    });
+    expect(payload.cumulativeTokens).toBe(40_229);
+  });
 });

@@ -10,6 +10,7 @@ import {
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { TerminalProfileSchema } from "@otto-code/protocol/messages";
+import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -180,6 +181,12 @@ const StructuredGenerationProviderConfigSchema = z
 const AgentMetadataGenerationSchema = z
   .object({
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
+    // Master switch for daemon-side metadata generation. Absent = enabled
+    // (today's implicit default). Read by the generation path (WP-B).
+    enabled: z.boolean().optional(),
+    // Prefer a role-matched Writer personality over the cheap default tier for
+    // metadata generation. Absent = false (cheap-tier default). Read by WP-B.
+    preferWriterPersonalities: z.boolean().optional(),
   })
   .strict();
 
@@ -338,12 +345,25 @@ export const PersistedConfigSchema = z
           .object({
             enabled: z.boolean().optional(),
             injectIntoAgents: z.boolean().optional(),
+            // Otto tool-group allowlist for the MCP (Claude) path. Absent = all
+            // groups enabled (mirrors openai-compat's per-provider semantics).
+            toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
           })
           .passthrough()
           .optional(),
         browserTools: z
           .object({
             enabled: z.boolean().optional(),
+          })
+          .passthrough()
+          .optional(),
+        // Daemon-wide agent behavior toggles (Claude-tier capabilities). Absent
+        // fields read as their implicit default (all enabled).
+        agentBehaviors: z
+          .object({
+            promptSuggestions: z.boolean().optional(),
+            agentProgressSummaries: z.boolean().optional(),
+            notifyOnFinishDefault: z.boolean().optional(),
           })
           .passthrough()
           .optional(),

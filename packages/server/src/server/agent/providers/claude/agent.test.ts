@@ -1665,6 +1665,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 9_000,
         cachedInputTokens: 700,
+        cacheCreationInputTokens: 300,
         outputTokens: 400,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -1821,6 +1822,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 4,
         cachedInputTokens: 16_999,
+        cacheCreationInputTokens: 17_252,
         outputTokens: 171,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -1866,6 +1868,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 5_000,
         cachedInputTokens: 600,
+        cacheCreationInputTokens: 500,
         outputTokens: 700,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -2099,6 +2102,7 @@ describe("ClaudeAgentSession context window usage", () => {
           usage: {
             inputTokens: 0,
             cachedInputTokens: 0,
+            cacheCreationInputTokens: 0,
             outputTokens: 0,
             totalCostUsd: 0.04,
             contextWindowMaxTokens: 200_000,
@@ -2152,6 +2156,7 @@ describe("ClaudeAgentSession context window usage", () => {
           usage: {
             inputTokens: 0,
             cachedInputTokens: 0,
+            cacheCreationInputTokens: 0,
             outputTokens: 0,
             totalCostUsd: 0.04,
             contextWindowMaxTokens: 200_000,
@@ -2289,7 +2294,8 @@ describe("ClaudeAgentSession context window usage", () => {
       type: "rate_limit_event",
       rate_limit_info: {
         status: "allowed_warning",
-        utilization: 82.4,
+        // The event's utilization is a 0-1 fraction (verified live); mapped ×100.
+        utilization: 0.824,
         rateLimitType: "five_hour",
         resetsAt: 1784331000,
         isUsingOverage: false,

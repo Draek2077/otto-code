@@ -4,6 +4,8 @@
 
 The core promise of the design was: **generalizing is adapter-only work.** The protocol (`attend`, `features.observedSubagents`, `agent.subagent.stop.*`), the daemon projection (`AgentManager.observedSubagents` registry, `toObservedSubagentPayload`, observed timeline routing, the stop RPC plumbing), and the entire client (track, read-only pane, Stop button) are already provider-neutral. Nothing in them says "claude". A new provider only has to emit two events and (optionally) implement one method.
 
+> **Sub-agent accounting rides on the same events.** Giving a provider's observed sub-agents real per-sub-agent token + cost accounting (their own ledger row, model, priced cost, parent de-inflation) is a companion adapter task on the same `observed_subagent_updated` stream — see [docs/subagent-accounting.md](../../docs/subagent-accounting.md) for the neutral core and the 3-step contract. Do it alongside each provider's track-row port below.
+
 ## The adapter contract
 
 A provider session participates by emitting on its normal `AgentStreamEvent` stream (`packages/server/src/server/agent/agent-sdk-types.ts`):

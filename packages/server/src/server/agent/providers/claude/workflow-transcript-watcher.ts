@@ -34,7 +34,10 @@ import * as path from "node:path";
 
 import type { AgentStreamEvent } from "../../agent-sdk-types.js";
 
+import { grandTotalTokens } from "../../subagent-usage.js";
+
 import { claudeProjectDirSync } from "./project-dir.js";
+import { toClaudeSubagentUsage } from "./claude-subagent-usage.js";
 import { WorkflowSubagentTranscriptMapper } from "./workflow-transcript-mapper.js";
 
 const POLL_INTERVAL_MS = 700;
@@ -606,7 +609,8 @@ export class WorkflowTranscriptWatcher {
   }
 
   private maybeEmitTokens(state: AgentState): void {
-    const tokens = state.mapper.cumulativeOutputTokens();
+    const totals = state.mapper.usageTotals();
+    const tokens = grandTotalTokens(totals);
     if (tokens <= state.lastTokens) {
       return;
     }
@@ -615,6 +619,7 @@ export class WorkflowTranscriptWatcher {
     // chunk raises its token total (the final chunk usually lands on the same
     // tick as the journal result) — re-assert the settled status instead.
     const status = state.settled ? (state.settledStatus ?? "idle") : "running";
+    const model = state.mapper.model();
     this.opts.emit({
       type: "observed_subagent_updated",
       provider: "claude",
@@ -622,6 +627,13 @@ export class WorkflowTranscriptWatcher {
         key: state.key,
         status,
         ...(status === "error" ? { requiresAttention: true } : {}),
+        // Full in/out/cache split (the real per-frame API numbers) priced on the
+        // subagent's OWN model, alongside the grand-total scalar — so the ledger
+        // costs this subagent on its own usage (not a roll-up) and the track
+        // readout matches native agents.
+        usage: toClaudeSubagentUsage(totals, model),
+        usageRounds: state.mapper.roundCount(),
+        ...(model ? { model } : {}),
         cumulativeTokens: tokens,
       },
     });

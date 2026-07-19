@@ -284,6 +284,10 @@ function buildOutcomeRecordingScheduleService(params: {
   tempDir: string;
   now: () => Date;
   outcome: "success" | "error";
+  // Whether the run captured any transcript content. Drives the "reveal a
+  // failed run's workspace only if there's something to see" branch. Defaults
+  // to false (a run that failed before producing anything).
+  hasContent?: boolean;
 }): {
   service: ScheduleService;
   createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][];
@@ -305,6 +309,9 @@ function buildOutcomeRecordingScheduleService(params: {
     params.outcome === "error"
       ? { status: "error", permission: null, lastMessage: "boom" }
       : { status: "idle", permission: null, lastMessage: "ok" };
+  // The stubbed createAgent never registers the agent in this manager, so the
+  // real capture path can't read a timeline — stub the outcome directly.
+  manager.captureRetainedTranscript = async () => ({ hasContent: params.hasContent ?? false });
   const createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
   const workspaceCreateInputs: Parameters<
     ScheduleServiceOptions["createLocalCheckoutWorkspace"]
@@ -875,7 +882,7 @@ describe("ScheduleService", () => {
     );
   });
 
-  test("reveals the run workspace when scheduled agent creation fails so the error surfaces", async () => {
+  test("archives (never reveals) the run workspace when scheduled agent creation fails, leaving no empty workspace", async () => {
     const {
       workspaceRegistry,
       createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
@@ -928,14 +935,15 @@ describe("ScheduleService", () => {
       (service as unknown as ScheduleServiceInternals).executeSchedule(created, "run-create-fails"),
     ).rejects.toThrow("provider misconfigured");
 
-    // An errored run reveals (never archives) its workspace so the failure is
-    // visible, even though archiveOnFinish would archive a successful run.
-    expect(archiveCalls).toEqual([]);
+    // The run failed before an agent (and any transcript) ever existed, so there
+    // is nothing to see — archive the hidden workspace instead of revealing an
+    // empty shell into the sidebar. The failure still surfaces on the schedule
+    // card (lastRunError). See docs/safe-unattended.md.
+    expect(archiveCalls).toHaveLength(1);
     expect(await workspaceRegistry.list()).toEqual([
       expect.objectContaining({
         cwd: tempDir,
-        archivedAt: null,
-        hidden: false,
+        archivedAt: expect.any(String),
       }),
     ]);
   });
@@ -1028,16 +1036,17 @@ describe("ScheduleService", () => {
     expect(archiveCalls).toEqual([]);
   });
 
-  test("errored runs reveal the workspace and never archive it, even with archiveOnFinish=true", async () => {
+  test("errored run WITHOUT content archives its workspace instead of leaving an empty one", async () => {
     const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
       agentStorage,
       tempDir,
       now: () => now,
       outcome: "error",
+      hasContent: false,
     });
 
     const created = await service.create({
-      prompt: "this run errors",
+      prompt: "this run errors with nothing to show",
       cadence: { type: "every", everyMs: 60_000 },
       target: {
         type: "new-agent",
@@ -1048,8 +1057,41 @@ describe("ScheduleService", () => {
     await service.tick();
 
     const inspected = await service.inspect(created.id);
-    // (d) the run failed (agent error status), the workspace is promoted to the
-    // sidebar (revealed) and NOT archived — archiving would hide the problem.
+    // The run failed but produced no transcript content, so revealing its
+    // workspace would leave an empty shell in the sidebar — archive it instead.
+    // The failure still surfaces on the schedule card. See docs/safe-unattended.md.
+    expect(inspected.runs[0]).toMatchObject({
+      status: "failed",
+      error: "boom",
+    });
+    expect(archiveCalls).toHaveLength(1);
+    expect(revealCalls).toEqual([]);
+  });
+
+  test("errored run WITH content reveals the workspace and never archives it, even with archiveOnFinish=true", async () => {
+    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
+      agentStorage,
+      tempDir,
+      now: () => now,
+      outcome: "error",
+      hasContent: true,
+    });
+
+    const created = await service.create({
+      prompt: "this run does work, then errors",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    const inspected = await service.inspect(created.id);
+    // The run did real work before failing, so its workspace has substance to
+    // inspect — promote it to the sidebar (revealed) and never archive, even
+    // though archiveOnFinish would archive a clean run.
     expect(inspected.runs[0]).toMatchObject({
       status: "failed",
       error: "boom",
@@ -1396,6 +1438,9 @@ describe("ScheduleService", () => {
     manager.runAgent = async () => {
       throw new Error("run exploded");
     };
+    // The run did work before throwing, so its workspace is worth revealing —
+    // which lets this test exercise the reveal-failure path below.
+    manager.captureRetainedTranscript = async () => ({ hasContent: true });
     const agentId = "00000000-0000-0000-0000-000000000326";
     const archiveCalls: string[] = [];
     const service = createScheduleService({

@@ -11,8 +11,10 @@ import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPermissionResult,
+  AgentPersonalityUpdate,
   AgentPromptInput,
   AgentProvider,
+  AgentRateLimitInfo,
   AgentRunOptions,
   AgentRunResult,
   AgentRuntimeInfo,
@@ -148,9 +150,28 @@ interface MockQuestionPromptRequest {
   questions: MockQuestionPromptQuestion[];
 }
 
+// Script for a one-shot synthetic turn (see emitSyntheticTurn): optional
+// timeline items and assistant text, plus extra stream events emitted between
+// the assistant message and turn_completed.
+interface MockSyntheticTurnScript {
+  timeline?: AgentTimelineItem[];
+  assistantText?: string;
+  events?: AgentStreamEvent[];
+  finalText: string;
+}
+
 function shouldEmitPlanApprovalPrompt(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+plan\s+approval/i.test(promptToText(prompt));
 }
+
+function shouldEmitToolPermissionPrompt(prompt: AgentPromptInput): boolean {
+  return /emit\s+(?:a\s+)?synthetic\s+tool\s+permission/i.test(promptToText(prompt));
+}
+
+// Deterministic shell detail for the synthetic tool-permission scenario. E2E
+// specs assert on the command text, so keep it stable.
+const MOCK_TOOL_PERMISSION_COMMAND = "npm run build";
+const MOCK_TOOL_PERMISSION_CWD = "/tmp/otto-mock-load";
 
 function parseMockQuestionPrompt(prompt: AgentPromptInput): MockQuestionPromptRequest | null {
   const text = promptToText(prompt);
@@ -313,6 +334,90 @@ function parseStructuredBranchNamePrompt(
       .slice(0, 100) || "mock-task";
 
   return { title: title || "Mock task", branch };
+}
+
+// Structured "chat title" generation (agent-title-generator.ts): the prompt
+// asks for JSON with a single `title` field. Deterministic derivation so E2E
+// specs can assert the exact AI title: first three words of the first
+// non-empty <user-prompt> line, clamped to the 40-char schema ceiling.
+function parseStructuredTitlePrompt(prompt: AgentPromptInput): { title: string } | null {
+  const text = promptToText(prompt);
+  const isTitleContract = text.includes(
+    "Generate an extremely short title (a chat name) for a coding-assistant conversation",
+  );
+  const isTitleOnlySchema =
+    text.includes("You must respond with JSON only that matches this JSON Schema") &&
+    text.includes('"title"') &&
+    !text.includes('"branch"');
+  if (!isTitleContract && !isTitleOnlySchema) {
+    return null;
+  }
+
+  const seed = text.match(/<user-prompt>\n([\s\S]*?)\n<\/user-prompt>/)?.[1]?.trim() ?? "";
+  const firstLine =
+    seed
+      .split("\n")
+      .find((line) => line.trim().length > 0)
+      ?.trim() ?? "";
+  const title = firstLine
+    .replace(/["'`]/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" ")
+    .slice(0, 40)
+    .trim();
+  return { title: title || "Mock chat" };
+}
+
+// Synthetic composer ghost-text suggestion: `emit a synthetic prompt suggestion "..."`.
+function parseMockPromptSuggestionPrompt(prompt: AgentPromptInput): { suggestion: string } | null {
+  const match = /emit\s+(?:a\s+)?synthetic\s+prompt\s+suggestion\s+"([^"]+)"/i.exec(
+    promptToText(prompt),
+  );
+  return match?.[1] ? { suggestion: match[1] } : null;
+}
+
+// Synthetic plan rate-limit status: `emit a synthetic rate limit [allowed|warning|rejected]`.
+function parseMockRateLimitPrompt(prompt: AgentPromptInput): { info: AgentRateLimitInfo } | null {
+  const match = /emit\s+(?:a\s+)?synthetic\s+rate\s+limit(?:\s+(allowed|warning|rejected))?/i.exec(
+    promptToText(prompt),
+  );
+  if (!match) {
+    return null;
+  }
+  const status = (match[1]?.toLowerCase() ?? "warning") as AgentRateLimitInfo["status"];
+  if (status === "allowed") {
+    return { info: { status } };
+  }
+  return {
+    info: {
+      status,
+      // Deterministic percentages so specs can assert exact warning copy.
+      utilizationPercent: status === "rejected" ? 100 : 85,
+      limitType: "five_hour",
+      resetsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    },
+  };
+}
+
+// Synthetic assistant message with caller-provided markdown: everything after
+// the `emit synthetic assistant markdown` marker line becomes the message body
+// (E2E uses this to render file links and other markdown deterministically).
+function parseMockAssistantMarkdownPrompt(prompt: AgentPromptInput): { markdown: string } | null {
+  const match = /emit\s+synthetic\s+assistant\s+markdown\s*\n([\s\S]+)/i.exec(promptToText(prompt));
+  const markdown = match?.[1]?.trim();
+  return markdown ? { markdown } : null;
+}
+
+// Synthetic tool call with a caller-chosen raw name and an `unknown` detail, so
+// the UI's tool display-name humanizer is what renders the label:
+// `emit a synthetic tool call named "mcp__otto__spawn_task"`.
+function parseMockNamedToolCallPrompt(prompt: AgentPromptInput): { name: string } | null {
+  const match = /emit\s+(?:a\s+)?synthetic\s+tool\s+call\s+named\s+"([^"]+)"/i.exec(
+    promptToText(prompt),
+  );
+  return match?.[1] ? { name: match[1] } : null;
 }
 
 function buildRepeatedPayload(bytes: number, prefix: string): string {
@@ -652,12 +757,63 @@ export class MockLoadTestAgentSession implements AgentSession {
     const stress = parseAgentStreamStressPrompt(prompt);
     const questionPrompt = parseMockQuestionPrompt(prompt);
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
+    const structuredTitle = parseStructuredTitlePrompt(prompt);
+    const promptSuggestion = parseMockPromptSuggestionPrompt(prompt);
+    const rateLimit = parseMockRateLimitPrompt(prompt);
+    const assistantMarkdown = parseMockAssistantMarkdownPrompt(prompt);
+    const namedToolCall = parseMockNamedToolCallPrompt(prompt);
     if (structuredBranchName) {
       this.scheduleStructuredJsonTurn(turn, structuredBranchName);
+    } else if (structuredTitle) {
+      this.scheduleStructuredJsonTurn(turn, structuredTitle);
     } else if (shouldEmitPlanApprovalPrompt(prompt)) {
       this.schedulePlanApprovalTurn(turn);
+    } else if (shouldEmitToolPermissionPrompt(prompt)) {
+      this.scheduleToolPermissionTurn(turn);
     } else if (questionPrompt) {
       this.scheduleQuestionPromptTurn(turn, questionPrompt);
+    } else if (promptSuggestion) {
+      this.scheduleSyntheticTurn(turn, {
+        assistantText: "Synthetic prompt suggestion emitted.",
+        events: [
+          {
+            type: "prompt_suggestion",
+            provider: this.provider,
+            suggestion: promptSuggestion.suggestion,
+          },
+        ],
+        finalText: "Synthetic prompt suggestion complete",
+      });
+    } else if (rateLimit) {
+      this.scheduleSyntheticTurn(turn, {
+        assistantText: "Synthetic rate limit emitted.",
+        events: [
+          {
+            type: "rate_limit_updated",
+            provider: this.provider,
+            info: rateLimit.info,
+          },
+        ],
+        finalText: "Synthetic rate limit complete",
+      });
+    } else if (assistantMarkdown) {
+      this.scheduleSyntheticTurn(turn, {
+        assistantText: assistantMarkdown.markdown,
+        finalText: "Synthetic assistant markdown complete",
+      });
+    } else if (namedToolCall) {
+      this.scheduleSyntheticTurn(turn, {
+        timeline: [
+          createToolCall({
+            callId: `${turnId}:named-tool`,
+            name: namedToolCall.name,
+            status: "completed",
+            detail: { type: "unknown", input: {}, output: "ok" },
+          }),
+        ],
+        assistantText: "Synthetic tool call emitted.",
+        finalText: "Synthetic tool call complete",
+      });
     } else if (largePayload) {
       this.scheduleLargePayloadTurn(turn, largePayload);
     } else if (stress) {
@@ -726,12 +882,16 @@ export class MockLoadTestAgentSession implements AgentSession {
     });
 
     if (turn) {
-      this.finishTurnWithText(
-        turn,
-        request.kind === "question"
-          ? "Synthetic questions resolved"
-          : "Synthetic plan approval resolved",
-      );
+      if (request.kind === "tool") {
+        this.finishToolPermissionTurn(turn, response);
+      } else {
+        this.finishTurnWithText(
+          turn,
+          request.kind === "question"
+            ? "Synthetic questions resolved"
+            : "Synthetic plan approval resolved",
+        );
+      }
     }
     return undefined;
   }
@@ -793,6 +953,12 @@ export class MockLoadTestAgentSession implements AgentSession {
     this.modelId = modelId ?? MOCK_LOAD_TEST_DEFAULT_MODEL_ID;
   }
 
+  // The mock provider has no real system prompt, so accepting the update is a
+  // no-op — but implementing it lets the daemon's live personality switch
+  // (agent.personality.set) run end-to-end against mock agents in dev and E2E.
+  // Brain fields (model/mode) still arrive through setModel/setMode as usual.
+  async applyPersonality(_update: AgentPersonalityUpdate): Promise<void> {}
+
   private schedule(turn: ActiveTurn, delayMs: number): void {
     turn.timer = setTimeout(() => {
       this.tick(turn);
@@ -830,6 +996,13 @@ export class MockLoadTestAgentSession implements AgentSession {
     turn.timer.unref?.();
   }
 
+  private scheduleToolPermissionTurn(turn: ActiveTurn): void {
+    turn.timer = setTimeout(() => {
+      this.emitToolPermissionTurn(turn);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
   private scheduleQuestionPromptTurn(
     turn: ActiveTurn,
     questionPrompt: MockQuestionPromptRequest,
@@ -845,6 +1018,45 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitStructuredJsonTurn(turn, result);
     }, 0);
     turn.timer.unref?.();
+  }
+
+  private scheduleSyntheticTurn(turn: ActiveTurn, script: MockSyntheticTurnScript): void {
+    turn.timer = setTimeout(() => {
+      this.emitSyntheticTurn(turn, script);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  // One-shot scripted turn: timeline items, an optional assistant message, then
+  // extra stream events (prompt_suggestion / rate_limit_updated) before the
+  // turn completes. The E2E mock scenarios above all flow through here.
+  private emitSyntheticTurn(turn: ActiveTurn, script: MockSyntheticTurnScript): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    for (const item of script.timeline ?? []) {
+      this.emitTimeline(turn.turnId, item);
+    }
+    if (script.assistantText) {
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: script.assistantText,
+        messageId: turn.assistantMessageId,
+      });
+    }
+    for (const event of script.events ?? []) {
+      this.emit(event);
+    }
+
+    this.finishTurnWithText(turn, script.finalText);
   }
 
   private emitStructuredJsonTurn(turn: ActiveTurn, result: Record<string, string>): void {
@@ -935,6 +1147,85 @@ export class MockLoadTestAgentSession implements AgentSession {
       request,
       turnId: turn.turnId,
     });
+  }
+
+  // "Emit synthetic tool permission." — a scripted tool approval prompt: the
+  // turn starts, requests permission for a shell command, and stays pending
+  // until respondToPermission (a user's answer, or the daemon deny-responder
+  // for unattended runs) finishes the turn with a distinct allow/deny surface.
+  private emitToolPermissionTurn(turn: ActiveTurn): void {
+    if (this.activeTurn !== turn) {
+      return;
+    }
+
+    this.clearTurnTimer(turn);
+    this.emit({
+      type: "turn_started",
+      provider: this.provider,
+      turnId: turn.turnId,
+    });
+
+    const request: AgentPermissionRequest = {
+      id: `mock-tool-${turn.turnId}`,
+      provider: this.provider,
+      name: "Bash",
+      kind: "tool",
+      title: "Bash",
+      description: "Run a shell command",
+      detail: {
+        type: "shell",
+        command: MOCK_TOOL_PERMISSION_COMMAND,
+        cwd: MOCK_TOOL_PERMISSION_CWD,
+      },
+      metadata: {
+        source: "mock_tool_permission",
+      },
+    };
+
+    this.pendingPermissions.set(request.id, request);
+    this.emit({
+      type: "permission_requested",
+      provider: this.provider,
+      request,
+      turnId: turn.turnId,
+    });
+  }
+
+  // Resolution of the synthetic tool permission. Allow runs the "tool" and
+  // completes; deny skips the tool and surfaces the denial (including the
+  // responder's message) in the timeline, so specs can tell the two apart.
+  private finishToolPermissionTurn(turn: ActiveTurn, response: AgentPermissionResponse): void {
+    if (response.behavior === "allow") {
+      this.emitTimeline(
+        turn.turnId,
+        createToolCall({
+          callId: `${turn.turnId}:tool-permission`,
+          name: "bash",
+          status: "completed",
+          detail: {
+            type: "shell",
+            command: MOCK_TOOL_PERMISSION_COMMAND,
+            cwd: MOCK_TOOL_PERMISSION_CWD,
+            output: "build ok\n",
+            exitCode: 0,
+          },
+        }),
+      );
+      this.emitTimeline(turn.turnId, {
+        type: "assistant_message",
+        text: "Synthetic tool approved; run complete.",
+        messageId: turn.assistantMessageId,
+      });
+      this.finishTurnWithText(turn, "Synthetic tool run complete");
+      return;
+    }
+    const reason = response.message ?? "Denied";
+    this.emitTimeline(turn.turnId, {
+      type: "assistant_message",
+      text: `Synthetic tool denied: ${reason}`,
+      messageId: turn.assistantMessageId,
+    });
+    this.finishTurnWithText(turn, "Synthetic tool denied");
   }
 
   private emitQuestionPromptTurn(

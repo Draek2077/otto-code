@@ -238,8 +238,8 @@ describe("resolveStructuredGenerationProviders", () => {
     expect(snapshots.calls).toEqual([]);
   });
 
-  test("prepends an available role-matched personality ahead of the legacy chain", async () => {
-    const snapshots = new ProviderSnapshots([
+  function writerAndHaikuSnapshots(): ProviderSnapshots {
+    return new ProviderSnapshots([
       {
         provider: "lmstudio",
         status: READY,
@@ -266,6 +266,10 @@ describe("resolveStructuredGenerationProviders", () => {
         ],
       },
     ]);
+  }
+
+  test("cheap-tier default: the built-in ladder runs ahead of a role-matched personality", async () => {
+    const snapshots = writerAndHaikuSnapshots();
 
     const providers = await resolveStructuredGenerationProviders({
       cwd: "/tmp/repo",
@@ -276,16 +280,59 @@ describe("resolveStructuredGenerationProviders", () => {
       },
     });
 
-    // Writer personality first — its canonical "low" effort resolves to the
-    // model's "low" option — then the built-in "haiku" substring default behind it.
+    // preferWriterPersonalities defaults false, so the cheap "haiku" substring
+    // default comes first and the Writer personality trails behind it (its
+    // canonical "low" effort resolves to the model's "low" option).
     expect(providers).toEqual([
-      { provider: "lmstudio", model: "qwen3-writer", thinkingOptionId: "low" },
       { provider: "work-claude", model: "claude-haiku-2026" },
+      { provider: "lmstudio", model: "qwen3-writer", thinkingOptionId: "low" },
     ]);
     expect(snapshots.calls).toEqual([{ cwd: "/tmp/repo", wait: true }]);
   });
 
-  test("active-team writers are preferred ahead of off-team writers, then the legacy chain", async () => {
+  test("preferWriterPersonalities restores the writer ahead of the cheap ladder", async () => {
+    const snapshots = writerAndHaikuSnapshots();
+
+    const providers = await resolveStructuredGenerationProviders({
+      cwd: "/tmp/repo",
+      providerSnapshotManager: snapshots,
+      role: "writer",
+      daemonConfig: {
+        metadataGeneration: { preferWriterPersonalities: true },
+        agentPersonalities: { personalities: [personality({ roles: ["writer", "scheduler"] })] },
+      },
+    });
+
+    expect(providers).toEqual([
+      { provider: "lmstudio", model: "qwen3-writer", thinkingOptionId: "low" },
+      { provider: "work-claude", model: "claude-haiku-2026" },
+    ]);
+  });
+
+  test("cheapest tier is the backstop when no substring matches (skips a deep model)", async () => {
+    const snapshots = new ProviderSnapshots([
+      {
+        provider: "lmstudio",
+        status: READY,
+        enabled: true,
+        models: [
+          { provider: "lmstudio", id: "big-local", label: "Big Local", tier: "deep" },
+          { provider: "lmstudio", id: "small-local", label: "Small Local", tier: "fast" },
+        ],
+      },
+    ]);
+
+    const providers = await resolveStructuredGenerationProviders({
+      cwd: "/tmp/repo",
+      providerSnapshotManager: snapshots,
+    });
+
+    // No curated substring matches these ids; the tier-aware backstop elects the
+    // cheapest ("fast") model and never the "deep" one.
+    expect(providers).toEqual([{ provider: "lmstudio", model: "small-local" }]);
+  });
+
+  test("active-team writers are preferred ahead of off-team writers (still behind the cheap ladder)", async () => {
     const snapshots = new ProviderSnapshots([
       {
         provider: "lmstudio",
@@ -324,10 +371,12 @@ describe("resolveStructuredGenerationProviders", () => {
       },
     });
 
+    // Cheap ladder ("haiku") leads by default; the two writers follow in
+    // team-preference order (on-team qwen3 ahead of off-team solo).
     expect(providers).toEqual([
+      { provider: "work-claude", model: "claude-haiku-2026" },
       { provider: "lmstudio", model: "qwen3-writer" },
       { provider: "lmstudio", model: "solo-writer" },
-      { provider: "work-claude", model: "claude-haiku-2026" },
     ]);
   });
 

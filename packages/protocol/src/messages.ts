@@ -154,6 +154,29 @@ const MutableStructuredGenerationProviderSchema = z
 const MutableMetadataGenerationConfigSchema = z
   .object({
     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
+    // Master switch for daemon-side metadata generation (chat auto-titles,
+    // agent progress summaries, and other structured side-generations). Default
+    // true preserves today's behavior. Read by the generation path (WP-B).
+    enabled: z.boolean().default(true),
+    // When true, metadata generation prefers a role-matched Writer personality
+    // over the cheap default tier. Default false — cheap-tier routing is the
+    // default. Read by the generation routing (WP-B).
+    preferWriterPersonalities: z.boolean().default(false),
+  })
+  .passthrough();
+
+// Daemon-wide agent behavior toggles. Each maps to a Claude-tier capability;
+// providers that can't honor a setting silently ignore it (WP-E wires the
+// reads). All default true so a fresh host behaves exactly like today.
+const MutableAgentBehaviorsConfigSchema = z
+  .object({
+    // Native next-prompt predictions (Claude prompt_suggestion stream events).
+    promptSuggestions: z.boolean().default(true),
+    // Agent-authored progress summaries emitted during a turn.
+    agentProgressSummaries: z.boolean().default(true),
+    // Default value of an agent's notifyOnFinish when the spawn path leaves it
+    // unspecified (the current implicit default).
+    notifyOnFinishDefault: z.boolean().default(true),
   })
   .passthrough();
 
@@ -450,11 +473,27 @@ export const MutableDaemonConfigSchema = z
     mcp: z
       .object({
         injectIntoAgents: z.boolean(),
+        // Daemon-wide Otto tool-group allowlist for the MCP (Claude) path.
+        // undefined = all groups enabled (mirrors openai-compat's per-provider
+        // ottoToolGroups semantics). An empty array = no Otto tools. Read by the
+        // MCP catalog gating (WP-A).
+        toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
       })
       .passthrough(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
+    // Daemon-wide agent behavior toggles (Claude-tier capabilities). Defaults to
+    // all-on so a new client parsing an old daemon's config sees today's behavior.
+    agentBehaviors: MutableAgentBehaviorsConfigSchema.default({
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+    }),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
-    metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
+    metadataGeneration: MutableMetadataGenerationConfigSchema.default({
+      providers: [],
+      enabled: true,
+      preferWriterPersonalities: false,
+    }),
     autoArchiveAfterMerge: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
@@ -482,6 +521,8 @@ export const MutableDaemonConfigPatchSchema = z
   .object({
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    // Gated by server_info features.agentBehaviorToggles; patches deep-merge.
+    agentBehaviors: MutableAgentBehaviorsConfigSchema.partial().optional(),
     // A null entry removes the provider's config entirely (custom provider
     // uninstall). Gated by server_info features.providerRemove — old daemons
     // reject null values.
@@ -667,6 +708,8 @@ const ContextCompositionSchema: z.ZodType<ContextComposition> = z.object({
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   inputTokens: z.number().optional(),
   cachedInputTokens: z.number().optional(),
+  // Cache-write (prompt-cache creation) tokens; Claude-specific, optional/additive.
+  cacheCreationInputTokens: z.number().optional(),
   outputTokens: z.number().optional(),
   totalCostUsd: z.number().optional(),
   contextWindowMaxTokens: z.number().optional(),
@@ -1763,6 +1806,26 @@ export const ActivityCountersSchema = z.object({
   toolsCalled: z.number().default(0),
   artifactsCreated: z.number().default(0),
   schedulesExecuted: z.number().default(0),
+  // Usage & cost accounting (WP-G). Additive/defaulted like every counter above,
+  // so old daemons emit 0 and old clients drop the unknown leaves. "In"/"Out"
+  // are token totals; *CostMicroUsd are integer micro-USD (usd*1e6) to stay
+  // summable — populated only for turns reporting a real provider cost (Claude).
+  // The client detects whether the daemon actually populates these via
+  // features.usageCostCategories (see below).
+  costMicroUsd: z.number().default(0),
+  mainChatTokensIn: z.number().default(0),
+  mainChatTokensOut: z.number().default(0),
+  mainChatCostMicroUsd: z.number().default(0),
+  generationsTokensIn: z.number().default(0),
+  generationsTokensOut: z.number().default(0),
+  generationsCostMicroUsd: z.number().default(0),
+  subagentTokensIn: z.number().default(0),
+  subagentTokensOut: z.number().default(0),
+  subagentCostMicroUsd: z.number().default(0),
+  compactionTokensIn: z.number().default(0),
+  compactionTokensOut: z.number().default(0),
+  claudeTokensIn: z.number().default(0),
+  claudeTokensOut: z.number().default(0),
 });
 
 export const StatsActivityGetRequestMessageSchema = z.object({
@@ -1792,6 +1855,92 @@ export const StatsActivityGetResponseMessageSchema = z.object({
 // client behavior depends on detecting it.
 export const ActivityStatsChangedSchema = z.object({
   type: z.literal("activity_stats_changed"),
+});
+
+// One itemized row of the usage ledger — a single token/cost-bearing activity
+// (a chat turn, a sub-agent turn, or a background generation). The aggregate
+// ActivityCounters above are the rollup of this same event stream; the ledger is
+// the scrollable detail behind the tiles (usage-ledger project). `kind` and
+// `provider` are plain strings (not enums) so an OLD client still parses a NEW
+// daemon that emits a kind it hasn't heard of — it renders it generically rather
+// than failing the whole message. All token/cost leaves default to 0.
+export const UsageEventSchema = z.object({
+  /** Stable unique id for the row (daemon-generated). */
+  id: z.string(),
+  /** Epoch milliseconds when the activity was recorded. */
+  at: z.number(),
+  /** "chat" | "subagent" | "generation" today; open for future kinds. */
+  kind: z.string(),
+  /** Finer label within the kind (e.g. a generation's purpose, a sub-agent name). */
+  subtype: z.string().optional(),
+  /** Agent provider id (e.g. "claude", an openai-compat endpoint id). */
+  provider: z.string(),
+  /** Model id/name if known at the increment site. */
+  model: z.string().optional(),
+  /** input + cached + cache-creation tokens (same "in" split the counters use). */
+  tokensIn: z.number().default(0),
+  /**
+   * The portion of `tokensIn` served from the provider prompt cache (cache-read),
+   * billed at a fraction of fresh input. The fresh (full-rate) portion is
+   * `tokensIn - cachedTokensIn`. Absent when the provider reports no cache reads
+   * (e.g. openai-compat endpoints with no caching), which reads as all-fresh.
+   */
+  cachedTokensIn: z.number().optional(),
+  /** output tokens. */
+  tokensOut: z.number().default(0),
+  /** Real provider spend in integer micro-USD (usd*1e6); 0 for token-only providers. */
+  costMicroUsd: z.number().default(0),
+  /** Mid-turn compaction slice folded into this turn's usage, if any (token-only). */
+  compactionTokensIn: z.number().optional(),
+  compactionTokensOut: z.number().optional(),
+  /** The agent this activity belonged to, for tracing back to the chat. */
+  agentId: z.string().optional(),
+  /**
+   * How many model round-trips this row aggregates. A chat row is one query, but
+   * a sub-agent row covers a whole delegated task that internally ran many
+   * rounds — and each round re-reads the growing context, so `cachedTokensIn` is
+   * cumulative cache-READS, not a cache size. Surfacing the count is what makes a
+   * large cached figure legible instead of looking like a bug. Absent when the
+   * provider doesn't report it.
+   */
+  rounds: z.number().optional(),
+});
+
+export const UsageLogGetRequestMessageSchema = z.object({
+  type: z.literal("usage.log.get.request"),
+  requestId: z.string(),
+  /** Max rows to return (daemon clamps). Newest-first. */
+  limit: z.number().optional(),
+  /** Cursor: return only rows strictly older than this epoch-ms (for "load more"). */
+  before: z.number().optional(),
+});
+
+export const UsageLogGetResponseMessageSchema = z.object({
+  type: z.literal("usage.log.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    /** Newest-first page of ledger rows. */
+    events: z.array(UsageEventSchema).default([]),
+    /** True when older rows exist beyond this page (paginate with `before`). */
+    hasMore: z.boolean().default(false),
+  }),
+});
+
+// Wipe every daemon-wide usage counter AND the itemized usage ledger back to
+// zero — the "Reset" action on the Metrics screen. One RPC clears both sinks
+// (the day-bucketed ActivityStatsStore and the UsageLogStore) so the tiles and
+// the Log tab start fresh together. Gated behind features.statsReset so an old
+// daemon (no handler) never receives a request the client thinks it can send.
+export const StatsActivityResetRequestMessageSchema = z.object({
+  type: z.literal("stats.activity.reset.request"),
+  requestId: z.string(),
+});
+
+export const StatsActivityResetResponseMessageSchema = z.object({
+  type: z.literal("stats.activity.reset.response"),
+  payload: z.object({
+    requestId: z.string(),
+  }),
 });
 
 export const AgentContextGetUsageRequestMessageSchema = z.object({
@@ -3211,6 +3360,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
   StatsActivityGetRequestMessageSchema,
+  StatsActivityResetRequestMessageSchema,
+  UsageLogGetRequestMessageSchema,
   AgentContextGetUsageRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   ImportAgentRequestMessageSchema,
@@ -3545,6 +3696,10 @@ export const ServerInfoStatusPayloadSchema = z
         observedSubagents: z.boolean().optional(),
         // COMPAT(backgroundShellTasks): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         backgroundShellTasks: z.boolean().optional(),
+        // COMPAT(retainedTranscripts): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Daemon retains schedule/artifact generation-agent chats for read-only
+        // viewing after the run. See docs/safe-unattended.md.
+        retainedTranscripts: z.boolean().optional(),
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -3608,6 +3763,38 @@ export const ServerInfoStatusPayloadSchema = z
         // old daemon (which silently ignores the field and keeps the fixed 50-round
         // cap) shows "Update the host" instead of a knob that does nothing.
         openaiCompatMaxToolRounds: z.boolean().optional(),
+        // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon honors `mcp.toolGroups` — per-group gating of the
+        // Otto tool catalog on the MCP (Claude) path. Old daemons register every
+        // group regardless, so the client hides the categorized section instead
+        // of showing category switches that do nothing.
+        mcpToolGroups: z.boolean().optional(),
+        // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon persists `agentBehaviors.*` (promptSuggestions,
+        // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
+        // Claude-tier providers (WP-E); the client gates the toggle cards on this.
+        agentBehaviorToggles: z.boolean().optional(),
+        // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon persists `metadataGeneration.{enabled,preferWriterPersonalities}`.
+        // The generation path (WP-B) reads them; the client gates the toggle cards on this.
+        metadataGenerationEnabled: z.boolean().optional(),
+        // COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon populates the per-category token/cost counters in
+        // ActivityCounters (mainChat/generations/subagents/compaction + Claude
+        // provider split + micro-USD cost). An old daemon leaves them all at 0,
+        // so the client hides the Usage & Cost column's category grid rather than
+        // presenting a column of zeros as if it were truthful accounting.
+        usageCostCategories: z.boolean().optional(),
+        // COMPAT(usageLog): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon serves the itemized usage ledger (usage.log.get).
+        // The client gates the Metrics screen's "Log" tab on this; an old daemon
+        // simply doesn't offer the tab.
+        usageLog: z.boolean().optional(),
+        // COMPAT(statsReset): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
+        // Set when the daemon handles stats.activity.reset (wipe all usage
+        // counters + the itemized ledger). The client gates the Metrics screen's
+        // "Reset" button on this; an old daemon simply doesn't offer it.
+        statsReset: z.boolean().optional(),
       })
       .optional(),
   })
@@ -6117,6 +6304,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
   StatsActivityGetResponseMessageSchema,
+  StatsActivityResetResponseMessageSchema,
+  UsageLogGetResponseMessageSchema,
   ActivityStatsChangedSchema,
   AgentContextGetUsageResponseMessageSchema,
   ListCommandsResponseSchema,
@@ -6321,7 +6510,16 @@ export type ProviderUsageListResponseMessage = z.infer<
 >;
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
+export type StatsActivityResetRequestMessage = z.infer<
+  typeof StatsActivityResetRequestMessageSchema
+>;
+export type StatsActivityResetResponseMessage = z.infer<
+  typeof StatsActivityResetResponseMessageSchema
+>;
 export type ActivityStatsChanged = z.infer<typeof ActivityStatsChangedSchema>;
+export type UsageEvent = z.infer<typeof UsageEventSchema>;
+export type UsageLogGetRequestMessage = z.infer<typeof UsageLogGetRequestMessageSchema>;
+export type UsageLogGetResponseMessage = z.infer<typeof UsageLogGetResponseMessageSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
 export type ChatInspectResponse = z.infer<typeof ChatInspectResponseSchema>;

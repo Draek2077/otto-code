@@ -81,6 +81,7 @@ import type {
   ActivityIncrementFn,
   ActivityRollups,
 } from "./activity-stats/activity-stats-store.js";
+import type { UsageLogPage, UsageLogPageQuery } from "./activity-stats/usage-log-store.js";
 import type {
   AgentManagerEvent,
   AgentTimelineCursor,
@@ -497,6 +498,8 @@ export interface SessionOptions {
   providerUsageService: ProviderUsageService;
   onActivity?: ActivityIncrementFn;
   getActivityRollups?: () => Promise<ActivityRollups>;
+  getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>;
+  resetActivityStats?: () => Promise<void>;
   serviceProxy?: ServiceProxySubsystem;
   scriptRuntimeStore?: WorkspaceScriptRuntimeStore;
   workspaceSetupSnapshots?: Map<string, WorkspaceSetupSnapshot>;
@@ -653,6 +656,10 @@ export class Session {
   private readonly previewDevServers: DevServerManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
+  private readonly getUsageLogPage:
+    | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
+    | undefined;
+  private readonly resetActivityStats: (() => Promise<void>) | undefined;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
@@ -718,6 +725,8 @@ export class Session {
       providerUsageService,
       onActivity,
       getActivityRollups,
+      getUsageLogPage,
+      resetActivityStats,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -1005,6 +1014,8 @@ export class Session {
     this.providerSnapshotManager = providerSnapshotManager;
     this.agentAutoTitle = this.resolveAgentAutoTitle(agentAutoTitle);
     this.getActivityRollups = getActivityRollups;
+    this.getUsageLogPage = getUsageLogPage;
+    this.resetActivityStats = resetActivityStats;
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
@@ -2429,8 +2440,43 @@ export class Session {
         return this.providerCatalogSession.handleProviderUsageListRequest(msg);
       case "stats.activity.get.request":
         return this.handleStatsActivityGetRequest(msg);
+      case "stats.activity.reset.request":
+        return this.handleStatsActivityResetRequest(msg);
+      case "usage.log.get.request":
+        return this.handleUsageLogGetRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleUsageLogGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "usage.log.get.request" }>,
+  ): Promise<void> {
+    try {
+      const page = (await this.getUsageLogPage?.({
+        ...(typeof msg.limit === "number" ? { limit: msg.limit } : {}),
+        ...(typeof msg.before === "number" ? { before: msg.before } : {}),
+      })) ?? { events: [], hasMore: false };
+      this.emit({
+        type: "usage.log.get.response",
+        payload: {
+          requestId: msg.requestId,
+          events: page.events,
+          hasMore: page.hasMore,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to get usage log");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to get usage log: ${err.message}`,
+          code: "usage_log_get_failed",
+        },
+      });
     }
   }
 
@@ -2463,6 +2509,30 @@ export class Session {
           requestType: msg.type,
           error: `Failed to get activity stats: ${err.message}`,
           code: "stats_activity_get_failed",
+        },
+      });
+    }
+  }
+
+  private async handleStatsActivityResetRequest(
+    msg: Extract<SessionInboundMessage, { type: "stats.activity.reset.request" }>,
+  ): Promise<void> {
+    try {
+      await this.resetActivityStats?.();
+      this.emit({
+        type: "stats.activity.reset.response",
+        payload: { requestId: msg.requestId },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to reset activity stats");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to reset activity stats: ${err.message}`,
+          code: "stats_activity_reset_failed",
         },
       });
     }
@@ -4602,6 +4672,15 @@ export class Session {
       return observed;
     }
 
+    // Retained generation transcripts (schedule / artifact) are internal agents
+    // that were closed after their run — no live agent, no stored record — but
+    // we snapshotted their final payload so the read-only viewer can open them.
+    // See docs/safe-unattended.md.
+    const retained = await this.agentManager.getRetainedTranscriptPayload(agentId);
+    if (retained && this.isProviderVisibleToClient(retained.provider)) {
+      return retained;
+    }
+
     return null;
   }
 
@@ -6454,8 +6533,20 @@ export class Session {
       // Observed subagents have no ManagedAgent or stored record; serve their
       // last emitted snapshot instead. See projects/observed-subagents/observed-subagents.md.
       const observedPayload = this.agentManager.getObservedSubagentPayload(msg.agentId);
+      // Retained generation transcripts (schedule / artifact) are closed internal
+      // agents: seed their snapshotted rows into the timeline store so fetchTimeline
+      // serves them, and return the stored payload — a pure read, no resume. See
+      // docs/safe-unattended.md.
+      let retainedPayload: AgentSnapshotPayload | null = null;
+      if (
+        !observedPayload &&
+        (await this.agentManager.ensureRetainedTranscriptLoaded(msg.agentId))
+      ) {
+        retainedPayload = await this.agentManager.getRetainedTranscriptPayload(msg.agentId);
+      }
       const agentPayload =
         observedPayload ??
+        retainedPayload ??
         (await this.buildAgentPayload(
           await ensureAgentLoaded(msg.agentId, {
             agentManager: this.agentManager,

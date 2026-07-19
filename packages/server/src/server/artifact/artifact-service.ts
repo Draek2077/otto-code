@@ -163,6 +163,12 @@ export class ArtifactService {
     this.watcher.unwatch(artifactId);
     await this.discardBackup(artifactId);
     await this.store.delete(artifactId);
+    // Cascade: drop every retained generation transcript this artifact produced
+    // so its chats don't outlive it.
+    await this.agentManager.deleteRetainedTranscriptsForOwner({
+      kind: "artifact",
+      id: artifactId,
+    });
   }
 
   stop(): void {
@@ -523,6 +529,15 @@ export class ArtifactService {
       await this.agentManager.runAgent(agent.id, agentPrompt);
     } finally {
       this.runningGenerations.delete(artifactId);
+      // Snapshot the generation chat before tearing the internal agent down, so
+      // it can be reopened read-only from the artifact's "…" menu. Internal
+      // agents are never persisted, so without this the transcript is lost on
+      // close. See docs/safe-unattended.md.
+      await this.agentManager.captureRetainedTranscript(
+        agent.id,
+        { kind: "artifact", id: artifactId },
+        { title: metadata.name },
+      );
       try {
         await this.agentManager.closeAgent(agent.id);
       } catch {

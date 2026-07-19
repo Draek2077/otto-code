@@ -822,6 +822,8 @@ describe("DaemonConfigStore", () => {
         { provider: "claude", model: "haiku" },
         { provider: "codex", model: "gpt-5.4-mini", thinkingOptionId: "low" },
       ],
+      enabled: true,
+      preferWriterPersonalities: false,
     });
   });
 
@@ -863,7 +865,11 @@ describe("DaemonConfigStore", () => {
     store.patch({ metadataGeneration: { providers: [] } });
 
     const persisted = loadPersistedConfig(ottoHome);
-    expect(persisted.agents?.metadataGeneration).toEqual({ providers: [] });
+    expect(persisted.agents?.metadataGeneration).toEqual({
+      providers: [],
+      enabled: true,
+      preferWriterPersonalities: false,
+    });
   });
 
   test("patch persists custom ACP provider overrides into config.json", () => {

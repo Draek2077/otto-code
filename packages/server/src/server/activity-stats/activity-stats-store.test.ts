@@ -95,6 +95,39 @@ describe("ActivityStatsStore", () => {
     }
   });
 
+  it("reset wipes all-time and daily counters back to zero and persists", async () => {
+    const store = new ActivityStatsStore(filePath);
+    await store.increment("messagesSent", 4);
+    await store.increment("tokensReceived", 99);
+
+    await store.reset();
+
+    const rollups = await store.getRollups();
+    expect(rollups.allTime.messagesSent).toBe(0);
+    expect(rollups.today.messagesSent).toBe(0);
+    expect(rollups.today.tokensReceived).toBe(0);
+
+    // The wipe is durable across a fresh store instance reading the file.
+    const reloaded = new ActivityStatsStore(filePath);
+    const reloadedRollups = await reloaded.getRollups();
+    expect(reloadedRollups.allTime.tokensReceived).toBe(0);
+  });
+
+  it("reset fires the change notification so clients re-fetch", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new ActivityStatsStore(filePath);
+      const listener = vi.fn();
+      store.onDidChange(listener);
+
+      await store.reset();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not notify when no listener is registered", async () => {
     vi.useFakeTimers();
     try {

@@ -69,8 +69,10 @@ const CWD_REQUIRED_MESSAGE =
   "Preview tools need a workspace directory. Start the agent inside a workspace before using preview_start.";
 
 function success(result: unknown): OttoToolResult {
+  // Compact (not 2-space) JSON: preview results are small structured objects the
+  // model reads fine without indentation, which was pure token inflation.
   return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(result) }],
     structuredContent: { ok: true, result },
   };
 }
@@ -212,9 +214,9 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
     {
       title: "Start preview dev server",
       description:
-        "Start a dev server by name from .claude/launch.json in the workspace, and open (or re-find) its designated preview tab in the Otto browser — the same tab the user sees. " +
-        "Reuses the server if it is already running. ALWAYS use this instead of shell commands for running dev servers. " +
-        "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Do not open extra tabs for verification. " +
+        "Start a dev server by name from .claude/launch.json, and open (or re-find) its designated preview tab in the Otto browser — the same tab the user sees. " +
+        "Reuses the server if already running. ALWAYS use this instead of shell commands to run dev servers. " +
+        "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Don't open extra tabs for verification. " +
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
         LAUNCH_JSON_FORMAT +
         '\nSet "runtimeExecutable" to the command (e.g. "npm"), "runtimeArgs" to the arguments (e.g. ["run", "dev"]), and "port" to the server port. ' +

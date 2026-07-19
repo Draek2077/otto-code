@@ -331,6 +331,11 @@ export function toObservedSubagentPayload(input: {
   createdAt: string;
   title: string;
   cumulativeTokens?: number;
+  // Carried-forward full usage split + the subagent's own model, resolved by the
+  // manager across updates. Preferred over `update.usage`/hardcoded null so the
+  // breakdown and (possibly-cheaper) model survive a scalar-only final update.
+  lastUsage?: AgentUsage;
+  model?: string;
   update: ObservedSubagentUpdate;
 }): AgentSnapshotPayload {
   const { update } = input;
@@ -348,7 +353,7 @@ export function toObservedSubagentPayload(input: {
     provider: input.provider,
     cwd: input.cwd,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    model: null,
+    model: input.model ?? null,
     thinkingOptionId: null,
     effectiveThinkingOptionId: null,
     createdAt: input.createdAt,
@@ -368,7 +373,7 @@ export function toObservedSubagentPayload(input: {
     attentionTimestamp: requiresAttention ? nowIso : null,
   };
 
-  const usage = sanitizeUsage(update.usage);
+  const usage = sanitizeUsage(input.lastUsage ?? update.usage);
   if (usage !== undefined) {
     payload.lastUsage = usage;
   }
@@ -617,6 +622,7 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const fields: UsageNumericField[] = [
     "inputTokens",
     "cachedInputTokens",
+    "cacheCreationInputTokens",
     "outputTokens",
     "totalCostUsd",
     "contextWindowMaxTokens",

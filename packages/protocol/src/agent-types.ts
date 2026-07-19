@@ -220,6 +220,13 @@ export interface ContextComposition {
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
+  /**
+   * Prompt tokens spent writing (not reading) the prompt cache this turn —
+   * Anthropic's `cache_creation_input_tokens`, billed above normal input.
+   * Disjoint from `inputTokens`/`cachedInputTokens`. Claude-specific today;
+   * other providers omit it. Optional/additive.
+   */
+  cacheCreationInputTokens?: number;
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;

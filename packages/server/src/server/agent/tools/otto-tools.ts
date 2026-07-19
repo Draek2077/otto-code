@@ -23,6 +23,7 @@ import {
   summarizePersonalityForSelection,
 } from "@otto-code/protocol/agent-personalities";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
+import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -172,6 +173,17 @@ export interface OttoToolHostDependencies {
   browserToolsEnabled?: boolean;
   browserToolsBroker?: BrowserToolsBroker | null;
   previewDevServers?: DevServerManager | null;
+  /**
+   * Daemon-wide Otto tool-group allowlist. undefined = every group enabled
+   * (mirrors openai-compat's per-provider `ottoToolGroups` semantics); an empty
+   * array = no Otto tools. A tool whose group (ottoToolGroupForName) is absent
+   * from this set is never registered — so the MCP catalog and any future
+   * consumer inherit per-group gating. The browser AND preview groups remain
+   * additionally gated by `browserToolsEnabled` (the authoritative browser
+   * master over the whole Preview subsystem); the group filter can only further
+   * restrict, never re-enable what the master disabled.
+   */
+  enabledOttoToolGroups?: OttoToolGroup[];
   /**
    * Daemon-global artifact service so agents can create artifacts via the
    * create_artifact tool. Absent on hosts that don't wire artifacts.
@@ -574,7 +586,7 @@ function resolveArtifactGenerationSettings(params: {
 }
 
 const EFFORT_INPUT_DESCRIPTION =
-  "Effort: a canonical level (off, minimal, low, medium, high, xhigh, max), resolved to the nearest option the target model supports, or an exact option id from the model's thinkingOptions in list_models.";
+  "Effort level (off/minimal/low/medium/high/xhigh/max), clamped to the model's nearest option, or an exact thinkingOptions id from list_models.";
 
 // Lets a caller start an agent with no task in hand — "just open a new chat".
 // When create_agent omits initialPrompt, the new agent gets this generic ask so
@@ -585,6 +597,12 @@ const EFFORT_INPUT_DESCRIPTION =
 const DEFAULT_BARE_AGENT_INITIAL_PROMPT =
   "I've just started a new chat with you and haven't given you a task yet. Briefly introduce yourself and ask what I'd like to work on.";
 const DEFAULT_BARE_AGENT_TITLE = "New chat";
+
+/**
+ * Default window for `get_agent_activity` when the caller omits `limit`. Bounds
+ * an otherwise-unbounded child-transcript dump; the arg stays opt-in for more.
+ */
+const GET_AGENT_ACTIVITY_DEFAULT_LIMIT = 50;
 
 // Fill the generic defaults for a bare "just open a new chat" spawn. A real
 // prompt with no title keeps deriving its title from the prompt (undefined here
@@ -901,12 +919,22 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   };
 
   const tools = new Map<string, OttoToolDefinition>();
+  // undefined = all groups enabled (mirrors openai-compat per-provider
+  // semantics); a defined set gates every tool by its ottoToolGroupForName.
+  const enabledGroups = options.enabledOttoToolGroups;
+  const isToolGroupEnabled = (name: string): boolean =>
+    enabledGroups === undefined || enabledGroups.includes(ottoToolGroupForName(name));
   const registerTool = (
     name: string,
     config: OttoToolConfig,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool handlers are schema-validated at registration boundaries.
     handler: (input: any, context: OttoToolExecutionContext) => Promise<OttoToolResult>,
   ) => {
+    // Per-group gating: a tool whose group is disabled is never registered, so
+    // both the MCP path and any future catalog consumer inherit the filter.
+    if (!isToolGroupEnabled(name)) {
+      return;
+    }
     tools.set(name, {
       name,
       title: config.title,
@@ -1323,21 +1351,21 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .describe("Optional base branch. Defaults to the repository default branch."),
       })
       .strict()
-      .describe("Create a new branch in a new Otto worktree."),
+      .describe("Branch off a new branch."),
     z
       .object({
         kind: z.literal("checkout-branch"),
         branch: z.string().min(1).describe("Existing branch to check out."),
       })
       .strict()
-      .describe("Check out an existing branch in a new Otto worktree."),
+      .describe("Check out an existing branch."),
     z
       .object({
         kind: z.literal("checkout-pr"),
         githubPrNumber: z.number().int().positive().describe("GitHub pull request number."),
       })
       .strict()
-      .describe("Check out a GitHub pull request in a new Otto worktree."),
+      .describe("Check out a GitHub PR."),
   ]);
   const AgentWorkspaceInputSchema = z.discriminatedUnion("kind", [
     z
@@ -1411,7 +1439,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .min(1)
       .optional()
       .describe(
-        "Spawn from a named Agent Personality configured on this host. Expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. Any agent may spawn by personality name (see list_personalities for each one's guidance and tier — coordinators delegate; focused writer/coder/judger personalities are spawned to finish one task). Fails loudly if the personality is unavailable here — no fallback.",
+        "Spawn from a named Agent Personality on this host — expands to its provider/model/effort/mode/prompt; explicit provider/settings override per-field. See list_personalities for each one's guidance and tier (coordinators delegate; focused writer/coder/judger personalities finish one task). Fails loudly if unavailable here — no fallback.",
       ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -1428,12 +1456,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   };
   const agentToAgentInputSchema = {
     ...commonCreateAgentInputSchema,
+    // Left as bare .optional() (no schema default) so the handler can tell an
+    // explicit choice from an omission and fall back to the daemon
+    // agentBehaviors.notifyOnFinishDefault toggle (default true). See WP-E.
     notifyOnFinish: z
       .boolean()
       .optional()
-      .default(true)
       .describe(
-        "Get notified when the created agent finishes, errors, or needs permission. Set false only for truly fire-and-forget agents.",
+        "Get notified when the created agent finishes, errors, or needs permission. Defaults to the host's notify-on-finish setting; set false only for truly fire-and-forget agents.",
       ),
   };
   const canonicalTopLevelInputSchema = {
@@ -1519,12 +1549,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .describe(
         "Run agent in background. Agent-scoped default is true so you can continue until the finish notification arrives. Set false only when you need a blocking response.",
       ),
+    // Left as bare .optional() (no schema default) so the handler can tell an
+    // explicit choice from an omission and fall back to the daemon
+    // agentBehaviors.notifyOnFinishDefault toggle (default true). See WP-E.
     notifyOnFinish: z
       .boolean()
       .optional()
-      .default(true)
       .describe(
-        "Get notified when the prompted agent finishes, errors, or needs permission. Set false only for truly fire-and-forget prompts.",
+        "Get notified when the prompted agent finishes, errors, or needs permission. Defaults to the host's notify-on-finish setting; set false only for truly fire-and-forget prompts.",
       ),
   };
   const topLevelSendAgentPromptInputSchema = {
@@ -1606,6 +1638,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     return toCatalog();
   }
 
+  // Both halves of Preview — browser verification (`browser_*`) and dev-server
+  // lifecycle (`preview_*`) — are gated behind the browser-tools master, so the
+  // "Browser Tools" host setting is a single functional switch for the whole
+  // subsystem: master off = neither half is registered for any provider.
   if (options.browserToolsEnabled && options.browserToolsBroker) {
     registerBrowserTools({
       registerTool,
@@ -1616,7 +1652,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     });
   }
 
-  if (options.previewDevServers) {
+  if (options.browserToolsEnabled && options.previewDevServers) {
     registerPreviewTools({
       registerTool,
       manager: options.previewDevServers,
@@ -1630,7 +1666,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create agent",
       description:
-        "Create an agent. Requires relationship, workspace, and either a provider/model (for example codex/gpt-5.4) or a personality name. Title and initialPrompt are optional — omit both to just open a new chat that greets the user and asks what to work on. Prefer a personality when the host has them (call list_personalities). Do not guess the provider; call list_providers and list_models first if uncertain.",
+        "Create an agent. Requires relationship, workspace, and either provider/model (e.g. codex/gpt-5.4) or a personality name. Title and initialPrompt are optional — omit both to open a bare new chat that greets the user. Prefer a personality when the host has them (list_personalities). Don't guess the provider — call list_providers/list_models if unsure.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -1651,13 +1687,15 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       let requestedBackground: boolean;
       let notifyOnFinish: boolean;
       let detached: boolean;
+      // Omitted → fall back to the daemon notify-on-finish default (agent-scoped
+      // only; default true, preserving prior behavior); an explicit arg still
+      // overrides. Extracted to keep this handler under the complexity cap.
+      notifyOnFinish = resolveCreateAgentNotifyOnFinish(resolvedArgs);
       if (resolvedArgs.kind === "agent-scoped") {
         requestedBackground = true;
-        notifyOnFinish = parsedArgs.notifyOnFinish;
         detached = resolvedArgs.relationship.kind === "detached";
       } else {
         requestedBackground = resolvedArgs.parsedArgs.background;
-        notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
         detached = resolvedArgs.parsedArgs.relationship.kind === "detached";
       }
       const brain = await resolveCreateAgentBrain({
@@ -1778,7 +1816,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       {
         title: "List personalities",
         description:
-          "List the Agent Personalities configured on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Use a personality's name with create_agent's `personality` argument to spawn it. Availability is resolved against a workspace; unavailable personalities cannot be spawned there. Any agent may call this to see the roster and pick a teammate. Each entry carries `guidance` (why you'd choose it), a `tier` (`coordinator` = delegates/orchestrates, `focused` = a worker that stays on one task), and `canLaunch`.",
+          "List the Agent Personalities on this host — named templates binding a provider/model, effort, mode, prompt, and roles. Pass a name to create_agent's `personality` to spawn it (availability is resolved per workspace; unavailable ones can't be spawned there). Any agent may call this to pick a teammate. Each entry's `guidance`, `tier`, and `canLaunch` fields explain when to choose it.",
         inputSchema: {
           cwd: z
             .string()
@@ -1923,6 +1961,19 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         workspaceId: string | undefined;
         worktree: CreateAgentFromMcpInput["worktree"];
       };
+
+  // Resolve the effective notifyOnFinish for a create_agent call. Agent-scoped
+  // omissions fall back to the daemon agentBehaviors.notifyOnFinishDefault toggle
+  // (default true); top-level omissions stay false (top-level sends can't be
+  // notified — there's no caller agent to notify). Explicit args always win.
+  function resolveCreateAgentNotifyOnFinish(resolved: ResolvedCreateAgentToolArgs): boolean {
+    if (resolved.kind === "agent-scoped") {
+      return (
+        resolved.parsedArgs.notifyOnFinish ?? agentManager.getAgentBehaviors().notifyOnFinishDefault
+      );
+    }
+    return resolved.parsedArgs.notifyOnFinish ?? false;
+  }
 
   async function resolveCreateAgentToolArgs(args: unknown): Promise<ResolvedCreateAgentToolArgs> {
     if (callerAgentId) {
@@ -2170,9 +2221,20 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       prompt,
       sessionMode,
       background = Boolean(callerAgentId),
-      notifyOnFinish = Boolean(callerAgentId),
+      notifyOnFinish,
+    }: {
+      agentId: string;
+      prompt: string;
+      sessionMode?: string;
+      background?: boolean;
+      notifyOnFinish?: boolean;
     }) => {
-      const shouldNotifyOnFinish = Boolean(callerAgentId && notifyOnFinish && background);
+      // Omitted → fall back to the daemon notify-on-finish default (default
+      // true, preserving prior behavior); an explicit arg still overrides. The
+      // callerAgentId gate below keeps top-level (unwatched) sends silent.
+      const resolvedNotifyOnFinish =
+        notifyOnFinish ?? agentManager.getAgentBehaviors().notifyOnFinishDefault;
+      const shouldNotifyOnFinish = Boolean(callerAgentId && resolvedNotifyOnFinish && background);
       onActivity?.("backgroundTasksInvoked", Number(background));
 
       await sendPromptToAgent({
@@ -2379,15 +2441,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Suggest a task",
       description:
-        "Suggest a follow-up task the user can start later as its own agent — a card they act " +
-        "on asynchronously (start in a new worktree, locally, or in this session, or dismiss). " +
-        "Call this when you notice worthwhile out-of-scope work that would bloat the current " +
-        "change: dead code, stale docs, missing test coverage, a confirmed TODO, a refactor, " +
-        "or a bug spotted in passing — and whenever the user asks you to line up or queue work " +
-        "to do next. Don't flag vague code-smell hunches, trivial fixes you can just do inline, " +
-        "or low-confidence guesses. A card appears for the user; your current turn continues " +
-        "uninterrupted and the task is NOT started automatically. You can suggest several back " +
-        "to back — each returns a task_id you can later pass to dismiss_task.",
+        "Suggest a follow-up task the user can start later as its own agent — a card they act on " +
+        "asynchronously (new worktree, locally, this session, or dismiss). Call this for worthwhile " +
+        "out-of-scope work that would bloat the current change: dead code, stale docs, missing test " +
+        "coverage, a confirmed TODO, a refactor, or a bug spotted in passing — and whenever the user " +
+        "asks you to queue up work. Don't flag vague code-smell hunches, trivial inline fixes, or " +
+        "low-confidence guesses. A card appears for the user; your turn continues uninterrupted and " +
+        "the task is NOT started automatically.",
       inputSchema: {
         title: z
           .string()
@@ -2444,11 +2504,10 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Dismiss a suggested task",
       description:
-        "Withdraw a suggested-task card you created with spawn_task, when the suggestion is now " +
-        "stale, superseded, or already handled — e.g. you or the user fixed it this session, or " +
-        "you're replacing it with a better-scoped one (spawn the replacement first, then dismiss " +
-        "the old task_id). Only cards the user hasn't acted on can be withdrawn; if the task was " +
-        "already started or dismissed, the result says so — don't retry.",
+        "Withdraw a suggested-task card you created with spawn_task, when it's now stale, " +
+        "superseded, or already handled (to replace one, spawn the new card first, then dismiss the " +
+        "old task_id). Only cards the user hasn't acted on can be withdrawn; if it was already " +
+        "started or dismissed, the result says so — don't retry.",
       inputSchema: {
         task_id: z.string(),
         reason: z
@@ -2647,7 +2706,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Create artifact",
       description:
-        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a dedicated background agent and shown in the client\'s Artifacts screen. Returns immediately with status "generating"; the artifact flips to "ready" (or "error") on its own, typically within a few minutes — no need to wait or poll. The generator always runs unattended (bypass/no approval prompts) and inherits your provider, model, effort, and mode unless overridden. The generator cannot see this conversation, so the description must carry all content, data, and requirements it needs.',
+        'Create an artifact: a self-contained HTML page (report, dashboard, visualization, mockup) generated by a background agent and shown in the Artifacts screen. Returns immediately as "generating" and flips to "ready"/"error" on its own within minutes — no need to poll. Runs unattended and inherits your provider/model/effort/mode unless overridden. The generator can\'t see this conversation, so put all content, data, and requirements in the description.',
       inputSchema: {
         name: z
           .string()
@@ -2694,7 +2753,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .min(1)
           .optional()
           .describe(
-            "Permission mode id for the generation agent (see modes with isUnattended: true in list_providers or inspect_provider). Only unattended (bypass) modes are honored — anything else falls back to the provider's unattended default, so generation never stalls on approval prompts. Defaults to your own mode when generating with your provider.",
+            "Permission mode id for the generation agent (unattended/bypass modes only — anything else falls back to the provider's unattended default, so generation never stalls). Defaults to your own mode when generating with your provider.",
           ),
         projectId: z
           .string()
@@ -3911,18 +3970,26 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       const timeline = agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
+      // Default to a bounded window: `limit ?? 0` meant the entire child
+      // transcript, which for a long-running agent is an unbounded dump that
+      // gets replayed on every round. Callers can still opt into more (or all,
+      // via a large limit) with the arg.
+      const effectiveLimit = limit ?? GET_AGENT_ACTIVITY_DEFAULT_LIMIT;
       const selection = selectItemsByProjectedLimit({
         items: timeline,
         direction: "tail",
-        limit: limit ?? 0,
+        limit: effectiveLimit,
       });
       const curatedContent = curateAgentActivity(selection.items);
       const { totalProjected, shownProjected } = selection;
 
       const noun = totalProjected === 1 ? "activity" : "activities";
       const countHeader =
-        limit && shownProjected < totalProjected
-          ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
+        shownProjected < totalProjected
+          ? `Showing the ${shownProjected} most recent of ${totalProjected} ${noun}` +
+            (limit === undefined
+              ? ` (default limit ${effectiveLimit}; pass \`limit\` for more)`
+              : ` (limited to ${limit})`)
           : `Showing all ${totalProjected} ${noun}`;
 
       const contentWithCount = `${countHeader}\n\n${curatedContent}`;

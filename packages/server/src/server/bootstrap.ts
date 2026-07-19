@@ -107,11 +107,13 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
 import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
 import {
   ActivityStatsStore,
   type ActivityIncrementFn,
 } from "./activity-stats/activity-stats-store.js";
+import { UsageLogStore } from "./activity-stats/usage-log-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
@@ -134,6 +136,7 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
+import { DaemonConfigOttoToolGroupsPolicy } from "./agent/tools/tool-groups-policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
@@ -155,6 +158,7 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@otto-code/protocol/messages";
+import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   DEFAULT_AGENT_PERSONALITIES,
   DEFAULT_AGENT_TEAMS,
@@ -375,7 +379,15 @@ export interface OttoDaemonConfig {
   trustedProxies?: true | string[];
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
+  /** Otto tool-group allowlist for the MCP path. undefined = all groups enabled. */
+  mcpToolGroups?: OttoToolGroup[];
   browserToolsEnabled?: boolean;
+  /** Daemon-wide agent behavior toggles (Claude-tier). undefined fields = default (on). */
+  agentBehaviors?: {
+    promptSuggestions?: boolean;
+    agentProgressSummaries?: boolean;
+    notifyOnFinishDefault?: boolean;
+  };
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
@@ -414,6 +426,8 @@ export interface OttoDaemonConfig {
       model?: string;
       thinkingOptionId?: string;
     }>;
+    enabled?: boolean;
+    preferWriterPersonalities?: boolean;
   };
   agentPersonalities?: {
     personalities?: PersistedAgentPersonality[];
@@ -609,6 +623,34 @@ function createInitialMutableSpeechConfig(
   };
 }
 
+// undefined mcpToolGroups = all groups enabled; only carry an explicit allowlist.
+function buildInitialMcpSection(config: OttoDaemonConfig): MutableDaemonConfig["mcp"] {
+  return {
+    injectIntoAgents: config.mcpInjectIntoAgents ?? true,
+    ...(config.mcpToolGroups !== undefined ? { toolGroups: config.mcpToolGroups } : {}),
+  };
+}
+
+function buildInitialAgentBehaviors(
+  config: OttoDaemonConfig,
+): MutableDaemonConfig["agentBehaviors"] {
+  return {
+    promptSuggestions: config.agentBehaviors?.promptSuggestions ?? true,
+    agentProgressSummaries: config.agentBehaviors?.agentProgressSummaries ?? true,
+    notifyOnFinishDefault: config.agentBehaviors?.notifyOnFinishDefault ?? true,
+  };
+}
+
+function buildInitialMetadataGeneration(
+  config: OttoDaemonConfig,
+): MutableDaemonConfig["metadataGeneration"] {
+  return {
+    providers: config.metadataGeneration?.providers ?? [],
+    enabled: config.metadataGeneration?.enabled ?? true,
+    preferWriterPersonalities: config.metadataGeneration?.preferWriterPersonalities ?? false,
+  };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -625,12 +667,11 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
   const persistedGitHosting = loadPersistedConfig(config.ottoHome).gitHosting;
 
   const initialConfig: MutableDaemonConfig = {
-    mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
+    mcp: buildInitialMcpSection(config),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    agentBehaviors: buildInitialAgentBehaviors(config),
     providers,
-    metadataGeneration: {
-      providers: config.metadataGeneration?.providers ?? [],
-    },
+    metadataGeneration: buildInitialMetadataGeneration(config),
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
@@ -693,6 +734,7 @@ export async function createOttoDaemon(
   daemonConfigStore.seedDefaultPersonalitiesIfAbsent(DEFAULT_AGENT_PERSONALITIES);
   daemonConfigStore.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
+  const ottoToolGroupsPolicy = new DaemonConfigOttoToolGroupsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
   const previewDevServers = new DevServerManager({ logger });
 
@@ -936,6 +978,9 @@ export async function createOttoDaemon(
   const recordActivity: ActivityIncrementFn = (field, by) => {
     void activityStatsStore.increment(field, by);
   };
+  // Itemized usage ledger — the scrollable rows behind the aggregate tiles.
+  // Fed from the same chokepoint that moves the counters (usage-ledger project).
+  const usageLogStore = new UsageLogStore(path.join(config.ottoHome, "usage-log.json"), logger);
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.ottoHome, "projects", "projects.json"),
     logger,
@@ -995,11 +1040,17 @@ export async function createOttoDaemon(
     modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
+  const retainedTranscriptStore = new RetainedTranscriptStore({
+    ottoHome: config.ottoHome,
+    logger,
+  });
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
+    retainedTranscripts: retainedTranscriptStore,
     appendSystemPrompt: config.appendSystemPrompt,
+    agentBehaviors: config.agentBehaviors,
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1009,6 +1060,7 @@ export async function createOttoDaemon(
       void personalityStatsStore.increment(personalityId);
     },
     onActivity: recordActivity,
+    onUsageEvent: (event) => usageLogStore.append(event),
     mcpAuthToken: agentMcpAuthToken,
     logger,
   });
@@ -1485,6 +1537,9 @@ export async function createOttoDaemon(
     createOttoWorktree: createAgentCommandDependencies.createOttoWorktree,
     scheduleAutoTitle: createAgentCommandDependencies.scheduleAutoTitle,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
+    // Live-read the group allowlist so category toggles take effect without a
+    // restart — the deps are rebuilt per MCP request (stateless transport).
+    enabledOttoToolGroups: ottoToolGroupsPolicy.getEnabledGroups(),
     browserToolsBroker,
     previewDevServers,
     artifactService: toolArtifactService,
@@ -1707,6 +1762,24 @@ export async function createOttoDaemon(
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
+            // Daemon-wide agent behavior toggles (Claude tier + the Otto-tools
+            // notify-on-finish default). New/resumed agents pick up promptSuggestions
+            // and agentProgressSummaries on their next launch (injected via
+            // buildLaunchContext); notifyOnFinishDefault is read live per tool call.
+            // WP-A persists agentBehaviors.*; WP-E owns this live wiring. The
+            // resolver treats any non-false field as on, so passing the raw
+            // partial object through is safe.
+            daemonConfigStore.onFieldChange("agentBehaviors", (value) => {
+              const behaviors =
+                typeof value === "object" && value !== null
+                  ? (value as {
+                      promptSuggestions?: boolean;
+                      agentProgressSummaries?: boolean;
+                      notifyOnFinishDefault?: boolean;
+                    })
+                  : undefined;
+              agentManager.setAgentBehaviors(behaviors);
+            });
             const relayEnabled = config.relayEnabled ?? true;
             const relayEndpoint = config.relayEndpoint ?? "relay.otto-code.me:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
@@ -1808,6 +1881,15 @@ export async function createOttoDaemon(
               () => activityStatsStore.getRollups(),
               projectLinkStore,
               agentAutoTitle,
+              (query) => usageLogStore.getPage(query),
+              // "Reset" on the Metrics screen: wipe both usage sinks together —
+              // the day-bucketed counters behind the tiles and the itemized
+              // ledger behind the Log tab — so the screen starts fresh. The
+              // stats store fires its coalesced change ping on reset, so every
+              // connected client re-fetches both.
+              async () => {
+                await Promise.all([activityStatsStore.reset(), usageLogStore.reset()]);
+              },
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());

@@ -52,7 +52,11 @@ import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
 import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
+import { SubagentUsageAccumulator, grandTotalTokens } from "../../subagent-usage.js";
+
 import { claudeProjectDirSync } from "./project-dir.js";
+import { readClaudeModelUsageSlices, verifyClaudeTreePricing } from "./claude-pricing.js";
+import { readUsageTotals, toClaudeSubagentUsage } from "./claude-subagent-usage.js";
 import { WorkflowTranscriptWatcher } from "./workflow-transcript-watcher.js";
 import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
@@ -64,10 +68,13 @@ import {
 
 import {
   getAgentStreamEventTurnId,
+  type AgentBareCompletionOptions,
+  type AgentBareCompletionResult,
   type AgentPermissionAction,
   type AgentCapabilityFlags,
   type AgentClient,
   type AgentContextUsage,
+  type AgentBehaviorSettings,
   type AgentCreateSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
@@ -410,6 +417,10 @@ interface ClaudeAgentSessionOptions {
   logger: Logger;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary: () => Promise<string>;
+  // Resolved daemon-wide behavior toggles for this launch (undefined = old
+  // manager / not provided → treat as all-on). Claude consumes promptSuggestions
+  // and agentProgressSummaries; notifyOnFinishDefault is an Otto-tools concern.
+  agentBehaviors?: AgentBehaviorSettings;
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -462,6 +473,64 @@ function isClaudeThinkingEffort(value: string | null | undefined): value is Clau
 
 function isClaudeThinkingOption(value: string | null | undefined): value is ClaudeThinkingOption {
   return value === CLAUDE_ULTRACODE_THINKING_OPTION_ID || isClaudeThinkingEffort(value);
+}
+
+// Map a resolved thinkingOptionId onto a Claude `effort` for a bare completion.
+// Metadata generation wants no thinking by default (cheaper, faster); only a
+// personality-carried effort turns it on. Ultracode collapses to the highest
+// real effort tier since the bare path has no adaptive-thinking machinery.
+function resolveClaudeBareCompletionEffort(
+  thinkingOptionId: string | undefined,
+): ClaudeThinkingEffort | undefined {
+  if (!thinkingOptionId || thinkingOptionId === "default") {
+    return undefined;
+  }
+  if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
+    return "xhigh";
+  }
+  return isClaudeThinkingEffort(thinkingOptionId) ? thinkingOptionId : undefined;
+}
+
+/**
+ * Map a bare-completion result message's usage into AgentUsage (WP-G). Standalone
+ * from the session's `buildResultUsage` (which also drives the context-window
+ * ring) — a bare completion has no session/ring, so this only carries the
+ * billing slices the cost ledger needs: the three input categories, output, and
+ * Claude's real `total_cost_usd`.
+ */
+function buildBareCompletionUsage(message: SDKResultMessage): AgentUsage | undefined {
+  if (!message.usage) {
+    return undefined;
+  }
+  const usage: AgentUsage = {
+    inputTokens: message.usage.input_tokens,
+    cachedInputTokens: message.usage.cache_read_input_tokens,
+    cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
+    outputTokens: message.usage.output_tokens,
+    totalCostUsd: message.total_cost_usd,
+  };
+  return usage;
+}
+
+// Concatenate the text blocks of an assistant SDK message. Used only as the
+// fallback when a bare completion's result message carries no `result` string.
+function extractClaudeAssistantMessageText(message: SDKMessage & { type: "assistant" }): string {
+  const container = toObjectRecord(message.message);
+  const content = container?.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  let text = "";
+  for (const block of content) {
+    const record = toObjectRecord(block);
+    if (record?.type === "text" && typeof record.text === "string") {
+      text += record.text;
+    }
+  }
+  return text;
 }
 
 interface ClaudeOptionsLogSummary {
@@ -1533,7 +1602,71 @@ export class ClaudeAgentClient implements AgentClient {
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
+      agentBehaviors: launchContext?.agentBehaviors,
     });
+  }
+
+  /**
+   * Tool-less one-shot completion for internal metadata generation (chat
+   * titles, branch names, commit/PR text, …). Runs a minimal `claudeQuery`
+   * with NO `claude_code` preset, NO CLAUDE.md (`settingSources: []`), NO tools
+   * (`allowedTools: []`), and NO MCP — everything the model needs is in the
+   * self-contained prompt. This is the whole cost win: a full spawn carries the
+   * preset + CLAUDE.md + the Otto tool catalog (15–25K input tokens) just to
+   * emit a few words; this path is a few hundred. Auth still flows through the
+   * Claude Code CLI (subscription/OAuth), so no separate API key is needed.
+   */
+  async generateBareCompletion(
+    options: AgentBareCompletionOptions,
+  ): Promise<AgentBareCompletionResult> {
+    const claudeBinary = await this.resolveBinary();
+    const env = createProviderEnv({
+      baseEnv: process.env,
+      runtimeSettings: this.runtimeSettings,
+    });
+    const effort = resolveClaudeBareCompletionEffort(options.thinkingOptionId);
+    const queryOptions: ClaudeOptions = {
+      cwd: options.cwd,
+      pathToClaudeCodeExecutable: claudeBinary,
+      settingSources: [],
+      allowedTools: [],
+      maxTurns: 1,
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+      includePartialMessages: false,
+      persistSession: false,
+      env,
+      ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+      ...(options.model ? { model: options.model } : {}),
+      ...(effort ? { effort } : {}),
+    };
+    const handle = claudeQuery(
+      { prompt: options.prompt, options: queryOptions },
+      { runtimeSettings: this.runtimeSettings, queryFactory: this.queryFactory },
+    );
+    let assistantText = "";
+    let resultText = "";
+    // Capture the result message's usage so the manager can attribute this
+    // generation's spend to the "generations" cost category (WP-G). Without it
+    // the bare-completion path bypasses the turn counter entirely and reads zero.
+    let usage: AgentUsage | undefined;
+    try {
+      for await (const message of handle) {
+        if (message.type === "assistant") {
+          assistantText += extractClaudeAssistantMessageText(message);
+        } else if (message.type === "result" && message.subtype === "success") {
+          resultText = typeof message.result === "string" ? message.result : "";
+          usage = buildBareCompletionUsage(message);
+        }
+      }
+    } finally {
+      try {
+        await handle.return?.(undefined);
+      } catch {
+        // Best-effort teardown of the underlying CLI process on early exit.
+      }
+    }
+    return { text: resultText.trim() || assistantText.trim(), ...(usage ? { usage } : {}) };
   }
 
   async resumeSession(
@@ -1561,6 +1694,7 @@ export class ClaudeAgentClient implements AgentClient {
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
+      agentBehaviors: launchContext?.agentBehaviors,
     });
   }
 
@@ -1676,10 +1810,12 @@ function mapClaudeRateLimitInfo(info: ClaudeRateLimitInfo): AgentRateLimitInfo {
     status = "warning";
   }
   const mapped: AgentRateLimitInfo = { status };
-  // SDK utilization is 0-100 percent (see SDKControlGetUsageResponse docs);
-  // absent unless the session is near the limit.
+  // The rate_limit_event `utilization` is a 0-1 FRACTION (verified against a live
+  // event: 0.42 while the /usage dialog showed the weekly window at ~43%). Note
+  // this differs from the /usage structured API, whose utilization is documented
+  // 0-100 — the two SDK sources use different scales. Multiply to a percent.
   if (typeof info.utilization === "number" && Number.isFinite(info.utilization)) {
-    mapped.utilizationPercent = Math.min(100, Math.max(0, Math.round(info.utilization)));
+    mapped.utilizationPercent = Math.min(100, Math.max(0, Math.round(info.utilization * 100)));
   }
   if (info.rateLimitType) {
     mapped.limitType = info.rateLimitType;
@@ -1980,6 +2116,9 @@ class ClaudeContextUsageState {
       const usage: AgentUsage = {
         inputTokens: message.usage.input_tokens,
         cachedInputTokens: message.usage.cache_read_input_tokens,
+        // Cache-write spend — billed at a premium and previously dropped here,
+        // making prompt-cache priming invisible to the cost ledger. (WP-D)
+        cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
         outputTokens: message.usage.output_tokens,
         totalCostUsd: message.total_cost_usd,
       };
@@ -2063,6 +2202,8 @@ class ClaudeAgentSession implements AgentSession {
   private readonly logger: Logger;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
+  // Resolved daemon-wide behavior toggles captured at launch. Absent = all-on.
+  private readonly agentBehaviors?: AgentBehaviorSettings;
   private query: Query | null = null;
   private childProcess: ChildProcess | null = null;
   private input: AsyncMessageInput<SDKUserMessage> | null = null;
@@ -2091,6 +2232,12 @@ class ClaudeAgentSession implements AgentSession {
   // child's observed row parents to the spawning subagent, not the root agent
   // (trees render as trees). See docs/agent-lifecycle.md.
   private readonly observedParentKeyByToolUseId = new Map<string, string>();
+  // Real per-sub-agent token accounting for plain Task fan-out: the live
+  // sidechain assistant frames carry the full `message.usage` split + model
+  // (workflow runs get theirs from the on-disk watcher instead). Keyed by the
+  // observed row key (parent Task tool_use id) so each row is priced on its own
+  // usage, not a roll-up. See [[subagent-real-accounting]].
+  private readonly observedSubagentUsage = new Map<string, SubagentUsageAccumulator>();
   // Keys whose row reached a terminal status (idle/error/closed) — the
   // turn-end sweep settles anything still open, since a foreground Task
   // cannot outlive the turn that spawned it (a lost/garbled task_notification
@@ -2160,6 +2307,7 @@ class ClaudeAgentSession implements AgentSession {
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
+    this.agentBehaviors = options.agentBehaviors;
     this.contextUsage = new ClaudeContextUsageState(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
     );
@@ -2308,7 +2456,7 @@ class ClaudeAgentSession implements AgentSession {
     };
     this.cancelCurrentTurn = requestCancel;
 
-    this.notifySubscribers({ type: "turn_started", provider: "claude" });
+    this.beginTurn();
 
     try {
       await this.ensureQuery();
@@ -2693,6 +2841,7 @@ class ClaudeAgentSession implements AgentSession {
     this.workflowObservedKeys.clear();
     this.announcedObservedSubagents.clear();
     this.observedKeyByTaskId.clear();
+    this.observedSubagentUsage.clear();
     this.pendingObservedEvents = [];
     this.announcedBackgroundShellTasks.clear();
     this.backgroundShellKeyByTaskId.clear();
@@ -3252,6 +3401,30 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  // Whether to ask the Claude CLI to emit next-user-prompt suggestions after
+  // each turn. Two independent off paths: the daemon behavior toggle
+  // (agentBehaviors.promptSuggestions), and the CLI env kill-switch
+  // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (audit-verified). Default on.
+  private resolvePromptSuggestionsEnabled(): boolean {
+    if (this.agentBehaviors?.promptSuggestions === false) {
+      return false;
+    }
+    const envValue =
+      this.launchEnv?.["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"] ??
+      process.env["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"];
+    if (typeof envValue === "string" && envValue.trim().toLowerCase() === "false") {
+      return false;
+    }
+    return true;
+  }
+
+  // Periodic AI progress summaries for observed subagents. Default on; the
+  // daemon behavior toggle is the only off path. When off, observed-subagent
+  // rows keep free tool-level activity but lose the ~30s progress blurb.
+  private resolveAgentProgressSummariesEnabled(): boolean {
+    return this.agentBehaviors?.agentProgressSummaries !== false;
+  }
+
   private buildSdkEnv(extraClaudeOptions: Partial<ClaudeOptions> | undefined): NodeJS.ProcessEnv {
     return createProviderEnv({
       baseEnv: process.env,
@@ -3302,11 +3475,15 @@ class ClaudeAgentSession implements AgentSession {
       // promoted to first-class, separately-watchable track rows. See
       // projects/observed-subagents/observed-subagents.md.
       forwardSubagentText: true,
-      agentProgressSummaries: true,
+      // Periodic AI progress summaries for observed subagents. Gated by the
+      // daemon behavior toggle (default on); other providers ignore this.
+      agentProgressSummaries: this.resolveAgentProgressSummariesEnabled(),
       // Predicted next-user-prompt suggestions, emitted after each turn's result.
       // Nearly free (piggyback on the parent prompt cache); the app decides whether
       // to render them as composer ghost text via the promptSuggestions setting.
-      promptSuggestions: true,
+      // Generation is gated by the daemon behavior toggle (default on) and the
+      // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLI kill-switch.
+      promptSuggestions: this.resolvePromptSuggestionsEnabled(),
       permissionMode: this.currentMode,
       // Dynamic mode switching can recreate the underlying Claude query. Keep the
       // bypass launch capability available so later setPermissionMode("bypassPermissions")
@@ -3578,7 +3755,7 @@ class ClaudeAgentSession implements AgentSession {
     _turnId: string,
     invocation: SlashCommandInvocation,
   ): Promise<void> {
-    this.notifySubscribers({ type: "turn_started", provider: "claude" });
+    this.beginTurn();
     try {
       const rewindAttempt = await this.attemptRewind(invocation.args);
       if (!rewindAttempt.messageId || !rewindAttempt.result) {
@@ -3670,7 +3847,7 @@ class ClaudeAgentSession implements AgentSession {
     };
     this.activeTurnHasAssistantText = false;
     this.contextUsage.beginTurn();
-    this.notifySubscribers({ type: "turn_started", provider: "claude" });
+    this.beginTurn();
     this.syncTurnState("autonomous turn started");
   }
 
@@ -4158,6 +4335,8 @@ class ClaudeAgentSession implements AgentSession {
       });
     }
 
+    this.appendObservedSubagentUsage(parentToolUseId, message, events);
+
     let items: AgentTimelineItem[] = [];
     if (message.type === "assistant") {
       const content = message.message?.content;
@@ -4178,6 +4357,56 @@ class ClaudeAgentSession implements AgentSession {
         item,
       });
     }
+  }
+
+  /**
+   * Accumulate a plain Task sub-agent's REAL usage from its live sidechain
+   * assistant frames (each carries the full `message.usage` split + `message.model`,
+   * deduped by message.id), and emit the running split + model on the observed
+   * row. This is the non-workflow twin of the on-disk watcher: a Task fan-out has
+   * no per-agent SDK identity beyond the sidechain, but the sidechain frames carry
+   * everything, so no disk correlation is needed. cumulativeTokens is left to the
+   * task_progress/notification path (the SDK's authoritative per-task scalar);
+   * cross-checking the two is block 5. See [[subagent-real-accounting]].
+   */
+  private appendObservedSubagentUsage(
+    key: string,
+    message: SDKMessage,
+    events: AgentStreamEvent[],
+  ): void {
+    if (message.type !== "assistant") {
+      return;
+    }
+    const betaMessage = message.message;
+    let accumulator = this.observedSubagentUsage.get(key);
+    if (!accumulator) {
+      accumulator = new SubagentUsageAccumulator();
+      this.observedSubagentUsage.set(key, accumulator);
+    }
+    const before = accumulator.isEmpty() ? -1 : grandTotalTokens(accumulator.totals());
+    accumulator.observe({
+      messageId: typeof betaMessage?.id === "string" ? betaMessage.id : undefined,
+      usage: readUsageTotals(betaMessage?.usage),
+      model: typeof betaMessage?.model === "string" ? betaMessage.model : undefined,
+    });
+    const totals = accumulator.totals();
+    // Only surface when the real footprint actually grew — a repeated stream
+    // frame of the same message.id (or a model-only frame) changes nothing.
+    if (grandTotalTokens(totals) <= before) {
+      return;
+    }
+    const model = accumulator.model();
+    events.push({
+      type: "observed_subagent_updated",
+      provider: "claude",
+      update: {
+        key,
+        status: "running",
+        usage: toClaudeSubagentUsage(totals, model),
+        usageRounds: accumulator.roundCount(),
+        ...(model ? { model } : {}),
+      },
+    });
   }
 
   /**
@@ -4756,6 +4985,7 @@ class ClaudeAgentSession implements AgentSession {
     events: AgentStreamEvent[],
   ): void {
     this.appendTurnEndObservedSubagentSweep(events);
+    this.verifySubagentPricing(message.modelUsage);
     const usage = this.convertUsage(message, message.modelUsage);
     if (message.subtype === "success") {
       // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
@@ -4784,6 +5014,35 @@ class ClaudeAgentSession implements AgentSession {
         ? message.errors.join("\n")
         : "Claude run failed";
     events.push(this.buildTurnFailedEvent(errorMessage));
+  }
+
+  /**
+   * Diagnostic self-check on the sub-agent price table: re-price the turn's
+   * whole-tree per-model token totals (the SDK's own `modelUsage`) and compare to
+   * the SDK's `costUSD`. Purely observational — the books stay balanced by the
+   * parent-residual rule regardless — but a mismatch means our list prices have
+   * drifted and per-sub-agent cost is skewed, so log it loudly. See
+   * [[subagent-real-accounting]] (block 5) and claude-pricing.ts.
+   */
+  private verifySubagentPricing(modelUsage: unknown): void {
+    const slices = readClaudeModelUsageSlices(modelUsage);
+    if (slices.length === 0) {
+      return;
+    }
+    const result = verifyClaudeTreePricing(slices);
+    if (result.mismatches.length === 0 && result.unpriced.length === 0) {
+      return;
+    }
+    this.logger.warn(
+      {
+        agentId: this.agentId,
+        ourUsd: result.ourUsd,
+        sdkUsd: result.sdkUsd,
+        mismatches: result.mismatches,
+        unpriced: result.unpriced,
+      },
+      "claude subagent price table drift vs modelUsage — per-subagent cost may be skewed",
+    );
   }
 
   /**
@@ -5095,6 +5354,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.toolUseCache.clear();
     this.sidechainTracker.clear();
+    this.observedSubagentUsage.clear();
   }
 
   private pushToolCall(
@@ -5135,6 +5395,17 @@ class ClaudeAgentSession implements AgentSession {
         this.logger.warn({ err: error }, "Subscriber callback threw");
       }
     }
+  }
+
+  // Every turn opens with this instead of a bare turn_started notify. Re-opening
+  // the rate-limit dedup window means the turn's first rate_limit_event always
+  // re-emits the current plan status, so a client that (re)connected mid-session
+  // — e.g. after an app refresh — gets resynced instead of staying blank because
+  // the daemon already delivered this exact payload to an earlier client. Dedup
+  // still collapses repeats WITHIN the turn (rate_limit_event fires per request).
+  private beginTurn(): void {
+    this.lastRateLimitEventKey = null;
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
   }
 
   private normalizePermissionUpdates(
