@@ -1,0 +1,139 @@
+= Otto Architecture Documentation
+:description: Master table of contents for the Otto architecture documentation set.
+
+This site is the professional-grade architecture record for Otto — the systems, their
+boundaries, and the diagrams that explain them. It is *docs-as-code*: every page is
+AsciiDoc, every diagram is an embedded Mermaid text block, so both humans and LLMs can
+review, diff, and regenerate them. Build with `npm run archdocs:build`, browse with
+`npm run archdocs:serve`.
+
+[NOTE]
+====
+*Human-consumability is a hard requirement.* Every diagram in this set carries a node
+budget (15–20 nodes max). When a subject exceeds its budget, the overflow is abstracted
+into a linked child page — never crammed into the same picture. A diagram nobody can
+read is a failed deliverable, no matter how accurate it is.
+====
+
+== How this set is organized
+
+[cols="1,3"]
+|===
+|Page |What it answers
+
+|link:01-system-overview.html[1. System Overview]
+|What are the major systems that govern Otto, and how do they relate? The context
+diagram and the eight governing systems.
+
+|link:02-module-map.html[2. Module Map]
+|Where does code live? The frontend/backend split, package layering, directory-to-system
+mapping, and the honest inventory of oversized modules.
+
+|link:03-configuration.html[3. Configuration Systems]
+|What drives Otto from outside its code boundary? Config layers, environment variables,
+per-workspace files, device-local settings, and the two flag systems.
+
+|link:04-diagram-catalog.html[4. Diagram Catalog]
+|Which diagrams does this system need, and *why* does each one earn its place?
+
+|link:05-audit-architecture.html[5. Audit Architecture]
+|How Otto measures and proves its own cost: the token/cache measurement model, the
+provider-agnostic accounting contract, sub-agent roll-up and de-inflation, the
+ledger, and the transparency invariants.
+
+|link:06-engineering-guide.html[6. Engineering & Audit Guide]
+|How to use this documentation to implement and audit — with deep dives on the four
+hardest problem areas: chat sync, usage accounting, UI performance, IDE tooling.
+|===
+
+Document templates for new pages live in `archdocs/templates/` — use them so every
+future document (LLM- or human-authored) has the same reviewable structure.
+
+== Master table of contents
+
+The full breadth of Otto's systems, in hierarchy. Bold entries have dedicated coverage
+in this set today; the rest are the growth points for future detail pages.
+
+=== 1. Product & runtime topology
+* **1.1 System context** — clients, daemon, providers, relay, forges (§ Overview)
+* **1.2 Deployment models** — local daemon, managed desktop, remote via relay
+* 1.3 Security posture — auth & pairing, E2EE relay, threat model (`SECURITY.md`)
+
+=== 2. Shared contract (the spine)
+* **2.1 Wire protocol** — `packages/protocol`: message schemas, binary frames
+  (terminal, file transfer), RPC namespacing, compatibility rules
+* **2.2 Generated validation** — zod-aot ahead-of-time validators
+* **2.3 Client SDK** — `packages/client`: DaemonClient, transport strategies
+  (WebSocket, relay-E2EE)
+
+=== 3. Daemon (backend)
+* **3.1 Bootstrap & composition root** — service construction order, config load
+* **3.2 Transport & session layer** — WebSocket server, per-client `Session`
+  dispatch (the god class + its in-progress decomposition), relay transport
+* **3.3 Agent runtime** — AgentManager lifecycle state machine, timeline
+  persistence (epoch/seq), provider registry & snapshots, prompt/context composition
+* **3.4 Provider adapters** — two loop-ownership models; Claude, Codex, OpenCode,
+  Pi, ACP family, OpenAI-compatible
+* **3.5 Otto tool catalog & MCP** — transport-neutral tools, native injection vs
+  MCP fallback, permission policy
+* **3.6 Workspace & git domain** — project/workspace/worktree registries,
+  checkout/diff projection, provider-neutral git hosting (GitHub, Bitbucket)
+* **3.7 IDE services** — terminal workers, file/editor RPCs, preview dev-servers,
+  browser-tools broker, artifacts, service proxy
+* **3.8 Orchestration & automation** — personalities, teams, runs, schedules,
+  loops, chat rooms, push notifications
+* **3.9 Accounting & observability** — activity stats, usage ledger, subagent
+  usage roll-up, personality stats, daemon log (§ Audit Architecture)
+* 3.10 Speech & voice — STT/TTS managers, dictation, voice mode
+
+=== 4. Clients (frontend)
+* **4.1 App shell & routing** — Expo Router tree, startup restore, host-scoped routes
+* **4.2 Host runtime** — HostRuntimeController, connection lifecycle, transports
+* **4.3 Session & timeline sync engine** — SessionContext, stream reducer cursor
+  (accept/drop/gap), catch-up planning
+* **4.4 Chat surface** — agent-stream rendering (virtualization, anchoring, turn
+  grouping), message bubble, markdown streaming, composer pipeline
+* **4.5 IDE surfaces** — editor (CM6), terminal, git/diff pane, file explorer,
+  browser pane, artifacts, visualizer
+* **4.6 State architecture** — Zustand stores, React Query as push-fed replica,
+  push-router
+* **4.7 Platform layer** — web/native/electron gates, Metro file-extension splits
+* 4.8 Settings, feature gates, i18n, theming
+
+=== 5. Audit & cost transparency
+* **5.1 Measurement model** — the four token classes (in, out, cache read, cache
+  write), model-tagged splits, derived cost (§ Audit Architecture)
+* **5.2 Provider-agnostic accounting** — the neutral core, the three-step adapter
+  contract, the pricing invariant
+* **5.3 Sub-agent & orchestration roll-up** — attended vs observed sub-agents,
+  parent-residual de-inflation, workflow transcript accounting
+* **5.4 The sinks** — activity counters (day buckets, rollups) and the itemized
+  usage ledger; reset atomicity; live-update pings
+* **5.5 Transparency guarantees** — the ten audit invariants, local-only storage
+
+=== 6. Platform & infrastructure packages
+* 6.1 Relay — E2EE Cloudflare Worker
+* 6.2 Desktop shell — Electron main, embedded daemon supervision, GPU fallback
+* 6.3 Supporting libraries — highlight, visualizer bundle, expo-two-way-audio
+* 6.4 CLI — Docker-style command surface
+* 6.5 Website — marketing/docs site
+
+=== 7. Configuration & operations
+* **7.1 Configuration boundary** — env vars → persisted config → mutable config →
+  clients (§ Configuration)
+* **7.2 Environment variable reference** — the full `OTTO_*` index (§ Configuration)
+* **7.3 Per-workspace config** — `.claude/launch.json`, custom providers, `otto.json`
+* **7.4 Feature systems** — client feature gates vs daemon capability flags
+* 7.5 Storage at rest — `$OTTO_HOME` layout, atomic JSON stores, no-migrations rule
+
+=== 8. Delivery
+* 8.1 Build graph — workspace build order, generated declarations
+* 8.2 Release pipeline — version sync, npm publish, desktop auto-update, EAS
+* 8.3 Testing tiers — unit (vitest), E2E (Playwright), demo capture, real-provider
+
+== Provenance & freshness
+
+Generated 2026-07-19 from direct reads of the working tree (v0.6.3 + uncommitted
+changes), cross-checked against `docs/`. The `docs/` directory remains the source of
+truth for subsystem-level gotchas; this set is the layer above it — system boundaries,
+diagrams, and audit guides. When the two disagree, code wins, then `docs/`, then this.

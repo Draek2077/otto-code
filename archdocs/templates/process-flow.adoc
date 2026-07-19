@@ -1,0 +1,51 @@
+= [Flow name] — Process Flow
+:description: One sentence: what this flow accomplishes.
+// TEMPLATE — copy into archdocs/pages/, keep every section, delete the comments.
+// Budget: ≤ 6 participants, ≤ 20 messages per sequence diagram. Model the happy path
+// plus the failure branches that change behavior — not every conceivable error.
+
+== Purpose & trigger
+
+// When does this flow run, who starts it, what is true when it ends.
+
+== Actors
+
+[cols="1,2"]
+|===
+|Actor |Role in this flow
+
+|… |…
+|===
+
+== Flow
+
+[mermaid]
+----
+sequenceDiagram
+  participant A as Actor
+  participant B as Actor
+  A->>B: …
+  alt failure branch
+    B-->>A: …
+  end
+----
+
+== Failure modes
+
+// The branches that matter operationally: what fails, what the user sees, how it recovers.
+[cols="1,2,2"]
+|===
+|Failure |Observable symptom |Recovery
+
+|… |… |…
+|===
+
+== Invariants
+
+1. …
+
+== Source anchors
+
+// The 3–6 files a reader opens to verify this page. Paths only, no line numbers
+// (they rot).
+* `packages/…`

@@ -1,0 +1,214 @@
+= Audit Architecture
+:description: How Otto measures, records, and proves the cost of using it — provider-agnostic token accounting, the ledger, and sub-agent roll-up.
+
+Otto's accounting exists to make one promise checkable: *the user can always see what
+Otto cost them, and every number shown can be traced to a real measurement.* It is
+accounting, not a dashboard — no roll-ups that invent precision, no estimates dressed
+as facts, and an *honest blank* wherever a number can't be had for real. It is also
+deliberately not telemetry: everything below stays in `$OTTO_HOME`, is never reported
+anywhere, and exists for the user's own audit.
+
+*Read first:* `docs/subagent-accounting.md` (the adapter guide),
+`docs/activity-stats.md` (the counter store and RPCs).
+
+== Mission & boundary
+
+* *Inside:* token measurement per turn and per sub-agent, cost derivation, the
+  itemized ledger, daemon-wide activity counters, per-personality counts, and the
+  RPCs/UI that surface them.
+* *Outside:* provider billing truth (each provider's API is the authority on what was
+  charged; Otto records what providers report and prices only where it genuinely
+  knows the price), quota/plan limits (the quota-fetcher service reads them, it does
+  not account for them), and any network reporting (none exists, by design).
+
+== The unit of measurement
+
+Every measurement is a *usage split*, not a single number:
+
+[cols="1,3"]
+|===
+|Class |Meaning
+
+|`inputTokens` |Fresh prompt tokens sent to the model ("in")
+|`outputTokens` |Tokens the model generated ("out")
+|`cacheReadInputTokens` |Prompt tokens served from the provider's prompt cache — the cheap class
+|`cacheCreationInputTokens` |Prompt tokens written into the cache this turn — the investment class
+|===
+
+The split travels with the *model id* that produced it. Providers without a prompt
+cache report the two cache classes as `0` — which reads as "all fresh", the honest
+statement there. *Cost is always derived* — tokens × the price table of the code that
+knows the provider — never accumulated independently, so tokens and cost cannot drift
+apart. Cost arithmetic is done in micro-USD integers to avoid float drift.
+
+== The measurement flow
+
+[mermaid]
+----
+flowchart LR
+  subgraph prov [Provider layer — the only provider-specific code]
+    PT["Parent-turn usage<br/>(split + model)"]
+    SUB["Sub-agent frames<br/>(live sidechain or<br/>on-disk transcript)"]
+    PRICE["Provider pricing<br/>(own price table only)"]
+  end
+  ACC["SubagentUsageAccumulator<br/>(dedup by message id)"]
+  AM["AgentManager — neutral sink<br/>turn completion · usage events"]
+  DEINF["Parent-residual de-inflation<br/>tree cost − Σ sub-agent costs"]
+  ASS[("ActivityStatsStore<br/>12 counters, day buckets")]
+  ULS[("UsageLogStore<br/>itemized ledger rows")]
+  PSS[("PersonalityStatsStore")]
+  RPC["stats.activity.get / .reset<br/>+ activity_stats_changed"]
+  UI["Metrics tiles · Log tab"]
+  PT --> AM
+  SUB --> ACC
+  PRICE -.-> ACC
+  ACC --> AM
+  AM --> DEINF --> ULS
+  AM --> ASS
+  AM --> PSS
+  ASS --> RPC
+  ULS --> RPC
+  RPC --> UI
+----
+
+Two ingestion paths feed the one neutral sink:
+
+* *Turn path* — when a provider turn completes, its accumulated usage split lands in
+  AgentManager, which increments the token counters and books the ledger row for
+  that chat. Providers where the *daemon owns the tool loop* (the OpenAI-compatible
+  family) are billed per round inside that loop — same sink, finer grain.
+* *Activity path* — timeline items increment the behavioral counters (messages,
+  thoughts, tool calls) as they are recorded; lifecycle services increment theirs at
+  their own chokepoints (agents created, sub-agents invoked, background tasks, runs
+  orchestrated, schedules executed, artifacts created). Twelve counters total, each
+  an individually optional additive leaf so the set can grow without migrations.
+
+== Provider-agnostic by construction
+
+The core rule: *no provider's field names, model ids, or prices appear downstream of
+the provider layer.* The neutral core (`agent/subagent-usage.ts`, the AgentManager
+sink, the wire fields, the Log grouping) is shared; a provider contributes exactly
+two things — its own usage parsing and, only if it truly knows prices, its own
+pricing. Claude is the shipped reference implementation.
+
+The three-step adapter contract for a provider with observed sub-agents:
+
+1. *Parse* its wire usage into the neutral split (missing classes are `0`).
+2. *Accumulate* per sub-agent across frames — the accumulator dedups by message id,
+   keeps the final complete frame, and remembers the model.
+3. *Emit* the split + model on the observed-subagent update — and set a cost *only*
+   if this provider can genuinely price it, priced on the sub-agent's own model.
+
+Everything after that — the ledger row, chat attribution, de-inflation, grouping —
+is neutral code the provider never touches.
+
+[IMPORTANT]
+====
+*The pricing invariant.* Never dispatch pricing by model id from neutral code. An
+OpenAI-compatible gateway can legitimately serve a `claude-\*` model id at entirely
+different prices; keying a price table off the id alone would misprice it. Pricing is
+invoked only from code that knows it is genuinely that provider. Price-table
+verification (Claude re-prices against the SDK's own per-model cost and logs drift)
+is diagnostic only — the residual keeps the books balanced regardless.
+====
+
+== Sub-agents & orchestration
+
+Two kinds of sub-agent, two accounting treatments:
+
+* *Attended* sub-agents — real Otto agents spawned via the native `create_agent`
+  tools (how orchestrating personalities and teams delegate). They get their own
+  turn completions through the normal path; no special accounting exists or is
+  needed. Runs started by the orchestration engine additionally bump
+  `runsOrchestrated`.
+* *Observed* sub-agents — provider-managed workers with no Otto agent of their own
+  (Claude `Task` fan-out, workflow-internal agents). These ride the observed-subagent
+  event stream and the contract above. Claude's two worked paths: live sidechain
+  frames (tagged with the parent tool-use id) feed the accumulator directly;
+  workflow internals have no live identity, so a transcript watcher tails each
+  internal agent's on-disk transcript through the same accumulator.
+
+[mermaid]
+----
+sequenceDiagram
+  participant AD as Provider adapter
+  participant AM as AgentManager (neutral sink)
+  participant UL as UsageLogStore
+  AD->>AD: accumulate frames per sub-agent<br/>(dedup by message id)
+  AD->>AM: observed_subagent_updated {usage, model, cost?}
+  AD->>AM: terminal status (idle / error / closed)
+  AM->>UL: exactly one ledger row<br/>kind "subagent", attributed to owning chat
+  AM->>AM: stage cost in pending-by-parent
+  Note over AM,UL: parent's next turn books<br/>tree cost − Σ staged costs (clamped ≥ 0)
+----
+
+*De-inflation* is what keeps the books honest when a provider reports a *whole-tree*
+cost on the parent turn while parent-turn tokens are parent-only: sub-agent costs are
+staged as each settles, and the parent row is booked as tree cost minus the staged
+sum. The partition is exact by construction — pricing drift lands on the parent
+residual, never inflates the grand total.
+
+== The two sinks and their delivery
+
+[cols="1,2,2"]
+|===
+|Sink |Shape |Delivery
+
+|`ActivityStatsStore`
+|12 additive counters × (all-time + per-calendar-day buckets), day chosen at
+increment time, ~35 days retained. Atomic writes; serialized increment queue.
+|`stats.activity.get` returns five fixed rollup windows (Today, Yesterday, 7 Days,
+30 Days, All Time) — no date math on the client. Metrics tiles at `/stats`.
+
+|`UsageLogStore`
+|Itemized rows: one per turn / round / settled sub-agent, carrying the split, model,
+derived cost, `kind`/`subtype`, and owning chat. 30-day window.
+|The Log tab; rows grouped under their chat with sub-agent rows indented.
+|===
+
+Live behavior: any counter movement broadcasts a payload-free
+`activity_stats_changed` ping, coalesced to at most one per ~2 s; clients invalidate
+on it (the invalidation-only query convention). *Reset* is one RPC that wipes both
+sinks atomically — tiles and ledger restart together, gated behind the `statsReset`
+capability so old daemons are never sent a request they can't answer. Both RPCs sit
+behind the `activityStats` capability flag.
+
+== Invariants (the audit surface)
+
+1. *One funnel.* Every token/cost number enters through the AgentManager sink; no
+   store is written from provider code.
+2. *Split or nothing.* A ledger row carries a real usage split. A sub-agent that only
+   ever reported a scalar total gets *no* fabricated row — tokens may show with a
+   blank cost, but never invented classes.
+3. *No inflation.* Whole-tree parent costs are de-inflated by settled sub-agent
+   costs, clamped at zero; the grand total can only be exact or conservatively
+   attributed to the parent, never double-counted.
+4. *Pricing is provider-private.* No model-id price dispatch in neutral code; cost is
+   derived, in micro-USD integers, at event time.
+5. *One row per sub-agent per run*, written at first terminal status, idempotent
+   against duplicate or late terminal updates.
+6. *Counters and ledger reconcile.* Both sinks are projections of the same events; a
+   day bucket's token counters must equal the sum of that day's ledger rows.
+7. *Day buckets are decided at increment time* (local daemon date) — counting
+   survives restarts, concurrent clients, and mobile backgrounding.
+8. *Additive schema only.* Counters are individually optional leaves; adding or
+   retiring one is never a migration or a wire break.
+9. *Reset is atomic across both sinks* and capability-gated.
+10. *Nothing leaves the machine.* The audit trail lives in `$OTTO_HOME`
+    (`activity-stats.json`, `usage-log.json`, `stats/personality-usage.json`) and is
+    served only over the daemon's own authenticated RPCs.
+
+== Audit & onboarding checklist
+
+*Auditing a number:* pick a day; sum the ledger rows for that day and compare with
+the day bucket (invariant 6) — a mismatch localizes to a missed funnel event or a
+double write. For a chat with sub-agents, check the partition: parent residual +
+Σ sub-agent rows = reported tree cost. After a reset, both surfaces must be empty —
+one populated sink is a found bug.
+
+*Onboarding a provider:* answer the five questions in `docs/subagent-accounting.md`
+(does it surface observed sub-agents; where is per-sub-agent usage; what are its
+usage field names; is the parent cost whole-tree or parent-only; can it truly price)
+— then implement only steps 1–3 of the adapter contract, reusing the neutral core.
+Prove invariant 3 with a parent+child fixture and invariant 6 with a day-bucket
+reconciliation before calling it shipped.

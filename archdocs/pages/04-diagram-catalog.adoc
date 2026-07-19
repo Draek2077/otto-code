@@ -1,0 +1,164 @@
+= Diagram Catalog
+:description: The diagrams this system needs, and why each one earns its place.
+
+A diagram earns its place by answering questions that prose answers badly — flows,
+boundaries, and state. This catalog is the curated set for Otto: each entry states
+*why it exists*, the questions it answers, and its node budget. Anything not on this
+list should default to prose or a table; an unmotivated diagram is decoration.
+
+*Legend* — Status: ✅ drawn in this set · 📋 proposed (next authoring wave).
+Every diagram is Mermaid-in-AsciiDoc, so all are text-reviewable and LLM-maintainable.
+
+== Foundation (read first)
+
+[cols="1,1,2,1"]
+|===
+|Diagram |Type / budget |Why it exists |Status
+
+|D1 · System context
+|flowchart · ≤14
+|*The trust and deployment boundary.* Onboarding starts here; every security or
+remote-access conversation needs the same picture of what talks to what, and which
+links are encrypted. Without it, "local-first" stays a slogan instead of a checkable
+property.
+|✅ link:01-system-overview.html[Overview]
+
+|D2 · Package layering
+|flowchart · ≤16
+|*The dependency law.* Build order, typecheck failures across workspaces, and "where
+does this code belong" all resolve against this one picture. It is the diagram that
+keeps frontend and backend from bleeding into each other.
+|✅ link:02-module-map.html[Module Map]
+
+|D3 · Agent lifecycle
+|stateDiagram · ≤8 states
+|*The shared vocabulary.* Nearly every bug report ("stuck running", "archived while
+idle") is a claim about this state machine. A drawn machine makes illegal transitions
+visibly illegal — the reference for reviewing any lifecycle-touching change.
+|✅ link:01-system-overview.html[Overview]
+
+|D4 · Configuration flow
+|flowchart · ≤12
+|*The outside-in boundary.* Support and ops questions ("why is the daemon listening
+there", "why does my device differ") are resolved by walking the layers in order.
+It also enforces the shared-truth vs device-local asymmetry.
+|✅ link:03-configuration.html[Configuration]
+|===
+
+== Correctness-critical flows
+
+[cols="1,1,2,1"]
+|===
+|Diagram |Type / budget |Why it exists |Status
+
+|D5 · Chat sync loop
+|sequence · ≤6 participants
+|*The hardest recurring bug source.* Duplicated, missing, or out-of-order chat rows
+are all failures of one loop: append → broadcast → cursor decision → catch-up. The
+diagram turns "chat is weird" into a checkable path with four named outcomes
+(accept / drop-stale / drop-epoch / gap).
+|✅ link:06-engineering-guide.html[Guide §1]
+
+|D6 · Timeline & state ERD
+|erDiagram · ≤10 entities
+|*The persistence contract.* Epochs, sequence rows, agent records, snapshots — the
+relations that make resume, rewind, and dedup possible. Any storage or migration
+discussion without this picture degenerates into file-path archaeology.
+|✅ link:06-engineering-guide.html[Guide §1]
+
+|D7 · Usage accounting flow
+|flowchart · ≤12
+|*Auditability of money.* Token/cost numbers are only trustworthy if every path into
+the stores is known and every store is enumerable. This diagram *is* the audit: a
+usage number that didn't travel one of these edges is a bug (the no-inflation
+mandate made visual).
+|✅ link:05-audit-architecture.html[Audit Architecture]
+
+|D15 · Sub-agent settle & de-inflation
+|sequence · ≤4 participants
+|*The double-counting defense.* Observed sub-agents settle asynchronously while the
+parent may report whole-tree costs — the one-row-per-sub-agent rule and the
+parent-residual subtraction only stay correct if their ordering is explicit. This is
+the diagram a provider author reads before wiring accounting.
+|✅ link:05-audit-architecture.html[Audit Architecture]
+
+|D8 · Permission flow
+|sequence · ≤6 participants
+|*The safety-critical path.* Approve/deny crosses four trust domains (agent → daemon
+→ client → human). Deny-by-default, unattended coercion, and responder logic can only
+be reviewed against the drawn round trip — this is the diagram security review reads.
+|📋
+
+|D9 · Provider adapter contract
+|flowchart (two lanes) · ≤14
+|*The core mission, made checkable.* "Every provider gets every capability" requires
+knowing which side owns the tool loop. Drawing the provider-owned vs daemon-owned
+lanes shows exactly which seams a new capability must plug into — the checklist
+diagram for `docs/providers.md`.
+|📋
+|===
+
+== Experience-critical structure
+
+[cols="1,1,2,1"]
+|===
+|Diagram |Type / budget |Why it exists |Status
+
+|D10 · Frontend state topology
+|flowchart · ≤12
+|*UI correctness and performance share one map.* Stale panes, double renders, and
+jitter are all questions of which store owns a fact and who is allowed to write it
+(push-router vs reducer queue vs invalidation). This is the review diagram for any
+new store or query.
+|✅ link:06-engineering-guide.html[Guide §3]
+
+|D11 · Chat render pipeline
+|flowchart · ≤10
+|*The 60 fps budget.* From reducer flush to virtualized mount to markdown paint —
+each stage has a budget (48 ms batching, 100-item threshold, memo boundaries).
+Performance audits walk this pipeline stage by stage instead of profiling blind.
+|📋
+
+|D12 · IDE service topology
+|flowchart · ≤14
+|*The extension surface.* Preview, browser broker, terminal workers, file RPCs,
+artifacts — five services with the same shape (agent tool → daemon service → client
+surface). New IDE capabilities copy this shape; audits check its guardrails
+(tab binding, tool-description contracts, edit gates).
+|✅ link:06-engineering-guide.html[Guide §4]
+
+|D13 · Workspace/git domain ERD
+|erDiagram · ≤10 entities
+|*The most-shared state.* Projects, workspaces, worktrees, checkouts, and the
+directory-vs-workspace keying rule (same `cwd`, shared git state, private drafts).
+Violating that keying is a recurring bug class; the ERD makes the ownership rule
+reviewable.
+|📋
+|===
+
+== Delivery
+
+[cols="1,1,2,1"]
+|===
+|Diagram |Type / budget |Why it exists |Status
+
+|D14 · Release pipeline
+|flowchart · ≤12
+|*The irreversible path.* Version sync → publish (2FA pause) → tag push → desktop
+auto-update rollout → EAS. Drawn because mistakes here are public and hard to
+retract; the release skill follows this map.
+|📋
+|===
+
+== Deliberately absent
+
+Equally important is what this catalog refuses to include:
+
+* *A full class diagram of the daemon or app.* Thousands of nodes; zero decisions
+  improved. The module map tables carry that weight at human scale.
+* *Per-RPC message diagrams.* The protocol package and its generated validators are
+  the source of truth; a diagram would be a stale copy of a list.
+* *Screen-by-screen UI flow maps.* Expo Router's file tree already is that diagram.
+
+When a proposed diagram busts its node budget during authoring, the subject is too
+big — split the page, don't grow the picture.

@@ -1,0 +1,142 @@
+= System Overview
+:description: The context diagram and the eight governing systems of Otto.
+
+Otto is a local-first client–server system: a Node.js *daemon* on the developer's
+machine spawns and supervises AI coding agents, and *clients* (mobile, web, desktop,
+CLI) observe and control them over one WebSocket protocol. Code never leaves the
+machine; remote access rides an end-to-end-encrypted relay.
+
+== System context
+
+[mermaid]
+----
+flowchart LR
+  subgraph clients [Clients]
+    APP["Mobile / Web app<br/>(Expo)"]
+    DESK["Desktop app<br/>(Electron)"]
+    CLI["CLI"]
+  end
+  RELAY["Relay<br/>(Cloudflare Worker, E2EE,<br/>zero-knowledge)"]
+  subgraph host [Developer machine]
+    DAEMON["Otto daemon<br/>(Node.js)"]
+    PROV["Agent providers<br/>Claude · Codex · OpenCode ·<br/>Pi · ACP · OpenAI-compat"]
+    REPO[("Workspaces &<br/>git repos")]
+    HOME[("$OTTO_HOME<br/>state & config")]
+  end
+  FORGE["Git hosting<br/>GitHub · Bitbucket"]
+  APP -- "WebSocket (JSON + binary frames)" --> DAEMON
+  DESK -- "managed subprocess + WS" --> DAEMON
+  CLI -- "WebSocket" --> DAEMON
+  APP -. "remote path" .-> RELAY -. "encrypted bytes" .-> DAEMON
+  DAEMON --> PROV
+  DAEMON --> REPO
+  DAEMON --> HOME
+  DAEMON --> FORGE
+----
+
+Three deployment models, one architecture: a locally started daemon (default,
+`127.0.0.1:6868`), a desktop app that supervises its own embedded daemon, and a
+firewalled daemon reached through the relay. The relay routes ciphertext only — it
+cannot read agent traffic.
+
+== The eight governing systems
+
+Everything in the codebase serves one of these systems. They are the vocabulary the
+rest of this documentation set uses.
+
+[cols="1,2,2"]
+|===
+|System |Mission |Anchors
+
+|*1. Contract & Transport*
+|One append-only wire protocol every client speaks: message schemas, binary terminal
+frames, RPC namespacing, capability negotiation, relay E2EE. Governs compatibility —
+old clients must parse new daemons and vice versa.
+|`packages/protocol`, `packages/client`, daemon `websocket-server.ts` / `session.ts`,
+`packages/relay`
+
+|*2. Agent Runtime*
+|The lifecycle of an agent: create → run → interrupt → archive. Provider adapters
+normalize five-plus agent CLIs/SDKs into one `AgentClient` interface; the Otto tool
+catalog and permission flow give every provider the same tooling.
+|daemon `agent/agent-manager.ts`, `agent/providers/`, `agent/tools/`, `mcp-server.ts`
+
+|*3. Timeline & Sync*
+|The truth about what an agent said and did, delivered to every client exactly once.
+Append-only timeline keyed `{epoch, seq}`; live streams for immediacy, authoritative
+paged fetches for correctness; client-side cursor reducers dedupe, drop stale epochs,
+and detect gaps.
+|daemon `agent-timeline-store.ts`, app `timeline/session-stream-reducers.ts`,
+`docs/timeline-sync.md`
+
+|*4. Workspace & Git*
+|Projects, workspaces, and worktrees; checkout status/diff projection; commit, push,
+and PR flows through a provider-neutral git-hosting layer.
+|daemon `workspace-registry.ts`, `checkout-diff-manager.ts`, `services/git-hosting/`,
+app `git/`
+
+|*5. IDE Services*
+|The frontier-harness tooling Otto levels up to every provider: terminals (PTY
+workers), file/editor RPCs, preview dev-servers, browser verification tools brokered
+to real app tabs, HTML artifacts, service proxy.
+|daemon `terminal/`, `server/session/files/`, `preview/`, `browser-tools/`,
+`artifact/`; app `editor/`, `terminal/`, browser pane
+
+|*6. Orchestration & Automation*
+|Work above a single agent: personalities and teams, multi-agent runs, cron schedules,
+loops, agent-to-agent chat, push notifications.
+|daemon `agent/agent-personalities.ts`, `orchestration/`, `schedule/`,
+`loop-service.ts`, `chat/`, `push/`
+
+|*7. Accounting & Observability*
+|An honest record of what was spent and done: every provider funnels usage through
+AgentManager chokepoints into a day-bucketed counter store and an itemized ledger;
+subagent usage is rolled up without double counting. Full treatment:
+link:05-audit-architecture.html[Audit Architecture].
+|daemon `activity-stats/`, `agent/subagent-usage.ts`, `docs/subagent-accounting.md`
+
+|*8. Client Experience*
+|The app itself: Expo Router shell, host runtime, Zustand + push-fed React Query
+state, the virtualized chat surface, platform gating across iOS/Android/web/Electron.
+|`packages/app/src` — `runtime/`, `contexts/`, `stores/`, `agent-stream/`,
+`components/`
+|===
+
+Cross-cutting all eight: *Security* (auth, pairing, E2EE — `SECURITY.md`),
+*Configuration* (link:03-configuration.html[its own page]), and *Delivery*
+(build graph, release, testing).
+
+== The agent lifecycle (shared vocabulary)
+
+Every system above touches this state machine; it is defined once in
+`packages/protocol/src/agent-lifecycle.ts` and enforced by AgentManager.
+
+[mermaid]
+----
+stateDiagram-v2
+  [*] --> initializing : create
+  initializing --> idle : session ready
+  idle --> running : prompt
+  running --> idle : turn complete
+  initializing --> error
+  running --> error
+  idle --> error
+  error --> running : retry
+  error --> closed
+  idle --> closed : close / archive
+  closed --> [*]
+----
+
+Key invariants: `AgentManager` is the single source of truth for state and broadcasts
+every change; each new run starts a new timeline *epoch*; `closed` is terminal.
+
+== How a prompt becomes pixels (one paragraph)
+
+A client sends a create/prompt RPC → the `Session` layer routes it to `AgentManager` →
+the provider adapter runs the turn and emits stream events → events are appended to
+the `{epoch, seq}` timeline, persisted, and broadcast → each client's stream reducer
+accepts/dedupes them into its store → the virtualized chat surface renders. Tool calls
+detour through the permission flow (agent → daemon → client → human → back); usage
+events detour into the accounting stores. Those two detours, and the sync loop
+itself, are drawn in the link:06-engineering-guide.html[Engineering & Audit Guide]
+and link:05-audit-architecture.html[Audit Architecture].
