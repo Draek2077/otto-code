@@ -23,6 +23,9 @@
       "android": {
         "autoIncrement": "versionCode",
         "gradleCommand": ":app:bundleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
+      },
+      "ios": {
+        "autoIncrement": "buildNumber"
       }
     },
     "production-apk": {
@@ -47,6 +50,9 @@
         "serviceAccountKeyPath": "./google-service-account.json",
         "track": "production",
         "releaseStatus": "completed"
+      },
+      "ios": {
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
       }
     }
   }
