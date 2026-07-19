@@ -82,7 +82,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       <div className="bg-background">
         <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
           <div className="space-y-24">
-            <BuiltOnPaseoSection />
+            <BuiltOnOpenSourceSection />
             <RedesignSection />
             <MultiProviderSection />
             <OpenAICompatibleSection />
@@ -191,9 +191,9 @@ function SectionTitle({ title, description }: { title: string; description: stri
   );
 }
 
-const PASEO_PILLARS = [
+const UPSTREAM_PILLARS = [
   {
-    title: "From Paseo",
+    title: "From Paseo, by Mo",
     items: [
       "Multi-provider agent orchestration",
       "Self-hosted daemon, your machines",
@@ -202,19 +202,28 @@ const PASEO_PILLARS = [
     ],
   },
   {
+    title: "From Agent Flow, by Simon Patole",
+    items: [
+      "The live orchestration graph render layer",
+      "Agent, subagent, and tool-call nodes",
+      "Timeline scrubbing and file-attention heat",
+      "A bridge protocol clean enough to re-feed",
+    ],
+  },
+  {
     title: "The Otto mission",
     items: [
       "Frontier-model tooling for every provider",
       "In-browser preview verification for agents",
+      "Real per-subagent token and cost accounting",
       "Named agent personalities, spawnable by role",
-      "Artifacts, rich permission modes, new tools",
       "Local models via LM Studio, Ollama & friends",
       "A familiar, refined UI that never boxes you in",
     ],
   },
 ] as const;
 
-function BuiltOnPaseoSection() {
+function BuiltOnOpenSourceSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -223,8 +232,8 @@ function BuiltOnPaseoSection() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Proudly built on Paseo"
-        description="Otto is an open-source fork of Paseo — everything Paseo can do, plus a mission on top: grow it into a fully featured agentic coding assistant."
+        title="Proudly built on other people's good work"
+        description="Otto is an open-source fork of Paseo with Agent Flow's render layer inside it — two projects I like enough to build on rather than reinvent."
       />
 
       <div className="space-y-4">
@@ -247,21 +256,53 @@ function BuiltOnPaseoSection() {
             Mo
           </a>
           : a self-hosted daemon that orchestrates coding agents across desktop, mobile, web, and
-          CLI. Otto keeps that full foundation intact — with upstream history preserved — and builds
-          on it. That&apos;s the open-source community working exactly as it should, and we&apos;re
-          not shy about it.
+          CLI. What makes it such a good base is that the hard parts are already right — process
+          lifecycle, a clean WebSocket protocol, real cross-platform clients — so the work on top is
+          actual features instead of plumbing. Otto keeps that full foundation intact, with upstream
+          history preserved, and builds on it. That&apos;s the open-source community working exactly
+          as it should, and I&apos;m not shy about it.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Otto is a personal project. It started as one developer wanting to shape Paseo around a
-          specific workflow, using AI coding agents to fork, refactor, and extend it — the same kind
-          of agent-driven development Otto is built to run. That workflow has grown into a mission:
-          extend Otto into a fully featured agentic coding assistant — a familiar environment that
-          never feels constraining, with frontier-model tooling available to every provider, cloud
-          and local alike. Every change is customization on top of Mo&apos;s work, and all credit
-          for the underlying platform belongs to him.
+          Otto&apos;s Visualizer — the live node-graph of what your agents are actually doing — is
+          the render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          . It is a genuinely lovely piece of work, and the reason it slotted in at all is a design
+          decision Simon got right: the renderer is cleanly separated from how events are collected,
+          talking to a small documented bridge protocol. So Otto could feed it its own
+          provider-neutral event stream and have the graph light up for every provider on day one —
+          Claude, Codex, OpenCode, or a local model — instead of just the ones the original ingests.
+          Adapting it has been the most enjoyable part of this project. If the orchestration graph
+          is the bit you like, go star Agent Flow too.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {PASEO_PILLARS.map((pillar) => (
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Otto is a personal project by Philippe — not a startup, just the environment I want to
+          work in and the way I&apos;m getting better at agentic coding. Most of Otto is written by
+          the agents Otto runs. The problem I keep hitting is that agents can now do an enormous
+          amount of work on their own, and it&apos;s hard to see what they did, what it cost, and
+          where it went sideways. So the work leans toward making that legible: real per-subagent
+          token and cost accounting, the orchestration graph, and browser-verified previews so an
+          agent proves a change instead of claiming it. The rest is finding open-source pieces this
+          good and fitting them into one setup that works end to end. All credit for the foundations
+          belongs to the people who wrote them.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {UPSTREAM_PILLARS.map((pillar) => (
             <div
               key={pillar.title}
               className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
@@ -1881,13 +1922,38 @@ function FAQ() {
           >
             Paseo
           </a>
-          , with full upstream history preserved. We&apos;re proud of that lineage — Paseo is a
+          , with full upstream history preserved. I&apos;m proud of that lineage — Paseo is a
           fantastic platform to build on. Otto tracks upstream improvements and adds its own
           direction on top: growing into a fully featured agentic coding assistant, with in-browser
           preview verification, artifacts, and frontier-model tooling brought to every provider —
           cloud APIs and local models alike. Otto is an independent project and isn&apos;t
           affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
-          testimonials are theirs, not ours.
+          testimonials are theirs, not mine.
+        </FAQItem>
+        <FAQItem question="What powers the Visualizer?">
+          The render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          , vendored into Otto and fed by Otto&apos;s own provider-neutral event stream rather than
+          its original ingestion — which is why the graph works for every provider, not just one.
+          Simon&apos;s separation between rendering and event collection is what made that possible,
+          and it&apos;s been a pleasure to work with. Agent Flow is an independent project; it
+          doesn&apos;t endorse Otto, and its name and logos are its own. Go star it.
         </FAQItem>
         <FAQItem question="Is this free?">
           Yes. Otto is free and open source. You need Claude Code, Codex, Cursor, OpenCode, or Pi
@@ -1937,7 +2003,7 @@ function FAQ() {
           You can run agents anywhere you&apos;d normally work.
         </FAQItem>
         <FAQItem question="Can I get banned for using Otto?">
-          <p>We can&apos;t make promises on behalf of providers.</p>
+          <p>I can&apos;t make promises on behalf of providers.</p>
           <p>
             That said, Otto launches each provider&apos;s local CLI or integration (Claude Code,
             Codex, Cursor, OpenCode, Pi) as a subprocess. It doesn&apos;t extract tokens or call
@@ -1989,11 +2055,30 @@ function PaseoCreditCTA() {
             Mo
           </a>
           . None of this would exist without the platform Mo built and shares under an open-source
-          license — that generosity is what makes projects like Otto possible.
+          license — that generosity is what makes projects like Otto possible. The Visualizer is the
+          same story: it&apos;s the render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          , driven by Otto&apos;s own event stream.
         </p>
         <p>
           Otto doesn&apos;t take sponsorships or donations. If you&apos;d like to support this work,
-          please support Mo directly — he&apos;s the author of the platform it&apos;s all built on.
+          support the projects underneath it instead — they did the hard parts.
         </p>
       </div>
       <div className="flex flex-wrap gap-3 pt-2">
@@ -2014,6 +2099,14 @@ function PaseoCreditCTA() {
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
           </svg>
           Sponsor Mo on GitHub
+        </a>
+        <a
+          href="https://github.com/patoles/agent-flow"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-white/5 border border-white/15 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
+        >
+          Star Agent Flow
         </a>
       </div>
     </motion.div>

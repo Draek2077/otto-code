@@ -1,10 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { Heart } from "@/components/icons/material-icons";
+import { Heart, Forum } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { DiscordIcon } from "@/components/icons/discord-icon";
 import { openLink } from "@/utils/open-link";
 import { useIconSize } from "@/styles/theme";
 
@@ -19,24 +18,27 @@ export function CommunityLinks() {
     (color: string) => <Heart color={color} size={iconSize.sm} />,
     [iconSize.sm],
   );
-  const renderDiscordIcon = useCallback(
-    (color: string) => <DiscordIcon color={color} size={iconSize.sm} />,
+  const renderForumIcon = useCallback(
+    (color: string) => <Forum color={color} size={iconSize.sm} />,
     [iconSize.sm],
   );
   const githubIcon = useMemo(() => ({ render: renderGitHubIcon }), [renderGitHubIcon]);
   const heartIcon = useMemo(() => ({ render: renderHeartIcon }), [renderHeartIcon]);
-  const discordIcon = useMemo(() => ({ render: renderDiscordIcon }), [renderDiscordIcon]);
+  const forumIcon = useMemo(() => ({ render: renderForumIcon }), [renderForumIcon]);
 
   const handleOpenGitHub = useCallback(() => {
     void openLink("https://github.com/Draek2077/otto-code");
   }, []);
 
+  // Otto takes no sponsorships of its own — this points at Paseo, the upstream
+  // project Otto is forked from. The label has to say so: a bare "Sponsor" next
+  // to Otto's own Star/Feedback buttons reads as sponsoring Otto.
   const handleOpenSponsor = useCallback(() => {
     void openLink("https://github.com/sponsors/boudra");
   }, []);
 
-  const handleOpenDiscord = useCallback(() => {
-    void openLink("https://discord.gg/jz8T2uahpH");
+  const handleOpenIssues = useCallback(() => {
+    void openLink("https://github.com/Draek2077/otto-code/issues");
   }, []);
 
   return (
@@ -57,16 +59,16 @@ export function CommunityLinks() {
         onPress={handleOpenSponsor}
         testID="community-links-sponsor"
       >
-        Sponsor
+        Sponsor Paseo
       </Button>
       <Button
         variant="ghost"
         size="sm"
-        leftIcon={discordIcon}
-        onPress={handleOpenDiscord}
-        testID="community-links-discord"
+        leftIcon={forumIcon}
+        onPress={handleOpenIssues}
+        testID="community-links-issues"
       >
-        Community
+        Feedback
       </Button>
     </View>
   );
