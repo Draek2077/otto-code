@@ -30,6 +30,14 @@ export async function resolveReadmeFileName(
 
 export interface RunViewDocumentationInput {
   readmeFileName: string;
+  /**
+   * Id of the live workspace already backed by `sourceDirectory`, if any.
+   * Reading a README never justifies a workspace of its own: the daemon rejects
+   * a second workspace on an occupied directory (WorkspaceDirectoryOccupiedError),
+   * so without this the button just surfaces that error instead of opening the
+   * file the user asked for. Reuse first; create only when nothing is there.
+   */
+  findExistingWorkspaceId: (sourceDirectory: string) => string | null;
   ensureWorkspace: (input: {
     cwd: string;
     prompt: string;
@@ -42,24 +50,36 @@ export interface RunViewDocumentationInput {
 }
 
 export async function runViewDocumentation(input: RunViewDocumentationInput): Promise<void> {
-  const { readmeFileName, ensureWorkspace, serverId, sourceDirectory, onError } = input;
+  const {
+    readmeFileName,
+    findExistingWorkspaceId,
+    ensureWorkspace,
+    serverId,
+    sourceDirectory,
+    onError,
+  } = input;
   try {
-    const ensuredWorkspace = await ensureWorkspace({
-      cwd: sourceDirectory ?? "",
-      prompt: "",
-      attachments: [],
-      withInitialAgent: false,
-    });
+    const existingWorkspaceId = sourceDirectory ? findExistingWorkspaceId(sourceDirectory) : null;
+    const workspaceId =
+      existingWorkspaceId ??
+      (
+        await ensureWorkspace({
+          cwd: sourceDirectory ?? "",
+          prompt: "",
+          attachments: [],
+          withInitialAgent: false,
+        })
+      ).id;
     const persistenceKey = buildWorkspaceTabPersistenceKey({
       serverId,
-      workspaceId: ensuredWorkspace.id,
+      workspaceId,
     });
     if (persistenceKey) {
       setFileViewModeFor({ persistenceKey, path: readmeFileName, mode: "preview" });
     }
     navigateToPreparedWorkspaceTab({
       serverId,
-      workspaceId: ensuredWorkspace.id,
+      workspaceId,
       target: createWorkspaceFileTabTarget({ path: readmeFileName }),
     });
   } catch (error) {

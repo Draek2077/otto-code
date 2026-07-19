@@ -49,6 +49,7 @@ import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
+import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
@@ -1596,6 +1597,23 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
+// The live workspace already backed by `directory`, if any. Same resolved-path
+// equality the daemon uses to reject a second workspace on one checkout
+// (`findOccupyingWorkspaceForCwd`), so "reuse" here matches "rejected" there.
+function findWorkspaceIdForDirectory(serverId: string, directory: string): string | null {
+  const normalizedDirectory = normalizeWorkspacePath(directory);
+  if (!normalizedDirectory) {
+    return null;
+  }
+  const workspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
+  for (const workspace of workspaces?.values() ?? []) {
+    if (normalizeWorkspacePath(workspace.workspaceDirectory) === normalizedDirectory) {
+      return workspace.id;
+    }
+  }
+  return null;
+}
+
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -2090,6 +2108,8 @@ export function NewWorkspaceScreen({
       setPendingAction("docs");
       void runViewDocumentation({
         readmeFileName: documentationFileName,
+        findExistingWorkspaceId: (directory) =>
+          findWorkspaceIdForDirectory(selectedServerId, directory),
         ensureWorkspace,
         serverId: selectedServerId,
         sourceDirectory: selectedSourceDirectory,
