@@ -254,6 +254,15 @@ export function VisualizerSection() {
                   </Button>
                 </View>
               ) : null}
+              <ToggleRow
+                title="FPS meter"
+                hint="Show a small frames-per-second readout in the top-left corner. A performance diagnostic; applies live to open Visualizer tabs."
+                accessibilityLabel="FPS meter"
+                value={settings.visualizerShowFps}
+                withBorder={false}
+                onValueChange={handleShowFpsChange}
+                testID="settings-visualizer-fps-switch"
+              />
               <View style={qualityRowStyle}>
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>Sharpness</Text>
@@ -271,15 +280,6 @@ export function VisualizerSection() {
                   testID="settings-visualizer-quality"
                 />
               </View>
-              <ToggleRow
-                title="FPS meter"
-                hint="Show a small frames-per-second readout in the top-left corner. A performance diagnostic; applies live to open Visualizer tabs."
-                accessibilityLabel="FPS meter"
-                value={settings.visualizerShowFps}
-                withBorder
-                onValueChange={handleShowFpsChange}
-                testID="settings-visualizer-fps-switch"
-              />
               <View style={qualityRowStyle}>
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>Node shape</Text>

@@ -146,17 +146,31 @@ interface AdapterState {
    * second caller awaits THIS promise instead of starting a rival loop (see
    * `hydrating` below). */
   backfillDrain: Promise<void> | null;
-  /** Wall-clock anchor for event times. The page's simulation clock runs in
-   * SECONDS from ~0 (rAF dt accumulation); every constant it ages against
-   * (TOOL_MAX_RUNNING_S etc.) and its m:ss time readout assume that scale.
-   * Feeding raw epoch-ms slammed the sim clock ~1.7e12 ahead on every event,
-   * so two events 200ms apart were "200 seconds" apart — running tools blew
-   * past their max-running age between batches and faded while still active.
-   * Events are stamped `(ms - epochMs) / 1000`, clamped at 0 (backfilled
-   * history predates activation; the page clamps stale times to "now"
-   * anyway). Session-message fields (startTime/lastActivityTime) stay
-   * epoch-ms — the page mixes those with its own Date.now(). */
+  /** Fallback wall-clock anchor for event times (adapter activation). The
+   * page's simulation clock runs in SECONDS from ~0 (rAF dt accumulation);
+   * every constant it ages against (TOOL_MAX_RUNNING_S etc.) and its m:ss
+   * readout assume that scale. Feeding raw epoch-ms slammed the sim clock
+   * ~1.7e12 ahead on every event, so relative seconds are mandatory. Used only
+   * when a session has no registered anchor yet — real event times go through
+   * {@link AdapterState.sessionEpochMs}. Session-message fields
+   * (startTime/lastActivityTime) stay epoch-ms — the page mixes those with its
+   * own Date.now(). */
   epochMs: number;
+  /** Per-session (root agent id -> epoch ms) time anchor: the session's own
+   * start (root `createdAt`). Every event is stamped `(ms - anchor)/1000` so
+   * backfilled history keeps its REAL relative spread — a 17-second turn reads
+   * as 17 seconds, an hour-long run spans an hour — instead of collapsing to
+   * ~0. This is what lets the Execution Timeline and the scrubber show "what
+   * you missed" with true shape, and lets a rewind land on the start rather
+   * than emptying the canvas to the "Waiting for chat activity" backdrop.
+   *
+   * Safe against the page's `Math.max(event.time, currentTime)` floor
+   * (use-agent-simulation.ts) because the page COLD-RESTARTS its sim clock to 0
+   * on every session select (index.tsx session-switch useLayoutEffect), so a
+   * session's 0-based history always replays from clock 0 and spreads. Anchored
+   * at the root, whose `createdAt` precedes all of its (and its subagents')
+   * activity, so every time stays >= 0. */
+  sessionEpochMs: Map<string, number>;
   /** True until the initial hydration is genuinely quiescent: every batch
    * flushed in this window is marked `hydrate` so the page settles it to its
    * end state instead of animating the whole history back in (spawn/tool
@@ -179,16 +193,21 @@ function createAdapterState(): AdapterState {
     pendingBackfill: [],
     backfillDrain: null,
     epochMs: Date.now(),
+    sessionEpochMs: new Map(),
     hydrating: true,
   };
 }
 
-/** Epoch-ms -> page simulation seconds (see {@link AdapterState.epochMs}). */
-function toSimTime(state: AdapterState, epochMs: number): number {
+/** Epoch-ms -> page simulation seconds, anchored at the session's own start
+ * when known (see {@link AdapterState.sessionEpochMs}) so a session's events
+ * keep their real relative spread, else at adapter activation. Always >= 0. */
+function toSimTime(state: AdapterState, epochMs: number, sessionId?: string): number {
   if (!Number.isFinite(epochMs)) {
     return 0;
   }
-  return Math.max(0, (epochMs - state.epochMs) / 1000);
+  const anchor =
+    (sessionId != null ? state.sessionEpochMs.get(sessionId) : undefined) ?? state.epochMs;
+  return Math.max(0, (epochMs - anchor) / 1000);
 }
 
 function nodeCtx(node: TrackedNode): AgentNodeContext {
@@ -220,6 +239,19 @@ function resolveRootAgentId(agentId: string, agentsById: ReadonlyMap<string, Age
  * helper, so a future keying change has one named seam instead of a comment. */
 export function sessionIdForRootAgent(agentId: string): string {
   return agentId;
+}
+
+/** A draft chat tab (a chat that hasn't started an agent yet) is surfaced as an
+ * EMPTY visualizer session so it appears in the toolbar's chats dropdown and,
+ * when selected, shows the page's "Waiting for chat activity" empty state (a
+ * session with no events puts no agents on the canvas → `isEmpty`). Keyed on the
+ * draft id with a `draft:` prefix so it can never collide with an agent-id
+ * session. When the draft gets its first message it retargets to an `agent` tab:
+ * the draft session is closed (it leaves the tab set) and the real agent session
+ * appears via the normal path. This is what makes `/clear` (archive current +
+ * open fresh draft) settle on the empty draft instead of the thrown-away chat. */
+export function sessionIdForDraft(draftId: string): string {
+  return `draft:${draftId}`;
 }
 
 /** Ensures a tracked node exists for `agentId`, recursively registering any
@@ -298,6 +330,12 @@ function ensureNode(
   const isRoot = !parentPresent;
   const rootId = isRoot ? agentId : resolveRootAgentId(agentId, agentsById);
   const time = agent.createdAt.getTime();
+  if (isRoot) {
+    // Anchor the session's timeline at its own start (root createdAt) so every
+    // event in it keeps real relative spread (see AdapterState.sessionEpochMs).
+    // Set before any of the session's events are stamped below.
+    state.sessionEpochMs.set(rootId, time);
+  }
 
   const usedNames = state.sessionNames.get(rootId) ?? new Set<string>();
   state.sessionNames.set(rootId, usedNames);
@@ -344,7 +382,7 @@ function ensureNode(
         model: agent.model,
         provider: agent.provider,
         personalityColors: personaColors,
-        time: toSimTime(state, time),
+        time: toSimTime(state, time, node.sessionId),
       }),
     );
   } else {
@@ -356,7 +394,7 @@ function ensureNode(
         parentName: parentNode?.name ?? parentId,
         task: agent.title,
         personalityColors: personaColors,
-        time: toSimTime(state, time),
+        time: toSimTime(state, time, node.sessionId),
       }),
     );
   }
@@ -370,18 +408,20 @@ function ensureNode(
  * archive); a non-root fades via agent_complete (the page's only node-removal
  * signal). The node is dropped from tracking and its name freed so a later
  * re-appearance registers fresh. */
-function pruneVanishedNode(
-  state: AdapterState,
-  agentId: string,
-  node: TrackedNode,
-  time: number,
-): void {
+function pruneVanishedNode(state: AdapterState, agentId: string, node: TrackedNode): void {
   if (node.isRoot) {
     if (!node.sessionRemoved) {
       state.pendingSessionMessages.push({ type: "close-session", sessionId: node.sessionId });
     }
+    // The whole session is gone; drop its time anchor too.
+    state.sessionEpochMs.delete(node.sessionId);
   } else if (!node.terminalEmitted) {
-    state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
+    state.pending.push(
+      buildAgentCompleteEvent({
+        ctx: nodeCtx(node),
+        time: toSimTime(state, Date.now(), node.sessionId),
+      }),
+    );
   }
   state.nodes.delete(agentId);
   state.sessionNames.get(node.sessionId)?.delete(node.name);
@@ -407,7 +447,7 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
         continue;
       }
     } else {
-      const time = toSimTime(state, agent.lastActivityAt.getTime());
+      const time = toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId);
       if (agent.model && agent.model !== node.lastModel) {
         node.lastModel = agent.model;
         state.pending.push(
@@ -463,7 +503,6 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
   // driven by an authoritative whole-map store replace, so an absent agent is
   // a real removal. Collect ids first — pruneVanishedNode mutates state.nodes.
   if (!state.hydrating) {
-    const time = toSimTime(state, Date.now());
     const vanished: [string, TrackedNode][] = [];
     for (const [agentId, node] of state.nodes) {
       if (!agentsById.has(agentId)) {
@@ -471,7 +510,7 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
       }
     }
     for (const [agentId, node] of vanished) {
-      pruneVanishedNode(state, agentId, node, time);
+      pruneVanishedNode(state, agentId, node);
     }
   }
 }
@@ -498,7 +537,7 @@ function reconcileNodeTokens(state: AdapterState, node: TrackedNode, agent: Agen
     ctx: nodeCtx(node),
     ...(agent.lastUsage ? { usage: agent.lastUsage } : {}),
     ...(cumulativeTokens != null ? { cumulativeTokens } : {}),
-    time: toSimTime(state, agent.lastActivityAt.getTime()),
+    time: toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId),
   });
   if (contextEvent) {
     state.pending.push(contextEvent);
@@ -553,7 +592,7 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
           node,
           agent,
           personaColorsOf(agent),
-          toSimTime(state, agent.lastActivityAt.getTime()),
+          toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId),
         ),
       );
       // Fall through to normal lifecycle so a chat un-archived straight into a
@@ -567,7 +606,7 @@ function reconcileNodeLifecycle(state: AdapterState, node: TrackedNode, agent: A
     archived: Boolean(agent.archivedAt),
     requiresAttention: Boolean(agent.requiresAttention),
   });
-  const time = toSimTime(state, agent.lastActivityAt.getTime());
+  const time = toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId);
   if (isTerminal && !node.terminalEmitted) {
     node.terminalEmitted = true;
     state.pending.push(buildAgentCompleteEvent({ ctx: nodeCtx(node), time }));
@@ -765,7 +804,7 @@ async function backfillAgentTimeline(input: {
       projection: "projected",
     });
     for (const entry of response.entries) {
-      const time = toSimTime(state, Date.parse(entry.timestamp));
+      const time = toSimTime(state, Date.parse(entry.timestamp), node.sessionId);
       lastReplayTime = Math.max(lastReplayTime, time);
       state.pending.push(...trackedTimelineItemEvents(node, entry.item, time));
     }
@@ -927,14 +966,45 @@ export interface UseVisualizerEventAdapterInput {
   /** Restrict sessions to this agent-id set (Runs "Visualize" scoping). Null
    * (default) shows every attended root agent in the workspace. */
   agentIdFilter?: ReadonlySet<string> | null;
+  /** Draft chat tabs open in this workspace (tabs of `kind: "draft"` — a chat
+   * that hasn't started an agent yet). Each is surfaced as an empty session
+   * (see {@link sessionIdForDraft}) so it shows in the chats dropdown and reads
+   * "Waiting for chat activity" when selected. MEMOIZE the array in the caller:
+   * a new identity re-runs the lightweight draft sync, but NOT the agent
+   * reset+replay. */
+  draftSessions?: readonly DraftSessionInput[];
   postMessage: (message: VisualizerHostToPageMessage) => void;
 }
 
+/** One draft chat tab surfaced as an empty visualizer session. */
+export interface DraftSessionInput {
+  /** The workspace draft tab's `draftId`. */
+  draftId: string;
+  /** Dropdown label — "New chat" until the draft becomes a real agent. */
+  label: string;
+}
+
+const EMPTY_DRAFT_SESSIONS: readonly DraftSessionInput[] = [];
+
 export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput): void {
-  const { serverId, workspaceId, active, agentIdFilter = null, postMessage } = input;
+  const {
+    serverId,
+    workspaceId,
+    active,
+    agentIdFilter = null,
+    draftSessions = EMPTY_DRAFT_SESSIONS,
+    postMessage,
+  } = input;
   const client = useHostRuntimeClient(serverId);
   const postMessageRef = useRef(postMessage);
   postMessageRef.current = postMessage;
+  // Draft sessions live OUTSIDE the per-activation adapter `state` (they carry
+  // no events/backfill — just a session-started/close-session pair) so the
+  // lightweight draft-sync effect below can diff them without the agent
+  // reset+replay. Maps a draft session id -> its last-posted label. The main
+  // effect clears this right after it posts `reset` (which wipes the page's
+  // session list), so the draft-sync effect re-emits every draft afterwards.
+  const registeredDraftsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!active || !client) {
@@ -948,6 +1018,10 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
     const lifecycle = { disposed: false };
 
     postMessageRef.current({ type: "reset" });
+    // `reset` cleared the page's session list — forget which drafts were
+    // registered so the draft-sync effect (which runs after this one on any
+    // reset-dep change) re-emits them all against the fresh page.
+    registeredDraftsRef.current.clear();
 
     const drainBackfillQueue = async (): Promise<void> => {
       // Sequential on purpose — a busy workspace shouldn't burst a pile of
@@ -1058,7 +1132,7 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
       }
       const envelope: LiveEnvelope = {
         event,
-        time: toSimTime(state, Date.parse(timestamp)),
+        time: toSimTime(state, Date.parse(timestamp), node.sessionId),
         seq,
         epoch,
       };
@@ -1085,4 +1159,58 @@ export function useVisualizerEventAdapter(input: UseVisualizerEventAdapterInput)
     // memoize it (see visualizer-panel.tsx) so an unrelated re-render doesn't
     // spuriously reset + replay the whole session.
   }, [active, client, serverId, workspaceId, agentIdFilter]);
+
+  // ── Draft sessions ─────────────────────────────────────────────────────────
+  // Surface each draft chat tab as an empty session so it shows in the dropdown
+  // and reads "Waiting for chat activity" when selected. Runs AFTER the main
+  // effect (declaration order → its body runs first), so on any reset-dep change
+  // the main effect has already posted `reset` + cleared registeredDraftsRef and
+  // this re-emits every draft against the fresh page. When only `draftSessions`
+  // changes (a draft opened/closed, or became an agent → left the set), the main
+  // effect doesn't re-run, so this just diffs against the persisted ref. Kept
+  // separate from the agent reset+replay on purpose: adding/removing a draft
+  // must not re-backfill live chats. The reset-scoped deps are included so a
+  // reset with an unchanged draft list (e.g. an agentIdFilter change) still
+  // re-emits.
+  useEffect(() => {
+    if (!active || !client) {
+      return;
+    }
+    const registered = registeredDraftsRef.current;
+    const wanted = new Map(
+      draftSessions.map((draft) => [sessionIdForDraft(draft.draftId), draft.label] as const),
+    );
+    // Deleting the current key while iterating a Map's keys() is safe per spec
+    // (the iterator won't revisit it), so no snapshot copy is needed.
+    for (const sessionId of registered.keys()) {
+      if (!wanted.has(sessionId)) {
+        postMessageRef.current({ type: "close-session", sessionId });
+        registered.delete(sessionId);
+      }
+    }
+    for (const [sessionId, label] of wanted) {
+      const prevLabel = registered.get(sessionId);
+      if (prevLabel === undefined) {
+        postMessageRef.current({
+          type: "session-started",
+          session: {
+            id: sessionId,
+            label,
+            status: "active",
+            // Fixed low timestamps: the dropdown renders only the label (the
+            // times are never shown), and keeping them at 0 stops an empty draft
+            // from ever out-sorting a live chat in the page's most-recent
+            // auto-select. The focused-tab follow logic is what actually selects
+            // a draft (e.g. right after /clear).
+            startTime: 0,
+            lastActivityTime: 0,
+          },
+        });
+        registered.set(sessionId, label);
+      } else if (prevLabel !== label) {
+        postMessageRef.current({ type: "session-updated", sessionId, label });
+        registered.set(sessionId, label);
+      }
+    }
+  }, [active, client, serverId, workspaceId, agentIdFilter, draftSessions]);
 }

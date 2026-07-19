@@ -9,10 +9,16 @@ import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
-import { useSessionStore } from "@/stores/session-store";
 import {
+  buildWorkspaceTabPersistenceKey,
+  useWorkspaceTabsStore,
+  type WorkspaceTab,
+} from "@/stores/workspace-tabs-store";
+import {
+  sessionIdForDraft,
   sessionIdForRootAgent,
   useVisualizerEventAdapter,
+  type DraftSessionInput,
 } from "@/visualizer/use-visualizer-event-adapter";
 import { useVisualizerVoiceCues } from "@/visualizer/use-visualizer-voice-cues";
 import { resolveVisualizerAppearance } from "@/visualizer/visualizer-appearance";
@@ -61,6 +67,24 @@ const LOAD_COVER_FADE_MS = 200;
 // instead. The bundle is local (no network), so a healthy load is far faster.
 const READY_HANDSHAKE_TIMEOUT_MS = 15_000;
 
+// Stable empty array so the workspace-tabs selectors don't return a fresh []
+// each render (which would loop the store subscription).
+const EMPTY_WORKSPACE_TABS: readonly WorkspaceTab[] = [];
+
+/** The visualizer session id a workspace chat tab maps to: a root-agent session
+ * for a started chat, or an empty draft session (see `sessionIdForDraft`) for a
+ * chat that hasn't started an agent yet. Non-chat tabs (terminal / file /
+ * visualizer / browser / …) have no session — returns null. */
+function chatSessionIdForTab(tab: WorkspaceTab | undefined): string | null {
+  if (tab?.target.kind === "agent") {
+    return sessionIdForRootAgent(tab.target.agentId);
+  }
+  if (tab?.target.kind === "draft") {
+    return sessionIdForDraft(tab.target.draftId);
+  }
+  return null;
+}
+
 // Exported so the thin registration module (visualizer-panel-registration.tsx)
 // can pull it via React.lazy — the boundary that keeps this whole module (and
 // the vendored render bundle it transitively loads) out of the startup graph.
@@ -100,28 +124,68 @@ export function VisualizerPanel() {
   // its displayed chat to whatever chat tab is focused in the workspace, so it
   // tracks what you're actually looking at. Pinning (the toolbar Pin toggle, or
   // manually picking a chat from the dropdown) freezes it on one chat until you
-  // unpin. The workspace's focusedAgentId maps to a page session id via the
-  // adapter's `sessionIdForRootAgent` — the named seam for that keying contract.
+  // unpin. The focused chat tab maps to a page session id via
+  // `chatSessionIdForTab` — an agent tab → `sessionIdForRootAgent`, a draft tab
+  // → `sessionIdForDraft` — the named seam for that keying contract.
   const [followActive, setFollowActive] = useState(true);
-  const focusedAgentId = useSessionStore(
-    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
+
+  // The workspace's tab set + focused tab drive both the chats dropdown (every
+  // draft tab becomes an empty session) and follow-the-active-chat. Reading the
+  // tabs store directly — not the session store's focusedAgentId — is what lets
+  // a DRAFT tab drive selection: a draft has no agent, so focusedAgentId is null
+  // and the old logic froze on the previous chat (the /clear-doesn't-reset bug).
+  const tabPersistenceKey = useMemo(
+    () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
+    [serverId, workspaceId],
   );
-  // The last chat that actually held focus. Focusing the Visualizer's own pane
-  // (or a terminal) reports focusedAgentId = null; we keep following the last
-  // real chat rather than blanking the selection when you click the canvas.
-  // Seeded lazily from the store's CURRENT focused chat so a companion
-  // Visualizer targets the chat it was opened beside even in the edge case
-  // where its own pane grabs focus (focusedAgentId -> null) before the effect
-  // below captures it — otherwise nothing drives selection and the page's
-  // most-recently-active auto-select can land on the wrong/empty chat.
-  const [followTargetAgentId, setFollowTargetAgentId] = useState<string | null>(
-    () => useSessionStore.getState().sessions[serverId]?.focusedAgentId ?? null,
+  const workspaceTabs = useWorkspaceTabsStore((state) =>
+    tabPersistenceKey
+      ? (state.uiTabsByWorkspace[tabPersistenceKey] ?? EMPTY_WORKSPACE_TABS)
+      : EMPTY_WORKSPACE_TABS,
   );
-  useEffect(() => {
-    if (focusedAgentId) {
-      setFollowTargetAgentId(focusedAgentId);
+  const focusedTabId = useWorkspaceTabsStore((state) =>
+    tabPersistenceKey ? (state.focusedTabIdByWorkspace[tabPersistenceKey] ?? null) : null,
+  );
+
+  // Each draft chat tab (a chat with no agent yet) surfaced as an empty session
+  // for the adapter — it shows in the dropdown and reads "Waiting for chat
+  // activity" when selected. Started chats already come through as agent
+  // sessions, so together the dropdown mirrors every chat tab.
+  const draftSessions = useMemo<DraftSessionInput[]>(() => {
+    const drafts: DraftSessionInput[] = [];
+    for (const tab of workspaceTabs) {
+      if (tab.target.kind === "draft") {
+        drafts.push({ draftId: tab.target.draftId, label: "New chat" });
+      }
     }
-  }, [focusedAgentId]);
+    return drafts;
+  }, [workspaceTabs]);
+
+  // The session the focused tab maps to, when it's a chat (agent or draft).
+  const focusedChatSessionId = useMemo(
+    () => chatSessionIdForTab(workspaceTabs.find((tab) => tab.tabId === focusedTabId)),
+    [workspaceTabs, focusedTabId],
+  );
+  // The last chat tab that actually held focus. Focusing a NON-chat tab (the
+  // Visualizer's own pane, a terminal, a file) yields no chat session; we keep
+  // following the last real chat rather than blanking the selection. Seeded
+  // lazily from the current focused chat so a companion Visualizer targets the
+  // chat it was opened beside even if its own pane grabs focus first.
+  const [followTargetSessionId, setFollowTargetSessionId] = useState<string | null>(() => {
+    const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+    if (!key) {
+      return null;
+    }
+    const state = useWorkspaceTabsStore.getState();
+    const tabs = state.uiTabsByWorkspace[key] ?? EMPTY_WORKSPACE_TABS;
+    const focused = state.focusedTabIdByWorkspace[key] ?? null;
+    return chatSessionIdForTab(tabs.find((tab) => tab.tabId === focused));
+  });
+  useEffect(() => {
+    if (focusedChatSessionId) {
+      setFollowTargetSessionId(focusedChatSessionId);
+    }
+  }, [focusedChatSessionId]);
 
   // Theme colors (docs/visualizer.md "Theme colors"): the guest palette is
   // derived from the active variant, resolved exactly like applyColorScheme —
@@ -450,6 +514,7 @@ export function VisualizerPanel() {
     workspaceId,
     active: ready && isVisible,
     agentIdFilter,
+    draftSessions,
     postMessage: handlePostMessage,
   });
 
@@ -469,10 +534,10 @@ export function VisualizerPanel() {
   // selection. The page echoes the new selection back via `session-state`,
   // which satisfies the `=== selectedId` guard and stops any feedback loop.
   useEffect(() => {
-    if (!ready || !followActive || followTargetAgentId === null) {
+    if (!ready || !followActive || followTargetSessionId === null) {
       return;
     }
-    const sessionId = sessionIdForRootAgent(followTargetAgentId);
+    const sessionId = followTargetSessionId;
     if (sessionId === sessionState.selectedId) {
       return;
     }
@@ -480,7 +545,7 @@ export function VisualizerPanel() {
       return;
     }
     viewRef.current?.postMessage({ type: "select-session", sessionId });
-  }, [ready, followActive, followTargetAgentId, sessionState.selectedId, sessionState.sessions]);
+  }, [ready, followActive, followTargetSessionId, sessionState.selectedId, sessionState.sessions]);
 
   const loadCoverStyle = useMemo(
     () => [

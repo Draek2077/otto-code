@@ -132,12 +132,43 @@ export function AgentCanvas({
 
   // ─── Setup ──────────────────────────────────────────────────────────────
 
+  // OTTO PATCH (see OTTO-PATCHES.md): dimensions the depth-particle field was
+  // last laid out against, so a resize can remap star positions proportionally
+  // instead of letting the draw loop's wrap logic collapse them (below).
+  const particleDimsRef = useRef({ width: dimensions.width, height: dimensions.height })
+
   useEffect(() => {
     bloomRef.current = new BloomRenderer(0.5)
     depthParticlesRef.current = createDepthParticles(dimensions.width, dimensions.height)
+    particleDimsRef.current = { width: dimensions.width, height: dimensions.height }
     return () => { bloomRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- particles created once, resized by draw loop
   }, [])
+
+  // OTTO PATCH (see OTTO-PATCHES.md): keep the star field filling the pane on
+  // resize. The field's extent is proportional to width/height (createDepth-
+  // Particles spans [-w*0.5, w*1.5]; updateDepthParticles wraps against the
+  // live w/h). Shrinking the pane makes width*1.5 tiny, so the wrap snaps every
+  // star to -width*0.5 and the field collapses into a thin column on the edge —
+  // and growing the pane back never un-collapses it (drift is far too slow).
+  // Remapping x/y by the dimension ratio stretches the field with the pane, so
+  // it stays evenly spread across whatever size the pane becomes.
+  useEffect(() => {
+    const prev = particleDimsRef.current
+    const { width, height } = dimensions
+    if (width <= 0 || height <= 0) return
+    if (prev.width > 0 && prev.height > 0) {
+      const sx = width / prev.width
+      const sy = height / prev.height
+      if (sx !== 1 || sy !== 1) {
+        for (const p of depthParticlesRef.current) {
+          p.x *= sx
+          p.y *= sy
+        }
+      }
+    }
+    particleDimsRef.current = { width, height }
+  }, [dimensions])
 
   useEffect(() => {
     const container = containerRef.current
