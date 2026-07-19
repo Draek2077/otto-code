@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentType, type Ref } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
@@ -23,6 +23,8 @@ import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { isWeb } from "@/constants/platform";
 import { useOpenProject } from "@/hooks/use-open-project";
 import type { Href } from "expo-router";
 
@@ -97,6 +99,11 @@ export function OpenProjectScreen() {
     [importServerId, openImportedProject, router],
   );
 
+  // Web gets the themed overlay scrollbar (auto-hiding, no gutter) at every
+  // width; native keeps its own indicator, which already auto-hides.
+  const scrollRef = useRef<ScrollView>(null);
+  const webScrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
+
   const handleOpenProviders = useCallback(() => {
     chooseHost({
       title: "Choose host",
@@ -109,56 +116,69 @@ export function OpenProjectScreen() {
   return (
     <View style={styles.container}>
       <MenuHeader borderless />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <TitlebarDragRegion />
-          <View style={styles.logo}>
-            <OttoLogoWink size={104} />
-          </View>
-          <View style={styles.quote}>
-            <Text style={styles.quoteText}>
-              “{quote.text}” {quote.attribution}
-            </Text>
-          </View>
-          <View style={styles.tiles}>
-            <HomeTile
-              icon={FolderOpen}
-              title={t("openProject.tiles.addProject.title")}
-              description={t("openProject.tiles.addProject.description")}
-              onPress={handleOpenPicker}
-              testID="open-project-submit"
-              anchorRef={addProjectAnchorRef}
-              accent
-            />
-            <HomeTile
-              icon={Inbox}
-              title={t("openProject.tiles.importSession.title")}
-              description={t("openProject.tiles.importSession.description")}
-              onPress={handleOpenImportSession}
-              testID="open-project-import-session"
-            />
-            <HomeTile
-              icon={Plug}
-              title={t("openProject.tiles.setupProviders.title")}
-              description={t("openProject.tiles.setupProviders.description")}
-              onPress={handleOpenProviders}
-              testID="open-project-setup-providers"
-            />
-            {localServerId ? (
+      {/* Wrapped so the overlay scrollbar can position against the scroll region. */}
+      <View style={styles.scrollWrap}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          onLayout={webScrollbar.onLayout}
+          onScroll={webScrollbar.onScroll}
+          onContentSizeChange={webScrollbar.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={!isWeb}
+        >
+          <View style={styles.content}>
+            <TitlebarDragRegion />
+            <View style={styles.logo}>
+              <OttoLogoWink size={104} />
+            </View>
+            <View style={styles.quote}>
+              <Text style={styles.quoteText}>
+                “{quote.text}” {quote.attribution}
+              </Text>
+            </View>
+            <View style={styles.tiles}>
               <HomeTile
-                icon={Smartphone}
-                title={t("openProject.tiles.pairDevice.title")}
-                description={t("openProject.tiles.pairDevice.description")}
-                onPress={handleOpenPairDevice}
-                testID="open-project-pair-device"
+                icon={FolderOpen}
+                title={t("openProject.tiles.addProject.title")}
+                description={t("openProject.tiles.addProject.description")}
+                onPress={handleOpenPicker}
+                testID="open-project-submit"
+                anchorRef={addProjectAnchorRef}
+                accent
               />
-            ) : null}
+              <HomeTile
+                icon={Inbox}
+                title={t("openProject.tiles.importSession.title")}
+                description={t("openProject.tiles.importSession.description")}
+                onPress={handleOpenImportSession}
+                testID="open-project-import-session"
+              />
+              <HomeTile
+                icon={Plug}
+                title={t("openProject.tiles.setupProviders.title")}
+                description={t("openProject.tiles.setupProviders.description")}
+                onPress={handleOpenProviders}
+                testID="open-project-setup-providers"
+              />
+              {localServerId ? (
+                <HomeTile
+                  icon={Smartphone}
+                  title={t("openProject.tiles.pairDevice.title")}
+                  description={t("openProject.tiles.pairDevice.description")}
+                  onPress={handleOpenPairDevice}
+                  testID="open-project-pair-device"
+                />
+              ) : null}
+            </View>
           </View>
-        </View>
-        <View style={styles.communityRow}>
-          <CommunityLinks />
-        </View>
-      </ScrollView>
+          <View style={styles.communityRow}>
+            <CommunityLinks />
+          </View>
+        </ScrollView>
+        {webScrollbar.overlay}
+      </View>
       <PairDeviceModal
         visible={isPairDeviceOpen}
         onClose={handleClosePairDevice}
@@ -245,6 +265,11 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     userSelect: "none",
   },
+  scrollWrap: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+  },
   scroll: {
     flex: 1,
   },
@@ -258,7 +283,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: 0,
     padding: theme.spacing[6],
-    paddingTop: { xs: theme.spacing[12], md: theme.spacing[6] },
+    // Compact: the logo is the first thing under the header, so it sits flush —
+    // any breathing room comes from the logo art's own internal margin.
+    paddingTop: { xs: 0, md: theme.spacing[6] },
     // The header sits above this centering region, so reserve the same height
     // at the bottom — otherwise the block centers in the below-header space
     // and reads as sitting too low on the page.
