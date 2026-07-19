@@ -168,6 +168,24 @@ const darkStatusColors = {
   statusMerged: "#9333ea", // purple-600
 };
 
+// Usage-ledger figure tints — input tokens, output tokens, and cost in the
+// Metrics log. Deliberately desaturated: these sit at 12px next to muted text,
+// so they only need enough hue to separate the three columns at a glance. A
+// full-saturation blue/yellow/green would read as a status signal instead of a
+// number. Cached tokens stay `foregroundMuted` — they are the cheap half of the
+// input figure and should not compete with the fresh (full-rate) send.
+const lightUsageColors = {
+  usageIn: "#3f6fa8", // muted blue, darkened to hold on white
+  usageOut: "#8a6a15", // ochre — a legible yellow needs this much darkening on light
+  usageCost: "#3d7a53", // muted green
+};
+
+const darkUsageColors = {
+  usageIn: "#82abdd", // muted blue, lifted to hold on dark surfaces
+  usageOut: "#d4b25e", // soft gold
+  usageCost: "#6fbf8b", // muted green
+};
+
 // ---------------------------------------------------------------------------
 // Light theme variant builder — mirrors the dark builder below so multiple
 // light themes (Daylight, Sherbet, Meadow, Terracotta, Horizon, Powder) share
@@ -326,6 +344,7 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
 
     ...lightDiffColors,
     ...lightStatusColors,
+    ...lightUsageColors,
 
     terminal: {
       background: tint.surface0,
@@ -611,6 +630,7 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 
     ...darkDiffColors,
     ...darkStatusColors,
+    ...darkUsageColors,
 
     terminal: {
       background: tint.surface0,
