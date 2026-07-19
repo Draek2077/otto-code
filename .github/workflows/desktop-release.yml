@@ -209,6 +209,107 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
           retention-days: 1
 
+  build-macos-unsigned:
+    needs: [create-release]
+    # Unsigned macOS builds are direct-download artifacts only. They
+    # intentionally do not feed release manifests or auto-update because
+    # hardened runtime and notarization require a real Apple Developer identity.
+    if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v')))) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            electron_arch: arm64
+          - runner: macos-15-intel
+            electron_arch: x64
+    permissions:
+      contents: write
+      packages: read
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Resolve release metadata
+        shell: bash
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Set desktop package version from tag
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const version = process.env.DESKTOP_VERSION;
+          if (!version) throw new Error('DESKTOP_VERSION env var is missing');
+
+          const packageJsonPath = path.join(process.env.DESKTOP_PACKAGE_PATH, 'package.json');
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          packageJson.version = version;
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          NODE
+
+      - name: Build unsigned desktop package
+        shell: bash
+        env:
+          EP_GH_IGNORE_TIME: true
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          OTTO_DESKTOP_SMOKE: "1"
+        run: |
+          set -euo pipefail
+          build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
+          build_args+=("-c.publish.releaseType=$RELEASE_TYPE")
+          build_args+=("-c.publish.channel=$RELEASE_CHANNEL")
+          build_args+=('-c.mac.artifactName=Otto-${version}-${arch}-unsigned.${ext}')
+          build_args+=("-c.mac.hardenedRuntime=false")
+          build_args+=("-c.mac.notarize=false")
+          build_args+=("-c.directories.output=release-unsigned")
+          npm run build:desktop "${build_args[@]}"
+
+      - name: Upload unsigned desktop artifacts to release
+        if: env.SHOULD_PUBLISH == 'true' && env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="${DESKTOP_PACKAGE_PATH}/release-unsigned"
+          files=()
+          while IFS= read -r -d '' f; do
+            files+=("$f")
+          done < <(find "$release_dir" -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "::error::No unsigned macOS release artifacts found in $release_dir"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+
+      - name: Upload unsigned desktop artifacts to workflow
+        if: env.SHOULD_PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-unsigned-${{ matrix.electron_arch }}
+          path: |
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release-unsigned/*.dmg
+            ${{ env.DESKTOP_PACKAGE_PATH }}/release-unsigned/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
   publish-linux:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
