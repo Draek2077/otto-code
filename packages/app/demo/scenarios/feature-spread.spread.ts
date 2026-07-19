@@ -9,6 +9,7 @@ import {
 } from "../../src/utils/host-routes";
 import { applyDemoAppearance } from "../helpers/appearance";
 import { DemoRecorder } from "../helpers/capture";
+import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
 import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 
 /**
@@ -64,15 +65,17 @@ async function expandFirstDiffIfCollapsed(page: Page): Promise<void> {
 }
 
 /**
- * Per-platform capture themes: desktop/site = Neotokyo, Android phone and
- * tablet = stock dark, iOS = light mode.
+ * Per-platform capture themes: desktop/site spreads run both site-default
+ * themes (Twilight/Daylight, see demo/helpers/theme.ts) — Android phone and
+ * tablet stay stock dark, iOS stays light, matching each store's own
+ * screenshot conventions rather than the site's branding.
  */
 function appearanceForProject(projectName: string): Parameters<typeof applyDemoAppearance>[1] {
   if (projectName.includes("ios")) {
     return { colorSchemeMode: "light" };
   }
-  if (projectName === "spread") {
-    return { darkTheme: "cyberpunk", syntaxTheme: "neotokyo" };
+  if (projectName === "spread-twilight" || projectName === "spread-daylight") {
+    return demoThemeAppearance(resolveDemoTheme(projectName));
   }
   return {};
 }

@@ -1,0 +1,225 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /*
+        Static reproduction of the setup wizard's brand bookend
+        (packages/app/src/screens/setup-wizard/wizard-brand-backdrop.tsx +
+        welcome-step.tsx): dual radial glow (indigo/teal), a faint masked
+        grid, and the Otto glyph centered on a blurred BlobLoader plasma
+        ring — the "black hole" halo look. Same art language as
+        feature-graphic.html, brought closer to the live wizard's bookend
+        (blurred ring, not the feature graphic's crisp orbiting blob) since
+        that's the style the site has settled on.
+      */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        background: #0b0b10;
+        font-family:
+          "Segoe UI",
+          -apple-system,
+          system-ui,
+          sans-serif;
+        color: #f4f4f6;
+      }
+      .glow {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background:
+          radial-gradient(820px 520px at 84% 14%, rgba(99, 91, 255, 0.24), transparent 65%),
+          radial-gradient(680px 460px at 10% 96%, rgba(45, 212, 191, 0.12), transparent 60%);
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(560px 380px at 50% 42%, black, transparent 72%);
+        -webkit-mask-image: radial-gradient(560px 380px at 50% 42%, black, transparent 72%);
+      }
+      /* Rule of thirds: the canvas is 630px tall, so the third lines sit at
+         210px and 420px. The hero (logo + ring) centers on the upper third;
+         the subtitle centers on the lower third — not a single centered
+         block, two independently placed anchors. */
+      .hero {
+        position: absolute;
+        z-index: 2;
+        left: 50%;
+        top: 235px;
+        width: 440px;
+        height: 440px;
+        transform: translate(-50%, -50%);
+      }
+      /* Blurred plasma ring — the wizard bookend's frozen "black hole" halo:
+         two glow layers, gaussian-blurred, at fixed orbit angles. */
+      .ring {
+        position: absolute;
+        inset: 0;
+      }
+      .ring svg {
+        position: absolute;
+        inset: 0;
+      }
+      .ring .a {
+        transform: rotate(35deg);
+      }
+      .ring .b {
+        transform: rotate(205deg);
+      }
+      .glyph {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .glyph svg {
+        width: 300px;
+        height: 300px;
+      }
+      .copy {
+        position: absolute;
+        z-index: 2;
+        left: 50%;
+        top: 445px;
+        width: 640px;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      h1 {
+        font-size: 32px;
+        line-height: 1.4;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+      }
+      h1 .accent {
+        color: #a5b4fc;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <div class="grid"></div>
+    <div class="hero">
+      <div class="ring">
+        <svg class="a" width="100%" height="100%" viewBox="-15 -15 130 130">
+          <defs>
+            <radialGradient id="glow-a" cx="76%" cy="20%" r="75%">
+              <stop offset="0%" stop-color="#4ec4ff" stop-opacity="0.95" />
+              <stop offset="45%" stop-color="#4ec4ff" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#4ec4ff" stop-opacity="0" />
+            </radialGradient>
+            <filter id="blur-a" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="7" />
+            </filter>
+          </defs>
+          <g filter="url(#blur-a)">
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-a)"
+              stroke-width="26"
+              fill="none"
+              opacity="0.16"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-a)"
+              stroke-width="16"
+              fill="none"
+              opacity="0.3"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-a)"
+              stroke-width="9"
+              fill="none"
+              opacity="0.95"
+            />
+            <circle cx="50" cy="50" r="33" fill="url(#glow-a)" opacity="0.14" />
+          </g>
+        </svg>
+        <svg class="b" width="100%" height="100%" viewBox="-15 -15 130 130">
+          <defs>
+            <radialGradient id="glow-b" cx="76%" cy="20%" r="75%">
+              <stop offset="0%" stop-color="#e14fe8" stop-opacity="0.95" />
+              <stop offset="45%" stop-color="#e14fe8" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#e14fe8" stop-opacity="0" />
+            </radialGradient>
+            <filter id="blur-b" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="7" />
+            </filter>
+          </defs>
+          <g filter="url(#blur-b)">
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-b)"
+              stroke-width="26"
+              fill="none"
+              opacity="0.16"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-b)"
+              stroke-width="16"
+              fill="none"
+              opacity="0.3"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              stroke="url(#glow-b)"
+              stroke-width="9"
+              fill="none"
+              opacity="0.95"
+            />
+            <circle cx="50" cy="50" r="33" fill="url(#glow-b)" opacity="0.14" />
+          </g>
+        </svg>
+      </div>
+      <div class="glyph">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+          <g stroke="white" stroke-width="28">
+            <circle cx="114.72778" cy="280" r="70" />
+            <circle cx="397.27271" cy="280" r="70" />
+            <line x1="155.08434" y1="162" x2="251.08434" y2="162" />
+            <line x1="216" y1="162" x2="216" y2="364" />
+            <line x1="260.91559" y1="162" x2="356.91559" y2="162" />
+            <line x1="296" y1="162" x2="296" y2="364" />
+            <circle cx="114.72778" cy="280" r="22" fill="white" stroke="none" />
+            <circle cx="397.27271" cy="280" r="22" fill="white" stroke="none" />
+          </g>
+        </svg>
+      </div>
+    </div>
+    <div class="copy">
+      <h1>Say hello to Otto, agentic coding with personality! Every model, cloud or local.</h1>
+    </div>
+  </body>
+</html>
