@@ -183,6 +183,7 @@ export const ptBR: TranslationResources = {
     },
     findings: {
       empty: "Nada para corrigir por enquanto.",
+      loading: "Analisando seu contexto…",
       reveal: "Abrir {{location}}",
       dismiss: "Dispensar",
     },
@@ -198,9 +199,11 @@ export const ptBR: TranslationResources = {
       nothingFixed: "Nada é carregado em toda requisição.",
       loading: "Analisando seu contexto…",
       empty: "Ainda não há relatório de contexto para este espaço de trabalho.",
+      failed: "Não foi possível analisar seu contexto: {{error}}",
     },
     tree: {
       empty: "Nada a mostrar ainda.",
+      loading: "Analisando seu contexto…",
       linkOnly: "só link",
       conditional: "quando precisar",
     },
@@ -583,6 +586,17 @@ export const ptBR: TranslationResources = {
         failedToLoad: "Falha ao carregar página",
         invalidUrl: "URL de navegador inválida",
         unsupportedProtocol: "URL de navegador sem suporte bloqueada: {{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "A pré-visualização precisa das ferramentas de navegador",
+        previewMessage:
+          "A pré-visualização permite que os agentes iniciem o seu servidor de desenvolvimento e confiram o resultado em uma aba do navegador. Isso exige as ferramentas de navegador, que estão desativadas neste host. Ativar agora?",
+        browserTitle: "Os agentes não podem usar abas do navegador",
+        browserMessage:
+          "As ferramentas de navegador estão desativadas neste host, então os agentes não conseguem ver nem controlar esta aba. Ela continua funcionando para você. Ativar agora?",
+        suppress: "Não mostrar novamente",
+        openSettings: "Abrir configurações",
+        notNow: "Agora não",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1077,7 +1091,6 @@ export const ptBR: TranslationResources = {
         openSettings: "Abrir configurações do projeto",
         openNewWindow: "Abrir em nova janela",
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
-        contextManagement: "Gerenciar contexto",
         remove: "Remover projeto",
         removing: "Removendo...",
       },
@@ -2770,6 +2783,10 @@ export const ptBR: TranslationResources = {
         saving: "Salvando...",
         saved: "Conexão salva",
         saveFailed: "Falha ao salvar as configurações de conexão",
+        savedWithKey: "Endpoint salvo · chave de API lembrada",
+        savedNoKey: "Endpoint salvo · sem chave de API",
+        forget: "Esquecer este endpoint",
+        forgot: "Endpoint esquecido",
       },
       remove: {
         button: "Remover provedor",

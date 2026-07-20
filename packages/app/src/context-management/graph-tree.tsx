@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type ReactElement } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextNode, ContextReport } from "@otto-code/protocol/messages";
@@ -29,6 +29,8 @@ const SCROLL_RETRY_LIMIT = 5;
 
 interface ContextGraphTreeProps {
   report: ContextReport | null;
+  /** First scan, nothing to show yet — "empty" would be a lie until it lands. */
+  isLoading: boolean;
   expandedKeys: ReadonlySet<string>;
   selectedNodeId: string | null;
   /** Bumped by the fix list to scroll that file's row into view. */
@@ -49,6 +51,7 @@ interface ContextGraphTreeProps {
  */
 export function ContextGraphTree({
   report,
+  isLoading,
   expandedKeys,
   selectedNodeId,
   revealNodeId,
@@ -120,7 +123,14 @@ export function ContextGraphTree({
   if (rows.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>{t("contextManagement.tree.empty")}</Text>
+        {isLoading ? (
+          <View style={styles.loadingRow} testID="context-tree-loading">
+            <ActivityIndicator size="small" />
+            <Text style={styles.emptyText}>{t("contextManagement.tree.loading")}</Text>
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>{t("contextManagement.tree.empty")}</Text>
+        )}
       </View>
     );
   }
@@ -266,6 +276,11 @@ const styles = StyleSheet.create((theme) => {
     },
     empty: {
       padding: theme.spacing[3],
+    },
+    loadingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
     },
     emptyText: {
       color: theme.colors.mutedForeground,

@@ -183,6 +183,7 @@ export const zhCN: TranslationResources = {
     },
     findings: {
       empty: "目前没有需要修复的内容。",
+      loading: "正在扫描你的上下文…",
       reveal: "打开 {{location}}",
       dismiss: "关闭",
     },
@@ -198,9 +199,11 @@ export const zhCN: TranslationResources = {
       nothingFixed: "没有内容在每次请求时加载。",
       loading: "正在扫描你的上下文…",
       empty: "该工作区还没有上下文报告。",
+      failed: "无法扫描你的上下文：{{error}}",
     },
     tree: {
       empty: "暂时没有可显示的内容。",
+      loading: "正在扫描你的上下文…",
       linkOnly: "仅链接",
       conditional: "按需",
     },
@@ -578,6 +581,17 @@ export const zhCN: TranslationResources = {
         failedToLoad: "页面加载失败",
         invalidUrl: "浏览器 URL 无效",
         unsupportedProtocol: "已阻止不支持的浏览器 URL：{{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "预览需要浏览器工具",
+        previewMessage:
+          "预览让智能体启动你的开发服务器,并在浏览器标签页中检查结果。这需要浏览器工具,而该主机上它已关闭。现在开启吗?",
+        browserTitle: "智能体无法使用浏览器标签页",
+        browserMessage:
+          "该主机上的浏览器工具已关闭,因此智能体无法查看或操作此标签页。你自己使用不受影响。现在开启吗?",
+        suppress: "不再显示",
+        openSettings: "打开设置",
+        notNow: "暂不",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1053,7 +1067,6 @@ export const zhCN: TranslationResources = {
         openSettings: "打开 project 设置",
         openNewWindow: "在新窗口中打开",
         openNewWindowFailed: "无法打开新窗口",
-        contextManagement: "管理上下文",
         remove: "移除 project",
         removing: "正在移除...",
       },
@@ -2713,6 +2726,10 @@ export const zhCN: TranslationResources = {
         saving: "正在保存...",
         saved: "连接已保存",
         saveFailed: "保存连接设置失败",
+        savedWithKey: "已保存的端点 · 已记住 API 密钥",
+        savedNoKey: "已保存的端点 · 无 API 密钥",
+        forget: "忘记此端点",
+        forgot: "已忘记该端点",
       },
       remove: {
         button: "移除 Provider",

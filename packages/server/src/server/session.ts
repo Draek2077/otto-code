@@ -1094,18 +1094,36 @@ export class Session {
         // workspace's persisted agents answer the same question from disk.
         // Only `systemPrompt` survives there (the daemon append is composed at
         // run time), so the injected figure is a floor, never an overstatement.
-        const stored = (await this.agentStorage.list())
-          .filter(
-            (candidate) =>
-              candidate.workspaceId === workspaceId && !candidate.internal && !candidate.archivedAt,
-          )
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-        if (!stored) return null;
-        const injectedPromptText = composeSystemPromptParts(stored.config?.systemPrompt);
-        return {
-          provider: stored.provider,
-          ...(injectedPromptText ? { injectedPromptText } : {}),
-        };
+        const persisted = (await this.agentStorage.list()).filter(
+          (candidate) => !candidate.internal,
+        );
+        const byRecency = (a: { updatedAt: string }, b: { updatedAt: string }): number =>
+          b.updatedAt.localeCompare(a.updatedAt);
+        const inWorkspace = persisted.filter((candidate) => candidate.workspaceId === workspaceId);
+        const stored =
+          inWorkspace.filter((candidate) => !candidate.archivedAt).sort(byRecency)[0] ??
+          // An archived chat still names the provider this workspace uses, and
+          // that is all the scan needs to know which filenames to look for.
+          inWorkspace.sort(byRecency)[0];
+        if (stored) {
+          const injectedPromptText = composeSystemPromptParts(stored.config?.systemPrompt);
+          return {
+            provider: stored.provider,
+            ...(injectedPromptText ? { injectedPromptText } : {}),
+          };
+        }
+
+        // A workspace nobody has chatted in yet is the common case for this tab
+        // — you open it precisely to see what a *first* chat would carry. The
+        // provider only selects which filenames the scan looks for, so refusing
+        // to answer without an agent meant a project full of context files
+        // reported nothing at all, instantly and with no way to recover.
+        // The daemon's most recent chat anywhere is the best available answer to
+        // "which agent does this user run"; no prompt text is claimed, because
+        // none of it belongs to this workspace.
+        const anywhere = persisted.sort(byRecency)[0];
+        if (anywhere) return { provider: anywhere.provider };
+        return null;
       },
     });
 

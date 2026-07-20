@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextFinding, ContextNode, ContextReport } from "@otto-code/protocol/messages";
@@ -23,6 +23,8 @@ export interface ContextFindingTarget {
 
 interface ContextFindingsListProps {
   report: ContextReport | null;
+  /** First scan, nothing to show yet — "nothing worth fixing" would be a lie. */
+  isLoading: boolean;
   onReveal: (target: ContextFindingTarget) => void;
 }
 
@@ -36,7 +38,11 @@ interface ContextFindingsListProps {
  * the related list is the *other* half of a duplicate, which is the one thing
  * the row must not be confused with.
  */
-export function ContextFindingsList({ report, onReveal }: ContextFindingsListProps): ReactElement {
+export function ContextFindingsList({
+  report,
+  isLoading,
+  onReveal,
+}: ContextFindingsListProps): ReactElement {
   const { t } = useTranslation();
   const findings = report?.findings ?? [];
 
@@ -46,7 +52,14 @@ export function ContextFindingsList({ report, onReveal }: ContextFindingsListPro
   if (findings.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>{t("contextManagement.findings.empty")}</Text>
+        {isLoading ? (
+          <View style={styles.loadingRow} testID="context-findings-loading">
+            <ActivityIndicator size="small" />
+            <Text style={styles.emptyText}>{t("contextManagement.findings.loading")}</Text>
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>{t("contextManagement.findings.empty")}</Text>
+        )}
       </View>
     );
   }
@@ -178,6 +191,11 @@ const styles = StyleSheet.create((theme) => ({
   list: { flex: 1 },
   empty: {
     padding: theme.spacing[3],
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   emptyText: {
     color: theme.colors.mutedForeground,
