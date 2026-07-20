@@ -34,6 +34,7 @@ import { Alert } from "@/components/ui/alert";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
+import { TextArea } from "@/components/ui/text-area";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/screens/settings/settings-group";
@@ -1449,6 +1450,32 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
     [script.name, t],
   );
 
+  const footer = useMemo(
+    () => (
+      <View style={styles.modalFooter}>
+        <Button
+          style={styles.modalFooterButton}
+          onPress={onCancel}
+          variant="ghost"
+          size="md"
+          testID="script-edit-cancel"
+        >
+          {t("settings.project.actions.cancel")}
+        </Button>
+        <Button
+          style={styles.modalFooterButton}
+          onPress={handleSavePress}
+          variant="default"
+          size="md"
+          testID="script-edit-save"
+        >
+          {t("settings.project.actions.save")}
+        </Button>
+      </View>
+    ),
+    [handleSavePress, onCancel, t],
+  );
+
   return (
     <AdaptiveModalSheet
       visible
@@ -1456,6 +1483,7 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       onClose={onCancel}
       testID="script-edit-modal"
       desktopMaxWidth={560}
+      footer={footer}
     >
       <View style={styles.modalSection}>
         <Text style={styles.modalLabel}>{t("settings.project.scripts.name")}</Text>
@@ -1477,10 +1505,9 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       </View>
       <View style={styles.modalSection}>
         <Text style={styles.modalLabel}>{t("settings.project.scripts.command")}</Text>
-        <TextInput
+        <TextArea
           testID="script-edit-command"
           accessibilityLabel={t("settings.project.scripts.commandAccessibility")}
-          multiline
           value={script.commandText}
           onChangeText={handleCommandChange}
           onBlur={handleCommandBlur}
@@ -1509,14 +1536,6 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
             testID="script-edit-service-toggle"
           />
         </View>
-      </View>
-      <View style={styles.modalFooter}>
-        <Button onPress={onCancel} variant="ghost" size="md" testID="script-edit-cancel">
-          {t("settings.project.actions.cancel")}
-        </Button>
-        <Button onPress={handleSavePress} variant="default" size="md" testID="script-edit-save">
-          {t("settings.project.actions.save")}
-        </Button>
       </View>
     </AdaptiveModalSheet>
   );
@@ -1695,13 +1714,17 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     minHeight: 100,
-    textAlignVertical: "top",
   },
+  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // already supplies padding, the top border, and the row alignment.
   modalFooter: {
+    flex: 1,
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: theme.spacing[2],
-    marginTop: theme.spacing[2],
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  modalFooterButton: {
+    flex: 1,
   },
   fieldError: {
     color: theme.colors.palette.red[300],
