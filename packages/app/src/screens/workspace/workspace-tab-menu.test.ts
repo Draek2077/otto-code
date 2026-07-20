@@ -43,12 +43,12 @@ describe("buildWorkspaceTabMenuEntries", () => {
 
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
-      "Copy agent id",
+      "Copy chat id",
       "Rename",
       "Close to the left",
       "Close to the right",
       "Close other tabs",
-      "Reload agent",
+      "Reload chat",
       "Close",
     ]);
   });
@@ -104,12 +104,12 @@ describe("buildWorkspaceTabMenuEntries", () => {
 
     expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
-      "Copy agent id",
+      "Copy chat id",
       "Rename",
       "Close tabs above",
       "Close tabs below",
       "Close other tabs",
-      "Reload agent",
+      "Reload chat",
       "Close",
     ]);
   });
@@ -171,7 +171,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       expect.objectContaining({
         kind: "item",
         key: "reload-agent",
-        tooltip: "Reload agent to update skills, MCPs or login status.",
+        tooltip: "Reload chat to update skills, MCPs or login status.",
       }),
     );
   });
