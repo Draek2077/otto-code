@@ -36,9 +36,9 @@ function isHttpUrl(url: string): boolean {
 
 /**
  * The one way the app opens an outbound URL. Routes by the device-local
- * `linkOpenBehavior` setting: "in-app" opens a normal Otto browser tab in the
- * current workspace (and focuses it), "external" (the default) hands off to
- * the system browser via openExternalUrl.
+ * `linkOpenBehavior` setting: "in-app" (the default) opens a normal Otto
+ * browser tab in the current workspace (and focuses it), "external" hands off
+ * to the system browser via openExternalUrl.
  *
  * Falls back to the system browser regardless of the setting when the in-app
  * pane can't take the link: non-http(s) schemes (mailto:, editor deep links),
