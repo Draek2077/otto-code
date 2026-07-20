@@ -11,6 +11,10 @@ export interface EditorThemeSpec {
   gutterActiveForeground: string;
   /** Divider line between the line-number gutter and the code. */
   gutterBorder: string;
+  /** Character column for the line-length ruler; null hides it entirely. */
+  rulerColumn: number | null;
+  /** Ruler stripe color — the gutter divider at half strength. */
+  rulerColor: string;
   selectionBackground: string;
   cursor: string;
   activeLineBackground: string;
@@ -36,6 +40,22 @@ export interface EditorMatchInfo {
   /** 1-based index of the active match; 0 when the selection is not on a match. */
   current: number;
   total: number;
+}
+
+/**
+ * Where the caret is, for the status bar. Pushed on every selection change —
+ * unlike `EditorSelection` (pull-only) and `EditorPointerSelect` (pointer only),
+ * both of which miss plain keyboard movement.
+ */
+export interface EditorCursorPosition {
+  /** 1-based line of the selection head. */
+  line: number;
+  /** 1-based column of the selection head, counted in UTF-16 code units. */
+  column: number;
+  /** Characters currently selected; 0 when the caret is collapsed. */
+  selectedChars: number;
+  /** Number of lines the selection spans; 0 when the caret is collapsed. */
+  selectedLines: number;
 }
 
 /**
@@ -116,6 +136,8 @@ export interface CodeEditorProps {
   wordWrap: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
+  /** Caret/selection moved; drives the status bar's Ln/Col readout. */
+  onCursorMoved?: (position: EditorCursorPosition) => void;
   /** Mod-S inside the editor; the host owns the actual save. */
   onSaveShortcut?: () => void;
   /** Mod-F inside the editor; the host opens the find strip. */
@@ -165,6 +187,7 @@ export type EditorWebViewOutbound =
   | { type: "bridgeReady" }
   | { type: "dirtyChanged"; dirty: boolean }
   | { type: "matchInfo"; info: EditorMatchInfo | null }
+  | { type: "cursorMoved"; position: EditorCursorPosition }
   | { type: "saveShortcut" }
   | { type: "findShortcut" }
   | { type: "goToLineShortcut" }

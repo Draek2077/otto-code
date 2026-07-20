@@ -70,6 +70,7 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     wordWrap: message.wordWrap,
     onDirtyChanged: (dirty) => sendToNative({ type: "dirtyChanged", dirty }),
     onMatchInfo: (info) => sendToNative({ type: "matchInfo", info }),
+    onCursorMoved: (position) => sendToNative({ type: "cursorMoved", position }),
     onSaveShortcut: () => sendToNative({ type: "saveShortcut" }),
     onFindShortcut: () => sendToNative({ type: "findShortcut" }),
     onGoToLineShortcut: () => sendToNative({ type: "goToLineShortcut" }),

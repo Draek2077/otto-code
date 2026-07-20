@@ -30,11 +30,13 @@ import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
 import { CodeEditor } from "@/editor/code-editor";
 import type {
   CodeEditorProps,
   EditorController,
+  EditorCursorPosition,
   EditorMatchInfo,
   EditorPointerSelect,
   EditorScrollMetrics,
@@ -45,6 +47,7 @@ import type { EditorBufferState } from "@/editor/editor-buffer-state";
 import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
 import { useEditorBuffer } from "@/editor/use-editor-buffer";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
+import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
@@ -105,16 +108,31 @@ const ThemedFindInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
 
+/** The off switch and the column live in separate settings; the spec has one field. */
+function resolveRulerColumn(settings: AppSettings): number | null {
+  return settings.rulerEnabled ? settings.rulerColumn : null;
+}
+
 // `theme` is resolved by the withUnistyles mapping below, so the wrapped
-// component has to tolerate the frame where it is not injected yet.
+// component has to tolerate the frame where it is not injected yet. The ruler
+// column rides in as a separate prop because it lives in device-local app
+// settings, not in the Unistyles theme the mapping can see.
 function CodeEditorWithInjectedTheme({
   theme,
+  rulerColumn,
   ...rest
-}: Omit<CodeEditorProps, "theme"> & { theme?: EditorThemeSpec }) {
-  if (!theme) {
+}: Omit<CodeEditorProps, "theme"> & {
+  theme?: EditorThemeSpec;
+  rulerColumn: number | null;
+}) {
+  const themeWithRuler = useMemo(
+    () => (theme ? { ...theme, rulerColumn } : null),
+    [theme, rulerColumn],
+  );
+  if (!themeWithRuler) {
     return null;
   }
-  return <CodeEditor {...rest} theme={theme} />;
+  return <CodeEditor {...rest} theme={themeWithRuler} />;
 }
 
 const ThemedCodeEditor = withUnistyles(CodeEditorWithInjectedTheme, (theme) => ({
@@ -291,6 +309,7 @@ function PreviewOnlyView({
   location,
   modeBarProps,
   toolbarLeadingSlot,
+  fileInfo,
   onFileInfo,
 }: {
   serverId: string;
@@ -299,6 +318,7 @@ function PreviewOnlyView({
   location: WorkspaceFileLocation;
   modeBarProps: FileViewModeBarProps | null;
   toolbarLeadingSlot: ReactNode;
+  fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
 }) {
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
@@ -316,6 +336,17 @@ function PreviewOnlyView({
         contentOverride={draftOverride}
         onFileInfo={onFileInfo}
       />
+      {/* Null until the preview has read the file — the bar appears with real
+          values rather than flashing zeroes. No caret: there is no editor. */}
+      {fileInfo ? (
+        <EditorStatusBar
+          path={location.path}
+          byteSize={fileInfo.size}
+          eol={fileInfo.eol}
+          isText={fileInfo.kind === "text"}
+          cursor={null}
+        />
+      ) : null}
     </View>
   );
 }
@@ -538,9 +569,14 @@ function EditorModeView({
 
   const [find, setFind] = useState<FindStripState>(INITIAL_FIND_STATE);
   const [matchInfo, setMatchInfo] = useState<EditorMatchInfo | null>(null);
+  const [cursor, setCursor] = useState<EditorCursorPosition | null>(null);
+  const byteSize = useBufferByteSize(buffer);
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
+
+  const { settings } = useAppSettings();
+  const rulerColumn = resolveRulerColumn(settings);
 
   const applyFind = useCallback(
     (next: FindStripState) => {
@@ -860,10 +896,12 @@ function EditorModeView({
       path={path}
       initialDoc={buffer.draft ?? buffer.baseline.content}
       wordWrap={wordWrap}
+      rulerColumn={rulerColumn}
       docSyncDebounceMs={split ? SPLIT_DOC_SYNC_DEBOUNCE_MS : undefined}
       onDirtyChanged={onDirtyChanged}
       onDocSync={onDocSync}
       onMatchInfo={setMatchInfo}
+      onCursorMoved={setCursor}
       onSaveShortcut={handleSavePress}
       onFindShortcut={openFind}
       onGoToLineShortcut={openGoToLine}
@@ -961,6 +999,14 @@ function EditorModeView({
       ) : (
         <View style={styles.editorHost}>{editorNode}</View>
       )}
+
+      <EditorStatusBar
+        path={path}
+        byteSize={byteSize}
+        eol={buffer.baseline.eol}
+        isText
+        cursor={cursor}
+      />
 
       {hasCodeIndex ? (
         <EditorOutlineSheet
@@ -1152,6 +1198,7 @@ export function FileTabPane({
         location={location}
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
+        fileInfo={fileInfo}
         onFileInfo={setFileInfo}
       />
     ) : (

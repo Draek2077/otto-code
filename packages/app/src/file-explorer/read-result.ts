@@ -11,5 +11,6 @@ export function explorerFileFromReadResult(file: FileReadResult): ExplorerFile {
     mimeType: file.mime,
     size: file.size,
     modifiedAt: file.modifiedAt,
+    eol: file.eol ?? null,
   };
 }
