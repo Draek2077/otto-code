@@ -1077,13 +1077,33 @@ export class Session {
           .listAgents()
           .filter((candidate) => candidate.workspaceId === workspaceId)
           .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
-        if (!agent) return null;
-        const injectedPromptText = composeSystemPromptParts(
-          agent.config.systemPrompt,
-          agent.config.daemonAppendSystemPrompt,
-        );
+        if (agent) {
+          const injectedPromptText = composeSystemPromptParts(
+            agent.config.systemPrompt,
+            agent.config.daemonAppendSystemPrompt,
+          );
+          return {
+            provider: agent.provider,
+            ...(injectedPromptText ? { injectedPromptText } : {}),
+          };
+        }
+
+        // `listAgents()` only sees agents loaded into memory, so a freshly
+        // restarted daemon has none until a chat is opened — and without a
+        // provider the whole report is null and the tab reads as broken. The
+        // workspace's persisted agents answer the same question from disk.
+        // Only `systemPrompt` survives there (the daemon append is composed at
+        // run time), so the injected figure is a floor, never an overstatement.
+        const stored = (await this.agentStorage.list())
+          .filter(
+            (candidate) =>
+              candidate.workspaceId === workspaceId && !candidate.internal && !candidate.archivedAt,
+          )
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+        if (!stored) return null;
+        const injectedPromptText = composeSystemPromptParts(stored.config?.systemPrompt);
         return {
-          provider: agent.provider,
+          provider: stored.provider,
           ...(injectedPromptText ? { injectedPromptText } : {}),
         };
       },

@@ -73,6 +73,15 @@ export interface ContextFinding {
   range?: ContextRange;
   /** Other node ids implicated (the duplicate's twin, the cycle's members). */
   relatedNodeIds?: string[];
+  /**
+   * The node this finding belongs to. Set centrally as the finding is attached,
+   * so the flattened report list can still say which file it came from.
+   */
+  nodeId?: string;
+  /** 1-based line of `range.start`, resolved while the file text is in hand. */
+  line?: number;
+  /** 1-based line of the range's last character; equals `line` for one-liners. */
+  lineEnd?: number;
 }
 
 export interface ContextRange {

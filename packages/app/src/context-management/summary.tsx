@@ -232,7 +232,8 @@ const styles = StyleSheet.create((theme) => {
     title: {
       color: theme.colors.foreground,
       fontSize: bump(theme.fontSize.sm),
-      fontWeight: "600",
+      // Not bold: the number under it is the emphasis, and a bold label
+      // competing with a 2xl figure just makes two things shout.
       marginTop: theme.spacing[2],
     },
     headlineRow: {

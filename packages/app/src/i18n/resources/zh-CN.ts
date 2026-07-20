@@ -183,6 +183,8 @@ export const zhCN: TranslationResources = {
     },
     findings: {
       empty: "目前没有需要修复的内容。",
+      reveal: "打开 {{location}}",
+      dismiss: "关闭",
     },
     summary: {
       title: "每轮发送的上下文：",
@@ -213,6 +215,7 @@ export const zhCN: TranslationResources = {
     scope: {
       global: "所有项目",
       local: "本地",
+      project: "当前项目",
       enterprise: "受管",
       subdirectory: "子文件夹",
     },

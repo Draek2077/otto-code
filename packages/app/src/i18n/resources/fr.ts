@@ -184,6 +184,8 @@ export const fr: TranslationResources = {
     },
     findings: {
       empty: "Rien à corriger pour l'instant.",
+      reveal: "Ouvrir {{location}}",
+      dismiss: "Ignorer",
     },
     summary: {
       title: "Contexte envoyé par tour :",
@@ -215,6 +217,7 @@ export const fr: TranslationResources = {
     scope: {
       global: "Tous les projets",
       local: "Local",
+      project: "Ce projet",
       enterprise: "Géré",
       subdirectory: "Sous-dossier",
     },

@@ -183,6 +183,8 @@ export const es: TranslationResources = {
     },
     findings: {
       empty: "Nada que arreglar por ahora.",
+      reveal: "Abrir {{location}}",
+      dismiss: "Descartar",
     },
     summary: {
       title: "Contexto enviado por turno:",
@@ -214,6 +216,7 @@ export const es: TranslationResources = {
     scope: {
       global: "Todos los proyectos",
       local: "Local",
+      project: "Este proyecto",
       enterprise: "Gestionado",
       subdirectory: "Subcarpeta",
     },

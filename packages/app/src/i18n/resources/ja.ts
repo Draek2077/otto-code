@@ -183,6 +183,8 @@ export const ja: TranslationResources = {
     },
     findings: {
       empty: "いま直すべきものはありません。",
+      reveal: "{{location}} を開く",
+      dismiss: "閉じる",
     },
     summary: {
       title: "1ターンごとに送られるコンテキスト:",
@@ -214,6 +216,7 @@ export const ja: TranslationResources = {
     scope: {
       global: "全プロジェクト",
       local: "ローカル",
+      project: "このプロジェクト",
       enterprise: "管理対象",
       subdirectory: "サブフォルダ",
     },

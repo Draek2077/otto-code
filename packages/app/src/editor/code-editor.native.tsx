@@ -117,6 +117,8 @@ export function CodeEditor(props: CodeEditorProps) {
         webViewRef.current?.requestFocus();
       },
       goToLine: (line) => sendToWebView({ type: "goToLine", line }),
+      selectLines: (startLine, endLine) =>
+        sendToWebView({ type: "selectLines", startLine, endLine }),
     }),
     [sendToWebView],
   );

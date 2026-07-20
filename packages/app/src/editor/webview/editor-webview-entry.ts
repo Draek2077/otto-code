@@ -114,6 +114,9 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
     case "goToLine":
       target.goToLine(message.line);
       break;
+    case "selectLines":
+      target.selectLines(message.startLine, message.endLine);
+      break;
   }
 };
 

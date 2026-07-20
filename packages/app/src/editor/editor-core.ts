@@ -80,6 +80,7 @@ export interface EditorCore {
   replaceAll(): void;
   focus(): void;
   goToLine(line: number): void;
+  selectLines(startLine: number, endLine: number): void;
   getScrollMetrics(): EditorScrollMetrics | null;
   scrollToFraction(fraction: number): void;
   scrollToLineAtOffset(line: number, viewportOffsetY: number): void;
@@ -91,6 +92,10 @@ export interface EditorCore {
 // Counting stops here so a pathological query on a huge file cannot stall the
 // UI; the strip renders "999+" beyond it.
 const MAX_COUNTED_MATCHES = 999;
+
+// ~4 frames (≈64ms): long enough to outlast a mount that steals focus back,
+// short enough that a user cannot have deliberately clicked elsewhere yet.
+const FOCUS_RETRY_FRAMES = 4;
 
 const setDocAnnotation = Annotation.define<boolean>();
 
@@ -337,6 +342,31 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   });
 
   const view = new EditorView({ state, parent: options.parent });
+  let destroyed = false;
+
+  /**
+   * Focus, and keep asking for a few frames.
+   *
+   * A single `view.focus()` is enough when the editor is already on screen, and
+   * not enough when it has only just mounted: navigating to a file opens the
+   * pane, mounts the editor and calls this in one pass, while the element the
+   * click landed on is still being torn down — the browser hands focus back to
+   * `document.body` after we asked for it. Re-asserting for a handful of frames
+   * covers that without a timer that outlives the intent. It stops the instant
+   * focus lands, so it cannot fight a user who clicks somewhere else.
+   */
+  const focusPersistently = (): void => {
+    view.focus();
+    if (typeof requestAnimationFrame !== "function") return;
+    let attempts = 0;
+    const retry = (): void => {
+      if (destroyed || view.hasFocus || attempts >= FOCUS_RETRY_FRAMES) return;
+      attempts += 1;
+      view.focus();
+      requestAnimationFrame(retry);
+    };
+    requestAnimationFrame(retry);
+  };
 
   const readScrollMetrics = (): EditorScrollMetrics | null => {
     const scroller = view.scrollDOM;
@@ -432,7 +462,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       replaceAll(view);
     },
     focus: () => {
-      view.focus();
+      focusPersistently();
     },
     goToLine: (line) => {
       const clamped = Math.max(1, Math.min(line, view.state.doc.lines));
@@ -441,7 +471,21 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         selection: { anchor: lineInfo.from },
         effects: EditorView.scrollIntoView(lineInfo.from, { y: "center" }),
       });
-      view.focus();
+      focusPersistently();
+    },
+    selectLines: (startLine, endLine) => {
+      const lastLine = view.state.doc.lines;
+      const from = Math.max(1, Math.min(startLine, lastLine));
+      const to = Math.max(from, Math.min(endLine, lastLine));
+      const fromInfo = view.state.doc.line(from);
+      const toInfo = view.state.doc.line(to);
+      view.dispatch({
+        // Anchor at the end so the cursor sits after the span: extending or
+        // typing behaves the way a drag-selection would.
+        selection: { anchor: toInfo.to, head: fromInfo.from },
+        effects: EditorView.scrollIntoView(fromInfo.from, { y: "center" }),
+      });
+      focusPersistently();
     },
     getScrollMetrics: () => readScrollMetrics(),
     scrollToFraction: (fraction) => {
@@ -469,6 +513,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       });
     },
     destroy: () => {
+      destroyed = true;
       if (scrollFrame !== null) {
         cancelAnimationFrame(scrollFrame);
         scrollFrame = null;

@@ -91,6 +91,13 @@ export interface EditorController {
   focus(): void;
   /** Scroll to and place the cursor on a 1-based line (outline navigation). */
   goToLine(line: number): void;
+  /**
+   * Scroll to and *select* an inclusive 1-based line range, then focus. Where
+   * `goToLine` says "you are here", this says "this is the thing" — the span is
+   * highlighted and a single keystroke replaces it. Used when a caller knows
+   * the extent of what it sent you to (a finding, a diff hunk).
+   */
+  selectLines(startLine: number, endLine: number): void;
   // Split-view scroll sync. Optional: the web host implements these; the
   // native webview host does not (split view is web/desktop only).
   getScrollMetrics?(): EditorScrollMetrics | null;
@@ -150,6 +157,7 @@ export type EditorWebViewInbound =
   | { type: "replaceAll" }
   | { type: "focus" }
   | { type: "goToLine"; line: number }
+  | { type: "selectLines"; startLine: number; endLine: number }
   | { type: "getDoc"; requestId: number }
   | { type: "getSelection"; requestId: number };
 
