@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.5 - 2026-07-20
+
+### Added
+
+- Provider settings remember endpoints you have used before, so pointing a provider back at an earlier URL is one pick instead of retyping it
+- The editor gained a status bar showing the file's language, cursor position, size and line endings
+- A configurable ruler column marks the line-length limit behind the editor text
+- Opening a browser tab or a preview while Browser Tools is off now explains the host setting and offers to turn it on
+- The website offers the macOS desktop builds that releases have been shipping
+- Visualizer voice cues are on by default
+
+### Fixed
+
+- Manage context is reachable from every workspace row and from the workspace menu, where before it only appeared on workspaces that had setup commands configured
+- The Context tab reports on a workspace you have not started a chat in yet, instead of coming up empty
+- The Context tab shows a loading state while it scans your context files
+- Re-opening the Context tab paints the last report straight away rather than starting blank
+- A context scan that fails now says what went wrong instead of looking like an empty workspace
+- The message box uses your active team's personality on a fresh install instead of starting with none
+- Toggle tooltips and the help dialog show your remapped shortcut rather than the default
+- macOS no longer prompts for a desktop update it cannot install
+
+### Improved
+
+- Modals and sheets scroll consistently, with matching edge fades and multiline inputs throughout
+- Links open in the in-app browser tab by default
+- Agent teams and personality selection got a pass over their settings sections
+- The desktop updates panel and the project settings screen were tidied up
+- Bundled ACP agents (dimcode, Factory Droid, Nova and Qoder) move to their latest published versions
+
 ## 0.6.4 - 2026-07-19
 
 ### Added
