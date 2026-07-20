@@ -269,8 +269,9 @@ export interface AppSettings {
   // in the agent's own personality voice when its node joins the graph, first
   // starts thinking, and completes. Only the main (root) agent speaks, only for
   // personality-backed agents, and only when the host advertises the
-  // visualizerVoiceCues + ttsPreview capabilities. Off by default (it makes
-  // sound proactively); the effective volume follows visualizerSoundVolume and
+  // visualizerVoiceCues + ttsPreview capabilities. On by default; the cues are
+  // part of the intended Visualizer experience and muting the Visualizer's
+  // sound silences them too. The effective volume follows visualizerSoundVolume and
   // is silenced by visualizerSoundMuted. See docs/visualizer.md "Voice cues".
   visualizerVoiceCues: boolean;
   // Whether the Visualizer's HUD chrome (top bar + bottom control bar) is
@@ -371,7 +372,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerNodeShape: "circle",
   visualizerSoundVolume: 50,
   visualizerSoundMuted: false,
-  visualizerVoiceCues: false,
+  visualizerVoiceCues: true,
   visualizerHudHidden: false,
   featureEnabled: {},
 };
