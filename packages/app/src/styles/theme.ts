@@ -168,6 +168,13 @@ const lightStatusColors = {
   // less: a heavy orange wash on near-white shouts.
   statusWarningSurface: "rgba(217, 119, 6, 0.14)",
   statusWarningSurfaceStrong: "rgba(217, 119, 6, 0.24)",
+  // Tinted chrome for every status tone, same recipe as the amber pair above:
+  // one fill per tone, calibrated per theme. Light stays lighter — a heavy wash
+  // on near-white shouts.
+  statusDangerSurface: "rgba(185, 28, 28, 0.14)",
+  statusSuccessSurface: "rgba(21, 128, 61, 0.14)",
+  statusInfoSurface: "rgba(2, 132, 199, 0.14)",
+  statusMergedSurface: "rgba(124, 58, 237, 0.14)",
   statusInfo: "#0284c7", // sky-600
   statusMerged: "#7c3aed", // purple-600
 };
@@ -186,6 +193,12 @@ const darkStatusColors = {
   // near-white barely registers against a dark surface.
   statusWarningSurface: "rgba(245, 158, 11, 0.20)",
   statusWarningSurfaceStrong: "rgba(245, 158, 11, 0.32)",
+  // Tinted chrome for every status tone. Dark carries more alpha than light:
+  // the same wash that shouts on near-white barely registers on near-black.
+  statusDangerSurface: "rgba(220, 38, 38, 0.20)",
+  statusSuccessSurface: "rgba(22, 163, 74, 0.20)",
+  statusInfoSurface: "rgba(56, 189, 248, 0.20)",
+  statusMergedSurface: "rgba(147, 51, 234, 0.20)",
   statusInfo: "#38bdf8", // sky-400 — light blue that holds on dark surfaces
   statusMerged: "#9333ea", // purple-600
 };
