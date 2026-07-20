@@ -83,6 +83,9 @@ export interface BuildGitActionsInput {
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
   shouldPromoteArchive: boolean;
+  // User opted out of the local "Merge into <base>" action (PR-only workflow).
+  // Suppresses both the menu entry and its promotion to the primary CTA.
+  hideMergeIntoBaseAction: boolean;
   shipDefault: "merge" | "pr";
   runtime: Record<GitActionId, GitActionRuntimeState>;
 }
@@ -375,7 +378,7 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
   if (input.shipDefault === "pr" && canUsePullRequestActionAsShipDefault(input)) {
     return "pr";
   }
-  if (!input.isOnBaseBranch && input.aheadCount > 0) {
+  if (!input.isOnBaseBranch && input.aheadCount > 0 && !input.hideMergeIntoBaseAction) {
     return "merge-branch";
   }
   if (!input.isOnBaseBranch && canMergeFromBase(input)) {
@@ -406,7 +409,9 @@ function getPullRequestActionIds(filter: {
 function getFeatureActionIds(input: BuildGitActionsInput): GitActionId[] {
   return [
     "merge-from-base",
-    "merge-branch",
+    // "merge-from-base" pulls the base branch in and is unaffected; only the
+    // outbound local merge is what PR-only users want gone.
+    ...(input.hideMergeIntoBaseAction ? [] : (["merge-branch"] as GitActionId[])),
     ...getPullRequestActionIds({ roles: ["status", "direct", "auto"], input }),
   ];
 }

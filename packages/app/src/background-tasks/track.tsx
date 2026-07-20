@@ -7,6 +7,7 @@ import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import type { BackgroundShellTaskRow } from "./select";
@@ -103,55 +104,57 @@ export function BackgroundTasksTrack({
   const headerLabel = formatHeaderLabel(rows);
 
   return (
-    <View style={styles.outer} testID="background-tasks-track">
-      <ChatWidthBounds style={styles.track}>
-        <View style={surfaceStyle}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={headerLabel}
-            testID="background-tasks-track-header"
-            onPress={toggleExpanded}
-            style={headerStyle}
-          >
-            {expanded ? (
-              <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
-            ) : (
-              <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
-            )}
-            <Text style={styles.headerLabel} numberOfLines={1}>
-              {headerLabel}
-            </Text>
-          </Pressable>
-          {expanded ? (
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
+    <ComposerTrackTransition>
+      <View style={styles.outer} testID="background-tasks-track">
+        <ChatWidthBounds style={styles.track}>
+          <View style={surfaceStyle}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={headerLabel}
+              testID="background-tasks-track-header"
+              onPress={toggleExpanded}
+              style={headerStyle}
             >
-              {active.map((row) => (
-                <BackgroundTaskTrackRow
-                  key={row.id}
-                  row={row}
-                  onStopTask={handleStopTask}
-                  onClearTask={handleClearCompleted}
-                />
-              ))}
-              {completed.length > 0 ? (
-                <CompletedBackgroundTasksGroup
-                  rows={completed}
-                  expanded={completedExpanded}
-                  onToggle={toggleCompletedExpanded}
-                  onClear={handleClearCompleted}
-                  onStopTask={handleStopTask}
-                  onClearOne={onClearCompleted}
-                />
-              ) : null}
-            </ScrollView>
-          ) : null}
-        </View>
-      </ChatWidthBounds>
-    </View>
+              {expanded ? (
+                <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+              ) : (
+                <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+              )}
+              <Text style={styles.headerLabel} numberOfLines={1}>
+                {headerLabel}
+              </Text>
+            </Pressable>
+            {expanded ? (
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
+                {active.map((row) => (
+                  <BackgroundTaskTrackRow
+                    key={row.id}
+                    row={row}
+                    onStopTask={handleStopTask}
+                    onClearTask={handleClearCompleted}
+                  />
+                ))}
+                {completed.length > 0 ? (
+                  <CompletedBackgroundTasksGroup
+                    rows={completed}
+                    expanded={completedExpanded}
+                    onToggle={toggleCompletedExpanded}
+                    onClear={handleClearCompleted}
+                    onStopTask={handleStopTask}
+                    onClearOne={onClearCompleted}
+                  />
+                ) : null}
+              </ScrollView>
+            ) : null}
+          </View>
+        </ChatWidthBounds>
+      </View>
+    </ComposerTrackTransition>
   );
 }
 

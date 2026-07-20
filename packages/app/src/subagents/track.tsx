@@ -14,6 +14,7 @@ import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import {
   WorkspaceTabIcon,
@@ -142,60 +143,62 @@ export function SubagentsTrack({
   const headerLabel = formatHeaderLabel({ active, completed }, clearedTokens);
 
   return (
-    <View style={styles.outer} testID="subagents-track">
-      <ChatWidthBounds style={styles.track}>
-        <View style={surfaceStyle}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={headerLabel}
-            testID="subagents-track-header"
-            onPress={toggleExpanded}
-            style={headerStyle}
-          >
-            {expanded ? (
-              <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
-            ) : (
-              <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
-            )}
-            <Text style={styles.headerLabel} numberOfLines={1}>
-              {headerLabel}
-            </Text>
-          </Pressable>
-          {expanded ? (
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
+    <ComposerTrackTransition>
+      <View style={styles.outer} testID="subagents-track">
+        <ChatWidthBounds style={styles.track}>
+          <View style={surfaceStyle}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={headerLabel}
+              testID="subagents-track-header"
+              onPress={toggleExpanded}
+              style={headerStyle}
             >
-              {active.map((row) => (
-                <SubagentsTrackRow
-                  key={row.id}
-                  row={row}
-                  onOpenSubagent={onOpenSubagent}
-                  onArchiveSubagent={onArchiveSubagent}
-                  onStopSubagent={handleStopSubagent}
-                  onDetachSubagent={onDetachSubagent}
-                />
-              ))}
-              {completed.length > 0 ? (
-                <CompletedSubagentsGroup
-                  rows={completed}
-                  flushTop={active.length === 0}
-                  expanded={completedExpanded}
-                  onToggle={toggleCompletedExpanded}
-                  onClear={handleClearCompleted}
-                  onOpenSubagent={onOpenSubagent}
-                  onArchiveSubagent={onArchiveSubagent}
-                  onStopSubagent={handleStopSubagent}
-                  onDetachSubagent={onDetachSubagent}
-                />
-              ) : null}
-            </ScrollView>
-          ) : null}
-        </View>
-      </ChatWidthBounds>
-    </View>
+              {expanded ? (
+                <ThemedChevronDown size={12} uniProps={foregroundMutedColorMapping} />
+              ) : (
+                <ThemedChevronRight size={12} uniProps={foregroundMutedColorMapping} />
+              )}
+              <Text style={styles.headerLabel} numberOfLines={1}>
+                {headerLabel}
+              </Text>
+            </Pressable>
+            {expanded ? (
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
+                {active.map((row) => (
+                  <SubagentsTrackRow
+                    key={row.id}
+                    row={row}
+                    onOpenSubagent={onOpenSubagent}
+                    onArchiveSubagent={onArchiveSubagent}
+                    onStopSubagent={handleStopSubagent}
+                    onDetachSubagent={onDetachSubagent}
+                  />
+                ))}
+                {completed.length > 0 ? (
+                  <CompletedSubagentsGroup
+                    rows={completed}
+                    flushTop={active.length === 0}
+                    expanded={completedExpanded}
+                    onToggle={toggleCompletedExpanded}
+                    onClear={handleClearCompleted}
+                    onOpenSubagent={onOpenSubagent}
+                    onArchiveSubagent={onArchiveSubagent}
+                    onStopSubagent={handleStopSubagent}
+                    onDetachSubagent={onDetachSubagent}
+                  />
+                ) : null}
+              </ScrollView>
+            ) : null}
+          </View>
+        </ChatWidthBounds>
+      </View>
+    </ComposerTrackTransition>
   );
 }
 

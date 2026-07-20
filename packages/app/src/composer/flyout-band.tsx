@@ -2,6 +2,7 @@ import { useMemo, type ComponentType, type ReactElement } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackTransition } from "@/composer/track-transition";
 import { X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -54,38 +55,61 @@ export function FlyoutBand({
   const surfaceStyle = useMemo(() => [styles.surface, toneStyles[toneSurface(tone)]], [tone]);
   const messageStyle = useMemo(() => [styles.message, toneStyles[toneText(tone)]], [tone]);
   return (
-    <View style={styles.outer} testID={testID}>
-      <ChatWidthBounds style={styles.track}>
-        <View style={surfaceStyle}>
-          <View style={styles.icon}>
-            <ThemedIcon Icon={icon} size={14} uniProps={iconColor} />
+    <ComposerTrackTransition>
+      <View style={styles.outer} testID={testID}>
+        <ChatWidthBounds style={styles.track}>
+          <View style={surfaceStyle}>
+            <View style={styles.icon}>
+              <ThemedIcon Icon={icon} size={14} uniProps={iconColor} />
+            </View>
+            <Text style={messageStyle} testID={messageTestID}>
+              {message}
+            </Text>
+            {onDismiss ? (
+              <BandDismissButton
+                iconColor={iconColor}
+                label={dismissLabel}
+                onDismiss={onDismiss}
+                testID={dismissTestID}
+              />
+            ) : null}
           </View>
-          <Text style={messageStyle} testID={messageTestID}>
-            {message}
-          </Text>
-          {onDismiss ? (
-            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-              <TooltipTrigger asChild>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={dismissLabel}
-                  testID={dismissTestID}
-                  onPress={onDismiss}
-                  style={styles.dismissButton}
-                  hitSlop={8}
-                >
-                  {/* X matches the message color, same tone. */}
-                  <ThemedIcon Icon={X} size={14} uniProps={iconColor} />
-                </Pressable>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="center" offset={8}>
-                <Text style={styles.tooltipText}>{dismissLabel}</Text>
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-        </View>
-      </ChatWidthBounds>
-    </View>
+        </ChatWidthBounds>
+      </View>
+    </ComposerTrackTransition>
+  );
+}
+
+function BandDismissButton({
+  iconColor,
+  label,
+  onDismiss,
+  testID,
+}: {
+  iconColor: ReturnType<typeof toneIconColor>;
+  label: string | undefined;
+  onDismiss: () => void;
+  testID: string | undefined;
+}): ReactElement {
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          testID={testID}
+          onPress={onDismiss}
+          style={styles.dismissButton}
+          hitSlop={8}
+        >
+          {/* X matches the message color, same tone. */}
+          <ThemedIcon Icon={X} size={14} uniProps={iconColor} />
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

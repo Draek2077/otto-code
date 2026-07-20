@@ -37,6 +37,22 @@ export function resolveAutoSubmitConfig(
 }
 
 /**
+ * The personality id to send to createAgent. Prefers `spawnPersonalityId`,
+ * because `selectedPersonalityId` is the synthetic "Team's <Role>" sentinel
+ * whenever that slot is picked — an id no roster entry matches, which made the
+ * daemon skip the personality entirely and spawn a bare agent on whatever model
+ * the device last remembered.
+ */
+export function resolveSpawnPersonalityId(
+  personality?: {
+    selectedPersonalityId?: string | null;
+    spawnPersonalityId?: string | null;
+  } | null,
+): string | null {
+  return personality?.spawnPersonalityId ?? personality?.selectedPersonalityId ?? null;
+}
+
+/**
  * Personality identity carried through the draft send. An auto-submit (e.g. a
  * brand-new workspace's first message, handed off from the new-workspace
  * composer) carries its personality id on the pending submission itself,
@@ -51,13 +67,14 @@ export function resolveDraftPersonality(input: {
   agentControls: {
     personality?: {
       selectedPersonalityId?: string | null;
+      spawnPersonalityId?: string | null;
       personalities?: SelectorPersonality[];
     } | null;
   };
 }): { id: string; spinner: { glowA: string; glowB: string } | null } | null {
   const id = input.autoSubmitConfig
     ? input.autoSubmitConfig.personality
-    : input.agentControls.personality?.selectedPersonalityId;
+    : resolveSpawnPersonalityId(input.agentControls.personality);
   if (!id) {
     return null;
   }

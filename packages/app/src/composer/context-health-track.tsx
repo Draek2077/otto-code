@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackTransition } from "@/composer/track-transition";
 import { TriangleAlert, X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -101,43 +102,63 @@ export function ContextHealthTrack({
   const manageLabel = t("composer.contextHealth.manage");
 
   return (
-    <View style={styles.outer} testID="composer-context-health-track">
-      <ChatWidthBounds style={styles.track}>
-        <View style={surfaceStyle}>
-          <ThemedTriangleAlert size={14} style={critical ? styles.iconCritical : styles.icon} />
-          <Text style={textStyle} numberOfLines={2} testID="composer-context-health-warning">
-            {message}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={manageLabel}
-            testID="composer-context-health-manage"
-            onPress={handleManage}
-            style={critical ? styles.manageButtonCritical : styles.manageButton}
-            hitSlop={6}
-          >
-            <Text style={textStyle}>{manageLabel}</Text>
-          </Pressable>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={dismissLabel}
-                testID="composer-context-health-dismiss"
-                onPress={handleDismiss}
-                style={styles.dismissButton}
-                hitSlop={8}
-              >
-                <ThemedX size={14} style={critical ? styles.iconCritical : styles.icon} />
-              </Pressable>
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{dismissLabel}</Text>
-            </TooltipContent>
-          </Tooltip>
-        </View>
-      </ChatWidthBounds>
-    </View>
+    <ComposerTrackTransition>
+      <View style={styles.outer} testID="composer-context-health-track">
+        <ChatWidthBounds style={styles.track}>
+          <View style={surfaceStyle}>
+            <ThemedTriangleAlert size={14} style={critical ? styles.iconCritical : styles.icon} />
+            <Text style={textStyle} numberOfLines={2} testID="composer-context-health-warning">
+              {message}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={manageLabel}
+              testID="composer-context-health-manage"
+              onPress={handleManage}
+              style={critical ? styles.manageButtonCritical : styles.manageButton}
+              hitSlop={6}
+            >
+              <Text style={textStyle}>{manageLabel}</Text>
+            </Pressable>
+            <ContextHealthDismissButton
+              critical={critical}
+              label={dismissLabel}
+              onDismiss={handleDismiss}
+            />
+          </View>
+        </ChatWidthBounds>
+      </View>
+    </ComposerTrackTransition>
+  );
+}
+
+function ContextHealthDismissButton({
+  critical,
+  label,
+  onDismiss,
+}: {
+  critical: boolean;
+  label: string;
+  onDismiss: () => void;
+}): ReactElement {
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          testID="composer-context-health-dismiss"
+          onPress={onDismiss}
+          style={styles.dismissButton}
+          hitSlop={8}
+        >
+          <ThemedX size={14} style={critical ? styles.iconCritical : styles.icon} />
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

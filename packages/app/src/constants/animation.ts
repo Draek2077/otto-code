@@ -29,3 +29,11 @@ export const PAGE_TRANSITION_MAX_HOLD_MS = 1500;
 // sidebars. Mobile sidebars already slide via the gesture-driven panel model
 // (mobile-panels/presentation.tsx) and do not use this.
 export const SIDEBAR_SLIDE_DURATION_MS = 180;
+
+// The composer's detail cards (subagents, background tasks, rate-limit and
+// context-health warnings) rise out from behind the message box and sink back
+// down behind it — see composer/track-transition.tsx. Dismiss is a hair quicker
+// than appear: a card arriving wants to be noticed, a dismissed one just needs
+// to get out of the way.
+export const COMPOSER_TRACK_FLY_IN_DURATION_MS = 220;
+export const COMPOSER_TRACK_FLY_OUT_DURATION_MS = 170;

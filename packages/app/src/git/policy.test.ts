@@ -50,6 +50,7 @@ function createInput(overrides: Partial<BuildGitActionsInput> = {}): BuildGitAct
     aheadOfOrigin: 0,
     behindOfOrigin: 0,
     shouldPromoteArchive: false,
+    hideMergeIntoBaseAction: false,
     shipDefault: "pr",
     runtime: {
       commit: {
@@ -650,6 +651,34 @@ describe("git-actions-policy", () => {
     const action = actions.secondary.find((entry) => entry.id === "merge-branch");
 
     expect(action).toMatchObject({ label: "Merge into main" });
+  });
+
+  it("drops merge-branch from the menu when the user hides it", () => {
+    const actions = buildGitActions(
+      createInput({
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        hideMergeIntoBaseAction: true,
+      }),
+    );
+
+    expect(actions.secondary.find((entry) => entry.id === "merge-branch")).toBeUndefined();
+    // merge-from-base pulls the base branch in and is a different action; it stays.
+    expect(actions.secondary.find((entry) => entry.id === "merge-from-base")).toBeDefined();
+  });
+
+  it("does not promote merge-branch to the primary CTA when the user hides it", () => {
+    const actions = buildGitActions(
+      createInput({
+        isOnBaseBranch: false,
+        aheadCount: 2,
+        behindBaseCount: 3,
+        shipDefault: "merge",
+        hideMergeIntoBaseAction: true,
+      }),
+    );
+
+    expect(actions.primary?.id).not.toBe("merge-branch");
   });
 
   it("uses the active language for policy-owned action labels and unavailable messages", async () => {

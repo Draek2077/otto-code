@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUE_MOMENTS, type CueMoment } from "@otto-code/protocol/messages";
+import { CUE_MOMENTS, PERSONALITY_ROLES, type CueMoment } from "@otto-code/protocol/messages";
 import type { StructuredTextGeneration } from "../session/checkout/git-metadata-generator.js";
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
@@ -65,43 +65,50 @@ interface MomentSpec {
   // What is TRUE at this exact instant — the discriminator that keeps the three
   // groups from blurring into each other.
   meaning: string;
-  // Distinct example lines that could ONLY belong to this moment.
-  examples: string[];
+  // The stock lines everyone reaches for at this moment. Fed to the model as a
+  // BAN list, not as examples: when these were shown as "good examples (don't
+  // copy)" the model returned them or trivial rewordings almost every time, so
+  // every personality ended up with the same cue pool.
+  overused: string[];
 }
 
-// Each moment is defined by what is true at that instant, plus examples that are
-// unmistakably of that moment. The examples deliberately share no phrasing
-// across moments so the model doesn't collapse them together (the old prompt's
-// "All set" example read as done but works equally as start/ack — exactly the
-// ambiguity we're avoiding here).
+// Each moment is defined by what is true at that instant, plus the stock lines
+// to ban. The banned sets deliberately share no phrasing across moments so the
+// model doesn't collapse them together (the old prompt's "All set" read as done
+// but works equally as start/ack — exactly the ambiguity we're avoiding here).
 const MOMENT_SPECS: Record<CueMoment, MomentSpec> = {
   join: {
     label: "STARTING",
     meaning:
       "the agent has just picked up the task and is about to begin — nothing is done yet, and it hasn't started reasoning. Every line must sound like the very start of the work.",
-    examples: ["On it", "Starting now", "Here we go", "Let's begin", "Picking this up"],
+    overused: ["On it", "Starting now", "Here we go", "Let's begin", "Picking this up"],
   },
   thinking: {
     label: "THINKING",
     meaning:
       "the agent is in the middle of the work, actively reasoning or figuring something out — it has already started but is NOT finished. Every line must sound like effort in progress.",
-    examples: ["Let me think", "Digging in", "Working through this", "Hmm, one sec", "Still going"],
+    overused: ["Let me think", "Digging in", "Working through this", "Hmm, one sec", "Still going"],
   },
   done: {
     label: "COMPLETED",
     meaning:
       "the agent has FINISHED the task and is handing back the result — the work is over. Every line must carry finality; a listener must be able to tell the work is complete, not starting or ongoing.",
-    examples: ["Done", "Finished", "Wrapped up", "That's shipped", "All yours"],
+    overused: ["Done", "Finished", "Wrapped up", "That's shipped", "All yours"],
   },
 };
 
 function personaBlock(name: string, prompt?: string, roles?: string[]): string[] {
   const persona = prompt?.trim();
   const cleanRoles = (roles ?? []).map((role) => role.trim()).filter((role) => role.length > 0);
+  // A personality holding every role carries no information about what it does
+  // — and the editor hands new personalities the full set by default — so
+  // feeding that back as flavor is pure noise that dilutes the name/persona.
+  const rolesAreDistinguishing =
+    cleanRoles.length > 0 && cleanRoles.length < PERSONALITY_ROLES.length;
   return [
     `Name: ${name.trim() || "the agent"}`,
     persona ? `Persona: ${persona}` : `Persona: (no description — infer a tone from the name)`,
-    ...(cleanRoles.length > 0
+    ...(rolesAreDistinguishing
       ? [`Roles: ${cleanRoles.join(", ")} (let what the agent does color its word choice)`]
       : []),
   ];
@@ -112,10 +119,16 @@ function personaBlock(name: string, prompt?: string, roles?: string[]): string[]
 // "distinct per moment" rule that fixes the reported bug.
 const LINE_RULES = [
   `Rules for every line:`,
-  `- VERY short: 1–4 words, the kind of thing you'd blurt out loud.`,
+  `- VERY short: 1–5 words, the kind of thing you'd blurt out loud.`,
   `- Casual and natural spoken English — no robotic phrasing, no emoji, no quotes, minimal punctuation.`,
-  `- Match the persona's tone (a playful persona is playful; a terse one is clipped).`,
   `- Each line must clearly belong to ITS moment and would sound wrong at the other two. Do not reuse a generic line (like "All set", "Okay", "Ready") that could fit more than one moment.`,
+  // The four rules below are the anti-sameness ones. Without them the model
+  // returns the same neutral agent-speak for every personality, which is the
+  // whole complaint: cues that don't sound like the character they belong to.
+  `- This is THIS character talking, not a generic assistant. A stranger who knows the persona should be able to guess whose lines these are. If a line would fit any other agent unchanged, it is wrong — rewrite it.`,
+  `- Lean hard into the persona's specific voice: its vocabulary, its attitude, its verbal habits, whatever it would actually care about. A blunt persona is blunt; a theatrical one is theatrical; a nervous one hedges.`,
+  `- Vary the shape across the set — not four rewordings of one idea. Mix lengths, and mix forms (a fragment, an aside, a reaction, a muttered thought).`,
+  `- Avoid stock agent phrasing. If the line sounds like default chatbot filler, it is too safe.`,
 ];
 
 function buildMomentPrompt(
@@ -130,13 +143,13 @@ function buildMomentPrompt(
     "",
     ...personaBlock(name, prompt, roles),
     "",
-    `Write lines the agent says OUT LOUD at exactly ONE moment: ${spec.label}.`,
+    `Write lines ${name.trim() || "the agent"} says OUT LOUD at exactly ONE moment: ${spec.label}.`,
     `At this moment, ${spec.meaning}`,
-    `Good examples of ${spec.label} lines (write new ones in the persona's voice, don't copy these): ${spec.examples.join(", ")}.`,
+    `BANNED — these are the stock lines every agent uses. Do not output them, or near-variants of them: ${spec.overused.join(", ")}.`,
     "",
     ...LINE_RULES,
     "",
-    `Give 4 distinct ${spec.label} variations.`,
+    `Give 4 distinct ${spec.label} variations, in ${name.trim() || "the agent"}'s voice.`,
     `Return JSON only: { "lines": [...] }.`,
   ].join("\n");
 }
@@ -144,21 +157,21 @@ function buildMomentPrompt(
 function buildCombinedPrompt(name: string, prompt?: string, roles?: string[]): string {
   const moment = (m: CueMoment): string => {
     const spec = MOMENT_SPECS[m];
-    return `- "${m}" (${spec.label}): ${spec.meaning} Examples: ${spec.examples.join(", ")}.`;
+    return `- "${m}" (${spec.label}): ${spec.meaning} BANNED (stock lines, do not output these or near-variants): ${spec.overused.join(", ")}.`;
   };
   return [
     `You are writing short spoken interjections for an AI coding agent's on-screen voice.`,
     "",
     ...personaBlock(name, prompt, roles),
     "",
-    `Write lines the agent says OUT LOUD at three DISTINCT moments:`,
+    `Write lines ${name.trim() || "the agent"} says OUT LOUD at three DISTINCT moments:`,
     moment("join"),
     moment("thinking"),
     moment("done"),
     "",
     ...LINE_RULES,
     "",
-    `Give 4 distinct variations for each moment, matching the persona's tone.`,
+    `Give 4 distinct variations for each moment, in ${name.trim() || "the agent"}'s voice.`,
     `Return JSON only: { "join": [...], "thinking": [...], "done": [...] }.`,
   ].join("\n");
 }

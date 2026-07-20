@@ -256,7 +256,10 @@ export const ANIM = {
   dragLerp: 0.25,
   autoFitLerp: 0.06,
   dragThresholdPx: 5,
-  viewportPadding: 120,
+  // OTTO: 120 -> 56. This is added to BOTH sides of each axis, so 120 meant a
+  // fixed 240px of empty margin around the graph before fitting — on a small
+  // graph that was most of the frame, and the nodes came out tiny.
+  viewportPadding: 56,
   breathe: {
     thinkingSpeed: 2, thinkingAmp: 0.03,
     idleSpeed: 0.7, idleAmp: 0.015,

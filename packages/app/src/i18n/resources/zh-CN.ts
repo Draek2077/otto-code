@@ -2282,6 +2282,8 @@ export const zhCN: TranslationResources = {
             spectrum: "Spectrum",
             vivid: "Vivid",
             nightRider: "Night Rider",
+            wave: "Wave",
+            flames: "Flames",
           },
         },
       },
@@ -2310,6 +2312,11 @@ export const zhCN: TranslationResources = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
+        },
+        hideMergeIntoBaseAction: {
+          title: "Hide merge into base branch",
+          hint: "Remove the 'Merge into <base>' action from the source control menu, for a pull-request-only workflow",
+          accessibilityLabel: "Hide merge into base branch",
         },
       },
       visualizer: {

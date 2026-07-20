@@ -20,6 +20,7 @@ import type {
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openLink } from "@/utils/open-link";
 import { useToast } from "@/contexts/toast-context";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   useActiveWorkspaceSelection,
@@ -303,6 +304,7 @@ function useWorkspaceScreenArchiveController({
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
   const { t } = useTranslation();
   const toast = useToast();
+  const { settings } = useAppSettings();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
@@ -725,6 +727,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       aheadOfOrigin,
       behindOfOrigin,
       shouldPromoteArchive,
+      hideMergeIntoBaseAction: settings.hideMergeIntoBaseAction,
       shipDefault,
       runtime: {
         commit: {
@@ -842,6 +845,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       shipDefault,
       baseRefLabel,
       shouldPromoteArchive,
+      settings.hideMergeIntoBaseAction,
       actionsDisabled,
       commitStatus,
       pullStatus,

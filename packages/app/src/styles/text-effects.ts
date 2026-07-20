@@ -13,7 +13,14 @@
 // per-scheme variants, extend the spec with a light/dark stop pair; do not add
 // a useUnistyles() call (banned, docs/unistyles.md).
 
-export type TextEffectThemeId = "professional" | "active" | "spectrum" | "vivid" | "nightRider";
+export type TextEffectThemeId =
+  | "professional"
+  | "active"
+  | "spectrum"
+  | "vivid"
+  | "nightRider"
+  | "wave"
+  | "flames";
 
 export const TEXT_EFFECT_THEME_IDS: readonly TextEffectThemeId[] = [
   "professional",
@@ -21,6 +28,8 @@ export const TEXT_EFFECT_THEME_IDS: readonly TextEffectThemeId[] = [
   "spectrum",
   "vivid",
   "nightRider",
+  "wave",
+  "flames",
 ];
 
 export const DEFAULT_TEXT_EFFECT_THEME: TextEffectThemeId = "professional";
@@ -233,7 +242,65 @@ const NIGHT_RIDER: TextEffectSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Registry — adding a 6th theme is: add the id above, add an entry here, and
+// Wave — a blue swell that alternates light/dark/light/dark as it travels, so
+// the peak reads as a repeating wave rather than a single sliding highlight.
+// Widened so several crests sit on the label at once.
+// ---------------------------------------------------------------------------
+
+const WAVE_LIGHT = "#7fd4ff";
+const WAVE_DARK = "#1f5fa8";
+
+const WAVE_STOPS: readonly TextEffectGradientStop[] = [
+  { offset: 0, color: WAVE_LIGHT, opacity: 0 },
+  { offset: 0.12, color: WAVE_LIGHT, opacity: 1 },
+  { offset: 0.28, color: WAVE_DARK, opacity: 1 },
+  { offset: 0.44, color: WAVE_LIGHT, opacity: 1 },
+  { offset: 0.6, color: WAVE_DARK, opacity: 1 },
+  { offset: 0.76, color: WAVE_LIGHT, opacity: 1 },
+  { offset: 0.88, color: WAVE_DARK, opacity: 1 },
+  { offset: 1, color: WAVE_DARK, opacity: 0 },
+];
+
+const WAVE: TextEffectSpec = {
+  webGradient: buildWebGradient(WAVE_STOPS),
+  nativeStops: WAVE_STOPS,
+  bounce: false,
+  easing: "linear",
+  durationScale: 1.2,
+  peakScale: 2,
+};
+
+// ---------------------------------------------------------------------------
+// Flames — a fire front sweeping across the label. The gradient is
+// deliberately asymmetric: a white-hot/yellow leading edge falls off through
+// orange and red into a dim charred ember that fades out, so glyphs read as
+// "burned" for a moment behind the front and then recover as it passes.
+// ---------------------------------------------------------------------------
+
+const FLAMES_STOPS: readonly TextEffectGradientStop[] = [
+  // Trailing side: the char left behind, recovering back to nothing.
+  { offset: 0, color: "#5c2708", opacity: 0 },
+  { offset: 0.16, color: "#5c2708", opacity: 0.55 },
+  { offset: 0.34, color: "#a3341a", opacity: 0.85 },
+  // The front itself.
+  { offset: 0.52, color: "#ef4a1c", opacity: 1 },
+  { offset: 0.68, color: "#f9a53c", opacity: 1 },
+  { offset: 0.82, color: "#ffe08a", opacity: 1 },
+  // Leading edge: the flame tip, sharper than the trail.
+  { offset: 1, color: "#fff6d8", opacity: 0 },
+];
+
+const FLAMES: TextEffectSpec = {
+  webGradient: buildWebGradient(FLAMES_STOPS),
+  nativeStops: FLAMES_STOPS,
+  bounce: false,
+  easing: "linear",
+  durationScale: 0.75,
+  peakScale: 1.6,
+};
+
+// ---------------------------------------------------------------------------
+// Registry — adding a theme is: add the id above, add an entry here, and
 // add a settings label (appearance-section.tsx + i18n).
 // ---------------------------------------------------------------------------
 
@@ -246,6 +313,8 @@ const TEXT_EFFECT_THEMES: Record<TextEffectThemeId, TextEffectThemeDefinition> =
     byActivity: buildVividByActivity(),
   },
   nightRider: { default: NIGHT_RIDER },
+  wave: { default: WAVE },
+  flames: { default: FLAMES },
 };
 
 export function getTextEffectSpec(
