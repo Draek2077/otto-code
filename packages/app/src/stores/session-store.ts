@@ -2,6 +2,7 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { FileEol } from "@otto-code/protocol/messages";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendOptimisticUserMessageToStream,
@@ -311,6 +312,8 @@ export interface ExplorerFile {
   mimeType?: string;
   size: number;
   modifiedAt: string;
+  /** Null when the read path didn't report line endings (binary transfer). */
+  eol: FileEol | null;
 }
 
 interface ExplorerDirectory {
