@@ -308,10 +308,10 @@ const CATALOG_DATA = [
     id: "nova",
     title: "Nova",
     description: "Nova by Compass AI - a fully-fledged software engineer at your command",
-    version: "1.1.27",
+    version: "1.1.28",
     iconId: "nova",
     installLink: "https://www.compassap.ai/portfolio/nova.html",
-    command: ["npx", "-y", "@compass-ai/nova@1.1.27", "acp"],
+    command: ["npx", "-y", "@compass-ai/nova@1.1.28", "acp"],
   },
   {
     id: "openai-compatible",
