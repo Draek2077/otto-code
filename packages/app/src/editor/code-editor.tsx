@@ -95,6 +95,7 @@ export function CodeEditor(props: CodeEditorProps) {
       replaceAll: () => core.replaceAll(),
       focus: () => core.focus(),
       goToLine: (line) => core.goToLine(line),
+      selectLines: (startLine, endLine) => core.selectLines(startLine, endLine),
       getScrollMetrics: () => core.getScrollMetrics(),
       scrollToFraction: (fraction) => core.scrollToFraction(fraction),
       scrollToLineAtOffset: (line, offset) => core.scrollToLineAtOffset(line, offset),

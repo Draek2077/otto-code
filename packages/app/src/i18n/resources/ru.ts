@@ -183,6 +183,8 @@ export const ru: TranslationResources = {
     },
     findings: {
       empty: "Сейчас исправлять нечего.",
+      reveal: "Открыть {{location}}",
+      dismiss: "Скрыть",
     },
     summary: {
       title: "Контекст, отправляемый за ход:",
@@ -214,6 +216,7 @@ export const ru: TranslationResources = {
     scope: {
       global: "Все проекты",
       local: "Локально",
+      project: "Этот проект",
       enterprise: "Управляемое",
       subdirectory: "Подпапка",
     },

@@ -48,6 +48,11 @@
 > - **MCP tool weight is openai-compat only.** Claude/Codex/OpenCode hand `mcpServers` to a subprocess
 >   and never expose tool schemas in-process, so that row is exact where Otto owns the payload and
 >   absent elsewhere — honest rather than guessed.
+> - **The provider comes from the workspace's newest agent, loaded _or_ persisted.** `listAgents()`
+>   only sees agents in memory, so a freshly restarted daemon resolved no provider, returned a `null`
+>   report, and the whole tab read as broken until someone opened a chat. The disk fallback
+>   (`agentStorage.list()`, newest non-archived agent for the workspace) answers the same question
+>   without loading anything; only `systemPrompt` survives there, so the injected figure is a floor.
 > - **The window picker defaults to 200K**, not the active model's real window: no provider-neutral
 >   model-window lookup exists yet. The daemon accepts one (`WorkspaceContextRuntime.windowTokens`);
 >   nothing populates it.
@@ -349,6 +354,38 @@ Free, high-confidence, and far more reassuring than an LLM rewrite:
 - `MEMORY.md` index lines that have grown past the one-line convention
 
 **Lead with these.** They answer "what exactly do I delete" without asking anyone to trust a model.
+
+**Every finding says where it is.** A finding is stamped with its owning `nodeId` and 1-based `line`/`lineEnd`
+as it is created (`finding-location.ts`) — the flat report list has no other way to know, and a row that
+cannot name its file is a complaint rather than a task. The "Worth fixing" row is therefore a jump: a
+right arrow — revealed on hover on web, permanent on touch and compact — leaves you ready to fix the
+thing: it forces the file out of rendered-markdown preview into the editor (a finding is a request to
+edit, so it overrides the per-file mode memory exactly as the explorer's "Edit" does), **selects** the
+offending span via the new `EditorController.selectLines`, scrolls it to centre and focuses — one
+keystroke replaces it — reveals and selects the file's row in the Context tree, switches back to the
+Context tab, and repeats the finding in a banner over the editor so it stays readable while being
+fixed. Note the file comes from `nodeId`, never `relatedNodeIds` — the latter is the _other_ half of a
+cross-scope duplicate, which is exactly the confusion the arrow exists to end.
+
+The row's leading mark is **scope, not severity** — everything in this list is already worth fixing, so
+the open question is how far the fix reaches: a global file is every project on the machine, a project
+file is only this one. It uses the tree's own icon vocabulary (`scope-icon.tsx`, shared by both, so a
+file and a finding about that file are never labelled differently) with one difference: the tree
+suppresses `project` as its default-and-therefore-noise case, the fix list always states it.
+
+**Taking focus needs persistence, not one call.** `view.focus()` lands when the editor is already on
+screen and loses when it has only just mounted — the click's original target is still being torn down,
+and the browser hands focus back to `document.body` _after_ we asked. `editor-core.ts` therefore
+re-asserts focus for ~4 frames, stopping the moment `view.hasFocus` is true, so it can never fight a
+user who clicks elsewhere. Related: `handleReady` reveals on _every_ editor mount, not just the first —
+the editor remounts whenever the file changes, so a once-only guard opened the second file you jumped
+to at line 1 with nothing selected.
+
+Two traps, both paid for once: the tree's `scrollToIndex` fires while the FlatList is still mounting
+(the reveal is what swaps the fix list out for the tree), so it must retry through
+`onScrollToIndexFailed` or it silently never scrolls; and finding ranges are **UTF-16 string indices**,
+not byte offsets, despite the field's name — which is why the client is handed line numbers rather than
+raw offsets to map itself.
 
 ---
 

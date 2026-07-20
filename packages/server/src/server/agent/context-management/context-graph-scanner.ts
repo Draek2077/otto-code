@@ -17,6 +17,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { estimateTokens } from "../context-composition.js";
 import { collectContentFindings, type ContextFileContent } from "./content-findings.js";
+import { locateFinding } from "./finding-location.js";
 import {
   extractMarkdownRefs,
   hasFileExtension,
@@ -461,7 +462,11 @@ class GraphBuilder {
   }
 
   addFinding(nodeId: string, finding: ContextFinding): void {
-    this.nodesByKey.get(nodeId)?.findings.push(finding);
+    const node = this.nodesByKey.get(nodeId);
+    if (!node) return;
+    // Every scanner finding indexes the *parent's* bytes — the file that wrote
+    // the reference — which is exactly the node it is being attached to.
+    node.findings.push(locateFinding({ finding, nodeId, text: this.textByNodeId.get(nodeId) }));
   }
 
   nodes(): ContextNode[] {

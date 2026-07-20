@@ -1,51 +1,39 @@
-import { useCallback, useMemo, useRef, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { ContextNode, ContextReport, ContextScope } from "@otto-code/protocol/messages";
-import { FolderTree, Globe, Home, Link, Shield, Zap } from "@/components/icons/material-icons";
+import type { ContextNode, ContextReport } from "@otto-code/protocol/messages";
+import { Link, Zap } from "@/components/icons/material-icons";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { CATEGORY_LABEL_KEYS, formatTokens } from "./format";
 import { buildContextTree, type ContextTreeRow } from "./graph-model";
-
-const BADGE_ICON_SIZE = 13;
+import { ScopeBadge, ScopeIcon, SCOPE_ICON_SIZE } from "./scope-icon";
 
 // Themed icons: `color` is required on every icon and `useUnistyles()` is banned
 // (docs/unistyles.md), so each tint is a uniProps mapping.
-const ThemedGlobe = withUnistyles(Globe);
-const ThemedHome = withUnistyles(Home);
-const ThemedShield = withUnistyles(Shield);
-const ThemedFolderTree = withUnistyles(FolderTree);
 const ThemedLink = withUnistyles(Link);
 const ThemedZap = withUnistyles(Zap);
 
-const warningIconColor = (theme: Theme) => ({ color: theme.colors.statusWarning });
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.mutedForeground });
 const infoIconColor = (theme: Theme) => ({ color: theme.colors.statusInfo });
-
-const SCOPE_LABEL_KEYS: Record<ContextScope, string | null> = {
-  enterprise: "contextManagement.scope.enterprise",
-  global: "contextManagement.scope.global",
-  local: "contextManagement.scope.local",
-  subdirectory: "contextManagement.scope.subdirectory",
-  // Project scope is the default and runtime rows are not files — neither
-  // earns a badge.
-  project: null,
-  runtime: null,
-};
 
 function keyForRow(row: ContextTreeRow): string {
   return row.key;
 }
 
+/** Enough to outlast mount + expand relayout; short enough to never spin. */
+const SCROLL_RETRY_LIMIT = 5;
+
 interface ContextGraphTreeProps {
   report: ContextReport | null;
   expandedKeys: ReadonlySet<string>;
   selectedNodeId: string | null;
+  /** Bumped by the fix list to scroll that file's row into view. */
+  revealNodeId?: string | null;
+  revealNonce?: number;
   onToggle: (key: string) => void;
   onSelectNode: (node: ContextNode) => void;
 }
@@ -63,6 +51,8 @@ export function ContextGraphTree({
   report,
   expandedKeys,
   selectedNodeId,
+  revealNodeId,
+  revealNonce,
   onToggle,
   onSelectNode,
 }: ContextGraphTreeProps): ReactElement {
@@ -77,6 +67,42 @@ export function ContextGraphTree({
   // native the hook no-ops and the platform's own indicator already auto-hides.
   const listRef = useRef<FlatList<ContextTreeRow>>(null);
   const scrollbar = useWebScrollViewScrollbar(listRef, { enabled: isWeb });
+
+  // A reveal from the fix list has already expanded the chain, so by the time
+  // this runs the row exists; the nonce is what makes revealing the same file
+  // twice scroll twice.
+  //
+  // Revealing switches the sidebar from the fix list to this tree, so the very
+  // first attempt runs against a FlatList that has just mounted and laid out
+  // nothing. `scrollToIndex` cannot resolve an offset for a row that has never
+  // been measured — it fails silently through `onScrollToIndexFailed`, which is
+  // exactly what "the tree never scrolled" looked like. Hence: retry after
+  // layout, a bounded number of times.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const retriesRef = useRef(0);
+
+  const scrollToReveal = useCallback((nodeId: string) => {
+    const index = rowsRef.current.findIndex(
+      (row) => row.kind === "node" && row.node?.id === nodeId,
+    );
+    if (index < 0) return;
+    listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+  }, []);
+
+  useEffect(() => {
+    if (!revealNodeId) return;
+    retriesRef.current = 0;
+    scrollToReveal(revealNodeId);
+  }, [revealNodeId, revealNonce, rows, scrollToReveal]);
+
+  const handleScrollToIndexFailed = useCallback(() => {
+    if (!revealNodeId || retriesRef.current >= SCROLL_RETRY_LIMIT) return;
+    retriesRef.current += 1;
+    // One frame is usually enough — the failure means layout was mid-flight,
+    // not that the row is missing.
+    requestAnimationFrame(() => scrollToReveal(revealNodeId));
+  }, [revealNodeId, scrollToReveal]);
 
   const renderItem = useCallback(
     ({ item }: { item: ContextTreeRow }) => (
@@ -108,6 +134,7 @@ export function ContextGraphTree({
         keyExtractor={keyForRow}
         renderItem={renderItem}
         testID="context-graph-tree"
+        onScrollToIndexFailed={handleScrollToIndexFailed}
         onLayout={scrollbar.onLayout}
         onScroll={scrollbar.onScroll}
         onContentSizeChange={scrollbar.onContentSizeChange}
@@ -169,19 +196,21 @@ function ContextTreeRowView({
       <View style={styles.chevronSlot}>
         {row.expandable ? <TreeChevron expanded={expanded} /> : null}
       </View>
+      {/* Project scope stays unbadged here: it is the default, and a badge on
+          nearly every row is noise. The fix list shows it — see scope-icon.tsx. */}
       {row.node ? <ScopeIcon scope={row.node.scope} /> : null}
       {/* Link-only: costs nothing today. Conditional: costs only when the agent
           works in that area. Both are states of the row, so they sit with the
           scope icon ahead of the name rather than trailing it as prose. */}
       {row.edgeKind === "reference" ? (
-        <BadgeIcon label={t("contextManagement.tree.linkOnly")}>
-          <ThemedLink size={BADGE_ICON_SIZE} uniProps={mutedIconColor} />
-        </BadgeIcon>
+        <ScopeBadge label={t("contextManagement.tree.linkOnly")}>
+          <ThemedLink size={SCOPE_ICON_SIZE} uniProps={mutedIconColor} />
+        </ScopeBadge>
       ) : null}
       {row.node?.costClass === "conditional" ? (
-        <BadgeIcon label={t("contextManagement.tree.conditional")}>
-          <ThemedZap size={BADGE_ICON_SIZE} uniProps={infoIconColor} />
-        </BadgeIcon>
+        <ScopeBadge label={t("contextManagement.tree.conditional")}>
+          <ThemedZap size={SCOPE_ICON_SIZE} uniProps={infoIconColor} />
+        </ScopeBadge>
       ) : null}
       <Text
         style={row.edgeKind === "reference" ? styles.labelReferenced : styles.label}
@@ -191,73 +220,6 @@ function ContextTreeRowView({
       </Text>
       <Text style={styles.tokens}>{formatTokens(row.estTokens)}</Text>
     </Pressable>
-  );
-}
-
-/**
- * Icons carry no text, so the meaning lives in the tooltip and the a11y label.
- *
- * `asChild` around a plain View is load-bearing: the trigger clones hover and
- * focus handlers onto the View instead of wrapping it in a Pressable, so a
- * click on the icon still reaches the row's own Pressable and selects the file.
- * A nested Pressable would swallow it. Same idiom as LockedAgentModeBadge.
- * Hover-only — on touch there is nothing to hover, and the label covers a11y.
- */
-function BadgeIcon({ label, children }: { label: string; children: ReactNode }): ReactElement {
-  return (
-    <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
-      <TooltipTrigger asChild triggerRefProp="ref">
-        <View
-          collapsable={false}
-          accessibilityRole="image"
-          accessibilityLabel={label}
-          style={styles.badgeIcon}
-        >
-          {children}
-        </View>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" offset={6}>
-        <Text style={styles.tooltipText}>{label}</Text>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Scope is not decoration. Editing a `global` file changes every project on the
- * machine, and a user who does not know that will be surprised later — which is
- * why it is the one scope that keeps the warning tint.
- */
-function ScopeIcon({ scope }: { scope: ContextScope }): ReactElement | null {
-  const { t } = useTranslation();
-  const key = SCOPE_LABEL_KEYS[scope];
-  if (!key) return null;
-  const label = t(key);
-  if (scope === "global") {
-    return (
-      <BadgeIcon label={label}>
-        <ThemedGlobe size={BADGE_ICON_SIZE} uniProps={warningIconColor} />
-      </BadgeIcon>
-    );
-  }
-  if (scope === "enterprise") {
-    return (
-      <BadgeIcon label={label}>
-        <ThemedShield size={BADGE_ICON_SIZE} uniProps={mutedIconColor} />
-      </BadgeIcon>
-    );
-  }
-  if (scope === "subdirectory") {
-    return (
-      <BadgeIcon label={label}>
-        <ThemedFolderTree size={BADGE_ICON_SIZE} uniProps={mutedIconColor} />
-      </BadgeIcon>
-    );
-  }
-  return (
-    <BadgeIcon label={label}>
-      <ThemedHome size={BADGE_ICON_SIZE} uniProps={mutedIconColor} />
-    </BadgeIcon>
   );
 }
 
@@ -294,11 +256,6 @@ const styles = StyleSheet.create((theme) => {
       alignItems: "center",
       flexShrink: 0,
     },
-    badgeIcon: {
-      flexShrink: 0,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     label: { ...labelBase, color: theme.colors.foreground },
     labelReferenced: { ...labelBase, color: theme.colors.mutedForeground },
     tokens: {
@@ -313,10 +270,6 @@ const styles = StyleSheet.create((theme) => {
     emptyText: {
       color: theme.colors.mutedForeground,
       fontSize: bump(theme.fontSize.sm),
-    },
-    tooltipText: {
-      color: theme.colors.foreground,
-      fontSize: bump(theme.fontSize.xs),
     },
   };
 });

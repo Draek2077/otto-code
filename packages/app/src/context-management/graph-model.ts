@@ -155,6 +155,38 @@ export function pickInitialNode(report: ContextReport | null): ContextNode | nul
 }
 
 /**
+ * Every key that has to be open for `nodeId` to be a visible row: each parent
+ * up the import chain, plus the category the chain roots in. Revealing a file
+ * from the fix list is pointless if the row it lands on is still collapsed.
+ */
+export function ancestorKeysForNode(report: ContextReport | null, nodeId: string): string[] {
+  if (!report) return [];
+  const nodesById = new Map(report.nodes.map((node) => [node.id, node]));
+  const parentByNodeId = new Map<string, string>();
+  for (const edge of report.edges) {
+    if (!edge.toNodeId || edge.toNodeId === edge.fromNodeId) continue;
+    if (!parentByNodeId.has(edge.toNodeId)) parentByNodeId.set(edge.toNodeId, edge.fromNodeId);
+  }
+
+  const keys: string[] = [];
+  const seen = new Set<string>([nodeId]);
+  let current = nodeId;
+  for (;;) {
+    const parent = parentByNodeId.get(current);
+    // The graph is a DAG in principle and a cycle in practice; `seen` is what
+    // keeps a self-importing pair from spinning here.
+    if (!parent || seen.has(parent)) break;
+    seen.add(parent);
+    keys.push(parent);
+    current = parent;
+  }
+
+  const category = nodesById.get(current)?.category;
+  if (category) keys.push(category);
+  return keys;
+}
+
+/**
  * The edge that put this node in the request, plus the parent file that owns
  * the reference text. Both are needed to rewrite it: the range indexes the
  * parent's bytes.

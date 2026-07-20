@@ -9,6 +9,7 @@
  * graph once every file has been read.
  */
 
+import { locateFinding } from "./finding-location.js";
 import type { ContextFinding, ContextNode } from "./types.js";
 
 /** Below this, a repeated block is boilerplate (headings, `---`, "## Rules"). */
@@ -23,6 +24,11 @@ const MAX_MEMORY_INDEX_LINE_CHARS = 200;
 export interface ContextFileContent {
   node: ContextNode;
   text: string;
+}
+
+/** Attaches a finding to the file it was found in, stamped with where it is. */
+function push(file: ContextFileContent, finding: ContextFinding): void {
+  file.node.findings.push(locateFinding({ finding, nodeId: file.node.id, text: file.text }));
 }
 
 /** Blank-line separated blocks, normalized for comparison but position-tracked. */
@@ -72,23 +78,25 @@ function firstLine(raw: string): string {
  * twice on every request, and users almost never know they are doing it.
  */
 function collectCrossScopeDuplicates(files: readonly ContextFileContent[]): void {
-  const blocksByNormalized = new Map<string, { node: ContextNode; block: Block }[]>();
+  const blocksByNormalized = new Map<string, { file: ContextFileContent; block: Block }[]>();
 
   for (const file of files) {
     if (file.node.costClass !== "fixed") continue;
     for (const block of splitBlocks(file.text)) {
       const existing = blocksByNormalized.get(block.normalized);
       if (existing) {
-        existing.push({ node: file.node, block });
+        existing.push({ file, block });
       } else {
-        blocksByNormalized.set(block.normalized, [{ node: file.node, block }]);
+        blocksByNormalized.set(block.normalized, [{ file, block }]);
       }
     }
   }
 
   for (const occurrences of blocksByNormalized.values()) {
     if (occurrences.length < 2) continue;
-    const distinctNodes = new Map(occurrences.map((entry) => [entry.node.id, entry.node]));
+    const distinctNodes = new Map(
+      occurrences.map((entry) => [entry.file.node.id, entry.file.node]),
+    );
     if (distinctNodes.size < 2) continue;
 
     const scopes = new Set([...distinctNodes.values()].map((node) => node.scope));
@@ -98,10 +106,10 @@ function collectCrossScopeDuplicates(files: readonly ContextFileContent[]): void
 
     const [first, ...rest] = occurrences;
     if (!first) continue;
-    const otherNode = rest.find((entry) => entry.node.id !== first.node.id)?.node;
+    const otherNode = rest.find((entry) => entry.file.node.id !== first.file.node.id)?.file.node;
     if (!otherNode) continue;
 
-    first.node.findings.push({
+    push(first.file, {
       kind: "duplicate_across_scope",
       message: `"${firstLine(first.block.raw)}" also appears in ${otherNode.relPath} — it is sent twice`,
       range: { start: first.block.start, end: first.block.end },
@@ -119,7 +127,7 @@ function collectWithinFileDuplicates(file: ContextFileContent): void {
       seen.set(block.normalized, block);
       continue;
     }
-    file.node.findings.push({
+    push(file, {
       kind: "duplicate_within_file",
       message: `"${firstLine(block.raw)}" is repeated in this file`,
       range: { start: block.start, end: block.end },
@@ -138,7 +146,7 @@ function collectOversizedMemoryLines(file: ContextFileContent): void {
   for (const line of file.text.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length > MAX_MEMORY_INDEX_LINE_CHARS) {
-      file.node.findings.push({
+      push(file, {
         kind: "oversized_memory_entry",
         message: `Index line is ${trimmed.length} characters — the convention is one line per entry, with detail in the entry file`,
         range: { start: offset, end: offset + line.length },

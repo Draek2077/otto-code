@@ -183,6 +183,8 @@ export const ar: TranslationResources = {
     },
     findings: {
       empty: "لا شيء يستحق الإصلاح الآن.",
+      reveal: "فتح {{location}}",
+      dismiss: "تجاهل",
     },
     summary: {
       title: "السياق المُرسَل في كل دور:",
@@ -213,6 +215,7 @@ export const ar: TranslationResources = {
     scope: {
       global: "كل المشاريع",
       local: "محلي",
+      project: "هذا المشروع",
       enterprise: "مُدار",
       subdirectory: "مجلد فرعي",
     },

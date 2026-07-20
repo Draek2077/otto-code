@@ -181,6 +181,8 @@ export const en = {
     },
     findings: {
       empty: "Nothing worth fixing right now.",
+      reveal: "Open {{location}}",
+      dismiss: "Dismiss",
     },
     summary: {
       title: "Context sent per turn:",
@@ -212,6 +214,7 @@ export const en = {
     scope: {
       global: "Every project",
       local: "Local",
+      project: "This project",
       enterprise: "Managed",
       subdirectory: "Subfolder",
     },

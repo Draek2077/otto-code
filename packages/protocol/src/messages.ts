@@ -2258,6 +2258,17 @@ export const ContextFindingSchema = z.object({
   message: z.string(),
   range: ContextRangeSchema.optional(),
   relatedNodeIds: z.array(z.string()).optional(),
+  // The node this finding is about. Redundant while the finding sits on its
+  // node, load-bearing once the report flattens them all into one list — that
+  // list is the "Worth fixing" tab, and without this a row cannot say where it
+  // came from or take you there.
+  nodeId: z.string().optional(),
+  // 1-based line of `range.start` in that node's file, so the fix list can jump
+  // the editor without the client re-reading bytes to count newlines.
+  line: z.number().optional(),
+  // Last line of the range, so the client can select the whole offending span
+  // rather than dropping a cursor at the top of it.
+  lineEnd: z.number().optional(),
 });
 
 export const ContextNodeSchema = z.object({

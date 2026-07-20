@@ -183,6 +183,8 @@ export const ptBR: TranslationResources = {
     },
     findings: {
       empty: "Nada para corrigir por enquanto.",
+      reveal: "Abrir {{location}}",
+      dismiss: "Dispensar",
     },
     summary: {
       title: "Contexto enviado por turno:",
@@ -214,6 +216,7 @@ export const ptBR: TranslationResources = {
     scope: {
       global: "Todos os projetos",
       local: "Local",
+      project: "Este projeto",
       enterprise: "Gerenciado",
       subdirectory: "Subpasta",
     },

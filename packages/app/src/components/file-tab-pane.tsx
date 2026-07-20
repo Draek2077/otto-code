@@ -592,29 +592,45 @@ function EditorModeView({
     [controllerRef],
   );
 
-  const initialLineHandledRef = useRef(false);
+  // Read through a ref so the reveal callback stays stable: it is invoked from
+  // `onReady`, which fires long after the props it needs were captured.
+  const locationRef = useRef(location);
+  locationRef.current = location;
+
+  // A caller that knows the extent of what it sent you to gets the span
+  // selected; one that only knows a line gets the cursor. Both focus.
+  const revealTarget = useCallback((controller: EditorController): void => {
+    const { lineStart, lineEnd } = locationRef.current;
+    if (!lineStart) return;
+    if (lineEnd && lineEnd >= lineStart) {
+      controller.selectLines(lineStart, lineEnd);
+      return;
+    }
+    controller.goToLine(lineStart);
+  }, []);
+
+  // Every time an editor becomes available, honour the location it was opened
+  // at — not just the first one. The editor remounts whenever the file changes
+  // (the buffer goes through a loading state), so a once-only guard here meant
+  // the *second* file you jumped to opened at line 1 with nothing focused.
   const handleReady = useCallback(
     (controller: EditorController) => {
       controllerRef.current = controller;
-      if (!initialLineHandledRef.current) {
-        initialLineHandledRef.current = true;
-        if (location.lineStart) {
-          controller.goToLine(location.lineStart);
-        }
-      }
+      revealTarget(controller);
     },
-    [controllerRef, location.lineStart],
+    [controllerRef, revealTarget],
   );
 
-  // Re-opening this file with a new target line (e.g. "Edit" on a diff line)
-  // updates the existing tab's location in place; jump the live editor there.
-  // Before the editor is ready, handleReady owns the first jump.
+  // Re-opening the *same* file at a new target (e.g. "Edit" on a diff line, or
+  // another finding in the file already on screen) updates the tab's location
+  // in place without remounting, so nothing above fires; jump the live editor.
   const locationLineStart = location.lineStart;
+  const locationLineEnd = location.lineEnd;
   useEffect(() => {
-    if (locationLineStart && initialLineHandledRef.current) {
-      controllerRef.current?.goToLine(locationLineStart);
-    }
-  }, [controllerRef, locationLineStart]);
+    if (!locationLineStart) return;
+    const controller = controllerRef.current;
+    if (controller) revealTarget(controller);
+  }, [controllerRef, locationLineStart, locationLineEnd, path, revealTarget]);
 
   const handleSavePress = useCallback(() => {
     void save();

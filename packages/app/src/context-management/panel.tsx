@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextNode } from "@otto-code/protocol/messages";
 import { FileTabPane } from "@/components/file-tab-pane";
-import { ChevronLeft } from "@/components/icons/material-icons";
+import { AlertTriangle, ChevronLeft, X } from "@/components/icons/material-icons";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
@@ -28,10 +28,13 @@ import {
   usePanelStore,
 } from "@/stores/panel-store";
 import { useToast } from "@/contexts/toast-context";
-import { ContextFindingsList } from "./findings-list";
+import { setFileViewModeFor } from "@/stores/file-view-store";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store/state";
+import { ContextFindingsList, type ContextFindingTarget } from "./findings-list";
 import { ContextGraphTree } from "./graph-tree";
 import { ContextSidebarTabs, type ContextSidebarTab } from "./sidebar-tabs";
 import {
+  ancestorKeysForNode,
   defaultExpandedKeys,
   findInboundEdge,
   pickInitialNode,
@@ -52,6 +55,8 @@ const SIDEBAR_SHELL_STYLE = { position: "relative" } as const;
 
 // Theme-reactive icon color without useUnistyles (docs/unistyles.md).
 const ThemedChevronLeft = withUnistyles(ChevronLeft);
+const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const ThemedX = withUnistyles(X);
 
 // The standing edit exemption for context files: being outside the workspace
 // root is the entire point of this feature, so the gated-multi-root warning
@@ -134,6 +139,51 @@ export function ContextManagementPanel(): ReactElement {
 
   const handleCompactBack = useCallback(() => setCompactShowsFile(false), []);
 
+  // What the fix list sent us to. One action does four things, because any
+  // fewer leaves the user hunting: open the file at the line, reveal and select
+  // its row in the tree, switch back to Context, and keep the finding on screen
+  // over the editor so what is wrong is still readable while fixing it.
+  const [revealed, setRevealed] = useState<RevealedFinding | null>(null);
+
+  const handleRevealFinding = useCallback(
+    ({ node, finding }: ContextFindingTarget) => {
+      // Context files are markdown, and markdown opens in rendered preview,
+      // where there is no line to land on. A finding is a request to edit, so
+      // it overrides the per-file mode memory the same way the explorer's
+      // "Edit" command does.
+      const persistenceKey = workspaceId
+        ? buildWorkspaceTabPersistenceKey({ serverId, workspaceId })
+        : null;
+      if (finding.line != null && persistenceKey) {
+        setFileViewModeFor({
+          persistenceKey,
+          path: splitAbsolutePath(node.path).base,
+          mode: "editor",
+        });
+      }
+      setSelectedNode(node);
+      setExpandedKeys((prev) => new Set([...prev, ...ancestorKeysForNode(report, node.id)]));
+      setSidebarTab("context");
+      setRevealed((prev) => ({
+        nodeId: node.id,
+        line: finding.line,
+        lineEnd: finding.lineEnd,
+        message: finding.message,
+        // Revealing the same finding twice must still scroll and re-jump, so
+        // the tree and the editor watch a counter rather than the identity.
+        nonce: (prev?.nonce ?? 0) + 1,
+      }));
+      if (isCompact) setCompactShowsFile(true);
+    },
+    [isCompact, report, serverId, workspaceId],
+  );
+
+  const handleDismissReveal = useCallback(() => setRevealed(null), []);
+
+  // Picking another file in the tree does not clear the reveal; it just stops
+  // applying, so coming back to the flagged file restores it.
+  const activeReveal = revealed && revealed.nodeId === selectedNode?.id ? revealed : null;
+
   // Desktop splitter for the left column. Compact never renders the two-column
   // row, but the hooks run unconditionally either way.
   const contextSidebarWidth = usePanelStore((state) => state.contextSidebarWidth);
@@ -191,12 +241,14 @@ export function ContextManagementPanel(): ReactElement {
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
   const sidebarBody =
     sidebarTab === "findings" ? (
-      <ContextFindingsList report={report} onSelectNode={handleSelectNode} />
+      <ContextFindingsList report={report} onReveal={handleRevealFinding} />
     ) : (
       <ContextGraphTree
         report={report}
         expandedKeys={expandedKeys}
         selectedNodeId={selectedNode?.id ?? null}
+        revealNodeId={activeReveal?.nodeId ?? null}
+        revealNonce={activeReveal?.nonce}
         onToggle={handleToggle}
         onSelectNode={handleSelectNode}
       />
@@ -278,15 +330,25 @@ export function ContextManagementPanel(): ReactElement {
     // Desktop: the load-mode switch rides in the file toolbar rather than above
     // it — a second full-width bar spent a whole row saying two words. A phone
     // toolbar has no width to lend, so there it goes back to its own strip.
+    const banner = activeReveal ? (
+      <FindingBanner
+        message={activeReveal.message}
+        iconSize={backIconSize.sm}
+        onDismiss={handleDismissReveal}
+      />
+    ) : null;
     if (isCompact) {
       return (
         <View style={styles.fill}>
+          {banner}
           {loadModeControl}
           <View style={styles.fill}>
             <ContextFilePane
               serverId={serverId}
               workspaceId={workspaceId}
               absolutePath={selectedNode.path}
+              lineStart={activeReveal?.line}
+              lineEnd={activeReveal?.lineEnd}
               toolbarLeadingSlot={null}
             />
           </View>
@@ -294,14 +356,32 @@ export function ContextManagementPanel(): ReactElement {
       );
     }
     return (
-      <ContextFilePane
-        serverId={serverId}
-        workspaceId={workspaceId}
-        absolutePath={selectedNode.path}
-        toolbarLeadingSlot={loadModeControl}
-      />
+      <View style={styles.fill}>
+        {banner}
+        <View style={styles.fill}>
+          <ContextFilePane
+            serverId={serverId}
+            workspaceId={workspaceId}
+            absolutePath={selectedNode.path}
+            lineStart={activeReveal?.line}
+            lineEnd={activeReveal?.lineEnd}
+            toolbarLeadingSlot={loadModeControl}
+          />
+        </View>
+      </View>
     );
-  }, [isCompact, loadModeControl, report, selectedNode, serverId, t, workspaceId]);
+  }, [
+    activeReveal,
+    backIconSize.sm,
+    handleDismissReveal,
+    isCompact,
+    loadModeControl,
+    report,
+    selectedNode,
+    serverId,
+    t,
+    workspaceId,
+  ]);
 
   if (isCompact) {
     if (compactShowsFile && selectedNode) {
@@ -382,10 +462,55 @@ export function ContextManagementPanel(): ReactElement {
   );
 }
 
+/** A finding the user chose to act on, pinned until dismissed. */
+interface RevealedFinding {
+  nodeId: string;
+  line?: number;
+  lineEnd?: number;
+  message: string;
+  nonce: number;
+}
+
+/**
+ * Restates the finding over the file it sent you to. Without it the jump lands
+ * on a line with no explanation — the fix list is one tab away, and the whole
+ * point of the arrow was not having to hold the sentence in your head.
+ */
+function FindingBanner({
+  message,
+  iconSize,
+  onDismiss,
+}: {
+  message: string;
+  iconSize: number;
+  onDismiss: () => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.banner} testID="context-finding-banner">
+      <ThemedAlertTriangle size={iconSize} style={styles.bannerIcon} />
+      <Text style={styles.bannerText}>{message}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("contextManagement.findings.dismiss")}
+        onPress={onDismiss}
+        hitSlop={8}
+        testID="context-finding-banner-dismiss"
+      >
+        <ThemedX size={iconSize} style={styles.bannerDismiss} />
+      </Pressable>
+    </View>
+  );
+}
+
 interface ContextFilePaneProps {
   serverId: string;
   workspaceId: string;
   absolutePath: string;
+  /** 1-based line the finding points at; the editor opens there. */
+  lineStart?: number;
+  /** Last line of the finding's span; the editor selects through it. */
+  lineEnd?: number;
   toolbarLeadingSlot: ReactNode;
 }
 
@@ -398,10 +523,12 @@ function ContextFilePane({
   serverId,
   workspaceId,
   absolutePath,
+  lineStart,
+  lineEnd,
   toolbarLeadingSlot,
 }: ContextFilePaneProps): ReactElement {
   const { dir, base } = useMemo(() => splitAbsolutePath(absolutePath), [absolutePath]);
-  const location = useMemo(() => ({ path: base }), [base]);
+  const location = useMemo(() => ({ path: base, lineStart, lineEnd }), [base, lineStart, lineEnd]);
   return (
     <FileTabPane
       serverId={serverId}
@@ -476,6 +603,30 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
     flex: 1,
     minWidth: 0,
+  },
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  bannerIcon: {
+    color: theme.colors.statusWarning,
+    flexShrink: 0,
+  },
+  bannerText: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: { xs: theme.fontSize.sm + 2, md: theme.fontSize.sm },
+  },
+  bannerDismiss: {
+    color: theme.colors.mutedForeground,
+    flexShrink: 0,
   },
   filePlaceholder: {
     flex: 1,

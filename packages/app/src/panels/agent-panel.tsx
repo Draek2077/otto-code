@@ -321,7 +321,9 @@ export function storeFetchedAgentDetail(input: {
 
 function buildAgentDescriptorState(agent: Agent | null) {
   return {
-    provider: agent?.provider ?? "codex",
+    // No fallback provider: an unhydrated agent must not borrow another
+    // provider's logo. Empty resolves to the neutral Bot icon instead.
+    provider: agent?.provider ?? "",
     title: agent?.title ?? null,
     status: agent?.status ?? null,
     pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
@@ -349,7 +351,7 @@ function useAgentPanelDescriptor(
 
   return {
     label: label ?? "",
-    subtitle: `${formatProviderLabel(provider)} agent`,
+    subtitle: provider ? `${formatProviderLabel(provider)} agent` : "Agent",
     titleState: label ? "ready" : "loading",
     icon,
     statusBucket: descriptorState.status
