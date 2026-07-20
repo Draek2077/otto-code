@@ -92,6 +92,7 @@ import {
 } from "@/background-tasks";
 import { BackgroundTasksTrack } from "@/background-tasks/track";
 import { RateLimitWarningTrack } from "@/composer/rate-limit-warning-track";
+import { ContextHealthTrack } from "@/composer/context-health-track";
 import {
   SuggestedTasksOverlay,
   useSuggestedTaskActions,
@@ -1644,6 +1645,10 @@ function ActiveAgentComposer({
     <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
       {/* Topmost card in the fanned stack (highest), yet painted first so it sits
           BEHIND every flyout below it and the composer — see RateLimitWarningTrack. */}
+      {/* Mounted above the usage warning: highest in the fan, painted furthest
+          back. Context health is important but never urgent, so it yields the
+          position nearest the composer to the rate-limit strip. */}
+      <ContextHealthTrack serverId={serverId} agentId={agentId} />
       <RateLimitWarningTrack serverId={serverId} agentId={agentId} />
       <SubagentsTrack
         rows={subagentRows}

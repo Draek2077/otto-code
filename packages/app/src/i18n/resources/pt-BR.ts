@@ -77,6 +77,12 @@ export const ptBR: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "O contexto do projeto ocupa {{tokens}} tokens — {{percent}} da janela deste modelo, em toda requisição. Restam {{room}} para trabalhar.",
+      manage: "Gerenciar",
+      dismiss: "Ocultar por enquanto",
+    },
     placeholders: {
       desktop: "Envie uma mensagem ao agente, marque @files ou use /commands e /skills",
       mobile: "Mensagem, @files, /commands",
@@ -166,6 +172,66 @@ export const ptBR: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "Voltar",
+    tabs: {
+      context: "Contexto",
+      findings: "Vale corrigir",
+      findingsCount: "Vale corrigir ({{count}})",
+    },
+    findings: {
+      empty: "Nada para corrigir por enquanto.",
+    },
+    summary: {
+      title: "Contexto enviado por turno:",
+      ofWindow: "{{percent}} da janela",
+      workingRoom: "Deixa cerca de {{room}} para trabalhar",
+      window: "Avaliar com",
+      breakdown: "Em toda requisição",
+      notCounted: "Não contabilizado",
+      conditional: "{{tokens}} só carregam quando o agente trabalha nessa área",
+      referenced: "{{tokens}} estão vinculados e só carregam se o agente os ler",
+      nothingFixed: "Nada é carregado em toda requisição.",
+      loading: "Analisando seu contexto…",
+      empty: "Ainda não há relatório de contexto para este espaço de trabalho.",
+    },
+    tree: {
+      empty: "Nada a mostrar ainda.",
+      linkOnly: "só link",
+      conditional: "quando precisar",
+    },
+    loadMode: {
+      label: "Carregamento",
+      always: "Sempre carregar",
+      linkOnly: "Só link",
+      saves: "Usar só link economizaria {{tokens}} por requisição",
+      adds: "Sempre carregar adicionaria {{tokens}} por requisição",
+      unsupported:
+        "Este agente não tem mecanismo de carregamento permanente: arquivos vinculados só são lidos quando necessário.",
+    },
+    scope: {
+      global: "Todos os projetos",
+      local: "Local",
+      enterprise: "Gerenciado",
+      subdirectory: "Subpasta",
+    },
+    category: {
+      contextFiles: "Arquivos de contexto",
+      memoryIndex: "Índice de memória",
+      skillsRoster: "Habilidades",
+      mcpTools: "Ferramentas MCP",
+      ottoInjected: "Prompt do Otto",
+      systemPrompt: "Prompt do sistema",
+    },
+    filePlaceholder: {
+      title: "Escolha um arquivo",
+      body: "Escolha qualquer item à esquerda para ler ou editar aqui.",
+    },
+    emptyState: {
+      title: "Ainda sem contexto de projeto",
+      body: "Nada está sendo carregado para este projeto. Isso é um começo limpo, não um problema — adicione um CLAUDE.md ou AGENTS.md na raiz do projeto quando quiser dar instruções permanentes aos seus agentes.",
     },
   },
   agentControls: {
@@ -540,6 +606,11 @@ export const ptBR: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "Contexto",
+      subtitle: "O que é enviado antes de você digitar",
+      openAction: "Gerenciar contexto",
     },
     tabs: {
       loading: "Carregando...",
@@ -1003,6 +1074,7 @@ export const ptBR: TranslationResources = {
         openSettings: "Abrir configurações do projeto",
         openNewWindow: "Abrir em nova janela",
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
+        contextManagement: "Gerenciar contexto",
         remove: "Remover projeto",
         removing: "Removendo...",
       },
@@ -2000,6 +2072,7 @@ export const ptBR: TranslationResources = {
       connections: "Conexões",
       agents: "Agentes",
       teams: "Equipes",
+      tools: "Ferramentas",
       workspaces: "Workspaces",
       gitProviders: "Provedores de Git",
       providers: "Provedores",
@@ -2497,6 +2570,9 @@ export const ptBR: TranslationResources = {
       },
       speech: {
         sectionTitle: "Voz e ditado",
+        dictationSectionTitle: "Ditado",
+        voiceSectionTitle: "Voz",
+        openaiSectionTitle: "OpenAI",
         updateHost: "Atualize o host para configurar voz e ditado.",
         optionsError: "Não foi possível carregar as opções de voz do host.",
         saveError: "Não foi possível salvar as configurações de voz.",

@@ -40,6 +40,7 @@ import { DiffStat } from "@/components/diff-stat";
 import {
   CircleAlert,
   ChevronDown,
+  BookOpen,
   ChevronRight,
   ExternalLink,
   Settings,
@@ -139,6 +140,9 @@ import {
   getIsElectron,
 } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+import { openContextManagementTab } from "@/context-management/open-context-management-tab";
+import { resolveProjectContextTarget } from "@/context-management/resolve-project-context-target";
+import { useContextManagementEnabled } from "@/context-management/use-context-report";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -156,6 +160,7 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedBookOpen = withUnistyles(BookOpen);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -439,6 +444,7 @@ function ProjectRowTrailingActions({
               <ProjectKebabMenu
                 projectKey={project.projectKey}
                 projectPath={project.iconWorkingDir}
+                workspaces={project.workspaces}
                 onRemoveProject={onRemoveProject}
                 removeProjectStatus={removeProjectStatus}
               />
@@ -455,6 +461,8 @@ const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedC
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
 );
+// Matches the Context tab's own icon so the two read as the same feature.
+const contextLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return <ThemedMoreVertical uniProps={hovered ? foregroundSmMapping : foregroundMutedSmMapping} />;
@@ -464,6 +472,8 @@ interface ProjectMenuItemsProps {
   ItemComponent: WorkspaceMenuItemComponent;
   projectKey: string;
   projectPath: string;
+  /** Used to resolve which workspace the context action should target. */
+  workspaces: readonly SidebarWorkspacePlacement[];
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }
@@ -474,11 +484,24 @@ function ProjectMenuItems({
   ItemComponent: Item,
   projectKey,
   projectPath,
+  workspaces,
   onRemoveProject,
   removeProjectStatus,
 }: ProjectMenuItemsProps) {
   const { t } = useTranslation();
   const toast = useToast();
+  // A context report belongs to one workspace + provider, but a project can
+  // hold several — prefer the one the user is in, else the most recent.
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const contextTarget = useMemo(
+    () => resolveProjectContextTarget(workspaces, activeWorkspaceSelection),
+    [workspaces, activeWorkspaceSelection],
+  );
+  const contextManagementEnabled = useContextManagementEnabled(contextTarget?.serverId ?? "");
+  const handleOpenContextManagement = useCallback(() => {
+    if (!contextTarget) return;
+    openContextManagementTab({ ...contextTarget, navigate: true });
+  }, [contextTarget]);
   const handleOpenProjectSettings = useCallback(() => {
     if (projectKey.trim().length === 0) return;
     router.navigate(buildProjectSettingsRoute(projectKey));
@@ -518,6 +541,15 @@ function ProjectMenuItems({
           {t("sidebar.project.actions.openNewWindow")}
         </Item>
       ) : null}
+      {contextTarget && contextManagementEnabled ? (
+        <Item
+          testID={`sidebar-project-menu-context-management-${projectKey}`}
+          leading={contextLeadingIcon}
+          onSelect={handleOpenContextManagement}
+        >
+          {t("sidebar.project.actions.contextManagement")}
+        </Item>
+      ) : null}
       <Item
         testID={`sidebar-project-menu-remove-${projectKey}`}
         leading={trash2LeadingIcon}
@@ -534,11 +566,13 @@ function ProjectMenuItems({
 function ProjectKebabMenu({
   projectKey,
   projectPath,
+  workspaces,
   onRemoveProject,
   removeProjectStatus,
 }: {
   projectKey: string;
   projectPath: string;
+  workspaces: readonly SidebarWorkspacePlacement[];
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
@@ -559,6 +593,7 @@ function ProjectKebabMenu({
           ItemComponent={DropdownMenuItem}
           projectKey={projectKey}
           projectPath={projectPath}
+          workspaces={workspaces}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
@@ -1267,6 +1302,7 @@ function ProjectHeaderRow({
               ItemComponent={ContextMenuItem}
               projectKey={project.projectKey}
               projectPath={project.iconWorkingDir}
+              workspaces={project.workspaces}
               onRemoveProject={onRemoveProject}
               removeProjectStatus={removeProjectStatus}
             />

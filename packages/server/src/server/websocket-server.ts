@@ -1383,6 +1383,8 @@ export class VoiceAssistantWebSocketServer {
         runsClear: this.runService !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: true,
+        // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+        contextManagement: true,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.

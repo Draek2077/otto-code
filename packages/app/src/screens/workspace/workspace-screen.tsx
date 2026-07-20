@@ -77,6 +77,7 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
+import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import {
@@ -203,7 +204,11 @@ import { resolveCloseAgentTabPolicy } from "@/subagents";
 import { findAdjacentPane } from "@/utils/split-navigation";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 import { getIsElectron, isNative, isWeb } from "@/constants/platform";
-import { useContainerWidthBelow } from "@/hooks/use-container-width";
+import { useContainerWidth } from "@/hooks/use-container-width";
+import {
+  MIN_TITLE_WIDTH,
+  resolveCompactHeaderActions,
+} from "@/screens/workspace/compact-header-actions";
 import {
   buildHostRootRoute,
   buildSettingsHostRoute,
@@ -400,6 +405,7 @@ function getFallbackTabOptionLabel(
     browser: string;
     agent: string;
     visualizer: string;
+    contextManagement: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -426,6 +432,9 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "visualizer") {
     return labels.visualizer;
   }
+  if (tab.target.kind === "contextManagement") {
+    return labels.contextManagement;
+  }
   return labels.agent;
 }
 
@@ -445,6 +454,7 @@ function getFallbackTabOptionDescription(
     terminal: string;
     browser: string;
     visualizer: string;
+    contextManagement: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -470,6 +480,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "visualizer") {
     return labels.visualizer;
+  }
+  if (tab.target.kind === "contextManagement") {
+    return labels.contextManagement;
   }
   return tab.target.path;
 }
@@ -746,6 +759,7 @@ function MobileWorkspaceTabOption({
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
       visualizer: t("workspace.tabs.fallback.visualizer"),
+      contextManagement: t("workspace.contextManagement.tabLabel"),
     }),
     [t],
   );
@@ -1063,6 +1077,7 @@ interface WorkspaceHeaderMenuProps {
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
+  onOpenContextManagement: () => void;
 }
 interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
@@ -1324,6 +1339,7 @@ function WorkspaceHeaderMenu({
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
+  onOpenContextManagement,
 }: WorkspaceHeaderMenuProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -1445,6 +1461,15 @@ function WorkspaceHeaderMenu({
               >
                 {t("workspace.header.actions.showSetup")}
               </DropdownMenuItem>
+              {/* The composer warning only appears when context is already
+                  heavy; this is the way in the rest of the time. */}
+              <DropdownMenuItem
+                testID="workspace-header-context-management"
+                leading={menuSettingsIcon}
+                onSelect={onOpenContextManagement}
+              >
+                {t("workspace.contextManagement.openAction")}
+              </DropdownMenuItem>
             </>
           ) : null}
           {isDeveloperMode ? (
@@ -1523,6 +1548,9 @@ interface WorkspaceHeaderTitleBarProps {
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
   isMobile: boolean;
+  // Compact responsive drops (see `fitCompactHeaderActions`); always true on desktop.
+  showVisualizerAction: boolean;
+  showPlayAction: boolean;
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
   copyPathDisabled: boolean;
@@ -1540,6 +1568,7 @@ interface WorkspaceHeaderTitleBarProps {
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
   onOpenSetupTab: () => void;
+  onOpenContextManagement: () => void;
   onScriptTerminalStarted: (terminalId: string) => void;
   onViewScriptTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab: (url: string) => void;
@@ -1569,6 +1598,8 @@ function WorkspaceHeaderTitleBar({
   showWorkspaceSetup,
   showCreateBrowserTab,
   isMobile,
+  showVisualizerAction,
+  showPlayAction,
   createTerminalDisabled,
   importAgentDisabled,
   copyPathDisabled,
@@ -1586,17 +1617,12 @@ function WorkspaceHeaderTitleBar({
   onCopyWorkspacePath,
   onCopyBranchName,
   onOpenSetupTab,
+  onOpenContextManagement,
   onScriptTerminalStarted,
   onViewScriptTerminal,
   onOpenUrlInBrowserTab,
 }: WorkspaceHeaderTitleBarProps) {
   const containerStyle = useMemo(() => [styles.headerTitleContainer, HEADER_LABEL_DRAG_STYLE], []);
-  // User mode hides the developer surfaces (scripts run in terminals; the menu's
-  // terminal/copy-path items are developer affordances).
-  const isDeveloperMode = useIsDeveloperMode();
-  // Hide the Visualizer entry point when the feature is disabled (openVisualizerTab
-  // also refuses centrally, but the button shouldn't linger).
-  const visualizerEnabled = useFeatureEnabled("visualizer");
   // Match the Explorer toggle's icon sizing so the mobile Play button beside the
   // "..." menu shares the same chrome and glyph size.
   const headerActionIconSize = useIconSize(1.5);
@@ -1645,14 +1671,15 @@ function WorkspaceHeaderTitleBar({
           onCopyWorkspacePath={onCopyWorkspacePath}
           onCopyBranchName={onCopyBranchName}
           onOpenSetupTab={onOpenSetupTab}
+          onOpenContextManagement={onOpenContextManagement}
         />
-        {isDeveloperMode && !isMobile && visualizerEnabled ? (
+        {showVisualizerAction ? (
           <WorkspaceVisualizerButton
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}
           />
         ) : null}
-        {isDeveloperMode && isMobile && workspaceScripts.length > 0 ? (
+        {isMobile && showPlayAction ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}
@@ -2402,8 +2429,37 @@ function WorkspaceScreenContent({
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const { closingTabIds, closeTab } = useCloseTabs();
-  const { onLayout: onHeaderLayout, isBelow: showCompactButtonLabels } =
-    useContainerWidthBelow(700);
+  // One measurement drives two header decisions: whether desktop tool buttons
+  // show their labels, and (compact) which action buttons still fit. Measured on
+  // the header row, whose width doesn't depend on what we decide to render — a
+  // narrower container like the title cluster would oscillate.
+  const { onLayout: onHeaderLayout, width: headerRowWidth } = useContainerWidth();
+  // Unmeasured (0) counts as narrow, matching the label-first initial render.
+  const showCompactButtonLabels = headerRowWidth < 700;
+  // Compact only: the "..." menu and a readable title always win, so the action
+  // buttons drop in order (Play, then Visualizer, then Explorer) as the row
+  // narrows. Decided once here because the strip straddles the header's `left`
+  // and `right` containers and both halves must spend the same budget.
+  const visualizerEnabled = useFeatureEnabled("visualizer");
+  const headerActionFit = useMemo(
+    () =>
+      resolveCompactHeaderActions({
+        isCompact: isMobile,
+        rowWidth: headerRowWidth,
+        isDeveloperMode,
+        visualizerEnabled,
+        hasWorkspaceScripts: workspaceScripts.length > 0,
+        hasWorkspaceDirectory: Boolean(workspaceDirectory),
+      }),
+    [
+      isMobile,
+      headerRowWidth,
+      isDeveloperMode,
+      visualizerEnabled,
+      workspaceScripts.length,
+      workspaceDirectory,
+    ],
+  );
   const closeWorkspaceTabWithCleanup = useCallback(
     function closeWorkspaceTabWithCleanup(input: {
       tabId: string;
@@ -2912,6 +2968,7 @@ function WorkspaceScreenContent({
       browser: t("workspace.tabs.fallback.browser"),
       agent: t("workspace.tabs.fallback.agent"),
       visualizer: t("workspace.tabs.fallback.visualizer"),
+      contextManagement: t("workspace.contextManagement.tabLabel"),
     }),
     [t],
   );
@@ -3368,6 +3425,13 @@ function WorkspaceScreenContent({
     }
     openWorkspaceTabFocused(persistenceKey, target);
   }, [normalizedWorkspaceId, openWorkspaceTabFocused, persistenceKey]);
+
+  const handleOpenContextManagement = useCallback(() => {
+    openContextManagementTab({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    });
+  }, [normalizedServerId, normalizedWorkspaceId]);
 
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
@@ -4017,7 +4081,7 @@ function WorkspaceScreenContent({
                 }}
               </HeaderToggleButton>
             ) : null}
-            {isMobile ? (
+            {headerActionFit.showCompactExplorer ? (
               <HeaderToggleButton
                 anchorRef={explorerToggleAnchorRef}
                 testID="workspace-explorer-toggle"
@@ -4050,7 +4114,7 @@ function WorkspaceScreenContent({
           <>
             {/* User interface mode: a plain Explore toggle for the Files-only
                 explorer (no git-aware diff badge). Desktop + mobile. */}
-            {workspaceDirectory ? (
+            {headerActionFit.showPlainExplorer ? (
               <PlainExplorerToggle
                 isMobile={isMobile}
                 anchorRef={explorerToggleAnchorRef}
@@ -4085,6 +4149,8 @@ function WorkspaceScreenContent({
       explorerToggleAccessibilityState,
       explorerToggleStyle,
       showExplorerDiffStat,
+      headerActionFit.showCompactExplorer,
+      headerActionFit.showPlainExplorer,
       settings.workspaceToolsPlacement,
       headerActionIconSize.lg,
       t,
@@ -4251,6 +4317,8 @@ function WorkspaceScreenContent({
                 showWorkspaceSetup={showWorkspaceSetup}
                 showCreateBrowserTab={showCreateBrowserTab}
                 isMobile={isMobile}
+                showVisualizerAction={headerActionFit.showVisualizer}
+                showPlayAction={headerActionFit.showPlay}
                 createTerminalDisabled={createTerminalDisabled}
                 importAgentDisabled={!canOpenImportSheet}
                 copyPathDisabled={!workspaceDirectory}
@@ -4268,6 +4336,7 @@ function WorkspaceScreenContent({
                 onCopyWorkspacePath={handleCopyWorkspacePath}
                 onCopyBranchName={handleCopyBranchName}
                 onOpenSetupTab={handleOpenSetupTab}
+                onOpenContextManagement={handleOpenContextManagement}
                 onScriptTerminalStarted={handleScriptTerminalStarted}
                 onViewScriptTerminal={handleViewScriptTerminal}
                 onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
@@ -4431,7 +4500,13 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   headerTitleTextGroup: {
-    minWidth: 0,
+    // Compact floors the project/workspace labels so the action strip can never
+    // squeeze them out entirely — `fitCompactHeaderActions` reserves the same
+    // width when deciding which buttons still fit.
+    minWidth: {
+      xs: MIN_TITLE_WIDTH,
+      md: 0,
+    },
     overflow: "hidden",
     flexShrink: 1,
     flexGrow: 1,
@@ -4497,14 +4572,15 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    // Every chrome boundary in the header series is separated by the standard
-    // `spacing[2]` gap (matching the `left`/`right`/headerRight containers). This
-    // cluster sits flush against headerRight, which lives in a different container,
-    // so no shared container-gap spans that seam — the trailing padding supplies
-    // that one standard gap itself. A button's own hover-chrome padding is inside
-    // its box and can't stand in for it (that would leave the boxes touching).
+    // On desktop every chrome boundary in the header series is separated by the
+    // standard `spacing[2]` gap (matching the `left`/`right`/headerRight
+    // containers). This cluster sits flush against headerRight, which lives in a
+    // different container, so no shared container-gap spans that seam — the
+    // trailing padding supplies that one standard gap itself. Compact drops it:
+    // the "..."/Visualizer/Play/Explorer run is a single flush strip there, so
+    // the doubled touch targets fit without crowding the title.
     paddingRight: {
-      xs: theme.spacing[2],
+      xs: 0,
       md: theme.spacing[2],
     },
     gap: {
@@ -4590,7 +4666,10 @@ const styles = StyleSheet.create((theme) => ({
   switcherTriggerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
+    // Was a flat 4, which the icon and label had already outgrown: the icon
+    // doubles on compact and the label carries the +2 bump, so the same 4px
+    // read as no gap at all. compactUp keeps desktop at 4 and gives compact 8.
+    gap: compactUp(theme.spacing[1]),
     flex: 1,
     minWidth: 0,
   },
@@ -4601,7 +4680,13 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    // Matches the +2 the switcher's own option rows already carry
+    // (workspace-tab-presentation.tsx `optionLabel`) — the collapsed trigger
+    // shows the same label and had been left at the base size.
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
   },
   mobileTabMenuTrigger: {
     width: 28,

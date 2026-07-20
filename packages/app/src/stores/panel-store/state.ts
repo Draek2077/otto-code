@@ -30,6 +30,13 @@ export const MIN_EXPLORER_SIDEBAR_WIDTH = 280;
 // Upper bound is intentionally generous; desktop resizing enforces a min-chat-width constraint.
 export const MAX_EXPLORER_SIDEBAR_WIDTH = 2000;
 
+// Context Management's left column (summary + tree). Persisted app-wide rather
+// than per-workspace: it's a reading preference about this tool, not a fact
+// about any one project.
+export const DEFAULT_CONTEXT_SIDEBAR_WIDTH = 320;
+export const MIN_CONTEXT_SIDEBAR_WIDTH = 240;
+export const MAX_CONTEXT_SIDEBAR_WIDTH = 720;
+
 export const DEFAULT_EXPLORER_FILES_SPLIT_RATIO = 0.38;
 export const MIN_EXPLORER_FILES_SPLIT_RATIO = 0.2;
 export const MAX_EXPLORER_FILES_SPLIT_RATIO = 0.8;
@@ -67,6 +74,10 @@ export function clampSidebarWidth(width: number): number {
 
 export function clampExplorerWidth(width: number): number {
   return clampNumber(width, MIN_EXPLORER_SIDEBAR_WIDTH, MAX_EXPLORER_SIDEBAR_WIDTH);
+}
+
+export function clampContextSidebarWidth(width: number): number {
+  return clampNumber(width, MIN_CONTEXT_SIDEBAR_WIDTH, MAX_CONTEXT_SIDEBAR_WIDTH);
 }
 
 export function clampExplorerFilesSplitRatio(ratio: number): number {

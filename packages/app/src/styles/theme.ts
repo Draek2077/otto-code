@@ -156,6 +156,18 @@ const lightStatusColors = {
   statusSuccess: "#15803d", // green-700
   statusDanger: "#b91c1c", // red-700
   statusWarning: "#d97706", // amber-600
+  // The amber emphasis pair, for text that must read as muted vs. emphasized
+  // while staying amber — the counterpart of foregroundMuted → foreground.
+  // On a LIGHT surface, emphasis means DARKER: amber is already pale, so going
+  // lighter would drop the contrast off a cliff (amber-500 is ~2:1 on white).
+  statusWarningMuted: "#d97706", // amber-600 — ~3:1 on white
+  statusWarningStrong: "#b45309", // amber-700 — ~5:1 on white
+  // Amber fills for hover/selected chrome. Alpha, not opaque hex, because these
+  // sit on whichever surface the active tint provides (Daylight, Sherbet,
+  // Meadow, …) and must tint it rather than replace it. Light surfaces need
+  // less: a heavy orange wash on near-white shouts.
+  statusWarningSurface: "rgba(217, 119, 6, 0.14)",
+  statusWarningSurfaceStrong: "rgba(217, 119, 6, 0.24)",
   statusInfo: "#0284c7", // sky-600
   statusMerged: "#7c3aed", // purple-600
 };
@@ -164,6 +176,16 @@ const darkStatusColors = {
   statusSuccess: "#16a34a", // green-600
   statusDanger: "#dc2626", // red-600
   statusWarning: "#f59e0b", // amber-500
+  // Mirror of the light pair, pushed the other way: on a dark surface emphasis
+  // means LIGHTER. Same muted shade as light — amber-600 is the mid-contrast
+  // step against either background. Never express these as alpha: amber at 70%
+  // over a dark surface composites to muddy brown and reads as black.
+  statusWarningMuted: "#d97706", // amber-600
+  statusWarningStrong: "#f59e0b", // amber-500
+  // Fills carry more alpha here than on light: the same wash that shouts on
+  // near-white barely registers against a dark surface.
+  statusWarningSurface: "rgba(245, 158, 11, 0.20)",
+  statusWarningSurfaceStrong: "rgba(245, 158, 11, 0.32)",
   statusInfo: "#38bdf8", // sky-400 — light blue that holds on dark surfaces
   statusMerged: "#9333ea", // purple-600
 };

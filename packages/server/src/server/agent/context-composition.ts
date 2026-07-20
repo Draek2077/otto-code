@@ -8,7 +8,12 @@ import type { AgentTimelineItem, ContextComposition } from "./agent-sdk-types.js
 // authoritative context-window occupancy, so only the *proportions* matter.
 const CHARS_PER_TOKEN = 4;
 
-function estimateTokens(chars: number): number {
+/**
+ * Shared by the context-management scanner so both paths report the same
+ * coarse heuristic — a divergence here would make the two surfaces disagree
+ * about the same file.
+ */
+export function estimateTokens(chars: number): number {
   return Math.round(chars / CHARS_PER_TOKEN);
 }
 

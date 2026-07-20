@@ -8,9 +8,49 @@
 > provider sends before they type a word, understands why, and refactors it. **Context Health is the
 > summary panel inside it**, not the feature.
 >
-> **Status: charter, revised 2026-07-19. No code yet.** Decisions locked with the user across three
-> reviews: full-inventory (not just MD files) · % of context window (not absolute tokens) · three-pane
-> tab · composer flyout warning · context files get an edit-gate exemption.
+> **Status: BUILT (uncommitted), 2026-07-19.** Phases 0–3 plus the edge-convert half of Phase 4 are
+> implemented end to end: daemon scanner + evaluator, protocol, session RPCs, composer flyout, and the
+> three-pane tab. Typecheck and lint clean; 48 daemon + 10 app unit tests green.
+>
+> Since built: the deterministic content findings (`content-findings.ts`), the load-mode control
+> (Always load ↔ Link only, `load-mode-control.tsx`), Codex + OpenCode conventions, a persisted
+> window picker, and sidebar project-row entry points.
+>
+> **Not yet built:** demote-to-subdirectory, skills/MCP toggles, and AI compaction with per-hunk diff.
+> The §11 verification (fixture repo + differential measurement) is also still outstanding — the
+> scanner ships convention-first, and calibration multiplies in without structural change.
+>
+> **Why those three are not built, rather than forgotten:**
+>
+> - **Demote-to-subdirectory** means moving a _rule_ (a span the user chooses) into a subdirectory
+>   context file. That is content surgery with no obvious selection model in a read-mostly tree, and
+>   the safe version of it is the AI compaction flow, not a one-click button.
+> - **Skills / MCP toggles** are each their own subsystem: disabling a skill needs a daemon skill
+>   registry with a write path, and MCP toggles need per-project MCP config editing. The report
+>   already _measures_ both; turning them off belongs with whichever subsystem owns that config.
+> - **AI compaction with per-hunk diff** needs a diff-review surface that AI Refactor itself does not
+>   have yet. Adding a `buildContextCompactionPrompt` preset without that review would ship the
+>   scariest operation with the weakest safety net, which inverts the §7.5 ordering (deterministic
+>   first, AI last).
+>
+> Decisions locked with the user across three reviews: full-inventory (not just MD files) · % of
+> context window (not absolute tokens) · three-pane tab · composer flyout warning · context files get
+> an edit-gate exemption.
+>
+> **Deviations from this charter as built, and why:**
+>
+> - **Dismissal is device-local**, not server-side (§8). It mirrors the proven `rateLimitDismissKey` /
+>   `mutedUntil` shape in the client store, scoped per workspace rather than per agent. Server-side
+>   sync needs a new persisted daemon store; deferred deliberately, not forgotten.
+> - **Cache invalidation is a 15s TTL**, not the `file.watch.*` live re-scan (§6 of the prior charter).
+>   Converting an edge invalidates explicitly and pushes a fresh report; everything else re-reads on a
+>   short TTL.
+> - **MCP tool weight is openai-compat only.** Claude/Codex/OpenCode hand `mcpServers` to a subprocess
+>   and never expose tool schemas in-process, so that row is exact where Otto owns the payload and
+>   absent elsewhere — honest rather than guessed.
+> - **The window picker defaults to 200K**, not the active model's real window: no provider-neutral
+>   model-window lookup exists yet. The daemon accepts one (`WorkspaceContextRuntime.windowTokens`);
+>   nothing populates it.
 
 ---
 

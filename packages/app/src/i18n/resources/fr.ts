@@ -78,6 +78,12 @@ export const fr: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "Le contexte du projet occupe {{tokens}} tokens, soit {{percent}} de la fenêtre de ce modèle, à chaque requête. Il reste {{room}} pour travailler.",
+      manage: "Gérer",
+      dismiss: "Masquer pour l'instant",
+    },
     placeholders: {
       desktop: "Envoyez un message à l'agent, marquez@filesou utilisez/commandset/skills",
       mobile: "Message,@files,/commands",
@@ -167,6 +173,66 @@ export const fr: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "Retour",
+    tabs: {
+      context: "Contexte",
+      findings: "À corriger",
+      findingsCount: "À corriger ({{count}})",
+    },
+    findings: {
+      empty: "Rien à corriger pour l'instant.",
+    },
+    summary: {
+      title: "Contexte envoyé par tour :",
+      ofWindow: "{{percent}} de la fenêtre",
+      workingRoom: "Laisse environ {{room}} pour travailler",
+      window: "Évaluer avec",
+      breakdown: "À chaque requête",
+      notCounted: "Non comptabilisé",
+      conditional: "{{tokens}} ne se chargent que lorsque l'agent travaille dans cette zone",
+      referenced: "{{tokens}} sont liés et ne se chargent que si l'agent les lit",
+      nothingFixed: "Rien n'est chargé à chaque requête.",
+      loading: "Analyse de votre contexte…",
+      empty: "Aucun rapport de contexte pour cet espace de travail pour l'instant.",
+    },
+    tree: {
+      empty: "Rien à afficher pour l'instant.",
+      linkOnly: "lien seulement",
+      conditional: "au besoin",
+    },
+    loadMode: {
+      label: "Chargement",
+      always: "Toujours charger",
+      linkOnly: "Lien seulement",
+      saves: "Le mode lien seulement économiserait {{tokens}} par requête",
+      adds: "Le chargement systématique ajouterait {{tokens}} par requête",
+      unsupported:
+        "Cet agent n'a pas de mécanisme de chargement systématique : les fichiers liés ne sont lus qu'à la demande.",
+    },
+    scope: {
+      global: "Tous les projets",
+      local: "Local",
+      enterprise: "Géré",
+      subdirectory: "Sous-dossier",
+    },
+    category: {
+      contextFiles: "Fichiers de contexte",
+      memoryIndex: "Index mémoire",
+      skillsRoster: "Compétences",
+      mcpTools: "Outils MCP",
+      ottoInjected: "Prompt Otto",
+      systemPrompt: "Prompt système",
+    },
+    filePlaceholder: {
+      title: "Choisissez un fichier",
+      body: "Choisissez un élément à gauche pour le lire ou le modifier ici.",
+    },
+    emptyState: {
+      title: "Pas encore de contexte de projet",
+      body: "Rien n'est chargé pour ce projet. C'est une page blanche, pas un problème : ajoutez un CLAUDE.md ou un AGENTS.md à la racine du projet pour donner des instructions permanentes à vos agents.",
     },
   },
   agentControls: {
@@ -540,6 +606,11 @@ export const fr: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "Contexte",
+      subtitle: "Ce qui est envoyé avant que vous n'écriviez",
+      openAction: "Gérer le contexte",
     },
     tabs: {
       loading: "Chargement...",
@@ -1010,6 +1081,7 @@ export const fr: TranslationResources = {
         openSettings: "Ouvrir les paramètres du projet",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        contextManagement: "Gérer le contexte",
         remove: "Supprimer le projet",
         removing: "Suppression...",
       },
@@ -2016,6 +2088,7 @@ export const fr: TranslationResources = {
       connections: "Relations",
       agents: "Agents",
       teams: "Teams",
+      tools: "Outils",
       workspaces: "Workspaces",
       gitProviders: "Fournisseurs Git",
       providers: "Fournisseurs",
@@ -2516,6 +2589,9 @@ export const fr: TranslationResources = {
       },
       speech: {
         sectionTitle: "Voix et dictée",
+        dictationSectionTitle: "Dictée",
+        voiceSectionTitle: "Voix",
+        openaiSectionTitle: "OpenAI",
         updateHost: "Mettez à jour l'hôte pour configurer la voix et la dictée.",
         optionsError: "Impossible de charger les options vocales depuis l'hôte.",
         saveError: "Impossible d'enregistrer les réglages vocaux.",

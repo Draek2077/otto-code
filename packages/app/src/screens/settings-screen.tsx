@@ -39,6 +39,7 @@ import {
   SquareTerminal,
   Waypoints,
   Workspaces,
+  Wrench,
 } from "@/components/icons/material-icons";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
@@ -121,6 +122,7 @@ import {
   HostConnectionsPage,
   HostAgentsPage,
   HostTeamsPage,
+  HostToolsPage,
   HostSettingsPage,
   HostProvidersPage,
   HostUsagePage,
@@ -238,6 +240,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
+  { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
@@ -270,6 +273,8 @@ function renderHostSettingsContent(
       return <HostAgentsPage serverId={view.serverId} />;
     case "teams":
       return <HostTeamsPage serverId={view.serverId} />;
+    case "tools":
+      return <HostToolsPage serverId={view.serverId} />;
     case "workspaces":
       return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":
@@ -412,6 +417,7 @@ interface GeneralSectionProps {
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
   handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
+  handleContextWarningsEnabledChange: (enabled: boolean) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
@@ -500,6 +506,7 @@ function GeneralSection({
   handleSuggestedTasksDefaultModeChange,
   handlePromptSuggestionsEnabledChange,
   handleRateLimitWarningsEnabledChange,
+  handleContextWarningsEnabledChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLinkOpenBehaviorChange,
@@ -781,6 +788,21 @@ function GeneralSection({
               onValueChange={handleRateLimitWarningsEnabledChange}
               accessibilityLabel="Plan rate-limit warnings"
               testID="settings-rate-limit-warnings-switch"
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Context weight warnings</Text>
+              <Text style={settingsStyles.rowHint}>
+                Show a warning above the message box when the context for this project takes a large
+                share of the model window. The Context tab stays available either way.
+              </Text>
+            </View>
+            <Switch
+              value={settings.contextWarningsEnabled}
+              onValueChange={handleContextWarningsEnabledChange}
+              accessibilityLabel="Context weight warnings"
+              testID="settings-context-warnings-switch"
             />
           </View>
         </View>
@@ -1775,6 +1797,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleContextWarningsEnabledChange = useCallback(
+    (contextWarningsEnabled: boolean) => {
+      void updateSettings({ contextWarningsEnabled });
+    },
+    [updateSettings],
+  );
+
   const handleRateLimitWarningsEnabledChange = useCallback(
     (rateLimitWarningsEnabled: boolean) => {
       void updateSettings({ rateLimitWarningsEnabled });
@@ -2101,6 +2130,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
               handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
+              handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}

@@ -151,6 +151,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "visualizer") {
     return "workspace-visualizer-close";
   }
+  if (tab.target.kind === "contextManagement") {
+    return "workspace-context-management-close";
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 
