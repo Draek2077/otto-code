@@ -7,14 +7,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet as RNStyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
@@ -53,6 +46,9 @@ const DEFAULT_WINDOW_TOKENS = 200_000;
 // The file pane is the point of the tab, so the splitter never squeezes it below
 // a width where the editor stops being readable — mirrors MIN_CHAT_WIDTH.
 const MIN_CONTEXT_FILE_WIDTH = 360;
+
+// Anchors the absolutely-positioned resize handle that hangs off the shell's edge.
+const SIDEBAR_SHELL_STYLE = { position: "relative" } as const;
 
 // Theme-reactive icon color without useUnistyles (docs/unistyles.md).
 const ThemedChevronLeft = withUnistyles(ChevronLeft);
@@ -180,9 +176,14 @@ export function ContextManagementPanel(): ReactElement {
     [contextSidebarWidth, maxSidebarWidth, resizeWidth, setContextSidebarWidth],
   );
 
+  // The width tracks the pan gesture on the UI thread, so the splitter follows
+  // the pointer without re-rendering the tree and the file pane every frame.
+  // The shell carries it on a plain node: Unistyles must not own one Reanimated
+  // also patches (see explorer-sidebar.tsx for the same split). This sidebar
+  // never opens or closes, so there is no slide animation here.
   const sidebarWidthStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }));
   const sidebarShellStyle = useMemo(
-    () => [contextStaticStyles.sidebarShell, sidebarWidthStyle],
+    () => [SIDEBAR_SHELL_STYLE, sidebarWidthStyle],
     [sidebarWidthStyle],
   );
 
@@ -412,14 +413,6 @@ function ContextFilePane({
     />
   );
 }
-
-// Static styles for the Animated.View — Unistyles must not own a node Reanimated
-// also patches (see explorer-sidebar.tsx for the same split).
-const contextStaticStyles = RNStyleSheet.create({
-  sidebarShell: {
-    position: "relative",
-  },
-});
 
 const styles = StyleSheet.create((theme) => ({
   root: {
