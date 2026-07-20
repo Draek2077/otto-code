@@ -200,9 +200,15 @@ function severityBarStyle(severity: ContextSeverity) {
   return styles.barFill;
 }
 
+// The summary is the top of Context Management's compact first screen, so every
+// font here takes the +2 compact bump (docs convention; `md` and up stay put).
+function bump(size: number) {
+  return { xs: size + 2, md: size };
+}
+
 const styles = StyleSheet.create((theme) => {
   const headlineBase = {
-    fontSize: theme.fontSize["2xl"],
+    fontSize: bump(theme.fontSize["2xl"]),
     fontWeight: "700",
   } as const;
   const barFillBase = {
@@ -225,7 +231,7 @@ const styles = StyleSheet.create((theme) => {
     },
     title: {
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
       fontWeight: "600",
       marginTop: theme.spacing[2],
     },
@@ -239,11 +245,11 @@ const styles = StyleSheet.create((theme) => {
     headlineCritical: { ...headlineBase, color: theme.colors.statusDanger },
     headlineUnit: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
     },
     workingRoom: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
     },
     section: {
       gap: theme.spacing[1],
@@ -254,7 +260,7 @@ const styles = StyleSheet.create((theme) => {
     },
     sectionLabel: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.xs,
+      fontSize: bump(theme.fontSize.xs),
       textTransform: "uppercase",
       letterSpacing: 0.5,
     },
@@ -267,11 +273,11 @@ const styles = StyleSheet.create((theme) => {
     presetSelected: { ...presetBase, borderColor: theme.colors.accent },
     presetText: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.xs,
+      fontSize: bump(theme.fontSize.xs),
     },
     presetTextSelected: {
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.xs,
+      fontSize: bump(theme.fontSize.xs),
       fontWeight: "600",
     },
     barRow: {
@@ -287,11 +293,11 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       minWidth: 0,
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
     },
     barValue: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
       fontVariant: ["tabular-nums"],
     },
     barTrack: {
@@ -306,7 +312,7 @@ const styles = StyleSheet.create((theme) => {
     barFillCritical: { ...barFillBase, backgroundColor: theme.colors.statusDanger },
     muted: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
     },
   };
 });
