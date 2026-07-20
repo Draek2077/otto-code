@@ -42,7 +42,11 @@ import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
-import { isFileQueryEnabled } from "@/components/file-pane-enabled";
+import {
+  isFileQueryEnabled,
+  resolveFilePreviewState,
+  type FilePreviewState,
+} from "@/components/file-pane-enabled";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -84,7 +88,7 @@ export interface FilePreviewSyncHandle {
 
 interface FilePreviewBodyProps {
   preview: ExplorerFile | null;
-  isLoading: boolean;
+  state: FilePreviewState;
   showDesktopWebScrollbar: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
@@ -270,7 +274,7 @@ function NativeSvgPreview({ xml, size }: { xml: string; size: number }) {
 
 function FilePreviewBody({
   preview,
-  isLoading,
+  state,
   showDesktopWebScrollbar,
   isMobile,
   location,
@@ -456,7 +460,7 @@ function FilePreviewBody({
     return () => clearTimeout(timeout);
   }, [lineHeight, lineSelection]);
 
-  if (isLoading && !preview) {
+  if (state === "loading") {
     return (
       <View style={styles.centerState}>
         <ActivityIndicator size="small" />
@@ -465,7 +469,7 @@ function FilePreviewBody({
     );
   }
 
-  if (!preview) {
+  if (state === "unavailable" || !preview) {
     return (
       <View style={styles.centerState}>
         <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
@@ -496,7 +500,8 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
-              <MarkdownRenderer text={body} />
+              {/* A repo document must not be able to reach the network just by being previewed. */}
+              <MarkdownRenderer text={body} remoteImages="altText" />
             </View>
           </RNScrollView>
           {scrollbar.overlay}
@@ -660,10 +665,11 @@ export function FilePreview({
   const isActive = useRetainedPanelActive();
   const isAppVisible = useAppVisible();
 
+  const hasReadTarget = Boolean(client && readTarget);
   const query = useQuery({
     queryKey: ["workspaceFile", serverId, readTarget?.cwd ?? null, readTarget?.path ?? null],
     enabled: isFileQueryEnabled({
-      hasReadTarget: Boolean(client && readTarget),
+      hasReadTarget,
       isTabActive: isActive,
       isAppVisible,
     }),
@@ -736,7 +742,11 @@ export function FilePreview({
 
       <FilePreviewBody
         preview={query.data?.file ?? null}
-        isLoading={query.isFetching}
+        state={resolveFilePreviewState({
+          hasReadTarget,
+          isPending: query.isPending,
+          hasPreview: Boolean(query.data?.file),
+        })}
         showDesktopWebScrollbar={showDesktopWebScrollbar}
         isMobile={isMobile}
         location={location}

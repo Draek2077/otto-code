@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import type { CodeEditorProps, EditorController } from "./editor-contract";
 import { createEditorCore, type EditorCore } from "./editor-core";
@@ -32,15 +31,15 @@ export function CodeEditor(props: CodeEditorProps) {
   const callbacksRef = useRef(props);
   callbacksRef.current = props;
 
-  // Desktop web gets the same auto-hiding overlay scrollbars as the chat
-  // stream, mounted on CM6's own scroller; compact layouts keep the native
-  // (touch) scrolling behavior.
-  const isCompact = useIsCompactFormFactor();
+  // Web gets the same auto-hiding overlay scrollbars as the chat stream,
+  // mounted on CM6's own scroller. Not gated on width: a narrow browser still
+  // draws the platform's dated bar, and the overlay's container is box-none, so
+  // touch scrolling passes straight through everywhere except the thin handle.
   const scrollerRef = useRef<HTMLElement | null>(null);
   const scrollerContentRef = useRef<HTMLElement | null>(null);
   const [scrollerReady, setScrollerReady] = useState(false);
   const scrollbarOverlay = useWebElementScrollbar(scrollerRef, {
-    enabled: scrollerReady && !isCompact,
+    enabled: scrollerReady,
     contentRef: scrollerContentRef,
     horizontal: true,
   });
