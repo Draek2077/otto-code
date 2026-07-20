@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Waypoints } from "@/components/icons/material-icons";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
 
@@ -26,13 +27,17 @@ interface WorkspaceVisualizerButtonProps {
 }
 
 /** Opens the Visualizer tab. Sits in the workspace header's title cluster,
- * immediately right of the "..." workspace menu (developer mode, desktop only). */
+ * immediately right of the "..." workspace menu (developer mode). */
 export function WorkspaceVisualizerButton({
   serverId,
   workspaceId,
 }: WorkspaceVisualizerButtonProps) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const iconSize = useIconSize(1.5);
+  // Compact matches the Play/Explorer glyphs beside it (lg), desktop stays at the
+  // smaller md glyph shared with the "..." trigger.
+  const glyphSize = isCompact ? iconSize.lg : iconSize.md;
   const handlePress = useCallback(() => {
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId });
@@ -54,7 +59,7 @@ export function WorkspaceVisualizerButton({
       >
         {({ hovered }: { hovered?: boolean }) => (
           <ThemedWaypoints
-            size={iconSize.md}
+            size={glyphSize}
             uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
           />
         )}

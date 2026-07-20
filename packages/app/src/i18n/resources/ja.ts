@@ -77,6 +77,12 @@ export const ja: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "プロジェクトのコンテキストは {{tokens}} トークン（このモデルのウィンドウの {{percent}}）で、毎リクエスト送信されます。作業に使える残りは {{room}} です。",
+      manage: "管理",
+      dismiss: "今は閉じる",
+    },
     placeholders: {
       desktop: "エージェントにメッセージ、@ファイル、/コマンドや/スキルを入力",
       mobile: "メッセージ、@ファイル、/コマンド",
@@ -166,6 +172,66 @@ export const ja: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "戻る",
+    tabs: {
+      context: "コンテキスト",
+      findings: "直す価値あり",
+      findingsCount: "直す価値あり ({{count}})",
+    },
+    findings: {
+      empty: "いま直すべきものはありません。",
+    },
+    summary: {
+      title: "1ターンごとに送られるコンテキスト:",
+      ofWindow: "ウィンドウの {{percent}}",
+      workingRoom: "作業用に約 {{room}} 残ります",
+      window: "評価の基準",
+      breakdown: "毎リクエスト",
+      notCounted: "カウント対象外",
+      conditional: "{{tokens}} はエージェントがその領域を扱うときだけ読み込まれます",
+      referenced: "{{tokens}} はリンクのみで、エージェントが読んだときだけ読み込まれます",
+      nothingFixed: "毎リクエスト読み込まれるものはありません。",
+      loading: "コンテキストをスキャン中…",
+      empty: "このワークスペースのコンテキストレポートはまだありません。",
+    },
+    tree: {
+      empty: "まだ表示するものがありません。",
+      linkOnly: "リンクのみ",
+      conditional: "必要なときだけ",
+    },
+    loadMode: {
+      label: "読み込み",
+      always: "常に読み込む",
+      linkOnly: "リンクのみ",
+      saves: "リンクのみにすると1リクエストあたり {{tokens}} 削減できます",
+      adds: "常に読み込むと1リクエストあたり {{tokens}} 増えます",
+      unsupported:
+        "このエージェントには常時読み込みの仕組みがないため、リンクされたファイルは必要なときだけ読まれます。",
+    },
+    scope: {
+      global: "全プロジェクト",
+      local: "ローカル",
+      enterprise: "管理対象",
+      subdirectory: "サブフォルダ",
+    },
+    category: {
+      contextFiles: "コンテキストファイル",
+      memoryIndex: "メモリ索引",
+      skillsRoster: "スキル",
+      mcpTools: "MCP ツール",
+      ottoInjected: "Otto プロンプト",
+      systemPrompt: "システムプロンプト",
+    },
+    filePlaceholder: {
+      title: "ファイルを選択",
+      body: "左側の項目を選ぶと、ここで読んだり編集したりできます。",
+    },
+    emptyState: {
+      title: "プロジェクトのコンテキストがありません",
+      body: "このプロジェクトには何も読み込まれていません。これは問題ではなく白紙の状態です。エージェントに常時の指示を与えたくなったら、プロジェクトのルートに CLAUDE.md か AGENTS.md を追加してください。",
     },
   },
   agentControls: {
@@ -540,6 +606,11 @@ export const ja: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "コンテキスト",
+      subtitle: "入力前に送られるもの",
+      openAction: "コンテキストを管理",
     },
     tabs: {
       loading: "読み込み中...",
@@ -998,6 +1069,7 @@ export const ja: TranslationResources = {
         openSettings: "プロジェクト設定を開く",
         openNewWindow: "新しいウィンドウで開く",
         openNewWindowFailed: "新しいウィンドウを開けませんでした",
+        contextManagement: "コンテキストを管理",
         remove: "プロジェクトを削除",
         removing: "削除中...",
       },
@@ -1992,6 +2064,7 @@ export const ja: TranslationResources = {
       connections: "接続",
       agents: "エージェント",
       teams: "チーム",
+      tools: "ツール",
       workspaces: "ワークスペース",
       gitProviders: "Git プロバイダー",
       providers: "プロバイダー",
@@ -2488,6 +2561,9 @@ export const ja: TranslationResources = {
       },
       speech: {
         sectionTitle: "音声と音声入力",
+        dictationSectionTitle: "音声入力",
+        voiceSectionTitle: "音声",
+        openaiSectionTitle: "OpenAI",
         updateHost: "音声機能を設定するにはホストを更新してください。",
         optionsError: "ホストから音声オプションを読み込めませんでした。",
         saveError: "音声設定を保存できませんでした。",

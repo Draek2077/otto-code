@@ -77,6 +77,12 @@ export const ru: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "Контекст проекта занимает {{tokens}} токенов — {{percent}} окна этой модели, в каждом запросе. Для работы остаётся {{room}}.",
+      manage: "Управлять",
+      dismiss: "Скрыть пока",
+    },
     placeholders: {
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
       mobile: "Сообщение,@files,/commands",
@@ -166,6 +172,66 @@ export const ru: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "Назад",
+    tabs: {
+      context: "Контекст",
+      findings: "Стоит исправить",
+      findingsCount: "Стоит исправить ({{count}})",
+    },
+    findings: {
+      empty: "Сейчас исправлять нечего.",
+    },
+    summary: {
+      title: "Контекст, отправляемый за ход:",
+      ofWindow: "{{percent}} окна",
+      workingRoom: "Остаётся около {{room}} для работы",
+      window: "Оценивать для",
+      breakdown: "В каждом запросе",
+      notCounted: "Не учитывается",
+      conditional: "{{tokens}} загружаются, только когда агент работает в этой области",
+      referenced: "{{tokens}} только связаны ссылкой и загрузятся, лишь если агент их прочитает",
+      nothingFixed: "В каждом запросе ничего не загружается.",
+      loading: "Сканирование контекста…",
+      empty: "Для этого рабочего пространства отчёта о контексте пока нет.",
+    },
+    tree: {
+      empty: "Пока нечего показать.",
+      linkOnly: "только ссылка",
+      conditional: "по необходимости",
+    },
+    loadMode: {
+      label: "Загрузка",
+      always: "Всегда загружать",
+      linkOnly: "Только ссылка",
+      saves: "Режим «только ссылка» сэкономит {{tokens}} на запрос",
+      adds: "Постоянная загрузка добавит {{tokens}} на запрос",
+      unsupported:
+        "У этого агента нет механизма постоянной загрузки — связанные файлы читаются только по необходимости.",
+    },
+    scope: {
+      global: "Все проекты",
+      local: "Локально",
+      enterprise: "Управляемое",
+      subdirectory: "Подпапка",
+    },
+    category: {
+      contextFiles: "Файлы контекста",
+      memoryIndex: "Индекс памяти",
+      skillsRoster: "Навыки",
+      mcpTools: "Инструменты MCP",
+      ottoInjected: "Промпт Otto",
+      systemPrompt: "Системный промпт",
+    },
+    filePlaceholder: {
+      title: "Выберите файл",
+      body: "Выберите что-нибудь слева, чтобы прочитать или отредактировать здесь.",
+    },
+    emptyState: {
+      title: "Контекста проекта пока нет",
+      body: "Для этого проекта ничего не загружается. Это чистый лист, а не проблема — добавьте CLAUDE.md или AGENTS.md в корень проекта, когда захотите дать агентам постоянные инструкции.",
     },
   },
   agentControls: {
@@ -540,6 +606,11 @@ export const ru: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "Контекст",
+      subtitle: "Что отправляется до того, как вы напишете",
+      openAction: "Управление контекстом",
     },
     tabs: {
       loading: "Загрузка...",
@@ -1004,6 +1075,7 @@ export const ru: TranslationResources = {
         openSettings: "Открыть настройки проекта",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        contextManagement: "Управление контекстом",
         remove: "Удалить проект",
         removing: "Удаление...",
       },
@@ -2005,6 +2077,7 @@ export const ru: TranslationResources = {
       connections: "Соединения",
       agents: "Agents",
       teams: "Teams",
+      tools: "Инструменты",
       workspaces: "Workspaces",
       gitProviders: "Провайдеры Git",
       providers: "Провайдеры",
@@ -2503,6 +2576,9 @@ export const ru: TranslationResources = {
       },
       speech: {
         sectionTitle: "Голос и диктовка",
+        dictationSectionTitle: "Диктовка",
+        voiceSectionTitle: "Голос",
+        openaiSectionTitle: "OpenAI",
         updateHost: "Обновите хост, чтобы настроить голос и диктовку.",
         optionsError: "Не удалось загрузить голосовые параметры с хоста.",
         saveError: "Не удалось сохранить голосовые настройки.",

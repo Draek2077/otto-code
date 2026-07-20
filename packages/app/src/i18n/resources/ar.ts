@@ -77,6 +77,12 @@ export const ar: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "سياق المشروع يبلغ {{tokens}} رمزًا — أي {{percent}} من نافذة هذا النموذج، في كل طلب. يتبقى {{room}} للعمل.",
+      manage: "إدارة",
+      dismiss: "إخفاء الآن",
+    },
     placeholders: {
       desktop: "أرسل رسالة إلى الوكيل أو ضع علامة على @files أو استخدم /commands و /skills",
       mobile: "الرسالة، @files ، /commands",
@@ -166,6 +172,65 @@ export const ar: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "رجوع",
+    tabs: {
+      context: "السياق",
+      findings: "يستحق الإصلاح",
+      findingsCount: "يستحق الإصلاح ({{count}})",
+    },
+    findings: {
+      empty: "لا شيء يستحق الإصلاح الآن.",
+    },
+    summary: {
+      title: "السياق المُرسَل في كل دور:",
+      ofWindow: "{{percent}} من النافذة",
+      workingRoom: "يترك نحو {{room}} للعمل",
+      window: "التقييم مقابل",
+      breakdown: "في كل طلب",
+      notCounted: "غير محتسب",
+      conditional: "{{tokens}} تُحمَّل فقط عندما يعمل الوكيل في تلك المنطقة",
+      referenced: "{{tokens}} مرتبطة برابط فقط ولا تُحمَّل إلا إذا قرأها الوكيل",
+      nothingFixed: "لا شيء يُحمَّل في كل طلب.",
+      loading: "جارٍ فحص السياق…",
+      empty: "لا يوجد تقرير سياق لمساحة العمل هذه بعد.",
+    },
+    tree: {
+      empty: "لا شيء لعرضه بعد.",
+      linkOnly: "رابط فقط",
+      conditional: "عند الحاجة",
+    },
+    loadMode: {
+      label: "التحميل",
+      always: "التحميل دائمًا",
+      linkOnly: "رابط فقط",
+      saves: "وضع الرابط فقط يوفّر {{tokens}} لكل طلب",
+      adds: "التحميل الدائم سيضيف {{tokens}} لكل طلب",
+      unsupported: "لا يملك هذا الوكيل آلية تحميل دائم، لذا تُقرأ الملفات المرتبطة عند الحاجة فقط.",
+    },
+    scope: {
+      global: "كل المشاريع",
+      local: "محلي",
+      enterprise: "مُدار",
+      subdirectory: "مجلد فرعي",
+    },
+    category: {
+      contextFiles: "ملفات السياق",
+      memoryIndex: "فهرس الذاكرة",
+      skillsRoster: "المهارات",
+      mcpTools: "أدوات MCP",
+      ottoInjected: "موجّه Otto",
+      systemPrompt: "موجّه النظام",
+    },
+    filePlaceholder: {
+      title: "اختر ملفًا",
+      body: "اختر أي عنصر من اليسار لقراءته أو تحريره هنا.",
+    },
+    emptyState: {
+      title: "لا يوجد سياق للمشروع بعد",
+      body: "لا يُحمَّل أي شيء لهذا المشروع. هذه بداية نظيفة وليست مشكلة — أضف CLAUDE.md أو AGENTS.md في جذر المشروع عندما تريد إعطاء وكلائك تعليمات دائمة.",
     },
   },
   agentControls: {
@@ -536,6 +601,11 @@ export const ar: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "السياق",
+      subtitle: "ما يُرسَل قبل أن تكتب",
+      openAction: "إدارة السياق",
     },
     tabs: {
       loading: "تحميل...",
@@ -986,6 +1056,7 @@ export const ar: TranslationResources = {
         openSettings: "افتح إعدادات المشروع",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        contextManagement: "إدارة السياق",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
       },
@@ -1975,6 +2046,7 @@ export const ar: TranslationResources = {
       connections: "اتصالات",
       agents: "Agents",
       teams: "Teams",
+      tools: "الأدوات",
       workspaces: "Workspaces",
       gitProviders: "موفّرو Git",
       providers: "مقدمي الخدمات",
@@ -2469,6 +2541,9 @@ export const ar: TranslationResources = {
       },
       speech: {
         sectionTitle: "الصوت والإملاء",
+        dictationSectionTitle: "الإملاء",
+        voiceSectionTitle: "الصوت",
+        openaiSectionTitle: "OpenAI",
         updateHost: "حدِّث المضيف لضبط الصوت والإملاء.",
         optionsError: "تعذَّر تحميل خيارات الصوت من المضيف.",
         saveError: "تعذَّر حفظ إعدادات الصوت.",

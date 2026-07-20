@@ -2201,6 +2201,170 @@ export const SuggestedTasksChangedSchema = z.object({
   }),
 });
 
+// Context Management — the daemon's accounting of everything a provider sends
+// before the user types (see projects/context-management/context-management.md).
+//
+// Two distinctions carry the whole feature and must not be collapsed on the
+// wire: an `import` edge is inlined into the request while a `reference` edge
+// costs only its link text, and `costClass` separates weight that rides every
+// request from weight that loads only when the agent touches an area.
+//
+// All numbers are estimates (chars/4) and `confidence` says how much to trust
+// the file set: `exact` when Otto composed the payload itself, `convention`
+// when resolved from a provider's documented layout, `unverified` for
+// subprocess-owned agents we cannot see into.
+// COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+export const ContextScopeSchema = z.enum([
+  "enterprise",
+  "global",
+  "project",
+  "local",
+  "subdirectory",
+  "runtime",
+]);
+
+export const ContextCategorySchema = z.enum([
+  "context_files",
+  "memory_index",
+  "skills_roster",
+  "mcp_tools",
+  "otto_injected",
+  "system_prompt",
+]);
+
+export const ContextCostClassSchema = z.enum(["fixed", "conditional", "referenced"]);
+
+export const ContextSeveritySchema = z.enum(["ok", "notice", "warn", "critical"]);
+
+export const ContextConfidenceSchema = z.enum(["exact", "convention", "unverified"]);
+
+export const ContextFindingKindSchema = z.enum([
+  "dead_import",
+  "dead_reference",
+  "duplicate_across_scope",
+  "duplicate_within_file",
+  "oversized_memory_entry",
+  "import_cycle",
+  "depth_capped",
+]);
+
+export const ContextRangeSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+});
+
+export const ContextFindingSchema = z.object({
+  kind: ContextFindingKindSchema,
+  message: z.string(),
+  range: ContextRangeSchema.optional(),
+  relatedNodeIds: z.array(z.string()).optional(),
+});
+
+export const ContextNodeSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  relPath: z.string(),
+  scope: ContextScopeSchema,
+  category: ContextCategorySchema,
+  costClass: ContextCostClassSchema,
+  bytes: z.number(),
+  estTokens: z.number(),
+  // Extra parents that also reach this node. The node is listed and counted
+  // exactly once; these render as a dimmed "also imported by" chip.
+  alsoImportedByNodeIds: z.array(z.string()),
+  findings: z.array(ContextFindingSchema),
+});
+
+export const ContextEdgeSchema = z.object({
+  fromNodeId: z.string(),
+  // Null when the target could not be resolved — pairs with a dead_* finding.
+  toNodeId: z.string().nullable(),
+  kind: z.enum(["import", "reference"]),
+  rawTarget: z.string(),
+  // Byte range of the whole reference token in the parent file, which is what
+  // makes "Always load" <-> "Link only" a single-span edit.
+  range: ContextRangeSchema,
+});
+
+export const ContextCategoryTotalSchema = z.object({
+  category: ContextCategorySchema,
+  estTokens: z.number(),
+  sharePercent: z.number(),
+  severity: ContextSeveritySchema,
+});
+
+export const ContextReportSchema = z.object({
+  workspaceId: z.string(),
+  provider: z.string(),
+  // The window the report was evaluated against — from the active model, or
+  // the client's what-if picker. Severity is meaningless without it.
+  windowTokens: z.number(),
+  scannedAt: z.string(),
+  confidence: ContextConfidenceSchema,
+  supported: z.boolean(),
+  supportsImports: z.boolean(),
+  nodes: z.array(ContextNodeSchema),
+  edges: z.array(ContextEdgeSchema),
+  categoryTotals: z.array(ContextCategoryTotalSchema),
+  fixedTotal: z.number(),
+  conditionalTotal: z.number(),
+  referencedTotal: z.number(),
+  workingRoom: z.number(),
+  aggregateSeverity: ContextSeveritySchema,
+  findings: z.array(ContextFindingSchema),
+});
+
+// Pushed with the full current report whenever a watched context file changes.
+// Full-report reconciliation, same idiom as suggested_tasks_changed.
+export const ContextReportChangedSchema = z.object({
+  type: z.literal("context_report_changed"),
+  payload: z.object({
+    workspaceId: z.string(),
+    report: ContextReportSchema.nullable(),
+  }),
+});
+
+// `provider` and `windowTokens` are the what-if pickers: omitted means "the
+// active agent's provider and its model's real window".
+export const ContextReportGetRequestMessageSchema = z.object({
+  type: z.literal("context.report.get.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  provider: z.string().optional(),
+  windowTokens: z.number().optional(),
+});
+
+export const ContextReportGetResponseMessageSchema = z.object({
+  type: z.literal("context.report.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    report: ContextReportSchema.nullable(),
+  }),
+});
+
+// Converts one edge between "always loaded" and "link only". Server-side
+// because the parent file may live outside the workspace root.
+export const ContextEdgeConvertRequestMessageSchema = z.object({
+  type: z.literal("context.edge.convert.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  // The parent file holding the reference — its `ContextNode.path`, not its
+  // id: ids are case-folded on Windows and are not safe to write through.
+  filePath: z.string(),
+  rawTarget: z.string(),
+  range: ContextRangeSchema,
+  target: z.enum(["import", "reference"]),
+});
+
+export const ContextEdgeConvertResponseMessageSchema = z.object({
+  type: z.literal("context.edge.convert.response"),
+  payload: z.object({
+    requestId: z.string(),
+    ok: z.boolean(),
+    error: z.string().optional(),
+  }),
+});
+
 // Aggregate outcome for a start/dismiss over one or more tasks. `succeeded`/
 // `failed` count the tasks acted on so the client can report "Started 3 tasks";
 // `error` collects any per-task failure messages (the failed tasks' chips stay).
@@ -3373,6 +3537,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticRequestMessageSchema,
   ProviderUsageListRequestMessageSchema,
   StatsActivityGetRequestMessageSchema,
+  ContextReportGetRequestMessageSchema,
+  ContextEdgeConvertRequestMessageSchema,
   StatsActivityResetRequestMessageSchema,
   UsageLogGetRequestMessageSchema,
   AgentContextGetUsageRequestMessageSchema,
@@ -3715,6 +3881,13 @@ export const ServerInfoStatusPayloadSchema = z
         retainedTranscripts: z.boolean().optional(),
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: z.boolean().optional(),
+        // Daemon can resolve and evaluate the provider's context graph, serve
+        // context.report.* and push context_report_changed. Without it the
+        // client hides both the Context Management tab and the composer
+        // warning entirely — there is no degraded client-side fallback, since
+        // only the daemon can see the files a provider loads.
+        // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+        contextManagement: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -6232,6 +6405,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   TasksSuggestedStartResponseMessageSchema,
   TasksSuggestedDismissResponseMessageSchema,
   SuggestedTasksChangedSchema,
+  ContextReportChangedSchema,
   AgentPersonalitySetResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
@@ -6317,6 +6491,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderDiagnosticResponseMessageSchema,
   ProviderUsageListResponseMessageSchema,
   StatsActivityGetResponseMessageSchema,
+  ContextReportGetResponseMessageSchema,
+  ContextEdgeConvertResponseMessageSchema,
   StatsActivityResetResponseMessageSchema,
   UsageLogGetResponseMessageSchema,
   ActivityStatsChangedSchema,
@@ -6451,6 +6627,17 @@ export type AgentBackgroundTaskClearResponseMessage = z.infer<
 export type SuggestedTaskInfo = z.infer<typeof SuggestedTaskInfoSchema>;
 export type SuggestedTaskState = z.infer<typeof SuggestedTaskStateSchema>;
 export type SuggestedTasksChanged = z.infer<typeof SuggestedTasksChangedSchema>;
+export type ContextScope = z.infer<typeof ContextScopeSchema>;
+export type ContextCategory = z.infer<typeof ContextCategorySchema>;
+export type ContextCostClass = z.infer<typeof ContextCostClassSchema>;
+export type ContextSeverity = z.infer<typeof ContextSeveritySchema>;
+export type ContextConfidence = z.infer<typeof ContextConfidenceSchema>;
+export type ContextFinding = z.infer<typeof ContextFindingSchema>;
+export type ContextNode = z.infer<typeof ContextNodeSchema>;
+export type ContextEdge = z.infer<typeof ContextEdgeSchema>;
+export type ContextCategoryTotal = z.infer<typeof ContextCategoryTotalSchema>;
+export type ContextReport = z.infer<typeof ContextReportSchema>;
+export type ContextReportChanged = z.infer<typeof ContextReportChangedSchema>;
 export type TasksSuggestedStartMode = z.infer<typeof TasksSuggestedStartModeSchema>;
 export type TasksSuggestedStartResponseMessage = z.infer<
   typeof TasksSuggestedStartResponseMessageSchema
@@ -6523,6 +6710,10 @@ export type ProviderUsageListResponseMessage = z.infer<
 >;
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
+export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
+export type ContextEdgeConvertResponseMessage = z.infer<
+  typeof ContextEdgeConvertResponseMessageSchema
+>;
 export type StatsActivityResetRequestMessage = z.infer<
   typeof StatsActivityResetRequestMessageSchema
 >;

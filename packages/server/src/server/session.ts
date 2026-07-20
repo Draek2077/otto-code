@@ -76,6 +76,12 @@ import {
 } from "./lifecycle-reasons.js";
 
 import { AgentManager } from "./agent/agent-manager.js";
+import {
+  ContextManagementService,
+  resolveProjectRootForCwd,
+} from "./agent/context-management/context-management-service.js";
+import { convertEdge } from "./agent/context-management/edge-convert.js";
+import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
   ActivityIncrementFn,
@@ -614,6 +620,7 @@ export class Session {
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
+  private readonly contextManagement: ContextManagementService;
   private readonly projectLinkStore: ProjectLinkStore;
   private readonly filesystem: SessionFileSystem;
   private readonly github: GitHubService;
@@ -1046,6 +1053,40 @@ export class Session {
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
+    });
+
+    // Context Management: what the active provider sends before the user types.
+    // Roots come from the workspace/project registries; the provider and the
+    // prompt Otto composes itself come from the workspace's newest agent, since
+    // the same workspace can host agents on different providers.
+    this.contextManagement = new ContextManagementService({
+      logger: this.sessionLogger,
+      resolveLocation: async (workspaceId) => {
+        const workspace = await this.workspaceRegistry.get(workspaceId);
+        if (!workspace) return null;
+        const project = await this.projectRegistry.get(workspace.projectId);
+        const projectRoot =
+          project?.rootPath ??
+          (await resolveProjectRootForCwd(workspace.cwd, (cwd) =>
+            this.workspaceGitService.resolveRepoRoot(cwd),
+          ));
+        return { cwd: workspace.cwd, projectRoot };
+      },
+      resolveRuntime: async (workspaceId) => {
+        const agent = this.agentManager
+          .listAgents()
+          .filter((candidate) => candidate.workspaceId === workspaceId)
+          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+        if (!agent) return null;
+        const injectedPromptText = composeSystemPromptParts(
+          agent.config.systemPrompt,
+          agent.config.daemonAppendSystemPrompt,
+        );
+        return {
+          provider: agent.provider,
+          ...(injectedPromptText ? { injectedPromptText } : {}),
+        };
+      },
     });
 
     this.voiceSession = new VoiceSession({
@@ -2444,8 +2485,82 @@ export class Session {
         return this.handleStatsActivityResetRequest(msg);
       case "usage.log.get.request":
         return this.handleUsageLogGetRequest(msg);
+      case "context.report.get.request":
+        return this.handleContextReportGetRequest(msg);
+      case "context.edge.convert.request":
+        return this.handleContextEdgeConvertRequest(msg);
       default:
         return undefined;
+    }
+  }
+
+  private async handleContextReportGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "context.report.get.request" }>,
+  ): Promise<void> {
+    try {
+      const report = await this.contextManagement.getReport({
+        workspaceId: msg.workspaceId,
+        ...(msg.provider ? { provider: msg.provider } : {}),
+        ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
+      });
+      this.emit({
+        type: "context.report.get.response",
+        payload: { requestId: msg.requestId, report },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to build context report");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to build context report: ${err.message}`,
+          code: "context_report_get_failed",
+        },
+      });
+    }
+  }
+
+  private async handleContextEdgeConvertRequest(
+    msg: Extract<SessionInboundMessage, { type: "context.edge.convert.request" }>,
+  ): Promise<void> {
+    const respond = (ok: boolean, error?: string): void => {
+      this.emit({
+        type: "context.edge.convert.response",
+        payload: { requestId: msg.requestId, ok, ...(error ? { error } : {}) },
+      });
+    };
+    try {
+      const result = await convertEdge({
+        filePath: msg.filePath,
+        rawTarget: msg.rawTarget,
+        range: msg.range,
+        target: msg.target,
+      });
+      if (result.ok) {
+        // The graph changed under every cached window/provider combination.
+        this.contextManagement.invalidate(msg.workspaceId);
+        await this.pushContextReport(msg.workspaceId);
+        respond(true);
+        return;
+      }
+      respond(false, result.error);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to convert context edge");
+      respond(false, err.message);
+    }
+  }
+
+  /** Pushes the freshly-scanned report so open clients reconcile immediately. */
+  private async pushContextReport(workspaceId: string): Promise<void> {
+    try {
+      const report = await this.contextManagement.getReport({ workspaceId });
+      this.emit({ type: "context_report_changed", payload: { workspaceId, report } });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.warn({ err, workspaceId }, "Failed to push context report");
     }
   }
 

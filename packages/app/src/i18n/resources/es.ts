@@ -77,6 +77,12 @@ export const es: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "El contexto del proyecto ocupa {{tokens}} tokens: {{percent}} de la ventana de este modelo, en cada petición. Quedan {{room}} para trabajar.",
+      manage: "Gestionar",
+      dismiss: "Ocultar por ahora",
+    },
     placeholders: {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
       mobile: "Mensaje,@files,/commands",
@@ -166,6 +172,66 @@ export const es: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "Atrás",
+    tabs: {
+      context: "Contexto",
+      findings: "Conviene arreglar",
+      findingsCount: "Conviene arreglar ({{count}})",
+    },
+    findings: {
+      empty: "Nada que arreglar por ahora.",
+    },
+    summary: {
+      title: "Contexto enviado por turno:",
+      ofWindow: "{{percent}} de la ventana",
+      workingRoom: "Deja unos {{room}} para trabajar",
+      window: "Evaluar con",
+      breakdown: "En cada petición",
+      notCounted: "Sin contar",
+      conditional: "{{tokens}} se cargan solo cuando el agente trabaja en esa zona",
+      referenced: "{{tokens}} están enlazados y solo se cargan si el agente los lee",
+      nothingFixed: "No se carga nada en cada petición.",
+      loading: "Analizando tu contexto…",
+      empty: "Aún no hay informe de contexto para este espacio de trabajo.",
+    },
+    tree: {
+      empty: "Nada que mostrar todavía.",
+      linkOnly: "solo enlace",
+      conditional: "cuando haga falta",
+    },
+    loadMode: {
+      label: "Carga",
+      always: "Cargar siempre",
+      linkOnly: "Solo enlace",
+      saves: "Con solo enlace ahorrarías {{tokens}} por petición",
+      adds: "Cargar siempre añadiría {{tokens}} por petición",
+      unsupported:
+        "Este agente no tiene mecanismo de carga permanente: los archivos enlazados solo se leen cuando hacen falta.",
+    },
+    scope: {
+      global: "Todos los proyectos",
+      local: "Local",
+      enterprise: "Gestionado",
+      subdirectory: "Subcarpeta",
+    },
+    category: {
+      contextFiles: "Archivos de contexto",
+      memoryIndex: "Índice de memoria",
+      skillsRoster: "Habilidades",
+      mcpTools: "Herramientas MCP",
+      ottoInjected: "Prompt de Otto",
+      systemPrompt: "Prompt del sistema",
+    },
+    filePlaceholder: {
+      title: "Elige un archivo",
+      body: "Elige cualquier cosa de la izquierda para leerla o editarla aquí.",
+    },
+    emptyState: {
+      title: "Aún no hay contexto de proyecto",
+      body: "No se carga nada para este proyecto. Es un punto de partida limpio, no un problema: añade un CLAUDE.md o AGENTS.md en la raíz del proyecto cuando quieras dar instrucciones permanentes a tus agentes.",
     },
   },
   agentControls: {
@@ -540,6 +606,11 @@ export const es: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "Contexto",
+      subtitle: "Lo que se envía antes de que escribas",
+      openAction: "Gestionar contexto",
     },
     tabs: {
       loading: "Cargando...",
@@ -1011,6 +1082,7 @@ export const es: TranslationResources = {
         openSettings: "Abrir la configuración del proyecto",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        contextManagement: "Gestionar contexto",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
       },
@@ -2013,6 +2085,7 @@ export const es: TranslationResources = {
       connections: "Conexiones",
       agents: "Agents",
       teams: "Teams",
+      tools: "Herramientas",
       workspaces: "Workspaces",
       gitProviders: "Proveedores de Git",
       providers: "Proveedores",
@@ -2511,6 +2584,9 @@ export const es: TranslationResources = {
       },
       speech: {
         sectionTitle: "Voz y dictado",
+        dictationSectionTitle: "Dictado",
+        voiceSectionTitle: "Voz",
+        openaiSectionTitle: "OpenAI",
         updateHost: "Actualiza el host para configurar la voz y el dictado.",
         optionsError: "No se pudieron cargar las opciones de voz del host.",
         saveError: "No se pudieron guardar los ajustes de voz.",

@@ -77,6 +77,12 @@ export const zhCN: TranslationResources = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "项目上下文为 {{tokens}} 个 token，占该模型窗口的 {{percent}}，每次请求都会发送。还剩 {{room}} 可供使用。",
+      manage: "管理",
+      dismiss: "暂时忽略",
+    },
     placeholders: {
       desktop: "给 Agent 发消息，标记 @files，或使用 /commands 和 /skills",
       mobile: "发消息，@files，/commands",
@@ -166,6 +172,65 @@ export const zhCN: TranslationResources = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "返回",
+    tabs: {
+      context: "上下文",
+      findings: "值得修复",
+      findingsCount: "值得修复 ({{count}})",
+    },
+    findings: {
+      empty: "目前没有需要修复的内容。",
+    },
+    summary: {
+      title: "每轮发送的上下文：",
+      ofWindow: "占窗口的 {{percent}}",
+      workingRoom: "约剩 {{room}} 可供使用",
+      window: "按此评估",
+      breakdown: "每次请求",
+      notCounted: "未计入",
+      conditional: "{{tokens}} 仅在智能体处理该区域时才加载",
+      referenced: "{{tokens}} 只是链接，只有智能体去读取时才会加载",
+      nothingFixed: "没有内容在每次请求时加载。",
+      loading: "正在扫描你的上下文…",
+      empty: "该工作区还没有上下文报告。",
+    },
+    tree: {
+      empty: "暂时没有可显示的内容。",
+      linkOnly: "仅链接",
+      conditional: "按需",
+    },
+    loadMode: {
+      label: "加载方式",
+      always: "始终加载",
+      linkOnly: "仅链接",
+      saves: "改为仅链接可为每次请求节省 {{tokens}}",
+      adds: "始终加载将为每次请求增加 {{tokens}}",
+      unsupported: "该智能体没有始终加载机制，链接的文件只在需要时读取。",
+    },
+    scope: {
+      global: "所有项目",
+      local: "本地",
+      enterprise: "受管",
+      subdirectory: "子文件夹",
+    },
+    category: {
+      contextFiles: "上下文文件",
+      memoryIndex: "记忆索引",
+      skillsRoster: "技能",
+      mcpTools: "MCP 工具",
+      ottoInjected: "Otto 提示词",
+      systemPrompt: "系统提示词",
+    },
+    filePlaceholder: {
+      title: "选择一个文件",
+      body: "在左侧选择任意项，即可在此阅读或编辑。",
+    },
+    emptyState: {
+      title: "还没有项目上下文",
+      body: "该项目没有加载任何内容。这是干净的起点，不是问题——想给智能体长期指令时，在项目根目录添加 CLAUDE.md 或 AGENTS.md 即可。",
     },
   },
   agentControls: {
@@ -536,6 +601,11 @@ export const zhCN: TranslationResources = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "上下文",
+      subtitle: "你输入之前就会发送的内容",
+      openAction: "管理上下文",
     },
     tabs: {
       loading: "正在加载...",
@@ -980,6 +1050,7 @@ export const zhCN: TranslationResources = {
         openSettings: "打开 project 设置",
         openNewWindow: "在新窗口中打开",
         openNewWindowFailed: "无法打开新窗口",
+        contextManagement: "管理上下文",
         remove: "移除 project",
         removing: "正在移除...",
       },
@@ -1958,6 +2029,7 @@ export const zhCN: TranslationResources = {
       connections: "连接",
       agents: "Agents",
       teams: "Teams",
+      tools: "工具",
       workspaces: "Workspaces",
       gitProviders: "Git 提供商",
       providers: "Providers",
@@ -2450,6 +2522,9 @@ export const zhCN: TranslationResources = {
       },
       speech: {
         sectionTitle: "语音与听写",
+        dictationSectionTitle: "听写",
+        voiceSectionTitle: "语音",
+        openaiSectionTitle: "OpenAI",
         updateHost: "更新 Host 以配置语音和听写。",
         optionsError: "无法从 Host 加载语音选项。",
         saveError: "无法保存语音设置。",

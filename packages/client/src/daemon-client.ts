@@ -76,6 +76,8 @@ import type {
   OttoWorktreeListResponse,
   OttoWorktreeArchiveResponse,
   ProjectIconResponse,
+  ContextReportGetResponseMessage,
+  ContextEdgeConvertResponseMessage,
   ProjectAddResponse,
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
@@ -4453,6 +4455,56 @@ export class DaemonClient {
         cwd,
       },
       responseType: "project_icon_response",
+    });
+  }
+
+  // ============================================================================
+  // Context Management
+  // ============================================================================
+
+  /**
+   * Everything the workspace's provider sends before the user types. `provider`
+   * and `windowTokens` are what-if overrides for the Context Management tab's
+   * pickers; omit both to evaluate the active agent's real setup.
+   */
+  async requestContextReport(
+    input: { workspaceId: string; provider?: string; windowTokens?: number },
+    requestId?: string,
+  ): Promise<ContextReportGetResponseMessage["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "context.report.get.request",
+        workspaceId: input.workspaceId,
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(typeof input.windowTokens === "number" ? { windowTokens: input.windowTokens } : {}),
+      },
+      responseType: "context.report.get.response",
+    });
+  }
+
+  /** Rewrites one reference between "always loaded" and "link only". */
+  async requestContextEdgeConvert(
+    input: {
+      workspaceId: string;
+      filePath: string;
+      rawTarget: string;
+      range: { start: number; end: number };
+      target: "import" | "reference";
+    },
+    requestId?: string,
+  ): Promise<ContextEdgeConvertResponseMessage["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "context.edge.convert.request",
+        workspaceId: input.workspaceId,
+        filePath: input.filePath,
+        rawTarget: input.rawTarget,
+        range: input.range,
+        target: input.target,
+      },
+      responseType: "context.edge.convert.response",
     });
   }
 

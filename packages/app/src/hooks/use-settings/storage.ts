@@ -115,6 +115,15 @@ export interface AppSettings {
   // plan windows) as a strip above the composer. Device-local presentation
   // only — the daemon keeps emitting events either way. Default on.
   rateLimitWarningsEnabled: boolean;
+  // Show the fixed-context warning above the composer when this workspace's
+  // context takes a large share of the model's window. Device-local
+  // presentation only — the daemon keeps scanning either way, and the Context
+  // Management tab stays reachable. Default on.
+  contextWarningsEnabled: boolean;
+  // Last context window the user evaluated against in the Context tab, so the
+  // picker reopens where they left it. Device-local: it is a viewing
+  // preference, not a property of the project.
+  contextWindowTokens: number;
   serviceUrlBehavior: ServiceUrlBehavior;
   // See LinkOpenBehavior. Device-local presentation only.
   linkOpenBehavior: LinkOpenBehavior;
@@ -311,6 +320,10 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sendBehavior: "interrupt",
   promptSuggestionsEnabled: true,
   rateLimitWarningsEnabled: true,
+  contextWarningsEnabled: true,
+  // Claude's standard window. Deliberately not the largest option: defaulting
+  // to 1M would report "you're fine" to everyone.
+  contextWindowTokens: 200_000,
   serviceUrlBehavior: "ask",
   linkOpenBehavior: "external",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -732,6 +745,12 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   }
   if (typeof stored.rateLimitWarningsEnabled === "boolean") {
     result.rateLimitWarningsEnabled = stored.rateLimitWarningsEnabled;
+  }
+  if (typeof stored.contextWarningsEnabled === "boolean") {
+    result.contextWarningsEnabled = stored.contextWarningsEnabled;
+  }
+  if (typeof stored.contextWindowTokens === "number" && stored.contextWindowTokens > 0) {
+    result.contextWindowTokens = stored.contextWindowTokens;
   }
   if (typeof stored.animationsEnabled === "boolean") {
     result.animationsEnabled = stored.animationsEnabled;

@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { useGitLogStore } from "@/git/log-store";
+import { useContextManagementStore } from "@/context-management/store";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import { activityStatsQueryKey } from "@/hooks/use-activity-stats";
@@ -1766,6 +1767,16 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       setSuggestedTasksForParent(serverId, parentAgentId, tasks);
     });
 
+    // Full-report reconciliation: the daemon re-scans and pushes the whole
+    // report, so the client never merges partial context state.
+    const unsubContextReportChanged = client.on("context_report_changed", (message) => {
+      if (message.type !== "context_report_changed") {
+        return;
+      }
+      const { workspaceId, report } = message.payload;
+      useContextManagementStore.getState().setReport(serverId, workspaceId, report);
+    });
+
     // Daemon-coalesced ping that activity counters moved: invalidate the stats
     // query so an open Metrics screen refetches immediately (active query),
     // while an unmounted one just goes stale and refetches on next mount. The
@@ -1806,6 +1817,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubAgentTimeline();
       unsubBackgroundShellTasksChanged();
       unsubSuggestedTasksChanged();
+      unsubContextReportChanged();
       unsubActivityStatsChanged();
       unsubWorkspaceUpdate();
       unsubScriptStatusUpdate();

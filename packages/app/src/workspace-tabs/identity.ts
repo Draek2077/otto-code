@@ -52,6 +52,9 @@ export function normalizeWorkspaceTabTarget(
     const runId = trimNonEmpty(value.runId);
     return runId ? { kind: "visualizer", runId } : { kind: "visualizer" };
   }
+  if (value.kind === "contextManagement") {
+    return { kind: "contextManagement" };
+  }
   return null;
 }
 
@@ -109,6 +112,10 @@ export function workspaceTabTargetsEqual(
   // same run (or both workspace-wide, no runId).
   if (left.kind === "visualizer" && right.kind === "visualizer") {
     return left.runId === right.runId;
+  }
+  // Singleton per workspace — kind alone settles identity.
+  if (left.kind === "contextManagement") {
+    return true;
   }
   const field = SIMPLE_ID_FIELD_BY_KIND[left.kind];
   if (!field) {
@@ -177,6 +184,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "visualizer") {
     return target.runId ? `visualizer_run_${target.runId}` : "visualizer";
+  }
+  if (target.kind === "contextManagement") {
+    return "context-management";
   }
   // Out-of-project files are namespaced by their origin workspace so they never
   // collide with an in-project file of the same relative path (gated-multi-root).

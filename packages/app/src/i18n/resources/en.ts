@@ -75,6 +75,12 @@ export const en = {
       windowSevenDay: "7-day",
       windowPlan: "plan",
     },
+    contextHealth: {
+      summary:
+        "Project context is {{tokens}} tokens — {{percent}} of this model's window, every request. {{room}} left to work with.",
+      manage: "Manage",
+      dismiss: "Dismiss for now",
+    },
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",
       mobile: "Message, @files, /commands",
@@ -164,6 +170,66 @@ export const en = {
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",
+    },
+  },
+  contextManagement: {
+    back: "Back",
+    tabs: {
+      context: "Context",
+      findings: "Worth fixing",
+      findingsCount: "Worth fixing ({{count}})",
+    },
+    findings: {
+      empty: "Nothing worth fixing right now.",
+    },
+    summary: {
+      title: "Context sent per turn:",
+      ofWindow: "{{percent}} of the window",
+      workingRoom: "Leaves about {{room}} to work with",
+      window: "Evaluate against",
+      breakdown: "Every request",
+      notCounted: "Not counted",
+      conditional: "{{tokens}} loads only when the agent works in that area",
+      referenced: "{{tokens}} is linked, and only loads if the agent reads it",
+      nothingFixed: "Nothing is loaded on every request.",
+      loading: "Scanning your context…",
+      empty: "No context report for this workspace yet.",
+    },
+    tree: {
+      empty: "Nothing to show yet.",
+      linkOnly: "link only",
+      conditional: "when needed",
+    },
+    loadMode: {
+      label: "Loading",
+      always: "Always load",
+      linkOnly: "Link only",
+      saves: "Link only would save {{tokens}} per request",
+      adds: "Always loading would add {{tokens}} per request",
+      unsupported:
+        "This agent has no always-load mechanism, so linked files are only read on demand.",
+    },
+    scope: {
+      global: "Every project",
+      local: "Local",
+      enterprise: "Managed",
+      subdirectory: "Subfolder",
+    },
+    category: {
+      contextFiles: "Context files",
+      memoryIndex: "Memory index",
+      skillsRoster: "Skills",
+      mcpTools: "MCP tools",
+      ottoInjected: "Otto prompt",
+      systemPrompt: "System prompt",
+    },
+    filePlaceholder: {
+      title: "Pick a file",
+      body: "Choose anything on the left to read or edit it here.",
+    },
+    emptyState: {
+      title: "No project context yet",
+      body: "Nothing is being loaded for this project. That's a clean slate, not a problem — add a CLAUDE.md or AGENTS.md at the project root when you want to give your agents standing instructions.",
     },
   },
   agentControls: {
@@ -536,6 +602,11 @@ export const en = {
       loadFailedTitle: "The Visualizer couldn't start",
       loadFailedBody:
         "The graph view never finished loading on this machine. This can happen when the app is running without GPU acceleration — the desktop log records the details. Close and reopen the tab to retry.",
+    },
+    contextManagement: {
+      tabLabel: "Manage context",
+      subtitle: "What gets sent before you type",
+      openAction: "Manage context",
     },
     tabs: {
       loading: "Loading...",
@@ -993,6 +1064,7 @@ export const en = {
         openSettings: "Open project settings",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
+        contextManagement: "Manage context",
         remove: "Remove project",
         removing: "Removing...",
       },
@@ -1984,6 +2056,7 @@ export const en = {
       connections: "Connections",
       agents: "Agents",
       teams: "Teams",
+      tools: "Tools",
       workspaces: "Workspaces",
       gitProviders: "Git",
       providers: "Providers",
@@ -2478,6 +2551,9 @@ export const en = {
       },
       speech: {
         sectionTitle: "Voice & dictation",
+        dictationSectionTitle: "Dictation",
+        voiceSectionTitle: "Voice",
+        openaiSectionTitle: "OpenAI",
         updateHost: "Update the host to configure voice and dictation.",
         optionsError: "Couldn't load speech options from the host.",
         saveError: "Couldn't save speech settings.",

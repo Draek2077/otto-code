@@ -32,7 +32,11 @@ export type WorkspaceTabTarget =
   // per-agent switching). An orchestration Run's "Visualize" action opens a
   // separate, run-scoped tab (`runId` set) restricted to that run's agent set
   // — one per run per workspace, same as `gitLog`'s one-per-operation shape.
-  | { kind: "visualizer"; runId?: string };
+  | { kind: "visualizer"; runId?: string }
+  // Context Management — everything the provider sends before the user types.
+  // One per workspace: the report is a property of the workspace and its
+  // provider, so a second tab would show the same thing.
+  | { kind: "contextManagement" };
 
 export interface WorkspaceTab {
   tabId: string;
@@ -537,6 +541,10 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
       kind: "visualizer",
       ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
     });
+  }
+  // No id field at all — the workspace is the identity.
+  if (kind === "contextManagement") {
+    return normalizeWorkspaceTabTarget({ kind: "contextManagement" });
   }
   const field = kind ? SIMPLE_STRING_FIELD_BY_KIND[kind] : undefined;
   if (kind && field && typeof raw[field] === "string") {

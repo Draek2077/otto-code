@@ -1,4 +1,5 @@
 import { agentPanelRegistration } from "@/panels/agent-panel";
+import { contextManagementPanelRegistration } from "@/panels/context-management-panel-registration";
 import { artifactPanelRegistration } from "@/panels/artifact-panel";
 import { browserPanelRegistration } from "@/panels/browser-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
@@ -24,5 +25,6 @@ export function ensurePanelsRegistered(): void {
   registerPanel(artifactPanelRegistration);
   registerPanel(gitLogPanelRegistration);
   registerPanel(visualizerPanelRegistration);
+  registerPanel(contextManagementPanelRegistration);
   panelsRegistered = true;
 }

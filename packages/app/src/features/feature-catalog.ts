@@ -9,9 +9,9 @@ import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 //
 // This is a LEAF module: it imports only the WorkspaceTabTarget kind TYPE (which
 // erases at runtime), so it can be imported by settings storage without a cycle.
-export type FeatureId = "visualizer";
+export type FeatureId = "visualizer" | "contextManagement";
 
-export const FEATURE_IDS: readonly FeatureId[] = ["visualizer"];
+export const FEATURE_IDS: readonly FeatureId[] = ["visualizer", "contextManagement"];
 
 export interface FeatureDefinition {
   id: FeatureId;
@@ -36,6 +36,14 @@ export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = {
     description:
       "The live agent-orchestration graph. Turning it off removes the header button, the Runs “Visualize” action, and its settings — and keeps its render bundle from ever loading into memory.",
     panelKinds: ["visualizer"],
+    defaultEnabled: true,
+  },
+  contextManagement: {
+    id: "contextManagement",
+    label: "Context Management",
+    description:
+      "The Context tab and the composer warning about fixed context weight. Turning it off hides both; the daemon stops being asked for reports.",
+    panelKinds: ["contextManagement"],
     defaultEnabled: true,
   },
 };
