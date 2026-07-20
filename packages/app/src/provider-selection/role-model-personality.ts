@@ -98,15 +98,44 @@ export interface UseFormRolePersonalityInput {
   binding?: RolePersonalityBindingConfig;
   /**
    * Auto-pick a sensible default on open instead of leaving the form on its
-   * device-last model: the active team's holder of `role` (the "Team's <Role>"
-   * entry) if a team is active, else the first available personality carrying
-   * `role`, else nothing (the user chooses a model). Runs once, only while the
-   * user hasn't touched the picker and no stored binding is being edited; it
-   * also suppresses the remembered-personality preselect so the team pick wins.
-   * Omit (default off) on surfaces that should keep the last-used model, e.g.
-   * the new-chat composer.
+   * device-last model. Runs once, only while the user hasn't touched the picker
+   * and no stored binding is being edited.
+   *
+   * - `"always"` — the active team's holder of `role` (the "Team's <Role>"
+   *   entry) if a team is active, else the first available personality carrying
+   *   `role`, else nothing. Suppresses the remembered-personality preselect so
+   *   the default always wins. Used by create surfaces whose record has no
+   *   history of its own (new schedule, new artifact).
+   * - `"fallback"` — the default is restricted to the team entry, and it is the
+   *   ACTIVE TEAM that decides who arbitrates:
+   *     - Team active → identical to `"always"`. The team entry wins and device
+   *       memory is suppressed. An active team is an explicit, host-level choice;
+   *       a device-local last-used personality is a leftover, and must never
+   *       outrank it. (It used to, and the result was a latch: the first pick
+   *       set `lastPersonalityByRole` and also rewrote the device's last-used
+   *       model, so memory matched forever after and the team's holder could
+   *       never auto-apply again — the team entry never persists a last
+   *       personality, so nothing could clear it.)
+   *     - No team → no default at all. There is nothing principled to pick, so
+   *       the form keeps whatever model it landed on and device memory is the
+   *       only preselect, exactly as before teams existed.
+   *   This is what the new-chat composer wants.
+   * - omitted / `false` — no default; the form keeps its last-used model.
    */
-  autoSelectDefault?: boolean;
+  autoSelectDefault?: false | "always" | "fallback";
+}
+
+/**
+ * Does the surface's own default own the initial pick outright, suppressing the
+ * device-local remembered-personality preselect? True for `"always"`, and for
+ * `"fallback"` whenever the team slot is live — an active team is an explicit
+ * host-level choice and outranks device memory. See `autoSelectDefault`.
+ */
+function defaultOwnsInitialPick(
+  autoSelectDefault: UseFormRolePersonalityInput["autoSelectDefault"],
+  teamSlotLive: boolean,
+): boolean {
+  return autoSelectDefault === "always" || (autoSelectDefault === "fallback" && teamSlotLive);
 }
 
 /**
@@ -140,6 +169,12 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     return match?.id ?? null;
   }, [binding, rosterSource]);
 
+  const teamEntryEnabled = team ? (team.enabled ?? true) : false;
+  // Is the synthetic "Team's <Role>" slot actually live on this surface right
+  // now? Computed before the roster hook because it decides who owns the
+  // initial pick (below), not just what the picker renders.
+  const teamSlotLive = teamEntryEnabled && hasTeamsFeature && activeTeam !== null;
+
   const {
     personalities,
     personalityGroups,
@@ -153,15 +188,15 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     onApply,
     currentSelection,
     alwaysIncludePersonalityId: boundRosterId,
-    // A surface with its own deterministic default owns the initial pick; the
-    // remembered-personality preselect must not race ahead of it.
-    preselectRemembered: !autoSelectDefault,
+    // A surface whose default is unconditional owns the initial pick outright;
+    // the remembered-personality preselect must not race ahead of it. Under an
+    // active team "fallback" is unconditional too — the team decides, so memory
+    // is suppressed there for the same reason.
+    preselectRemembered: !defaultOwnsInitialPick(autoSelectDefault, teamSlotLive),
   });
-
-  const teamEntryEnabled = team ? (team.enabled ?? true) : false;
   const teamEntry = useMemo(
     () =>
-      team && teamEntryEnabled && hasTeamsFeature && activeTeam
+      team && teamSlotLive && activeTeam
         ? buildTeamRoleEntry({
             entryId: team.entryId,
             role,
@@ -172,7 +207,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
             entries,
           })
         : null,
-    [team, teamEntryEnabled, hasTeamsFeature, activeTeam, rosterSource, entries, role],
+    [team, teamSlotLive, activeTeam, rosterSource, entries, role],
   );
   const teamEntryId = team?.entryId ?? null;
 
@@ -242,6 +277,13 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     }
     // Not enough loaded yet to tell what's available — try again next render.
     if (!config || entries.length === 0) {
+      return;
+    }
+    // Team entry only: with no active team (or a team whose holder of this role
+    // doesn't resolve) there is nothing principled to fall back to, so the form
+    // keeps the model it already landed on and device memory stands alone.
+    if (autoSelectDefault === "fallback" && !teamEntry?.values) {
+      defaultAppliedRef.current = true;
       return;
     }
     // Priority 1: the active team's current holder of this role.

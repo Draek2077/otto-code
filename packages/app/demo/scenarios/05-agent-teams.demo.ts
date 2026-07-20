@@ -81,6 +81,11 @@ test("agent teams walkthrough", async ({ page }, testInfo) => {
     page.getByTestId("agent-team-prompt-input"),
     "Bias to action: plan tight, build small, review honestly, and keep main green.",
   );
+  // The editor is tabbed — identity above, members on their own tab.
+  await humanClick(
+    page,
+    page.getByTestId("agent-team-tabs").getByRole("button", { name: "Members", exact: true }),
+  );
   for (const member of ["aria", "forge", "sage", "tempo"] as const) {
     await humanClick(page, page.getByTestId(`agent-team-member-${cast.personalities[member].id}`));
   }

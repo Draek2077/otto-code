@@ -13,7 +13,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
@@ -41,6 +41,7 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
 import { Switch } from "@/components/ui/switch";
+import { TextArea } from "@/components/ui/text-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -64,7 +65,7 @@ import { ROLE_HINTS, ROLE_LABELS } from "@/provider-selection/role-labels";
 import { useIsExtraCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
 
 /**
  * The single detection point for the agent personalities capability.
@@ -176,7 +177,7 @@ const CUE_KIND_LABELS: Record<CueMoment, string> = {
 // exactly the ambiguity the generator now avoids too.)
 const CUE_KIND_HINTS: Record<CueMoment, string> = {
   join: "Just picked up the task, about to begin — e.g. “On it”.",
-  thinking: "In the middle of working it out — e.g. “Working on it”.",
+  thinking: "In the middle of working it out — e.g. “I’m thinking…”.",
   done: "Finished, handing back the result — e.g. “Done”.",
 };
 
@@ -529,20 +530,26 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     async (draft: PersonalityDraft) => {
       if (!editing) return;
       const id = editing.id ?? generatePersonalityId();
-      const personality = draftToPersonality(draft, id);
-      // An edited personality can vanish from the roster mid-edit (deleted from
-      // another client); mapping by id would silently drop the save, so append
-      // (recreate) it instead.
-      const stillExists =
-        editing.id !== null && personalities.some((entry) => entry.id === editing.id);
-      const next = stillExists
-        ? personalities.map((entry) => (entry.id === editing.id ? personality : entry))
-        : [...personalities, personality];
+      // Draft conversion is inside the try with the save: anything that throws
+      // between the click and the write has to reach the user, or the editor
+      // just sits there looking stuck.
       try {
+        const personality = draftToPersonality(draft, id);
+        // An edited personality can vanish from the roster mid-edit (deleted
+        // from another client); mapping by id would silently drop the save, so
+        // append (recreate) it instead.
+        const stillExists =
+          editing.id !== null && personalities.some((entry) => entry.id === editing.id);
+        const next = stillExists
+          ? personalities.map((entry) => (entry.id === editing.id ? personality : entry))
+          : [...personalities, personality];
         await savePersonalities(next);
         setEditing(null);
       } catch (error) {
-        Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+        void alertDialog({
+          title: "Unable to save",
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     },
     [editing, personalities, savePersonalities],
@@ -574,7 +581,10 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
         try {
           await savePersonalities(personalities.filter((entry) => entry.id !== id));
         } catch (error) {
-          Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+          void alertDialog({
+            title: "Unable to save",
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       })();
     },
@@ -597,7 +607,10 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     try {
       await savePersonalities([...personalities, ...missing]);
     } catch (error) {
-      Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+      void alertDialog({
+        title: "Unable to save",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }, [personalities, savePersonalities]);
 
@@ -1346,12 +1359,11 @@ function PersonalityEditModal({
         {activeTab === "personality" ? (
           <>
             <FieldLabel label="Personality prompt" />
-            <TextInput
+            <TextArea
               value={draft.personalityPrompt}
               onChangeText={setPrompt}
               placeholder="How this personality should behave (fun, optional)."
               placeholderTextColor={styles.placeholder.color}
-              multiline
               style={styles.textArea}
               testID="agent-personality-prompt-input"
             />
