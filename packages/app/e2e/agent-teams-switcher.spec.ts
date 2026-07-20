@@ -82,6 +82,11 @@ test.describe("Agent teams switcher", () => {
       const modal = page.getByTestId("agent-team-edit-modal");
       await expect(modal).toBeVisible({ timeout: 15_000 });
       await page.getByTestId("agent-team-name-input").fill(teamAName);
+      // The editor is a TabbedModalSheet; members live on their own tab.
+      await page
+        .getByTestId("agent-team-tabs")
+        .getByRole("button", { name: "Members", exact: true })
+        .click();
       await page.getByTestId(`agent-team-member-${memberA.id}`).click();
       await page.getByTestId("agent-team-save-button").click();
       await expect(modal).not.toBeVisible({ timeout: 30_000 });

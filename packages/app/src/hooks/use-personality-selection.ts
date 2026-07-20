@@ -93,6 +93,20 @@ export interface UsePersonalitySelectionInput {
   preselectRemembered?: boolean;
 }
 
+/**
+ * Where the device-local remembered-personality preselect stands, computed
+ * synchronously from the same inputs its effect reads.
+ *
+ * - `pending` — preferences or the form's provider haven't loaded; undecided.
+ * - `applies` — a remembered personality is available and matches; it will win.
+ * - `none` — nothing remembered, or it no longer matches.
+ *
+ * Internal: no surface arbitrates against this state any more. A surface that
+ * owns the default suppresses the preselect outright via `preselectRemembered`
+ * rather than racing it — see the team rule in `useFormRolePersonality`.
+ */
+type RememberedPreselectState = "pending" | "applies" | "none";
+
 export interface UsePersonalitySelectionResult {
   personalities: SelectorPersonality[];
   /**
@@ -333,31 +347,33 @@ export function usePersonalitySelection(
   const curMode = currentSelection?.modeId;
   const curThinking = currentSelection?.thinkingOptionId ?? "";
 
-  useEffect(() => {
+  // Computed, not just applied, so a surface layering its own default on top can
+  // read the outcome in the same render instead of racing this hook's effect.
+  const rememberedPreselect = useMemo<RememberedPreselectState>(() => {
     if (!preselectRemembered) {
-      return;
+      return "none";
     }
-    if (interactedRef.current || selectedPersonalityId !== null) {
-      return;
+    if (preferencesLoading) {
+      return "pending";
     }
-    if (preferencesLoading || !rememberedId || !curProvider) {
-      return;
+    if (!rememberedId) {
+      return "none";
+    }
+    if (!curProvider) {
+      return "pending";
     }
     const resolution = resolutions.get(rememberedId);
     if (!resolution || !resolution.available) {
-      return;
+      return "none";
     }
-    if (
-      !selectionMatches(resolution.values, {
-        provider: curProvider,
-        model: curModel,
-        modeId: curMode,
-        thinkingOptionId: curThinking,
-      })
-    ) {
-      return;
-    }
-    setSelectedPersonalityId(rememberedId);
+    return selectionMatches(resolution.values, {
+      provider: curProvider,
+      model: curModel,
+      modeId: curMode,
+      thinkingOptionId: curThinking,
+    })
+      ? "applies"
+      : "none";
   }, [
     curMode,
     curModel,
@@ -367,8 +383,17 @@ export function usePersonalitySelection(
     preselectRemembered,
     rememberedId,
     resolutions,
-    selectedPersonalityId,
   ]);
+
+  useEffect(() => {
+    if (interactedRef.current || selectedPersonalityId !== null) {
+      return;
+    }
+    if (rememberedPreselect !== "applies" || !rememberedId) {
+      return;
+    }
+    setSelectedPersonalityId(rememberedId);
+  }, [rememberedPreselect, rememberedId, selectedPersonalityId]);
 
   // A selection whose personality has since left the roster (deleted remotely)
   // reads as no selection — the draft must not spawn with a stale id the

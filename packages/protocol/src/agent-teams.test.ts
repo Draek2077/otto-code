@@ -6,6 +6,7 @@ import {
   getEffectiveTeamPrompt,
   isTeamMember,
   pruneTeamMemberIds,
+  resolveExclusiveTeamMembers,
   resolveTeamMembers,
   teamRoleUnion,
 } from "./agent-teams.js";
@@ -94,6 +95,30 @@ describe("pruneTeamMemberIds", () => {
 
   test("returns empty for absent member ids", () => {
     expect(pruneTeamMemberIds(undefined, roster)).toEqual([]);
+  });
+});
+
+describe("resolveExclusiveTeamMembers", () => {
+  const panel: AgentTeam = { id: "team-panel", name: "Panel", memberIds: ["p-atlas", "p-vera"] };
+
+  test("returns members no remaining team also claims", () => {
+    // p-atlas is shared with the panel, p-deleted is dangling — only p-dash is
+    // left with no team once the crew goes.
+    expect(resolveExclusiveTeamMembers(crew, [panel], roster)).toEqual([dash]);
+  });
+
+  test("returns every resolvable member when no teams remain", () => {
+    expect(resolveExclusiveTeamMembers(crew, [], roster)).toEqual([dash, atlas]);
+    expect(resolveExclusiveTeamMembers(crew, undefined, roster)).toEqual([dash, atlas]);
+  });
+
+  test("returns empty when every member is shared", () => {
+    expect(resolveExclusiveTeamMembers(crew, [crew], roster)).toEqual([]);
+  });
+
+  test("tolerates absent inputs", () => {
+    expect(resolveExclusiveTeamMembers(null, [panel], roster)).toEqual([]);
+    expect(resolveExclusiveTeamMembers(crew, [panel], undefined)).toEqual([]);
   });
 });
 

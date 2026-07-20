@@ -110,6 +110,31 @@ export function pruneTeamMemberIds(
 }
 
 /**
+ * The members a team owns exclusively: personalities on `team` that no team in
+ * `otherTeams` also lists. These are the ones deleting `team` would leave on no
+ * team at all, so the delete confirm can offer to clean them up. Dangling member
+ * ids resolve to nothing and drop out, same as everywhere else.
+ *
+ * Pass the teams that will REMAIN after the delete — the caller owns the filter,
+ * so this stays a pure set operation with no notion of "the team being deleted".
+ */
+export function resolveExclusiveTeamMembers(
+  team: Pick<AgentTeam, "memberIds"> | null | undefined,
+  otherTeams: readonly Pick<AgentTeam, "memberIds">[] | undefined,
+  personalities: readonly AgentPersonality[] | undefined,
+): AgentPersonality[] {
+  const claimed = new Set<string>();
+  for (const other of otherTeams ?? []) {
+    for (const memberId of other.memberIds ?? []) {
+      claimed.add(memberId);
+    }
+  }
+  return resolveTeamMembers(team, personalities).filter(
+    (personality) => !claimed.has(personality.id),
+  );
+}
+
+/**
  * The union of all members' roles, normalized and returned in canonical
  * `PERSONALITY_ROLES` order — the team card's role-pill strip.
  */

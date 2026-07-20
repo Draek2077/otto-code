@@ -7,7 +7,7 @@
 // i18n: copy here is English-only pending a translation pass (build-first,
 // translate-last). Do not add keys to the locale resources for this surface yet.
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
@@ -16,13 +16,19 @@ import {
   checkPersonalityAvailability,
   normalizePersonalityRoles,
 } from "@otto-code/protocol/agent-personalities";
-import { pruneTeamMemberIds, teamRoleUnion } from "@otto-code/protocol/agent-teams";
+import {
+  pruneTeamMemberIds,
+  resolveExclusiveTeamMembers,
+  teamRoleUnion,
+} from "@otto-code/protocol/agent-teams";
 import { DEFAULT_AGENT_TEAMS } from "@otto-code/protocol/default-personalities";
-import { Check, Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { Check, Pencil, Plus, Search, Trash2, X } from "@/components/icons/material-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { Button } from "@/components/ui/button";
 import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
+import { type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { TextArea } from "@/components/ui/text-area";
+import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -31,9 +37,10 @@ import { useSessionStore } from "@/stores/session-store";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { ROLE_LABELS } from "@/provider-selection/role-labels";
 import { useIsExtraCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { alertDialog, confirmDialog, confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 
 /**
  * The single detection point for the agent teams capability.
@@ -62,6 +69,18 @@ const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-
 
 function isHexColor(value: string): boolean {
   return HEX_COLOR_PATTERN.test(value.trim());
+}
+
+// A big team would otherwise push the delete confirm's message past a readable
+// length, so name only the first few and count the rest.
+const MAX_NAMED_ORPHANS = 4;
+
+function formatNameList(names: readonly string[]): string {
+  if (names.length <= MAX_NAMED_ORPHANS) {
+    return names.join(", ");
+  }
+  const shown = names.slice(0, MAX_NAMED_ORPHANS).join(", ");
+  return `${shown} and ${names.length - MAX_NAMED_ORPHANS} more`;
 }
 
 function generateTeamId(): string {
@@ -118,6 +137,8 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedTrash = withUnistyles(Trash2);
 const ThemedCheck = withUnistyles(Check);
+const ThemedSearch = withUnistyles(Search);
+const ThemedX = withUnistyles(X);
 
 const iconMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -215,12 +236,21 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
   const providerEntries = useMemo(() => entries ?? [], [entries]);
 
   const saveTeams = useCallback(
-    async (next: AgentTeam[], options?: { clearActive?: boolean }) => {
+    async (
+      next: AgentTeam[],
+      options?: { clearActive?: boolean; personalities?: AgentPersonality[] },
+    ) => {
       await patchConfig({
         agentTeams: {
           teams: next,
           ...(options?.clearActive ? { activeTeamId: null } : {}),
         },
+        // Deleting a team can optionally take its exclusive members with it;
+        // both sections ride one patch so the roster never briefly disagrees
+        // with the teams that reference it.
+        ...(options?.personalities
+          ? { agentPersonalities: { personalities: options.personalities } }
+          : {}),
       });
     },
     [patchConfig],
@@ -245,19 +275,25 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
     async (draft: TeamDraft) => {
       if (!editing) return;
       const id = editing.id ?? generateTeamId();
-      const team = draftToTeam(draft, id, personalities);
-      // A team can vanish from the config mid-edit (deleted from another
-      // client); mapping by id would silently drop the save, so append
-      // (recreate) it instead.
-      const stillExists = editing.id !== null && teams.some((entry) => entry.id === editing.id);
-      const next = stillExists
-        ? teams.map((entry) => (entry.id === editing.id ? team : entry))
-        : [...teams, team];
+      // Draft conversion is inside the try with the save: anything that throws
+      // between the click and the write has to reach the user, or the editor
+      // just sits there looking stuck.
       try {
+        const team = draftToTeam(draft, id, personalities);
+        // A team can vanish from the config mid-edit (deleted from another
+        // client); mapping by id would silently drop the save, so append
+        // (recreate) it instead.
+        const stillExists = editing.id !== null && teams.some((entry) => entry.id === editing.id);
+        const next = stillExists
+          ? teams.map((entry) => (entry.id === editing.id ? team : entry))
+          : [...teams, team];
         await saveTeams(next);
         setEditing(null);
       } catch (error) {
-        Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+        void alertDialog({
+          title: "Unable to save",
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     },
     [editing, teams, personalities, saveTeams],
@@ -279,29 +315,51 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
       if (!team) return;
       void (async () => {
         const isActive = id === activeTeamId;
-        const confirmed = await confirmDialog({
+        const remaining = teams.filter((entry) => entry.id !== id);
+        // Members this team is the last one holding: deleting it leaves them on
+        // no team at all, which is the mess the opt-in checkbox cleans up.
+        const orphaned = resolveExclusiveTeamMembers(team, remaining, personalities);
+        const orphanedNames = formatNameList(orphaned.map((entry) => entry.name));
+        const activeNote = isActive
+          ? " It is the active team; the host reverts to no active team."
+          : "";
+        const { confirmed, checkboxChecked } = await confirmDialogWithCheckbox({
           title: "Delete team",
-          message: isActive
-            ? `Delete "${team.name}"? It is the active team; the host reverts to no active team. Personalities are not deleted.`
-            : `Delete "${team.name}"? Personalities are not deleted.`,
+          message:
+            orphaned.length > 0
+              ? `Delete "${team.name}"?${activeNote} ${orphaned.length === 1 ? "1 personality is" : `${orphaned.length} personalities are`} on no other team: ${orphanedNames}.`
+              : `Delete "${team.name}"?${activeNote} Personalities are not deleted.`,
+          checkboxLabel:
+            orphaned.length > 0
+              ? `Also delete ${orphaned.length === 1 ? "this personality" : `these ${orphaned.length} personalities`}`
+              : undefined,
           confirmLabel: "Delete",
           cancelLabel: "Cancel",
           destructive: true,
         });
         if (!confirmed) return;
+        // The checkbox only ever appears when there is something to clean up,
+        // so a stale `true` from a previous dialog can never delete anything.
+        const alsoDelete = checkboxChecked && orphaned.length > 0;
+        const orphanedIds = new Set(orphaned.map((entry) => entry.id));
         try {
           // Deleting the active team clears the active id in the same patch —
           // never leave a dangling reference (the daemon heals it anyway).
-          await saveTeams(
-            teams.filter((entry) => entry.id !== id),
-            { clearActive: isActive },
-          );
+          await saveTeams(remaining, {
+            clearActive: isActive,
+            ...(alsoDelete
+              ? { personalities: personalities.filter((entry) => !orphanedIds.has(entry.id)) }
+              : {}),
+          });
         } catch (error) {
-          Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+          void alertDialog({
+            title: "Unable to save",
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       })();
     },
-    [teams, activeTeamId, saveTeams],
+    [teams, activeTeamId, personalities, saveTeams],
   );
 
   // Restore re-adds only builtins whose stable `team_builtin_*` id is missing,
@@ -320,7 +378,10 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
     try {
       await saveTeams([...teams, ...missing]);
     } catch (error) {
-      Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+      void alertDialog({
+        title: "Unable to save",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }, [teams, saveTeams]);
 
@@ -617,6 +678,16 @@ interface TeamEditModalProps {
   onSave: (draft: TeamDraft) => Promise<void>;
 }
 
+// The editor is split into tabs the same way the personality editor is:
+// Identity = what the team is and how it works, Appearance = its color,
+// Members = who is on it.
+type TeamEditorTab = "identity" | "appearance" | "members";
+const TEAM_EDITOR_TABS: SegmentedControlOption<TeamEditorTab>[] = [
+  { value: "identity", label: "Identity" },
+  { value: "appearance", label: "Appearance" },
+  { value: "members", label: "Members" },
+];
+
 function TeamEditModal({
   title,
   initialDraft,
@@ -628,6 +699,8 @@ function TeamEditModal({
 }: TeamEditModalProps): ReactElement {
   const [draft, setDraft] = useState<TeamDraft>(initialDraft);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<TeamEditorTab>("identity");
+  const [memberQuery, setMemberQuery] = useState("");
 
   const header = useMemo(() => ({ title }), [title]);
 
@@ -652,6 +725,19 @@ function TeamEditModal({
       };
     });
   }, []);
+
+  // Members filter — matches a personality's name or any of its role labels, so
+  // "rev" finds both a personality called "Reva" and every Reviewer.
+  const filteredPersonalities = useMemo(() => {
+    const query = memberQuery.trim().toLowerCase();
+    if (!query) return personalities;
+    return personalities.filter((personality) => {
+      if (personality.name.toLowerCase().includes(query)) return true;
+      return normalizePersonalityRoles(personality.roles).some((role) =>
+        ROLE_LABELS[role].toLowerCase().includes(query),
+      );
+    });
+  }, [personalities, memberQuery]);
 
   const nameCollides = takenNames.includes(draft.name.trim().toLowerCase());
   const colorValid = isHexColor(draft.color);
@@ -696,78 +782,144 @@ function TeamEditModal({
     })();
   }, [draft, initialDraft, onClose]);
 
+  const footer = useMemo(
+    () => (
+      <View style={styles.editorActions}>
+        <Button variant="secondary" size="sm" style={FLEX_1} onPress={handleClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          style={FLEX_1}
+          onPress={handleSave}
+          disabled={!canSave || isSaving}
+          testID="agent-team-save-button"
+        >
+          Save
+        </Button>
+      </View>
+    ),
+    [handleClose, handleSave, canSave, isSaving],
+  );
+
+  // Pinned above the members list so filtering never scrolls out of reach.
+  const tabToolbar = useMemo(
+    () =>
+      activeTab === "members" ? (
+        <MemberSearchField value={memberQuery} onChange={setMemberQuery} />
+      ) : null,
+    [activeTab, memberQuery],
+  );
+
   return (
-    <AdaptiveModalSheet
+    <TabbedModalSheet
       header={header}
       visible
       onClose={handleClose}
-      webScrollbar
+      tabs={TEAM_EDITOR_TABS}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      tabToolbar={tabToolbar}
+      footer={footer}
+      tabsTestID="agent-team-tabs"
       testID="agent-team-edit-modal"
     >
-      <View style={styles.editorBody}>
-        <FieldLabel label="Name" />
-        <TextInput
-          value={draft.name}
-          onChangeText={setName}
-          placeholder="e.g. Shipping crew"
-          placeholderTextColor={styles.placeholder.color}
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={MAX_TEAM_NAME_LENGTH}
-          style={styles.textInput}
-          testID="agent-team-name-input"
-        />
-        {nameCollides ? (
-          <Text style={styles.fieldError} testID="agent-team-name-collision">
-            Another team already uses this name.
-          </Text>
+      <>
+        {activeTab === "identity" ? (
+          <>
+            <FieldLabel label="Name" />
+            <TextInput
+              value={draft.name}
+              onChangeText={setName}
+              placeholder="e.g. Shipping crew"
+              placeholderTextColor={styles.placeholder.color}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={MAX_TEAM_NAME_LENGTH}
+              style={styles.textInput}
+              testID="agent-team-name-input"
+            />
+            {nameCollides ? (
+              <Text style={styles.fieldError} testID="agent-team-name-collision">
+                Another team already uses this name.
+              </Text>
+            ) : null}
+
+            <FieldLabel label="Team prompt" />
+            <TextArea
+              value={draft.teamPrompt}
+              onChangeText={setPrompt}
+              placeholder="How this team works together (optional)."
+              placeholderTextColor={styles.placeholder.color}
+              style={styles.textArea}
+              testID="agent-team-prompt-input"
+            />
+            <Text style={styles.fieldHint}>
+              Added before each member&apos;s personality prompt when this team is active.
+            </Text>
+          </>
         ) : null}
 
-        <AvatarColorField color={draft.color} onChange={setColor} />
-
-        <FieldLabel label="Team prompt" />
-        <TextInput
-          value={draft.teamPrompt}
-          onChangeText={setPrompt}
-          placeholder="How this team works together (optional)."
-          placeholderTextColor={styles.placeholder.color}
-          multiline
-          style={styles.textArea}
-          testID="agent-team-prompt-input"
-        />
-        <Text style={styles.fieldHint}>
-          Added before each member&apos;s personality prompt when this team is active.
-        </Text>
-
-        <MembersField
-          personalities={personalities}
-          entries={entries}
-          memberIds={draft.memberIds}
-          onToggle={toggleMember}
-        />
-        {resolvedMemberCount === 0 ? (
-          <Text style={styles.fieldError} testID="agent-team-members-required">
-            Pick at least one member.
-          </Text>
+        {activeTab === "appearance" ? (
+          <AvatarColorField color={draft.color} onChange={setColor} />
         ) : null}
 
-        <View style={styles.editorActions}>
-          <Button variant="secondary" size="sm" style={FLEX_1} onPress={handleClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            style={FLEX_1}
-            onPress={handleSave}
-            disabled={!canSave || isSaving}
-            testID="agent-team-save-button"
-          >
-            Save
-          </Button>
-        </View>
-      </View>
-    </AdaptiveModalSheet>
+        {activeTab === "members" ? (
+          <>
+            <MembersField
+              personalities={filteredPersonalities}
+              entries={entries}
+              memberIds={draft.memberIds}
+              onToggle={toggleMember}
+              filtered={memberQuery.trim().length > 0}
+            />
+            {resolvedMemberCount === 0 ? (
+              <Text style={styles.fieldError} testID="agent-team-members-required">
+                Pick at least one member.
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </>
+    </TabbedModalSheet>
+  );
+}
+
+// Pinned filter over the members list — name or role, with a clear button once
+// there is something to clear.
+function MemberSearchField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}): ReactElement {
+  const handleClear = useCallback(() => onChange(""), [onChange]);
+  return (
+    <View style={styles.searchRow}>
+      <ThemedSearch uniProps={iconMutedMapping} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Filter by name or role"
+        placeholderTextColor={styles.placeholder.color}
+        autoCapitalize="none"
+        autoCorrect={false}
+        // @ts-expect-error - outlineStyle is web-only
+        style={SEARCH_INPUT_STYLE}
+        accessibilityLabel="Filter members"
+        testID="agent-team-member-search"
+      />
+      {value.length > 0 ? (
+        <IconButton
+          Icon={ThemedX}
+          label="Clear filter"
+          onPress={handleClear}
+          testID="agent-team-member-search-clear"
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -832,6 +984,8 @@ interface MembersFieldProps {
   entries: readonly ProviderSnapshotEntry[];
   memberIds: readonly string[];
   onToggle: (personalityId: string) => void;
+  /** The list is showing filter results, so "empty" means "no match". */
+  filtered: boolean;
 }
 
 function MembersField({
@@ -839,10 +993,10 @@ function MembersField({
   entries,
   memberIds,
   onToggle,
+  filtered,
 }: MembersFieldProps): ReactElement {
   return (
     <View style={styles.membersField}>
-      <FieldLabel label="Members" />
       <View style={styles.membersList}>
         {personalities.map((personality) => (
           <MemberRow
@@ -854,7 +1008,11 @@ function MembersField({
           />
         ))}
         {personalities.length === 0 ? (
-          <Text style={styles.emptyText}>No personalities on this host yet.</Text>
+          <Text style={styles.membersEmptyText}>
+            {filtered
+              ? "No personalities match this filter."
+              : "No personalities on this host yet."}
+          </Text>
         ) : null}
       </View>
     </View>
@@ -1089,9 +1247,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.4,
   },
-  editorBody: {
-    gap: theme.spacing[3],
-  },
   fieldLabel: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -1130,7 +1285,6 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    textAlignVertical: "top",
   },
   avatarField: {
     gap: theme.spacing[2],
@@ -1171,6 +1325,32 @@ const styles = StyleSheet.create((theme) => ({
   membersField: {
     gap: theme.spacing[2],
   },
+  // Pinned filter row above the members list — framed like the other inputs so
+  // it reads as a field, with the clear button inside the frame.
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minHeight: 40,
+    paddingLeft: theme.spacing[3],
+    paddingRight: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: theme.spacing[2],
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  membersEmptyText: {
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
   membersList: {
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
@@ -1207,10 +1387,13 @@ const styles = StyleSheet.create((theme) => ({
   memberInfo: {
     flex: 1,
   },
+  // Action row handed to the sheet's `footer` slot — the footer wrapper already
+  // owns the padding, top border, and outer alignment.
   editorActions: {
+    flex: 1,
     flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[3],
-    marginTop: theme.spacing[2],
   },
   placeholder: {
     color: theme.colors.foregroundMuted,
@@ -1219,5 +1402,11 @@ const styles = StyleSheet.create((theme) => ({
 
 // Stable style arrays for the wide row (hoisted so the JSX doesn't allocate a
 // new array each render — same pattern as the personalities section).
+// The search row draws its own focus treatment, so the field suppresses the
+// browser's. `outlineStyle` is web-only and Unistyles' StyleSheet rejects it, so
+// it rides here rather than inside `StyleSheet.create` (same as the sheet
+// header's search input).
+const SEARCH_INPUT_STYLE = [styles.searchInput, isWeb && { outlineStyle: "none" }];
+
 const INFO_COLUMN_STYLE = [settingsStyles.rowContent, styles.infoColumn];
 const META_COUNT_STYLE = [settingsStyles.rowHint, styles.metaCount];
