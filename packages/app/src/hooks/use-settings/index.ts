@@ -16,12 +16,15 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_RULER_COLUMN,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_RULER_COLUMN,
   MAX_TERMINAL_SCROLLBACK_LINES,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_RULER_COLUMN,
   MIN_TERMINAL_SCROLLBACK_LINES,
   MIN_UI_FONT_SIZE,
   loadAppSettingsFromStorage as loadAppSettingsFromStoragePure,
@@ -55,12 +58,15 @@ export {
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_RULER_COLUMN,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
   DEFAULT_UI_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
+  MAX_RULER_COLUMN,
   MAX_TERMINAL_SCROLLBACK_LINES,
   MAX_UI_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
+  MIN_RULER_COLUMN,
   MIN_TERMINAL_SCROLLBACK_LINES,
   MIN_UI_FONT_SIZE,
   parseClampedFontSize,
@@ -118,66 +124,45 @@ type SettingsSelector<TSelected> = (settings: Settings) => TSelected;
 
 // Per-field allowlist for routing merged-Settings updates to the AppSettings
 // store. Desktop-owned fields (manageBuiltInDaemon, releaseChannel) are handled
-// separately by the caller. Extracted from the updateSettings callback to keep it
-// under the cyclomatic-complexity ceiling — add new AppSettings fields here.
+// separately by the caller — ADD NEW AppSettings FIELDS HERE, or writes to them
+// through `useSettings()` are silently dropped.
+//
+// This was a chain of one `if` per field until it outgrew the cyclomatic-
+// complexity ceiling; a list can't outgrow anything.
+const APP_SETTINGS_UPDATE_KEYS = [
+  "colorSchemeMode",
+  "lightTheme",
+  "darkTheme",
+  "language",
+  "sendBehavior",
+  "serviceUrlBehavior",
+  "linkOpenBehavior",
+  "terminalScrollbackLines",
+  "uiFontFamily",
+  "monoFontFamily",
+  "uiFontSize",
+  "codeFontSize",
+  "syntaxTheme",
+  "rulerEnabled",
+  "rulerColumn",
+  "workspaceTitleSource",
+  "autoExpandReasoning",
+  "wrapCodeLines",
+  "interfaceMode",
+  "suggestedTasksEnabled",
+  "suggestedTasksDefaultMode",
+] as const satisfies readonly (keyof AppSettings)[];
+
 function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {
   const appUpdates: Partial<AppSettings> = {};
-  if (updates.colorSchemeMode !== undefined) {
-    appUpdates.colorSchemeMode = updates.colorSchemeMode;
-  }
-  if (updates.lightTheme !== undefined) {
-    appUpdates.lightTheme = updates.lightTheme;
-  }
-  if (updates.darkTheme !== undefined) {
-    appUpdates.darkTheme = updates.darkTheme;
-  }
-  if (updates.language !== undefined) {
-    appUpdates.language = updates.language;
-  }
-  if (updates.sendBehavior !== undefined) {
-    appUpdates.sendBehavior = updates.sendBehavior;
-  }
-  if (updates.serviceUrlBehavior !== undefined) {
-    appUpdates.serviceUrlBehavior = updates.serviceUrlBehavior;
-  }
-  if (updates.linkOpenBehavior !== undefined) {
-    appUpdates.linkOpenBehavior = updates.linkOpenBehavior;
-  }
-  if (updates.terminalScrollbackLines !== undefined) {
-    appUpdates.terminalScrollbackLines = updates.terminalScrollbackLines;
-  }
-  if (updates.uiFontFamily !== undefined) {
-    appUpdates.uiFontFamily = updates.uiFontFamily;
-  }
-  if (updates.monoFontFamily !== undefined) {
-    appUpdates.monoFontFamily = updates.monoFontFamily;
-  }
-  if (updates.uiFontSize !== undefined) {
-    appUpdates.uiFontSize = updates.uiFontSize;
-  }
-  if (updates.codeFontSize !== undefined) {
-    appUpdates.codeFontSize = updates.codeFontSize;
-  }
-  if (updates.syntaxTheme !== undefined) {
-    appUpdates.syntaxTheme = updates.syntaxTheme;
-  }
-  if (updates.workspaceTitleSource !== undefined) {
-    appUpdates.workspaceTitleSource = updates.workspaceTitleSource;
-  }
-  if (updates.autoExpandReasoning !== undefined) {
-    appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
-  }
-  if (updates.wrapCodeLines !== undefined) {
-    appUpdates.wrapCodeLines = updates.wrapCodeLines;
-  }
-  if (updates.interfaceMode !== undefined) {
-    appUpdates.interfaceMode = updates.interfaceMode;
-  }
-  if (updates.suggestedTasksEnabled !== undefined) {
-    appUpdates.suggestedTasksEnabled = updates.suggestedTasksEnabled;
-  }
-  if (updates.suggestedTasksDefaultMode !== undefined) {
-    appUpdates.suggestedTasksDefaultMode = updates.suggestedTasksDefaultMode;
+  for (const key of APP_SETTINGS_UPDATE_KEYS) {
+    const value = updates[key];
+    if (value !== undefined) {
+      // `key` indexes both records identically, but TS can't correlate the two
+      // per-key value types across a loop, so the write is widened here. The
+      // `satisfies` above is what actually keeps the keys honest.
+      (appUpdates as Record<string, unknown>)[key] = value;
+    }
   }
   return appUpdates;
 }
