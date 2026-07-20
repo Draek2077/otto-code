@@ -468,6 +468,32 @@ export const ModelTierOverrideSchema = z
 
 export type ModelTierOverride = z.infer<typeof ModelTierOverrideSchema>;
 
+// A remembered provider endpoint: a base URL together with the credential it
+// was saved with, so pointing a provider back at a previous endpoint is one
+// pick instead of re-typing the key. Entries are scoped by the connection
+// env-var pair they belong to (OPENAI_BASE_URL/OPENAI_API_KEY vs
+// ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN), which is exactly what the provider
+// settings sheet keys its dropdown off — so every openai-compatible provider
+// entry on the host shares one pool, and Claude-compatible entries share
+// another. Deliberately `z.string()` rather than an enum: a future env-var
+// family must not make old entries unparseable.
+export const SavedProviderEndpointSchema = z
+  .object({
+    /** Stable identity, `${baseUrlKey}::${baseUrl}` — dedupes on re-save. */
+    id: z.string().min(1),
+    baseUrlKey: z.string().min(1),
+    apiKeyKey: z.string().min(1),
+    baseUrl: z.string().min(1),
+    apiKey: z.string().default(""),
+    /** User-facing name; the UI falls back to the URL when absent. */
+    label: z.string().optional(),
+    /** Epoch ms of the last save, used to order the dropdown newest-first. */
+    savedAt: z.number().optional(),
+  })
+  .passthrough();
+
+export type SavedProviderEndpoint = z.infer<typeof SavedProviderEndpointSchema>;
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -480,6 +506,8 @@ export const MutableDaemonConfigSchema = z
         toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
       })
       .passthrough(),
+    // Defaults off, matching the daemon's own resolution — browser tools are an
+    // explicit opt-in, so an omitted section must never read as on.
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
     // Daemon-wide agent behavior toggles (Claude-tier capabilities). Defaults to
     // all-on so a new client parsing an old daemon's config sees today's behavior.
@@ -514,6 +542,11 @@ export const MutableDaemonConfigSchema = z
     // Gated by the modelTierOverrides feature; defaults empty so a new client
     // parsing an old daemon's config still sees a well-formed array.
     modelTierOverrides: z.array(ModelTierOverrideSchema).default([]),
+    // Per-host remembered provider endpoints (base URL + credential), pooled by
+    // env-var family. Gated by the savedProviderEndpoints feature; defaults
+    // empty so a new client parsing an old daemon's config still sees a
+    // well-formed array.
+    savedProviderEndpoints: z.array(SavedProviderEndpointSchema).default([]),
   })
   .passthrough();
 
@@ -550,6 +583,9 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.modelTierOverrides. Replaces the full array
     // (read-modify-write), so removing an entry clears that model's tag.
     modelTierOverrides: z.array(ModelTierOverrideSchema).optional(),
+    // Gated by server_info features.savedProviderEndpoints. Replaces the full
+    // array (read-modify-write), so forgetting an endpoint drops it from disk.
+    savedProviderEndpoints: z.array(SavedProviderEndpointSchema).optional(),
   })
   .partial()
   .passthrough();
@@ -3931,6 +3967,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentTeams: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: z.boolean().optional(),
+        // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+        savedProviderEndpoints: z.boolean().optional(),
         // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         agentOrchestration: z.boolean().optional(),
         // COMPAT(activityStats): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
