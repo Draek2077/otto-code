@@ -17,7 +17,6 @@ import {
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { isContextWarningMuted, useContextManagementStore } from "@/context-management/store";
 import { useWorkspaceContextReport } from "@/context-management/use-context-report";
-import { hexColorWithAlpha } from "./agent-controls/utils";
 
 // Icon colors must come through a theme-reactive prop, and `useUnistyles()` is
 // banned — wrapping the leaf icons is the sanctioned route (docs/unistyles.md).
@@ -185,12 +184,12 @@ const styles = StyleSheet.create((theme) => {
     },
     surface: {
       ...surfaceBase,
-      backgroundColor: hexColorWithAlpha(theme.colors.statusWarning, 0.12) ?? theme.colors.surface1,
+      backgroundColor: theme.colors.statusWarningSurface,
       borderColor: theme.colors.statusWarning,
     },
     surfaceCritical: {
       ...surfaceBase,
-      backgroundColor: hexColorWithAlpha(theme.colors.statusDanger, 0.12) ?? theme.colors.surface1,
+      backgroundColor: theme.colors.statusDangerSurface,
       borderColor: theme.colors.statusDanger,
     },
     // Theme tokens rather than hardcoded hex, so the icon cannot drift from the

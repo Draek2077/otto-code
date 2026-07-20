@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useReducer, type ReactElement } from "react";
-import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import { StyleSheet } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import type { AgentRateLimitInfo } from "@otto-code/protocol/messages";
-import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { TriangleAlert, X } from "@/components/icons/material-icons";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TriangleAlert } from "@/components/icons/material-icons";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { rateLimitDismissKey, useSessionStore } from "@/stores/session-store";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
-import { hexColorWithAlpha } from "./agent-controls/utils";
+import { FlyoutBand } from "@/composer/flyout-band";
+import type { FlyoutTone } from "@/styles/status-tone";
 
 interface RateLimitWarningTrackProps {
   serverId: string;
@@ -91,41 +88,21 @@ export function RateLimitWarningTrack({
 
   if (!message || !rateLimitInfo || isMuted) return null;
 
-  const isRejected = rateLimitInfo.status === "rejected";
-  const surfaceStyle = isRejected ? styles.surfaceRejected : styles.surface;
-  const textStyle = isRejected ? styles.messageRejected : styles.message;
-  const accentColor = isRejected ? REJECTED_COLOR : WARNING_COLOR;
+  // Orange while approaching the limit, escalating to red once it is reached.
+  const tone: FlyoutTone = rateLimitInfo.status === "rejected" ? "red" : "orange";
   const dismissLabel = t("composer.rateLimit.dismiss");
 
   return (
-    <View style={styles.outer} testID="composer-rate-limit-track">
-      <ChatWidthBounds style={styles.track}>
-        <View style={surfaceStyle}>
-          <TriangleAlert size={14} color={accentColor} style={styles.icon} />
-          <Text style={textStyle} testID="composer-rate-limit-warning">
-            {message}
-          </Text>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={dismissLabel}
-                testID="composer-rate-limit-dismiss"
-                onPress={handleDismiss}
-                style={styles.dismissButton}
-                hitSlop={8}
-              >
-                {/* X tints to the warning/rejected foreground, matching the text. */}
-                <X size={14} color={accentColor} />
-              </Pressable>
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{dismissLabel}</Text>
-            </TooltipContent>
-          </Tooltip>
-        </View>
-      </ChatWidthBounds>
-    </View>
+    <FlyoutBand
+      tone={tone}
+      message={message}
+      icon={TriangleAlert}
+      onDismiss={handleDismiss}
+      dismissLabel={dismissLabel}
+      testID="composer-rate-limit-track"
+      messageTestID="composer-rate-limit-warning"
+      dismissTestID="composer-rate-limit-dismiss"
+    />
   );
 }
 
@@ -180,71 +157,3 @@ function formatRateLimitWarning(t: TFunction, info: AgentRateLimitInfo, provider
   }
   return parts.join(" · ");
 }
-
-const WARNING_COLOR = "#f59e0b";
-const REJECTED_COLOR = "#ef4444";
-
-const styles = StyleSheet.create((theme) => {
-  // Amber chip look, mirroring the Auto mode combo: amber border + text over a
-  // faint amber wash. Rejected escalates the same shape to red.
-  const surfaceBase = {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
-    borderBottomWidth: 0,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-    paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[2],
-    // The card tucks -spacing[4] into the composer; pad the bottom so the text
-    // clears the overlap (matches the subagents track's collapsed header).
-    paddingBottom: theme.spacing[6],
-  } as const;
-  return {
-    outer: {
-      width: "100%",
-      alignItems: "center",
-      paddingHorizontal: theme.spacing[4],
-    },
-    track: {
-      width: "100%",
-      marginBottom: -theme.spacing[4],
-    },
-    surface: {
-      ...surfaceBase,
-      backgroundColor: hexColorWithAlpha(theme.colors.statusWarning, 0.12) ?? theme.colors.surface1,
-      borderColor: theme.colors.statusWarning,
-    },
-    surfaceRejected: {
-      ...surfaceBase,
-      backgroundColor: hexColorWithAlpha(theme.colors.statusDanger, 0.12) ?? theme.colors.surface1,
-      borderColor: theme.colors.statusDanger,
-    },
-    icon: {
-      flexShrink: 0,
-    },
-    message: {
-      flex: 1,
-      minWidth: 0,
-      color: theme.colors.statusWarning,
-      fontSize: theme.fontSize.sm,
-    },
-    messageRejected: {
-      flex: 1,
-      minWidth: 0,
-      color: theme.colors.statusDanger,
-      fontSize: theme.fontSize.sm,
-    },
-    dismissButton: {
-      flexShrink: 0,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    tooltipText: {
-      color: theme.colors.foreground,
-      fontSize: theme.fontSize.xs,
-    },
-  };
-});
