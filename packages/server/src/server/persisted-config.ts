@@ -277,6 +277,25 @@ const ModelTierOverrideConfigSchema = z
 
 export type PersistedModelTierOverride = z.infer<typeof ModelTierOverrideConfigSchema>;
 
+// Persisted remembered provider endpoints. Mirrors SavedProviderEndpointSchema
+// on the wire. The credential is stored in the clear, exactly like the live
+// `agents.providers.<id>.env.OPENAI_API_KEY` it was copied from — this is a
+// convenience list over values config.json already holds, not a new secret
+// store.
+const SavedProviderEndpointConfigSchema = z
+  .object({
+    id: z.string().min(1),
+    baseUrlKey: z.string().min(1),
+    apiKeyKey: z.string().min(1),
+    baseUrl: z.string().min(1),
+    apiKey: z.string().optional(),
+    label: z.string().optional(),
+    savedAt: z.number().optional(),
+  })
+  .passthrough();
+
+export type PersistedSavedProviderEndpoint = z.infer<typeof SavedProviderEndpointConfigSchema>;
+
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 
 function isLegacyProviderEntry(value: unknown): boolean {
@@ -423,6 +442,7 @@ export const PersistedConfigSchema = z
         agentPersonalities: AgentPersonalitiesSchema.optional(),
         agentTeams: AgentTeamsSchema.optional(),
         modelTierOverrides: z.array(ModelTierOverrideConfigSchema).optional(),
+        savedProviderEndpoints: z.array(SavedProviderEndpointConfigSchema).optional(),
       })
       .strict()
       .optional(),

@@ -426,6 +426,11 @@ function resolveAppendSystemPrompt(persisted: ReturnType<typeof loadPersistedCon
   return persisted.daemon?.appendSystemPrompt ?? "";
 }
 
+// Deliberately OFF by default, unlike the Otto tools master next to it. Browser
+// tools drive real Otto tabs carrying the user's logged-in sessions, so turning
+// them on stays an explicit human act. Discoverability is handled in the UI
+// instead: the Browser pane and preview surfaces point at this setting when it
+// is off (see docs/preview.md).
 function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
@@ -446,8 +451,11 @@ function resolveStaticLoadConfigSettings(
 ) {
   return {
     mcpEnabled: cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true,
+    // On by default, same reasoning as browser tools: an agent that cannot
+    // reach the Otto tools is a strictly weaker agent. `--no-mcp-inject` and an
+    // explicit persisted `false` both still win.
     mcpInjectIntoAgents:
-      cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
+      cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? true,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
     mcpToolGroups: resolveMcpToolGroups(persisted),
     agentBehaviors: resolveAgentBehaviors(persisted),
@@ -554,6 +562,7 @@ export function loadConfig(
     agentPersonalities: persisted.agents?.agentPersonalities,
     agentTeams: persisted.agents?.agentTeams,
     modelTierOverrides: persisted.agents?.modelTierOverrides,
+    savedProviderEndpoints: persisted.agents?.savedProviderEndpoints,
     providerOverrides,
     log: resolveLogConfigFromEnv(env, persisted),
   };
