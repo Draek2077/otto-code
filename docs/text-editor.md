@@ -79,6 +79,34 @@ One engine, four platforms, per the Metro-extension rule (no `if (isWeb)` sprawl
 
 CM6's highlight tags are the same Lezer tags the highlighter consumes, so themes map straight from Otto's design tokens ([design.md](design.md)).
 
+**`EditorThemeSpec` is the whole appearance surface.** Both hosts receive concrete values (never CSS variables — nested palettes like `colors.syntax` have no per-token variable on web), so anything the editor should render differently belongs in that struct rather than in host-specific code. Most fields come from the Unistyles theme via `buildEditorThemeSpec(theme)`; a field driven by device-local app settings instead (`rulerColumn`) is merged in by the host in `file-tab-pane.tsx`, because the `withUnistyles` mapping only ever sees the theme.
+
+The **line-length ruler** (Settings → Appearance → Syntax; `rulerEnabled` / `rulerColumn`, default on at column 80, clamped to 80–240) is drawn as a 1px `linear-gradient` stripe on `.cm-content` — no decorations, no overlay element, and it paints behind the text. It uses the `ch` unit, so it tracks the code font size for free, and it is repeated on `.cm-activeLine` because that line paints an opaque background over the content layer. The stripe therefore spans the content box only — which is `max(longest line, viewport)`, so a column the ruler doesn't reach is also one the user could never scroll to.
+
+## The status bar
+
+`EditorStatusBar` (`packages/app/src/editor/editor-status-bar.tsx`) is the strip along the bottom of the file pane: **file type and size on the left, line endings + encoding + caret position on the right**. Read-only by design — every item reports state, so nothing in it is pressable (unlike VS Code's, where the same items are click targets). Items are icon + label at `iconSize.xs`/`fontSize.xs`, and the caret readout uses `tabular-nums` so the bar doesn't twitch sideways as the caret moves.
+
+It renders in **all three view modes**, with items dropping out when the mode or the file genuinely has nothing to report:
+
+| Mode                | Type | Size | EOL          | Encoding                | Caret            |
+| ------------------- | ---- | ---- | ------------ | ----------------------- | ---------------- |
+| Editor              | ✔    | ✔    | ✔            | ✔                       | ✔                |
+| Split               | ✔    | ✔    | ✔            | ✔                       | ✔ (the editor's) |
+| Preview (text)      | ✔    | ✔    | ✔            | ✔                       | — no editor      |
+| Preview (image/bin) | ✔    | ✔    | — none exist | — never decoded as text | —                |
+
+The two modes feed it from different sources — the editor from its buffer baseline, the preview from its own read — so `eol` and `isText` are props rather than something the bar derives. Preview-mode EOL required threading the daemon's detected value through `FileReadResult` → `ExplorerFile` → `FilePreviewFileInfo`; it stays optional the whole way because only the inline JSON read path reports it (the chunked binary transfer never does), and a null means "not reported", never "LF".
+
+Where each value comes from — worth knowing before adding a fifth item, because none of them arrive the obvious way:
+
+- **File type** — `getLanguageDisplayName(path)` from `@otto-code/highlight` (`language-names.ts`). Deliberately a _separate_ registry from `parsersByExtension`: the editor opens any text file, so the label has to name plenty of formats we have no grammar for. A missing grammar means no syntax colors, not an unnamed file. Unknown extensions fall back to the extension in caps, never to "Unknown".
+- **Size** — in preview it is the daemon's reported `size`; in the editor it is computed from `baseline.content` (`useBufferByteSize`) rather than carried in the buffer state. The daemon's read result does include `size`, but `use-editor-buffer.ts` builds baselines at six sites and two of them (conflict reload, event rebaseline) have no daemon size to pass, so a required `size` field would have to be faked at exactly the places it would be wrong. `utf8ByteSize()` re-adds one byte per line for CRLF files, since the buffer is LF-normalized on load. Memoized on the baseline — recomputing per keystroke would walk the whole file for a number that describes the disk, not the draft.
+- **Encoding** — the constant `"UTF-8"`. The daemon decodes text as UTF-8 unconditionally and nothing in the stack sniffs a charset, so this states what we actually did rather than implying a detection we don't perform. If real detection ever lands, `ENCODING_LABEL` is the single place to change.
+- **Caret position** — `onCursorMoved`, a push callback added because neither existing selection hook fits: `getSelection()` is pull-only, and `onPointerSelect` fires for pointer selections only, so both miss plain arrow-key movement. Column is 1-based in **UTF-16 code units** — the same unit CM6 uses for offsets, so the readout always agrees with the editor's own idea of a position (an astral emoji advances it by 2).
+
+Adding a push callback to the editor means seven touchpoints, all of which must land together or native silently loses the feature: the payload type + `CodeEditorProps` and the `EditorWebViewOutbound` variant (`editor-contract.ts`), `EditorCoreOptions` + the `updateListener` emit + an initial emit after the view is constructed (`editor-core.ts`), the web host forward (`code-editor.tsx`), the webview `sendToNative` (`webview/editor-webview-entry.ts`), and the native `handleMessage` case (`code-editor.native.tsx`). **Then rerun `npm run build:editor-webview`** — the webview bundle is a generated, committed file, so native runs whatever was last built, not your source.
+
 ## The unified file tab and view modes
 
 Originally two tab kinds (a `file` viewer and an `editor` buffer) were planned; they were folded into a **single `file` tab kind** hosting three views behind an icon mode bar, **`FileViewModeBar`** (`packages/app/src/components/file-view-mode-bar.tsx`, hosted by `file-tab-pane.tsx`):
@@ -86,6 +114,8 @@ Originally two tab kinds (a `file` viewer and an `editor` buffer) were planned; 
 - **Editor**
 - **Editor + preview split** — web/desktop only; a draggable `ResizeHandle` ratio with proportional scroll sync and click-to-align (`file-split-sync.ts`).
 - **Preview**
+
+**Preview reads are gated on visibility, never on focus.** The preview's read (`isFileQueryEnabled` in `file-pane-enabled.ts`) is disabled while its tab is hidden or the app is backgrounded, so a revisited tab refetches instead of showing a frozen snapshot. A disabled query is indistinguishable from an in-flight one — both are `isPending` — so anything that wrongly reports "not visible" leaves the pane spinning "Loading file..." forever, with no timeout and no error to explain it. Use `getIsAppInForeground` (AppState + `document.visibilityState`) for that gate, **not** `getIsAppActivelyVisible`, which additionally requires `document.hasFocus()`: focus leaves the host document for an Electron `<webview>`, devtools, or a second window while the pane is plainly on screen. Reserve the focus-sensitive predicate for "is the user actually looking at this agent" questions like attention-clearing and notifications.
 
 The view mode is remembered per file in `file-view-store.ts`, with a path-derived default (`defaultFileViewMode`): rendered formats (markdown, images, binaries) open in preview; plain text/code opens straight in the editor. The editor buffer survives mode switches (preview renders the live draft); the discard guard runs only on tab close. Persisted legacy `editor` tab targets coerce to `file` targets — see **`COMPAT(unifiedFileTab)`** in the workspace-tabs store (`packages/app/src/stores/workspace-tabs-store/state.ts`).
 

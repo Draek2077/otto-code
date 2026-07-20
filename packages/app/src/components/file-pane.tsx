@@ -38,6 +38,8 @@ import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-ur
 import { persistAttachmentFromBytes } from "@/attachments/service";
 import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
+import type { FileEol } from "@otto-code/protocol/messages";
+import { formatFileSize } from "@/utils/format-file-size";
 import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -59,6 +61,27 @@ interface CodeLineProps {
 export interface FilePreviewFileInfo {
   kind: "text" | "image" | "binary";
   isMarkdown: boolean;
+  /** Bytes on disk; feeds the status bar in preview-only mode. */
+  size: number;
+  /** Null when the read path didn't report line endings (binary transfer). */
+  eol: FileEol | null;
+}
+
+/**
+ * The status-bar-relevant facts about a previewed file, as plain primitives.
+ * Separate from `FilePreview` so its null-handling doesn't spend that
+ * component's cyclomatic-complexity budget.
+ */
+function readPreviewFileFacts(file: ExplorerFile | null | undefined): {
+  kind: FilePreviewFileInfo["kind"] | null;
+  size: number;
+  eol: FileEol | null;
+} {
+  return {
+    kind: file?.kind ?? null,
+    size: file?.size ?? 0,
+    eol: file?.eol ?? null,
+  };
 }
 
 /** Scroll-viewport snapshot the split view uses for proportional sync. */
@@ -112,16 +135,6 @@ function trimNonEmpty(value: string | null | undefined): string | null {
 interface FileLineSelection {
   lineStart: number;
   lineEnd: number;
-}
-
-function formatFileSize({ size }: { size: number }): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function createFilePanePreview(file: FileReadResult | null): Promise<{
@@ -720,7 +733,9 @@ export function FilePreview({
     });
   }, [client, readTarget, refetchFile]);
 
-  const fileKind = query.data?.file?.kind ?? null;
+  // Destructured to primitives so the effect below fires on real changes rather
+  // than on every refetch handing back an equal-but-new object.
+  const { kind: fileKind, size: fileSize, eol: fileEol } = readPreviewFileFacts(query.data?.file);
   const onFileInfoRef = useRef(onFileInfo);
   onFileInfoRef.current = onFileInfo;
   useEffect(() => {
@@ -729,10 +744,12 @@ export function FilePreview({
         ? {
             kind: fileKind,
             isMarkdown: fileKind === "text" && isRenderedMarkdownFile(location.path),
+            size: fileSize,
+            eol: fileEol,
           }
         : null,
     );
-  }, [fileKind, location.path]);
+  }, [fileKind, fileSize, fileEol, location.path]);
 
   return (
     <View style={styles.container} testID="workspace-file-pane">

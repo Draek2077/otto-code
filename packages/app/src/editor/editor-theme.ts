@@ -23,6 +23,35 @@ function toMonoCssStack(family: string): string {
   return /\bmonospace\b/i.test(trimmed) ? trimmed : `${trimmed}, ${MONO_CSS_FALLBACKS}`;
 }
 
+// The ruler reads as a sibling of the gutter divider, just quieter: same color,
+// half strength, so it marks a column without ever competing with the code in
+// front of it.
+const RULER_ALPHA = 0.5;
+
+// Theme border tokens are authored as hex, but a user-supplied or future token
+// could be anything — an unparseable color renders at full strength rather than
+// disappearing.
+function withAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!match) {
+    return color;
+  }
+  const digits = match[1];
+  const full =
+    digits.length === 3
+      ? digits
+          .split("")
+          .map((digit) => digit + digit)
+          .join("")
+      : digits;
+  const r = Number.parseInt(full.slice(0, 2), 16);
+  const g = Number.parseInt(full.slice(2, 4), 16);
+  const b = Number.parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// `rulerColumn` is left null here — it comes from device-local app settings,
+// not the theme, so the host merges it into the spec (see file-tab-pane).
 export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
   return {
     background: theme.colors.surface0,
@@ -30,6 +59,8 @@ export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
     gutterForeground: theme.colors.foregroundMuted,
     gutterActiveForeground: theme.colors.foreground,
     gutterBorder: theme.colors.border,
+    rulerColumn: null,
+    rulerColor: withAlpha(theme.colors.border, RULER_ALPHA),
     selectionBackground: theme.colors.terminal.selectionBackground,
     cursor: theme.colors.foreground,
     activeLineBackground: theme.colors.surface1,

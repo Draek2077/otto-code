@@ -60,6 +60,7 @@ export function CodeEditor(props: CodeEditorProps) {
       wordWrap: callbacksRef.current.wordWrap,
       onDirtyChanged: (dirty) => callbacksRef.current.onDirtyChanged?.(dirty),
       onMatchInfo: (info) => callbacksRef.current.onMatchInfo?.(info),
+      onCursorMoved: (position) => callbacksRef.current.onCursorMoved?.(position),
       onSaveShortcut: () => callbacksRef.current.onSaveShortcut?.(),
       onFindShortcut: () => callbacksRef.current.onFindShortcut?.(),
       onGoToLineShortcut: () => callbacksRef.current.onGoToLineShortcut?.(),

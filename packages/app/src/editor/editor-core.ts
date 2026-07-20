@@ -31,6 +31,7 @@ import {
 import { tags } from "@lezer/highlight";
 import { getParserForFile } from "@otto-code/highlight";
 import type {
+  EditorCursorPosition,
   EditorFindState,
   EditorMatchInfo,
   EditorPointerSelect,
@@ -50,6 +51,7 @@ export interface EditorCoreOptions {
   wordWrap: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
+  onCursorMoved?: (position: EditorCursorPosition) => void;
   onSaveShortcut?: () => void;
   onFindShortcut?: () => void;
   onGoToLineShortcut?: () => void;
@@ -99,6 +101,47 @@ const FOCUS_RETRY_FRAMES = 4;
 
 const setDocAnnotation = Annotation.define<boolean>();
 
+// `.cm-line`'s left padding, restated below as a hard requirement because the
+// ruler stripe is positioned from the line box's origin and has to land on the
+// same x as the first character.
+const LINE_PADDING_LEFT_PX = 6;
+
+// The line-length ruler is a 1px background stripe rather than a decoration or
+// an overlay element: no extra DOM, no per-line cost, and it paints behind the
+// text for free. `ch` is the advance width of "0" — exact for a mono stack, and
+// it rescales with the code font size on its own.
+//
+// The stripe only spans the content box, which is max(longest line, viewport):
+// past that edge there is nothing to scroll to, so a ruler that isn't drawn is
+// also one the user could never have reached.
+function rulerBackground(spec: EditorThemeSpec): Record<string, string> {
+  if (spec.rulerColumn === null) {
+    return {};
+  }
+  const edge = `calc(${LINE_PADDING_LEFT_PX}px + ${spec.rulerColumn}ch)`;
+  return {
+    backgroundImage: `linear-gradient(to right, transparent calc(${edge} - 1px), ${spec.rulerColor} calc(${edge} - 1px), ${spec.rulerColor} ${edge}, transparent ${edge})`,
+    backgroundRepeat: "no-repeat",
+  };
+}
+
+// Column is 1-based and counted in UTF-16 code units — the same unit CM6 uses
+// for offsets, so it always agrees with what the editor itself considers a
+// position. (An astral emoji therefore advances the column by 2; matching CM6
+// beats matching an abstract notion of "character" the editor doesn't share.)
+function readCursorPosition(state: EditorState): EditorCursorPosition {
+  const range = state.selection.main;
+  const line = state.doc.lineAt(range.head);
+  return {
+    line: line.number,
+    column: range.head - line.from + 1,
+    selectedChars: range.to - range.from,
+    selectedLines: range.empty
+      ? 0
+      : state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number + 1,
+  };
+}
+
 function buildThemeExtension(spec: EditorThemeSpec): Extension {
   return EditorView.theme({
     "&": {
@@ -120,6 +163,12 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       caretColor: spec.cursor,
       minHeight: "100%",
       boxSizing: "border-box",
+      ...rulerBackground(spec),
+    },
+    // CM6 base-theme default, restated so LINE_PADDING_LEFT_PX stays true.
+    ".cm-line": {
+      paddingLeft: `${LINE_PADDING_LEFT_PX}px`,
+      paddingRight: "2px",
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: spec.cursor,
@@ -128,8 +177,13 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       {
         backgroundColor: spec.selectionBackground,
       },
+    // The active line paints its own opaque background over the content layer,
+    // so it has to redraw the ruler or the stripe would break wherever the
+    // cursor sits. `.cm-line` shares the content's x origin (the content box
+    // has no horizontal padding), so the same gradient lands in the same place.
     ".cm-activeLine": {
       backgroundColor: spec.activeLineBackground,
+      ...rulerBackground(spec),
     },
     ".cm-gutters": {
       backgroundColor: spec.background,
@@ -325,6 +379,9 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         if (findActive && (update.docChanged || update.selectionSet)) {
           emitMatchInfo(update.view);
         }
+        if (update.selectionSet || update.docChanged) {
+          options.onCursorMoved?.(readCursorPosition(update.state));
+        }
         if (update.selectionSet && options.onPointerSelect) {
           const isPointer = update.transactions.some((tr) => tr.isUserEvent("select.pointer"));
           if (isPointer) {
@@ -343,6 +400,10 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
 
   const view = new EditorView({ state, parent: options.parent });
   let destroyed = false;
+
+  // The listener only fires on change, so the status bar would read blank until
+  // the first keystroke without this.
+  options.onCursorMoved?.(readCursorPosition(view.state));
 
   /**
    * Focus, and keep asking for a few frames.

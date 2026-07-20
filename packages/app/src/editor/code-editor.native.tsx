@@ -160,6 +160,9 @@ export function CodeEditor(props: CodeEditorProps) {
         case "matchInfo":
           callbacksRef.current.onMatchInfo?.(message.info);
           break;
+        case "cursorMoved":
+          callbacksRef.current.onCursorMoved?.(message.position);
+          break;
         case "saveShortcut":
           callbacksRef.current.onSaveShortcut?.();
           break;
