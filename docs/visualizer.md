@@ -189,7 +189,7 @@ A node spawned from a named **Agent Personality** renders in that personality's 
 
 ## Voice cues
 
-The Visualizer can **speak** a short line in an agent's own personality voice at three lifecycle moments — its node **joins** the graph (**starting**: "On it"), it **first starts thinking** ("Working on it"), and it **completes** a turn ("Done"). Each moment's lines must read as unmistakably that moment — a generic line like "All set" that fits starting/thinking/done equally is the anti-pattern the generator and editor now steer away from. It's off by default (it makes sound proactively) and lives in **Settings → Visualizer → Sound → "Voice cues"** (a device-local `visualizerVoiceCues` flag; silenced by the same in-page mute as the sound effects).
+The Visualizer can **speak** a short line in an agent's own personality voice at three lifecycle moments — its node **joins** the graph (**starting**: "On it"), it **first starts thinking** ("Working on it"), and it **completes** a turn ("Done"). Each moment's lines must read as unmistakably that moment — a generic line like "All set" that fits starting/thinking/done equally is the anti-pattern the generator and editor now steer away from. It's on by default (the same in-page mute that silences the sound effects silences it too) and lives in **Settings → Visualizer → Sound → "Voice cues"** (a device-local `visualizerVoiceCues` flag; silenced by the same in-page mute as the sound effects).
 
 Scope decisions (locked): **only the main/root agent speaks** (a fan-out of subagents never becomes a chorus), **only personality-backed agents** (an agent with no bound personality is silent), and **only on a host that advertises both `visualizerVoiceCues` and `ttsPreview`** capabilities.
 
