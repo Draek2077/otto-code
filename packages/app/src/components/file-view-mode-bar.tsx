@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Columns2, Eye, SquarePen } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FileViewMode } from "@/stores/file-view-store";
-import type { Theme } from "@/styles/theme";
+import { compactUp, useIconSize, type Theme } from "@/styles/theme";
 
 // The file tab's three-way view switch: editor, editor+preview split,
 // preview. Icon-only with tooltips; exactly one mode is selected.
@@ -23,12 +23,14 @@ function FileViewModeButton({
   mode,
   label,
   Icon,
+  iconSize,
   selected,
   onChange,
 }: {
   mode: FileViewMode;
   label: string;
   Icon: ModeIcon;
+  iconSize: number;
   selected: boolean;
   onChange: (mode: FileViewMode) => void;
 }) {
@@ -54,7 +56,10 @@ function FileViewModeButton({
         onPress={handlePress}
         style={buttonStyle}
       >
-        <Icon size={16} uniProps={selected ? selectedIconColorMapping : mutedIconColorMapping} />
+        <Icon
+          size={iconSize}
+          uniProps={selected ? selectedIconColorMapping : mutedIconColorMapping}
+        />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>
@@ -72,12 +77,16 @@ export interface FileViewModeBarProps {
 
 export function FileViewModeBar({ mode, showSplit, onChange }: FileViewModeBarProps) {
   const { t } = useTranslation();
+  // Doubled on compact, like every other icon-only control. The literal 16 this
+  // used to pass is ICON_SIZE.md, so the desktop size is unchanged.
+  const iconSize = useIconSize();
   return (
     <View style={styles.bar} testID="file-view-mode-bar">
       <FileViewModeButton
         mode="editor"
         label={t("editor.viewMode.editor")}
         Icon={ThemedSquarePen}
+        iconSize={iconSize.md}
         selected={mode === "editor"}
         onChange={onChange}
       />
@@ -86,6 +95,7 @@ export function FileViewModeBar({ mode, showSplit, onChange }: FileViewModeBarPr
           mode="split"
           label={t("editor.viewMode.split")}
           Icon={ThemedColumns2}
+          iconSize={iconSize.md}
           selected={mode === "split"}
           onChange={onChange}
         />
@@ -94,6 +104,7 @@ export function FileViewModeBar({ mode, showSplit, onChange }: FileViewModeBarPr
         mode="preview"
         label={t("editor.viewMode.preview")}
         Icon={ThemedEye}
+        iconSize={iconSize.md}
         selected={mode === "preview"}
         onChange={onChange}
       />
@@ -102,19 +113,21 @@ export function FileViewModeBar({ mode, showSplit, onChange }: FileViewModeBarPr
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // The chrome scales with the icons — a doubled glyph in unchanged padding
+  // reads as cramped, and the tap targets need the room on a phone anyway.
   bar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    padding: 2,
-    borderRadius: 8,
+    padding: compactUp(2),
+    borderRadius: compactUp(8),
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
   modeButton: {
-    padding: theme.spacing[1],
-    borderRadius: 6,
+    padding: compactUp(theme.spacing[1]),
+    borderRadius: compactUp(6),
   },
   modeButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,

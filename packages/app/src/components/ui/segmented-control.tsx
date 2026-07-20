@@ -17,6 +17,11 @@ export interface SegmentedControlOption<T extends string> {
   icon?: SegmentedControlIconRenderer;
   disabled?: boolean;
   testID?: string;
+  /** Marks a segment as wanting attention: same amber the mode chip uses for
+   *  its "moderate" tier, so the two read as one language. The tone only
+   *  recolors — hover, press, and selection chrome still behave normally, and
+   *  the label brightens on selection exactly like an untoned segment. */
+  tone?: "warning";
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -29,6 +34,10 @@ interface SegmentedControlProps<T extends string> {
   // Segments never shrink (they'd clip their labels), so a control with many
   // options is wider than a phone — wrapping is the only way it fits.
   wrap?: boolean;
+  // Fill the parent and split it evenly between the segments. Use when the
+  // control *is* the row (a two-tab strip heading a panel) rather than one chip
+  // sitting in a toolbar next to other things.
+  stretch?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -55,17 +64,28 @@ export function SegmentedControl<T extends string>({
   size = "md",
   hideLabels = false,
   wrap = false,
+  stretch = false,
   style,
   testID,
 }: SegmentedControlProps<T>) {
   const containerSizeStyle = size === "sm" ? styles.containerSm : styles.containerMd;
-  const segmentSizeStyle = size === "sm" ? styles.segmentSm : styles.segmentMd;
+  const baseSegmentSizeStyle = size === "sm" ? styles.segmentSm : styles.segmentMd;
   const labelSizeStyle = size === "sm" ? styles.labelSm : styles.labelMd;
   const iconSize = segmentedIconSize[size];
 
   const containerStyle = useMemo(
-    () => [styles.container, containerSizeStyle, wrap && styles.containerWrap, style],
-    [containerSizeStyle, wrap, style],
+    () => [
+      styles.container,
+      containerSizeStyle,
+      wrap && styles.containerWrap,
+      stretch && styles.containerStretch,
+      style,
+    ],
+    [containerSizeStyle, wrap, stretch, style],
+  );
+  const segmentSizeStyle = useMemo(
+    () => [baseSegmentSizeStyle, stretch && styles.segmentStretch],
+    [baseSegmentSizeStyle, stretch],
   );
 
   return (
@@ -110,9 +130,17 @@ function SegmentItem<T extends string>({
   currentValue: T;
   onValueChange: (value: T) => void;
 }) {
+  // Tone recolors, selection brightens. An unselected toned segment is a dimmed
+  // amber — same relationship muted→foreground has on an untoned one — so
+  // "which tab am I on" stays readable independently of "which tab has news".
   const labelStyle = useMemo(
-    () => [styles.label, labelSizeStyle, isSelected && styles.labelSelected],
-    [labelSizeStyle, isSelected],
+    () => [
+      styles.label,
+      labelSizeStyle,
+      isSelected && styles.labelSelected,
+      option.tone === "warning" && (isSelected ? styles.labelWarningSelected : styles.labelWarning),
+    ],
+    [labelSizeStyle, isSelected, option.tone],
   );
   const handlePress = useCallback(() => {
     if (!option.disabled && option.value !== currentValue) {
@@ -123,12 +151,21 @@ function SegmentItem<T extends string>({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.segment,
       segmentSizeStyle,
-      isSelected && styles.segmentSelected,
-      Boolean(hovered) && !isSelected && styles.segmentHover,
-      pressed && !isSelected && styles.segmentPressed,
+      // A toned segment runs the same three states as an untoned one — bare at
+      // rest, boxed on hover, boxed harder when selected — just in amber
+      // instead of surface greys. The two ladders never layer; at rest NEITHER
+      // paints a background, which is what makes hover legible at all.
+      isSelected &&
+        (option.tone === "warning" ? styles.segmentWarningSelected : styles.segmentSelected),
+      Boolean(hovered) &&
+        !isSelected &&
+        (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentHover),
+      pressed &&
+        !isSelected &&
+        (option.tone === "warning" ? styles.segmentWarningHover : styles.segmentPressed),
       option.disabled && styles.segmentDisabled,
     ],
-    [isSelected, option.disabled, segmentSizeStyle],
+    [isSelected, option.disabled, option.tone, segmentSizeStyle],
   );
   const accessibilityState = useMemo(
     () => ({ selected: isSelected, disabled: option.disabled }),
@@ -183,6 +220,9 @@ const styles = StyleSheet.create((theme) => {
       justifyContent: "center",
       rowGap: 2,
     },
+    containerStretch: {
+      alignSelf: "stretch",
+    },
     segment: {
       flexDirection: "row",
       alignItems: "center",
@@ -195,6 +235,13 @@ const styles = StyleSheet.create((theme) => {
     },
     segmentMd: {
       ...geometry.segmentedSegmentMd,
+    },
+    // Equal shares of the container. Overrides the default flexShrink: 0 — in
+    // stretch mode the segments are meant to resize with the parent.
+    segmentStretch: {
+      flex: 1,
+      flexBasis: 0,
+      minWidth: 0,
     },
     segmentSelected: {
       backgroundColor: theme.colors.surface0,
@@ -209,6 +256,21 @@ const styles = StyleSheet.create((theme) => {
     },
     segmentPressed: {
       backgroundColor: theme.colors.surface1,
+    },
+    // The amber ladder. It mirrors the grey one STATE FOR STATE: no box at
+    // rest, a box on hover, a stronger box when selected. The fills are theme
+    // tokens rather than an alpha computed here — light and dark need different
+    // weights, and one hardcoded pair can only be right on one of them.
+    segmentWarningHover: {
+      backgroundColor: theme.colors.statusWarningSurface,
+    },
+    segmentWarningSelected: {
+      backgroundColor: theme.colors.statusWarningSurfaceStrong,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 2,
+      elevation: 1,
     },
     segmentDisabled: {
       opacity: theme.opacity[50],
@@ -238,6 +300,16 @@ const styles = StyleSheet.create((theme) => {
     },
     labelSelected: {
       color: theme.colors.foreground,
+    },
+    // Two real amber shades, not one amber at two alphas: alpha over a dark
+    // surface composites to brown and reads as black. The pair holds the same
+    // contrast relationship muted→foreground holds on an untoned segment, in
+    // whichever direction the active scheme's background demands.
+    labelWarning: {
+      color: theme.colors.statusWarningMuted,
+    },
+    labelWarningSelected: {
+      color: theme.colors.statusWarningStrong,
     },
   };
 });

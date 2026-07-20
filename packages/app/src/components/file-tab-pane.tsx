@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -13,7 +21,6 @@ import {
   Search,
   TriangleAlert,
   Undo2,
-  WandStars,
   WrapText,
   X,
 } from "@/components/icons/material-icons";
@@ -40,8 +47,6 @@ import { useEditorBuffer } from "@/editor/use-editor-buffer";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
-import { RefactorDialog } from "@/editor/refactor-dialog";
-import { useAiRefactor } from "@/editor/use-ai-refactor";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 import {
@@ -88,7 +93,6 @@ const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
-const ThemedWandStars = withUnistyles(WandStars);
 const ThemedWrapText = withUnistyles(WrapText);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -286,6 +290,7 @@ function PreviewOnlyView({
   workspaceRoot,
   location,
   modeBarProps,
+  toolbarLeadingSlot,
   onFileInfo,
 }: {
   serverId: string;
@@ -293,12 +298,14 @@ function PreviewOnlyView({
   workspaceRoot: string;
   location: WorkspaceFileLocation;
   modeBarProps: FileViewModeBarProps | null;
+  toolbarLeadingSlot: ReactNode;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
 }) {
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
       <View style={styles.previewToolbar}>
+        {toolbarLeadingSlot}
         <View style={styles.toolbarSpacer} />
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
@@ -310,6 +317,21 @@ function PreviewOnlyView({
         onFileInfo={onFileInfo}
       />
     </View>
+  );
+}
+
+/**
+ * Save/revert own the far left of the editor toolbar; a host's own controls sit
+ * right after them behind a separator, ahead of the generic editor tools.
+ * Renders nothing — not even the separator — when the host supplied none.
+ */
+function ToolbarLeadingSlot({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return (
+    <>
+      <ToolbarSeparator />
+      {children}
+    </>
   );
 }
 
@@ -484,6 +506,7 @@ function EditorModeView({
   location,
   split,
   modeBarProps,
+  toolbarLeadingSlot,
   controllerRef,
   onFileInfo,
 }: {
@@ -493,6 +516,7 @@ function EditorModeView({
   location: WorkspaceFileLocation;
   split: boolean;
   modeBarProps: FileViewModeBarProps | null;
+  toolbarLeadingSlot: ReactNode;
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
 }) {
@@ -666,10 +690,10 @@ function EditorModeView({
     [controllerRef],
   );
 
-  const refactor = useAiRefactor({ serverId, path, controllerRef });
-  const handleOpenRefactor = useCallback(() => {
-    void refactor.openRefactor();
-  }, [refactor]);
+  // No AI action lives in this toolbar. The editor is a plain document editor;
+  // an AI rewrite belongs behind a surface that can scope and review it, which
+  // is what projects/refine/refine.md is for. The `@/editor/refactor-*` modules
+  // stay on disk for that work — they are simply not wired up here.
 
   // Split-view sync. Both sides report only user-driven scrolls (their own
   // programmatic scrolls are suppressed at the source); the gate keeps a
@@ -804,6 +828,7 @@ function EditorModeView({
     return (
       <View style={styles.container} testID="workspace-file-tab-pane">
         <View style={styles.previewToolbar}>
+          {toolbarLeadingSlot}
           <View style={styles.toolbarSpacer} />
           {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
         </View>
@@ -850,13 +875,8 @@ function EditorModeView({
           onPress={handleRevertPress}
           disabled={!buffer.dirty || buffer.saving}
         />
+        <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         <View style={styles.toolbarSpacer} />
-        <ToolbarIconButton
-          label={t("refactor.open")}
-          testID="editor-refactor-toggle"
-          Icon={ThemedWandStars}
-          onPress={handleOpenRefactor}
-        />
         <ToolbarIconButton
           label={t("editor.wordWrap")}
           testID="editor-wordwrap-toggle"
@@ -942,13 +962,6 @@ function EditorModeView({
         onClose={closeGoToLine}
         onSubmit={handleGoToLineSubmit}
       />
-
-      <RefactorDialog
-        scope={refactor.dialogScope}
-        visible={refactor.dialogVisible}
-        onClose={refactor.closeRefactor}
-        onConfirm={refactor.confirmRefactor}
-      />
     </View>
   );
 }
@@ -987,6 +1000,7 @@ export function FileTabPane({
   workspaceRoot,
   location,
   editGate,
+  toolbarLeadingSlot = null,
 }: {
   serverId: string;
   workspaceId: string;
@@ -994,6 +1008,10 @@ export function FileTabPane({
   location: WorkspaceFileLocation;
   /** How editing this file is gated (in-/linked-project = free; else warns). */
   editGate: EditGate;
+  /** Host-supplied toolbar controls, placed just after save/revert. Lets a
+   *  surface that opens files for a purpose (Context Management) put its own
+   *  action in the existing bar instead of stacking a second one above it. */
+  toolbarLeadingSlot?: ReactNode;
 }) {
   const { t } = useTranslation();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
@@ -1117,6 +1135,7 @@ export function FileTabPane({
         workspaceRoot={workspaceRoot}
         location={location}
         modeBarProps={modeBarProps}
+        toolbarLeadingSlot={toolbarLeadingSlot}
         onFileInfo={setFileInfo}
       />
     ) : (
@@ -1127,6 +1146,7 @@ export function FileTabPane({
         location={location}
         split={effectiveMode === "split"}
         modeBarProps={modeBarProps}
+        toolbarLeadingSlot={toolbarLeadingSlot}
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
       />
