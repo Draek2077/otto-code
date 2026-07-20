@@ -173,6 +173,7 @@ import {
   type PersistedAgentPersonality,
   type PersistedAgentTeam,
   type PersistedModelTierOverride,
+  type PersistedSavedProviderEndpoint,
 } from "./persisted-config.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import {
@@ -437,6 +438,7 @@ export interface OttoDaemonConfig {
     activeTeamId?: string | null;
   };
   modelTierOverrides?: PersistedModelTierOverride[];
+  savedProviderEndpoints?: PersistedSavedProviderEndpoint[];
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -651,6 +653,14 @@ function buildInitialMetadataGeneration(
   };
 }
 
+type MutableSavedProviderEndpoint = MutableDaemonConfig["savedProviderEndpoints"][number];
+
+function withSavedEndpointApiKey(
+  endpoint: PersistedSavedProviderEndpoint,
+): MutableSavedProviderEndpoint {
+  return { ...endpoint, apiKey: endpoint.apiKey ?? "" };
+}
+
 function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -707,6 +717,11 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // User per-model tier tags round-trip config.json ⇄ mutable config; absent
     // on disk reads as an empty tag set (all tiers inferred at ingest).
     modelTierOverrides: config.modelTierOverrides ?? [],
+    // Remembered provider endpoints round-trip config.json ⇄ mutable config;
+    // absent on disk reads as "nothing remembered yet". A hand-edited entry may
+    // omit apiKey (the wire shape requires the field), so it reads as "saved,
+    // no credential" rather than dropping the endpoint.
+    savedProviderEndpoints: (config.savedProviderEndpoints ?? []).map(withSavedEndpointApiKey),
   };
 
   if (config.terminalProfiles !== undefined) {

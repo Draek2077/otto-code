@@ -1375,6 +1375,8 @@ export class VoiceAssistantWebSocketServer {
         agentTeams: true,
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: true,
+        // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+        savedProviderEndpoints: true,
         // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         agentOrchestration: this.runService !== null,
         // COMPAT(activityStats): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.

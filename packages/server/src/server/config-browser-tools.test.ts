@@ -21,6 +21,8 @@ describe("daemon browser tools config", () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
+  // Browser tools drive real Otto tabs carrying logged-in sessions, so unlike
+  // the Otto tools master they stay off until a human turns them on.
   test("defaults browser tools off when config is absent", async () => {
     const home = await createOttoHome({ version: 1 });
 
