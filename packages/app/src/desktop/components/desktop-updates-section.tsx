@@ -169,6 +169,20 @@ function DaemonCliStatusModal({
     [t],
   );
 
+  const footer = useMemo(
+    () => (
+      <View style={styles.modalFooter}>
+        <Button style={styles.modalFooterButton} variant="outline" size="sm" onPress={onClose}>
+          {t("common.actions.close")}
+        </Button>
+        <Button style={styles.modalFooterButton} size="sm" onPress={onCopy}>
+          {t("common.actions.copy")}
+        </Button>
+      </View>
+    ),
+    [onClose, onCopy, t],
+  );
+
   return (
     <AdaptiveModalSheet
       visible={visible}
@@ -176,19 +190,12 @@ function DaemonCliStatusModal({
       header={header}
       testID="daemon-cli-status-dialog"
       snapPoints={CLI_STATUS_MODAL_SNAP_POINTS}
+      footer={footer}
     >
       <View style={styles.modalBody}>
         <Text style={styles.logOutput} selectable dataSet={CODE_SURFACE_DATASET}>
           {cliStatusOutput ?? ""}
         </Text>
-        <View style={styles.modalActions}>
-          <Button variant="outline" size="sm" onPress={onClose}>
-            {t("common.actions.close")}
-          </Button>
-          <Button size="sm" onPress={onCopy}>
-            {t("common.actions.copy")}
-          </Button>
-        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -515,10 +522,16 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     lineHeight: 18,
   },
-  modalActions: {
+  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // already supplies padding, the top border, and the row alignment.
+  modalFooter: {
+    flex: 1,
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: theme.spacing[2],
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  modalFooterButton: {
+    flex: 1,
   },
 }));
 
