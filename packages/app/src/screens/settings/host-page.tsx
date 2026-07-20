@@ -560,6 +560,33 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
       .finally(() => setIsRemovingConnection(false));
   }, [pendingRemoveConnection, removeConnection, host.serverId, t]);
 
+  const removeConnectionFooter = useMemo(
+    () => (
+      <View style={styles.sheetFooterRow}>
+        <Button
+          variant="secondary"
+          size="sm"
+          style={FLEX_1_STYLE}
+          onPress={handleCancelConfirm}
+          disabled={isRemovingConnection}
+        >
+          {t("common.actions.cancel")}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          style={FLEX_1_STYLE}
+          onPress={handleConfirmRemove}
+          disabled={isRemovingConnection}
+          testID="remove-connection-confirm"
+        >
+          {t("settings.host.connections.removeAction")}
+        </Button>
+      </View>
+    ),
+    [handleCancelConfirm, handleConfirmRemove, isRemovingConnection, t],
+  );
+
   return (
     <SettingsSection title={t("settings.host.connections.title")}>
       <View style={settingsStyles.card} testID="host-page-connections-card">
@@ -584,6 +611,7 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
           header={removeConnectionHeader}
           visible
           onClose={handleCloseConfirm}
+          footer={removeConnectionFooter}
           testID="remove-connection-confirm-modal"
         >
           <Text style={styles.confirmText}>
@@ -591,27 +619,6 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
               name: pendingRemoveConnection.title,
             })}
           </Text>
-          <View style={styles.confirmActions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              style={FLEX_1_STYLE}
-              onPress={handleCancelConfirm}
-              disabled={isRemovingConnection}
-            >
-              {t("common.actions.cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              style={FLEX_1_STYLE}
-              onPress={handleConfirmRemove}
-              disabled={isRemovingConnection}
-              testID="remove-connection-confirm"
-            >
-              {t("settings.host.connections.removeAction")}
-            </Button>
-          </View>
         </AdaptiveModalSheet>
       ) : null}
     </SettingsSection>
@@ -1184,6 +1191,34 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
     setDraft(persistedPrompt);
   }, [persistedPrompt]);
 
+  const appendPromptFooter = useMemo(
+    () => (
+      <View style={APPEND_PROMPT_FOOTER_STYLE}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onPress={handleReset}
+          disabled={!hasChanges || isSaving}
+          testID="host-page-append-system-prompt-reset"
+        >
+          {t("settings.host.orchestration.systemPrompt.reset")}
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          onPress={handleSave}
+          disabled={!hasChanges || isSaving}
+          testID="host-page-append-system-prompt-save"
+        >
+          {isSaving
+            ? t("settings.host.orchestration.systemPrompt.saving")
+            : t("settings.host.orchestration.systemPrompt.save")}
+        </Button>
+      </View>
+    ),
+    [handleReset, handleSave, hasChanges, isSaving, t],
+  );
+
   if (!isConnected) return null;
 
   return (
@@ -1212,6 +1247,7 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
           header={header}
           visible
           onClose={handleClose}
+          footer={appendPromptFooter}
           testID="host-page-append-system-prompt-sheet"
           desktopMaxWidth={560}
         >
@@ -1222,28 +1258,6 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
             onChangeText={setDraft}
             placeholder={t("settings.host.orchestration.systemPrompt.placeholder")}
           />
-          <View style={styles.appendPromptActions}>
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={handleReset}
-              disabled={!hasChanges || isSaving}
-              testID="host-page-append-system-prompt-reset"
-            >
-              {t("settings.host.orchestration.systemPrompt.reset")}
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onPress={handleSave}
-              disabled={!hasChanges || isSaving}
-              testID="host-page-append-system-prompt-save"
-            >
-              {isSaving
-                ? t("settings.host.orchestration.systemPrompt.saving")
-                : t("settings.host.orchestration.systemPrompt.save")}
-            </Button>
-          </View>
         </AdaptiveModalSheet>
       ) : null}
     </>
@@ -1390,6 +1404,33 @@ function RemoveHostSection({
     [theme.iconSize.sm, theme.colors.destructive],
   );
 
+  const removeHostFooter = useMemo(
+    () => (
+      <View style={styles.sheetFooterRow}>
+        <Button
+          variant="secondary"
+          size="sm"
+          style={FLEX_1_STYLE}
+          onPress={handleCancel}
+          disabled={isRemoving}
+        >
+          {t("common.actions.cancel")}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          style={FLEX_1_STYLE}
+          onPress={handleConfirmRemove}
+          disabled={isRemoving}
+          testID="remove-host-confirm"
+        >
+          {t("settings.host.connections.removeAction")}
+        </Button>
+      </View>
+    ),
+    [handleCancel, handleConfirmRemove, isRemoving, t],
+  );
+
   return (
     <SettingsSection
       title={t("settings.host.daemon.dangerZone")}
@@ -1429,6 +1470,7 @@ function RemoveHostSection({
           header={removeHostHeader}
           visible
           onClose={handleCloseConfirm}
+          footer={removeHostFooter}
           testID="remove-host-confirm-modal"
         >
           <Text style={styles.confirmText}>
@@ -1436,27 +1478,6 @@ function RemoveHostSection({
               ? t("settings.host.daemon.remove.localConfirmMessage")
               : t("settings.host.daemon.remove.confirmMessage", { name: host.label })}
           </Text>
-          <View style={styles.confirmActions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              style={FLEX_1_STYLE}
-              onPress={handleCancel}
-              disabled={isRemoving}
-            >
-              {t("common.actions.cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              style={FLEX_1_STYLE}
-              onPress={handleConfirmRemove}
-              disabled={isRemoving}
-              testID="remove-host-confirm"
-            >
-              {t("settings.host.connections.removeAction")}
-            </Button>
-          </View>
         </AdaptiveModalSheet>
       ) : null}
     </SettingsSection>
@@ -1954,16 +1975,19 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
-  confirmActions: {
+  // Action row handed to a sheet's `footer` slot. The sheet's footer wrapper
+  // already owns the padding, top border, and outer alignment — this only
+  // lays the buttons out inside it.
+  sheetFooterRow: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    marginTop: theme.spacing[4],
+    gap: theme.spacing[3],
   },
-  appendPromptActions: {
-    flexDirection: "row",
+  // Reset is a ghost button and Save is intrinsic-width, so this pair trails to
+  // the right rather than splitting the bar the way the flex:1 pairs do.
+  sheetFooterRowTrailing: {
     justifyContent: "flex-end",
-    gap: theme.spacing[2],
   },
   emptyCard: {
     padding: theme.spacing[4],
@@ -1980,3 +2004,5 @@ const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
 // Latency + Remove group: stacks below the connection title and centers on the
 // narrowest widths, hugs the right edge inline at sm+.
 const CONNECTION_TRAILING_STYLE = [styles.connectionTrailing, settingsStyles.rowControlGroup];
+
+const APPEND_PROMPT_FOOTER_STYLE = [styles.sheetFooterRow, styles.sheetFooterRowTrailing];

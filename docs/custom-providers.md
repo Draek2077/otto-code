@@ -26,6 +26,7 @@ Provider IDs must be lowercase alphanumeric with hyphens (`/^[a-z][a-z0-9-]*$/`)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
 - [OpenAI Compatible (local models)](#openai-compatible-local-models)
 - [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai-compatible-endpoint)
+- [Remembered endpoints](#remembered-endpoints)
 - [Multiple profiles for the same provider](#multiple-profiles-for-the-same-provider)
 - [Custom binary for a provider](#custom-binary-for-a-provider)
 - [Disabling a provider](#disabling-a-provider)
@@ -354,6 +355,38 @@ requires_openai_auth = false
 - Set `models` explicitly. Custom endpoints expose their own model IDs (`anthropic/claude-opus-4-7`, `qwen/qwen3-coder`, `local/llama`, etc.), and Otto does not discover them automatically for Codex.
 - To run multiple endpoints side-by-side, define multiple entries that each extend `"codex"` with different IDs, labels, and env. Each appears as its own provider in the app.
 - If you only want to override the binary (e.g. a nightly Codex build) without changing the endpoint, omit `OPENAI_BASE_URL` and use `command` instead — see [Custom binary for a provider](#custom-binary-for-a-provider).
+
+---
+
+## Remembered endpoints
+
+Saving the Connection section of a provider's settings sheet also **remembers** that endpoint — the Server URL together with the API key it was saved with. The remembered entries appear at the top of the Server URL dropdown (above the shipped presets), and picking one restores its credential too, so switching a provider between endpoints is one pick instead of re-typing a key.
+
+- **Pooled by env-var family, not by provider.** Entries saved from any `openai-compatible` or `codex` provider share the `OPENAI_BASE_URL` / `OPENAI_API_KEY` pool; entries saved from `extends: "claude"` providers share the `ANTHROPIC_BASE_URL` pool. An endpoint you saved under one custom provider is offered by every other provider in the same family.
+- **Host-scoped.** They persist in `config.json` under `agents.savedProviderEndpoints`, so the list follows the daemon — the same endpoints are one tap away from the phone.
+- **Re-saving a URL updates it in place** rather than piling up copies, so rotating a key just refreshes the remembered one. Twelve entries are kept per family; the least recently saved is evicted past that.
+- **Forget this endpoint** (under the Server URL field, shown when the current URL is a remembered one) drops the saved copy. It does not change what the provider is pointed at.
+- Credentials are stored in the clear, exactly like the live `agents.providers.<id>.env.OPENAI_API_KEY` they were copied from. This is a convenience list over values `config.json` already holds — treat the file accordingly.
+- Requires a daemon advertising `features.savedProviderEndpoints` (v0.6.5+). Against an older host the dropdown shows the built-in presets only.
+
+Example on disk:
+
+```json
+{
+  "agents": {
+    "savedProviderEndpoints": [
+      {
+        "id": "OPENAI_BASE_URL::http://localhost:1234/v1",
+        "baseUrlKey": "OPENAI_BASE_URL",
+        "apiKeyKey": "OPENAI_API_KEY",
+        "baseUrl": "http://localhost:1234/v1",
+        "apiKey": "lm-studio",
+        "savedAt": 1763500000000
+      }
+    ]
+  }
+}
+```
 
 ---
 

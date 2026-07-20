@@ -459,13 +459,8 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     section: readAgentTeamsSection(mutable),
   });
 
-  // Fold the user model-tier tags into agents.modelTierOverrides.
-  nextAgents = withModelTierOverrides({
-    nextAgents,
-    persistedAgents,
-    hadOverrides: persisted.agents?.modelTierOverrides !== undefined,
-    overrides: mutable.modelTierOverrides,
-  });
+  // Fold the plain array sections (model-tier tags, remembered endpoints) in.
+  nextAgents = withAgentArraySections({ nextAgents, persistedAgents, persisted, mutable });
 
   return {
     ...persisted,
@@ -769,23 +764,35 @@ function withAgentTeams(params: {
   } as PersistedConfig["agents"];
 }
 
-// Attach the model-tier overrides to the persisted agents section. Writes when
+// The agents sections that are plain replace-the-whole-array lists: user
+// model-tier tags and the remembered provider endpoints. Each is written when
 // there is anything to persist, or when a previously-written array must be
-// cleared to empty (so removing the last tag survives a restart).
-function withModelTierOverrides(params: {
+// cleared to empty — so removing the last tag, or forgetting the last endpoint,
+// survives a restart instead of being re-read off stale disk state.
+function withAgentArraySections(params: {
   nextAgents: PersistedConfig["agents"];
   persistedAgents: Record<string, unknown> | undefined;
-  hadOverrides: boolean;
-  overrides: MutableDaemonConfig["modelTierOverrides"];
+  persisted: PersistedConfig;
+  mutable: MutableDaemonConfig;
 }): PersistedConfig["agents"] {
-  const { nextAgents, persistedAgents, hadOverrides, overrides } = params;
-  if (overrides.length === 0 && !hadOverrides) {
+  const { nextAgents, persistedAgents, persisted, mutable } = params;
+  const sections = {
+    modelTierOverrides: mutable.modelTierOverrides,
+    savedProviderEndpoints: mutable.savedProviderEndpoints,
+  };
+
+  const writable = Object.entries(sections).filter(
+    ([key, values]) =>
+      values.length > 0 ||
+      (persisted.agents as Record<string, unknown> | undefined)?.[key] !== undefined,
+  );
+  if (writable.length === 0) {
     return nextAgents;
   }
-  const baseAgents = nextAgents ?? persistedAgents;
+
   return {
-    ...baseAgents,
-    modelTierOverrides: overrides,
+    ...(nextAgents ?? persistedAgents),
+    ...Object.fromEntries(writable),
   } as PersistedConfig["agents"];
 }
 
