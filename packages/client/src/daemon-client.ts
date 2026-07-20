@@ -394,6 +394,12 @@ export interface FileReadResult {
   path: string;
   kind: LegacyFileExplorerFilePayload["kind"];
   modifiedAt: string;
+  /**
+   * Detected line endings. Optional because only the inline JSON read path
+   * reports them — the chunked binary transfer never does, and neither do
+   * daemons older than v0.4.4. Absent means "not reported", not "LF".
+   */
+  eol?: FileEol;
 }
 export interface TextFileReadResult {
   path: string;
@@ -1020,6 +1026,7 @@ function legacyExplorerFileToBytes(file: LegacyFileExplorerFilePayload): FileRea
     path: file.path,
     kind: file.kind,
     modifiedAt: file.modifiedAt,
+    eol: file.eol,
   };
 }
 
