@@ -461,8 +461,9 @@ export function FileExplorerPane({
   onOpenFile,
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
-  const isMobile = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isMobile;
+  // Ungated on compact: the app's overlay bar is wanted on mobile web too,
+  // where the platform otherwise draws its dated one. No-ops off web.
+  const showWebScrollbar = isWeb;
 
   const daemons = useHosts();
   const daemonProfile = useMemo(
@@ -521,7 +522,7 @@ export function FileExplorerPane({
 
   const treeListRef = useRef<FlatList<TreeRow>>(null);
   const scrollbar = useWebScrollViewScrollbar(treeListRef, {
-    enabled: showDesktopWebScrollbar,
+    enabled: showWebScrollbar,
   });
 
   const hasInitializedRef = useRef(false);
@@ -893,7 +894,7 @@ export function FileExplorerPane({
         treeRows={treeRows}
         currentSortLabel={currentSortLabel}
         isRefreshFetching={isRefreshFetching}
-        showDesktopWebScrollbar={showDesktopWebScrollbar}
+        showWebScrollbar={showWebScrollbar}
         treeListRef={treeListRef}
         scrollbar={scrollbar}
         renderTreeRow={renderTreeRow}
@@ -938,7 +939,7 @@ interface FileExplorerPaneContentProps {
   treeRows: TreeRow[];
   currentSortLabel: string;
   isRefreshFetching: boolean;
-  showDesktopWebScrollbar: boolean;
+  showWebScrollbar: boolean;
   treeListRef: RefObject<FlatList<TreeRow> | null>;
   scrollbar: ReturnType<typeof useWebScrollViewScrollbar>;
   renderTreeRow: (info: ListRenderItemInfo<TreeRow>) => ReactElement;
@@ -966,7 +967,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     treeRows,
     currentSortLabel,
     isRefreshFetching,
-    showDesktopWebScrollbar,
+    showWebScrollbar,
     treeListRef,
     scrollbar,
     renderTreeRow,
@@ -1117,7 +1118,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           onContentSizeChange={scrollbar.onContentSizeChange}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+          showsVerticalScrollIndicator={!showWebScrollbar}
           initialNumToRender={24}
           maxToRenderPerBatch={40}
           windowSize={12}

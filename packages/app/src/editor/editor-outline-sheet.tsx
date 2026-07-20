@@ -7,7 +7,6 @@ import type { CodeSymbolLocation } from "@otto-code/client/internal/daemon-clien
 import { getErrorMessage } from "@otto-code/protocol/error-utils";
 import { useSessionStore } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 
@@ -35,15 +34,16 @@ export function EditorOutlineSheet({
   onSelectLine: (line: number) => void;
 }) {
   const { t } = useTranslation();
-  const isMobile = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isMobile;
+  // Ungated on compact: the app's overlay bar is wanted on mobile web too,
+  // where the platform otherwise draws its dated one. No-ops off web.
+  const showWebScrollbar = isWeb;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const [symbols, setSymbols] = useState<CodeSymbolLocation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<CodeSymbolLocation>>(null);
   const scrollbar = useWebScrollViewScrollbar(listRef, {
-    enabled: showDesktopWebScrollbar,
+    enabled: showWebScrollbar,
   });
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export function EditorOutlineSheet({
             keyExtractor={keyExtractor}
             listRef={listRef}
             scrollbar={scrollbar}
-            showDesktopWebScrollbar={showDesktopWebScrollbar}
+            showWebScrollbar={showWebScrollbar}
           />
         </Pressable>
       </Pressable>
@@ -124,7 +124,7 @@ function OutlineBody({
   keyExtractor,
   listRef,
   scrollbar,
-  showDesktopWebScrollbar,
+  showWebScrollbar,
 }: {
   error: string | null;
   loadingEmpty: boolean;
@@ -133,7 +133,7 @@ function OutlineBody({
   keyExtractor: (symbol: CodeSymbolLocation) => string;
   listRef: RefObject<FlatList<CodeSymbolLocation> | null>;
   scrollbar: ReturnType<typeof useWebScrollViewScrollbar>;
-  showDesktopWebScrollbar: boolean;
+  showWebScrollbar: boolean;
 }) {
   const { t } = useTranslation();
   if (error) {
@@ -157,7 +157,7 @@ function OutlineBody({
         onScroll={scrollbar.onScroll}
         onContentSizeChange={scrollbar.onContentSizeChange}
         scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+        showsVerticalScrollIndicator={!showWebScrollbar}
         testID="editor-outline-results"
       />
       {scrollbar.overlay}

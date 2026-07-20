@@ -89,7 +89,7 @@ export interface FilePreviewSyncHandle {
 interface FilePreviewBodyProps {
   preview: ExplorerFile | null;
   state: FilePreviewState;
-  showDesktopWebScrollbar: boolean;
+  showWebScrollbar: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
@@ -275,7 +275,7 @@ function NativeSvgPreview({ xml, size }: { xml: string; size: number }) {
 function FilePreviewBody({
   preview,
   state,
-  showDesktopWebScrollbar,
+  showWebScrollbar,
   isMobile,
   location,
   imagePreviewUri,
@@ -299,11 +299,11 @@ function FilePreviewBody({
 
   const previewScrollRef = useRef<RNScrollView>(null);
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
-    enabled: showDesktopWebScrollbar,
+    enabled: showWebScrollbar,
   });
   const horizontalScrollRef = useRef<RNScrollView>(null);
   const horizontalScrollbar = useWebScrollViewScrollbar(horizontalScrollRef, {
-    enabled: showDesktopWebScrollbar,
+    enabled: showWebScrollbar,
     axis: "horizontal",
   });
 
@@ -490,7 +490,7 @@ function FilePreviewBody({
             onScroll={handleVerticalScroll}
             onContentSizeChange={handleVerticalContentSizeChange}
             scrollEventThrottle={16}
-            showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+            showsVerticalScrollIndicator={!showWebScrollbar}
           >
             <View ref={syncContentRef} onPointerDown={handleSyncPointerDown}>
               {frontmatter ? (
@@ -546,7 +546,7 @@ function FilePreviewBody({
           onScroll={handleVerticalScroll}
           onContentSizeChange={handleVerticalContentSizeChange}
           scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+          showsVerticalScrollIndicator={!showWebScrollbar}
         >
           {isMobile ? (
             <View style={styles.previewCodeScrollContent}>{codeLines}</View>
@@ -559,7 +559,7 @@ function FilePreviewBody({
               onScroll={horizontalScrollbar.onScroll}
               onContentSizeChange={horizontalScrollbar.onContentSizeChange}
               scrollEventThrottle={16}
-              showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
+              showsHorizontalScrollIndicator={!showWebScrollbar}
               contentContainerStyle={styles.previewCodeScrollContent}
             >
               {codeLines}
@@ -592,7 +592,7 @@ function FilePreviewBody({
           onScroll={scrollbar.onScroll}
           onContentSizeChange={scrollbar.onContentSizeChange}
           scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+          showsVerticalScrollIndicator={!showWebScrollbar}
         >
           {svgXml ? (
             <NativeSvgPreview xml={svgXml} size={preview.size} />
@@ -643,7 +643,9 @@ export function FilePreview({
 }: FilePreviewProps) {
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isMobile;
+  // Ungated on compact: the app's overlay bar is wanted on mobile web too,
+  // where the platform otherwise draws its dated one. No-ops off web.
+  const showWebScrollbar = isWeb;
 
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
@@ -747,7 +749,7 @@ export function FilePreview({
           isPending: query.isPending,
           hasPreview: Boolean(query.data?.file),
         })}
-        showDesktopWebScrollbar={showDesktopWebScrollbar}
+        showWebScrollbar={showWebScrollbar}
         isMobile={isMobile}
         location={location}
         imagePreviewUri={imagePreviewUri}
