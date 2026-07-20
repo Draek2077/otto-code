@@ -100,6 +100,11 @@ import {
   resolveTerminalProfiles,
 } from "@otto-code/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
+import {
+  confirmPreviewNeedsBrowserTools,
+  useBrowserToolsWarningCopy,
+  useOpenBrowserToolsSettings,
+} from "@/utils/browser-tools-warning";
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { ProfileIcon, usePinnedLaunchers, type ResolvedPin } from "@/workspace-pins/launch";
 import { runPinnedTabTarget, type TabTargetHandlers } from "@/workspace-pins/run";
@@ -314,6 +319,9 @@ function useWorkspacePreviewController({
   focusedAgentId,
   enabled,
 }: WorkspacePreviewControllerInput): WorkspacePreviewController {
+  const { config: daemonConfig } = useDaemonConfig(normalizedServerId);
+  const browserToolsCopy = useBrowserToolsWarningCopy();
+  const openBrowserToolsSettings = useOpenBrowserToolsSettings(normalizedServerId);
   const [isBusy, setIsBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerServers, setPickerServers] = useState<PreviewConfiguredServer[]>([]);
@@ -442,6 +450,19 @@ function useWorkspacePreviewController({
     if (!focusedAgentId) {
       return;
     }
+    // Hard gate, not a hint: with the Browser tools master off the agent has no
+    // preview_*/browser_* tools, so a preview it can neither start nor look at
+    // is not worth opening. Offer the switch instead. Deliberately never
+    // suppressible — see utils/browser-tools-warning.ts.
+    if (
+      !(await confirmPreviewNeedsBrowserTools({
+        config: daemonConfig,
+        copy: browserToolsCopy,
+        onOpenSettings: openBrowserToolsSettings,
+      }))
+    ) {
+      return;
+    }
     const session = useSessionStore.getState().sessions[normalizedServerId];
     const client = session?.client ?? null;
     const cwd = session?.agents.get(focusedAgentId)?.cwd ?? null;
@@ -478,7 +499,15 @@ function useWorkspacePreviewController({
     } finally {
       setIsBusy(false);
     }
-  }, [fetchAndRecordRunningServers, focusedAgentId, normalizedServerId, startAndOpenPreview]);
+  }, [
+    browserToolsCopy,
+    daemonConfig,
+    fetchAndRecordRunningServers,
+    focusedAgentId,
+    normalizedServerId,
+    openBrowserToolsSettings,
+    startAndOpenPreview,
+  ]);
 
   // Reactive, not a one-time getState() snapshot: if the agent record (and its
   // cwd) hasn't loaded into the session store yet when this button mounts —
