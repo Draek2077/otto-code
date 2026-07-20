@@ -597,6 +597,8 @@ function StatusWorkspaceRowInner({
                   <WorkspaceMenuItems
                     ItemComponent={ContextMenuItem}
                     workspaceKey={workspace.workspaceKey}
+                    serverId={workspace.serverId}
+                    workspaceId={workspace.workspaceId}
                     onCopyPath={onCopyPath}
                     onCopyBranchName={onCopyBranchName}
                     onRename={onRename}
@@ -669,6 +671,8 @@ function StatusWorkspaceActionSlot({
         {onArchive ? (
           <SidebarWorkspaceMenu
             workspaceKey={workspace.workspaceKey}
+            serverId={workspace.serverId}
+            workspaceId={workspace.workspaceId}
             onCopyPath={onCopyPath}
             onCopyBranchName={onCopyBranchName}
             onRename={onRename}

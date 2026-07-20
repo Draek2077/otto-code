@@ -29,6 +29,7 @@ import {
   CopyX,
   ArrowLeftToLine,
   ArrowRightToLine,
+  BookOpen,
   ChevronDown,
   Copy,
   Ellipsis,
@@ -109,7 +110,12 @@ import {
 } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import { useSettings } from "@/hooks/use-settings";
+import { useAppSettingValue, useSettings } from "@/hooks/use-settings";
+import {
+  confirmBrowserToolsOffBeforeOpening,
+  useBrowserToolsWarningCopy,
+  useOpenBrowserToolsSettings,
+} from "@/utils/browser-tools-warning";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { hideDeveloperTabs } from "@/screens/workspace/interface-mode-tabs";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -301,6 +307,7 @@ const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedExplore = withUnistyles(Explore);
 
 interface DynamicProviderIconProps {
@@ -347,6 +354,9 @@ const MENU_ADD_ARTIFACT_ICON = <ThemedFileText uniProps={mutedMdMapping} />;
 const MENU_IMPORT_ICON = <ThemedImport uniProps={mutedMdMapping} />;
 const MENU_COPY_ICON = <ThemedCopy uniProps={mutedMdMapping} />;
 const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
+// Matches the Context Management tab's own icon and the sidebar row's item —
+// one thing, one glyph, wherever you meet it.
+const MENU_CONTEXT_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
 interface WorkspaceScreenProps {
@@ -1455,27 +1465,28 @@ function WorkspaceHeaderMenu({
               {t("workspace.header.actions.copyBranchName")}
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuSeparator />
           {showWorkspaceSetup ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                testID="workspace-header-show-setup"
-                leading={menuSettingsIcon}
-                onSelect={onOpenSetupTab}
-              >
-                {t("workspace.header.actions.showSetup")}
-              </DropdownMenuItem>
-              {/* The composer warning only appears when context is already
-                  heavy; this is the way in the rest of the time. */}
-              <DropdownMenuItem
-                testID="workspace-header-context-management"
-                leading={menuSettingsIcon}
-                onSelect={onOpenContextManagement}
-              >
-                {t("workspace.contextManagement.openAction")}
-              </DropdownMenuItem>
-            </>
+            <DropdownMenuItem
+              testID="workspace-header-show-setup"
+              leading={menuSettingsIcon}
+              onSelect={onOpenSetupTab}
+            >
+              {t("workspace.header.actions.showSetup")}
+            </DropdownMenuItem>
           ) : null}
+          {/* Unconditional, and deliberately NOT nested in the setup block:
+              whether a workspace has setup commands says nothing about whether
+              it has context to manage, and gating on it hid this item on every
+              ordinary workspace. The composer warning only appears once context
+              is already heavy, so this is the way in the rest of the time. */}
+          <DropdownMenuItem
+            testID="workspace-header-context-management"
+            leading={MENU_CONTEXT_ICON}
+            onSelect={onOpenContextManagement}
+          >
+            {t("workspace.contextManagement.openAction")}
+          </DropdownMenuItem>
           {isDeveloperMode ? (
             <>
               <DropdownMenuSeparator />
@@ -2096,6 +2107,13 @@ function WorkspaceScreenContent({
   );
   const workspaceDescriptor = useWorkspace(normalizedServerId, normalizedWorkspaceId);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
+  // Browser-tools-off heads-up wiring for handleCreateBrowserTab below.
+  const { config: browserToolsConfig } = useDaemonConfig(normalizedServerId);
+  const browserToolsCopy = useBrowserToolsWarningCopy();
+  const openBrowserToolsSettings = useOpenBrowserToolsSettings(normalizedServerId);
+  const suppressBrowserToolsWarning = useAppSettingValue(
+    (settings) => settings.suppressBrowserToolsWarning,
+  );
   const { handleRetryHost, handleManageHost, handleDismissMissingWorkspace } =
     useWorkspaceRouteActions(normalizedServerId);
 
@@ -3084,18 +3102,42 @@ function WorkspaceScreenContent({
     [createTerminal],
   );
 
+  // Every user-driven "new browser tab" path funnels through here, so this is
+  // the one place the Browser-tools-off heads-up has to live. Informational
+  // only — the tab is still useful to the human — so it proceeds on "Not now"
+  // and can be silenced for good. Agent-driven tab creation
+  // (browser-automation/handler.ts) never reaches this and must not warn.
   const handleCreateBrowserTab = useCallback(
     (input?: { paneId?: string }) => {
       if (!persistenceKey || !getIsElectron()) {
         return;
       }
-      if (input?.paneId) {
-        focusWorkspacePane(persistenceKey, input.paneId);
-      }
-      const { browserId } = createWorkspaceBrowser();
-      openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+      void (async () => {
+        const proceed = await confirmBrowserToolsOffBeforeOpening({
+          config: browserToolsConfig,
+          copy: browserToolsCopy,
+          suppressed: suppressBrowserToolsWarning,
+          onOpenSettings: openBrowserToolsSettings,
+        });
+        if (!proceed) {
+          return;
+        }
+        if (input?.paneId) {
+          focusWorkspacePane(persistenceKey, input.paneId);
+        }
+        const { browserId } = createWorkspaceBrowser();
+        openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
+      })();
     },
-    [focusWorkspacePane, openWorkspaceTabFocused, persistenceKey],
+    [
+      browserToolsConfig,
+      browserToolsCopy,
+      focusWorkspacePane,
+      openBrowserToolsSettings,
+      openWorkspaceTabFocused,
+      persistenceKey,
+      suppressBrowserToolsWarning,
+    ],
   );
 
   const handleOpenUrlInBrowserTab = useCallback(

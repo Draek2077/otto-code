@@ -366,6 +366,8 @@ function WorkspaceRowBody({
                     onCopyBranchName={onCopyBranchName}
                     onRename={onRename}
                     onMarkAsRead={onMarkAsRead}
+                    serverId={workspace.serverId}
+                    workspaceId={workspace.workspaceId}
                     onArchive={onArchive}
                     archiveLabel={archiveLabel}
                     archiveStatus={archiveStatus}
@@ -465,6 +467,8 @@ function WorkspaceRowTrailingActions({
                 onCopyBranchName={onCopyBranchName}
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
+                serverId={workspace.serverId}
+                workspaceId={workspace.workspaceId}
                 onArchive={onArchive}
                 archiveLabel={archiveLabel}
                 archiveStatus={archiveStatus}
