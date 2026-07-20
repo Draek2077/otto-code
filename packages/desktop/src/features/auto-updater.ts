@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
+import { app, shell } from "electron";
 import { UUID } from "builder-util-runtime";
 import { autoUpdater } from "electron-updater";
+import {
+  MANUAL_DOWNLOAD_URL,
+  ManualDownloadUpdateRuntime,
+} from "./manual-download-update-runtime.js";
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
@@ -147,8 +151,18 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   }
 }
 
+// COMPAT(macOS-signing): mac builds are unsigned, so they cannot replace
+// themselves in place — see manual-download-update-runtime.ts for why. They
+// still get told an update exists; "Update now" opens the download page.
+// Drop this split once Apple signing is configured.
+const usesManualDownload = process.platform === "darwin";
+
+const manualDownloadRuntime = new ManualDownloadUpdateRuntime({
+  currentVersion: () => app.getVersion(),
+});
+
 const appUpdateService = createAppUpdateService({
-  runtime: new ElectronAppUpdateRuntime(),
+  runtime: usesManualDownload ? manualDownloadRuntime : new ElectronAppUpdateRuntime(),
   isPackaged: () => app.isPackaged,
   now: () => Date.now(),
   bucket: async () => bucketFromStagingUserId(await getStagingUserId()),
@@ -189,6 +203,19 @@ export async function downloadAndInstallUpdate(
   },
   onBeforeQuit?: () => Promise<void>,
 ): Promise<AppUpdateInstallResult> {
+  if (usesManualDownload) {
+    // Nothing to install: hand the user the download page and leave the running
+    // app alone. Reporting installed:false keeps the UI honest — the update is
+    // not applied until they replace the app themselves.
+    await shell.openExternal(MANUAL_DOWNLOAD_URL);
+    return {
+      installed: false,
+      version: manualDownloadRuntime.latestVersion ?? currentVersion,
+      message:
+        "Opened the download page. macOS builds are unsigned, so update by replacing Otto in your Applications folder.",
+    };
+  }
+
   return appUpdateService.downloadAndInstallUpdate(
     { currentVersion, releaseChannel },
     onBeforeQuit,
