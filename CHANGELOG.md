@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.6.4 - 2026-07-19
+
+### Added
+
+- A new Context tab accounts for everything sent to the agent before you type — context files, memory, skills, MCP tools, and Otto's own prompt — read as a share of the model window rather than a bare token count
+- The Context tab's "worth fixing" list takes you straight to the lines a finding is about
+- A warning above the message box when fixed context takes a large share of the window, with its own Settings toggle
+- Usage & cost gains a Log tab: an itemized ledger of every agent's tokens and cost, grouped under the chat turn that spawned it
+- The usage Summary now shows real provider cost beside tokens, split across main chat, generations, sub-agents, and compaction
+- A Reset button clears your usage counters and ledger, behind a confirm
+- View the generation chat behind an artifact, or a schedule's last run, as a read-only transcript
+- Otto Tools and Browser Tools move to their own Tools section in host settings, with a row per tool group
+- Page transitions are animated, with a toggle to turn them off
+- The Visualizer can be turned off entirely
+- Unsigned macOS desktop builds are now attached to releases ([#4](https://github.com/Draek2077/otto-code/pull/4) by [@kerv](https://github.com/kerv))
+
+### Improved
+
+- Sub-agent token and cost figures are now measured per sub-agent at any nesting depth, and a parent's cost no longer double-counts its children
+- The rate-limit warning is now a fly-out above the message box that names your actual provider and stays dismissed until the limit escalates
+- Documents render embedded HTML instead of printing raw tags, so a README's centered headings and badges look the way they do on GitHub
+- An image that can't be shown falls back to its alt text, and previewing a repo document can no longer reach the network
+- The Context tab's sidebar drags to any width and remembers it
+- Speech settings move onto the Agents page, split into Dictation, Voice, and OpenAI sections
+- New artifacts and schedules default to your team's Artificer and Scheduler
+- Otto's own scrollbar now appears on mobile web and the open-project screen instead of the platform's
+- Screens hold their fade until the panes actually mount, rather than revealing a half-built view
+- Otto now credits both projects it builds on — Paseo and Agent Flow — and sends support to both
+
+### Fixed
+
+- The warning bands above the message box were never actually tinted — they painted a plain background in every theme
+- Replayed Visualizer history no longer collapses into a single instant
+- Clearing a chat no longer leaves the Visualizer stuck on the archived one
+- A new chat appears in the Visualizer before you send the first message
+- Pressing play in the Visualizer at the end of a run replays it from the start
+- The Visualizer's star field no longer collapses into a thin column when a shrunk pane grows back
+- Viewing documentation for a project you already have open now shows the README instead of an error
+- Every session no longer starts with a run of empty bookkeeping entries at the top
+
 ## 0.6.3 - 2026-07-17
 
 ### Added
