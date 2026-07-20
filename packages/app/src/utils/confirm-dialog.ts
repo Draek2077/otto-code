@@ -9,6 +9,9 @@ export interface ConfirmDialogInput {
   // When set, a checkbox with this label is rendered above the actions. Its
   // state is returned as `checkboxChecked` from `confirmDialogWithCheckbox`.
   checkboxLabel?: string;
+  // "alert" drops the cancel action — one acknowledge button, nothing to
+  // decide. Used by `alertDialog` for messages that only need to be seen.
+  kind?: "confirm" | "alert";
 }
 
 export interface ConfirmDialogResult {
@@ -58,4 +61,15 @@ export function confirmDialogWithCheckbox(input: ConfirmDialogInput): Promise<Co
 export async function confirmDialog(input: ConfirmDialogInput): Promise<boolean> {
   const result = await confirmDialogWithCheckbox(input);
   return result.confirmed;
+}
+
+/**
+ * Shows a message the user only has to acknowledge. Use this instead of
+ * `Alert.alert` for anything the user must see: react-native-web's Alert is a
+ * no-op, so an alert-only failure path is silent on web and Electron desktop.
+ */
+export async function alertDialog(
+  input: Omit<ConfirmDialogInput, "kind" | "cancelLabel" | "checkboxLabel">,
+): Promise<void> {
+  await confirmDialogWithCheckbox({ ...input, kind: "alert" });
 }

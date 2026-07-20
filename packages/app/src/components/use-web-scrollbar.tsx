@@ -123,6 +123,10 @@ export function useWebElementScrollbar(
     }
 
     element.addEventListener("scroll", update, { passive: true });
+    // A textarea's box never resizes as you type, so ResizeObserver stays
+    // silent while its scrollHeight grows — without this the thumb would keep
+    // the size it had when the field was first measured.
+    element.addEventListener("input", update);
 
     const resizeObserver = new ResizeObserver(update);
     resizeObserver.observe(element);

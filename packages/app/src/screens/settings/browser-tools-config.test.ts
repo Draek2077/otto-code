@@ -13,6 +13,7 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     browserTools: { enabled: browserToolsEnabled },
     providers: {},
     metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
+    savedProviderEndpoints: [],
     agentBehaviors: {
       promptSuggestions: true,
       agentProgressSummaries: true,

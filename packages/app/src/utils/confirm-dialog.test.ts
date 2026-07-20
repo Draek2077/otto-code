@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { confirmDialog, confirmDialogWithCheckbox, useConfirmDialogStore } from "./confirm-dialog";
+import {
+  alertDialog,
+  confirmDialog,
+  confirmDialogWithCheckbox,
+  useConfirmDialogStore,
+} from "./confirm-dialog";
 
 function resetStore(): void {
   useConfirmDialogStore.setState({ queue: [] });
@@ -51,6 +56,26 @@ describe("confirmDialog", () => {
     useConfirmDialogStore.getState().resolveActive({ confirmed: true, checkboxChecked: true });
 
     await expect(promise).resolves.toEqual({ confirmed: true, checkboxChecked: true });
+  });
+
+  it("enqueues an acknowledge-only request for alertDialog", async () => {
+    const promise = alertDialog({
+      title: "Unable to save",
+      message: "Transport not connected",
+    });
+
+    expect(useConfirmDialogStore.getState().queue[0]).toMatchObject({
+      title: "Unable to save",
+      message: "Transport not connected",
+      kind: "alert",
+    });
+
+    // Dismissing resolves regardless of which action the host reports, since an
+    // alert has nothing to decline.
+    useConfirmDialogStore.getState().resolveActive({ confirmed: false, checkboxChecked: false });
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(useConfirmDialogStore.getState().queue).toHaveLength(0);
   });
 
   it("queues overlapping requests and resolves them in order", async () => {
