@@ -278,6 +278,11 @@ export function migratePanelState(
   ) {
     state.diffCollapsedFoldersByWorkspace = {};
   }
+  if (typeof state.contextSidebarWidth !== "number") {
+    state.contextSidebarWidth = DEFAULT_CONTEXT_SIDEBAR_WIDTH;
+  } else {
+    state.contextSidebarWidth = clampContextSidebarWidth(state.contextSidebarWidth);
+  }
   if (typeof state.explorerShowHiddenFiles !== "boolean") {
     state.explorerShowHiddenFiles = true;
   }

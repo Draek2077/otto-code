@@ -7,7 +7,16 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet as RNStyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextNode } from "@otto-code/protocol/messages";
@@ -17,8 +26,14 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useIconSize } from "@/styles/theme";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  MAX_CONTEXT_SIDEBAR_WIDTH,
+  MIN_CONTEXT_SIDEBAR_WIDTH,
+  usePanelStore,
+} from "@/stores/panel-store";
 import { useToast } from "@/contexts/toast-context";
 import { ContextFindingsList } from "./findings-list";
 import { ContextGraphTree } from "./graph-tree";
@@ -34,6 +49,10 @@ import { ContextSummary } from "./summary";
 import { useContextReportQuery } from "./use-context-report";
 
 const DEFAULT_WINDOW_TOKENS = 200_000;
+
+// The file pane is the point of the tab, so the splitter never squeezes it below
+// a width where the editor stops being readable — mirrors MIN_CHAT_WIDTH.
+const MIN_CONTEXT_FILE_WIDTH = 360;
 
 // Theme-reactive icon color without useUnistyles (docs/unistyles.md).
 const ThemedChevronLeft = withUnistyles(ChevronLeft);
@@ -56,6 +75,9 @@ export function ContextManagementPanel(): ReactElement {
   const toast = useToast();
   const { serverId, workspaceId } = usePaneContext();
   const isCompact = useIsCompactFormFactor();
+  // The back chevron carries a label, so it takes the gentler 1.5x compact bump
+  // rather than the ×2 an icon-only control gets — the label only grows by +2.
+  const backIconSize = useIconSize(1.5);
 
   // The picker is a viewing preference, so it persists device-locally and the
   // tab reopens where the user left it.
@@ -115,6 +137,54 @@ export function ContextManagementPanel(): ReactElement {
   );
 
   const handleCompactBack = useCallback(() => setCompactShowsFile(false), []);
+
+  // Desktop splitter for the left column. Compact never renders the two-column
+  // row, but the hooks run unconditionally either way.
+  const contextSidebarWidth = usePanelStore((state) => state.contextSidebarWidth);
+  const setContextSidebarWidth = usePanelStore((state) => state.setContextSidebarWidth);
+  const { width: viewportWidth } = useWindowDimensions();
+  const startWidthRef = useRef(contextSidebarWidth);
+  const resizeWidth = useSharedValue(contextSidebarWidth);
+  const maxSidebarWidth = Math.max(
+    MIN_CONTEXT_SIDEBAR_WIDTH,
+    Math.min(MAX_CONTEXT_SIDEBAR_WIDTH, viewportWidth - MIN_CONTEXT_FILE_WIDTH),
+  );
+
+  // A narrower window can invalidate a persisted width, so reconcile before
+  // mirroring the store into the shared value the pane actually renders from.
+  useEffect(() => {
+    if (contextSidebarWidth > maxSidebarWidth) {
+      setContextSidebarWidth(maxSidebarWidth);
+      return;
+    }
+    resizeWidth.value = contextSidebarWidth;
+  }, [contextSidebarWidth, maxSidebarWidth, resizeWidth, setContextSidebarWidth]);
+
+  const resizeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onStart(() => {
+          startWidthRef.current = contextSidebarWidth;
+          resizeWidth.value = contextSidebarWidth;
+        })
+        .onUpdate((event) => {
+          // This sidebar is on the left, so dragging right widens it — the
+          // opposite sign from the workspace explorer's right-hand sidebar.
+          const next = startWidthRef.current + event.translationX;
+          resizeWidth.value = Math.max(MIN_CONTEXT_SIDEBAR_WIDTH, Math.min(maxSidebarWidth, next));
+        })
+        .onEnd(() => {
+          runOnJS(setContextSidebarWidth)(resizeWidth.value);
+        }),
+    [contextSidebarWidth, maxSidebarWidth, resizeWidth, setContextSidebarWidth],
+  );
+
+  const sidebarWidthStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }));
+  const sidebarShellStyle = useMemo(
+    () => [contextStaticStyles.sidebarShell, sidebarWidthStyle],
+    [sidebarWidthStyle],
+  );
 
   // One tabbed body, rendered identically in both layouts — only its container
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
@@ -245,7 +315,7 @@ export function ContextManagementPanel(): ReactElement {
               hitSlop={8}
               testID="context-management-back"
             >
-              <ThemedChevronLeft size={18} style={styles.backIcon} />
+              <ThemedChevronLeft size={backIconSize.md} style={styles.backIcon} />
               <Text style={styles.backLabel} numberOfLines={1}>
                 {selectedNode.relPath}
               </Text>
@@ -286,21 +356,26 @@ export function ContextManagementPanel(): ReactElement {
 
   return (
     <View style={styles.rootRow} testID="context-management-panel">
-      <View style={styles.sidebar}>
-        <ContextSummary
-          report={report}
-          isLoading={isLoading}
-          windowTokens={windowTokens}
-          onWindowTokensChange={handleWindowTokensChange}
-        />
-        <View style={styles.divider} />
-        <ContextSidebarTabs
-          active={sidebarTab}
-          findingCount={findingCount}
-          onChange={setSidebarTab}
-        />
-        {sidebarBody}
-      </View>
+      <Animated.View style={sidebarShellStyle}>
+        <View style={styles.sidebar}>
+          <ContextSummary
+            report={report}
+            isLoading={isLoading}
+            windowTokens={windowTokens}
+            onWindowTokensChange={handleWindowTokensChange}
+          />
+          <View style={styles.divider} />
+          <ContextSidebarTabs
+            active={sidebarTab}
+            findingCount={findingCount}
+            onChange={setSidebarTab}
+          />
+          {sidebarBody}
+        </View>
+        <GestureDetector gesture={resizeGesture}>
+          <View style={RESIZE_HANDLE_STYLE} testID="context-management-splitter" />
+        </GestureDetector>
+      </Animated.View>
       <View style={styles.fill}>{filePane}</View>
     </View>
   );
@@ -338,6 +413,14 @@ function ContextFilePane({
   );
 }
 
+// Static styles for the Animated.View — Unistyles must not own a node Reanimated
+// also patches (see explorer-sidebar.tsx for the same split).
+const contextStaticStyles = RNStyleSheet.create({
+  sidebarShell: {
+    position: "relative",
+  },
+});
+
 const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
@@ -349,9 +432,19 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.background,
   },
   sidebar: {
-    width: 320,
+    // Width lives on the animated shell; this fills it.
+    flex: 1,
+    minWidth: 0,
     borderRightWidth: theme.borderWidth[1],
     borderRightColor: theme.colors.border,
+  },
+  resizeHandle: {
+    position: "absolute",
+    right: -5,
+    top: 0,
+    bottom: 0,
+    width: 10,
+    zIndex: 10,
   },
   divider: {
     height: theme.borderWidth[1],
@@ -411,3 +504,5 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 420,
   },
 }));
+
+const RESIZE_HANDLE_STYLE = [styles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)];

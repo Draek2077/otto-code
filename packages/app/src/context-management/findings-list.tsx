@@ -98,6 +98,12 @@ function FindingRow({ finding, report, onSelectNode }: FindingRowProps): ReactEl
   );
 }
 
+// Part of Context Management's compact first screen, so every font takes the +2
+// compact bump (docs convention; `md` and up stay put).
+function bump(size: number) {
+  return { xs: size + 2, md: size };
+}
+
 const styles = StyleSheet.create((theme) => ({
   listWrap: {
     flex: 1,
@@ -109,7 +115,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyText: {
     color: theme.colors.mutedForeground,
-    fontSize: theme.fontSize.sm,
+    fontSize: bump(theme.fontSize.sm),
   },
   row: {
     flexDirection: "row",
@@ -134,10 +140,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   message: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: bump(theme.fontSize.sm),
   },
   target: {
     color: theme.colors.mutedForeground,
-    fontSize: theme.fontSize.xs,
+    fontSize: bump(theme.fontSize.xs),
   },
 }));

@@ -261,6 +261,12 @@ function ScopeIcon({ scope }: { scope: ContextScope }): ReactElement | null {
   );
 }
 
+// Part of Context Management's compact first screen, so every font takes the +2
+// compact bump (docs convention; `md` and up stay put).
+function bump(size: number) {
+  return { xs: size + 2, md: size };
+}
+
 const styles = StyleSheet.create((theme) => {
   const rowBase = {
     position: "relative",
@@ -273,7 +279,7 @@ const styles = StyleSheet.create((theme) => {
   const labelBase = {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
+    fontSize: bump(theme.fontSize.sm),
   } as const;
   return {
     listWrap: {
@@ -297,7 +303,7 @@ const styles = StyleSheet.create((theme) => {
     labelReferenced: { ...labelBase, color: theme.colors.mutedForeground },
     tokens: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.xs,
+      fontSize: bump(theme.fontSize.xs),
       fontVariant: ["tabular-nums"],
       flexShrink: 0,
     },
@@ -306,11 +312,11 @@ const styles = StyleSheet.create((theme) => {
     },
     emptyText: {
       color: theme.colors.mutedForeground,
-      fontSize: theme.fontSize.sm,
+      fontSize: bump(theme.fontSize.sm),
     },
     tooltipText: {
       color: theme.colors.foreground,
-      fontSize: theme.fontSize.xs,
+      fontSize: bump(theme.fontSize.xs),
     },
   };
 });
