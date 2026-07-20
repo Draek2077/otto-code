@@ -125,6 +125,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       label: "Team's Chatter",
       roleLabel: "Chatter",
     },
+    // A fresh install has no last-used personality to restore, and the composer
+    // would otherwise open on no personality at all despite an active team.
+    // "fallback" keeps device memory in charge once it exists.
+    autoSelectDefault: "fallback",
   });
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
