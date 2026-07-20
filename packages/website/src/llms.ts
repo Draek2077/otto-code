@@ -14,7 +14,7 @@ A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships
 
 Otto supports every major coding agent: Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, Gemini, Cline, Goose, Amp, Aider, and 30+ others. Each agent runs as its own process; Otto handles I/O, persistence, git worktree isolation, schedules, and skills.
 
-Distribution: native apps for Windows, Linux, and Android (APK); web app for everything else, including iPhone and Mac. macOS and iOS native builds aren't offered yet — pending access to a Mac development environment. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
+Distribution: native apps for macOS, Windows, Linux, and Android (APK); web app for everything else, including iPhone. macOS builds are unsigned — no Apple Developer account — so they need a Gatekeeper bypass on first launch and do not auto-update. No native iOS build for the same reason. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
 `;
 
 function docLine(doc: Doc): string {

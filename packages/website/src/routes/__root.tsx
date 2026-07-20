@@ -9,6 +9,8 @@ interface ReleaseContext {
   linuxAppImageAsset: string;
   windowsX64Asset: string | null;
   windowsArm64Asset: string | null;
+  macArm64Asset: string | null;
+  macX64Asset: string | null;
 }
 
 interface StarsContext {
@@ -20,6 +22,8 @@ const ReleaseCtx = createContext<ReleaseContext>({
   linuxAppImageAsset: "",
   windowsX64Asset: null,
   windowsArm64Asset: null,
+  macArm64Asset: null,
+  macX64Asset: null,
 });
 const StarsCtx = createContext<StarsContext>({ stars: "" });
 

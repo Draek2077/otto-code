@@ -119,14 +119,32 @@ The release loop, once you're ready to ship:
 
 **Two gaps to know about:**
 
-- **macOS builds are skipped as-is.** `electron-builder.yml`'s `mac:` section has `notarize: true`
-  unconditionally, and the workflow expects `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
-  `APPLE_ID`, `APPLE_PASSWORD` (the app-specific password), and `APPLE_TEAM_ID` as GitHub
-  secrets — note the workflow reads `secrets.APPLE_PASSWORD`, not `APPLE_APP_SPECIFIC_PASSWORD`.
-  `desktop-release.yml` gates `publish-macos` on `APPLE_CERTIFICATE` being present, so without an
-  Apple Developer Program membership the macOS jobs skip cleanly and the release run stays green
-  on Windows/Linux. Windows and Linux ship unsigned (Windows shows a SmartScreen warning on first
-  run; that's normal for unsigned installers).
+- **macOS ships unsigned, and cannot auto-update.** Two separate mac jobs exist. The _signed_
+  `publish-macos` is gated on `APPLE_CERTIFICATE` being present and skips cleanly here; it expects
+  `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD` (the
+  app-specific password), and `APPLE_TEAM_ID` — note it reads `secrets.APPLE_PASSWORD`, not
+  `APPLE_APP_SPECIFIC_PASSWORD`. The _unsigned_ `build-macos-unsigned` is ungated and runs on
+  every release, publishing `Otto-<version>-{arm64,x64}-unsigned.dmg` (plus zips) as
+  direct downloads. What that means in practice:
+  - **arm64 gets an ad-hoc signature, x64 gets nothing.** electron-builder falls back to ad-hoc
+    only on arm64, because arm64 macOS refuses to execute an unsigned binary at all. Both are
+    launched and daemon-smoked on the runner by the `afterSign` hook, so a green job means the
+    app actually ran.
+  - **No `latest-mac.yml` is published, deliberately.** An ad-hoc signature's designated
+    requirement comes from the cdhash and changes every build, so Squirrel.Mac can never validate
+    a replacement bundle. Publishing a manifest would make mac _download_ an update and then fail
+    to install it. The app uses a notify-only update path on darwin instead — see
+    `packages/desktop/src/features/manual-download-update-runtime.ts`.
+  - **Gatekeeper calls the download "damaged."** Quarantined unsigned apps get that message
+    rather than the usual unidentified-developer prompt. The download page carries the
+    right-click → Open and `xattr -dr com.apple.quarantine` instructions.
+  - **A failed mac job doesn't block the release.** `finalize-rollout` doesn't depend on it, and
+    the website treats mac assets as optional, so Windows/Linux still ship and the site simply
+    omits mac links.
+
+  Windows and Linux ship unsigned too (Windows shows a SmartScreen warning on first run; that's
+  normal for unsigned installers), but they auto-update normally.
+
 - **npm publish works (as of 2026-07-11).** The `otto-code` npm org is claimed (owner
   `draek2077`) and all six packages first published at 0.5.0, so the full `release:patch`
   chain — including `release:publish` — runs end to end. The only prerequisite is being

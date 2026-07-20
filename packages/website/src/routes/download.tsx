@@ -5,7 +5,9 @@ import { pageMeta } from "~/meta";
 import {
   downloadUrls,
   webAppUrl,
-  MAC_UNAVAILABLE_NOTE,
+  MAC_UNSIGNED_NOTE,
+  MAC_QUARANTINE_COMMAND,
+  MAC_NO_AUTOUPDATE_NOTE,
   AppleIcon,
   AndroidIcon,
   WindowsIcon,
@@ -19,8 +21,8 @@ import "~/styles.css";
 export const Route = createFileRoute("/download")({
   head: () =>
     pageMeta(
-      "Download Otto for Windows, Linux, and Android",
-      "Install Otto on your machines. Native desktop apps for Windows and Linux, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
+      "Download Otto for macOS, Windows, Linux, and Android",
+      "Install Otto on your machines. Native desktop apps for macOS, Windows, and Linux, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
       "/download",
     ),
   component: Download,
@@ -49,15 +51,30 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          {/* macOS — no builds published; see MAC_UNAVAILABLE_NOTE */}
-          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-center gap-3">
-              <AppleIcon className="h-5 w-5 text-foreground" />
-              <span className="font-medium">macOS</span>
+          {/* macOS — unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <AppleIcon className="h-5 w-5 text-foreground" />
+                <span className="font-medium">macOS</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {urls.macDmgArm64 && <DownloadPill href={urls.macDmgArm64} label="Apple Silicon" />}
+                {urls.macDmgX64 && <DownloadPill href={urls.macDmgX64} label="Intel" />}
+                {!urls.macDmgArm64 && !urls.macDmgX64 && (
+                  <p className="text-sm text-muted-foreground">
+                    Not attached to this release — check GitHub releases.
+                  </p>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
-              {MAC_UNAVAILABLE_NOTE}
-            </p>
+            {(urls.macDmgArm64 || urls.macDmgX64) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">{MAC_UNSIGNED_NOTE}</p>
+                <CodeBlock size="sm">{MAC_QUARANTINE_COMMAND}</CodeBlock>
+                <p className="text-sm text-muted-foreground">{MAC_NO_AUTOUPDATE_NOTE}</p>
+              </div>
+            )}
           </div>
 
           {/* Windows */}
@@ -109,15 +126,15 @@ function Download() {
             </div>
           </div>
 
-          {/* iOS — no builds; needs the same Apple developer access as macOS */}
+          {/* iOS — no builds; unlike macOS there's no unsigned escape hatch */}
           <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-3">
               <AppleIcon className="h-5 w-5 text-foreground" />
               <span className="font-medium">iOS</span>
             </div>
             <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
-              Not currently available — iOS builds need the same Apple development access as macOS.
-              The Web App works great on iPhone in the meantime.
+              Not currently available — installing on iOS requires an Apple Developer account, with
+              no unsigned route like the Mac has. The Web App works great on iPhone in the meantime.
             </p>
           </div>
         </div>
