@@ -1,4 +1,5 @@
 {
+  "Abc": "abc",
   "Activity": "monitor_heart",
   "AlarmClock": "alarm",
   "AlertTriangle": "warning",
@@ -86,6 +87,7 @@
   "Globe": "globe",
   "Groups": "groups",
   "Handyman": "handyman",
+  "HardDrive": "hard_drive",
   "Heart": "favorite",
   "Hexagon": "hexagon",
   "History": "history",
@@ -173,6 +175,7 @@
   "Tablet": "tablet",
   "Tabs": "tabs",
   "Terminal": "terminal",
+  "TextSelectStart": "text_select_start",
   "Timeline": "timeline",
   "Trash2": "delete",
   "TravelExplore": "travel_explore",
