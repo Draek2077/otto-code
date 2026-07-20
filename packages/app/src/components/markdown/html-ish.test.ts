@@ -164,10 +164,39 @@ describe("splitHtmlishMarkdown", () => {
     expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: source }]);
   });
 
-  it("leaves unsafe HTML image sources inert", () => {
+  it("renders an unsafe HTML image source as its alt text, never as a loadable image", () => {
     const source = '<img alt="Bad" src="javascript:alert(1)">';
 
-    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: source }]);
+    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: "Bad" }]);
+  });
+
+  it("drops an unrenderable image with no alt rather than showing markup", () => {
+    expect(splitHtmlishMarkdown('<img src="javascript:alert(1)">')).toEqual([]);
+  });
+
+  it("never hands a remote src to an image when remoteImages is altText", () => {
+    const source =
+      '<a href="https://example.com"><img alt="GitHub stars" src="https://img.shields.io/x.svg"></a>';
+
+    expect(splitHtmlishMarkdown(source, { remoteImages: "altText" })).toEqual([
+      { kind: "markdown", text: "GitHub stars" },
+    ]);
+  });
+
+  it("still loads remote images on surfaces that opt in", () => {
+    const source = '<img alt="Icon" src="https://example.com/icon.png">';
+
+    expect(splitHtmlishMarkdown(source)).toEqual([
+      { kind: "inlineImage", alt: "Icon", src: "https://example.com/icon.png" },
+    ]);
+  });
+
+  it("keeps in-document data images regardless of the remote policy", () => {
+    const src = "data:image/png;base64,iVBORw0KGgo=";
+
+    expect(
+      splitHtmlishMarkdown(`<img alt="Inline" src="${src}">`, { remoteImages: "altText" }),
+    ).toEqual([{ kind: "inlineImage", alt: "Inline", src }]);
   });
 
   it("removes raw image anchor and image tags from rendered markdown text", () => {
@@ -296,6 +325,22 @@ describe("splitHtmlishMarkdown", () => {
     );
   });
 
+  it("translates HTML with a markdown equivalent instead of showing it", () => {
+    expect(normalizeHtmlishMarkdown("<h1>Otto</h1>").trim()).toBe("# Otto");
+    expect(normalizeHtmlishMarkdown('<h3 align="center">Deep</h3>').trim()).toBe("### Deep");
+    expect(normalizeHtmlishMarkdown("<strong>bold</strong> and <em>italic</em>")).toBe(
+      "**bold** and *italic*",
+    );
+    expect(normalizeHtmlishMarkdown("<b>b</b><i>i</i><del>d</del><kbd>k</kbd>")).toBe(
+      "**b***i*~~d~~`k`",
+    );
+    expect(normalizeHtmlishMarkdown("<ul><li>one</li><li>two</li></ul>").trim()).toBe(
+      "- one\n- two",
+    );
+    expect(normalizeHtmlishMarkdown("<blockquote>quoted</blockquote>").trim()).toBe("> quoted");
+    expect(normalizeHtmlishMarkdown("<hr>").trim()).toBe("---");
+  });
+
   it("unwraps layout-only containers instead of echoing their raw markup", () => {
     expect(normalizeHtmlishMarkdown('<p align="center">Centered</p>').trim()).toBe("Centered");
     expect(normalizeHtmlishMarkdown("<div><center>Wrapped</center></div>").trim()).toBe("Wrapped");
@@ -316,36 +361,94 @@ describe("splitHtmlishMarkdown", () => {
     ).toEqual([{ kind: "inlineImage", alt: "Logo", src: "https://example.com/logo.png" }]);
   });
 
-  it("still echoes unknown non-layout tags as inert text", () => {
-    expect(normalizeHtmlishMarkdown('<iframe src="x"></iframe>')).toBe('<iframe src="x"></iframe>');
+  it("does not let pretty-printed HTML indentation become a markdown code block", () => {
+    // Four or more leading spaces is an indented code block in markdown, but means nothing in HTML.
+    expect(
+      normalizeHtmlishMarkdown("<div>\n      <span>Deeply indented</span>\n</div>").trim(),
+    ).toBe("Deeply indented");
   });
 
-  it("leaves complex code tags inert instead of parsing HTML", () => {
-    expect(normalizeHtmlishMarkdown('<code onclick="evil()"><script>x</script></code>')).toBe(
-      '<code onclick="evil()"><script>x</script></code>',
-    );
+  it("keeps a multi-line HTML link on one line so the link actually forms", () => {
+    const source = [
+      '<p align="center">',
+      '  <a href="https://star-history.com/#Draek2077/otto-code&Date">',
+      "    <picture>",
+      '      <source media="(prefers-color-scheme: dark)" srcset="https://x/dark.svg">',
+      '      <img src="https://x/chart.svg" alt="Star history chart" width="600">',
+      "    </picture>",
+      "  </a>",
+      "</p>",
+    ].join("\n");
+
+    expect(splitHtmlishMarkdown(source, { remoteImages: "altText" })).toEqual([
+      {
+        kind: "markdown",
+        text: "\n\n[Star history chart](https://star-history.com/#Draek2077/otto-code&Date)\n\n",
+      },
+    ]);
   });
 
-  it("falls back to inert markdown when details are unclosed", () => {
+  it("leaves indentation alone outside HTML, where markdown owns it", () => {
+    const source = "- outer\n  - nested\n\n<div>x</div>";
+
+    const text = splitHtmlishMarkdown(source)
+      .map((part) => (part.kind === "markdown" ? part.text : ""))
+      .join("");
+
+    expect(text).toContain("- outer\n  - nested");
+  });
+
+  it("preserves indentation inside fenced code nested in HTML", () => {
+    const source = [
+      "<details>",
+      "<summary>Code</summary>",
+      "",
+      "```py",
+      "def f():",
+      "    return 1",
+      "```",
+      "",
+      "</details>",
+    ].join("\n");
+
+    const [details] = splitHtmlishMarkdown(source);
+
+    expect(details).toMatchObject({ kind: "details", summary: "Code" });
+    expect(details?.kind === "details" && details.body).toContain("def f():\n    return 1");
+  });
+
+  it("drops tags with no markdown equivalent but keeps their text", () => {
+    expect(normalizeHtmlishMarkdown('<iframe src="x">fallback</iframe>')).toBe("fallback");
+    expect(normalizeHtmlishMarkdown("<table><tr><td>cell</td></tr></table>")).toBe("cell");
+    expect(normalizeHtmlishMarkdown('<marquee onclick="evil()">text</marquee>')).toBe("text");
+  });
+
+  it("drops script and style contents entirely", () => {
+    expect(normalizeHtmlishMarkdown("<script>alert(1)</script>")).toBe("");
+    expect(normalizeHtmlishMarkdown("<style>body{color:red}</style>")).toBe("");
+  });
+
+  it("drops a code tag it cannot render as inline code, along with any script inside", () => {
+    expect(normalizeHtmlishMarkdown('<code onclick="evil()"><script>x</script></code>')).toBe("");
+  });
+
+  it("falls back to plain text when details are unclosed", () => {
     const source = "<details><summary>Open</summary>Still open";
 
-    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: source }]);
+    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: "OpenStill open" }]);
   });
 
-  it("falls back to inert markdown when summary is missing", () => {
+  it("falls back to plain text when summary is missing", () => {
     const source = "<details>Hidden</details>";
 
-    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: source }]);
+    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "markdown", text: "Hidden" }]);
   });
 
   it("does not execute or render unknown HTML as structured content", () => {
     const source =
       '<script>alert(1)</script><details onclick="evil()"><summary>Safe</summary><iframe src="x"></iframe></details>';
 
-    expect(splitHtmlishMarkdown(source)).toEqual([
-      { kind: "markdown", text: "<script>alert(1)</script>" },
-      { kind: "details", summary: "Safe", body: '<iframe src="x"></iframe>' },
-    ]);
+    expect(splitHtmlishMarkdown(source)).toEqual([{ kind: "details", summary: "Safe", body: "" }]);
   });
 });
 

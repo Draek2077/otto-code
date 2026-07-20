@@ -18,18 +18,19 @@ Our own `README.md` is the reproduction. The logo line
 </p>
 ```
 
-renders the `<img>` tag as literal text. That is the whole of this workstream — the `<p>` wrapper
-half was fixed separately (layout-only tags now unwrap in `markdown/html-ish.ts`).
+renders as the words "Otto logo" — the alt text, because the src points at a workspace file and the
+viewer will not fetch anything. That fallback is correct and shipped; this workstream is what
+replaces it with the actual logo.
 
 ## The two paths that both need fixing
 
 Relative srcs die in two different places, for two different reasons. Fixing one leaves the other
 broken, and README-style files hit the HTML path more often than the markdown path.
 
-| Path                 | Entry                                                                                            | Why a relative src fails today                                                                                           |
-| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Markdown `![](path)` | `react-native-markdown-display` default `image` rule (no custom rule in `markdown/renderer.tsx`) | `allowedImageHandlers` has no match, so `defaultImageHandler` prefixes it — the src becomes `https://./diagram.png`      |
-| HTML `<img src>`     | `markdown/html-ish.ts:30` `SAFE_IMAGE_SRC_RE`                                                    | Only `https?:` and `data:image/...` pass; a relative path is rejected and falls back to `token.raw`, i.e. visible markup |
+| Path                 | Entry                                                                                            | Why a relative src fails today                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Markdown `![](path)` | `react-native-markdown-display` default `image` rule (no custom rule in `markdown/renderer.tsx`) | `allowedImageHandlers` has no match, so `defaultImageHandler` prefixes it — the src becomes `https://./diagram.png` |
+| HTML `<img src>`     | `markdown/html-ish.ts` `isRenderableImageSrc`                                                    | Only in-document `data:image/...` passes in the viewer; a relative path is rejected and renders as its alt text     |
 
 Neither path has any base-path context to resolve against: `MarkdownRendererProps`
 (`markdown/renderer.tsx:70-79`) has no cwd/basePath field, and `file-pane.tsx:499` renders
@@ -53,8 +54,9 @@ Four pieces, in dependency order.
    new caching layer is introduced.
 4. **Let the resolved URL through.** Both consumers gate on scheme: widen
    `allowedImageHandlers` to accept the store's `blob:`/`file:` URLs, and extend
-   `SAFE_IMAGE_SRC_RE` the same way. Widen for the _resolved_ URL only — the raw author-supplied
-   src must still never reach an `<Image>`.
+   `isRenderableImageSrc` the same way. Widen for the _resolved_ URL only — the raw
+   author-supplied src must still never reach an `<Image>`, which is what keeps
+   `remoteImages: "altText"` meaningful.
 
 ## Constraints and decisions
 
@@ -68,12 +70,14 @@ Four pieces, in dependency order.
   able to name an arbitrary host path and have us fetch it: containment happens at step 2 before
   any RPC is issued. This is the same posture as the gated multi-root work (`resolveEditGate`
   gates edits; this gates reads-for-display).
-- **Fallback behavior — decide before building.** Today an unresolvable src shows raw markup, which
-  is the worst option. Proposed: render the `alt` text (plus a broken-image affordance), so the
-  document stays readable and the failure is legible. Needs confirming, because it also changes
-  what a rejected `javascript:` src looks like, and the existing test asserts raw passthrough there.
-  Suggested split: dangerous scheme → keep inert raw (unchanged, still covered by that test);
-  merely unresolvable → alt text.
+- **Fallback behavior — decided, and already shipped.** An image that cannot be rendered shows its
+  `alt` text; one with no alt is dropped. This is now the standing rule for every unrenderable
+  image, so this workstream does not need to invent a failure mode — a resolved-but-unreadable
+  local file lands on the same path as a blocked remote one.
+- **The viewer never fetches remotely — that is the point of this workstream.** `remoteImages:
+"altText"` means a repo document cannot reach the network at all, so a workspace-local image is
+  the _only_ way a README's own logo can ever appear. This is what makes the daemon read worth
+  building rather than just widening the scheme allowlist.
 - **Fan-out.** A badge-heavy README can reference dozens of images; each is an unbounded whole-file
   read (`file-explorer/service.ts:366-418` has no size cap). Needs de-duplication by resolved path
   and a sane cap/lazy trigger before this goes near a large repo.
