@@ -17,6 +17,7 @@ function createMaterialSymbolIcon(name: keyof typeof MATERIAL_SYMBOL_SVGS): Icon
   return MaterialSymbolIcon;
 }
 
+export const Abc = createMaterialSymbolIcon("Abc");
 export const Activity = createMaterialSymbolIcon("Activity");
 export const AlarmClock = createMaterialSymbolIcon("AlarmClock");
 export const AlertTriangle = createMaterialSymbolIcon("AlertTriangle");
@@ -104,6 +105,7 @@ export const Github = createMaterialSymbolIcon("Github");
 export const Globe = createMaterialSymbolIcon("Globe");
 export const Groups = createMaterialSymbolIcon("Groups");
 export const Handyman = createMaterialSymbolIcon("Handyman");
+export const HardDrive = createMaterialSymbolIcon("HardDrive");
 export const Heart = createMaterialSymbolIcon("Heart");
 export const Hexagon = createMaterialSymbolIcon("Hexagon");
 export const History = createMaterialSymbolIcon("History");
@@ -191,6 +193,7 @@ export const Sun = createMaterialSymbolIcon("Sun");
 export const Tablet = createMaterialSymbolIcon("Tablet");
 export const Tabs = createMaterialSymbolIcon("Tabs");
 export const Terminal = createMaterialSymbolIcon("Terminal");
+export const TextSelectStart = createMaterialSymbolIcon("TextSelectStart");
 export const Timeline = createMaterialSymbolIcon("Timeline");
 export const Trash2 = createMaterialSymbolIcon("Trash2");
 export const TravelExplore = createMaterialSymbolIcon("TravelExplore");
