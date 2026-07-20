@@ -47,6 +47,8 @@ For testing rules, see [testing.md](testing.md).
 - Catch blocks branch on `instanceof` for what they can handle; rethrow the rest. No `catch (e) { return null }`.
 - Separate user-facing copy from log/debug strings — don't make one string serve telemetry, logs, and the UI.
 - Fail explicitly. If the caller asked for X and X isn't available, throw — don't silently substitute Y.
+- **Never surface an error to the user with `Alert.alert`.** `react-native-web`'s Alert is `static alert() {}` — a literal no-op — so an alert-only failure path is invisible on web and Electron desktop, and the UI just looks stuck (the classic symptom: a modal whose Save does nothing and then claims unsaved changes). Use `alertDialog` / `confirmDialog` from `@/utils/confirm-dialog`, which render through the globally-mounted `ConfirmDialogHost` on every platform.
+- Everything between the click and the write belongs inside the `try` that reports failure — draft conversion, id generation, validation. A throw one line above the `try` is a silent dead end.
 
 ## Density
 

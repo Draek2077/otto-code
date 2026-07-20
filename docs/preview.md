@@ -137,6 +137,41 @@ restored preview tabs to behave_.
 | **Browser tools**     | `daemon.browserTools.enabled` (default `false`) | `BrowserToolsMasterRow` (master of `BrowserToolsSection`), `screens/settings/otto-tools-section.tsx` |
 | **Enable Otto tools** | `daemon.mcp.injectIntoAgents` (default `true`)  | `OttoToolsMasterRow` (master of `OttoToolsSection`), `screens/settings/otto-tools-section.tsx`       |
 
+**The two masters default differently, on purpose.** Otto tools default **on** —
+they are Otto's own filesystem/agent/terminal tools, nothing an agent isn't
+already doing. Browser tools default **off** — they drive real Otto browser tabs
+carrying the user's logged-in sessions, so a human turns them on deliberately.
+The daemon (`config.ts`), the protocol schema defaults
+(`MutableBrowserToolsConfigSchema`), and `DaemonConfigBrowserToolsPolicy` all
+agree that an absent value is off, so no read path can disagree about an opt-in.
+
+Off-by-default costs discoverability, so the feature surfaces **warn at the
+moment of intent instead of failing silently** — the affordances stay visible
+when the master is off; clicking one explains why it won't do what you want and
+offers the switch. Both gates live in `packages/app/src/utils/browser-tools-warning.ts`
+(one copy source, one deep-link to Host settings → Tools), and they differ on
+purpose:
+
+| Gate                                  | Trigger                                                             | On "Not now"  | Suppressible                        |
+| ------------------------------------- | ------------------------------------------------------------------- | ------------- | ----------------------------------- |
+| `confirmPreviewNeedsBrowserTools`     | The Preview button, before `runPreviewFlow` does anything           | Nothing runs  | **No**                              |
+| `confirmBrowserToolsOffBeforeOpening` | `handleCreateBrowserTab` (every user-driven "new browser tab" path) | The tab opens | Yes — `suppressBrowserToolsWarning` |
+
+The asymmetry is the point. Opening a browser tab still works for the human when
+the master is off — only agent access is missing — so that warning informs,
+proceeds, and can be silenced forever from its own checkbox. Preview cannot be
+silenced: its entire value is the agent starting the server and checking the
+result, and with no `preview_*`/`browser_*` tools that cannot happen, so a
+suppressed warning would leave a button that quietly does nothing worth doing.
+
+Note precisely what the master gates. The `preview.*` RPCs are **ungated**, so
+the daemon will happily start a dev server either way; the switch only decides
+whether the **agent** gets the `browser_*` / `preview_*` tools (`otto-tools.ts`
+`registerBrowserTools` / `registerPreviewTools`). Enforcement is the app-side
+gate above, not a daemon refusal. Agent-driven tab creation
+(`browser-automation/handler.ts`) never passes through it and must never warn.
+Anything new gated on `browserToolsEnabled` owes the user the same pointer.
+
 The Host **Agents** sidebar section renders three grouped cards, each with the
 standard split-line rows: **Agents** (append system prompt, then agent-behavior +
 metadata toggles), **Otto Tools** (the "Enable Otto tools" master over the core
