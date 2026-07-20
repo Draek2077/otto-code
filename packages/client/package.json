@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/client",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Otto client SDK package",
   "license": "AGPL-3.0-or-later",
   "files": [
@@ -36,8 +36,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@otto-code/protocol": "0.6.3",
-    "@otto-code/relay": "0.6.3",
+    "@otto-code/protocol": "0.6.4",
+    "@otto-code/relay": "0.6.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
