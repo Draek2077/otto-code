@@ -141,8 +141,8 @@ The Host **Agents** sidebar section renders three grouped cards, each with the
 standard split-line rows: **Agents** (append system prompt, then agent-behavior +
 metadata toggles), **Otto Tools** (the "Enable Otto tools" master over the core
 `mcp.toolGroups` category rows — workspace, agents, terminals, web, schedules,
-artifacts), and **Browser Tools** (the "Browser tools" master over its two
-browser categories, Browser Control = `browser` and Preview = `preview`). Each
+artifacts), and **Browser Tools** (the "Enable Browser tools" master over its two
+browser categories, Control = `browser` and Preview = `preview`). Each
 master's category rows grey out when that master is off. (Agent personalities,
 teams, and voices live on a separate **Teams** sidebar section.)
 
@@ -156,7 +156,7 @@ provider's own tool-group selection below — the single enforcement point is
 `registerPreviewTools` in `createOttoToolCatalog`
 (`packages/server/src/server/agent/tools/otto-tools.ts`). Because the master
 defaults off, Preview is off by default until a user opts in. The UI mirrors
-this exactly: the Browser Control and Preview category rows grey out when the
+this exactly: the Control and Preview category rows grey out when the
 "Browser tools" master is off, and that grey-out is a true functional gate, not
 just a grouping convenience. "Enable Otto tools" is the
 broader switch for all daemon-injected tools (agent/worktree/schedule management

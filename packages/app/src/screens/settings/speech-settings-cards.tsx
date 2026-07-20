@@ -17,6 +17,7 @@ import { useFetchQuery } from "@/data/query";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import {
   useTtsPreviewFeature,
@@ -643,6 +644,18 @@ function OpenAiKeyCard({
   );
 }
 
+/**
+ * The key card only earns its place once OpenAI backs one of the three engine
+ * slots — otherwise it's a field nobody in this configuration uses.
+ */
+function usesOpenAiEngine(speech: MutableSpeechConfig | null): boolean {
+  return (
+    speech?.dictation?.stt?.provider === "openai" ||
+    speech?.voiceMode?.stt?.provider === "openai" ||
+    speech?.voiceMode?.tts?.provider === "openai"
+  );
+}
+
 export function SpeechSettingsCards({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const hasFeature = useSpeechSettingsFeature(serverId);
@@ -679,14 +692,16 @@ export function SpeechSettingsCards({ serverId }: { serverId: string }) {
 
   if (!hasFeature) {
     return (
-      <View style={settingsStyles.card} testID="host-speech-update-host-card">
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.host.speech.sectionTitle")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("settings.host.speech.updateHost")}</Text>
+      <SettingsSection title={t("settings.host.speech.sectionTitle")}>
+        <View style={settingsStyles.card} testID="host-speech-update-host-card">
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.host.speech.sectionTitle")}</Text>
+              <Text style={settingsStyles.rowHint}>{t("settings.host.speech.updateHost")}</Text>
+            </View>
           </View>
         </View>
-      </View>
+      </SettingsSection>
     );
   }
   if (!options || !config) {
@@ -694,13 +709,15 @@ export function SpeechSettingsCards({ serverId }: { serverId: string }) {
       return null;
     }
     return (
-      <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowError}>{t("settings.host.speech.optionsError")}</Text>
+      <SettingsSection title={t("settings.host.speech.sectionTitle")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowError}>{t("settings.host.speech.optionsError")}</Text>
+            </View>
           </View>
         </View>
-      </View>
+      </SettingsSection>
     );
   }
 
@@ -709,15 +726,23 @@ export function SpeechSettingsCards({ serverId }: { serverId: string }) {
   const speechPatchFailed = mutation.isError && !keyPatchFailed;
   return (
     <>
-      <DictationCard speech={speech} options={options} apply={apply} />
-      <VoiceModeCard
-        serverId={serverId}
-        speech={speech}
-        options={options}
-        apply={apply}
-        showError={speechPatchFailed}
-      />
-      <OpenAiKeyCard speech={speech} apply={apply} showError={keyPatchFailed} />
+      <SettingsSection title={t("settings.host.speech.dictationSectionTitle")}>
+        <DictationCard speech={speech} options={options} apply={apply} />
+      </SettingsSection>
+      <SettingsSection title={t("settings.host.speech.voiceSectionTitle")}>
+        <VoiceModeCard
+          serverId={serverId}
+          speech={speech}
+          options={options}
+          apply={apply}
+          showError={speechPatchFailed}
+        />
+      </SettingsSection>
+      {usesOpenAiEngine(speech) ? (
+        <SettingsSection title={t("settings.host.speech.openaiSectionTitle")}>
+          <OpenAiKeyCard speech={speech} apply={apply} showError={keyPatchFailed} />
+        </SettingsSection>
+      ) : null}
     </>
   );
 }

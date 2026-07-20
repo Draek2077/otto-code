@@ -57,13 +57,14 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
 
 // The two tool groups that belong under the dedicated "Browser Tools" section
 // (gated by the browserTools.enabled master switch) rather than the general Otto
-// tool catalog. Relabeled for that context — the browser group is "Browser
-// Control" there, and the master-switch dependency note is dropped because the
-// section structure now makes the dependency explicit.
+// tool catalog. Relabeled for that context — the browser group is just
+// "Control" there (the section header already says "Browser"), and the
+// master-switch dependency note is dropped because the section structure now
+// makes the dependency explicit.
 export const BROWSER_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
   {
     group: "browser",
-    label: "Browser Control",
+    label: "Control",
     description:
       "Verify changes in the Otto browser pane — accessibility snapshots, DOM, console, network, clicks.",
   },

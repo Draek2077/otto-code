@@ -1,6 +1,8 @@
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
-export const BROWSER_TOOLS_TITLE = "Browser tools";
+// The row label, not the section header ("Browser Tools") it sits under — it
+// names the toggle, mirroring "Enable Otto tools" in the Otto Tools section.
+export const BROWSER_TOOLS_TITLE = "Enable Browser tools";
 export const BROWSER_TOOLS_WARNING =
   "Allow agents to access and control Otto browser tabs, including logged-in browser state. Only enable this for agents you trust.";
 

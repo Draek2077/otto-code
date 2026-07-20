@@ -517,6 +517,7 @@ export const HOST_SECTION_SLUGS = [
   "connections",
   "agents",
   "teams",
+  "tools",
   "workspaces",
   "providers",
   "usage",
