@@ -14,7 +14,10 @@ interface HeaderToggleButtonState {
 interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPress" | "children"> {
   onPress: NonNullable<PressableProps["onPress"]>;
   tooltipLabel: string;
-  tooltipKeys: ShortcutKey[];
+  // Chord sequence as resolved by `useShortcutKeys`, so the tooltip reflects the
+  // user's remapping rather than a hardcoded default. Null when the action has
+  // no binding on this platform.
+  tooltipKeys: ShortcutKey[][] | null;
   tooltipSide: "left" | "right" | "top" | "bottom";
   tooltipDelayDuration?: number;
   style?: StyleProp<ViewStyle>;
@@ -72,7 +75,7 @@ export function HeaderToggleButton({
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>
           <Text style={styles.tooltipText}>{tooltipLabel}</Text>
-          <Shortcut keys={tooltipKeys} style={styles.shortcut} />
+          {tooltipKeys ? <Shortcut chord={tooltipKeys} style={styles.shortcut} /> : null}
         </View>
       </TooltipContent>
     </Tooltip>
