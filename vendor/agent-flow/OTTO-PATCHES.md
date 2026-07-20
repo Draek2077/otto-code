@@ -1338,3 +1338,23 @@ resizes, so the field stretches/contracts with the pane and stays evenly spread.
   new/old dimension ratio (`sx = width/prev.width`, `sy = height/prev.height`).
   No change to `background-layer.ts` — the wrap logic is left as-is, it just no
   longer sees a collapsed field. Needs `npm run build:visualizer`.
+
+## 2026-07-20 — tighter auto-fit framing (less dead margin, closer zoom)
+
+The auto-fit camera left a large empty border around the graph and kept nodes
+small even when the pane had room. Three paddings stacked into the fitted
+bounds, and the zoom ceiling was an inline literal, so a small graph could not
+fill its pane: `ANIM.viewportPadding` (applied to *both* sides of each axis, so
+120 meant a fixed 240px of slack per axis) plus `AUTOFIT_AGENT_PADDING` on every
+node radius, then a hard `Math.min(..., 2)` cap. On a one-node graph the ~100px
+subject became a 340×340 box before fitting — roughly 70% of the frame was
+margin. Note `CAMERA.maxZoom` (4) bounds only manual wheel zoom and never
+applied to auto-fit.
+
+- `web/lib/agent-types.ts` — `ANIM.viewportPadding` 120 → 56.
+- `web/hooks/use-canvas-camera.ts` — `AUTOFIT_AGENT_PADDING` 22 → 12, and the
+  inline `2` zoom cap in `computeFitTransform` extracted to a named
+  `AUTOFIT_MAX_SCALE = 3.2` so the ceiling is visible and adjustable.
+
+Constants only — no change to the fit algorithm, the `autoFitLerp` settle, or
+the bridge. Needs `npm run build:visualizer`.

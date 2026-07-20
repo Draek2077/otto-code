@@ -22,7 +22,7 @@ function Home() {
           for every model, cloud or local.
         </>
       }
-      subtitle="Run Claude Code, Codex, OpenCode, and any OpenAI-compatible model on your own machines, and drive them from your desk or your phone. Otto is a familiar environment that never boxes you in — and it brings frontier-model tooling to every provider equally: agents that verify their own work in the browser, artifacts, rich permission modes, and new tools throughout. Self-hosted, multi-provider, open source — proudly forked from Paseo."
+      subtitle="Run Claude Code, Codex, OpenCode, and any OpenAI-compatible model on your own machines, from your desk or your phone. Frontier-model tooling for every provider: agents that verify their own work in the browser, artifacts, rich permission modes, and more. Self-hosted, multi-provider, open source."
     />
   );
 }

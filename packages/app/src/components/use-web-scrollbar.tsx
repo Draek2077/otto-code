@@ -123,11 +123,19 @@ export function useWebElementScrollbar(
     }
 
     element.addEventListener("scroll", update, { passive: true });
-    // A textarea's box never resizes as you type, so ResizeObserver stays
-    // silent while its scrollHeight grows — without this the thumb would keep
-    // the size it had when the field was first measured.
-    element.addEventListener("input", update);
-
+    // Do NOT add a raw "input" listener here to catch a growing scrollHeight.
+    // It has been added and reverted twice (cacbbf405, then re-added by
+    // 46e7f223a) because it silently eats keystrokes in the composer: a
+    // target-phase listener runs before React's delegated handler, and its
+    // setState — which only actually changes on a wrap, since metricsChanged
+    // compares contentSize — flushes a synchronous render carrying the *stale*
+    // controlled value. React then writes that stale string back onto the
+    // textarea and rewinds its value tracker, so onChange never fires and the
+    // wrap-triggering character is lost until it is typed a second time.
+    // Scroll plus the ResizeObserver below already cover every metric update:
+    // the composer's height mirror sets the textarea's inline height on wrap,
+    // which trips the observer. Anything needing more must schedule off the
+    // event (rAF/microtask), never synchronously in a listener.
     const resizeObserver = new ResizeObserver(update);
     resizeObserver.observe(element);
     const contentElement = contentRef?.current;

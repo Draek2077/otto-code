@@ -8,6 +8,7 @@ import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
+import { resolveSpawnPersonalityId } from "@/composer/draft/workspace-tab-core";
 import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
@@ -123,7 +124,10 @@ function buildCreateAgentOptions({
     effectiveModelId: string | null;
     effectiveThinkingOptionId: string | null;
     agentControls: {
-      personality?: { selectedPersonalityId?: string | null } | null;
+      personality?: {
+        selectedPersonalityId?: string | null;
+        spawnPersonalityId?: string | null;
+      } | null;
     };
   };
   text: string;
@@ -133,6 +137,7 @@ function buildCreateAgentOptions({
   workspaceId: string;
   provider: CreateAgentRequestOptions["provider"];
 }): CreateAgentRequestOptions {
+  const spawnPersonalityId = resolveSpawnPersonalityId(composerState.agentControls.personality);
   return {
     provider,
     cwd: workspaceDirectory,
@@ -144,9 +149,7 @@ function buildCreateAgentOptions({
     ...(composerState.effectiveThinkingOptionId
       ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
       : {}),
-    ...(composerState.agentControls.personality?.selectedPersonalityId
-      ? { personality: composerState.agentControls.personality.selectedPersonalityId }
-      : {}),
+    ...(spawnPersonalityId ? { personality: spawnPersonalityId } : {}),
     ...(text.trim() ? { initialPrompt: text.trim() } : {}),
     ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),

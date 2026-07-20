@@ -2441,13 +2441,20 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     {
       title: "Suggest a task",
       description:
-        "Suggest a follow-up task the user can start later as its own agent — a card they act on " +
-        "asynchronously (new worktree, locally, this session, or dismiss). Call this for worthwhile " +
-        "out-of-scope work that would bloat the current change: dead code, stale docs, missing test " +
-        "coverage, a confirmed TODO, a refactor, or a bug spotted in passing — and whenever the user " +
-        "asks you to queue up work. Don't flag vague code-smell hunches, trivial inline fixes, or " +
-        "low-confidence guesses. A card appears for the user; your turn continues uninterrupted and " +
-        "the task is NOT started automatically.",
+        "Suggest a task. Flag an out-of-scope issue as a follow-up task the user can start later " +
+        "as its own agent.\n\n" +
+        "Call this on your own initiative, without being asked, whenever you notice something " +
+        "worth doing that would bloat the current change: dead code, stale docs, missing test " +
+        "coverage, a confirmed TODO, a refactor, or a bug spotted in passing. Noticing it is the " +
+        "trigger — do not wait for permission and do not just mention it in prose.\n\n" +
+        'Also call this whenever the user asks for one, in any of their words: "suggest a task", ' +
+        '"suggest tasks", "make that a task", "add a task", "queue that up", "spin that off", ' +
+        '"flag that for later", "note that for later", "spawn a task". These all mean this tool.\n\n' +
+        "Don't flag vague code-smell hunches, trivial fixes you can just do inline, or " +
+        "low-confidence guesses.\n\n" +
+        "A card appears for the user, who acts on it asynchronously (new worktree, locally, this " +
+        "session, or dismiss). Your current turn continues uninterrupted and the task is NOT " +
+        "started automatically.",
       inputSchema: {
         title: z
           .string()

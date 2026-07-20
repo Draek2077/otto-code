@@ -187,11 +187,23 @@ console.log("wrote packages/desktop/assets/icon.icns");
 // Linux/notification fallback sizes: electron-builder's `icon: assets` directory target
 // (electron-builder.yml) and the notification icon fallback chain (notifications.ts) both
 // expect loose NxN.png files alongside icon.png/ico/icns.
+//
+// Only these NxN.png files reach the Linux hicolor icon theme — icon.png is not
+// picked up by the directory target. The set used to stop at 256 (as
+// "128x128@2x.png"), so GNOME/KDE had nothing to serve large icon contexts and
+// upscaled 256 to fill them, which reads as a blurry icon on HiDPI and on
+// shells that render large dock/app-grid icons. Ship the sizes the themes
+// actually ask for, up to 512. The "@2x" spelling is dropped in favor of the
+// plain 256x256 the theme spec expects; keeping both would put two files of
+// identical pixel size in the scanned directory.
 const looseSizes = [
+  [16, "16x16.png"],
   [32, "32x32.png"],
+  [48, "48x48.png"],
   [64, "64x64.png"],
   [128, "128x128.png"],
-  [256, "128x128@2x.png"],
+  [256, "256x256.png"],
+  [512, "512x512.png"],
 ];
 for (const [size, name] of looseSizes) {
   const inner = size <= SMALL_FACE_MAX_PX ? faceSmall : face;

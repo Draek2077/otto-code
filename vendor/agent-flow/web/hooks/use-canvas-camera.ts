@@ -3,7 +3,16 @@ import { Agent, ToolCallNode, Discovery, ANIM, NODE } from '@/lib/agent-types'
 import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H } from '@/lib/canvas-constants'
 
 /** Extra padding added to agent node radii for auto-fit bounding box */
-const AUTOFIT_AGENT_PADDING = 22
+// OTTO: 22 -> 12. Stacks on top of ANIM.viewportPadding, so the two together
+// were over-inflating the fitted bounds and shrinking every node.
+const AUTOFIT_AGENT_PADDING = 12
+
+/**
+ * Ceiling on the auto-fit zoom. OTTO: was an inline `2` in the Math.min below,
+ * which kept a small graph pinned at 2x however much room it had. CAMERA.maxZoom
+ * (4) only bounds manual wheel zoom and does not apply here.
+ */
+const AUTOFIT_MAX_SCALE = 3.2
 
 export interface Transform {
   x: number
@@ -163,7 +172,11 @@ export function useCanvasCamera({
     const boundsH = maxY - minY + padding * 2
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
-    const scale = Math.min(dimensions.width / boundsW, dimensions.height / boundsH, 2)
+    const scale = Math.min(
+      dimensions.width / boundsW,
+      dimensions.height / boundsH,
+      AUTOFIT_MAX_SCALE,
+    )
     const result = {
       x: dimensions.width / 2 - centerX * scale,
       y: dimensions.height / 2 - centerY * scale,

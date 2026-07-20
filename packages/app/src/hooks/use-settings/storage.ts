@@ -167,6 +167,10 @@ export interface AppSettings {
   // is over their toolbar area (web only — hover). When false (default), pinned
   // options are always visible.
   hidePinnedToolbarOptions: boolean;
+  // Drop the "Merge into <base>" action from the source-control menu (and stop
+  // promoting it to the primary CTA) for people who only ever merge via a pull
+  // request and don't want a one-click local merge sitting in the menu.
+  hideMergeIntoBaseAction: boolean;
   // Keep chat message operational details (timestamp, duration, copy/fork/
   // rewind actions) hidden until the pointer is over the message. Hover-only:
   // native and compact layouts always show details, and the running-turn
@@ -362,6 +366,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   blackTabBackground: false,
   groupConsecutiveActions: true,
   hidePinnedToolbarOptions: false,
+  hideMergeIntoBaseAction: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
   animationsEnabled: true,
@@ -649,6 +654,34 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   return result;
 }
 
+// Plain boolean fields validate identically, so they're copied in a loop rather
+// than as one `if (typeof … === "boolean")` per field — that repetition was what
+// kept pushing this function past the complexity limit as settings were added.
+const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
+  "autoExpandReasoning",
+  "voiceThinkingTone",
+  "compactSidebarTopSpacing",
+  "blackTabBackground",
+  "groupConsecutiveActions",
+  "hidePinnedToolbarOptions",
+  "hideMergeIntoBaseAction",
+  "hideChatMessageDetails",
+  "hasCompletedTutorial",
+] as const satisfies readonly (keyof AppSettings)[];
+
+function copyStoredBooleans(
+  stored: Partial<AppSettings>,
+  result: Partial<AppSettings>,
+  keys: readonly (keyof AppSettings)[],
+): void {
+  for (const key of keys) {
+    const value = stored[key];
+    if (typeof value === "boolean") {
+      (result as Record<string, unknown>)[key] = value;
+    }
+  }
+}
+
 function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
@@ -661,15 +694,7 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   ) {
     result.workspaceTitleSource = stored.workspaceTitleSource;
   }
-  if (typeof stored.autoExpandReasoning === "boolean") {
-    result.autoExpandReasoning = stored.autoExpandReasoning;
-  }
-  if (typeof stored.voiceThinkingTone === "boolean") {
-    result.voiceThinkingTone = stored.voiceThinkingTone;
-  }
-  if (typeof stored.compactSidebarTopSpacing === "boolean") {
-    result.compactSidebarTopSpacing = stored.compactSidebarTopSpacing;
-  }
+  copyStoredBooleans(stored, result, WORKSPACE_LAYOUT_BOOLEAN_KEYS);
   if (
     typeof stored.workspaceToolsPlacement === "string" &&
     VALID_WORKSPACE_TOOLS_PLACEMENTS.has(stored.workspaceToolsPlacement as WorkspaceToolsPlacement)
@@ -688,26 +713,11 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   ) {
     result.chatWidth = stored.chatWidth as ChatWidth;
   }
-  if (typeof stored.blackTabBackground === "boolean") {
-    result.blackTabBackground = stored.blackTabBackground;
-  }
-  if (typeof stored.groupConsecutiveActions === "boolean") {
-    result.groupConsecutiveActions = stored.groupConsecutiveActions;
-  }
-  if (typeof stored.hidePinnedToolbarOptions === "boolean") {
-    result.hidePinnedToolbarOptions = stored.hidePinnedToolbarOptions;
-  }
-  if (typeof stored.hideChatMessageDetails === "boolean") {
-    result.hideChatMessageDetails = stored.hideChatMessageDetails;
-  }
   if (
     typeof stored.chatTimestampDisplay === "string" &&
     VALID_CHAT_TIMESTAMP_DISPLAYS.has(stored.chatTimestampDisplay as ChatTimestampDisplay)
   ) {
     result.chatTimestampDisplay = stored.chatTimestampDisplay as ChatTimestampDisplay;
-  }
-  if (typeof stored.hasCompletedTutorial === "boolean") {
-    result.hasCompletedTutorial = stored.hasCompletedTutorial;
   }
   return result;
 }

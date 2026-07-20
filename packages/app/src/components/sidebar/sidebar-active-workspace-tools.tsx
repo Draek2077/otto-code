@@ -3,9 +3,9 @@ import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { getIsElectron } from "@/constants/platform";
+import { getIsElectron, isWeb } from "@/constants/platform";
 import { WorkspaceActions } from "@/git/workspace-actions";
-import { useContainerWidthBelow } from "@/hooks/use-container-width";
+import { useContainerWidth } from "@/hooks/use-container-width";
 import { useSidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
@@ -26,9 +26,14 @@ import { resolveWorkspaceDirectory } from "@/utils/workspace-directory";
 
 const EMPTY_TERMINAL_IDS: string[] = [];
 
-// Below this container width the three labeled split buttons would start
-// ellipsizing, so the row falls back to compact icon-only buttons instead.
-const LABELED_TOOLS_MIN_WIDTH = 380;
+// Width budget for a single labeled split button, plus the row's fixed chrome
+// (container padding + inter-button gaps). The threshold is derived from how
+// many buttons will actually render rather than assuming all three: a
+// workspace with no scripts (or a native build, where open-in-editor never
+// renders) otherwise stayed icon-only until the sidebar was far wider than the
+// remaining buttons needed. Three buttons still resolve to the previous 380.
+const LABELED_TOOL_WIDTH = 120;
+const TOOLS_ROW_CHROME_WIDTH = 20;
 
 /**
  * Shows the scripts / open-in-editor / Git actions controls for whichever
@@ -43,12 +48,7 @@ export function SidebarActiveWorkspaceTools() {
   // These are all developer tools (scripts, open-in-editor, git commit/pull/push);
   // User mode hides the cluster entirely.
   const isDeveloperMode = useIsDeveloperMode();
-  // Start compact so a narrow sidebar never flashes ellipsized labels on the
-  // first frame; the first layout pass promotes to labels when there's room.
-  const { onLayout: onContainerLayout, isBelow: isCompact } = useContainerWidthBelow(
-    LABELED_TOOLS_MIN_WIDTH,
-    { initialIsBelow: true },
-  );
+  const { onLayout: onContainerLayout, width: containerWidth } = useContainerWidth();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const serverId = activeWorkspaceSelection?.serverId ?? "";
   const workspaceId = activeWorkspaceSelection?.workspaceId ?? "";
@@ -117,6 +117,15 @@ export function SidebarActiveWorkspaceTools() {
     },
     [openWorkspaceTabFocused, persistenceKey, queryClient, terminalsQueryKey],
   );
+
+  // WorkspaceScriptsButton renders nothing without scripts, and
+  // WorkspaceOpenInEditorButton is web-only, so budget width for the buttons
+  // that will actually appear. WorkspaceActions always renders. Width 0 means
+  // "not measured yet" and stays compact, so a narrow sidebar never flashes
+  // ellipsized labels on the first frame.
+  const labeledToolCount =
+    1 + ((workspaceEntry?.scripts.length ?? 0) > 0 ? 1 : 0) + (isWeb ? 1 : 0);
+  const isCompact = containerWidth < labeledToolCount * LABELED_TOOL_WIDTH + TOOLS_ROW_CHROME_WIDTH;
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {

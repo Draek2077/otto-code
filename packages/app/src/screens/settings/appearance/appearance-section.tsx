@@ -607,6 +607,8 @@ function getTextEffectLabel(t: TFunction, value: TextEffectThemeId): string {
     spectrum: "settings.appearance.agents.textEffects.options.spectrum",
     vivid: "settings.appearance.agents.textEffects.options.vivid",
     nightRider: "settings.appearance.agents.textEffects.options.nightRider",
+    wave: "settings.appearance.agents.textEffects.options.wave",
+    flames: "settings.appearance.agents.textEffects.options.flames",
   };
   return t(labelKeys[value]);
 }
@@ -908,6 +910,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleHideMergeIntoBaseActionChange = useCallback(
+    (hideMergeIntoBaseAction: boolean) => {
+      void updateSettings({ hideMergeIntoBaseAction });
+    },
+    [updateSettings],
+  );
+
   const commitUiFontFamily = useCallback(
     (value: string) => {
       const sanitized = sanitizeFontFamily(value);
@@ -1054,6 +1063,17 @@ export function AppearanceSection() {
               withBorder
               onValueChange={handleHidePinnedToolbarOptionsChange}
               testID="settings-hide-pinned-toolbar-options-switch"
+            />
+            <LayoutToggleRow
+              title={t("settings.appearance.layout.hideMergeIntoBaseAction.title")}
+              hint={t("settings.appearance.layout.hideMergeIntoBaseAction.hint")}
+              accessibilityLabel={t(
+                "settings.appearance.layout.hideMergeIntoBaseAction.accessibilityLabel",
+              )}
+              value={settings.hideMergeIntoBaseAction}
+              withBorder
+              onValueChange={handleHideMergeIntoBaseActionChange}
+              testID="settings-hide-merge-into-base-action-switch"
             />
           </View>
         </SettingsSection>

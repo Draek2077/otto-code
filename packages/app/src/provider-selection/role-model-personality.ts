@@ -26,6 +26,15 @@ import {
 export interface RolePersonality {
   personalities: SelectorPersonality[] | undefined;
   /**
+   * The id to actually spawn with. Identical to `selectedPersonalityId` except
+   * when the synthetic "Team's <Role>" slot is picked: that id is a UI-only
+   * sentinel (`__team-chatter__`) no roster entry matches, so sending it made the
+   * daemon's roster lookup miss and spawn a bare agent — no personality prompt,
+   * no team prompt, and whatever model the device happened to remember. Read this
+   * for anything that crosses the wire; read `selectedPersonalityId` for the picker.
+   */
+  spawnPersonalityId?: string | null;
+  /**
    * The whole roster grouped by team + role for the picker's collapsible
    * browse section. Form surfaces supply it; the running-agent strategy leaves
    * it undefined (its picker is locked to the agent's provider family).
@@ -347,6 +356,13 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     [selectedEntry],
   );
 
+  // The team slot's id is display-only, so resolve it to the member the team
+  // actually picked before it can reach createAgent.
+  const spawnPersonalityId = useMemo(
+    () => (teamEntrySelected && teamEntry ? (teamEntry.member?.id ?? null) : effectiveSelectedId),
+    [teamEntrySelected, teamEntry, effectiveSelectedId],
+  );
+
   // The name (or sentinel) to submit as the stored binding — exactly what the
   // trigger shows, so display and persistence can't diverge. Only meaningful on
   // binding surfaces; undefined elsewhere.
@@ -385,6 +401,7 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
     personalities: displayPersonalities,
     personalityGroups,
     selectedPersonalityId: effectiveSelectedId,
+    spawnPersonalityId,
     onSelectPersonality: handleSelect,
     onClearPersonality: handleClear,
     hasBoundPersonality: effectiveSelectedId != null,
