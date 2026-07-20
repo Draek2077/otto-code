@@ -49,15 +49,55 @@ export function ConfirmDialogHost() {
     [checkboxChecked],
   );
 
+  // An alert has nothing to decline, so it shows a single acknowledge button —
+  // the backdrop/escape close still resolves it (as declined, which no alert
+  // caller reads).
+  const isAlert = active?.kind === "alert";
+  const isDestructive = active?.destructive ?? false;
+  const confirmLabel =
+    active?.confirmLabel ?? t(isAlert ? "common.actions.dismiss" : "common.actions.confirm");
+  const cancelLabel = active?.cancelLabel ?? t("common.actions.cancel");
+
+  const footer = useMemo(
+    () => (
+      <View style={styles.footer}>
+        {isAlert ? null : (
+          <Button
+            variant="secondary"
+            size="sm"
+            style={styles.footerButton}
+            onPress={handleCancel}
+            testID="confirm-dialog-cancel"
+          >
+            {cancelLabel}
+          </Button>
+        )}
+        <Button
+          variant={isDestructive ? "destructive" : "default"}
+          size="sm"
+          style={styles.footerButton}
+          onPress={handleConfirm}
+          testID="confirm-dialog-confirm"
+        >
+          {confirmLabel}
+        </Button>
+      </View>
+    ),
+    [cancelLabel, confirmLabel, handleCancel, handleConfirm, isAlert, isDestructive],
+  );
+
   if (!active) {
     return null;
   }
 
-  const confirmLabel = active.confirmLabel ?? t("common.actions.confirm");
-  const cancelLabel = active.cancelLabel ?? t("common.actions.cancel");
-
   return (
-    <AdaptiveModalSheet visible onClose={handleCancel} header={header} testID="confirm-dialog">
+    <AdaptiveModalSheet
+      visible
+      onClose={handleCancel}
+      header={header}
+      footer={footer}
+      testID="confirm-dialog"
+    >
       <View style={styles.body}>
         <Text style={styles.message}>{active.message}</Text>
         {active.checkboxLabel ? (
@@ -75,26 +115,6 @@ export function ConfirmDialogHost() {
             <Text style={styles.checkboxLabel}>{active.checkboxLabel}</Text>
           </Pressable>
         ) : null}
-        <View style={styles.actions}>
-          <Button
-            variant="secondary"
-            size="sm"
-            style={styles.actionButton}
-            onPress={handleCancel}
-            testID="confirm-dialog-cancel"
-          >
-            {cancelLabel}
-          </Button>
-          <Button
-            variant={active.destructive ? "destructive" : "default"}
-            size="sm"
-            style={styles.actionButton}
-            onPress={handleConfirm}
-            testID="confirm-dialog-confirm"
-          >
-            {confirmLabel}
-          </Button>
-        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -133,12 +153,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
-  actions: {
+  footer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[3],
   },
-  actionButton: {
+  footerButton: {
     flex: 1,
   },
 }));
