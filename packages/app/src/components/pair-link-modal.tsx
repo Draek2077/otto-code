@@ -40,10 +40,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.destructive,
     fontSize: theme.fontSize.sm,
   },
-  actions: {
+  footer: {
+    flex: 1,
     flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[3],
-    marginTop: theme.spacing[2],
   },
 }));
 
@@ -172,35 +173,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
 
   const header = useMemo<SheetHeader>(() => ({ title: t("pairing.link.title") }), [t]);
 
-  return (
-    <AdaptiveModalSheet
-      header={header}
-      visible={visible}
-      onClose={handleClose}
-      testID="pair-link-modal"
-    >
-      <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
-
-      <View style={styles.field}>
-        <Text style={styles.label}>{t("pairing.link.label")}</Text>
-        <AdaptiveTextInput
-          ref={inputRef}
-          testID="pair-link-input"
-          nativeID="pair-link-input"
-          accessibilityLabel={t("pairing.link.label")}
-          onChangeText={handleChangeOfferUrl}
-          placeholder="https://app.otto-code.me/#offer=..."
-          placeholderTextColor={theme.colors.foregroundMuted}
-          style={styles.input}
-          autoFocus
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-      </View>
-
-      <View style={styles.actions}>
+  const footer = useMemo(
+    () => (
+      <View style={styles.footer}>
         <Button
           style={FLEX_ONE_STYLE}
           variant="secondary"
@@ -224,6 +199,38 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
         >
           {isSaving ? t("pairing.link.actions.pairing") : t("pairing.link.actions.pair")}
         </Button>
+      </View>
+    ),
+    [handleCancel, handleSavePress, isSaving, pairIcon, t],
+  );
+
+  return (
+    <AdaptiveModalSheet
+      header={header}
+      visible={visible}
+      onClose={handleClose}
+      footer={footer}
+      testID="pair-link-modal"
+    >
+      <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>{t("pairing.link.label")}</Text>
+        <AdaptiveTextInput
+          ref={inputRef}
+          testID="pair-link-input"
+          nativeID="pair-link-input"
+          accessibilityLabel={t("pairing.link.label")}
+          onChangeText={handleChangeOfferUrl}
+          placeholder="https://app.otto-code.me/#offer=..."
+          placeholderTextColor={theme.colors.foregroundMuted}
+          style={styles.input}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       </View>
     </AdaptiveModalSheet>
   );

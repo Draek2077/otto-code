@@ -130,10 +130,11 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
-  actions: {
+  footer: {
+    flex: 1,
     flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[3],
-    marginTop: theme.spacing[2],
   },
   helper: {
     color: theme.colors.foregroundMuted,
@@ -491,11 +492,38 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   const AdvancedIcon = isAdvancedOpen ? ChevronDown : ChevronRight;
   const PasswordIcon = isPasswordVisible ? EyeOff : Eye;
 
+  const footer = useMemo(
+    () => (
+      <View style={styles.footer}>
+        <Button
+          style={FLEX_ONE_STYLE}
+          variant="secondary"
+          onPress={handleCancel}
+          disabled={isSaving}
+        >
+          {t("pairing.direct.actions.cancel")}
+        </Button>
+        <Button
+          style={FLEX_ONE_STYLE}
+          variant="default"
+          onPress={handleSavePress}
+          disabled={isSaving}
+          leftIcon={connectIcon}
+          testID="direct-host-submit"
+        >
+          {isSaving ? t("pairing.direct.actions.connecting") : t("pairing.direct.actions.connect")}
+        </Button>
+      </View>
+    ),
+    [connectIcon, handleCancel, handleSavePress, isSaving, t],
+  );
+
   return (
     <AdaptiveModalSheet
       header={header}
       visible={visible}
       onClose={handleClose}
+      footer={footer}
       testID="add-host-modal"
     >
       <Text style={styles.helper}>{t("pairing.direct.helper")}</Text>
@@ -636,27 +664,6 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
           />
         ) : null}
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-      </View>
-
-      <View style={styles.actions}>
-        <Button
-          style={FLEX_ONE_STYLE}
-          variant="secondary"
-          onPress={handleCancel}
-          disabled={isSaving}
-        >
-          {t("pairing.direct.actions.cancel")}
-        </Button>
-        <Button
-          style={FLEX_ONE_STYLE}
-          variant="default"
-          onPress={handleSavePress}
-          disabled={isSaving}
-          leftIcon={connectIcon}
-          testID="direct-host-submit"
-        >
-          {isSaving ? t("pairing.direct.actions.connecting") : t("pairing.direct.actions.connect")}
-        </Button>
       </View>
     </AdaptiveModalSheet>
   );

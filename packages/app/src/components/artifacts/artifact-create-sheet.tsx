@@ -19,6 +19,7 @@ import {
 } from "@/components/adaptive-modal-sheet";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
+import { TextAreaScrollFrame } from "@/components/ui/text-area";
 import { RoleModelSelector } from "@/components/role-model-selector";
 import {
   type PersonalityCurrentSelection,
@@ -269,7 +270,7 @@ function useArtifactPersonalitySelection(input: {
   entries: readonly ProviderSnapshotEntry[];
   onApply: (values: PersonalityFormValues) => void;
   currentSelection: PersonalityCurrentSelection;
-  autoSelectDefault: boolean;
+  autoSelectDefault: false | "always";
 }): RolePersonality {
   return useFormRolePersonality({
     serverId: input.serverId,
@@ -420,7 +421,7 @@ export function ArtifactCreateSheet({
     onApply: applyPersonality,
     currentSelection: personalityCurrentSelection,
     // Editing prefills the artifact's saved model; only new artifacts default.
-    autoSelectDefault: !isEdit,
+    autoSelectDefault: isEdit ? false : "always",
   });
   const {
     selectedPersonalityId,
@@ -637,19 +638,21 @@ export function ArtifactCreateSheet({
 
       <View style={styles.field}>
         <Text style={styles.label}>Prompt</Text>
-        <AdaptiveTextInput
-          testID="artifact-description-input"
-          accessibilityLabel="Prompt"
-          initialValue={description}
-          resetKey={`artifact-description-${fieldResetKey}`}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Describe the HTML artifact you want generated"
-          style={styles.multilineInput}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
+        <TextAreaScrollFrame>
+          <AdaptiveTextInput
+            testID="artifact-description-input"
+            accessibilityLabel="Prompt"
+            initialValue={description}
+            resetKey={`artifact-description-${fieldResetKey}`}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Describe the HTML artifact you want generated"
+            style={styles.multilineInput}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+        </TextAreaScrollFrame>
       </View>
 
       <View style={styles.field}>
