@@ -1,5 +1,6 @@
 export type { HighlightStyle, HighlightToken } from "./types.js";
 export { getParserForFile, isLanguageSupported, getSupportedExtensions } from "./parsers.js";
+export { getLanguageDisplayName } from "./language-names.js";
 export { highlightCode, highlightLine } from "./highlighter.js";
 export { detectLanguage } from "./detect.js";
 export { extractSymbols } from "./symbols.js";
