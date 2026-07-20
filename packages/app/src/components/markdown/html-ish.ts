@@ -25,18 +25,72 @@ export interface MarkdownInlineImagePart {
 
 export type MarkdownDisplayPart = MarkdownTextPart | MarkdownDetailsPart | MarkdownInlineImagePart;
 
+/**
+ * We do not render HTML. A markdown document is markdown; embedded HTML is translated into the
+ * markdown that means the same thing, and anything with no faithful markdown equivalent has its
+ * tag dropped while the text inside survives. Raw markup is never shown to the reader, and
+ * nothing here may load or execute anything from outside the document.
+ *
+ * Three consequences worth keeping in mind when editing this file:
+ * - The default for an unrecognized tag is *unwrap*, not passthrough. Adding a tag to the
+ *   translation table below changes how it looks; forgetting to is legible, not broken.
+ * - `script`/`style` are the only tags whose *contents* are dropped too.
+ * - Image srcs are gated by scheme, and the gate is the only thing standing between a document
+ *   and a network fetch. `remoteImages: "altText"` closes it entirely for a given surface.
+ */
+
 const FENCE_LINE_RE = /^ {0,3}([`~]{3,})[^\n\r]*(?:\r?\n|$)/gm;
 const BACKTICK_RUN_RE = /`+/g;
-const SAFE_IMAGE_SRC_RE = /^(https?:\/\/|data:image\/(?:png|gif|jpe?g);base64,)/i;
+/** In-document sources only. Remote schemes are added per-surface — see {@link HtmlishOptions}. */
+const LOCAL_IMAGE_SRC_RE = /^data:image\/(?:png|gif|jpe?g);base64,/i;
+const REMOTE_IMAGE_SRC_RE = /^https?:\/\//i;
 const SAFE_LINK_HREF_RE = /^(https?:\/\/|#(?:$|[\w-]))/i;
-const VOID_HTML_TAGS = new Set(["br", "img"]);
-/**
- * Layout-only containers that carry no meaning we can express in the RN renderer — GitHub
- * renders them invisibly (alignment, wrapping). Echoing their raw markup as literal text is
- * strictly worse than dropping the tag and keeping the content, so these unwrap to children.
- */
-const BLOCK_LAYOUT_HTML_TAGS = new Set(["p", "div", "center"]);
-const INLINE_LAYOUT_HTML_TAGS = new Set(["span"]);
+const VOID_HTML_TAGS = new Set(["br", "img", "hr"]);
+/** Tags whose contents are discarded along with the tag. Everything else keeps its text. */
+const OPAQUE_HTML_TAGS = new Set(["script", "style"]);
+/** Wrapped in a markdown delimiter: `<strong>x</strong>` → `**x**`. */
+const INLINE_MARKDOWN_DELIMITERS = new Map([
+  ["strong", "**"],
+  ["b", "**"],
+  ["em", "*"],
+  ["i", "*"],
+  ["del", "~~"],
+  ["s", "~~"],
+  ["strike", "~~"],
+  ["kbd", "`"],
+]);
+/** Block tags that need surrounding blank lines so markdown-it sees a block boundary. */
+const BLOCK_UNWRAP_HTML_TAGS = new Set([
+  "p",
+  "div",
+  "center",
+  "section",
+  "article",
+  "header",
+  "footer",
+  "main",
+  "aside",
+  "figure",
+  "figcaption",
+]);
+
+export interface HtmlishOptions {
+  /**
+   * What to do with an image whose src points outside the document.
+   * - `"load"` (default): remote `http(s)` images become real images. Used by network-backed
+   *   surfaces that are already talking to the host, such as the pull-request panel.
+   * - `"altText"`: no remote src is ever handed to an `<Image>`; the alt text renders instead.
+   *   Used by the file viewer, where a repo document must not be able to phone home.
+   */
+  remoteImages?: "load" | "altText";
+}
+
+function isRenderableImageSrc(src: string, options: HtmlishOptions): boolean {
+  if (LOCAL_IMAGE_SRC_RE.test(src)) {
+    return true;
+  }
+  return options.remoteImages !== "altText" && REMOTE_IMAGE_SRC_RE.test(src);
+}
 
 interface ProtectedMarkdownRange {
   start: number;
@@ -51,6 +105,8 @@ interface MarkdownImageDimensions {
 interface HtmlTextToken {
   kind: "text";
   value: string;
+  /** A fenced/inline code range lifted out verbatim — its whitespace is load-bearing. */
+  protected?: true;
 }
 
 interface HtmlCommentToken {
@@ -84,11 +140,14 @@ interface HtmlishTokenParser {
   end(): void;
 }
 
-export function splitHtmlishMarkdown(source: string): MarkdownDisplayPart[] {
-  return splitHtmlishTokens(tokenizeHtmlishMarkdown(source));
+export function splitHtmlishMarkdown(
+  source: string,
+  options: HtmlishOptions = {},
+): MarkdownDisplayPart[] {
+  return splitHtmlishTokens(tokenizeHtmlishMarkdown(source), options);
 }
 
-function splitHtmlishTokens(tokens: HtmlToken[]): MarkdownDisplayPart[] {
+function splitHtmlishTokens(tokens: HtmlToken[], options: HtmlishOptions): MarkdownDisplayPart[] {
   const parts: MarkdownDisplayPart[] = [];
   let cursor = 0;
 
@@ -97,7 +156,7 @@ function splitHtmlishTokens(tokens: HtmlToken[]): MarkdownDisplayPart[] {
     if (isOpenTag(token, "details")) {
       const closeIndex = findMatchingClose(tokens, cursor, "details");
       if (closeIndex !== null) {
-        const details = parseDetailsTokens(tokens.slice(cursor + 1, closeIndex));
+        const details = parseDetailsTokens(tokens.slice(cursor + 1, closeIndex), options);
         if (details) {
           parts.push(details);
           cursor = closeIndex + 1;
@@ -106,10 +165,10 @@ function splitHtmlishTokens(tokens: HtmlToken[]): MarkdownDisplayPart[] {
       }
     }
 
-    const inlineImage = parseInlineImageAt(tokens, cursor);
+    const inlineImage = parseInlineImageAt(tokens, cursor, options);
     if (inlineImage) {
       parts.push(
-        flowsWithFollowingText(tokens, cursor, inlineImage.end)
+        flowsWithFollowingText(tokens, cursor, inlineImage.end, options)
           ? { ...inlineImage.part, flowsWithText: true }
           : inlineImage.part,
       );
@@ -118,23 +177,27 @@ function splitHtmlishTokens(tokens: HtmlToken[]): MarkdownDisplayPart[] {
     }
 
     const nextDetailsIndex = findNextOpenTag(tokens, cursor + 1, "details");
-    const nextInlineImageIndex = findNextInlineImageIndex(tokens, cursor + 1);
+    const nextInlineImageIndex = findNextInlineImageIndex(tokens, cursor + 1, options);
     const end = Math.min(nextDetailsIndex ?? tokens.length, nextInlineImageIndex ?? tokens.length);
-    appendMarkdownPart(parts, renderInlineTokens(tokens.slice(cursor, end)));
+    appendMarkdownPart(parts, renderInlineTokens(tokens.slice(cursor, end), options));
     cursor = end;
   }
 
   return parts;
 }
 
-function parseInlineImageAt(tokens: HtmlToken[], start: number): InlineImageParseResult | null {
+function parseInlineImageAt(
+  tokens: HtmlToken[],
+  start: number,
+  options: HtmlishOptions,
+): InlineImageParseResult | null {
   const token = tokens[start];
   if (token?.kind !== "tag" || token.closing) {
     return null;
   }
 
   if (token.name === "img") {
-    const image = imageTokenToInlineImage(token, undefined);
+    const image = imageTokenToInlineImage(token, undefined, options);
     return image ? { part: image, end: start + 1 } : null;
   }
 
@@ -152,11 +215,16 @@ function parseInlineImageAt(tokens: HtmlToken[], start: number): InlineImagePars
     return null;
   }
 
-  const inlineImage = imageTokenToInlineImage(image, safeHref(token.attributes.href));
+  const inlineImage = imageTokenToInlineImage(image, safeHref(token.attributes.href), options);
   return inlineImage ? { part: inlineImage, end: closeIndex + 1 } : null;
 }
 
-function flowsWithFollowingText(tokens: HtmlToken[], start: number, end: number): boolean {
+function flowsWithFollowingText(
+  tokens: HtmlToken[],
+  start: number,
+  end: number,
+  options: HtmlishOptions,
+): boolean {
   const previous = tokens[start - 1];
   // At line start if nothing precedes this image, or the preceding token ends with only
   // whitespace since the last newline (covers a bare space between two images on the same line).
@@ -189,7 +257,7 @@ function flowsWithFollowingText(tokens: HtmlToken[], start: number, end: number)
     }
     // An inline image tag — skip over it (the image itself and its possible wrapping close tag).
     if (token.kind === "tag") {
-      const imageResult = parseInlineImageAt(tokens, cursor);
+      const imageResult = parseInlineImageAt(tokens, cursor, options);
       if (imageResult) {
         cursor = imageResult.end;
         continue;
@@ -200,9 +268,13 @@ function flowsWithFollowingText(tokens: HtmlToken[], start: number, end: number)
   return false;
 }
 
-function findNextInlineImageIndex(tokens: HtmlToken[], start: number): number | null {
+function findNextInlineImageIndex(
+  tokens: HtmlToken[],
+  start: number,
+  options: HtmlishOptions,
+): number | null {
   for (let index = start; index < tokens.length; index += 1) {
-    if (parseInlineImageAt(tokens, index)) {
+    if (parseInlineImageAt(tokens, index, options)) {
       return index;
     }
   }
@@ -221,7 +293,10 @@ function appendMarkdownPart(parts: MarkdownDisplayPart[], text: string): void {
   parts.push({ kind: "markdown", text });
 }
 
-function parseDetailsTokens(tokens: HtmlToken[]): MarkdownDetailsPart | null {
+function parseDetailsTokens(
+  tokens: HtmlToken[],
+  options: HtmlishOptions,
+): MarkdownDetailsPart | null {
   const summaryOpenIndex = findNextOpenTag(tokens, 0, "summary");
   if (summaryOpenIndex === null) {
     return null;
@@ -234,12 +309,12 @@ function parseDetailsTokens(tokens: HtmlToken[]): MarkdownDetailsPart | null {
 
   const summaryTokens = tokens.slice(summaryOpenIndex + 1, summaryCloseIndex);
   const bodyTokens = [...tokens.slice(0, summaryOpenIndex), ...tokens.slice(summaryCloseIndex + 1)];
-  const summary = renderSummaryTokens(summaryTokens).trim();
+  const summary = renderSummaryTokens(summaryTokens, options).trim();
   if (!summary) {
     return null;
   }
 
-  const bodyParts = splitHtmlishTokens(bodyTokens);
+  const bodyParts = splitHtmlishTokens(bodyTokens, options);
   const body = renderBodyText(bodyParts);
 
   return {
@@ -269,26 +344,36 @@ function trimBodyParts(parts: MarkdownDisplayPart[]): MarkdownDisplayPart[] {
   return trimmed.filter((part) => part.kind !== "markdown" || part.text.length > 0);
 }
 
-function renderSummaryTokens(tokens: HtmlToken[]): string {
-  return stripSingleHeadingWrapper(renderInlineTokens(tokens));
+function renderSummaryTokens(tokens: HtmlToken[], options: HtmlishOptions): string {
+  return renderInlineTokens(stripSingleHeadingWrapper(tokens), options);
 }
 
-function stripSingleHeadingWrapper(text: string): string {
-  const tokens = tokenizeHtmlishMarkdown(text.trim());
-  if (tokens.length < 3) {
-    return text;
+/**
+ * A summary is a plain label, not a document — `<summary><h3>Files</h3></summary>` must not come
+ * back as `### Files`. Strip the wrapper before rendering, while the tag is still a token.
+ */
+function stripSingleHeadingWrapper(tokens: HtmlToken[]): HtmlToken[] {
+  const meaningful = tokens.filter((token) => token.kind !== "comment");
+  const first = meaningful[0];
+  const last = meaningful.at(-1);
+  if (meaningful.length < 3 || !isHeadingTag(first) || !isClosingTag(last, first.name)) {
+    return tokens;
   }
 
-  const first = tokens[0];
-  const last = tokens.at(-1);
-  if (!isHeadingTag(first) || !isClosingTag(last, first.name)) {
-    return text;
-  }
-
-  return renderInlineTokens(tokens.slice(1, -1));
+  return meaningful.slice(1, -1);
 }
 
-function renderInlineTokens(tokens: HtmlToken[]): string {
+/**
+ * @param insideHtml Whether these tokens came from inside an HTML tag. Whitespace is insignificant
+ *   in HTML but structural in markdown, so pretty-printed indentation must be stripped on the way
+ *   out — otherwise a nested `<div>` body reads as an indented code block. Text outside any tag is
+ *   already markdown and is passed through untouched, as are protected code ranges.
+ */
+function renderInlineTokens(
+  tokens: HtmlToken[],
+  options: HtmlishOptions,
+  insideHtml = false,
+): string {
   let output = "";
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -296,9 +381,10 @@ function renderInlineTokens(tokens: HtmlToken[]): string {
       continue;
     }
     if (token.kind === "text") {
-      output += token.value;
+      output += insideHtml && !token.protected ? stripLineIndentation(token.value) : token.value;
       continue;
     }
+    // A stray close tag has no content to keep and nothing to translate.
     if (token.kind === "comment" || token.closing) {
       continue;
     }
@@ -307,71 +393,118 @@ function renderInlineTokens(tokens: HtmlToken[]): string {
       output += "\n";
       continue;
     }
-
+    if (token.name === "hr") {
+      output += "\n\n---\n\n";
+      continue;
+    }
     if (token.name === "img") {
-      output += renderImageToken(token);
+      output += renderImageToken(token, options);
       continue;
     }
 
     const closeIndex = token.selfClosing ? null : findMatchingClose(tokens, index, token.name);
     if (closeIndex === null) {
-      output += renderUnknownTag(token);
+      // Unclosed, so there is no child range to keep — drop the markup. Most often the close tag
+      // landed in a later part after an inline image split the token run.
       continue;
     }
 
-    const children = tokens.slice(index + 1, closeIndex);
-    if (token.name === "a") {
-      output += renderLinkToken(token, children);
-      index = closeIndex;
-      continue;
-    }
-    if (token.name === "sub" || INLINE_LAYOUT_HTML_TAGS.has(token.name)) {
-      output += renderInlineTokens(children);
-      index = closeIndex;
-      continue;
-    }
-    if (BLOCK_LAYOUT_HTML_TAGS.has(token.name)) {
-      // Keep the block boundary markdown-it needs; surplus blank lines are harmless.
-      output += `\n\n${renderInlineTokens(children).trim()}\n\n`;
-      index = closeIndex;
-      continue;
-    }
-    if (token.name === "code" && children.every((child) => child.kind === "text")) {
-      output += `\`${renderInlineTokens(children)}\``;
-      index = closeIndex;
-      continue;
-    }
-    const rawTag = token.raw;
-    const tagName = token.name;
-    if (isHeadingTag(token)) {
-      output += renderInlineTokens(children);
-      index = closeIndex;
-      continue;
-    }
-
-    output += `${rawTag}${renderInlineTokens(children)}</${tagName}>`;
+    output += translateTagToMarkdown(token, tokens.slice(index + 1, closeIndex), options);
     index = closeIndex;
   }
 
   return output;
 }
 
-function renderImageToken(token: HtmlTagToken): string {
-  const image = imageTokenToInlineImage(token, undefined);
+/**
+ * Translate one balanced tag into the markdown that means the same thing. Falling through to the
+ * final line — drop the tag, keep its text — is the correct outcome for anything we cannot render,
+ * so a tag missing from this table degrades to legible plain text rather than raw markup.
+ */
+function translateTagToMarkdown(
+  token: HtmlTagToken,
+  children: HtmlToken[],
+  options: HtmlishOptions,
+): string {
+  if (OPAQUE_HTML_TAGS.has(token.name)) {
+    return "";
+  }
+  if (token.name === "a") {
+    return renderLinkToken(token, children, options);
+  }
+  // Not the isHeadingTag type guard: `token` is already an HtmlTagToken, so narrowing on it would
+  // make every branch below unreachable to the compiler.
+  if (isHeadingTagName(token.name)) {
+    const level = "#".repeat(Number(token.name.slice(1)));
+    return `\n\n${level} ${collapseToSingleLine(renderInlineTokens(children, options, true))}\n\n`;
+  }
+  if (token.name === "code" && children.every((child) => child.kind === "text")) {
+    return `\`${renderInlineTokens(children, options, true)}\``;
+  }
+
+  const delimiter = INLINE_MARKDOWN_DELIMITERS.get(token.name);
+  if (delimiter) {
+    // Delimiters only bind to non-empty, single-line content; `**\n**` is not emphasis.
+    const inner = collapseToSingleLine(renderInlineTokens(children, options, true)).trim();
+    return inner ? `${delimiter}${inner}${delimiter}` : "";
+  }
+  if (token.name === "blockquote") {
+    return `\n\n${prefixLines(renderInlineTokens(children, options, true).trim(), "> ")}\n\n`;
+  }
+  if (token.name === "li") {
+    return `\n- ${collapseToSingleLine(renderInlineTokens(children, options, true)).trim()}`;
+  }
+  if (token.name === "ul" || token.name === "ol" || BLOCK_UNWRAP_HTML_TAGS.has(token.name)) {
+    // Keep the block boundary markdown-it needs; surplus blank lines are harmless.
+    return `\n\n${renderInlineTokens(children, options, true).trim()}\n\n`;
+  }
+
+  return renderInlineTokens(children, options, true);
+}
+
+function collapseToSingleLine(value: string): string {
+  return value.replace(/\s*\r?\n\s*/g, " ");
+}
+
+/**
+ * Drop indentation that only existed to pretty-print the HTML. Four or more leading spaces would
+ * otherwise make markdown-it read the line as a code block.
+ */
+function stripLineIndentation(value: string): string {
+  return value.replace(/(\r?\n)[ \t]+/g, "$1");
+}
+
+function prefixLines(value: string, prefix: string): string {
+  return value
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
+}
+
+function renderImageToken(token: HtmlTagToken, options: HtmlishOptions): string {
+  const image = imageTokenToInlineImage(token, undefined, options);
   if (!image) {
-    return token.raw;
+    // Not renderable here (remote src on a no-fetch surface, or an unsafe scheme). Show what the
+    // image was meant to convey rather than raw markup or an unexplained gap.
+    return token.attributes.alt ?? "";
   }
 
   return `![${escapeMarkdownImageAlt(image.alt)}](${image.src})`;
 }
 
-function renderLinkToken(token: HtmlTagToken, children: HtmlToken[]): string {
+function renderLinkToken(
+  token: HtmlTagToken,
+  children: HtmlToken[],
+  options: HtmlishOptions,
+): string {
   const imageOnly = getSingleImageChild(children);
   if (imageOnly) {
-    return renderImageToken(imageOnly);
+    return renderImageToken(imageOnly, options);
   }
 
-  const label = renderInlineTokens(children);
+  // A link label is inline content: if it spans lines, markdown cannot form the link and the
+  // brackets show up as literal text instead.
+  const label = collapseToSingleLine(renderInlineTokens(children, options, true)).trim();
   const href = token.attributes.href ?? "";
   if (!label || !SAFE_LINK_HREF_RE.test(href) || href === "#") {
     return label;
@@ -383,9 +516,10 @@ function renderLinkToken(token: HtmlTagToken, children: HtmlToken[]): string {
 function imageTokenToInlineImage(
   token: HtmlTagToken,
   href: string | undefined,
+  options: HtmlishOptions,
 ): MarkdownInlineImagePart | null {
   const src = token.attributes.src ?? "";
-  if (!SAFE_IMAGE_SRC_RE.test(src)) {
+  if (!isRenderableImageSrc(src, options)) {
     return null;
   }
 
@@ -424,18 +558,6 @@ function safeHref(href: string | undefined): string | undefined {
 function getSingleImageChild(tokens: HtmlToken[]): HtmlTagToken | null {
   const visible = tokens.filter((token) => token.kind !== "comment" && !isWhitespaceText(token));
   return visible.length === 1 && isOpenTag(visible[0], "img") ? visible[0] : null;
-}
-
-function renderUnknownTag(token: HtmlTagToken): string {
-  if (token.name === "script" || token.name === "style") {
-    return "";
-  }
-  // An unmatched layout tag still carries no meaning — most often its close tag landed in the
-  // next part after an inline image split the token run. Drop it rather than echo raw markup.
-  if (BLOCK_LAYOUT_HTML_TAGS.has(token.name) || INLINE_LAYOUT_HTML_TAGS.has(token.name)) {
-    return "";
-  }
-  return token.raw;
 }
 
 function escapeMarkdownImageAlt(value: string): string {
@@ -504,7 +626,7 @@ function tokenizeHtmlishMarkdown(source: string): HtmlToken[] {
 
   for (const range of protectedRanges) {
     parser.write(source.slice(cursor, range.start));
-    tokens.push({ kind: "text", value: source.slice(range.start, range.end) });
+    tokens.push({ kind: "text", value: source.slice(range.start, range.end), protected: true });
     parser.skip(range.end - range.start);
     cursor = range.end;
   }
@@ -723,6 +845,6 @@ function isProtectedIndex(index: number, ranges: ProtectedMarkdownRange[]): bool
   return ranges.some((range) => index >= range.start && index < range.end);
 }
 
-export function normalizeHtmlishMarkdown(source: string): string {
-  return renderInlineTokens(tokenizeHtmlishMarkdown(source));
+export function normalizeHtmlishMarkdown(source: string, options: HtmlishOptions = {}): string {
+  return renderInlineTokens(tokenizeHtmlishMarkdown(source), options);
 }

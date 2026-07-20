@@ -26,10 +26,11 @@ subset, sized inline images, highlighted fences, YAML frontmatter as a metadata 
 - **Task lists** — `- [ ]` / `- [x]` render as checkbox glyphs in both chat and viewer.
   Token-level markdown-it rule (`markdown/task-lists.ts`) so fenced examples are untouched.
   Read-only glyphs (☐/☑); icon or interactive checkboxes are polish tracked below.
-- **Layout-only HTML unwrapping** — `<p>`, `<div>`, `<center>`, `<span>` no longer echo their raw
-  markup as literal text in the viewer; they unwrap to their children (block tags keep a paragraph
-  boundary). GitHub renders these invisibly, so showing the tags was strictly worse than dropping
-  them. `markdown/html-ish.ts`; unknown non-layout tags are still passed through inert.
+- **HTML is translated, never rendered** — embedded HTML with a markdown equivalent is converted
+  (`<h1>` → `#`, `<strong>` → `**`, lists, blockquotes, `<hr>`); everything else drops its tag and
+  keeps its text. Raw markup never reaches the reader. Unrenderable images fall back to alt text,
+  and the viewer passes `remoteImages: "altText"` so a repo document cannot reach the network.
+  `markdown/html-ish.ts`; the standing policy now lives in [docs/markdown-rendering.md](../../docs/markdown-rendering.md).
 - **SVG on native** — `image/svg+xml` renders through `SvgXml` (react-native-svg) on iOS/Android
   instead of a blank `Image`; parse failures fall back to the binary message. Web keeps the
   blob-URL `<img>` path, which tolerates more of the SVG spec.

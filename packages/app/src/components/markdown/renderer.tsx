@@ -32,6 +32,7 @@ import type { Theme } from "@/styles/theme";
 import { openLink } from "@/utils/open-link";
 import {
   splitHtmlishMarkdown,
+  type HtmlishOptions,
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
@@ -76,6 +77,12 @@ export interface MarkdownRendererProps {
   allowedImageHandlers?: readonly string[];
   topLevelMaxExceededItem?: ReactNode;
   enableHtmlish?: boolean;
+  /**
+   * Whether an embedded image may point outside the document. Defaults to `"load"`; surfaces
+   * rendering untrusted repo content pass `"altText"` so nothing is ever fetched. See
+   * {@link HtmlishOptions}.
+   */
+  remoteImages?: HtmlishOptions["remoteImages"];
 }
 
 export function MarkdownRenderer({
@@ -87,11 +94,15 @@ export function MarkdownRenderer({
   allowedImageHandlers,
   topLevelMaxExceededItem,
   enableHtmlish = true,
+  remoteImages,
 }: MarkdownRendererProps) {
   const markdownRules = useMemo(() => rules ?? createSharedMarkdownRules(), [rules]);
   const parts = useMemo(
-    () => (enableHtmlish ? splitHtmlishMarkdown(text) : [{ kind: "markdown" as const, text }]),
-    [enableHtmlish, text],
+    () =>
+      enableHtmlish
+        ? splitHtmlishMarkdown(text, { remoteImages })
+        : [{ kind: "markdown" as const, text }],
+    [enableHtmlish, remoteImages, text],
   );
   const rendererProps = useMemo(
     () => ({
@@ -247,7 +258,8 @@ function MarkdownInlineImage({
   part: Extract<MarkdownDisplayPart, { kind: "inlineImage" }>;
   onLinkPress?: (url: string) => boolean;
 }) {
-  const { natural: naturalDimensions } = useNaturalImageDimensions(part);
+  const { natural: naturalDimensions, failed, setFailed } = useNaturalImageDimensions(part);
+  const handleError = useCallback(() => setFailed(true), [setFailed]);
   const explicitDimensions = useMemo(
     () => ({ width: part.width, height: part.height }),
     [part.height, part.width],
@@ -264,12 +276,25 @@ function MarkdownInlineImage({
   );
   const imageStyle = useMemo(() => [detailsStyles.inlineImage, imageSize], [imageSize]);
 
+  // A blocked or broken image otherwise leaves a sized empty box with no explanation.
+  if (failed) {
+    if (!part.alt) {
+      return null;
+    }
+    return (
+      <View style={detailsStyles.flowImageFallback}>
+        <Text style={detailsStyles.flowImageFallbackText}>{part.alt}</Text>
+      </View>
+    );
+  }
+
   const image = (
     <Image
       source={source}
       style={imageStyle}
       resizeMode="contain"
       accessibilityLabel={part.alt || undefined}
+      onError={handleError}
     />
   );
 
