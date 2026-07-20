@@ -7,7 +7,14 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
@@ -90,9 +97,13 @@ export function ContextManagementPanel(): ReactElement {
     },
     [updateSettings],
   );
-  const { report, isLoading, refresh } = useContextReportQuery(serverId, workspaceId, {
-    windowTokens,
-  });
+  const {
+    report,
+    isLoading,
+    isRefreshing,
+    error: scanError,
+    refresh,
+  } = useContextReportQuery(serverId, workspaceId, { windowTokens });
 
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(
     () => new Set(["context_files"]),
@@ -241,10 +252,11 @@ export function ContextManagementPanel(): ReactElement {
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
   const sidebarBody =
     sidebarTab === "findings" ? (
-      <ContextFindingsList report={report} onReveal={handleRevealFinding} />
+      <ContextFindingsList report={report} isLoading={isLoading} onReveal={handleRevealFinding} />
     ) : (
       <ContextGraphTree
         report={report}
+        isLoading={isLoading}
         expandedKeys={expandedKeys}
         selectedNodeId={selectedNode?.id ?? null}
         revealNodeId={activeReveal?.nodeId ?? null}
@@ -308,6 +320,16 @@ export function ContextManagementPanel(): ReactElement {
 
   const filePane = useMemo(() => {
     if (!selectedNode || !workspaceId) {
+      // Before the first scan lands there is nothing to pick yet, so "Pick a
+      // file" reads as a broken tab. Say what is actually happening instead.
+      if (isLoading) {
+        return (
+          <View style={styles.filePlaceholder} testID="context-file-loading">
+            <ActivityIndicator size="small" />
+            <Text style={styles.placeholderBody}>{t("contextManagement.summary.loading")}</Text>
+          </View>
+        );
+      }
       return (
         <View style={styles.filePlaceholder}>
           <Text style={styles.placeholderTitle}>
@@ -375,6 +397,7 @@ export function ContextManagementPanel(): ReactElement {
     backIconSize.sm,
     handleDismissReveal,
     isCompact,
+    isLoading,
     loadModeControl,
     report,
     selectedNode,
@@ -420,6 +443,8 @@ export function ContextManagementPanel(): ReactElement {
           <ContextSummary
             report={report}
             isLoading={isLoading}
+            isRefreshing={isRefreshing}
+            error={scanError}
             windowTokens={windowTokens}
             onWindowTokensChange={handleWindowTokensChange}
           />
@@ -442,6 +467,8 @@ export function ContextManagementPanel(): ReactElement {
           <ContextSummary
             report={report}
             isLoading={isLoading}
+            isRefreshing={isRefreshing}
+            error={scanError}
             windowTokens={windowTokens}
             onWindowTokensChange={handleWindowTokensChange}
           />

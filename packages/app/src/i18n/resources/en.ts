@@ -181,6 +181,7 @@ export const en = {
     },
     findings: {
       empty: "Nothing worth fixing right now.",
+      loading: "Scanning your context…",
       reveal: "Open {{location}}",
       dismiss: "Dismiss",
     },
@@ -196,9 +197,11 @@ export const en = {
       nothingFixed: "Nothing is loaded on every request.",
       loading: "Scanning your context…",
       empty: "No context report for this workspace yet.",
+      failed: "Could not scan your context: {{error}}",
     },
     tree: {
       empty: "Nothing to show yet.",
+      loading: "Scanning your context…",
       linkOnly: "link only",
       conditional: "when needed",
     },
@@ -579,6 +582,17 @@ export const en = {
         failedToLoad: "Failed to load page",
         invalidUrl: "Invalid browser URL",
         unsupportedProtocol: "Blocked unsupported browser URL: {{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "Preview needs Browser tools",
+        previewMessage:
+          "Preview lets agents start your dev server and check the result in a browser tab. That needs Browser tools, which are off for this host. Turn them on now?",
+        browserTitle: "Agents can't use browser tabs",
+        browserMessage:
+          "Browser tools are off for this host, so agents can't see or control this tab. It still works for you. Turn them on now?",
+        suppress: "Don't show this again",
+        openSettings: "Open settings",
+        notNow: "Not now",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1067,7 +1081,6 @@ export const en = {
         openSettings: "Open project settings",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
-        contextManagement: "Manage context",
         remove: "Remove project",
         removing: "Removing...",
       },
@@ -2731,6 +2744,10 @@ export const en = {
         saving: "Saving...",
         saved: "Connection saved",
         saveFailed: "Failed to save connection settings",
+        savedWithKey: "Saved endpoint · API key remembered",
+        savedNoKey: "Saved endpoint · no API key",
+        forget: "Forget this endpoint",
+        forgot: "Endpoint forgotten",
       },
       tools: {
         title: "Otto tools",

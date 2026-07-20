@@ -183,6 +183,7 @@ export const ja: TranslationResources = {
     },
     findings: {
       empty: "いま直すべきものはありません。",
+      loading: "コンテキストをスキャン中…",
       reveal: "{{location}} を開く",
       dismiss: "閉じる",
     },
@@ -198,9 +199,11 @@ export const ja: TranslationResources = {
       nothingFixed: "毎リクエスト読み込まれるものはありません。",
       loading: "コンテキストをスキャン中…",
       empty: "このワークスペースのコンテキストレポートはまだありません。",
+      failed: "コンテキストをスキャンできませんでした: {{error}}",
     },
     tree: {
       empty: "まだ表示するものがありません。",
+      loading: "コンテキストをスキャン中…",
       linkOnly: "リンクのみ",
       conditional: "必要なときだけ",
     },
@@ -583,6 +586,17 @@ export const ja: TranslationResources = {
         failedToLoad: "ページの読み込みに失敗しました",
         invalidUrl: "無効なブラウザURL",
         unsupportedProtocol: "サポートされていないブラウザURLをブロック: {{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "プレビューにはブラウザツールが必要です",
+        previewMessage:
+          "プレビューでは、エージェントが開発サーバーを起動し、ブラウザタブで結果を確認します。これにはブラウザツールが必要ですが、このホストでは無効です。今すぐ有効にしますか?",
+        browserTitle: "エージェントはブラウザタブを使用できません",
+        browserMessage:
+          "このホストではブラウザツールが無効なため、エージェントはこのタブを見ることも操作することもできません。あなた自身の利用には影響しません。今すぐ有効にしますか?",
+        suppress: "次回から表示しない",
+        openSettings: "設定を開く",
+        notNow: "後で",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1072,7 +1086,6 @@ export const ja: TranslationResources = {
         openSettings: "プロジェクト設定を開く",
         openNewWindow: "新しいウィンドウで開く",
         openNewWindowFailed: "新しいウィンドウを開けませんでした",
-        contextManagement: "コンテキストを管理",
         remove: "プロジェクトを削除",
         removing: "削除中...",
       },
@@ -2761,6 +2774,10 @@ export const ja: TranslationResources = {
         saving: "保存中...",
         saved: "接続を保存しました",
         saveFailed: "接続設定の保存に失敗しました",
+        savedWithKey: "保存済みエンドポイント · API キーを記憶",
+        savedNoKey: "保存済みエンドポイント · API キーなし",
+        forget: "このエンドポイントを削除",
+        forgot: "エンドポイントを削除しました",
       },
       remove: {
         button: "プロバイダーを削除",

@@ -184,6 +184,7 @@ export const fr: TranslationResources = {
     },
     findings: {
       empty: "Rien à corriger pour l'instant.",
+      loading: "Analyse de votre contexte…",
       reveal: "Ouvrir {{location}}",
       dismiss: "Ignorer",
     },
@@ -199,9 +200,11 @@ export const fr: TranslationResources = {
       nothingFixed: "Rien n'est chargé à chaque requête.",
       loading: "Analyse de votre contexte…",
       empty: "Aucun rapport de contexte pour cet espace de travail pour l'instant.",
+      failed: "Impossible d'analyser votre contexte : {{error}}",
     },
     tree: {
       empty: "Rien à afficher pour l'instant.",
+      loading: "Analyse de votre contexte…",
       linkOnly: "lien seulement",
       conditional: "au besoin",
     },
@@ -583,6 +586,17 @@ export const fr: TranslationResources = {
         failedToLoad: "Échec du chargement de la page",
         invalidUrl: "NavigateurURLinvalide",
         unsupportedProtocol: "Navigateur non pris en charge bloquéURL:{{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "L'aperçu nécessite les outils de navigateur",
+        previewMessage:
+          "L'aperçu permet aux agents de démarrer votre serveur de développement et de vérifier le résultat dans un onglet du navigateur. Cela nécessite les outils de navigateur, désactivés pour cet hôte. Les activer maintenant ?",
+        browserTitle: "Les agents ne peuvent pas utiliser les onglets du navigateur",
+        browserMessage:
+          "Les outils de navigateur sont désactivés pour cet hôte : les agents ne peuvent ni voir ni contrôler cet onglet. Il fonctionne toujours pour vous. Les activer maintenant ?",
+        suppress: "Ne plus afficher",
+        openSettings: "Ouvrir les réglages",
+        notNow: "Pas maintenant",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1084,7 +1098,6 @@ export const fr: TranslationResources = {
         openSettings: "Ouvrir les paramètres du projet",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
-        contextManagement: "Gérer le contexte",
         remove: "Supprimer le projet",
         removing: "Suppression...",
       },
@@ -2788,6 +2801,10 @@ export const fr: TranslationResources = {
         saving: "Enregistrement...",
         saved: "Connexion enregistrée",
         saveFailed: "Échec de l'enregistrement des paramètres de connexion",
+        savedWithKey: "Point de terminaison enregistré · clé d'API mémorisée",
+        savedNoKey: "Point de terminaison enregistré · aucune clé d'API",
+        forget: "Oublier ce point de terminaison",
+        forgot: "Point de terminaison oublié",
       },
       remove: {
         button: "Supprimer le fournisseur",

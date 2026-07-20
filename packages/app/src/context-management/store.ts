@@ -28,6 +28,21 @@ export function contextWorkspaceKey(serverId: string, workspaceId: string): stri
 }
 
 /**
+ * Key for a *what-if* answer, which the workspace key cannot address: the tab
+ * asks the same workspace about a different provider or window, and those
+ * answers must not collide with each other or with the pushed baseline.
+ */
+export function contextQueryKey(params: {
+  serverId: string;
+  workspaceId: string;
+  provider: string | undefined;
+  windowTokens: number | undefined;
+}): string {
+  const { serverId, workspaceId, provider, windowTokens } = params;
+  return `${serverId}:${workspaceId}:${provider ?? ""}:${windowTokens ?? ""}`;
+}
+
+/**
  * Buckets the report so a dismissal survives noise but not growth. Five-point
  * bands mean a file creeping from 26% to 31% of the window breaks through,
  * while re-scans that jitter by a few hundred tokens do not.
@@ -39,14 +54,23 @@ export function contextDismissKey(report: ContextReport): string {
 
 interface ContextManagementState {
   reports: Record<string, ContextReport | null>;
+  /**
+   * Last answer per what-if query, kept for the app's lifetime so re-opening the
+   * tab paints immediately instead of showing an empty shell for the length of a
+   * filesystem scan. Always revalidated in the background — this is a seed, not
+   * a source of truth.
+   */
+  queryReports: Record<string, ContextReport | null>;
   dismissals: Record<string, ContextDismissal>;
   setReport: (serverId: string, workspaceId: string, report: ContextReport | null) => void;
+  setQueryReport: (key: string, report: ContextReport | null) => void;
   dismiss: (serverId: string, workspaceId: string, report: ContextReport) => void;
   clearServer: (serverId: string) => void;
 }
 
 export const useContextManagementStore = create<ContextManagementState>((set) => ({
   reports: {},
+  queryReports: {},
   dismissals: {},
 
   setReport: (serverId, workspaceId, report) => {
@@ -54,6 +78,10 @@ export const useContextManagementStore = create<ContextManagementState>((set) =>
       ...prev,
       reports: { ...prev.reports, [contextWorkspaceKey(serverId, workspaceId)]: report },
     }));
+  },
+
+  setQueryReport: (key, report) => {
+    set((prev) => ({ ...prev, queryReports: { ...prev.queryReports, [key]: report } }));
   },
 
   dismiss: (serverId, workspaceId, report) => {
@@ -73,14 +101,18 @@ export const useContextManagementStore = create<ContextManagementState>((set) =>
     set((prev) => {
       const prefix = `${serverId}:`;
       const reports = { ...prev.reports };
+      const queryReports = { ...prev.queryReports };
       const dismissals = { ...prev.dismissals };
       for (const key of Object.keys(reports)) {
         if (key.startsWith(prefix)) delete reports[key];
       }
+      for (const key of Object.keys(queryReports)) {
+        if (key.startsWith(prefix)) delete queryReports[key];
+      }
       for (const key of Object.keys(dismissals)) {
         if (key.startsWith(prefix)) delete dismissals[key];
       }
-      return { ...prev, reports, dismissals };
+      return { ...prev, reports, queryReports, dismissals };
     });
   },
 }));

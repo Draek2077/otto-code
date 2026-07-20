@@ -183,6 +183,7 @@ export const ru: TranslationResources = {
     },
     findings: {
       empty: "Сейчас исправлять нечего.",
+      loading: "Сканирование контекста…",
       reveal: "Открыть {{location}}",
       dismiss: "Скрыть",
     },
@@ -198,9 +199,11 @@ export const ru: TranslationResources = {
       nothingFixed: "В каждом запросе ничего не загружается.",
       loading: "Сканирование контекста…",
       empty: "Для этого рабочего пространства отчёта о контексте пока нет.",
+      failed: "Не удалось просканировать контекст: {{error}}",
     },
     tree: {
       empty: "Пока нечего показать.",
+      loading: "Сканирование контекста…",
       linkOnly: "только ссылка",
       conditional: "по необходимости",
     },
@@ -583,6 +586,17 @@ export const ru: TranslationResources = {
         failedToLoad: "Не удалось загрузить страницу",
         invalidUrl: "Неверный браузер URL",
         unsupportedProtocol: "Заблокирован неподдерживаемый браузер URL:{{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "Для предпросмотра нужны инструменты браузера",
+        previewMessage:
+          "Предпросмотр позволяет агентам запускать ваш дев-сервер и проверять результат во вкладке браузера. Для этого нужны инструменты браузера, а они отключены для этого хоста. Включить сейчас?",
+        browserTitle: "Агенты не могут работать со вкладками браузера",
+        browserMessage:
+          "Инструменты браузера отключены для этого хоста, поэтому агенты не видят эту вкладку и не могут ею управлять. Для вас она работает как обычно. Включить сейчас?",
+        suppress: "Больше не показывать",
+        openSettings: "Открыть настройки",
+        notNow: "Не сейчас",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1078,7 +1092,6 @@ export const ru: TranslationResources = {
         openSettings: "Открыть настройки проекта",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
-        contextManagement: "Управление контекстом",
         remove: "Удалить проект",
         removing: "Удаление...",
       },
@@ -2774,6 +2787,10 @@ export const ru: TranslationResources = {
         saving: "Сохранение...",
         saved: "Подключение сохранено",
         saveFailed: "Не удалось сохранить настройки подключения",
+        savedWithKey: "Сохранённый адрес · API-ключ сохранён",
+        savedNoKey: "Сохранённый адрес · без API-ключа",
+        forget: "Забыть этот адрес",
+        forgot: "Адрес забыт",
       },
       remove: {
         button: "Удалить провайдера",

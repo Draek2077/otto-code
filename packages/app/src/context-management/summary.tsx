@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -22,7 +22,12 @@ export const WINDOW_PRESETS: readonly { label: string; tokens: number }[] = [
 
 interface ContextSummaryProps {
   report: ContextReport | null;
+  /** No numbers yet and a scan is running. */
   isLoading: boolean;
+  /** A scan is running behind numbers already on screen. */
+  isRefreshing: boolean;
+  /** Why the last scan failed, if it did. Shown rather than silently blanking. */
+  error: string | null;
   windowTokens: number;
   onWindowTokensChange: (tokens: number) => void;
 }
@@ -35,6 +40,8 @@ interface ContextSummaryProps {
 export function ContextSummary({
   report,
   isLoading,
+  isRefreshing,
+  error,
   windowTokens,
   onWindowTokensChange,
 }: ContextSummaryProps): ReactElement {
@@ -73,7 +80,14 @@ export function ContextSummary({
 
       {report ? (
         <>
-          <Text style={styles.title}>{t("contextManagement.summary.title")}</Text>
+          {/* The cached numbers stay put while a re-scan runs behind them; the
+              spinner is the only thing that says the answer may still move. */}
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{t("contextManagement.summary.title")}</Text>
+            {isRefreshing ? (
+              <ActivityIndicator size="small" testID="context-summary-refreshing" />
+            ) : null}
+          </View>
           <View style={styles.headlineRow}>
             <Text style={severityTextStyle(report.aggregateSeverity)}>
               {formatTokens(report.fixedTotal)}
@@ -132,12 +146,42 @@ export function ContextSummary({
               `report.confidence` still carries the first one on the wire. */}
         </>
       ) : (
-        <Text style={styles.muted}>
-          {t(isLoading ? "contextManagement.summary.loading" : "contextManagement.summary.empty")}
-        </Text>
+        <SummaryPlaceholder isLoading={isLoading} error={error} />
       )}
     </ScrollView>
   );
+}
+
+/**
+ * What stands in for the numbers before there are any. Telling "still scanning"
+ * from "nothing to report" from "the scan failed" is the whole job: all three
+ * used to render the same muted line, so a slow scan read as a broken tab and a
+ * failed one read as an empty workspace.
+ */
+function SummaryPlaceholder({
+  isLoading,
+  error,
+}: {
+  isLoading: boolean;
+  error: string | null;
+}): ReactElement {
+  const { t } = useTranslation();
+  if (isLoading) {
+    return (
+      <View style={styles.loadingRow} testID="context-summary-loading">
+        <ActivityIndicator size="small" />
+        <Text style={styles.muted}>{t("contextManagement.summary.loading")}</Text>
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <Text style={styles.error} testID="context-summary-error">
+        {t("contextManagement.summary.failed", { error })}
+      </Text>
+    );
+  }
+  return <Text style={styles.muted}>{t("contextManagement.summary.empty")}</Text>;
 }
 
 interface WindowPresetProps {
@@ -229,12 +273,22 @@ const styles = StyleSheet.create((theme) => {
       padding: theme.spacing[3],
       gap: theme.spacing[2],
     },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
+      marginTop: theme.spacing[2],
+    },
+    loadingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
+    },
     title: {
       color: theme.colors.foreground,
       fontSize: bump(theme.fontSize.sm),
       // Not bold: the number under it is the emphasis, and a bold label
       // competing with a 2xl figure just makes two things shout.
-      marginTop: theme.spacing[2],
     },
     headlineRow: {
       flexDirection: "row",
@@ -313,6 +367,10 @@ const styles = StyleSheet.create((theme) => {
     barFillCritical: { ...barFillBase, backgroundColor: theme.colors.statusDanger },
     muted: {
       color: theme.colors.mutedForeground,
+      fontSize: bump(theme.fontSize.sm),
+    },
+    error: {
+      color: theme.colors.statusDanger,
       fontSize: bump(theme.fontSize.sm),
     },
   };

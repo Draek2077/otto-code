@@ -262,6 +262,29 @@ One module, three parts. No sub-tabs.
 └──────────────────┴────────────────────────────────┘
 ```
 
+### 6.0 Load behaviour — never open on a blank tab
+
+A scan is a filesystem walk of every context file the provider loads plus every markdown file they
+link to. Measured on this repo that is ~220 files / ~1.7 MB and **150–260 ms** in the daemon, with
+outliers past 1.5 s under load — real work, not a bug to optimise away. The failure was that the tab
+spent that time looking broken: the summary showed one muted line, the tree said "Nothing to show
+yet", and the file pane said "Pick a file", none of which distinguishes _scanning_ from _empty_.
+
+Three rules, all enforced in `use-context-report.ts`:
+
+1. **Answers outlive the tab.** Query results cache in the store keyed by
+   `serverId:workspaceId:provider:windowTokens`, so re-opening paints the last answer immediately and
+   revalidates behind it. The panel exposes `isLoading` (nothing to show) separately from
+   `isRefreshing` (numbers on screen may still move) — only the first blanks anything.
+2. **The pushed baseline seeds the first open.** The composer primes a report per workspace already;
+   when it was evaluated against the same window, the tab starts from it rather than from nothing.
+3. **Identical scans coalesce.** A module-level in-flight map collapses two panes on one workspace,
+   and the throwaway request the tab fires before persisted settings hydrate, into a single walk.
+   Only `refresh()` (which follows a write) bypasses it.
+
+A stored `null` is a real answer and must not be papered over with the previous report, and a failed
+scan says so — an unexplained empty panel is the one outcome this section exists to prevent.
+
 ### 6.1 Summary (top-left)
 
 Category bars as % of window, working-room figure, aggregate severity, window + provider pickers,

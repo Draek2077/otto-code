@@ -183,6 +183,7 @@ export const ar: TranslationResources = {
     },
     findings: {
       empty: "لا شيء يستحق الإصلاح الآن.",
+      loading: "جارٍ فحص السياق…",
       reveal: "فتح {{location}}",
       dismiss: "تجاهل",
     },
@@ -198,9 +199,11 @@ export const ar: TranslationResources = {
       nothingFixed: "لا شيء يُحمَّل في كل طلب.",
       loading: "جارٍ فحص السياق…",
       empty: "لا يوجد تقرير سياق لمساحة العمل هذه بعد.",
+      failed: "تعذّر فحص السياق: {{error}}",
     },
     tree: {
       empty: "لا شيء لعرضه بعد.",
+      loading: "جارٍ فحص السياق…",
       linkOnly: "رابط فقط",
       conditional: "عند الحاجة",
     },
@@ -578,6 +581,17 @@ export const ar: TranslationResources = {
         failedToLoad: "فشل تحميل الصفحة",
         invalidUrl: "متصفح غير صالح URL",
         unsupportedProtocol: "متصفح محظور غير مدعوم URL:{{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "المعاينة تتطلب أدوات المتصفح",
+        previewMessage:
+          "تتيح المعاينة للوكلاء تشغيل خادم التطوير والتحقق من النتيجة في علامة تبويب متصفح. يتطلب ذلك أدوات المتصفح، وهي معطّلة لهذا المضيف. هل تريد تفعيلها الآن؟",
+        browserTitle: "لا يمكن للوكلاء استخدام علامات تبويب المتصفح",
+        browserMessage:
+          "أدوات المتصفح معطّلة لهذا المضيف، لذا لا يمكن للوكلاء رؤية هذه العلامة أو التحكم بها. لا تزال تعمل بالنسبة لك. هل تريد تفعيلها الآن؟",
+        suppress: "عدم الإظهار مرة أخرى",
+        openSettings: "فتح الإعدادات",
+        notNow: "ليس الآن",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1059,7 +1073,6 @@ export const ar: TranslationResources = {
         openSettings: "افتح إعدادات المشروع",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
-        contextManagement: "إدارة السياق",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
       },
@@ -2738,6 +2751,10 @@ export const ar: TranslationResources = {
         saving: "جارٍ الحفظ...",
         saved: "تم حفظ الاتصال",
         saveFailed: "فشل حفظ إعدادات الاتصال",
+        savedWithKey: "نقطة نهاية محفوظة · تم تذكّر مفتاح API",
+        savedNoKey: "نقطة نهاية محفوظة · بدون مفتاح API",
+        forget: "نسيان نقطة النهاية هذه",
+        forgot: "تم نسيان نقطة النهاية",
       },
       remove: {
         button: "إزالة الموفر",

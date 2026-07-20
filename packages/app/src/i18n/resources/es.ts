@@ -183,6 +183,7 @@ export const es: TranslationResources = {
     },
     findings: {
       empty: "Nada que arreglar por ahora.",
+      loading: "Analizando tu contexto…",
       reveal: "Abrir {{location}}",
       dismiss: "Descartar",
     },
@@ -198,9 +199,11 @@ export const es: TranslationResources = {
       nothingFixed: "No se carga nada en cada petición.",
       loading: "Analizando tu contexto…",
       empty: "Aún no hay informe de contexto para este espacio de trabajo.",
+      failed: "No se pudo analizar tu contexto: {{error}}",
     },
     tree: {
       empty: "Nada que mostrar todavía.",
+      loading: "Analizando tu contexto…",
       linkOnly: "solo enlace",
       conditional: "cuando haga falta",
     },
@@ -583,6 +586,17 @@ export const es: TranslationResources = {
         failedToLoad: "No se pudo cargar la página",
         invalidUrl: "Navegador no válidoURL",
         unsupportedProtocol: "Navegador bloqueado no compatibleURL:{{protocol}}",
+      },
+      browserToolsOff: {
+        previewTitle: "La vista previa necesita las herramientas de navegador",
+        previewMessage:
+          "La vista previa permite que los agentes inicien tu servidor de desarrollo y comprueben el resultado en una pestaña del navegador. Eso requiere las herramientas de navegador, que están desactivadas en este host. ¿Activarlas ahora?",
+        browserTitle: "Los agentes no pueden usar las pestañas del navegador",
+        browserMessage:
+          "Las herramientas de navegador están desactivadas en este host, así que los agentes no pueden ver ni controlar esta pestaña. Para ti sigue funcionando. ¿Activarlas ahora?",
+        suppress: "No volver a mostrar",
+        openSettings: "Abrir ajustes",
+        notNow: "Ahora no",
       },
       preview: {
         starting: "Starting preview server…",
@@ -1085,7 +1099,6 @@ export const es: TranslationResources = {
         openSettings: "Abrir la configuración del proyecto",
         openNewWindow: "Open in new window",
         openNewWindowFailed: "Couldn't open a new window",
-        contextManagement: "Gestionar contexto",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
       },
@@ -2784,6 +2797,10 @@ export const es: TranslationResources = {
         saving: "Guardando...",
         saved: "Conexión guardada",
         saveFailed: "No se pudo guardar la configuración de conexión",
+        savedWithKey: "Punto de conexión guardado · clave de API recordada",
+        savedNoKey: "Punto de conexión guardado · sin clave de API",
+        forget: "Olvidar este punto de conexión",
+        forgot: "Punto de conexión olvidado",
       },
       remove: {
         button: "Eliminar proveedor",
