@@ -83,10 +83,10 @@ const CATALOG_DATA = [
     title: "Cline",
     description:
       "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
-    version: "3.0.44",
+    version: "3.0.46",
     iconId: "cline",
     installLink: "https://cline.bot/cli",
-    command: ["npx", "-y", "cline@3.0.44", "--acp"],
+    command: ["npx", "-y", "cline@3.0.46", "--acp"],
   },
   {
     id: "codebuddy-code",
@@ -174,10 +174,10 @@ const CATALOG_DATA = [
     title: "Dirac",
     description:
       "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
-    version: "0.4.18",
+    version: "0.4.20",
     iconId: "dirac",
     installLink: "https://dirac.run",
-    command: ["npx", "-y", "dirac-cli@0.4.18", "--acp"],
+    command: ["npx", "-y", "dirac-cli@0.4.20", "--acp"],
   },
   {
     id: "factory-droid",
@@ -197,10 +197,10 @@ const CATALOG_DATA = [
     id: "fast-agent",
     title: "fast-agent",
     description: "Code and build agents with comprehensive multi-provider support",
-    version: "0.9.14",
+    version: "0.9.17",
     iconId: "fast-agent",
     installLink: "https://fast-agent.ai/acp/",
-    command: ["uvx", "--from", "fast-agent-acp==0.9.14", "fast-agent-acp", "-x"],
+    command: ["uvx", "--from", "fast-agent-acp==0.9.17", "fast-agent-acp", "-x"],
   },
   {
     id: "gemini",
@@ -216,10 +216,10 @@ const CATALOG_DATA = [
     title: "GLM Agent",
     description:
       "ACP agent powered by Zhipu AI's GLM Coding Plan models (glm-5.1, glm-5-turbo, glm-4.7, glm-4.5-air). Supports streaming, tool calls, mid-session model switching, image input via Z.AI Coding Plan Vision MCP, and session load/fork/resume with on-disk persistence.",
-    version: "1.1.4",
+    version: "1.2.0",
     iconId: "glm-acp-agent",
     installLink: "https://github.com/stefandevo/glm-acp-agent",
-    command: ["npx", "-y", "glm-acp-agent@1.1.4"],
+    command: ["npx", "-y", "glm-acp-agent@1.2.0"],
   },
   {
     id: "goose",
@@ -349,10 +349,10 @@ const CATALOG_DATA = [
     id: "qwen-code",
     title: "Qwen Code",
     description: "Alibaba's Qwen coding assistant",
-    version: "0.19.11",
+    version: "0.20.0",
     iconId: "qwen-code",
     installLink: "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
-    command: ["npx", "-y", "@qwen-code/qwen-code@0.19.11", "--acp", "--experimental-skills"],
+    command: ["npx", "-y", "@qwen-code/qwen-code@0.20.0", "--acp", "--experimental-skills"],
   },
   {
     id: "sigit",
