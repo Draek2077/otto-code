@@ -100,6 +100,9 @@ export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 12;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
+export const DEFAULT_RULER_COLUMN = 80; // the classic terminal width
+export const MIN_RULER_COLUMN = 80;
+export const MAX_RULER_COLUMN = 240;
 
 export interface AppSettings {
   colorSchemeMode: ColorSchemeMode;
@@ -133,6 +136,11 @@ export interface AppSettings {
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
   syntaxTheme: SyntaxThemeId; // default "default"
+  // Vertical line-length marker painted behind the code editor's text, the way
+  // an IDE marks the 80/120-column limit. Device-local presentation only.
+  // Default on.
+  rulerEnabled: boolean;
+  rulerColumn: number; // clamped character column, default 80
   workspaceTitleSource: WorkspaceTitleSource;
   autoExpandReasoning: boolean;
   // Repeating cue tone while voice mode waits for the agent's reply.
@@ -215,6 +223,12 @@ export interface AppSettings {
   suggestedTasksEnabled: boolean;
   // Default primary action of a suggested-task card. See SuggestedTasksDefaultMode.
   suggestedTasksDefaultMode: SuggestedTasksDefaultMode;
+  // "Don't show this again" on the heads-up shown when a user opens a browser
+  // tab while the host's Browser tools master is off — agents can't see or drive
+  // that tab. Purely informational, so it is suppressible; the Preview warning
+  // deliberately is NOT, because preview without browser tools is broken rather
+  // than merely limited. Device-local, defaults to showing the warning.
+  suppressBrowserToolsWarning: boolean;
   // Which Visualizer page panels start visible when a Visualizer tab attaches
   // (seeded via the bridge `config.panels` message — see
   // packages/app/src/panels/visualizer-panel.tsx and
@@ -333,6 +347,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
   syntaxTheme: "default",
+  rulerEnabled: true,
+  rulerColumn: DEFAULT_RULER_COLUMN,
   workspaceTitleSource: "title",
   autoExpandReasoning: false,
   voiceThinkingTone: true,
@@ -359,6 +375,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   appStartScreen: "workspaces",
   suggestedTasksEnabled: true,
   suggestedTasksDefaultMode: "new_chat",
+  suppressBrowserToolsWarning: false,
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
   visualizerPanelCostOverlay: false,
@@ -618,6 +635,17 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
   }
+  if (typeof stored.rulerEnabled === "boolean") {
+    result.rulerEnabled = stored.rulerEnabled;
+  }
+  // Same clamp shape as the font sizes: an integer pinned into [min, max].
+  const rulerColumn = parseClampedFontSize(stored.rulerColumn, {
+    min: MIN_RULER_COLUMN,
+    max: MAX_RULER_COLUMN,
+  });
+  if (rulerColumn !== null) {
+    result.rulerColumn = rulerColumn;
+  }
   return result;
 }
 
@@ -705,6 +733,9 @@ function pickOnboardingSettings(stored: Partial<AppSettings>): Partial<AppSettin
   }
   if (typeof stored.suggestedTasksEnabled === "boolean") {
     result.suggestedTasksEnabled = stored.suggestedTasksEnabled;
+  }
+  if (typeof stored.suppressBrowserToolsWarning === "boolean") {
+    result.suppressBrowserToolsWarning = stored.suppressBrowserToolsWarning;
   }
   if (
     typeof stored.suggestedTasksDefaultMode === "string" &&
