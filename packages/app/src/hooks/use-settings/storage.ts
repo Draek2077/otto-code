@@ -325,7 +325,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   // to 1M would report "you're fine" to everyone.
   contextWindowTokens: 200_000,
   serviceUrlBehavior: "ask",
-  linkOpenBehavior: "external",
+  linkOpenBehavior: "in-app",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
   uiFontFamily: "",
   monoFontFamily: "",
