@@ -56,7 +56,7 @@ import { ScreenHeader } from "@/components/headers/screen-header";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Shortcut } from "@/components/ui/shortcut";
-import type { ShortcutKey } from "@/utils/format-shortcut";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1195,6 +1195,7 @@ function GitCheckoutExplorerToggle({
   showDiffStat: boolean;
 }) {
   const { t } = useTranslation();
+  const explorerToggleKeys = useShortcutKeys("toggle-right-sidebar");
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
@@ -1236,7 +1237,9 @@ function GitCheckoutExplorerToggle({
       >
         <View style={styles.explorerTooltipRow}>
           <Text style={styles.explorerTooltipText}>{t("workspace.tabs.explorer.toggle")}</Text>
-          <Shortcut keys={EXPLORER_TOGGLE_KEYS} style={styles.explorerTooltipShortcut} />
+          {explorerToggleKeys ? (
+            <Shortcut chord={explorerToggleKeys} style={styles.explorerTooltipShortcut} />
+          ) : null}
         </View>
       </TooltipContent>
     </Tooltip>
@@ -1263,6 +1266,7 @@ function PlainExplorerToggle({
 }) {
   const { t } = useTranslation();
   const headerActionIconSize = useIconSize(1.5);
+  const explorerToggleKeys = useShortcutKeys("toggle-right-sidebar");
   if (isMobile) {
     return (
       <HeaderToggleButton
@@ -1270,7 +1274,7 @@ function PlainExplorerToggle({
         testID="workspace-explorer-toggle"
         onPress={onPress}
         tooltipLabel={t("workspace.tabs.explorer.toggle")}
-        tooltipKeys={EXPLORER_TOGGLE_KEYS}
+        tooltipKeys={explorerToggleKeys}
         tooltipSide="left"
         accessible
         accessibilityRole="button"
@@ -1296,7 +1300,7 @@ function PlainExplorerToggle({
       testID="workspace-explorer-toggle"
       onPress={onPress}
       tooltipLabel={t("workspace.tabs.explorer.toggle")}
-      tooltipKeys={EXPLORER_TOGGLE_KEYS}
+      tooltipKeys={explorerToggleKeys}
       tooltipSide="left"
       style={styles.compactHeaderActionButton}
       accessible
@@ -2299,6 +2303,7 @@ function WorkspaceScreenContent({
   }, [isGitCheckout, normalizedServerId, workspaceDirectory]);
 
   const explorerToggleAnchorRef = useTutorialAnchor("explorer-toggle");
+  const explorerToggleKeys = useShortcutKeys("toggle-right-sidebar");
 
   const handleToggleExplorer = useCallback(() => {
     if (!activeExplorerCheckout) {
@@ -4063,7 +4068,7 @@ function WorkspaceScreenContent({
                 testID="workspace-explorer-toggle"
                 onPress={handleToggleExplorer}
                 tooltipLabel={t("workspace.tabs.explorer.toggle")}
-                tooltipKeys={EXPLORER_TOGGLE_KEYS}
+                tooltipKeys={explorerToggleKeys}
                 tooltipSide="left"
                 style={styles.compactHeaderActionButton}
                 accessible
@@ -4087,7 +4092,7 @@ function WorkspaceScreenContent({
                 testID="workspace-explorer-toggle"
                 onPress={handleToggleExplorer}
                 tooltipLabel={t("workspace.tabs.explorer.toggle")}
-                tooltipKeys={EXPLORER_TOGGLE_KEYS}
+                tooltipKeys={explorerToggleKeys}
                 tooltipSide="left"
                 accessible
                 accessibilityRole="button"
@@ -4144,6 +4149,7 @@ function WorkspaceScreenContent({
       isGitCheckout,
       handleToggleExplorer,
       explorerToggleAnchorRef,
+      explorerToggleKeys,
       isExplorerOpen,
       explorerToggleLabel,
       explorerToggleAccessibilityState,
@@ -4821,5 +4827,3 @@ const containerWithWorkspaceBackgroundStyle = [
   styles.container,
   styles.containerWorkspaceBackground,
 ];
-
-const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];

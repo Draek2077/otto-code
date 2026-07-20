@@ -7,7 +7,13 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { Shortcut } from "@/components/ui/shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
-import { buildKeyboardShortcutHelpSections } from "@/keyboard/keyboard-shortcuts";
+import {
+  buildKeyboardShortcutHelpSections,
+  getBindingIdForAction,
+} from "@/keyboard/keyboard-shortcuts";
+import { chordStringToShortcutKeys } from "@/keyboard/shortcut-string";
+import type { ShortcutKey } from "@/utils/format-shortcut";
+import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 
 const SNAP_POINTS: string[] = ["70%", "92%"];
 
@@ -18,10 +24,25 @@ export function KeyboardShortcutsDialog() {
 
   const isMac = getShortcutOs() === "mac";
   const isDesktopApp = getIsElectronRuntime();
-  const sections = useMemo(
-    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
-    [isDesktopApp, isMac],
-  );
+  const { overrides } = useKeyboardShortcutOverrides();
+
+  const platform = useMemo(() => ({ isMac, isDesktop: isDesktopApp }), [isDesktopApp, isMac]);
+  const sections = useMemo(() => buildKeyboardShortcutHelpSections(platform), [platform]);
+
+  // The help table's `keys` are the defaults, so each row's chord is resolved
+  // against the user's remaps here — otherwise the dialog advertises a binding
+  // that no longer fires.
+  const chordsByRowId = useMemo(() => {
+    const resolved = new Map<string, ShortcutKey[][]>();
+    for (const section of sections) {
+      for (const row of section.rows) {
+        const bindingId = getBindingIdForAction(row.id, platform);
+        const override = bindingId ? overrides[bindingId] : undefined;
+        resolved.set(row.id, override ? chordStringToShortcutKeys(override) : [row.keys]);
+      }
+    }
+    return resolved;
+  }, [sections, platform, overrides]);
 
   const handleClose = useCallback(() => setOpen(false), [setOpen]);
   const header = useMemo<SheetHeader>(() => ({ title: t("settings.shortcuts.dialogTitle") }), [t]);
@@ -47,7 +68,7 @@ export function KeyboardShortcutsDialog() {
                       <Text style={styles.rowNote}>{row.noteKey ? t(row.noteKey) : row.note}</Text>
                     ) : null}
                   </View>
-                  <Shortcut keys={row.keys} style={styles.rowShortcut} />
+                  <Shortcut chord={chordsByRowId.get(row.id)} style={styles.rowShortcut} />
                 </View>
               ))}
             </View>

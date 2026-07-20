@@ -722,6 +722,8 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
   {
+    // The id keeps its original "ctrl-period" name so existing user overrides,
+    // which are keyed by id, survive; the binding itself is Ctrl+B.
     id: "sidebar-toggle-left-ctrl-period-non-mac",
     action: "sidebar.toggle.left",
     combo: "Ctrl+B",

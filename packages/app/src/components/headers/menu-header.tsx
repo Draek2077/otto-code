@@ -9,7 +9,7 @@ import { ScreenTitle } from "./screen-title";
 import { HeaderToggleButton } from "./header-toggle-button";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { getShortcutOs } from "@/utils/shortcut-platform";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 
 interface MenuHeaderProps {
   title?: string;
@@ -64,11 +64,7 @@ export function SidebarMenuToggle({
   const isMobile = useIsCompactFormFactor();
   const isOpen = usePanelStore((state) => selectIsAgentListOpen(state, { isCompact: isMobile }));
   const toggleAgentListForLayout = usePanelStore((state) => state.toggleAgentListForLayout);
-  const toggleShortcutKeys = useMemo(
-    () => (getShortcutOs() === "mac" ? ["mod", "B"] : ["mod", "."]),
-    [],
-  );
-
+  const toggleShortcutKeys = useShortcutKeys("toggle-left-sidebar");
   const handlePress = useCallback(() => {
     toggleAgentListForLayout({ isCompact: isMobile });
   }, [toggleAgentListForLayout, isMobile]);
