@@ -15,9 +15,14 @@ interface GitHubRelease {
 const LINUX_APPIMAGE_ASSET_PATTERN =
   /^Otto-(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)-)?x86_64\.AppImage$/;
 
-// COMPAT(macOS-signing): macOS builds aren't notarized on this fork yet (no Apple
-// Developer Program membership), so releases have no signed .dmg asset. Drop this
-// gate once Apple signing is configured and releases reliably include a mac asset.
+const MAC_ARM64_ASSET_PATTERN = /^Otto-.*-arm64-unsigned\.dmg$/;
+const MAC_X64_ASSET_PATTERN = /^Otto-.*-x64-unsigned\.dmg$/;
+
+// macOS stays out of the required set on purpose. The mac jobs can finish after
+// the release publishes, and `finalize-rollout` tolerates a failed mac build so
+// Windows/Linux still ship — requiring a mac asset here would pin the whole site
+// to an older release whenever mac alone fails. Missing mac assets degrade to
+// "no mac links" instead.
 const REQUIRED_ASSET_PATTERNS = [
   LINUX_APPIMAGE_ASSET_PATTERN, // Linux AppImage
   /Otto-Setup-.*\.exe$/, // Windows (any arch)
@@ -48,6 +53,13 @@ function pickLinuxAppImageAsset(assets: GitHubAsset[]) {
   return assets.find((a) => LINUX_APPIMAGE_ASSET_PATTERN.test(a.name))?.name ?? null;
 }
 
+function pickMacAssets(assets: GitHubAsset[]) {
+  return {
+    arm64: assets.find((a) => MAC_ARM64_ASSET_PATTERN.test(a.name))?.name ?? null,
+    x64: assets.find((a) => MAC_X64_ASSET_PATTERN.test(a.name))?.name ?? null,
+  };
+}
+
 function versionFromTag(tag: string): string {
   return tag.replace(/^v/, "");
 }
@@ -57,6 +69,8 @@ interface ReleaseInfo {
   linuxAppImageAsset: string;
   windowsX64Asset: string | null;
   windowsArm64Asset: string | null;
+  macArm64Asset: string | null;
+  macX64Asset: string | null;
 }
 
 const GITHUB_RELEASES_URL = "https://api.github.com/repos/Draek2077/otto-code/releases?per_page=10";
@@ -80,6 +94,7 @@ async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
   const ready = releases.find((r) => !r.prerelease && !r.draft && hasRequiredAssets(r));
   if (!ready) throw new Error("no ready GitHub release found");
   const win = pickWindowsAssets(ready.assets);
+  const mac = pickMacAssets(ready.assets);
   const linuxAppImageAsset = pickLinuxAppImageAsset(ready.assets);
   if (!linuxAppImageAsset) throw new Error("ready release missing Linux AppImage asset");
   return {
@@ -87,6 +102,8 @@ async function fetchLatestReadyRelease(): Promise<ReleaseInfo> {
     linuxAppImageAsset,
     windowsX64Asset: win.x64,
     windowsArm64Asset: win.arm64,
+    macArm64Asset: mac.arm64,
+    macX64Asset: mac.x64,
   };
 }
 
@@ -110,8 +127,19 @@ function isReleaseInfo(value: unknown): value is ReleaseInfo {
     (record.windowsArm64Asset === null ||
       new RegExp(`^Otto-Setup-${record.version.replaceAll(".", "\\.")}-arm64\\.exe$`).test(
         record.windowsArm64Asset,
-      ))
+      )) &&
+    // Mac fields arrived after this cache key shipped, so a value cached by an
+    // older deploy has them absent. Treating undefined as valid keeps that entry
+    // usable (readers coerce to null) instead of forcing a cold refetch.
+    isOptionalMacAsset(record.macArm64Asset, record.version, "arm64") &&
+    isOptionalMacAsset(record.macX64Asset, record.version, "x64")
   );
+}
+
+function isOptionalMacAsset(value: unknown, version: string, arch: "arm64" | "x64"): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "string") return false;
+  return new RegExp(`^Otto-${version.replaceAll(".", "\\.")}-${arch}-unsigned\\.dmg$`).test(value);
 }
 
 export const getLatestRelease = createServerFn({ method: "GET" }).handler(async () => {

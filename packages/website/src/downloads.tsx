@@ -9,10 +9,13 @@ export interface ReleaseAssetInfo {
   linuxAppImageAsset: string;
   windowsX64Asset: string | null;
   windowsArm64Asset: string | null;
+  macArm64Asset: string | null;
+  macX64Asset: string | null;
 }
 
 export function downloadUrls(release: ReleaseAssetInfo) {
   const { version, linuxAppImageAsset, windowsX64Asset, windowsArm64Asset } = release;
+  const { macArm64Asset, macX64Asset } = release;
   const base = releaseBase(version);
   return {
     linuxAppImage: `${base}/${linuxAppImageAsset}`,
@@ -20,16 +23,30 @@ export function downloadUrls(release: ReleaseAssetInfo) {
     linuxRpm: `${base}/Otto-${version}-x86_64.rpm`,
     windowsExeX64: `${base}/${windowsX64Asset ?? `Otto-Setup-${version}.exe`}`,
     windowsExeArm64: windowsArm64Asset ? `${base}/${windowsArm64Asset}` : null,
+    // Null when that release has no mac artifact — the mac jobs can finish after
+    // a release publishes, and a failed mac build ships without one.
+    macDmgArm64: macArm64Asset ? `${base}/${macArm64Asset}` : null,
+    macDmgX64: macX64Asset ? `${base}/${macX64Asset}` : null,
     androidApk: `${base}/otto-v${version}-android.apk`,
   };
 }
 
 export const webAppUrl = "https://app.otto-code.me";
 
-// Shown wherever macOS downloads used to be offered. This fork has no Apple
-// signing/build environment yet, so no Mac (or iOS) builds are published.
-export const MAC_UNAVAILABLE_NOTE =
-  "macOS builds aren't currently offered — we don't have access to a Mac development environment yet. If you can volunteer one, reach out on GitHub.";
+// macOS builds ship unsigned: this fork has no Apple Developer identity, so they
+// are not notarized and cannot auto-update. Gatekeeper quarantines a downloaded
+// unsigned app and reports it as *damaged* rather than showing the usual
+// unidentified-developer prompt, so first-launch instructions aren't optional —
+// without them the build reads as a broken download.
+export const MAC_UNSIGNED_NOTE =
+  "Unsigned build — macOS will say Otto is damaged the first time. Right-click the app and choose Open, or run the command below.";
+
+export const MAC_QUARANTINE_COMMAND = "xattr -dr com.apple.quarantine /Applications/Otto.app";
+
+// macOS can't replace itself in place without a signing identity, so these
+// builds don't auto-update. The app notifies and links back here instead.
+export const MAC_NO_AUTOUPDATE_NOTE =
+  "These builds don't auto-update. Otto will tell you when a new version is out — download it here and replace the app.";
 
 type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
 
@@ -38,14 +55,43 @@ export interface DownloadOption {
   label: string;
   href: string;
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
+  /**
+   * Href points at a page on this site rather than a release asset, so the link
+   * opens in place. macOS uses this: handing someone an unsigned .dmg without
+   * the first-launch steps beside it produces a build that looks broken.
+   */
+  openInPage?: boolean;
 }
 
-// No macOS entries: this fork doesn't publish Mac builds (see
-// MAC_UNAVAILABLE_NOTE), so callers must handle a detected platform that has
-// no matching option.
+// A mac entry only appears when that release actually carries the artifact, so
+// callers must still handle a detected platform with no matching option.
 export function getDownloadOptions(release: ReleaseAssetInfo): DownloadOption[] {
   const urls = downloadUrls(release);
-  return [
+  const options: DownloadOption[] = [];
+
+  // Both mac entries land on the download page rather than the .dmg: the
+  // unsigned build needs its first-launch steps in view, and arch detection is
+  // a guess (see useDetectedPlatform), so the page lets people pick.
+  if (urls.macDmgArm64) {
+    options.push({
+      platform: "mac-silicon",
+      label: "macOS",
+      href: "/download",
+      icon: AppleIcon,
+      openInPage: true,
+    });
+  }
+  if (urls.macDmgX64) {
+    options.push({
+      platform: "mac-intel",
+      label: "macOS",
+      href: "/download",
+      icon: AppleIcon,
+      openInPage: true,
+    });
+  }
+
+  options.push(
     {
       platform: "windows",
       label: "Windows",
@@ -58,7 +104,9 @@ export function getDownloadOptions(release: ReleaseAssetInfo): DownloadOption[] 
       href: urls.linuxAppImage,
       icon: LinuxIcon,
     },
-  ];
+  );
+
+  return options;
 }
 
 export function useDetectedPlatform(): Platform {
@@ -71,14 +119,15 @@ export function useDetectedPlatform(): Platform {
     } else if (ua.includes("linux")) {
       setPlatform("linux");
     } else if (ua.includes("mac")) {
-      // Check for Apple Silicon vs Intel
-      // navigator.platform is deprecated but still the most reliable check
-      const isARM =
-        /arm|aarch64/i.test(navigator.platform) ||
-        // Chrome/Edge on Apple Silicon report x86 platform but have ARM in userAgentData
+      // Apple Silicon can't be detected from navigator.platform: Safari reports
+      // "MacIntel" on every Mac, and Chrome/Edge do too. userAgentData is the
+      // only honest signal, and only Chromium exposes it — so we identify Intel
+      // when it says so and default to Silicon everywhere else, which is both
+      // the majority of Macs and the safer miss (the download page lists both).
+      const isIntel =
         (navigator as unknown as { userAgentData?: { architecture?: string } }).userAgentData
-          ?.architecture === "arm";
-      setPlatform(isARM ? "mac-silicon" : "mac-silicon"); // Default to Silicon for modern Macs
+          ?.architecture === "x86";
+      setPlatform(isIntel ? "mac-intel" : "mac-silicon");
     }
   }, []);
 

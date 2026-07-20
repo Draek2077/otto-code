@@ -161,9 +161,9 @@ in reserve** — not a launch.
   permitted, and enforced it. This is a well-informed audience that will check, and getting the
   wording sloppy invites a hostile thread from people who watched OpenCode get blocked. See
   [runbook.md](runbook.md) for the approved phrasing.
-- **What Otto does not have.** No macOS build (no Apple hardware), no iOS build, Play is
-  internal-track only. State it up front in every post. Volunteering the gap defuses it; being caught
-  omitting it costs the thread.
+- **What Otto does not have.** macOS builds are unsigned (Gatekeeper friction on first launch, no
+  auto-update), no iOS build, Play is internal-track only. State it up front in every post.
+  Volunteering the gap defuses it; being caught omitting it costs the thread.
 
 ### Anti-positioning — what we never say
 

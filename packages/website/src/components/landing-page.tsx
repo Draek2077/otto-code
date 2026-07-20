@@ -1382,8 +1382,8 @@ function GetStarted() {
 function DownloadButton() {
   const release = useRelease();
   const detectedPlatform = useDetectedPlatform();
-  // Mac visitors have no native build to offer (no Mac dev environment yet),
-  // so send them to the download page where the note explains the situation.
+  // Falls back to the download page when the detected platform has no artifact
+  // on this release — mac builds can be absent if their job failed.
   const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform);
 
   if (!primary) {
@@ -1402,8 +1402,7 @@ function DownloadButton() {
   return (
     <a
       href={primary.href}
-      target="_blank"
-      rel="noopener noreferrer"
+      {...(primary.openInPage ? {} : { target: "_blank", rel: "noopener noreferrer" })}
       className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
     >
       <PrimaryIcon className="h-4 w-4" />

@@ -26,8 +26,9 @@ Say it first, unprompted, every time. Never a comparison that disparages upstrea
 
 ### The gaps
 
-> No macOS or iOS builds yet — I don't have access to a Mac development environment. Windows, Linux,
-> Android APK, and the web app all ship today. If you can help with the Mac side, get in touch.
+> macOS builds are unsigned — no Apple Developer account — so you have to get past Gatekeeper on
+> first launch and they don't auto-update. No iOS build for the same reason. Windows, Linux,
+> Android APK, and the web app all ship normally. If you can help with Apple signing, get in touch.
 
 ### Disclosure, where a channel requires it
 

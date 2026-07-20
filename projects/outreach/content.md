@@ -106,7 +106,8 @@ code — visible shipping is itself a distribution channel.
 ## 5. Things to say every time
 
 - **"Otto is a fork of [Paseo](https://github.com/getpaseo/paseo)"** — first, unprompted, every time.
-- **The honest gaps** — no macOS build (no Apple hardware), no iOS, Play internal-track only.
-  Volunteering these defuses them; being caught omitting them costs the thread.
+- **The honest gaps** — macOS builds are unsigned (Gatekeeper friction, no auto-update), no iOS,
+  Play internal-track only. Volunteering these defuses them; being caught omitting them costs the
+  thread.
 - **How Otto talks to Claude** — the approved phrasing in [runbook.md](runbook.md) §1, verbatim.
 - **"I built this"** — the maker voice is the whole strategy. Never the passive corporate register.
