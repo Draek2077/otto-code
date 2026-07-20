@@ -122,11 +122,15 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
     visible,
     header,
     children,
+    footer,
     testID,
   }: {
     visible: boolean;
     header?: { title: string; actions?: ReactNode };
     children: ReactNode;
+    // Action buttons are pinned below the scroll region, not part of the body,
+    // so the mock has to render the slot or every button assertion sees null.
+    footer?: ReactNode;
     testID?: string;
   }) =>
     visible ? (
@@ -134,6 +138,7 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
         <h1>{header?.title}</h1>
         {header?.actions}
         {children}
+        {footer}
       </section>
     ) : null,
 }));

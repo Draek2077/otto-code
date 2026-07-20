@@ -31,14 +31,18 @@ import {
 import { getCompactSheetSafeAreaPadding } from "@/components/adaptive-modal-sheet-layout";
 import { createControlGeometry } from "@/components/ui/control-geometry";
 import { isNative, isWeb } from "@/constants/platform";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Horizontal indent token shared by the sheet header (title, back arrow,
-// leading icon, search input icon) and any row primitive rendered inside the
-// sheet body. Rows whose leading icon should line up with the header must
-// match this padding.
-export const SHEET_HORIZONTAL_PADDING_SCALE = 6;
+// Content indent token shared by the sheet header (title, back arrow, leading
+// icon, search input icon), the body, and the footer — so the title, the fields
+// under it, and the action buttons all sit on one vertical line. Rows whose
+// leading icon should line up with the header must match this padding.
+//
+// Deliberately tight: a dialog is already a small, framed surface, so the
+// generous page-level indent (spacing[6]) reads as wasted width here and
+// squeezes the fields. Half that is enough to separate content from the frame.
+export const SHEET_HORIZONTAL_PADDING_SCALE = 3;
 
 export interface SheetHeaderSearch {
   onChange: (value: string) => void;
@@ -209,19 +213,36 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     flexGrow: 1,
   },
+  // Relatively positioned so the seam fades can be absolutely placed over the
+  // mobile scroll view's edges (the desktop card uses desktopScrollContainer).
+  bottomSheetScrollContainer: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minHeight: 0,
+    position: "relative",
+  },
   bottomSheetContent: {
     padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
   },
   bottomSheetStaticContent: {
     flex: 1,
-    padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
-    gap: theme.spacing[4],
     minHeight: 0,
   },
   desktopStaticContent: {
     flexShrink: 1,
     minHeight: 0,
+  },
+  // Static-content spacing is opt-out: a sheet whose children own their own
+  // scroll region (TabbedModalSheet) must move the indent *inside* that scroll
+  // view, or every field runs flush to the scroll box and its focus ring gets
+  // clipped by the overflow. See `contentPadding`.
+  //
+  // The inter-child gap opts out with it. Those children already carry their
+  // own leading inset (a pinned toolbar and the scroll content each pad
+  // themselves off whatever sits above), so leaving the gap on would stack a
+  // second helping between them and the row above would no longer match.
+  staticContentSpacing: {
     padding: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
   },
@@ -526,9 +547,16 @@ export interface AdaptiveModalSheetProps {
   presentation?: "push" | "replace";
   /**
    * Render the themed desktop-web scrollbar over the scroll area instead of the
-   * native browser scrollbar. No-op on native and on the mobile bottom sheet.
+   * native browser scrollbar. On by default — every dialog gets the same
+   * hover-hiding bar. No-op on native and on the mobile bottom sheet.
    */
   webScrollbar?: boolean;
+  /**
+   * Indent `scrollable={false}` children from the card edge. Turn off when the
+   * children own their own scroll region and apply the indent inside it, so
+   * focus rings aren't clipped by that scroll box. No effect when `scrollable`.
+   */
+  contentPadding?: boolean;
 }
 
 export function AdaptiveModalSheet({
@@ -545,15 +573,24 @@ export function AdaptiveModalSheet({
   desktopHeight,
   scrollable = true,
   presentation,
-  webScrollbar = false,
+  webScrollbar = true,
+  contentPadding = true,
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
   const desktopScrollRef = useRef<ScrollView>(null);
-  const desktopScrollbar = useWebScrollViewScrollbar(desktopScrollRef, {
-    enabled: webScrollbar && !isMobile,
+  const desktopScrollRegion = useSheetScrollRegion(desktopScrollRef, {
+    surface: "surface1",
+    webScrollbar: webScrollbar && !isMobile,
+  });
+  // The mobile sheet keeps the platform scroll indicator; it gets the seam
+  // fades only. `surface0` is what SheetBackground paints.
+  const mobileScrollRef = useRef<ScrollView>(null);
+  const mobileScrollRegion = useSheetScrollRegion(mobileScrollRef, {
+    surface: "surface0",
+    webScrollbar: false,
   });
   // Default mobile behavior: a single snap point measured from the sheet's
   // natural content height, so the bottom sheet hugs its content the way the
@@ -617,11 +654,12 @@ export function AdaptiveModalSheet({
   const bottomSheetStaticContentStyle = useMemo(
     () => [
       styles.bottomSheetStaticContent,
+      contentPadding ? styles.staticContentSpacing : null,
       compactSafeAreaPadding.contentPaddingBottom != null
         ? { paddingBottom: compactSafeAreaPadding.contentPaddingBottom }
         : null,
     ],
-    [compactSafeAreaPadding.contentPaddingBottom],
+    [contentPadding, compactSafeAreaPadding.contentPaddingBottom],
   );
   const footerStyle = useMemo(
     () => [
@@ -679,11 +717,12 @@ export function AdaptiveModalSheet({
     [desktopHeight],
   );
   const desktopStaticContentStyle = useMemo(
-    () =>
-      desktopHeight != null
-        ? [styles.desktopStaticContent, styles.desktopFill]
-        : styles.desktopStaticContent,
-    [desktopHeight],
+    () => [
+      styles.desktopStaticContent,
+      contentPadding ? styles.staticContentSpacing : null,
+      desktopHeight != null ? styles.desktopFill : null,
+    ],
+    [contentPadding, desktopHeight],
   );
   const desktopOverlayStyle = useMemo(
     () => [
@@ -755,15 +794,22 @@ export function AdaptiveModalSheet({
         </View>
         {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
         {scrollable ? (
-          <BottomSheetScrollView
-            style={BOTTOM_SHEET_SCROLL_STYLE}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
-              {children}
-            </View>
-          </BottomSheetScrollView>
+          <View style={styles.bottomSheetScrollContainer}>
+            <BottomSheetScrollView
+              ref={mobileScrollRef as unknown as Ref<never>}
+              style={BOTTOM_SHEET_SCROLL_STYLE}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              onLayout={mobileScrollRegion.onLayout}
+              onScroll={mobileScrollRegion.onScroll}
+              onContentSizeChange={mobileScrollRegion.onContentSizeChange}
+            >
+              <View style={bottomSheetContentStyle} onLayout={onContentLayout}>
+                {children}
+              </View>
+            </BottomSheetScrollView>
+            {mobileScrollRegion.decorations}
+          </View>
         ) : (
           <View style={bottomSheetStaticContentStyle}>{children}</View>
         )}
@@ -787,15 +833,15 @@ export function AdaptiveModalSheet({
             style={styles.desktopScroll}
             contentContainerStyle={styles.desktopContent}
             keyboardShouldPersistTaps="handled"
-            onLayout={desktopScrollbar.onLayout}
-            onScroll={desktopScrollbar.onScroll}
-            onContentSizeChange={desktopScrollbar.onContentSizeChange}
+            onLayout={desktopScrollRegion.onLayout}
+            onScroll={desktopScrollRegion.onScroll}
+            onContentSizeChange={desktopScrollRegion.onContentSizeChange}
             scrollEventThrottle={16}
-            showsVerticalScrollIndicator={!webScrollbar}
+            showsVerticalScrollIndicator={desktopScrollRegion.showsVerticalScrollIndicator}
           >
             {children}
           </ScrollView>
-          {desktopScrollbar.overlay}
+          {desktopScrollRegion.decorations}
         </View>
       ) : (
         <View style={desktopStaticContentStyle}>{children}</View>

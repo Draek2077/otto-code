@@ -72,6 +72,38 @@ complete`), keyed off the opened snapshot's serverId. Waiting for data is a
   timezone) once — never in a preview line AND a helper line.
 - `useUnistyles` is banned (see docs/unistyles.md); lint enforces.
 
+## Dialog chrome
+
+Every dialog is an `AdaptiveModalSheet` (or `TabbedModalSheet` for a tabbed
+body). The chrome is the primitive's job, not the screen's — a dialog that
+hand-rolls any of the below is a bug:
+
+- **Actions are pinned, never scrolled.** Cancel/Save/OK go in the `footer`
+  prop, which supplies the top border, padding, and outer alignment. The row you
+  pass declares only `{ flex: 1, flexDirection: "row", alignItems: "center",
+gap: spacing[3] }`; re-adding padding or a border double-counts it. Buttons
+  that split the bar carry `flex: 1`. Action buttons rendered inside `children`
+  scroll out of reach the moment the body grows — that is the bug this replaces.
+- **Scroll regions get the full treatment.** `useSheetScrollRegion` bundles the
+  top/bottom seam fades and the app's hover-hiding overlay scrollbar; the sheet
+  and `TabScrollView` both go through it, so no dialog wires
+  `useScrollEdgeFades` and `useWebScrollViewScrollbar` together by hand.
+  `webScrollbar` defaults on.
+- **The body indent lives inside the scroll view.** `SHEET_HORIZONTAL_PADDING_SCALE`
+  is the one indent token, shared by header, body, and footer so they sit on one
+  vertical line. When children own their own scroll region, pass
+  `contentPadding={false}` and apply the indent to the scroll view's
+  `contentContainerStyle` instead. Padding on a wrapper _outside_ the scroller
+  means every field runs flush to the scroll box, and `overflow: hidden` slices
+  the focus ring off both sides. `contentPadding={false}` drops the wrapper's
+  inter-child gap too — those children pad themselves off whatever sits above,
+  so a wrapper gap would stack on top and the spacing would stop being uniform.
+- **Multi-line fields use `TextArea`** (or wrap a specialised input in
+  `TextAreaScrollFrame`). A raw `<textarea>` that overflows paints the browser's
+  own permanent, unthemed scrollbar square against the field's rounded border.
+- **Test mocks must render `footer`.** A mock of `AdaptiveModalSheet` that only
+  renders `children` makes every action-button query return null.
+
 ## Data gating
 
 Aggregate hooks return a discriminated load state:

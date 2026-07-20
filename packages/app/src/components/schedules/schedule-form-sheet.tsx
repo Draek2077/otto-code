@@ -31,6 +31,7 @@ import { createControlGeometry, type FieldControlSize } from "@/components/ui/co
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
+import { TextAreaScrollFrame } from "@/components/ui/text-area";
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
@@ -549,7 +550,8 @@ function useSchedulePersonalityBinding(input: {
     },
     // New schedules default to the team's Scheduler (or first available
     // Scheduler); editing keeps the schedule's stored pick.
-    autoSelectDefault: schedule === undefined && state.targetKind === "new-agent",
+    autoSelectDefault:
+      schedule === undefined && state.targetKind === "new-agent" ? "always" : false,
   });
 }
 
@@ -592,19 +594,21 @@ function ScheduleFormFields({
       </Field>
 
       <Field label="Prompt">
-        <FormTextInput
-          size={controlSize}
-          testID="schedule-prompt-input"
-          accessibilityLabel="Prompt"
-          initialValue={state.prompt}
-          value={state.prompt}
-          onChangeText={model.setPrompt}
-          placeholder="What should the agent do each run?"
-          style={styles.multilineInput}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
+        <TextAreaScrollFrame>
+          <FormTextInput
+            size={controlSize}
+            testID="schedule-prompt-input"
+            accessibilityLabel="Prompt"
+            initialValue={state.prompt}
+            value={state.prompt}
+            onChangeText={model.setPrompt}
+            placeholder="What should the agent do each run?"
+            style={styles.multilineInput}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+        </TextAreaScrollFrame>
       </Field>
 
       <ScheduleTargetFields

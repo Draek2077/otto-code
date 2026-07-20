@@ -8,7 +8,7 @@ import {
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
 
@@ -29,15 +29,29 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     paddingTop: theme.spacing[4],
   },
+  // Pinned per-tab toolbar slot. It sits outside the scroll view, so it carries
+  // its own copy of the sheet body indent (the scroll view's padding cannot
+  // reach it) plus the top inset the tab strip would otherwise leave missing.
+  tabToolbar: {
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    paddingTop: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+  },
   // Fills the sheet's static content area so the ScrollView — and only the
   // ScrollView — takes the overflow, leaving the footer pinned below.
   tabScroll: {
     flex: 1,
     minHeight: 0,
   },
+  // The sheet body indent lives HERE, inside the scroll view, not on the
+  // sheet's static content wrapper around it. A field flush with the scroll
+  // box paints its focus ring outside its own bounds, and `overflow: hidden`
+  // on the scroller slices that ring off down both sides — so the indent has
+  // to be scrollable padding, not a wrapper the scroller clips against.
   tabScrollContent: {
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
+    paddingTop: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     gap: theme.spacing[4],
-    paddingBottom: theme.spacing[2],
+    paddingBottom: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     flexGrow: 1,
   },
 }));
@@ -55,15 +69,18 @@ export interface TabScrollViewProps {
  * Per-tab scroll container: fills the bounded height of a `scrollable={false}`
  * `AdaptiveModalSheet` and owns its own scrolling, so any action bar pinned
  * around it (the sheet footer, a per-tab toolbar) stays put while the tab
- * content scrolls. Horizontal/top padding is supplied by the sheet's static
- * content wrapper; this container adds only the inter-field gap and a small
- * bottom inset.
+ * content scrolls. It also owns the sheet body indent — see `tabScrollContent`
+ * for why that padding cannot live on a wrapper outside the scroll view.
  */
-export function TabScrollView({ children, webScrollbar = false }: TabScrollViewProps) {
+export function TabScrollView({ children, webScrollbar = true }: TabScrollViewProps) {
   const isCompact = useIsCompactFormFactor();
-  const showWebScrollbar = isWeb && !isCompact && webScrollbar;
   const scrollRef = useRef<ScrollView>(null);
-  const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: showWebScrollbar });
+  // The fade dissolves into whichever surface the dialog paints: the mobile
+  // bottom sheet is `surface0`, the desktop card `surface1`.
+  const scrollRegion = useSheetScrollRegion(scrollRef, {
+    surface: isCompact ? "surface0" : "surface1",
+    webScrollbar: isWeb && !isCompact && webScrollbar,
+  });
 
   return (
     <View style={styles.tabScroll}>
@@ -73,15 +90,15 @@ export function TabScrollView({ children, webScrollbar = false }: TabScrollViewP
         contentContainerStyle={styles.tabScrollContent}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
-        onLayout={scrollbar.onLayout}
-        onScroll={scrollbar.onScroll}
-        onContentSizeChange={scrollbar.onContentSizeChange}
+        onLayout={scrollRegion.onLayout}
+        onScroll={scrollRegion.onScroll}
+        onContentSizeChange={scrollRegion.onContentSizeChange}
         scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!showWebScrollbar}
+        showsVerticalScrollIndicator={scrollRegion.showsVerticalScrollIndicator}
       >
         {children}
       </ScrollView>
-      {scrollbar.overlay}
+      {scrollRegion.decorations}
     </View>
   );
 }
@@ -101,6 +118,12 @@ export interface TabbedModalSheetProps<T extends string> {
    * height and scrolls, so the title, tabs, and footer stay pinned.
    */
   children: ReactNode;
+  /**
+   * Fixed slot rendered between the tab strip and the scrolling tab content —
+   * e.g. a search field that must stay put while the list below it scrolls.
+   * Switch on `activeTab` to render it for one tab only.
+   */
+  tabToolbar?: ReactNode;
   /** Sticky footer (e.g. Cancel / Save) pinned below the tab content. */
   footer?: ReactNode;
   /**
@@ -141,11 +164,12 @@ export function TabbedModalSheet<T extends string>({
   activeTab,
   onTabChange,
   children,
+  tabToolbar,
   footer,
   desktopHeight = DEFAULT_TABBED_DESKTOP_HEIGHT,
   desktopMaxWidth,
   snapPoints,
-  webScrollbar = false,
+  webScrollbar = true,
   tabsTestID,
   testID,
 }: TabbedModalSheetProps<T>) {
@@ -174,11 +198,18 @@ export function TabbedModalSheet<T extends string>({
       subHeader={tabStrip}
       footer={footer}
       scrollable={false}
+      // The tab pane's own ScrollView owns the body indent; see TabScrollView.
+      contentPadding={false}
       desktopHeight={desktopHeight}
       desktopMaxWidth={desktopMaxWidth}
       snapPoints={resolvedSnapPoints}
       testID={testID}
     >
+      {/*
+       * The toolbar sits in the sheet's static content column, above the scroll
+       * region, so it stays pinned while the tab content scrolls under it.
+       */}
+      {tabToolbar ? <View style={styles.tabToolbar}>{tabToolbar}</View> : null}
       {/* Key on the active tab so switching resets the scroll to the top. */}
       <TabScrollView key={activeTab} webScrollbar={webScrollbar}>
         {children}

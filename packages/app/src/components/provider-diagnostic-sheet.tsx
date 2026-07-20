@@ -9,13 +9,12 @@ import {
   Trash2,
 } from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Pressable,
   type PressableStateCallbackType,
-  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -23,14 +22,15 @@ import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles"
 import {
   AdaptiveModalSheet,
   AdaptiveTextInput,
+  SHEET_HORIZONTAL_PADDING_SCALE,
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ScrollableCodeSurface, SurfaceCard } from "@/components/ui/scrollable-code-surface";
+import { TabScrollView } from "@/components/ui/tabbed-modal-sheet";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useToast } from "@/contexts/toast-context";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
@@ -46,7 +46,17 @@ import type {
   AgentProvider,
   ModelTier,
 } from "@otto-code/protocol/agent-types";
-import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
+import type {
+  MutableDaemonConfig,
+  MutableDaemonConfigPatch,
+  SavedProviderEndpoint,
+} from "@otto-code/protocol/messages";
+import {
+  findSavedProviderEndpoint,
+  forgetProviderEndpoint,
+  rememberProviderEndpoint,
+  selectSavedProviderEndpoints,
+} from "@/utils/saved-provider-endpoints";
 import type { ProviderProfileModel } from "@otto-code/protocol/provider-config";
 import {
   COMPACTION_THRESHOLD_PERCENTS,
@@ -441,14 +451,59 @@ const CLAUDE_COMPATIBLE_BASE_URL_PRESETS: ComboboxOption[] = [
   },
 ];
 
+// Stable identity for "this host remembers nothing yet", so the connection
+// section isn't handed a fresh array on every render.
+const EMPTY_SAVED_ENDPOINTS: SavedProviderEndpoint[] = [];
+
+type ProviderSheetFeature =
+  | "providerRemove"
+  | "artifactsToolGroup"
+  | "modelTierOverrides"
+  | "savedProviderEndpoints"
+  | "openaiCompatMaxToolRounds";
+
+/** Read one daemon capability gate off the connected host's server_info. */
+function useProviderSheetFeature(serverId: string, feature: ProviderSheetFeature): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.[feature] === true,
+  );
+}
+
+// Merge the host's remembered endpoints in front of the shipped presets. Saved
+// entries win on duplicate URLs — a preset the user has actually connected to
+// carries their credential, so offering it twice would be a coin flip over
+// which one fills the key field.
+function buildBaseUrlOptions(params: {
+  t: TFunction;
+  presets: ComboboxOption[];
+  saved: SavedProviderEndpoint[];
+}): ComboboxOption[] {
+  const { t, presets, saved } = params;
+  const savedUrls = new Set(saved.map((entry) => entry.baseUrl));
+  return [
+    ...saved.map((entry) => ({
+      id: entry.baseUrl,
+      label: entry.label ?? entry.baseUrl,
+      description: entry.apiKey
+        ? t("settings.providers.connection.savedWithKey")
+        : t("settings.providers.connection.savedNoKey"),
+    })),
+    ...presets.filter((preset) => !savedUrls.has(preset.id)),
+  ];
+}
+
 function ProviderConnectionSection({
   provider,
   connection,
+  savedEndpoints,
+  supportsSavedEndpoints,
   patchConfig,
   refresh,
 }: {
   provider: string;
   connection: ProviderConnectionDescriptor;
+  savedEndpoints: SavedProviderEndpoint[];
+  supportsSavedEndpoints: boolean;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
   refresh: (providers?: AgentProvider[]) => Promise<void>;
 }) {
@@ -466,19 +521,67 @@ function ProviderConnectionSection({
       ? OPENAI_COMPATIBLE_BASE_URL_PRESETS
       : CLAUDE_COMPATIBLE_BASE_URL_PRESETS;
 
+  const familyEndpoints = useMemo(
+    () =>
+      supportsSavedEndpoints
+        ? selectSavedProviderEndpoints(savedEndpoints, connection.baseUrlKey)
+        : [],
+    [connection.baseUrlKey, savedEndpoints, supportsSavedEndpoints],
+  );
+  const baseUrlOptions = useMemo(
+    () => buildBaseUrlOptions({ t, presets: baseUrlPresets, saved: familyEndpoints }),
+    [baseUrlPresets, familyEndpoints, t],
+  );
+  // Only offer "forget" for the endpoint currently in the field, so the
+  // dropdown stays a picker instead of growing per-row management chrome.
+  const savedMatch = useMemo(
+    () => findSavedProviderEndpoint(familyEndpoints, connection.baseUrlKey, baseUrl.trim()),
+    [baseUrl, connection.baseUrlKey, familyEndpoints],
+  );
+
+  // Picking a remembered endpoint swaps the credential with it — that pairing
+  // is the whole point of remembering them. A URL with no saved entry (a preset
+  // or something freeform) leaves whatever key is already typed alone.
+  const handleBaseUrlChange = useCallback(
+    (next: string) => {
+      setBaseUrl(next);
+      const match = findSavedProviderEndpoint(familyEndpoints, connection.baseUrlKey, next.trim());
+      if (match) {
+        setApiKey(match.apiKey);
+      }
+    },
+    [connection.baseUrlKey, familyEndpoints],
+  );
+
   const handleSave = useCallback(() => {
     if (!canSave) return;
+    const nextBaseUrl = baseUrl.trim();
+    const nextApiKey = apiKey.trim();
     setSaving(true);
     setError(null);
     void patchConfig({
       providers: {
         [provider]: {
           env: {
-            [connection.baseUrlKey]: baseUrl.trim(),
-            [connection.apiKeyKey]: apiKey.trim(),
+            [connection.baseUrlKey]: nextBaseUrl,
+            [connection.apiKeyKey]: nextApiKey,
           },
         },
       },
+      // Saving is also what remembers the endpoint — a separate button is one
+      // more thing to forget, and forgetting it loses the key.
+      ...(supportsSavedEndpoints
+        ? {
+            savedProviderEndpoints: rememberProviderEndpoint({
+              endpoints: savedEndpoints,
+              baseUrlKey: connection.baseUrlKey,
+              apiKeyKey: connection.apiKeyKey,
+              baseUrl: nextBaseUrl,
+              apiKey: nextApiKey,
+              savedAt: Date.now(),
+            }),
+          }
+        : {}),
     })
       .then(() => refresh([provider]))
       .then(() => toast.show(t("settings.providers.connection.saved"), { variant: "success" }))
@@ -488,7 +591,35 @@ function ProviderConnectionSection({
         );
       })
       .finally(() => setSaving(false));
-  }, [apiKey, baseUrl, canSave, connection, patchConfig, provider, refresh, t, toast]);
+  }, [
+    apiKey,
+    baseUrl,
+    canSave,
+    connection,
+    patchConfig,
+    provider,
+    refresh,
+    savedEndpoints,
+    supportsSavedEndpoints,
+    t,
+    toast,
+  ]);
+
+  // Forgetting only drops the remembered copy; the provider keeps whatever
+  // endpoint it is currently pointed at.
+  const handleForget = useCallback(() => {
+    if (!savedMatch || saving) return;
+    setError(null);
+    void patchConfig({
+      savedProviderEndpoints: forgetProviderEndpoint(savedEndpoints, savedMatch.id),
+    })
+      .then(() => toast.show(t("settings.providers.connection.forgot"), { variant: "success" }))
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : t("settings.providers.connection.saveFailed"),
+        );
+      });
+  }, [patchConfig, savedEndpoints, savedMatch, saving, t, toast]);
 
   return (
     <View style={sheetStyles.section}>
@@ -497,11 +628,23 @@ function ProviderConnectionSection({
           <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.baseUrl")}</Text>
           <TextFieldPicker
             value={baseUrl}
-            onChange={setBaseUrl}
-            options={baseUrlPresets}
+            onChange={handleBaseUrlChange}
+            options={baseUrlOptions}
             placeholder="http://localhost:1234/v1"
             testID="provider-connection-base-url"
           />
+          {savedMatch ? (
+            <View style={sheetStyles.formActions}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={handleForget}
+                testID="provider-connection-forget-endpoint"
+              >
+                {t("settings.providers.connection.forget")}
+              </Button>
+            </View>
+          ) : null}
           <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.apiKey")}</Text>
           <AdaptiveTextInput
             initialValue={apiKey}
@@ -914,6 +1057,35 @@ function ProviderRemoveSection({
     () => ({ title: t("settings.providers.remove.confirmTitle", { name: providerLabel }) }),
     [providerLabel, t],
   );
+  const confirmFooter = useMemo(
+    () => (
+      <View style={sheetStyles.sheetFooter}>
+        <Button
+          style={sheetStyles.sheetFooterButton}
+          variant="secondary"
+          size="sm"
+          onPress={handleCloseConfirm}
+          disabled={removing}
+        >
+          {t("common.actions.cancel")}
+        </Button>
+        <Button
+          style={sheetStyles.sheetFooterButton}
+          variant="destructive"
+          size="sm"
+          onPress={handleConfirmRemove}
+          disabled={removing}
+          loading={removing}
+          testID="provider-remove-confirm"
+        >
+          {removing
+            ? t("settings.providers.remove.removing")
+            : t("settings.providers.remove.button")}
+        </Button>
+      </View>
+    ),
+    [handleCloseConfirm, handleConfirmRemove, removing, t],
+  );
 
   return (
     <View style={sheetStyles.removeRow}>
@@ -938,34 +1110,13 @@ function ProviderRemoveSection({
           onClose={handleCloseConfirm}
           desktopMaxWidth={420}
           snapPoints={ADD_SNAP_POINTS}
+          footer={confirmFooter}
           testID="provider-remove-confirm-sheet"
         >
           <View style={sheetStyles.formGroup}>
             <Text style={sheetStyles.mutedText}>
               {t("settings.providers.remove.confirmMessage")}
             </Text>
-            <View style={sheetStyles.formActions}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onPress={handleCloseConfirm}
-                disabled={removing}
-              >
-                {t("common.actions.cancel")}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onPress={handleConfirmRemove}
-                disabled={removing}
-                loading={removing}
-                testID="provider-remove-confirm"
-              >
-                {removing
-                  ? t("settings.providers.remove.removing")
-                  : t("settings.providers.remove.button")}
-              </Button>
-            </View>
           </View>
         </AdaptiveModalSheet>
       ) : null}
@@ -1051,6 +1202,32 @@ function AddCustomModelSubSheet({
     [t],
   );
 
+  const footer = useMemo(
+    () => (
+      <View style={sheetStyles.sheetFooter}>
+        <Button
+          style={sheetStyles.sheetFooterButton}
+          variant="secondary"
+          size="sm"
+          onPress={onClose}
+          disabled={saving}
+        >
+          {t("common.actions.cancel")}
+        </Button>
+        <Button
+          style={sheetStyles.sheetFooterButton}
+          variant="default"
+          size="sm"
+          onPress={handleAdd}
+          disabled={!canAdd || saving}
+        >
+          {saving ? t("settings.providers.models.adding") : t("settings.providers.models.add")}
+        </Button>
+      </View>
+    ),
+    [canAdd, handleAdd, onClose, saving, t],
+  );
+
   return (
     <AdaptiveModalSheet
       header={header}
@@ -1058,6 +1235,7 @@ function AddCustomModelSubSheet({
       onClose={onClose}
       desktopMaxWidth={420}
       snapPoints={ADD_SNAP_POINTS}
+      footer={footer}
       testID="add-custom-model-sheet"
     >
       <View style={sheetStyles.formGroup}>
@@ -1070,14 +1248,6 @@ function AddCustomModelSubSheet({
           testID="add-custom-model-id"
         />
         {error ? <Text style={sheetStyles.errorText}>{error}</Text> : null}
-        <View style={sheetStyles.formActions}>
-          <Button variant="secondary" size="sm" onPress={onClose} disabled={saving}>
-            {t("common.actions.cancel")}
-          </Button>
-          <Button variant="default" size="sm" onPress={handleAdd} disabled={!canAdd || saving}>
-            {saving ? t("settings.providers.models.adding") : t("settings.providers.models.add")}
-          </Button>
-        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -1257,36 +1427,6 @@ interface ProviderModalBodyProps {
   onRefresh: () => void;
   onDeleteCustom: (modelId: string) => void;
   theme: { iconSize: { md: number }; colors: { foregroundMuted: string } };
-}
-
-// Tab panes own their scrolling (the sheet is scrollable={false} so per-tab
-// actions stay pinned), so each pane wires up the app's auto-hiding web
-// scrollbar overlay instead of showing the native one.
-function TabScrollView({ children }: { children: ReactNode }) {
-  const isCompact = useIsCompactFormFactor();
-  const showWebScrollbar = isWeb && !isCompact;
-  const scrollRef = useRef<ScrollView>(null);
-  const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: showWebScrollbar });
-
-  return (
-    <View style={sheetStyles.tabScroll}>
-      <ScrollView
-        ref={scrollRef}
-        style={sheetStyles.tabScroll}
-        contentContainerStyle={sheetStyles.tabScrollContent}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-        onLayout={scrollbar.onLayout}
-        onScroll={scrollbar.onScroll}
-        onContentSizeChange={scrollbar.onContentSizeChange}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!showWebScrollbar}
-      >
-        {children}
-      </ScrollView>
-      {scrollbar.overlay}
-    </View>
-  );
 }
 
 interface ModelsTabActionsProps {
@@ -1484,19 +1624,17 @@ export function ProviderDiagnosticSheet({
     () => resolveProviderConnection(providerConfigEntry, providerExtends),
     [providerConfigEntry, providerExtends],
   );
-  const supportsProviderRemove = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.providerRemove === true,
-  );
-  const supportsArtifactsToolGroup = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.artifactsToolGroup === true,
-  );
+  const supportsProviderRemove = useProviderSheetFeature(serverId, "providerRemove");
+  const supportsArtifactsToolGroup = useProviderSheetFeature(serverId, "artifactsToolGroup");
   // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
-  const supportsModelTierOverrides = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.modelTierOverrides === true,
-  );
+  const supportsModelTierOverrides = useProviderSheetFeature(serverId, "modelTierOverrides");
+  // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
+  const supportsSavedEndpoints = useProviderSheetFeature(serverId, "savedProviderEndpoints");
   // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-  const supportsMaxToolRounds = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.openaiCompatMaxToolRounds === true,
+  const supportsMaxToolRounds = useProviderSheetFeature(serverId, "openaiCompatMaxToolRounds");
+  const savedEndpoints = useMemo(
+    () => config?.savedProviderEndpoints ?? EMPTY_SAVED_ENDPOINTS,
+    [config?.savedProviderEndpoints],
   );
   const handleRemoved = useCallback(() => {
     onClose();
@@ -1649,12 +1787,17 @@ export function ProviderDiagnosticSheet({
         subHeader={tabStrip}
         desktopHeight={DESKTOP_SHEET_HEIGHT}
         scrollable={false}
+        // Each tab pane's own TabScrollView owns the body indent, so a field
+        // flush with the scroll box keeps its whole focus ring.
+        contentPadding={false}
         footer={removeFooter}
         snapPoints={MAIN_SNAP_POINTS}
       >
         {currentTab === "models" ? (
           <View style={sheetStyles.tabPane}>
-            <ModelsSearchField initialValue={query} onChange={setQuery} />
+            <View style={sheetStyles.tabPaneFixedRow}>
+              <ModelsSearchField initialValue={query} onChange={setQuery} />
+            </View>
             <TabScrollView>
               <ProviderModalBody
                 discoveredCount={discoveredModels.length}
@@ -1673,13 +1816,15 @@ export function ProviderDiagnosticSheet({
                 theme={theme}
               />
             </TabScrollView>
-            <ModelsTabActions
-              fetchedAtLabel={fetchedAtLabel}
-              modelsRefreshing={modelsRefreshing}
-              onOpenAddSheet={handleOpenAddSheet}
-              onOpenDiagSheet={handleOpenDiagSheet}
-              onRefreshModels={handleRefreshModels}
-            />
+            <View style={sheetStyles.tabPaneFixedRow}>
+              <ModelsTabActions
+                fetchedAtLabel={fetchedAtLabel}
+                modelsRefreshing={modelsRefreshing}
+                onOpenAddSheet={handleOpenAddSheet}
+                onOpenDiagSheet={handleOpenDiagSheet}
+                onRefreshModels={handleRefreshModels}
+              />
+            </View>
           </View>
         ) : null}
         {currentTab === "connection" && connection ? (
@@ -1688,6 +1833,8 @@ export function ProviderDiagnosticSheet({
               key={`connection-${provider}`}
               provider={provider}
               connection={connection}
+              savedEndpoints={savedEndpoints}
+              supportsSavedEndpoints={supportsSavedEndpoints}
               patchConfig={patchConfig}
               refresh={refresh}
             />
@@ -1792,22 +1939,21 @@ const sheetStyles = StyleSheet.create((theme) => ({
   // direction keeps the segmented control at its intrinsic width.
   tabStrip: {
     flexDirection: "row",
-    paddingHorizontal: theme.spacing[6],
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
     paddingTop: theme.spacing[4],
   },
   // Fills the sheet's static content area: fixed rows (search, actions)
-  // sandwich the scrolling list.
+  // sandwich the scrolling list. Only the vertical inset lives here — the
+  // scrolling middle supplies its own horizontal indent (see TabScrollView),
+  // so the fixed rows carry theirs individually.
   tabPane: {
     flex: 1,
     minHeight: 0,
     gap: theme.spacing[3],
+    paddingVertical: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
   },
-  tabScroll: {
-    flex: 1,
-    minHeight: 0,
-  },
-  tabScrollContent: {
-    paddingBottom: theme.spacing[2],
+  tabPaneFixedRow: {
+    paddingHorizontal: theme.spacing[SHEET_HORIZONTAL_PADDING_SCALE],
   },
   searchField: {
     flexDirection: "row",
@@ -1951,6 +2097,17 @@ const sheetStyles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: theme.spacing[2],
+  },
+  // Row handed to AdaptiveModalSheet's `footer` — the sheet's own wrapper
+  // already supplies padding, the top border, and the row alignment.
+  sheetFooter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  sheetFooterButton: {
+    flex: 1,
   },
   codeBlockLoading: {
     paddingVertical: theme.spacing[4],
