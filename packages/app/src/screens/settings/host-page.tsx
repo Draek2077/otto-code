@@ -296,6 +296,34 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
               <MetadataGenerationRows serverId={serverId} />
             </View>
           </SettingsSection>
+          {/* Owns its own per-card sections (Dictation / Voice / OpenAI). */}
+          <SpeechSettingsCards serverId={serverId} />
+        </>
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Tools host section: the agent-facing tool surfaces (Otto tools + browser
+// tools) on their own sidebar section after Teams, rather than trailing the
+// Agents page where they read as a footnote.
+export function HostToolsPage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <>
           <OttoToolsSection serverId={serverId} />
           <BrowserToolsSection serverId={serverId} />
         </>
@@ -308,9 +336,9 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   );
 }
 
-// Teams host section: agent personalities, teams, and voices — split out of the
-// Agents page onto their own sidebar section (after Agents) so each stays a
-// clean grouped card.
+// Teams host section: agent personalities and teams — split out of the Agents
+// page onto their own sidebar section (after Agents) so each stays a clean
+// grouped card.
 export function HostTeamsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -326,9 +354,6 @@ export function HostTeamsPage({ serverId }: { serverId: string }) {
         <>
           <AgentPersonalitiesSection serverId={serverId} />
           <AgentTeamsSection serverId={serverId} />
-          <SettingsSection title={t("settings.host.speech.sectionTitle")}>
-            <SpeechSettingsCards serverId={serverId} />
-          </SettingsSection>
         </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>

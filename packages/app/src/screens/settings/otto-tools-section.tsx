@@ -338,7 +338,7 @@ export function OttoToolsSection({ serverId }: { serverId: string }) {
 // The Browser Tools section: its own grouped card after Otto Tools. The "Browser
 // tools" master (a security opt-in for agent access to Otto browser tabs, and
 // the functional gate over the whole Preview subsystem) sits above its two
-// browser categories — Browser Control and Preview. Rows grey out when the
+// browser categories — Control and Preview. Rows grey out when the
 // master is off.
 export function BrowserToolsSection({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);

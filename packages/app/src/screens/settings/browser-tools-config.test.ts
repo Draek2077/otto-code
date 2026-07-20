@@ -32,7 +32,7 @@ describe("browser tools opt-in config", () => {
     expect(getBrowserToolsCardState({ isConnected: true, config: makeConfig(false) })).toEqual({
       isVisible: true,
       isEnabled: false,
-      title: "Browser tools",
+      title: "Enable Browser tools",
       warning: BROWSER_TOOLS_WARNING,
     });
   });
