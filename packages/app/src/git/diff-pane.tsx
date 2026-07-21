@@ -43,6 +43,7 @@ import {
   FolderTree,
   GitCommitHorizontal,
   GitMerge,
+  History,
   List,
   ListChevronsDownUp,
   ListChevronsUpDown,
@@ -119,6 +120,7 @@ import type { CheckoutGitCommitError, GitHostingProviderId } from "@otto-code/pr
 import { confirmDialog, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { openGitLogTab } from "@/git/open-git-log-tab";
+import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -1428,6 +1430,52 @@ const DIFF_CONTEXT_COPY_PATH_ICON = (
 const DIFF_CONTEXT_FIND_IN_FILES_ICON = (
   <ThemedFolderTree size={14} uniProps={foregroundMutedIconColorMapping} />
 );
+const ThemedHistory = withUnistyles(History);
+const DIFF_CONTEXT_HISTORY_ICON = (
+  <ThemedHistory size={14} uniProps={foregroundMutedIconColorMapping} />
+);
+
+/**
+ * "Git history" for the right-clicked file.
+ *
+ * Its own component so the capability check, the workspace check, and the
+ * handler live together instead of adding three more branches to GitDiffPane,
+ * which is already at the complexity ceiling. Every row in this pane is a
+ * tracked path in the repo, so unlike the Files explorer there is no
+ * is-this-a-repo test to make — if the host can answer, the question applies.
+ */
+function DiffContextHistoryMenuItem({
+  serverId,
+  workspaceId,
+  request,
+}: {
+  serverId: string;
+  workspaceId?: string | null;
+  request: DiffContextMenuRequest | null;
+}) {
+  const { t } = useTranslation();
+  const supported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitFileHistory === true,
+  );
+  const handleSelect = useCallback(() => {
+    if (request && workspaceId) {
+      openFileHistoryTab({ serverId, workspaceId, path: request.path });
+    }
+  }, [request, serverId, workspaceId]);
+
+  if (!supported || !workspaceId || !request) {
+    return null;
+  }
+  return (
+    <ContextMenuItem
+      leading={DIFF_CONTEXT_HISTORY_ICON}
+      onSelect={handleSelect}
+      testID="changes-context-menu-git-history"
+    >
+      {t("gitFileHistory.open")}
+    </ContextMenuItem>
+  );
+}
 const DIFF_CONTEXT_ADD_TO_CONTEXT_ICON = (
   <ThemedPaperclip size={14} uniProps={foregroundMutedIconColorMapping} />
 );
@@ -1495,7 +1543,7 @@ interface DiffBodyContentProps {
   handleDiffListLayout: (event: LayoutChangeEvent) => void;
   handleDiffListScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onContentSizeChange: (width: number, height: number) => void;
-  showDesktopWebScrollbar: boolean;
+  showWebScrollbar: boolean;
   checkingRepositoryLabel: string;
   notRepositoryLabel: string;
 }
@@ -1518,7 +1566,7 @@ function DiffBodyContent({
   handleDiffListLayout,
   handleDiffListScroll,
   onContentSizeChange,
-  showDesktopWebScrollbar,
+  showWebScrollbar,
   checkingRepositoryLabel,
   notRepositoryLabel,
 }: DiffBodyContentProps) {
@@ -1581,7 +1629,7 @@ function DiffBodyContent({
       onScroll={handleDiffListScroll}
       onContentSizeChange={onContentSizeChange}
       scrollEventThrottle={16}
-      showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+      showsVerticalScrollIndicator={!showWebScrollbar}
       // Mixed-height rows (header + potentially very large body) are prone to clipping artifacts.
       // Keep a larger render window and disable clipping to avoid bodies disappearing mid-scroll.
       removeClippedSubviews={false}
@@ -2210,7 +2258,10 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
   const { settings: appSettings } = useAppSettings();
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isMobile;
+  // Not gated on form factor: a narrow browser window still draws the platform's
+  // dated bar, so compact web needs the themed overlay every bit as much as
+  // desktop does. Native is unaffected — the hook no-ops off web.
+  const showWebScrollbar = isWeb;
   const canUseSplitLayout = isWeb && !isMobile;
   const { preferences: changesPreferences, updatePreferences: updateChangesPreferences } =
     useChangesPreferences();
@@ -2501,7 +2552,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     void updateChangesPreferences({ viewMode: nextViewMode });
   }, [setDiffCollapsedFoldersForWorkspace, updateChangesPreferences, viewMode, workspaceStateKey]);
   const scrollbar = useWebScrollViewScrollbar(diffListRef, {
-    enabled: showDesktopWebScrollbar,
+    enabled: showWebScrollbar,
   });
   const diffListScrollOffsetRef = useRef(0);
   const diffListViewportHeightRef = useRef(0);
@@ -3204,7 +3255,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       handleDiffListLayout={handleDiffListLayout}
       handleDiffListScroll={handleDiffListScroll}
       onContentSizeChange={scrollbar.onContentSizeChange}
-      showDesktopWebScrollbar={showDesktopWebScrollbar}
+      showWebScrollbar={showWebScrollbar}
       checkingRepositoryLabel={t("workspace.git.diff.checkingRepository")}
       notRepositoryLabel={t("workspace.git.diff.notRepository")}
     />
@@ -3317,6 +3368,11 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
               {t("workspace.fileExplorer.context.edit")}
             </ContextMenuItem>
           ) : null}
+          <DiffContextHistoryMenuItem
+            serverId={serverId}
+            workspaceId={workspaceId}
+            request={contextMenuRequest}
+          />
           <ContextMenuItem
             leading={DIFF_CONTEXT_FIND_IN_FILES_ICON}
             onSelect={handleContextMenuFindInFiles}

@@ -201,7 +201,8 @@ describe("start", () => {
 
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0]).toMatchObject({
-      repoRoot: "/tmp/repo",
+      // The workspace's own folder, never the daemon's.
+      workspaceDirectory: "/tmp/repo",
       workspaceId: "ws-1",
       projectSlug: "otto",
       branchName: "feature/scripts",

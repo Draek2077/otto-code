@@ -1,3 +1,5 @@
+import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
+
 export type WorkspaceTabCloseButtonPolicy = "all";
 
 // Shared tab-chip metrics — the single source of truth for both the
@@ -11,8 +13,11 @@ export const TAB_ESTIMATED_CHAR_WIDTH = 7;
 export const TAB_CLOSE_BUTTON_WIDTH = 22;
 export const TAB_MAX_WIDTH = 200;
 // The rail trades horizontal room for label space (labels are all it shows),
-// so its cap is deliberately wider than a horizontal tab's.
-export const RAIL_TAB_MAX_WIDTH = TAB_MAX_WIDTH * 2.25;
+// so its cap is deliberately wider than a horizontal tab's — 2.25x TAB_MAX_WIDTH.
+// It lives in constants/layout.ts because the settings layer clamps the saved
+// user rail width to it and must not import from `screens/`; re-exported here so
+// the tab metrics still read as one set.
+export const RAIL_TAB_MAX_WIDTH = WORKSPACE_TABS_RAIL_MAX_WIDTH;
 
 export interface WorkspaceTabLayoutInput {
   viewportWidth: number;

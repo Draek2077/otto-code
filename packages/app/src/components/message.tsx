@@ -60,9 +60,11 @@ import Animated, {
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import {
   getTextEffectSpec,
+  type GlyphTextEffectSpec,
+  type SweepTextEffectSpec,
   type TextEffectActivity,
-  type TextEffectSpec,
 } from "@/styles/text-effects";
+import { TextEffectRain } from "@/components/text-effect-rain";
 import { useTextEffectThemeId } from "@/hooks/use-text-effect-theme";
 import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
@@ -1360,7 +1362,7 @@ interface NativeExpandableBadgeShimmerProps {
   peakWidth: number;
   durationSeconds: number;
   gradientId: string;
-  effect: TextEffectSpec;
+  effect: SweepTextEffectSpec;
 }
 
 const NativeExpandableBadgeShimmer = memo(function NativeExpandableBadgeShimmer({
@@ -1463,7 +1465,7 @@ function NativeShimmerPeakSvg({
   stops,
 }: {
   gradientId: string;
-  stops: TextEffectSpec["nativeStops"];
+  stops: SweepTextEffectSpec["nativeStops"];
 }) {
   return (
     <Svg width="100%" height="100%" preserveAspectRatio="none">
@@ -2469,14 +2471,14 @@ interface ExpandableBadgeProps {
 interface ExpandableBadgeSecondaryLabelProps {
   secondaryLabel?: string;
   secondaryLabelStyle: StyleProp<TextStyle>;
-  shouldMeasureWebShimmer: boolean;
+  shouldMeasureTextSpan: boolean;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
 }
 
 function ExpandableBadgeSecondaryLabel({
   secondaryLabel,
   secondaryLabelStyle,
-  shouldMeasureWebShimmer,
+  shouldMeasureTextSpan,
   onSecondaryLayout,
 }: ExpandableBadgeSecondaryLabelProps) {
   if (!secondaryLabel) {
@@ -2486,7 +2488,7 @@ function ExpandableBadgeSecondaryLabel({
     <Text
       style={secondaryLabelStyle}
       numberOfLines={1}
-      onLayout={shouldMeasureWebShimmer ? onSecondaryLayout : undefined}
+      onLayout={shouldMeasureTextSpan ? onSecondaryLayout : undefined}
     >
       {secondaryLabel}
     </Text>
@@ -2535,7 +2537,7 @@ interface ExpandableBadgeLabelRowProps {
   labelStyle: StyleProp<TextStyle>;
   secondaryLabel?: string;
   secondaryLabelStyle: StyleProp<TextStyle>;
-  shouldMeasureWebShimmer: boolean;
+  shouldMeasureTextSpan: boolean;
   shouldMeasureNativeShimmer: boolean;
   isWebShimmer: boolean;
   isNativeShimmer: boolean;
@@ -2546,7 +2548,10 @@ interface ExpandableBadgeLabelRowProps {
   nativeShimmerPeakWidth: number;
   shimmerDuration: number;
   nativeGradientId: string;
-  effect: TextEffectSpec;
+  sweepEffect: SweepTextEffectSpec | null;
+  glyphEffect: GlyphTextEffectSpec | null;
+  textSpanStartX: number;
+  textSpanWidth: number;
   onLabelRowLayout: (event: LayoutChangeEvent) => void;
   onLabelLayout: (event: LayoutChangeEvent) => void;
   onSecondaryLayout: (event: LayoutChangeEvent) => void;
@@ -2562,7 +2567,7 @@ function ExpandableBadgeLabelRow({
   labelStyle,
   secondaryLabel,
   secondaryLabelStyle,
-  shouldMeasureWebShimmer,
+  shouldMeasureTextSpan,
   shouldMeasureNativeShimmer,
   isWebShimmer,
   isNativeShimmer,
@@ -2573,7 +2578,10 @@ function ExpandableBadgeLabelRow({
   nativeShimmerPeakWidth,
   shimmerDuration,
   nativeGradientId,
-  effect,
+  sweepEffect,
+  glyphEffect,
+  textSpanStartX,
+  textSpanWidth,
   onLabelRowLayout,
   onLabelLayout,
   onSecondaryLayout,
@@ -2592,14 +2600,14 @@ function ExpandableBadgeLabelRow({
       <Text
         style={labelStyle}
         numberOfLines={1}
-        onLayout={shouldMeasureWebShimmer ? onLabelLayout : undefined}
+        onLayout={shouldMeasureTextSpan ? onLabelLayout : undefined}
       >
         {label}
       </Text>
       <ExpandableBadgeSecondaryLabel
         secondaryLabel={secondaryLabel}
         secondaryLabelStyle={secondaryLabelStyle}
-        shouldMeasureWebShimmer={shouldMeasureWebShimmer}
+        shouldMeasureTextSpan={shouldMeasureTextSpan}
         onSecondaryLayout={onSecondaryLayout}
       />
       {showOpenFileButton ? (
@@ -2628,7 +2636,18 @@ function ExpandableBadgeLabelRow({
           showOpenFileButton={showOpenFileButton}
         />
       ) : null}
-      {isNativeShimmer ? (
+      {/* Pure decoration over the untouched label: the rain never reads,
+          splits, or replaces the text — it just travels across the measured
+          text span, clipped to this single-line row. */}
+      {glyphEffect && textSpanWidth > 0 ? (
+        <TextEffectRain
+          effect={glyphEffect}
+          offsetX={textSpanStartX}
+          width={textSpanWidth}
+          seed={label}
+        />
+      ) : null}
+      {isNativeShimmer && sweepEffect ? (
         <NativeExpandableBadgeShimmer
           label={label}
           secondaryLabel={secondaryLabel}
@@ -2637,7 +2656,7 @@ function ExpandableBadgeLabelRow({
           peakWidth={nativeShimmerPeakWidth}
           durationSeconds={shimmerDuration}
           gradientId={nativeGradientId}
-          effect={effect}
+          effect={sweepEffect}
         />
       ) : null}
     </View>
@@ -2725,7 +2744,10 @@ function computeShimmerMetrics(input: {
   labelWidth: number;
   secondaryOffsetX: number;
   secondaryWidth: number;
-  effect: TextEffectSpec;
+  // Null when the active theme is a glyph theme: nothing here sweeps, so all
+  // the peak/duration math falls back to neutral scales.
+  effect: SweepTextEffectSpec | null;
+  hasGlyphEffect: boolean;
 }) {
   const totalShimmerChars = input.label.trim().length + (input.secondaryLabel?.trim().length ?? 0);
   const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
@@ -2733,34 +2755,39 @@ function computeShimmerMetrics(input: {
   // peak width (Professional is 1/1, i.e. exactly the historical values).
   const shimmerDuration =
     Math.max(1, Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment)) *
-    input.effect.durationScale;
+    (input.effect?.durationScale ?? 1);
   const nativeShimmerPeakWidth =
     Math.max(32, Math.min(120, input.labelRowWidth > 0 ? input.labelRowWidth * 0.28 : 0)) *
-    input.effect.peakScale;
-  const isWebShimmer = input.isLoading && isWeb;
-  const shouldMeasureWebShimmer = isWebShimmer;
-  const shouldMeasureNativeShimmer = input.isLoading && isNative;
+    (input.effect?.peakScale ?? 1);
+  const isWebShimmer = input.isLoading && isWeb && input.effect !== null;
+  const shouldMeasureNativeShimmer = input.isLoading && isNative && input.effect !== null;
   const isNativeShimmer =
     shouldMeasureNativeShimmer && input.labelRowWidth > 0 && input.labelRowHeight > 0;
-  const webShimmerSpanStartX = input.labelOffsetX;
-  const webShimmerSpanEndX = input.secondaryLabel
+  // The web sweep needs the text span to place its track; the rain needs it to
+  // know how wide to be — and the rain runs on both platforms, so this
+  // measurement is no longer web-only.
+  const shouldMeasureTextSpan = isWebShimmer || input.hasGlyphEffect;
+  const textSpanStartX = input.labelOffsetX;
+  const textSpanEndX = input.secondaryLabel
     ? input.secondaryOffsetX + input.secondaryWidth
     : input.labelOffsetX + input.labelWidth;
-  const webShimmerSpanWidth = Math.max(1, webShimmerSpanEndX - webShimmerSpanStartX);
+  const webShimmerSpanWidth = Math.max(1, textSpanEndX - textSpanStartX);
   const webShimmerPeakWidth =
-    Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22)) * input.effect.peakScale;
-  const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
-  const webShimmerTrackEnd = webShimmerSpanEndX;
+    Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22)) * (input.effect?.peakScale ?? 1);
+  const webShimmerTrackStart = textSpanStartX - webShimmerPeakWidth;
+  const webShimmerTrackEnd = textSpanEndX;
   return {
     shimmerDuration,
     nativeShimmerPeakWidth,
     isWebShimmer,
-    shouldMeasureWebShimmer,
+    shouldMeasureTextSpan,
     shouldMeasureNativeShimmer,
     isNativeShimmer,
     webShimmerPeakWidth,
     webShimmerTrackStart,
     webShimmerTrackEnd,
+    textSpanStartX,
+    textSpanWidth: Math.max(0, textSpanEndX - textSpanStartX),
   };
 }
 
@@ -2797,9 +2824,9 @@ function buildShimmerTextStyle(input: {
   webShimmerTrackStart: number;
   webShimmerTrackEnd: number;
   offsetX: number;
-  effect: TextEffectSpec;
+  effect: SweepTextEffectSpec | null;
 }): object | null {
-  if (!input.isWebShimmer) return null;
+  if (!input.isWebShimmer || !input.effect) return null;
   // The shared @keyframes animate background-position between the per-element
   // CSS vars, so every effect theme rides the same registered keyframes — the
   // theme only varies the gradient, timing function, and direction here.
@@ -2818,6 +2845,19 @@ function buildShimmerTextStyle(input: {
     "--otto-shimmer-start": `${input.webShimmerTrackStart - input.offsetX}px`,
     "--otto-shimmer-end": `${input.webShimmerTrackEnd - input.offsetX}px`,
   };
+}
+
+// Splits a resolved spec into the branch each renderer understands. Registry
+// specs are module-level constants, so both results are stable references per
+// (theme, activity) and the downstream memos never churn while streaming.
+function resolveTextEffectBranches(
+  effect: SweepTextEffectSpec | GlyphTextEffectSpec,
+  isLoading: boolean,
+): { sweepEffect: SweepTextEffectSpec | null; glyphEffect: GlyphTextEffectSpec | null } {
+  if (effect.kind === "glyph") {
+    return { sweepEffect: null, glyphEffect: isLoading ? effect : null };
+  }
+  return { sweepEffect: effect, glyphEffect: null };
 }
 
 export const ExpandableBadge = memo(function ExpandableBadge({
@@ -2872,10 +2912,11 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
   );
-  // Registry specs are module-level constants, so this reference is stable per
-  // (theme, activity) and the downstream memos never churn while streaming.
   const textEffectThemeId = useTextEffectThemeId();
-  const effect = getTextEffectSpec(textEffectThemeId, effectActivity);
+  const { sweepEffect, glyphEffect } = resolveTextEffectBranches(
+    getTextEffectSpec(textEffectThemeId, effectActivity),
+    isLoading,
+  );
   const [labelRowWidth, setLabelRowWidth] = useState(0);
   const [labelRowHeight, setLabelRowHeight] = useState(0);
   const [labelOffsetX, setLabelOffsetX] = useState(0);
@@ -2887,12 +2928,14 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     shimmerDuration,
     nativeShimmerPeakWidth,
     isWebShimmer,
-    shouldMeasureWebShimmer,
+    shouldMeasureTextSpan,
     shouldMeasureNativeShimmer,
     isNativeShimmer,
     webShimmerPeakWidth,
     webShimmerTrackStart,
     webShimmerTrackEnd,
+    textSpanStartX,
+    textSpanWidth,
   } = computeShimmerMetrics({
     label,
     secondaryLabel,
@@ -2903,7 +2946,8 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     labelWidth,
     secondaryOffsetX,
     secondaryWidth,
-    effect,
+    effect: sweepEffect,
+    hasGlyphEffect: glyphEffect !== null,
   });
 
   const handleLabelRowLayout = useCallback(
@@ -2920,26 +2964,26 @@ export const ExpandableBadge = memo(function ExpandableBadge({
 
   const handleLabelLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      if (!shouldMeasureWebShimmer) {
+      if (!shouldMeasureTextSpan) {
         return;
       }
       const { x, width } = event.nativeEvent.layout;
       setLabelOffsetX((previous) => (Math.abs(previous - x) > 0.5 ? x : previous));
       setLabelWidth((previous) => (Math.abs(previous - width) > 0.5 ? width : previous));
     },
-    [shouldMeasureWebShimmer],
+    [shouldMeasureTextSpan],
   );
 
   const handleSecondaryLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      if (!shouldMeasureWebShimmer || !secondaryLabel) {
+      if (!shouldMeasureTextSpan || !secondaryLabel) {
         return;
       }
       const { x, width } = event.nativeEvent.layout;
       setSecondaryOffsetX((previous) => (Math.abs(previous - x) > 0.5 ? x : previous));
       setSecondaryWidth((previous) => (Math.abs(previous - width) > 0.5 ? width : previous));
     },
-    [shouldMeasureWebShimmer, secondaryLabel],
+    [shouldMeasureTextSpan, secondaryLabel],
   );
 
   useEffect(() => {
@@ -2963,7 +3007,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackStart,
         webShimmerTrackEnd,
         offsetX: labelOffsetX,
-        effect,
+        effect: sweepEffect,
       }),
     [
       isWebShimmer,
@@ -2972,7 +3016,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackStart,
       webShimmerTrackEnd,
       labelOffsetX,
-      effect,
+      sweepEffect,
     ],
   );
 
@@ -2985,7 +3029,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackStart,
         webShimmerTrackEnd,
         offsetX: secondaryOffsetX,
-        effect,
+        effect: sweepEffect,
       }),
     [
       isWebShimmer,
@@ -2994,7 +3038,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackStart,
       webShimmerTrackEnd,
       secondaryOffsetX,
-      effect,
+      sweepEffect,
     ],
   );
 
@@ -3120,7 +3164,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             labelStyle={labelStyle}
             secondaryLabel={secondaryLabel}
             secondaryLabelStyle={secondaryLabelStyle}
-            shouldMeasureWebShimmer={shouldMeasureWebShimmer}
+            shouldMeasureTextSpan={shouldMeasureTextSpan}
             shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
             isWebShimmer={isWebShimmer}
             isNativeShimmer={isNativeShimmer}
@@ -3131,7 +3175,10 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             nativeShimmerPeakWidth={nativeShimmerPeakWidth}
             shimmerDuration={shimmerDuration}
             nativeGradientId={nativeGradientIdRef.current}
-            effect={effect}
+            sweepEffect={sweepEffect}
+            glyphEffect={glyphEffect}
+            textSpanStartX={textSpanStartX}
+            textSpanWidth={textSpanWidth}
             onLabelRowLayout={handleLabelRowLayout}
             onLabelLayout={handleLabelLayout}
             onSecondaryLayout={handleSecondaryLayout}

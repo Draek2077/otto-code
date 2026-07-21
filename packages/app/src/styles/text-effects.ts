@@ -20,7 +20,8 @@ export type TextEffectThemeId =
   | "vivid"
   | "nightRider"
   | "wave"
-  | "flames";
+  | "flames"
+  | "matrix";
 
 export const TEXT_EFFECT_THEME_IDS: readonly TextEffectThemeId[] = [
   "professional",
@@ -30,6 +31,7 @@ export const TEXT_EFFECT_THEME_IDS: readonly TextEffectThemeId[] = [
   "nightRider",
   "wave",
   "flames",
+  "matrix",
 ];
 
 export const DEFAULT_TEXT_EFFECT_THEME: TextEffectThemeId = "professional";
@@ -57,7 +59,14 @@ export interface TextEffectGradientStop {
   opacity: number;
 }
 
-export interface TextEffectSpec {
+/**
+ * The original (and default) animated primitive: one gradient peak sliding
+ * horizontally across the label, masked onto the static text. A theme on this
+ * branch only swaps gradient data and animation parameters — there is no
+ * per-glyph state, and both platforms stay fully declarative.
+ */
+export interface SweepTextEffectSpec {
+  kind: "sweep";
   /** Full CSS gradient for the web sweep (background-clip: text peak). */
   webGradient: string;
   /** The same peak as SVG <Stop>s for the native MaskedView sweep. */
@@ -70,6 +79,64 @@ export interface TextEffectSpec {
   /** Multiplier on the measured peak width; 1 = today's width. */
   peakScale: number;
 }
+
+/**
+ * The second primitive: a horizontal strip of random glyphs travelling across
+ * the label — decoration drawn *over* the text, never a change to it. The label
+ * stays one untouched `<Text numberOfLines={1}>`: it keeps its color, its
+ * ellipsis, its selection, and its layout. The rain is a fixed-pitch row of
+ * columns sized to the measured text span, so it costs the same whatever the
+ * label says.
+ *
+ * Every column runs the *same* one-cycle animation, offset by its index. That
+ * single shared timeline is what keeps both platforms declarative — web gives
+ * every column a negative `animation-delay` on one registered keyframe, native
+ * gives every column a derived style off one shared value. No per-frame JS.
+ *
+ * See components/text-effect-rain.{tsx,web.tsx}.
+ */
+export interface GlyphTextEffectSpec {
+  kind: "glyph";
+  /** A glyph that has just arrived — the leading edge of the strip. */
+  headColor: string;
+  /** The one behind it, fading out; this is what reads as a trail. */
+  tailColor: string;
+  /** Column pitch in px. Roughly one character advance at fontSize.sm. */
+  cellWidth: number;
+  /** Seconds for one full pass of the strip over a single column. */
+  cycleSeconds: number;
+  /** Seconds of lag between adjacent columns — this is what makes it travel. */
+  staggerSeconds: number;
+  /** Characters the rain is drawn from. */
+  scrambleAlphabet: string;
+}
+
+export type TextEffectSpec = SweepTextEffectSpec | GlyphTextEffectSpec;
+
+/**
+ * The rain timeline, as fractions of one cycle. Shared by both renderers so the
+ * CSS keyframes and the reanimated interpolation can never drift:
+ *
+ *   0 .. arrive     nothing; this column is ahead of the strip
+ *   arrive .. swap  first glyph, at the head color
+ *   swap .. fade    second glyph, at the tail color, fading out
+ *   fade .. 1       nothing; the strip has passed
+ *
+ * `fade - arrive` over `staggerSeconds` is how many columns are lit at once,
+ * i.e. how wide the strip reads.
+ */
+export const GLYPH_EFFECT_PHASES = {
+  arrive: 0.02,
+  swap: 0.09,
+  fade: 0.2,
+} as const;
+
+/**
+ * Width of a hard cut. A swap between two layers needs two stops a hair apart
+ * (CSS keyframes and reanimated interpolation both need strictly increasing
+ * offsets), not a single instantaneous one.
+ */
+export const GLYPH_EFFECT_CUT = 0.004;
 
 interface TextEffectThemeDefinition {
   default: TextEffectSpec;
@@ -94,7 +161,10 @@ function buildWebGradient(stops: readonly TextEffectGradientStop[]): string {
 // The original sweep shape (soft edges, solid core) recolored to a single hue.
 // Mirrors PROFESSIONAL's stop offsets exactly so Vivid is "the original sweep
 // pattern" with saturated per-activity colors.
-function makeSweepSpec(color: string, overrides?: Partial<TextEffectSpec>): TextEffectSpec {
+function makeSweepSpec(
+  color: string,
+  overrides?: Partial<Omit<SweepTextEffectSpec, "kind">>,
+): SweepTextEffectSpec {
   const webStops: TextEffectGradientStop[] = [
     { offset: 0, color, opacity: 0 },
     { offset: 0.24, color, opacity: 0.45 },
@@ -104,6 +174,7 @@ function makeSweepSpec(color: string, overrides?: Partial<TextEffectSpec>): Text
     { offset: 1, color, opacity: 0 },
   ];
   return {
+    kind: "sweep",
     webGradient: buildWebGradient(webStops),
     nativeStops: [
       { offset: 0, color, opacity: 0 },
@@ -124,7 +195,8 @@ function makeSweepSpec(color: string, overrides?: Partial<TextEffectSpec>): Text
 // values (they historically differed in shape; keep both verbatim).
 // ---------------------------------------------------------------------------
 
-const PROFESSIONAL: TextEffectSpec = {
+const PROFESSIONAL: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient:
     "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)",
   nativeStops: [
@@ -143,7 +215,8 @@ const PROFESSIONAL: TextEffectSpec = {
 // core, a wider peak, and a noticeably faster sweep.
 // ---------------------------------------------------------------------------
 
-const ACTIVE: TextEffectSpec = {
+const ACTIVE: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient: buildWebGradient([
     { offset: 0, color: "#ffffff", opacity: 0 },
     { offset: 0.18, color: "#ffffff", opacity: 0.65 },
@@ -180,7 +253,8 @@ const SPECTRUM_STOPS: readonly TextEffectGradientStop[] = [
   { offset: 1, color: "#b184f5", opacity: 0 },
 ];
 
-const SPECTRUM: TextEffectSpec = {
+const SPECTRUM: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient: buildWebGradient(SPECTRUM_STOPS),
   nativeStops: SPECTRUM_STOPS,
   bounce: false,
@@ -206,8 +280,8 @@ const VIVID_ACTIVITY_COLORS: Record<TextEffectActivity, string> = {
   other: "#ffffff", // fall back to the original white
 };
 
-function buildVividByActivity(): Partial<Record<TextEffectActivity, TextEffectSpec>> {
-  const result: Partial<Record<TextEffectActivity, TextEffectSpec>> = {};
+function buildVividByActivity(): Partial<Record<TextEffectActivity, SweepTextEffectSpec>> {
+  const result: Partial<Record<TextEffectActivity, SweepTextEffectSpec>> = {};
   for (const [activity, color] of Object.entries(VIVID_ACTIVITY_COLORS)) {
     result[activity as TextEffectActivity] = makeSweepSpec(color);
   }
@@ -220,7 +294,8 @@ function buildVividByActivity(): Partial<Record<TextEffectActivity, TextEffectSp
 
 const NIGHT_RIDER_RED = "#ff4438";
 
-const NIGHT_RIDER: TextEffectSpec = {
+const NIGHT_RIDER: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient: buildWebGradient([
     { offset: 0, color: NIGHT_RIDER_RED, opacity: 0 },
     { offset: 0.25, color: NIGHT_RIDER_RED, opacity: 0.55 },
@@ -261,7 +336,8 @@ const WAVE_STOPS: readonly TextEffectGradientStop[] = [
   { offset: 1, color: WAVE_DARK, opacity: 0 },
 ];
 
-const WAVE: TextEffectSpec = {
+const WAVE: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient: buildWebGradient(WAVE_STOPS),
   nativeStops: WAVE_STOPS,
   bounce: false,
@@ -290,13 +366,40 @@ const FLAMES_STOPS: readonly TextEffectGradientStop[] = [
   { offset: 1, color: "#fff6d8", opacity: 0 },
 ];
 
-const FLAMES: TextEffectSpec = {
+const FLAMES: SweepTextEffectSpec = {
+  kind: "sweep",
   webGradient: buildWebGradient(FLAMES_STOPS),
   nativeStops: FLAMES_STOPS,
   bounce: false,
   easing: "linear",
   durationScale: 0.75,
   peakScale: 1.6,
+};
+
+// ---------------------------------------------------------------------------
+// Matrix — the only kind: "glyph" theme. A horizontal strip of green rain
+// travels across the label: each column flashes one glyph at the head color,
+// swaps to a second at the tail color, and fades. Adjacent columns are
+// staggered, so the strip reads as a band moving left to right rather than
+// every column blinking at once. The label itself is never touched.
+//
+// Deliberately horizontal and one line tall: this rides a single-line tool-call
+// label, so there is nowhere for a vertical drip to go.
+//
+// The alphabet is deliberately ASCII: katakana is the iconic Matrix rain, but
+// nothing guarantees the label font has those glyphs on every platform, and a
+// row of tofu boxes is worse than no reference at all.
+// ---------------------------------------------------------------------------
+
+const MATRIX: GlyphTextEffectSpec = {
+  kind: "glyph",
+  headColor: "#c9ffc2",
+  tailColor: "#35d94f",
+  cellWidth: 8,
+  cycleSeconds: 2.4,
+  // ~(0.2 - 0.02) * 2.4 / 0.045 ≈ 10 columns lit at once.
+  staggerSeconds: 0.045,
+  scrambleAlphabet: "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ#$%&*+=<>|/\\{}[]",
 };
 
 // ---------------------------------------------------------------------------
@@ -315,6 +418,7 @@ const TEXT_EFFECT_THEMES: Record<TextEffectThemeId, TextEffectThemeDefinition> =
   nightRider: { default: NIGHT_RIDER },
   wave: { default: WAVE },
   flames: { default: FLAMES },
+  matrix: { default: MATRIX },
 };
 
 export function getTextEffectSpec(

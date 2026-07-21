@@ -79,6 +79,21 @@ export interface UseAgentFormStateResult {
   refreshProviderModels: (provider?: AgentProvider) => void;
   refetchProviderModelsIfStale: () => void;
   setProviderAndModelFromUser: (provider: AgentProvider, modelId: string) => void;
+  /**
+   * Apply a personality's (or the active team's holder's) resolved values. Same
+   * form effect as picking the provider/model/mode/effort by hand, minus the
+   * persistence: a personality outranks the last-used-model preference, so
+   * writing itself into that preference would erase the very tier it is
+   * supposed to beat — and then read back as the user's own last choice on the
+   * next open. Only a real user pick may write there.
+   */
+  applyPersonalityValues: (values: {
+    provider: string;
+    model: string;
+    /** Omit on unattended surfaces (artifacts) — they have no mode field. */
+    modeId?: string;
+    thinkingOptionId: string;
+  }) => void;
   clearProviderSelectionFromUser: () => void;
   workingDirIsEmpty: boolean;
   persistFormPreferences: () => Promise<void>;
@@ -231,6 +246,11 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     }),
   );
 
+  // True while the form's model/mode/effort came from a personality or the
+  // active team rather than from the user. Gates every preference write for the
+  // same reason applyPersonalityValues doesn't persist — see there.
+  const appliedFromPersonalityRef = useRef(false);
+
   const reducerStateRef = useRef({ form: formState, userModified });
   useEffect(() => {
     reducerStateRef.current = { form: formState, userModified };
@@ -238,6 +258,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   useEffect(() => {
     if (!isVisible) {
+      appliedFromPersonalityRef.current = false;
       dispatch({ type: "RESET" });
     }
   }, [isVisible]);
@@ -413,6 +434,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       const providerDef = selectableProviderDefinitionMap.get(provider);
       const providerPrefs = preferences?.providerPreferences?.[provider];
 
+      appliedFromPersonalityRef.current = false;
       dispatch({
         type: "SET_PROVIDER_FROM_USER",
         provider,
@@ -441,6 +463,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       const normalizedModelId = normalizeSelectedModelId(modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(providerModels);
 
+      appliedFromPersonalityRef.current = false;
       dispatch({
         type: "SET_PROVIDER_AND_MODEL_FROM_USER",
         provider,
@@ -467,6 +490,32 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     ],
   );
 
+  const applyPersonalityValues = useCallback(
+    (values: { provider: string; model: string; modeId?: string; thinkingOptionId: string }) => {
+      const provider = values.provider as AgentProvider;
+      if (!selectableProviderDefinitionMap.has(provider)) {
+        return;
+      }
+      appliedFromPersonalityRef.current = true;
+      dispatch({
+        type: "SET_PROVIDER_AND_MODEL_FROM_USER",
+        provider,
+        modelId: values.model,
+        providerDef: selectableProviderDefinitionMap.get(provider),
+        providerModels: allProviderModels.get(provider) ?? null,
+        providerPrefs: preferences?.providerPreferences?.[provider],
+      });
+      if (values.modeId !== undefined) {
+        dispatch({ type: "SET_MODE_FROM_USER", modeId: values.modeId });
+      }
+      dispatch({
+        type: "SET_THINKING_OPTION_FROM_USER",
+        thinkingOptionId: values.thinkingOptionId,
+      });
+    },
+    [allProviderModels, preferences?.providerPreferences, selectableProviderDefinitionMap],
+  );
+
   const clearProviderSelectionFromUser = useCallback(() => {
     dispatch({ type: "CLEAR_PROVIDER_SELECTION_FROM_USER" });
   }, []);
@@ -475,7 +524,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     (modeId: string) => {
       dispatch({ type: "SET_MODE_FROM_USER", modeId });
       const provider = reducerStateRef.current.form.provider;
-      if (provider) {
+      // Under a personality the model half isn't the user's to remember, and
+      // mode/effort ride with it — see applyPersonalityValues.
+      if (provider && !appliedFromPersonalityRef.current) {
         void updatePreferences((current) =>
           mergeSelectedComposerPreferences({
             preferences: current,
@@ -492,6 +543,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   const setModelFromUser = useCallback(
     (modelId: string) => {
+      appliedFromPersonalityRef.current = false;
       dispatch({ type: "SET_MODEL_FROM_USER", modelId, availableModels });
       const provider = reducerStateRef.current.form.provider;
       if (provider) {
@@ -515,7 +567,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     (thinkingOptionId: string) => {
       dispatch({ type: "SET_THINKING_OPTION_FROM_USER", thinkingOptionId });
       const { provider, model: modelId } = reducerStateRef.current.form;
-      if (provider && modelId) {
+      // See setModeFromUser.
+      if (provider && modelId && !appliedFromPersonalityRef.current) {
         void updatePreferences((current) =>
           mergeSelectedComposerPreferences({
             preferences: current,
@@ -557,6 +610,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   const persistFormPreferences = useCallback(async () => {
     if (!formState.provider) {
+      return;
+    }
+    // Submitting under a personality would write that personality's model into
+    // the last-used-model preference — the tier it outranks — and it would read
+    // back next open as the user's own choice. See applyPersonalityValues.
+    if (appliedFromPersonalityRef.current) {
       return;
     }
     await persistProviderPreferences({
@@ -613,6 +672,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       refreshProviderModels,
       refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
+      applyPersonalityValues,
       clearProviderSelectionFromUser,
       workingDirIsEmpty,
       persistFormPreferences,
@@ -648,6 +708,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       refreshProviderModels,
       refetchProviderModelsIfStale,
       setProviderAndModelFromUser,
+      applyPersonalityValues,
       clearProviderSelectionFromUser,
       workingDirIsEmpty,
       persistFormPreferences,

@@ -6,31 +6,51 @@ export interface TabDropPreview {
   indicatorIndex: number;
 }
 
+export type TabStripOrientation = "horizontal" | "vertical";
+
+interface TabDropRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 interface ComputeTabDropPreviewInput {
   activePaneId: string;
   activeTabId: string;
   overPaneId: string;
   overTabId: string;
   targetTabs: WorkspaceTabDescriptor[];
-  activeRect: {
-    left: number;
-    width: number;
-  };
-  overRect: {
-    left: number;
-    width: number;
-  };
+  /**
+   * Which axis the target pane's tab strip lays tabs out along. The horizontal
+   * row compares X centers; the vertical rail must compare Y centers instead —
+   * every chip in a rail shares the same left/width, so the X comparison is
+   * degenerate there and the insertion index never follows the pointer.
+   */
+  orientation: TabStripOrientation;
+  activeRect: TabDropRect;
+  overRect: TabDropRect;
 }
 
 export function computeTabDropPreview(input: ComputeTabDropPreviewInput): TabDropPreview | null {
   const targetIndex = input.targetTabs.findIndex((tab) => tab.tabId === input.overTabId);
-  if (targetIndex < 0 || input.overRect.width <= 0) {
+  if (targetIndex < 0) {
     return null;
   }
 
-  const activeCenterX = input.activeRect.left + input.activeRect.width / 2;
-  const overCenterX = input.overRect.left + input.overRect.width / 2;
-  const insertAfterTarget = activeCenterX >= overCenterX;
+  const isVertical = input.orientation === "vertical";
+  const overExtent = isVertical ? input.overRect.height : input.overRect.width;
+  if (overExtent <= 0) {
+    return null;
+  }
+
+  const activeCenter = isVertical
+    ? input.activeRect.top + input.activeRect.height / 2
+    : input.activeRect.left + input.activeRect.width / 2;
+  const overCenter = isVertical
+    ? input.overRect.top + input.overRect.height / 2
+    : input.overRect.left + input.overRect.width / 2;
+  const insertAfterTarget = activeCenter >= overCenter;
 
   const indicatorIndex = targetIndex + (insertAfterTarget ? 1 : 0);
   let insertionIndex = indicatorIndex;

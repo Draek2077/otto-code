@@ -8,6 +8,7 @@ import {
   EyeOff,
   Files,
   FitScreen,
+  PictureInPicture,
   Pin,
   PinFilled,
   Restart,
@@ -39,6 +40,7 @@ const ThemedBarChart = withUnistyles(BarChart);
 const ThemedRestart = withUnistyles(Restart);
 const ThemedPin = withUnistyles(Pin);
 const ThemedPinFilled = withUnistyles(PinFilled);
+const ThemedPictureInPicture = withUnistyles(PictureInPicture);
 
 // Responsive collapse: as the toolbar narrows, five lower-priority controls drop
 // one at a time — roughly nearest-the-center-gap first, with Stats kept until
@@ -60,10 +62,14 @@ const ALWAYS_VISIBLE_ICON_COUNT = 4; // audio, zoom, restart, HUD
 const ALWAYS_VISIBLE_SEPARATOR_COUNT = 3; // 2 in the left group + 1 before HUD
 
 /** Which collapsible controls to hide at the given bar width. Null width (first
- * paint, before layout) shows everything. */
+ * paint, before layout) shows everything. The PIP control is never collapsed —
+ * it is a surface switch, not an informational toggle, and a mode control that
+ * vanishes as you narrow the pane is how you lose the surface you're in — so it
+ * only widens the reserved budget. */
 function computeHiddenControls(
   barWidth: number | null,
   isCompact: boolean,
+  hasPipControl: boolean,
 ): ReadonlySet<CollapsibleControl> {
   if (barWidth === null) {
     return EMPTY_HIDDEN;
@@ -72,7 +78,7 @@ function computeHiddenControls(
   const reserved =
     BAR_HORIZONTAL_PADDING +
     CHAT_MIN_WIDTH +
-    ALWAYS_VISIBLE_ICON_COUNT * iconSlot +
+    (ALWAYS_VISIBLE_ICON_COUNT + (hasPipControl ? 1 : 0)) * iconSlot +
     ALWAYS_VISIBLE_SEPARATOR_COUNT * SEPARATOR_SLOT;
   const room = barWidth - reserved;
   const fit = Math.max(0, Math.min(COLLAPSE_ORDER.length, Math.floor(room / iconSlot)));
@@ -101,6 +107,9 @@ export interface VisualizerToolbarProps {
   onRestart: () => void;
   onToggleAudio: () => void;
   onToggleHud: () => void;
+  /** Collapse the tab into the picture-in-picture viewport. Null where the PIP
+   * doesn't exist (compact layouts) — see visualizer-pip-host.tsx. */
+  onCollapseToPip: (() => void) | null;
 }
 
 export function VisualizerToolbar({
@@ -123,6 +132,7 @@ export function VisualizerToolbar({
   onRestart,
   onToggleAudio,
   onToggleHud,
+  onCollapseToPip,
 }: VisualizerToolbarProps) {
   // Zoom to Fit and Restart act on the live simulation — disable them when no
   // chat is selected (the "Waiting for chat activity" empty state) since there's
@@ -140,7 +150,10 @@ export function VisualizerToolbar({
     const width = event.nativeEvent.layout.width;
     setBarWidth((prev) => (prev !== null && Math.abs(prev - width) < 1 ? prev : width));
   }, []);
-  const hidden = useMemo(() => computeHiddenControls(barWidth, isCompact), [barWidth, isCompact]);
+  const hidden = useMemo(
+    () => computeHiddenControls(barWidth, isCompact, onCollapseToPip !== null),
+    [barWidth, isCompact, onCollapseToPip],
+  );
   const options = useMemo<SelectFieldOption<string>[]>(
     () => sessions.map((session) => ({ id: session.id, value: session.id, label: session.label })),
     [sessions],
@@ -198,10 +211,25 @@ export function VisualizerToolbar({
       testID="visualizer-toolbar-hud"
     />
   );
+  // The surface switch. It lives here rather than in the workspace header
+  // because it only means anything while the Visualizer is open — one header
+  // button now opens the surface you last used, and you change surface from
+  // inside. Momentary (no `selected`): pressing it leaves this toolbar behind.
+  const pipNode =
+    onCollapseToPip === null ? null : (
+      <ToolbarIconButton
+        key="pip"
+        label="Collapse to picture-in-picture"
+        Icon={ThemedPictureInPicture}
+        onPress={onCollapseToPip}
+        testID="visualizer-toolbar-pip"
+      />
+    );
   const toggleClusters = [
     { id: "timeline", nodes: [timelineNode] },
     { id: "panels", nodes: [filesNode, costNode] },
     { id: "hud", nodes: [hudNode] },
+    { id: "surface", nodes: [pipNode] },
   ]
     .map((cluster) => ({
       id: cluster.id,
@@ -236,7 +264,7 @@ export function VisualizerToolbar({
             Collapsed away last when the toolbar runs out of room. */}
         {hidden.has("pin") ? null : (
           <ToolbarIconButton
-            label={followActive ? "Pin to this chat" : "Unpin — follow the active chat"}
+            label={followActive ? "Pin this chat" : "Unpin — follow the active chat"}
             Icon={followActive ? ThemedPin : ThemedPinFilled}
             selected={!followActive}
             onPress={onToggleFollow}

@@ -1,9 +1,19 @@
 // Visualizer voice cues — speaks a short line in the agent's own personality
-// voice at three moments: its node JOINS the graph, it FIRST starts thinking,
-// and it COMPLETES a turn. Only the main (root) agent speaks, only for
+// voice at four moments: its node JOINS the graph, it FIRST starts thinking, it
+// finishes its own turn while its observed sub-agents are still running
+// (WAITING), and it COMPLETES a turn. Only the main (root) agent speaks, only for
 // personality-backed agents, only on a host that advertises both the
 // visualizerVoiceCues + ttsPreview capabilities, and only when the user has
 // enabled it (and not muted it).
+//
+// PLAYBACK IS APP-GLOBAL, NOT PANEL-SCOPED. Cues are the Visualizer's
+// notification channel: the whole point is hearing that something happened
+// while you are looking at something else. This hook is therefore mounted once
+// per connected host by `visualizer-voice-cues-host.tsx` (a headless component
+// in the app's root provider tree), with `workspaceId: null` meaning "every
+// workspace on this host" — NOT by visualizer-panel.tsx, which only ran while a
+// Visualizer tab was mounted and visible. The audio fires without any of the
+// visual performance; the graph is a separate, independently-gated concern.
 //
 // The lines are PRE-STORED on the personality (`voiceCues`, authored/edited in
 // the personality editor) — this hook just reads them, no runtime generation.
@@ -29,6 +39,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { hasRunningObservedSubagent } from "@/subagents/select";
 import { formatToMimeType } from "@/voice/audio-format";
 import type { AudioEngine } from "@/voice/audio-engine-types";
 
@@ -38,6 +49,24 @@ interface AgentCueState {
   joined: boolean;
   thoughtOnce: boolean;
   prevStatus: Agent["status"] | null;
+  /**
+   * The parent's turn ended while its observed sub-agents were still running:
+   * the "done" cue is DEFERRED until the fan-out drains (see processAgent).
+   * Cleared when "done" finally speaks, or when a new turn starts.
+   */
+  doneDeferred: boolean;
+  /** "waiting" already spoke for this deferral — say it once, not per tick. */
+  waitingAnnounced: boolean;
+}
+
+function newCueState(): AgentCueState {
+  return {
+    joined: false,
+    thoughtOnce: false,
+    prevStatus: null,
+    doneDeferred: false,
+    waitingAnnounced: false,
+  };
 }
 
 // Coalesce duplicate fires of the same cue across hook instances (e.g. two
@@ -47,6 +76,33 @@ const CUE_DEDUPE_MS = 1500;
 
 // Module-level so all panels share one recent-cue guard.
 const recentCue = new Map<string, number>();
+
+// Global rate limit. Now that cues fire app-wide instead of only for the one
+// workspace you had a Visualizer open on, the failure mode the charter calls
+// out is real: every agent in every workspace on every host hitting a cue
+// moment at the same instant. `engine.isPlaying()` already serializes playback,
+// but it only rejects cues that overlap an *in-flight* line — a burst of short
+// lines would still queue up back-to-back into a chorus. This is the second
+// gate: at most one cue may START per window, app-wide. Dropped, never queued
+// — a stale "Done" arriving 30s late is worse than silence.
+const CUE_GLOBAL_MIN_INTERVAL_MS = 2500;
+let lastGlobalCueAtMs = 0;
+
+/** Reserve the app-wide cue slot, or refuse. Claims the slot on success so two
+ * simultaneous callers can't both pass. */
+function claimGlobalCueSlot(nowMs: number): boolean {
+  if (nowMs - lastGlobalCueAtMs < CUE_GLOBAL_MIN_INTERVAL_MS) {
+    return false;
+  }
+  lastGlobalCueAtMs = nowMs;
+  return true;
+}
+
+/** Test seam — the module-level throttle/dedupe state is global by design. */
+export function __resetVisualizerVoiceCueThrottleForTests(): void {
+  recentCue.clear();
+  lastGlobalCueAtMs = 0;
+}
 
 function personalityFor(
   roster: readonly AgentPersonality[] | undefined,
@@ -132,10 +188,11 @@ async function speak(
   });
 }
 
-/** Root agents in the workspace, optionally scoped to a run's id set. */
+/** Root agents on the host — every workspace when `workspaceId` is null,
+ * optionally scoped to a run's id set. */
 function selectRootAgents(
   serverId: string,
-  workspaceId: string,
+  workspaceId: string | null,
   agentIdFilter: ReadonlySet<string> | null,
 ): Agent[] {
   const agents = useSessionStore.getState().sessions[serverId]?.agents;
@@ -144,7 +201,10 @@ function selectRootAgents(
   }
   const roots: Agent[] = [];
   for (const agent of agents.values()) {
-    if (agent.workspaceId !== workspaceId || agent.parentAgentId) {
+    if (agent.parentAgentId) {
+      continue;
+    }
+    if (workspaceId !== null && agent.workspaceId !== workspaceId) {
       continue;
     }
     if (agentIdFilter && !agentIdFilter.has(agent.id)) {
@@ -155,10 +215,23 @@ function selectRootAgents(
   return roots;
 }
 
+/**
+ * True when the root agent's observed fan-out is still running — the second
+ * half of the "waiting" condition (the first half is its own turn finalizing).
+ * Reads the same track membership the subagents rail renders from, so "still
+ * running" means exactly the rows the user can see under this chat.
+ */
+function hasRunningSubagents(serverId: string, parentAgentId: string): boolean {
+  const agents = useSessionStore.getState().sessions[serverId]?.agents;
+  return agents ? hasRunningObservedSubagent(agents, parentAgentId) : false;
+}
+
 export interface UseVisualizerVoiceCuesInput {
   serverId: string;
-  workspaceId: string;
-  /** Same gate as the adapter: page ready AND pane visible. */
+  /** null = every workspace on this host (the app-global host's mode). */
+  workspaceId: string | null;
+  /** Master gate. The app-global host passes `true` — cues are meant to fire
+   * whether or not any Visualizer surface is mounted. */
   active: boolean;
   agentIdFilter?: ReadonlySet<string> | null;
 }
@@ -197,6 +270,7 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
     // session never replays cues.
     const seedSilently = (agent: Agent): void => {
       states.set(agent.id, {
+        ...newCueState(),
         joined: true,
         thoughtOnce: agent.status === "running",
         prevStatus: agent.status,
@@ -228,6 +302,11 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
       if (last !== undefined && now - last < CUE_DEDUPE_MS) {
         return;
       }
+      // App-wide rate limit, checked LAST so a cue that has no line to speak
+      // (no personality, no stored cues) never burns the slot for one that does.
+      if (!claimGlobalCueSlot(now)) {
+        return;
+      }
       recentCue.set(key, now);
       const voice = resolveVoice(personality);
       void speak(engine, client, {
@@ -252,7 +331,7 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
           return;
         }
         // Genuinely new agent that spawned while watching — announce its join.
-        state = { joined: false, thoughtOnce: false, prevStatus: null };
+        state = newCueState();
         states.set(agent.id, state);
       }
       if (!state.joined) {
@@ -261,18 +340,41 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
         fireCue(agent, "join");
         return; // one cue per tick — thinking follows on the next reconcile
       }
+      if (agent.status === "running") {
+        // A new turn supersedes any deferred "done" from the previous one.
+        state.doneDeferred = false;
+        state.waitingAnnounced = false;
+      }
       if (!state.thoughtOnce && agent.status === "running") {
         state.thoughtOnce = true;
         state.prevStatus = agent.status;
         fireCue(agent, "thinking");
         return;
       }
+      // Finalizing a turn puts the agent in debt for a "done" cue — but the
+      // fan-out it spawned may still be running, and an agent whose helpers are
+      // out isn't done, it's WAITING. So the edge only records the debt; the
+      // block below decides whether to pay it now or hold it.
       if (state.prevStatus === "running" && agent.status === "idle") {
-        state.prevStatus = agent.status;
-        fireCue(agent, "done");
-        return;
+        state.doneDeferred = true;
+        state.waitingAnnounced = false;
       }
       state.prevStatus = agent.status;
+      if (state.doneDeferred && agent.status === "idle") {
+        if (hasRunningSubagents(serverId, agent.id)) {
+          // Announce the wait once per idle stretch (observed rows land over
+          // several store ticks, so this branch runs repeatedly), then hold the
+          // "done" — a later tick finds the fan-out drained and pays it.
+          if (!state.waitingAnnounced) {
+            state.waitingAnnounced = true;
+            fireCue(agent, "waiting");
+          }
+          return;
+        }
+        state.doneDeferred = false;
+        state.waitingAnnounced = false;
+        fireCue(agent, "done");
+      }
     };
 
     const unsubscribe = useSessionStore.subscribe((current, previous) => {

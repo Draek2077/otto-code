@@ -8,7 +8,7 @@
 
 export type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
 import type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
-import type { NodeShape } from './agent-types'
+import type { ContextDisplay, NodeShape } from './agent-types'
 
 type InitCallback = () => void
 type EventCallback = (event: AgentEvent) => void
@@ -38,7 +38,9 @@ export type TogglablePanel = 'timeline' | 'files' | 'cost' | 'stats'
  * halo sprite (distinct from `bloom` — the tight glow hugging each node), `stars`
  * the parallax depth particles, `backdrop` the void fill + ambient spotlight;
  * `nodeShape` picks the agent-node silhouette (defaults to the historical hexagon
- * when omitted); `showFps` renders the bottom-right HUD FPS meter. */
+ * when omitted); `showFps` renders the bottom-right HUD FPS meter;
+ * `contextDisplay` picks whether the main agent reports context occupancy as
+ * the ring or the bar (they are the same number — upstream drew both). */
 export type RenderConfig = Partial<{
   bloom: boolean
   nodeGlow: boolean
@@ -46,8 +48,17 @@ export type RenderConfig = Partial<{
   backdrop: boolean
   nodeShape: NodeShape
   showFps: boolean
+  contextDisplay: ContextDisplay
 }>
-type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; soundVolume: number; hudHidden: boolean }>) => void
+/** OTTO PATCH (OTTO-PATCHES.md): auto-fit framing profile. The camera's
+ * constants were tuned for a full-tab viewport; Otto's PIP renders the same
+ * scene into a ~260x160 box and needs its own values. Omitted keys keep the
+ * tab-tuned defaults. */
+export type CameraConfig = Partial<{
+  viewportPadding: number
+  autoFitMaxScale: number
+}>
+type ConfigCallback = (config: Partial<{ mode: string; autoPlay: boolean; showMockData: boolean; disable1MContext: boolean; panels: PanelsConfig; render: RenderConfig; camera: CameraConfig; soundVolume: number; hudHidden: boolean; hudBottomHidden: boolean; hudCompact: boolean }>) => void
 type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void
 /** OTTO PATCH (OTTO-PATCHES.md): host -> page session commands, driven by the
  * Otto toolbar's chats dropdown (select a chat / close a chat). The page runs

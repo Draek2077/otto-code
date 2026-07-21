@@ -502,7 +502,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
   }
 
-  it("spawns plain scripts in persistent shell terminals without env injection or routes", async () => {
+  it("spawns plain scripts in persistent shell terminals without service env injection or routes", async () => {
     commitOttoScripts({
       web: {
         command: "npm run dev",
@@ -515,7 +515,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-socket-service",
@@ -532,7 +532,16 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.cwd).toBe(repoDir);
     expect(createTerminalCalls[0]?.name).toBe("web");
     expect(createTerminalCalls[0]?.title).toBe("web");
-    expect(createTerminalCalls[0]?.env).toBeUndefined();
+    // No service wiring (no port, no proxy URL) — but the workspace's own
+    // location env is always stamped so the daemon's inherited values can't
+    // decide where the script runs.
+    expect(createTerminalCalls[0]?.env).toEqual({
+      OTTO_WORKTREE_PATH: repoDir,
+      OTTO_SOURCE_CHECKOUT_PATH: repoDir,
+      OTTO_ROOT_PATH: repoDir,
+      OTTO_BRANCH_NAME: "feature-socket-service",
+      PWD: repoDir,
+    });
     expect(terminalRecords[0]?.sentInputs).toEqual(["npm run dev\r"]);
     expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "web" })).toMatchObject({
       type: "script",
@@ -559,7 +568,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-exit",
@@ -598,7 +607,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const firstResult = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-rerun",
@@ -618,7 +627,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const secondResult = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-rerun",
@@ -677,7 +686,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-existing-terminal",
@@ -719,7 +728,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-terminal-exit",
@@ -756,7 +765,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls);
 
     await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-duplicate",
@@ -769,7 +778,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     await expect(
       spawnWorkspaceScript({
-        repoRoot: repoDir,
+        workspaceDirectory: repoDir,
         workspaceId: repoDir,
         projectSlug: "repo",
         branchName: "feature-script-duplicate",
@@ -804,7 +813,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-socket-service",
@@ -858,7 +867,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-public-service",
@@ -924,7 +933,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const firstResult = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
@@ -936,7 +945,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const workerResult = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
@@ -970,7 +979,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(routeStore.getRouteEntry("api--feature-respawn-service--repo.localhost")).toBeNull();
 
     const secondResult = await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
@@ -1027,7 +1036,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-before-rename",
@@ -1092,7 +1101,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     await expect(
       spawnWorkspaceScript({
-        repoRoot: repoDir,
+        workspaceDirectory: repoDir,
         workspaceId: repoDir,
         projectSlug: "repo",
         branchName: "feature-collision-service",
@@ -1127,7 +1136,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     );
 
     await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-collision-service",
@@ -1179,7 +1188,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const createTerminalCalls: CreateTerminalCall[] = [];
 
     await spawnWorkspaceScript({
-      repoRoot: repoDir,
+      workspaceDirectory: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-remote-service",

@@ -325,6 +325,13 @@ function OpenScheduleFormSheet({
     if (!provider) {
       return;
     }
+    // Only a bare model selection is the user's own last-used choice. Under a
+    // personality (or the team's Scheduler) the model on screen belongs to that
+    // binding, and writing it to the device preference would erase the tier it
+    // outranks — then read back as a manual pick on the next create surface.
+    if (personality.resolveSubmitPersonality?.()) {
+      return;
+    }
     await updatePreferences((current) =>
       updateSelectionPreferences({
         preferences: current,
@@ -336,6 +343,7 @@ function OpenScheduleFormSheet({
       }),
     );
   }, [
+    personality,
     state.isolation,
     state.selectedMode,
     state.selectedModel,

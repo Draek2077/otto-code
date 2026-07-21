@@ -77,5 +77,7 @@ export function buildDraftAgentSetup(agent: Agent): WorkspaceDraftTabSetup {
     model: agent.model ?? agent.runtimeInfo?.model ?? null,
     thinkingOptionId: agent.thinkingOptionId ?? agent.runtimeInfo?.thinkingOptionId ?? null,
     featureValues,
+    // A new tab spawned from this agent inherits its identity, not just its model.
+    personality: agent.personalityId ?? null,
   };
 }

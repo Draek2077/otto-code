@@ -36,8 +36,13 @@ interface WorkspaceScriptsButtonProps {
   workspaceId: string;
   scripts: WorkspaceDescriptor["scripts"];
   liveTerminalIds?: readonly string[];
-  onScriptTerminalStarted?: (terminalId: string) => void;
-  onViewTerminal?: (terminalId: string) => void;
+  /**
+   * Required: a script is a terminal that runs a command on launch, so every
+   * start must surface the terminal. Call sites open a focused terminal tab
+   * (via `markScriptTerminalPending` so the tab survives tab reconciliation).
+   */
+  onScriptTerminalStarted: (terminalId: string) => void;
+  onViewTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab?: (url: string) => void;
   hideLabels?: boolean;
   // Stretch to fill the available width (content stays centered).
@@ -430,7 +435,7 @@ export function WorkspaceScriptsButton({
     },
     onSuccess: (result) => {
       if (result.terminalId) {
-        onScriptTerminalStarted?.(result.terminalId);
+        onScriptTerminalStarted(result.terminalId);
       }
     },
   });

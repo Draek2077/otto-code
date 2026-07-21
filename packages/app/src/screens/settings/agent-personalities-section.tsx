@@ -127,11 +127,9 @@ interface CueLineDraft {
   text: string;
 }
 
-interface DraftVoiceCues {
-  join: CueLineDraft[];
-  thinking: CueLineDraft[];
-  done: CueLineDraft[];
-}
+// One editable line list per protocol cue moment — a Record so adding a moment
+// to CUE_MOMENTS lights up the whole editor without touching this shape.
+type DraftVoiceCues = Record<CueMoment, CueLineDraft[]>;
 
 let cueLineSeq = 0;
 function newCueLine(text: string): CueLineDraft {
@@ -169,26 +167,37 @@ const EDITOR_TABS: SegmentedControlOption<EditorTab>[] = [
 const CUE_KIND_LABELS: Record<CueMoment, string> = {
   join: "Starting",
   thinking: "Thinking",
+  waiting: "Waiting",
   done: "Completed",
 };
 
-// Distinct examples per moment — a line should sound wrong at the other two.
+// Distinct examples per moment — a line should sound wrong at the others.
 // (The old “All set” example read equally as starting/thinking/done, which is
 // exactly the ambiguity the generator now avoids too.)
 const CUE_KIND_HINTS: Record<CueMoment, string> = {
   join: "Just picked up the task, about to begin — e.g. “On it”.",
   thinking: "In the middle of working it out — e.g. “I’m thinking…”.",
+  waiting: "Its own turn is over but its sub-agents are still running — e.g. “Still hearing back”.",
   done: "Finished, handing back the result — e.g. “Done”.",
 };
 
+function buildDraftVoiceCues(lines: (moment: CueMoment) => CueLineDraft[]): DraftVoiceCues {
+  const draft = {} as DraftVoiceCues;
+  for (const moment of CUE_MOMENTS) {
+    draft[moment] = lines(moment);
+  }
+  return draft;
+}
+
+function emptyDraftVoiceCues(): DraftVoiceCues {
+  return buildDraftVoiceCues(() => []);
+}
+
 function draftVoiceCuesFrom(cues: AgentPersonality["voiceCues"]): DraftVoiceCues {
-  const lines = (group: string[] | undefined): CueLineDraft[] =>
-    (group ?? []).map((text) => newCueLine(text));
-  return {
-    join: lines(cues?.join),
-    thinking: lines(cues?.thinking),
-    done: lines(cues?.done),
-  };
+  return buildDraftVoiceCues((moment) => {
+    const group: unknown = cues?.[moment];
+    return Array.isArray(group) ? group.map((text) => newCueLine(String(text))) : [];
+  });
 }
 
 // Trim + drop blank lines; returns undefined when every group is empty (so the
@@ -196,19 +205,14 @@ function draftVoiceCuesFrom(cues: AgentPersonality["voiceCues"]): DraftVoiceCues
 function draftVoiceCuesToPersistable(
   cues: DraftVoiceCues,
 ): AgentPersonality["voiceCues"] | undefined {
-  const clean = (lines: CueLineDraft[]): string[] =>
-    lines.map((line) => line.text.trim()).filter((text) => text.length > 0);
-  const join = clean(cues.join);
-  const thinking = clean(cues.thinking);
-  const done = clean(cues.done);
-  if (join.length === 0 && thinking.length === 0 && done.length === 0) {
-    return undefined;
+  const persistable: Record<string, string[]> = {};
+  for (const moment of CUE_MOMENTS) {
+    const lines = cues[moment].map((line) => line.text.trim()).filter((text) => text.length > 0);
+    if (lines.length > 0) {
+      persistable[moment] = lines;
+    }
   }
-  return {
-    ...(join.length > 0 ? { join } : {}),
-    ...(thinking.length > 0 ? { thinking } : {}),
-    ...(done.length > 0 ? { done } : {}),
-  };
+  return Object.keys(persistable).length > 0 ? persistable : undefined;
 }
 
 function draftVoiceCuesAreEmpty(cues: DraftVoiceCues): boolean {
@@ -358,7 +362,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     glowA: DEFAULT_GLOW_A,
     glowB: DEFAULT_GLOW_B,
     voice: null,
-    voiceCues: { join: [], thinking: [], done: [] },
+    voiceCues: emptyDraftVoiceCues(),
   };
 }
 
@@ -913,7 +917,7 @@ function PersonalityEditModal({
   const [activeTab, setActiveTab] = useState<EditorTab>("identity");
   const [isGeneratingCues, setIsGeneratingCues] = useState(false);
   // Determinate progress for cue generation — one unit per moment (join /
-  // thinking / done), each its own request. Null when not generating; the bar
+  // thinking / waiting / done), each its own request. Null when not generating; the bar
   // hides. Any result that lands after the editor closes is dropped on the
   // floor (the draft never saved), which is exactly the intended behavior.
   const [cueGenProgress, setCueGenProgress] = useState<{
@@ -1119,7 +1123,7 @@ function PersonalityEditModal({
   }, []);
 
   // Author cue lines for the current draft (name + prompt) via the Writer
-  // chain. One request per moment (join / thinking / done) so each moment gets
+  // chain. One request per moment (join / thinking / waiting / done) so each moment gets
   // a focused prompt — distinct lines — and the caller can report determinate
   // progress as each lands. Returns the lines per SUCCEEDED moment plus the
   // moments that failed (errored, or came back empty) so callers can merge
@@ -1454,7 +1458,8 @@ function FieldLabel({ label }: { label: string }): ReactElement {
 }
 
 // ---------------------------------------------------------------------------
-// Voice cues editor — the three cue groups (join / thinking / done), each an
+// Voice cues editor — one group per CUE_MOMENTS moment (join / thinking /
+// waiting / done), each an
 // editable list of short spoken lines, with an "Generate with AI" action that
 // authors a set from the draft's name + prompt.
 // ---------------------------------------------------------------------------
@@ -1556,8 +1561,8 @@ function VoiceCuesEditor({
     <View style={styles.cuesContainer}>
       <Text style={styles.fieldHint}>
         Short lines spoken in this personality&apos;s voice when its node joins the graph, first
-        starts thinking, and finishes (Settings → Visualizer → Sound → Voice cues). Left empty, a
-        set is generated for you on save.
+        starts thinking, waits on its sub-agents, and finishes (Settings → Visualizer → Sound →
+        Voice cues). Left empty, a set is generated for you on save.
       </Text>
       {canGenerate ? (
         <Button

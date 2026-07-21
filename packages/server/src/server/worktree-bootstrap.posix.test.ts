@@ -450,7 +450,7 @@ describe.skipIf(isPlatform("win32"))("worktree-bootstrap POSIX-only", () => {
       await Promise.all(
         ["api", "web"].map((scriptName) =>
           spawnWorkspaceScript({
-            repoRoot: repoDir,
+            workspaceDirectory: repoDir,
             workspaceId: repoDir,
             projectSlug: "repo",
             branchName: "feature-peer-env",

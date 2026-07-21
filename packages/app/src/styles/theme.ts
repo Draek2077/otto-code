@@ -901,6 +901,16 @@ export function compactUp(
   return { xs: scaled, sm: scaled, md: value, lg: value, xl: value };
 }
 
+// Breakpoint-shaped value for a `fontSize`/`lineHeight` that should read a couple
+// of points larger on compact form factors. This bump is deliberately *on top of*
+// the ambient size patch `applyAppearance` applies — the ambient patch keeps the
+// whole app legible, this puts dense panel text (tables, gutters, metadata rows)
+// back to a comfortable reading size on a phone. `sm` is omitted so it inherits
+// `xs`, matching `useIsCompactFormFactor`'s xs+sm definition of "compact".
+export function compactFont(size: number, bump = 2): Record<"xs" | "md", number> {
+  return { xs: size + bump, md: size };
+}
+
 function scaleIconSizes(scale: number): Record<keyof typeof ICON_SIZE, number> {
   return {
     xs: ICON_SIZE.xs * scale,

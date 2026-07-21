@@ -9,6 +9,7 @@ import { createVoiceCueGenerator, type VoiceCueLines } from "./voice-cue-generat
 const SAMPLE: VoiceCueLines = {
   join: ["On it", "Let's go"],
   thinking: ["Thinking", "Let me see"],
+  waiting: ["Helpers still out", "Idling a moment"],
   done: ["All set", "Done"],
 };
 
@@ -75,6 +76,7 @@ describe("createVoiceCueGenerator", () => {
       expect(request.prompt).toContain("COMPLETED");
       expect(request.prompt).not.toContain("STARTING");
       expect(request.prompt).not.toContain("THINKING");
+      expect(request.prompt).not.toContain("WAITING");
       return { lines: ["Done", "Wrapped up"] };
     });
     const generator = createVoiceCueGenerator({
@@ -83,8 +85,23 @@ describe("createVoiceCueGenerator", () => {
     });
 
     const cues = await generator.generate({ name: "Nova", moment: "done" });
-    expect(cues).toEqual({ join: [], thinking: [], done: ["Done", "Wrapped up"] });
+    expect(cues).toEqual({ join: [], thinking: [], waiting: [], done: ["Done", "Wrapped up"] });
     expect(fake.calls).toBe(1);
+  });
+
+  test("authors the waiting moment as sub-agents-still-running, not finality", async () => {
+    const fake = fakeGeneration((request) => {
+      expect(request.prompt).toContain("WAITING");
+      expect(request.prompt).not.toContain("COMPLETED");
+      return { lines: ["Helpers still out"] };
+    });
+    const generator = createVoiceCueGenerator({
+      generation: fake.generation,
+      fallbackCwd: () => "/repo",
+    });
+
+    const cues = await generator.generate({ name: "Nova", moment: "waiting" });
+    expect(cues).toEqual({ join: [], thinking: [], waiting: ["Helpers still out"], done: [] });
   });
 
   test("returns null when generation fails with a structured error", async () => {

@@ -28,7 +28,7 @@ export interface E2EAgentPersonality {
   spinner?: { glowA: string; glowB: string };
   // Hand-written cue lines so daemon-side flows never route through AI cue
   // generation for spec-owned personalities.
-  voiceCues?: { join?: string[]; thinking?: string[]; done?: string[] };
+  voiceCues?: { join?: string[]; thinking?: string[]; waiting?: string[]; done?: string[] };
 }
 
 export interface E2EAgentTeam {
@@ -150,7 +150,12 @@ export function buildMockPersonality(input: {
     spinner: { glowA: input.glowA ?? "#22aa66", glowB: input.glowB ?? "#6622aa" },
     ...(input.prompt ? { personalityPrompt: input.prompt } : {}),
     // Pre-filled cues keep every save/spawn path away from AI cue generation.
-    voiceCues: { join: ["On it"], thinking: ["Working on it"], done: ["Done"] },
+    voiceCues: {
+      join: ["On it"],
+      thinking: ["Working on it"],
+      waiting: ["Still hearing back"],
+      done: ["Done"],
+    },
   };
 }
 

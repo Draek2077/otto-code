@@ -2395,7 +2395,15 @@ export function ResolvedDesktopTabChip({
 
         return (
           <View style={styles.tabSlot}>
-            {showDropIndicatorBefore ? <View style={TAB_DROP_INDICATOR_BEFORE_STYLE} /> : null}
+            {showDropIndicatorBefore ? (
+              <View
+                style={
+                  orientation === "vertical"
+                    ? TAB_DROP_INDICATOR_ABOVE_STYLE
+                    : TAB_DROP_INDICATOR_BEFORE_STYLE
+                }
+              />
+            ) : null}
             <TabChip
               tab={item.tab}
               isActive={item.isActive}
@@ -2415,7 +2423,15 @@ export function ResolvedDesktopTabChip({
               dragHandleProps={dragHandleProps}
               orientation={orientation}
             />
-            {showDropIndicatorAfter ? <View style={TAB_DROP_INDICATOR_AFTER_STYLE} /> : null}
+            {showDropIndicatorAfter ? (
+              <View
+                style={
+                  orientation === "vertical"
+                    ? TAB_DROP_INDICATOR_BELOW_STYLE
+                    : TAB_DROP_INDICATOR_AFTER_STYLE
+                }
+              />
+            ) : null}
           </View>
         );
       }}
@@ -2735,6 +2751,25 @@ const styles = StyleSheet.create((theme) => ({
   tabDropIndicatorAfter: {
     right: -3,
   },
+  // The rail's counterpart: the same pill turned 90°, so it reads as the gap
+  // between two stacked chips rather than beside them. It is a separate base
+  // style rather than an override because it has to unset top/bottom/width.
+  tabDropIndicatorVertical: {
+    position: "absolute",
+    left: theme.spacing[2],
+    right: theme.spacing[2],
+    height: 5,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
+    zIndex: 10,
+    pointerEvents: "none",
+  },
+  tabDropIndicatorAbove: {
+    top: -3,
+  },
+  tabDropIndicatorBelow: {
+    bottom: -3,
+  },
   tabLabel: {
     flexShrink: 1,
     minWidth: 0,
@@ -2877,6 +2912,14 @@ const styles = StyleSheet.create((theme) => ({
 
 const TAB_DROP_INDICATOR_BEFORE_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorBefore];
 const TAB_DROP_INDICATOR_AFTER_STYLE = [styles.tabDropIndicator, styles.tabDropIndicatorAfter];
+const TAB_DROP_INDICATOR_ABOVE_STYLE = [
+  styles.tabDropIndicatorVertical,
+  styles.tabDropIndicatorAbove,
+];
+const TAB_DROP_INDICATOR_BELOW_STYLE = [
+  styles.tabDropIndicatorVertical,
+  styles.tabDropIndicatorBelow,
+];
 const TABS_TOOLS_HIDDEN_STYLE = [styles.tabsTools, styles.tabsToolsHidden];
 // The tools strip opts out of the Electron titlebar drag region so its whole
 // area — padding and hidden buttons included — delivers hover events, not just

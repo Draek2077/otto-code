@@ -73,6 +73,30 @@ function isTrackDescendantOf(
   return false;
 }
 
+/**
+ * True when at least one OBSERVED sub-agent in `parentAgentId`'s track is still
+ * running — i.e. the parent's own turn may be over, but the fan-out it spawned
+ * is not. Attended children are excluded on purpose: they are their own chats
+ * the user drives, not work this chat is waiting on. Used by the Visualizer's
+ * "waiting" voice cue (see docs/visualizer.md "Voice cues").
+ */
+export function hasRunningObservedSubagent(
+  agents: ReadonlyMap<string, Agent>,
+  parentAgentId: string,
+): boolean {
+  for (const agent of agents.values()) {
+    if (
+      agent.status === "running" &&
+      agent.attend === "observed" &&
+      !agent.archivedAt &&
+      isTrackDescendantOf(agent, parentAgentId, agents)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function selectSubagentsForParent(
   state: SessionStoreSnapshot,
   params: SelectSubagentsParams,

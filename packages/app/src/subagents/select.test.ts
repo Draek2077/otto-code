@@ -1,6 +1,6 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { afterEach, describe, expect, it } from "vitest";
-import { selectSubagentsForParent } from "./select";
+import { hasRunningObservedSubagent, selectSubagentsForParent } from "./select";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
 const SERVER_ID = "server-1";
@@ -350,5 +350,84 @@ describe("selectSubagentsForParent", () => {
         EMPTY_PENDING_ARCHIVE_IDS,
       ),
     );
+  });
+});
+
+describe("hasRunningObservedSubagent", () => {
+  function agentsOf(agents: Agent[]): ReadonlyMap<string, Agent> {
+    setAgents(agents);
+    const map = useSessionStore.getState().sessions[SERVER_ID]?.agents;
+    if (!map) {
+      throw new Error("session not initialized");
+    }
+    return map;
+  }
+
+  it("is true while an observed child of the parent is still running", () => {
+    const agents = agentsOf([
+      makeAgent({ id: "parent", status: "idle" }),
+      makeAgent({
+        id: "child",
+        parentAgentId: "parent",
+        attend: "observed",
+        status: "running",
+      }),
+    ]);
+
+    expect(hasRunningObservedSubagent(agents, "parent")).toBe(true);
+  });
+
+  it("is false once every observed child has stopped running", () => {
+    const agents = agentsOf([
+      makeAgent({ id: "parent", status: "idle" }),
+      makeAgent({ id: "child", parentAgentId: "parent", attend: "observed", status: "idle" }),
+    ]);
+
+    expect(hasRunningObservedSubagent(agents, "parent")).toBe(false);
+  });
+
+  it("ignores archived rows, attended children, and other parents' fan-outs", () => {
+    const agents = agentsOf([
+      makeAgent({ id: "parent", status: "idle" }),
+      makeAgent({
+        id: "archived",
+        parentAgentId: "parent",
+        attend: "observed",
+        status: "running",
+        archivedAt: AGENT_TIMESTAMP,
+      }),
+      // An attended child is its own chat with its own cues — the parent is not
+      // waiting on it.
+      makeAgent({
+        id: "attended",
+        parentAgentId: "parent",
+        attend: "attended",
+        status: "running",
+      }),
+      makeAgent({ id: "other-parent", status: "idle" }),
+      makeAgent({
+        id: "other-child",
+        parentAgentId: "other-parent",
+        attend: "observed",
+        status: "running",
+      }),
+    ]);
+
+    expect(hasRunningObservedSubagent(agents, "parent")).toBe(false);
+  });
+
+  it("follows a nested observed fan-out", () => {
+    const agents = agentsOf([
+      makeAgent({ id: "parent", status: "idle" }),
+      makeAgent({ id: "child", parentAgentId: "parent", attend: "observed", status: "idle" }),
+      makeAgent({
+        id: "grandchild",
+        parentAgentId: "child",
+        attend: "observed",
+        status: "running",
+      }),
+    ]);
+
+    expect(hasRunningObservedSubagent(agents, "parent")).toBe(true);
   });
 });

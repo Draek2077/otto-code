@@ -213,6 +213,7 @@ describe("workspace-tabs-store reducers", () => {
         modeId: "load-test",
         model: "ten-second-stream",
         thinkingOptionId: null,
+        personality: null,
         featureValues: { effort: "high" },
       },
     });
@@ -257,6 +258,7 @@ describe("workspace-tabs-store reducers", () => {
         modeId: "load-test",
         model: "ten-second-stream",
         thinkingOptionId: null,
+        personality: null,
         featureValues: {},
       },
     });

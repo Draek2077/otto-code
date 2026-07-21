@@ -961,6 +961,10 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
+    // Carry the picked identity, not just its provider/model — the draft tab's
+    // initialValues outrank device memory, so a dropped personality here can't
+    // be recovered downstream.
+    personality: resolveSpawnPersonalityId(input.composerState.agentControls.personality),
   };
 }
 
@@ -1057,6 +1061,7 @@ function buildComposerConfig(input: {
     isVisible: true,
     onlineServerIds: isConnected && serverId ? [serverId] : [],
     lockedWorkingDir: workingDir,
+    initialPersonalityId: initialSetup?.personality ?? null,
   };
 }
 
@@ -2365,6 +2370,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.destructive,
     lineHeight: 20,
+    // Match the composer's own horizontal inset so the message sits centered
+    // under the input box rather than against the container's outer edge.
+    paddingHorizontal: theme.spacing[4],
+    textAlign: "center",
   },
   formStack: {
     marginBottom: theme.spacing[3],

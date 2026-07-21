@@ -22,6 +22,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/hooks/use-settings";
+import { CHAT_PANE_OVERLAY_Z } from "@/constants/layout";
+import { useVisualizerPipInset } from "@/visualizer/use-visualizer-pip-inset";
 import type { Theme } from "@/styles/theme";
 import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
 import type { SuggestedTaskRow } from "./select";
@@ -40,6 +42,7 @@ const ThemedX = withUnistyles(X);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+const statusInfoColorMapping = (theme: Theme) => ({ color: theme.colors.statusInfo });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 // Per-mode display copy + a stable leading icon (react-perf forbids inline JSX
@@ -108,6 +111,18 @@ export function SuggestedTasksOverlay({
   actions,
 }: SuggestedTasksOverlayProps): ReactElement | null {
   const enabled = useSettings((settings) => settings.suggestedTasksEnabled);
+  // Keep clear of the Visualizer PIP, wherever the user has dragged it. The PIP
+  // is mounted above this card's whole ancestry, so zIndex cannot save an
+  // overlap — the card has to physically shift instead. Zeroes when no PIP is
+  // open, or when it is parked somewhere that can't collide.
+  const pipInset = useVisualizerPipInset();
+  const overlayWrapStyle = useMemo(
+    () =>
+      pipInset.left > 0 || pipInset.right > 0
+        ? [styles.overlayWrap, { paddingLeft: pipInset.left, paddingRight: pipInset.right }]
+        : styles.overlayWrap,
+    [pipInset],
+  );
   const defaultMode = useSettings((settings) => settings.suggestedTasksDefaultMode);
   const allTaskIds = useMemo(() => rows.map((row) => row.taskId), [rows]);
   // Secondary options for a per-row split button: every mode except the default.
@@ -131,7 +146,7 @@ export function SuggestedTasksOverlay({
   const showBulk = rows.length >= 2;
 
   return (
-    <View style={styles.overlayWrap} pointerEvents="box-none">
+    <View style={overlayWrapStyle} pointerEvents="box-none">
       <Animated.View
         entering={FadeIn.duration(180)}
         exiting={FadeOut.duration(140)}
@@ -140,7 +155,7 @@ export function SuggestedTasksOverlay({
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <ThemedLightbulb size={14} uniProps={accentColorMapping} />
+            <ThemedLightbulb size={14} uniProps={statusInfoColorMapping} />
             <Text style={styles.headerLabel} numberOfLines={1}>
               {rows.length === 1 ? "Suggested task" : `Suggested tasks (${rows.length})`}
             </Text>
@@ -440,18 +455,36 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[3],
+    // Claims the top slot among the chat pane's floating overlays — see the
+    // CHAT_PANE_OVERLAY_Z note. Without it this card would rely on sibling
+    // paint order, which any later-mounted overlay (a Visualizer PIP) wins.
+    zIndex: CHAT_PANE_OVERLAY_Z.suggestedTasks,
   },
   card: {
     width: "100%",
     maxWidth: 460,
+    // The card is an offer of work, not a log line, so it takes the info tone
+    // from the status-tint family (docs/design.md §12) instead of the neutral
+    // panel chrome used elsewhere: a sky ring around a sky-washed interior.
+    // Deliberately NOT the theme accent — accent is the CTA colour and already
+    // paints the start button below, so an accent card would read as more of
+    // the same chrome; and on the monochrome variants accentBright is
+    // near-white, which would leave this card with no hue at all. Blue also
+    // stays put across all 13 variants, so "a suggestion" always looks like a
+    // suggestion.
+    //
+    // surface2 is the opaque base under the children's alpha washes — the card
+    // floats over the stream, so it cannot be washed directly or chat text
+    // would show through.
     backgroundColor: theme.colors.surface2,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
+    borderColor: theme.colors.statusInfo,
     borderRadius: theme.borderRadius["2xl"],
     overflow: "hidden",
     ...theme.shadow.md,
   },
   header: {
+    backgroundColor: theme.colors.statusInfoSurface,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -490,6 +523,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   list: {
     maxHeight: LIST_MAX_HEIGHT,
+    // Same wash as the header band, so the card reads as one tinted object;
+    // the header separates on its bottom border alone.
+    backgroundColor: theme.colors.statusInfoSurface,
   },
   listContent: {
     paddingVertical: theme.spacing[1],
@@ -520,6 +556,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "stretch",
     flexShrink: 0,
+    // Opaque, deliberately un-tinted: the button has to separate from the
+    // washed row behind it, and a wash on a wash would erase it. Its accent
+    // chrome is what makes it read as the action inside a blue card.
+    backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.md,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,

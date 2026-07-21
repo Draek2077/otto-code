@@ -38,7 +38,7 @@ interface CastMemberSpec {
   prompt: string;
   glowA: string;
   glowB: string;
-  cues: { join: string[]; thinking: string[]; done: string[] };
+  cues: { join: string[]; thinking: string[]; waiting: string[]; done: string[] };
 }
 
 const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
@@ -53,6 +53,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Let's get to work."],
       thinking: ["Mapping the plan."],
+      waiting: ["Delegates are out."],
       done: ["Shipped and tidy."],
     },
   },
@@ -67,6 +68,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Hammer's hot."],
       thinking: ["Forging it now."],
+      waiting: ["Others still swinging."],
       done: ["Cooled and done."],
     },
   },
@@ -83,6 +85,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Fresh eyes here."],
       thinking: ["Weighing the tradeoffs."],
+      waiting: ["Waiting on the evidence."],
       done: ["Verdict is in."],
     },
   },
@@ -97,6 +100,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Right on time."],
       thinking: ["Ticking through it."],
+      waiting: ["Clock's still running."],
       done: ["Logged and clean."],
     },
   },
@@ -111,6 +115,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Boots on."],
       thinking: ["Scouting ahead."],
+      waiting: ["Party's still out."],
       done: ["Trail's mapped."],
     },
   },
@@ -125,6 +130,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Ink's ready."],
       thinking: ["Drafting a line."],
+      waiting: ["Waiting on my sources."],
       done: ["Final draft in."],
     },
   },
@@ -139,6 +145,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
     cues: {
       join: ["Inspiration struck."],
       thinking: ["Sketching shapes."],
+      waiting: ["Apprentices still at it."],
       done: ["Behold the piece."],
     },
   },

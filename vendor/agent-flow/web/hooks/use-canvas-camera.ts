@@ -5,7 +5,7 @@ import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, D
 /** Extra padding added to agent node radii for auto-fit bounding box */
 // OTTO: 22 -> 12. Stacks on top of ANIM.viewportPadding, so the two together
 // were over-inflating the fitted bounds and shrinking every node.
-const AUTOFIT_AGENT_PADDING = 12
+const AUTOFIT_AGENT_PADDING = 16
 
 /**
  * Ceiling on the auto-fit zoom. OTTO: was an inline `2` in the Math.min below,
@@ -13,6 +13,25 @@ const AUTOFIT_AGENT_PADDING = 12
  * (4) only bounds manual wheel zoom and does not apply here.
  */
 const AUTOFIT_MAX_SCALE = 3.2
+
+/**
+ * OTTO PATCH (OTTO-PATCHES.md): host-overridable auto-fit framing.
+ *
+ * The two constants above were tuned for a full-tab viewport. Otto's PIP mode
+ * renders the same scene into a ~260x160 box, where they read wrong in both
+ * directions: `viewportPadding` (56 world units, added on EACH side) eats most
+ * of a small viewport's usable area, and `AUTOFIT_MAX_SCALE` 3.2 lets a
+ * single-node graph balloon past the frame. A host can send a profile instead
+ * of hard-coding one size's values into the shared constants.
+ *
+ * Omitted keys keep the tab's values, so a host that sends nothing is unchanged.
+ */
+export interface CameraFramingConfig {
+  /** World-unit margin added on each side of the fitted bounds. */
+  viewportPadding?: number
+  /** Ceiling on the auto-fit zoom. */
+  autoFitMaxScale?: number
+}
 
 export interface Transform {
   x: number
@@ -36,6 +55,8 @@ interface CameraOptions {
   agentCount: number
   zoomToFitTrigger?: number
   selectedAgentId: string | null
+  /** OTTO PATCH (OTTO-PATCHES.md): per-viewport auto-fit framing profile. */
+  framing?: CameraFramingConfig
 }
 
 export function useCanvasCamera({
@@ -46,7 +67,13 @@ export function useCanvasCamera({
   agentCount,
   zoomToFitTrigger,
   selectedAgentId,
+  framing,
 }: CameraOptions) {
+  // OTTO PATCH (OTTO-PATCHES.md): kept in a ref so computeFitTransform's
+  // identity (and therefore its fit cache) is unaffected by the profile.
+  const framingRef = useRef<CameraFramingConfig | undefined>(framing)
+  framingRef.current = framing
+
   const transformRef = useRef<Transform>({ x: 0, y: 0, scale: 1 })
   const userHasNavigatedRef = useRef(false)
   const targetTransformRef = useRef<Transform | null>(null)
@@ -167,7 +194,11 @@ export function useCanvasCamera({
       fitCacheRef.current = { agents, toolCalls, discoveries, selectedAgentId, result: null }
       return null
     }
-    const padding = ANIM.viewportPadding
+    // OTTO PATCH (OTTO-PATCHES.md): the host's framing profile overrides the
+    // tab-tuned defaults. Read through a ref so a profile change never
+    // re-creates this callback (its fit cache is keyed on the collections).
+    const padding = framingRef.current?.viewportPadding ?? ANIM.viewportPadding
+    const maxScale = framingRef.current?.autoFitMaxScale ?? AUTOFIT_MAX_SCALE
     const boundsW = maxX - minX + padding * 2
     const boundsH = maxY - minY + padding * 2
     const centerX = (minX + maxX) / 2
@@ -175,7 +206,7 @@ export function useCanvasCamera({
     const scale = Math.min(
       dimensions.width / boundsW,
       dimensions.height / boundsH,
-      AUTOFIT_MAX_SCALE,
+      maxScale,
     )
     const result = {
       x: dimensions.width / 2 - centerX * scale,

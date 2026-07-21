@@ -2305,6 +2305,14 @@ export class Session {
         return this.checkoutSession.handleCheckoutGitRollbackRequest(msg);
       case "checkout.git.get_operation_log.request":
         return this.checkoutSession.handleCheckoutGitGetOperationLogRequest(msg);
+      case "checkout.git.get_file_history.request":
+        return this.checkoutSession.handleCheckoutGitFileHistoryRequest(msg);
+      case "checkout.git.get_file_commit_diff.request":
+        return this.checkoutSession.handleCheckoutGitFileCommitDiffRequest(msg);
+      case "checkout.git.get_file_blame.request":
+        return this.checkoutSession.handleCheckoutGitFileBlameRequest(msg);
+      case "checkout.git.get_file_origin.request":
+        return this.checkoutSession.handleCheckoutGitFileOriginRequest(msg);
       case "runs.get_snapshot.request": {
         this.handleRunsGetSnapshotRequest(msg);
         return undefined;

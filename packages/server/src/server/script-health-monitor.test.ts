@@ -444,7 +444,7 @@ describe("ScriptHealthMonitor", () => {
       await Promise.all(
         ["typecheck", "api"].map((scriptName) =>
           spawnWorkspaceScript({
-            repoRoot: workspace.repoDir,
+            workspaceDirectory: workspace.repoDir,
             workspaceId: workspace.repoDir,
             projectSlug: "repo",
             branchName: null,

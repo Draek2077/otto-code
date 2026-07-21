@@ -43,6 +43,10 @@ import type {
   CheckoutGitCommitResponse,
   CheckoutGitCommitAgentResponse,
   CheckoutGitRollbackResponse,
+  CheckoutGitFileHistoryResponse,
+  CheckoutGitFileCommitDiffResponse,
+  CheckoutGitFileBlameResponse,
+  CheckoutGitFileOriginResponse,
   CheckoutGitGetOperationLogResponse,
   CheckoutMergeResponse,
   CheckoutMergeFromBaseResponse,
@@ -125,6 +129,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { Run } from "@otto-code/protocol/orchestration";
 import type {
+  CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
   ProjectLink,
@@ -348,6 +353,10 @@ export type CheckoutGitCommitPayload = CheckoutGitCommitResponse["payload"];
 export type CheckoutGitCommitAgentPayload = CheckoutGitCommitAgentResponse["payload"];
 export type CheckoutGitRollbackPayload = CheckoutGitRollbackResponse["payload"];
 export type CheckoutGitGetOperationLogPayload = CheckoutGitGetOperationLogResponse["payload"];
+export type CheckoutGitFileHistoryPayload = CheckoutGitFileHistoryResponse["payload"];
+export type CheckoutGitFileCommitDiffPayload = CheckoutGitFileCommitDiffResponse["payload"];
+export type CheckoutGitFileBlamePayload = CheckoutGitFileBlameResponse["payload"];
+export type CheckoutGitFileOriginPayload = CheckoutGitFileOriginResponse["payload"];
 type CheckoutMergePayload = CheckoutMergeResponse["payload"];
 type CheckoutMergeFromBasePayload = CheckoutMergeFromBaseResponse["payload"];
 type CheckoutPullPayload = CheckoutPullResponse["payload"];
@@ -3639,6 +3648,82 @@ export class DaemonClient {
     });
   }
 
+  // ── Git file investigation ────────────────────────────────────────────────
+  // Local git only: no remote, no forge, and no per-provider variant — the same
+  // four calls answer for every agent provider. Gated by
+  // server_info.features.checkoutGitFileHistory.
+
+  async checkoutGitFileHistory(
+    cwd: string,
+    input: { path: string; limit?: number; offset?: number; startLine?: number; endLine?: number },
+    requestId?: string,
+  ): Promise<CheckoutGitFileHistoryPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.get_file_history.response">({
+      requestId,
+      message: {
+        type: "checkout.git.get_file_history.request",
+        cwd,
+        path: input.path,
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        ...(input.offset !== undefined ? { offset: input.offset } : {}),
+        ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
+        ...(input.endLine !== undefined ? { endLine: input.endLine } : {}),
+      },
+    });
+  }
+
+  async checkoutGitFileCommitDiff(
+    cwd: string,
+    input: { path: string; sha: string; ignoreWhitespace?: boolean },
+    requestId?: string,
+  ): Promise<CheckoutGitFileCommitDiffPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.get_file_commit_diff.response">(
+      {
+        requestId,
+        message: {
+          type: "checkout.git.get_file_commit_diff.request",
+          cwd,
+          path: input.path,
+          sha: input.sha,
+          ...(input.ignoreWhitespace ? { ignoreWhitespace: true } : {}),
+        },
+      },
+    );
+  }
+
+  async checkoutGitFileBlame(
+    cwd: string,
+    input: { path: string; startLine?: number; lineCount?: number; sha?: string },
+    requestId?: string,
+  ): Promise<CheckoutGitFileBlamePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.get_file_blame.response">({
+      requestId,
+      message: {
+        type: "checkout.git.get_file_blame.request",
+        cwd,
+        path: input.path,
+        ...(input.startLine !== undefined ? { startLine: input.startLine } : {}),
+        ...(input.lineCount !== undefined ? { lineCount: input.lineCount } : {}),
+        ...(input.sha !== undefined ? { sha: input.sha } : {}),
+      },
+    });
+  }
+
+  async checkoutGitFileOrigin(
+    cwd: string,
+    input: { path: string },
+    requestId?: string,
+  ): Promise<CheckoutGitFileOriginPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"checkout.git.get_file_origin.response">({
+      requestId,
+      message: {
+        type: "checkout.git.get_file_origin.request",
+        cwd,
+        path: input.path,
+      },
+    });
+  }
+
   async checkoutMerge(
     cwd: string,
     input: { baseRef?: string; strategy?: "merge" | "squash"; requireCleanTarget?: boolean },
@@ -4693,9 +4778,9 @@ export class DaemonClient {
       cwd?: string;
       // Persona roles (e.g. "researcher", "coder") to flavor the lines.
       roles?: string[];
-      // One of "join" | "thinking" | "done" to author just that moment (the
-      // editor fans out one request per moment for progress + distinctness).
-      moment?: "join" | "thinking" | "done";
+      // One CUE_MOMENTS moment to author just that group (the editor fans out
+      // one request per moment for progress + distinctness).
+      moment?: CueMoment;
     },
     requestId?: string,
   ): Promise<VisualizerVoiceCuesResult> {

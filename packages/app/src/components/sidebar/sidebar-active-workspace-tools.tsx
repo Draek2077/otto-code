@@ -17,6 +17,7 @@ import {
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { createWorkspaceBrowser } from "@/stores/browser-store";
+import { markScriptTerminalPending } from "@/stores/script-terminal-pending-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -104,18 +105,33 @@ export function SidebarActiveWorkspaceTools() {
 
   const handleScriptTerminalStarted = useCallback(
     (terminalId: string) => {
-      // Refetch before opening the tab: the workspace screen prunes terminal
-      // tabs it doesn't know about, so the terminal must be in the query data
-      // before its tab appears.
-      void (async () => {
-        await queryClient.invalidateQueries({ queryKey: terminalsQueryKey });
-        if (!persistenceKey) {
-          return;
-        }
-        openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
-      })();
+      if (!persistenceKey) {
+        return;
+      }
+      // Claim the terminal before opening its tab. The workspace screen prunes
+      // terminal tabs it doesn't know about, and the daemon's terminals list
+      // lags the start response — awaiting a refetch here was still a race,
+      // because the screen owns its own query instance and may not even be
+      // mounted yet. The shared pending set is what keeps the tab alive until
+      // the list catches up.
+      markScriptTerminalPending({
+        serverId,
+        workspaceId,
+        terminalId,
+        listedAt: terminalsQuery.dataUpdatedAt,
+      });
+      openWorkspaceTabFocused(persistenceKey, { kind: "terminal", terminalId });
+      void queryClient.invalidateQueries({ queryKey: terminalsQueryKey });
     },
-    [openWorkspaceTabFocused, persistenceKey, queryClient, terminalsQueryKey],
+    [
+      openWorkspaceTabFocused,
+      persistenceKey,
+      queryClient,
+      serverId,
+      terminalsQuery.dataUpdatedAt,
+      terminalsQueryKey,
+      workspaceId,
+    ],
   );
 
   // WorkspaceScriptsButton renders nothing without scripts, and

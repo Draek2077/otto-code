@@ -25,6 +25,8 @@ export interface AgentScreenAgent {
   lastError?: string | null;
   /** Spinner colors from the agent's personality; null ⇒ theme default spinner. */
   personalitySpinner?: { glowA: string; glowB: string } | null;
+  /** Stable id of the bound Agent Personality — what a fork inherits. */
+  personalityId?: string | null;
   projectPlacement?: {
     projectKey?: string;
     projectName?: string;

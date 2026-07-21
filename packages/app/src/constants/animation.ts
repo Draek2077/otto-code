@@ -37,3 +37,10 @@ export const SIDEBAR_SLIDE_DURATION_MS = 180;
 // to get out of the way.
 export const COMPOSER_TRACK_FLY_IN_DURATION_MS = 220;
 export const COMPOSER_TRACK_FLY_OUT_DURATION_MS = 170;
+
+// The picture-in-picture Visualizer fades in once it knows where it goes, and
+// fades back out when it is closed or handed over to a full tab. The host keeps
+// the PIP mounted for exactly this long after it should be gone (see
+// visualizer-pip-host.tsx), so the two must stay in step — a shorter mount would
+// cut the fade off mid-way, a longer one would leave an invisible guest alive.
+export const VISUALIZER_PIP_FADE_DURATION_MS = 200;

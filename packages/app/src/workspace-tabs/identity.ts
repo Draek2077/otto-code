@@ -48,6 +48,9 @@ export function normalizeWorkspaceTabTarget(
     const operation = trimNonEmpty(value.operation);
     return operation ? { kind: "gitLog", operation } : null;
   }
+  if (value.kind === "fileHistory") {
+    return normalizeFileHistoryTabTarget(value);
+  }
   if (value.kind === "visualizer") {
     const runId = trimNonEmpty(value.runId);
     return runId ? { kind: "visualizer", runId } : { kind: "visualizer" };
@@ -56,6 +59,33 @@ export function normalizeWorkspaceTabTarget(
     return { kind: "contextManagement" };
   }
   return null;
+}
+
+/**
+ * A file-history target keeps its line scope only when both ends are present
+ * and sane; a half-specified range degrades to whole-file rather than being
+ * dropped, since the file is still the thing the user asked about.
+ */
+function normalizeFileHistoryTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "fileHistory" }>,
+): WorkspaceTabTarget | null {
+  const path = trimNonEmpty(value.path);
+  if (!path) {
+    return null;
+  }
+  const startLine = normalizePositiveInteger(value.startLine);
+  const endLine = normalizePositiveInteger(value.endLine);
+  if (startLine === null || endLine === null || endLine < startLine) {
+    return { kind: "fileHistory", path };
+  }
+  return { kind: "fileHistory", path, startLine, endLine };
+}
+
+function normalizePositiveInteger(value: number | undefined): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    return null;
+  }
+  return value;
 }
 
 export function normalizeWorkspaceDraftTabSetup(
@@ -79,6 +109,9 @@ export function normalizeWorkspaceDraftTabSetup(
       typeof record.thinkingOptionId === "string" ? record.thinkingOptionId : null,
     ),
     featureValues: isPlainRecord(record.featureValues) ? { ...record.featureValues } : {},
+    personality: trimOptionalString(
+      typeof record.personality === "string" ? record.personality : null,
+    ),
   };
 }
 
@@ -113,6 +146,15 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "visualizer" && right.kind === "visualizer") {
     return left.runId === right.runId;
   }
+  // Path plus scope: the whole-file history and a line-scoped history of the
+  // same file are two different questions, so they are two tabs.
+  if (left.kind === "fileHistory" && right.kind === "fileHistory") {
+    return (
+      left.path === right.path &&
+      left.startLine === right.startLine &&
+      left.endLine === right.endLine
+    );
+  }
   // Singleton per workspace — kind alone settles identity.
   if (left.kind === "contextManagement") {
     return true;
@@ -140,6 +182,7 @@ function workspaceDraftTabSetupsEqual(
     left.modeId === right.modeId &&
     left.model === right.model &&
     left.thinkingOptionId === right.thinkingOptionId &&
+    (left.personality ?? null) === (right.personality ?? null) &&
     recordsShallowEqual(left.featureValues, right.featureValues)
   );
 }
@@ -181,6 +224,13 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "gitLog") {
     return `gitlog_${target.operation}`;
+  }
+  if (target.kind === "fileHistory") {
+    const scope =
+      target.startLine !== undefined && target.endLine !== undefined
+        ? `_L${target.startLine}-${target.endLine}`
+        : "";
+    return `filehistory_${target.path}${scope}`;
   }
   if (target.kind === "visualizer") {
     return target.runId ? `visualizer_run_${target.runId}` : "visualizer";

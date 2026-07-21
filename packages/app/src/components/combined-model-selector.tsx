@@ -675,15 +675,23 @@ function PersonalityRow({
   /** Nested under a role sub-heading in the grouped section. */
   indent?: boolean;
   onSelect: (id: string) => void;
-  onClear: () => void;
+  /**
+   * Press-the-selected-row-to-detach. Only the up-front Personalities section
+   * passes it — there the row IS the current binding, so toggling it off is the
+   * explicit "clear personality" affordance (the running-agent picker's only
+   * one). The grouped browse panel deliberately omits it: that panel is a
+   * roster directory, and pressing a name there means "run as this personality",
+   * never "drop back to the raw model".
+   */
+  onClear?: () => void;
 }) {
   const handlePress = useCallback(() => {
     if (!personality.available) return;
-    if (isSelected) {
+    if (isSelected && onClear) {
       onClear();
-    } else {
-      onSelect(personality.id);
+      return;
     }
+    onSelect(personality.id);
   }, [personality.available, personality.id, isSelected, onSelect, onClear]);
 
   const rowStyle = useCallback(
@@ -879,12 +887,10 @@ function PersonalityGroupRoleGroups({
   roleGroups,
   selectedPersonalityId,
   onSelectPersonality,
-  onClearPersonality,
 }: {
   roleGroups: SelectorPersonalityRoleGroup[];
   selectedPersonalityId?: string | null;
   onSelectPersonality: (id: string) => void;
-  onClearPersonality: () => void;
 }) {
   return (
     <View style={styles.personalitiesContainer}>
@@ -901,7 +907,6 @@ function PersonalityGroupRoleGroups({
               isSelected={personality.id === selectedPersonalityId}
               indent
               onSelect={onSelectPersonality}
-              onClear={onClearPersonality}
             />
           ))}
         </View>
@@ -921,14 +926,12 @@ function PersonalityGroupContent({
   personalityGroups,
   selectedPersonalityId,
   onSelectPersonality,
-  onClearPersonality,
 }: {
   sectionKey: string;
   normalizedQuery: string;
   personalityGroups?: SelectorPersonalityGroupSection[];
   selectedPersonalityId?: string | null;
   onSelectPersonality?: (id: string) => void;
-  onClearPersonality?: () => void;
 }) {
   const { t } = useTranslation();
   const section = personalityGroups?.find((entry) => entry.key === sectionKey);
@@ -949,7 +952,6 @@ function PersonalityGroupContent({
       roleGroups={roleGroups}
       selectedPersonalityId={selectedPersonalityId}
       onSelectPersonality={onSelectPersonality}
-      onClearPersonality={onClearPersonality ?? noop}
     />
   );
 }
@@ -1004,7 +1006,6 @@ function SelectorContent({
         personalityGroups={personalityGroups}
         selectedPersonalityId={selectedPersonalityId}
         onSelectPersonality={onSelectPersonality}
-        onClearPersonality={onClearPersonality}
       />
     );
   }

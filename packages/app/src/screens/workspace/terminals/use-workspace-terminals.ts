@@ -11,11 +11,16 @@ import {
   collectKnownTerminalIds,
   collectScriptTerminalIds,
   collectStandaloneTerminalIds,
-  reconcilePendingScriptTerminals,
   removeTerminalFromPayload,
   type ListTerminalsPayload,
   upsertCreatedTerminalPayload,
 } from "@/screens/workspace/terminals/state";
+import {
+  buildScriptTerminalWorkspaceKey,
+  markScriptTerminalPending,
+  useScriptTerminalPendingIds,
+  useScriptTerminalPendingStore,
+} from "@/stores/script-terminal-pending-store";
 
 interface TerminalProfileInput {
   name: string;
@@ -104,18 +109,19 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
   });
   const terminals = useMemo(() => query.data?.terminals ?? [], [query.data]);
   const liveTerminalIds = useMemo(() => terminals.map((terminal) => terminal.id), [terminals]);
-  const [pendingScriptTerminalIds, setPendingScriptTerminalIds] = useState<Map<string, number>>(
-    () => new Map(),
+  // Shared with the sidebar tools cluster, which starts scripts for this same
+  // workspace from outside this screen (see script-terminal-pending-store).
+  const scriptPendingKey = useMemo(
+    () => buildScriptTerminalWorkspaceKey(normalizedServerId, normalizedWorkspaceId),
+    [normalizedServerId, normalizedWorkspaceId],
   );
-
-  useEffect(() => {
-    setPendingScriptTerminalIds(new Map());
-  }, [normalizedServerId, normalizedWorkspaceId]);
+  const pendingScriptTerminalIds = useScriptTerminalPendingIds(scriptPendingKey);
+  const reconcilePendingScriptTerminals = useScriptTerminalPendingStore((state) => state.reconcile);
 
   const dataUpdatedAt = query.dataUpdatedAt;
   useEffect(() => {
-    setPendingScriptTerminalIds(reconcilePendingScriptTerminals(liveTerminalIds, dataUpdatedAt));
-  }, [liveTerminalIds, dataUpdatedAt]);
+    reconcilePendingScriptTerminals(scriptPendingKey, { liveTerminalIds, dataUpdatedAt });
+  }, [dataUpdatedAt, liveTerminalIds, reconcilePendingScriptTerminals, scriptPendingKey]);
 
   const knownTerminalIds = useMemo(
     () => collectKnownTerminalIds({ liveTerminalIds, pendingScriptTerminalIds }),
@@ -246,18 +252,23 @@ export function useWorkspaceTerminals(input: UseWorkspaceTerminalsInput) {
 
   const handleScriptTerminalStarted = useCallback(
     (terminalId: string) => {
-      setPendingScriptTerminalIds((pendingTerminalIds) => {
-        if (pendingTerminalIds.get(terminalId) === query.dataUpdatedAt) {
-          return pendingTerminalIds;
-        }
-        const nextTerminalIds = new Map(pendingTerminalIds);
-        nextTerminalIds.set(terminalId, query.dataUpdatedAt);
-        return nextTerminalIds;
+      markScriptTerminalPending({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        terminalId,
+        listedAt: query.dataUpdatedAt,
       });
       onScriptTerminalSelected(terminalId);
       void queryClient.invalidateQueries({ queryKey });
     },
-    [onScriptTerminalSelected, query.dataUpdatedAt, queryClient, queryKey],
+    [
+      normalizedServerId,
+      normalizedWorkspaceId,
+      onScriptTerminalSelected,
+      query.dataUpdatedAt,
+      queryClient,
+      queryKey,
+    ],
   );
 
   const handleViewScriptTerminal = useCallback(

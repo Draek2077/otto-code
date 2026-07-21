@@ -1358,3 +1358,110 @@ applied to auto-fit.
 
 Constants only — no change to the fit algorithm, the `autoFitLerp` settle, or
 the bridge. Needs `npm run build:visualizer`.
+
+## 2026-07-20 — host-overridable auto-fit framing (`config.camera`)
+
+The auto-fit camera's two framing constants were tuned for a full-tab viewport
+(the 2026-07-20 "tighter auto-fit framing" entry above). Otto's PIP mode renders
+the same scene into a ~260x160 box, where those values read wrong in both
+directions: `ANIM.viewportPadding` (56 world units, added on *each* side) eats
+most of a small viewport's usable area, and `AUTOFIT_MAX_SCALE` 3.2 lets a
+one-node graph balloon past the frame. Rather than re-tune the shared constants
+(which would degrade the tab), the host can now send a per-viewport profile.
+
+- `web/hooks/use-canvas-camera.ts` — new exported `CameraFramingConfig`
+  (`Partial<{viewportPadding, autoFitMaxScale}>`) and an optional `framing`
+  option. Held in a ref (`framingRef`) so a profile change never re-creates
+  `computeFitTransform`, whose fit cache is keyed on the drawn collections.
+  `computeFitTransform` reads `framingRef.current?.viewportPadding ??
+  ANIM.viewportPadding` and `?? AUTOFIT_MAX_SCALE` — omitted keys and an
+  omitted object are exactly the previous behavior.
+- `web/components/agent-visualizer/canvas.tsx` — new optional `cameraFraming`
+  prop, forwarded to `useCanvasCamera` as `framing`.
+- `web/lib/vscode-bridge.ts` — new exported `CameraConfig` type, added to
+  `ConfigCallback`'s config union as `camera`.
+- `web/hooks/use-vscode-bridge.ts` — new `cameraConfig` state/return field, set
+  from `config.camera` in the existing `onConfig` handler.
+- `web/components/agent-visualizer/index.tsx` — passes
+  `cameraFraming={bridge.cameraConfig ?? undefined}` to `AgentCanvas`.
+
+Otto-side counterpart: `packages/app/src/visualizer/visualizer-pip-config.ts`
+(`PIP_CAMERA_FRAMING`), sent by the PIP host only — the Visualizer tab sends no
+`camera` key and keeps the tuned defaults.
+
+## 2026-07-20 — split the bottom control bar from the HUD toggle (`config.hudBottomHidden`)
+
+`config.hudHidden` is all-or-nothing: it collapses the top stats bar AND the
+bottom play/scrubber control bar together. Otto's PIP mode wants exactly the top
+HUD and no controls — it is a glanceable viewport pinned over a conversation,
+not an interactive surface — so the two halves needed independent gates.
+
+- `web/lib/vscode-bridge.ts` — `hudBottomHidden: boolean` added to
+  `ConfigCallback`'s config union.
+- `web/hooks/use-vscode-bridge.ts` — new `hudBottomHidden` state/return field,
+  set from `config.hudBottomHidden` in the existing `onConfig` handler.
+- `web/components/agent-visualizer/index.tsx` — new config-driven
+  `hudBottomHidden` state (same shape as `hudHidden`); the `ControlBar` render
+  is now gated `!hudHidden && !hudBottomHidden`. `hudHidden` still wins over
+  both, so the existing HUD-eye behavior is unchanged, and a host that never
+  sends the new key sees no difference.
+
+## 2026-07-20 — pick one context readout: ring OR bar (`config.render.contextDisplay`)
+
+The main agent node drew BOTH the circular context ring and the segmented
+context bar under it — the same occupancy number, rendered twice. Patched so the
+host picks one, and so hiding the bar doesn't leave a hole where its token label
+used to sit:
+
+- `web/lib/agent-types.ts` — new exported `ContextDisplay = 'ring' | 'bar'`.
+- `web/lib/vscode-bridge.ts` — `RenderConfig` gains optional `contextDisplay`.
+- `web/components/agent-visualizer/canvas.tsx` — `renderOptions` type gains
+  `contextDisplay?`; the draw loop reads `renderOptions?.contextDisplay ?? 'ring'`
+  and passes it to `drawAgents`.
+- `web/components/agent-visualizer/canvas/draw-agents.ts` — `drawAgents` takes a
+  trailing `contextDisplay: ContextDisplay = 'ring'`. The main node draws the
+  ring only in `'ring'` mode; `drawContextComposition` takes a new
+  `mode: 'bar' | 'label'` and in `'label'` mode draws neither the bar nor its
+  segments, lifting the `x / y tokens` label into the bar's own slot (and
+  shrinking the backing card to match). Sub-agent nodes have no ring and always
+  render `'bar'`, unchanged.
+- `web/components/agent-visualizer/canvas/draw-agents.ts` /
+  `web/lib/canvas-constants.ts` — `drawContextComposition` now sets
+  `ctx.textBaseline` explicitly instead of inheriting whatever `drawAgentLabel`
+  left set ('top'), and `CONTEXT_BAR.labelPadding` drops 9 → 2. Upstream's 9 was
+  tuned for an alphabetic baseline; against the leaked 'top' baseline it
+  measured the caption's top edge and left a 9px hole between the bar and its
+  own `x / y tokens` label in every mode.
+
+Otto-side counterpart: the `visualizerContextDisplay` device-local setting
+(default `ring`), Settings → Visualizer → Rendering → "Context readout", sent as
+`config.render.contextDisplay` by `visualizer-surface.tsx`.
+
+## 2026-07-20 — compact ("mini") HUD layout for PIP (`config.hudCompact`)
+
+The stats readout is one top-right block: `N agents` and `tokens ~$cost` side by
+side, wrapping when the pane is narrow. That is fine in a full tab and wrong in
+Otto's PIP — at 240px wide it wraps onto two lines and eats the top of the
+graph, exactly where the nodes fit. The FPS meter has the same problem from the
+other side: it is pinned top-left, which in a PIP is a corner the readout now
+wants. Patched so the host can ask for a layout tuned to a small viewport
+(not a third visibility gate — the same pieces render, arranged differently):
+
+- `web/lib/vscode-bridge.ts` — `hudCompact: boolean` added to `ConfigCallback`'s
+  config union.
+- `web/hooks/use-vscode-bridge.ts` — new `hudCompact` state/return field, set
+  from `config.hudCompact` in the existing `onConfig` handler.
+- `web/components/agent-visualizer/index.tsx` — new config-driven `hudCompact`
+  state (same shape as `hudBottomHidden`), passed to `TopBar` and `FpsMeter`.
+- `web/components/agent-visualizer/top-bar.tsx` — `compact?` prop. When set, the
+  readout renders as two corner-pinned blocks instead of one flex row: `N agents`
+  at `top-3 left-3`, tokens + cost at `top-3 right-3`. Each stays one line at
+  every PIP size. Unset keeps the original single top-right block verbatim.
+- `web/components/agent-visualizer/fps-meter.tsx` — `compact?` prop swaps
+  `top-3` for `bottom-3` (still left), clearing the corner the agent count now
+  owns. The bottom edge is free in PIP because `hudBottomHidden` already drops
+  the control bar.
+
+Otto-side counterpart: `VisualizerChromeProfile.hudCompact` in
+`packages/app/src/visualizer/visualizer-chrome-profile.ts` — true for the `pip`
+surface, false for `tab` — sent as `config.hudCompact` by `visualizer-surface.tsx`.

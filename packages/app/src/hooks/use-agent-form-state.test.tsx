@@ -210,6 +210,97 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     });
   });
 
+  it("falls back to the provider default when nothing is remembered", async () => {
+    // Tier 4. The form must actually HOLD the default, not leave model empty
+    // and let the trigger label paint it in.
+    mocks.preferences.preferences = { provider: "mock" };
+    mocks.snapshot.entries = READY_ENTRIES;
+    const { result, rerender } = renderArtifactStyleForm();
+
+    rerender({ visible: true });
+
+    await waitFor(() => {
+      expect(result.current.selectedProvider).toBe("mock");
+    });
+    expect(result.current.selectedModel).toBe("model-a");
+  });
+
+  it("persists a model the user picked by hand", async () => {
+    mocks.snapshot.entries = READY_ENTRIES;
+    const { result, rerender } = renderArtifactStyleForm();
+
+    rerender({ visible: true });
+    await waitFor(() => {
+      expect(result.current.selectedProvider).toBe("mock");
+    });
+    mocks.preferences.updatePreferences.mockClear();
+
+    act(() => {
+      result.current.setModelFromUser("model-a");
+    });
+
+    expect(mocks.preferences.updatePreferences).toHaveBeenCalled();
+  });
+
+  it("does not persist a model applied by a personality", async () => {
+    // The whole point of the ladder: a personality OUTRANKS the last-used model
+    // preference, so writing itself into that preference would erase the tier it
+    // beats and then read back as the user's own pick.
+    mocks.snapshot.entries = READY_ENTRIES;
+    const { result, rerender } = renderArtifactStyleForm();
+
+    rerender({ visible: true });
+    await waitFor(() => {
+      expect(result.current.selectedProvider).toBe("mock");
+    });
+    mocks.preferences.updatePreferences.mockClear();
+
+    act(() => {
+      result.current.applyPersonalityValues({
+        provider: "mock",
+        model: "model-a",
+        modeId: "",
+        thinkingOptionId: "low",
+      });
+    });
+
+    expect(result.current.selectedModel).toBe("model-a");
+    expect(result.current.selectedThinkingOptionId).toBe("low");
+    expect(mocks.preferences.updatePreferences).not.toHaveBeenCalled();
+
+    // Submitting under that personality must not persist it either.
+    await act(async () => {
+      await result.current.persistFormPreferences();
+    });
+    expect(mocks.preferences.updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it("resumes persisting once the user overrides the personality's model", async () => {
+    mocks.snapshot.entries = READY_ENTRIES;
+    const { result, rerender } = renderArtifactStyleForm();
+
+    rerender({ visible: true });
+    await waitFor(() => {
+      expect(result.current.selectedProvider).toBe("mock");
+    });
+
+    act(() => {
+      result.current.applyPersonalityValues({
+        provider: "mock",
+        model: "model-a",
+        modeId: "",
+        thinkingOptionId: "low",
+      });
+    });
+    mocks.preferences.updatePreferences.mockClear();
+
+    act(() => {
+      result.current.setModelFromUser("model-b");
+    });
+
+    expect(mocks.preferences.updatePreferences).toHaveBeenCalled();
+  });
+
   it("re-resolves from preferences on each reopen", async () => {
     mocks.snapshot.entries = READY_ENTRIES;
     const { result, rerender } = renderArtifactStyleForm();

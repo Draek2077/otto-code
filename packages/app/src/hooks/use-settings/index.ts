@@ -49,6 +49,7 @@ import {
   type PreviewServerCloseBehavior,
   type VisualizerRenderQuality,
   type VisualizerNodeShape,
+  type VisualizerContextDisplay,
   type WorkspaceTitleSource,
   type WorkspaceToolsPlacement,
 } from "./storage";
@@ -91,6 +92,7 @@ export type {
   PreviewServerCloseBehavior,
   VisualizerRenderQuality,
   VisualizerNodeShape,
+  VisualizerContextDisplay,
   WorkspaceTitleSource,
   WorkspaceToolsPlacement,
 };
@@ -151,6 +153,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "interfaceMode",
   "suggestedTasksEnabled",
   "suggestedTasksDefaultMode",
+  "verticalTabRailWidth",
 ] as const satisfies readonly (keyof AppSettings)[];
 
 function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {

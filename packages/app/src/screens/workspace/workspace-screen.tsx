@@ -73,6 +73,7 @@ import {
 } from "@/components/ui/floating-panel-portal";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
+import { VisualizerPipHost } from "@/visualizer/visualizer-pip-host";
 import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
@@ -1694,6 +1695,11 @@ function WorkspaceHeaderTitleBar({
             workspaceId={normalizedWorkspaceId}
           />
         ) : null}
+        {/* There is no second header button for the PIP any more. The Visualizer
+            button above is the single entry point — it opens the surface you
+            last used — and switching surfaces lives inside the Visualizer
+            itself (the tab toolbar's PIP control, the PIP's expand control).
+            See use-visualizer-surface.ts. */}
         {isMobile && showPlayAction ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}
@@ -2078,6 +2084,41 @@ function useWorkspaceTerminalTabActions({
   };
 }
 
+/** The workspace's center column body plus the overlays that float above the
+ * whole pane tree. Extracted from WorkspaceScreenContent purely to keep that
+ * function inside the repo's complexity/JSX-depth budgets — it holds no state. */
+function WorkspaceCenterContent({
+  serverId,
+  workspaceId,
+  isRouteFocused,
+  onOpenPipFile,
+  children,
+}: {
+  serverId: string;
+  workspaceId: string;
+  isRouteFocused: boolean;
+  onOpenPipFile: (request: WorkspaceFileOpenRequest) => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.centerContent}>
+      {children}
+      {/* Picture-in-picture Visualizer, pinned top-right of the workspace
+          content so it sits over the conversation without belonging to any one
+          pane. Mounted here rather than inside the chat panel on purpose: a
+          per-pane mount would remount (and, on Electron, RELOAD) its guest every
+          time you switched chats — see visualizer-pip.tsx. Renders nothing
+          unless the PIP is open and no Visualizer tab exists. */}
+      <VisualizerPipHost
+        serverId={serverId}
+        workspaceId={workspaceId}
+        isVisible={isRouteFocused}
+        onOpenFile={onOpenPipFile}
+      />
+    </View>
+  );
+}
+
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
@@ -2460,7 +2501,7 @@ function WorkspaceScreenContent({
   // Unmeasured (0) counts as narrow, matching the label-first initial render.
   const showCompactButtonLabels = headerRowWidth < 700;
   // Compact only: the "..." menu and a readable title always win, so the action
-  // buttons drop in order (Play, then Visualizer, then Explorer) as the row
+  // buttons drop in order (Visualizer, then Explorer, then Play) as the row
   // narrows. Decided once here because the strip straddles the header's `left`
   // and `right` containers and both halves must spend the same budget.
   const visualizerEnabled = useFeatureEnabled("visualizer");
@@ -2926,6 +2967,15 @@ function WorkspaceScreenContent({
       return;
     }
     handleOpenFileFromChat(request.location, { parentTabId });
+  });
+
+  // A file opened from the PIP graph. PIP belongs to no pane, so there is no
+  // source pane to open beside and no parent tab to hang it off — route it
+  // through the plain chat opener, which lands it in the focused pane.
+  const handleOpenWorkspaceFileFromPip = useStableEvent(function handleOpenWorkspaceFileFromPip(
+    request: WorkspaceFileOpenRequest,
+  ) {
+    handleOpenFileFromChat(request.location);
   });
 
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
@@ -4068,7 +4118,11 @@ function WorkspaceScreenContent({
                 onScriptTerminalStarted={handleScriptTerminalStarted}
                 onViewTerminal={handleViewScriptTerminal}
                 onOpenUrlInBrowserTab={handleOpenUrlInBrowserTab}
-                hideLabels
+                // Labelled like the Git actions split button beside it. An
+                // unlabelled Play glyph in a row of glyphs is how "Run Scripts"
+                // got lost in the title bar; it only drops its label when the
+                // header is too narrow to spell it out.
+                hideLabels={showCompactButtonLabels}
               />
             ) : null}
             {!isMobile &&
@@ -4450,13 +4504,18 @@ function WorkspaceScreenContent({
         />
       ) : null}
 
-      <View style={styles.centerContent}>
+      <WorkspaceCenterContent
+        serverId={normalizedServerId}
+        workspaceId={normalizedWorkspaceId}
+        isRouteFocused={isRouteFocused}
+        onOpenPipFile={handleOpenWorkspaceFileFromPip}
+      >
         {isMobile ? (
           <View style={styles.content}>{content}</View>
         ) : (
           <View style={styles.content}>{desktopContent}</View>
         )}
-      </View>
+      </WorkspaceCenterContent>
     </View>
   );
 

@@ -10,7 +10,7 @@ import {
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { Brain, ChevronDown, Folder } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
-import type { AgentModelDefinition, AgentProvider } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import {
   AdaptiveModalSheet,
@@ -289,15 +289,86 @@ function useArtifactPersonalitySelection(input: {
   });
 }
 
-export function ArtifactCreateSheet({
+function openKey(props: ArtifactCreateSheetProps): string {
+  if (props.mode === "edit") {
+    return `edit:${props.artifact?.serverId ?? ""}:${props.artifact?.id ?? ""}`;
+  }
+  return `create:${props.initialServerId ?? ""}:${props.initialProjectCwd ?? ""}`;
+}
+
+/**
+ * Mount gate — same shape as ScheduleFormSheet. The form's default ladder
+ * (team's Artificer → personality → last-used model) is one-shot per MOUNT:
+ * `useFormRolePersonality` latches `defaultAppliedRef`/`bindingTouched` the
+ * moment the user picks a plain model. Keeping the sheet mounted across a
+ * Cancel therefore left those latches set, so reopening skipped the default
+ * entirely and the form re-resolved from the just-written model preference —
+ * the cancelled pick came back as if it were the default. Unmounting on
+ * dismiss (after the exit animation) is what makes "reopen" mean "start over".
+ */
+export function ArtifactCreateSheet(props: ArtifactCreateSheetProps): ReactElement | null {
+  const [renderedProps, setRenderedProps] = useState<ArtifactCreateSheetProps | null>(() =>
+    props.visible ? props : null,
+  );
+  const [sheetVisible, setSheetVisible] = useState(props.visible);
+  const livePropsRef = useRef(props);
+  const closeRequestedRef = useRef(false);
+  livePropsRef.current = props;
+
+  useEffect(() => {
+    if (props.visible) {
+      if (closeRequestedRef.current) {
+        return;
+      }
+      setRenderedProps(props);
+      setSheetVisible(true);
+      return;
+    }
+    if (renderedProps) {
+      setSheetVisible(false);
+    }
+  }, [props, renderedProps]);
+
+  const requestClose = useCallback(() => {
+    closeRequestedRef.current = true;
+    setSheetVisible(false);
+  }, []);
+
+  const handleDismiss = useCallback(() => {
+    const dismissedProps = livePropsRef.current;
+    closeRequestedRef.current = false;
+    setRenderedProps(null);
+    setSheetVisible(false);
+    if (dismissedProps.visible) {
+      dismissedProps.onClose();
+    }
+  }, []);
+
+  if (!renderedProps) {
+    return null;
+  }
+
+  return (
+    <OpenArtifactCreateSheet
+      key={openKey(renderedProps)}
+      {...renderedProps}
+      visible={sheetVisible}
+      onClose={requestClose}
+      onDismiss={handleDismiss}
+    />
+  );
+}
+
+function OpenArtifactCreateSheet({
   visible,
   onClose,
+  onDismiss,
   mode = "create",
   artifact,
   initialServerId,
   initialProjectCwd,
   onCreated,
-}: ArtifactCreateSheetProps): ReactElement {
+}: ArtifactCreateSheetProps & { onDismiss: () => void }): ReactElement {
   const isEdit = mode === "edit" && artifact !== undefined;
   const { projects } = useProjects();
   const projectOptions = useMemo(() => buildArtifactProjectOptions(projects), [projects]);
@@ -367,6 +438,7 @@ export function ArtifactCreateSheet({
     availableThinkingOptions,
     workingDir,
     setProviderAndModelFromUser,
+    applyPersonalityValues,
     clearProviderSelectionFromUser,
     setSelectedServerId,
     setSelectedServerIdFromUser,
@@ -398,10 +470,13 @@ export function ArtifactCreateSheet({
   // only its provider/model/effort auto-fill here.
   const applyPersonality = useCallback(
     (values: PersonalityFormValues) => {
-      setProviderAndModelFromUser(values.provider as AgentProvider, values.model);
-      setThinkingOptionFromUser(values.thinkingOptionId);
+      applyPersonalityValues({
+        provider: values.provider,
+        model: values.model,
+        thinkingOptionId: values.thinkingOptionId,
+      });
     },
-    [setProviderAndModelFromUser, setThinkingOptionFromUser],
+    [applyPersonalityValues],
   );
   const personalityCurrentSelection = useMemo(
     () => ({
@@ -616,6 +691,7 @@ export function ArtifactCreateSheet({
       header={header}
       visible={visible}
       onClose={onClose}
+      onDismiss={onDismiss}
       footer={footer}
       webScrollbar
       testID="artifact-create-sheet"

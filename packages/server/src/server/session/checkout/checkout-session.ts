@@ -4,6 +4,7 @@ import { validateBranchSlug } from "@otto-code/protocol/branch-slug";
 import type {
   BranchSuggestionsRequest,
   CheckoutGitCommitError,
+  CheckoutGitFileError,
   CheckoutRefreshRequest,
   CheckoutRenameBranchRequest,
   CheckoutStatusRequest,
@@ -44,10 +45,21 @@ import {
   createPullRequest,
   mergeFromBase,
   mergeToBase,
+  NotGitRepoError,
   pullCurrentBranch,
   pushCurrentBranch,
   rollbackPaths,
 } from "../../../utils/checkout-git.js";
+import {
+  getFileBlame,
+  getFileCommitDiff,
+  getFileHistory,
+  getFileOriginCommit,
+  InvalidGitFilePathError,
+  InvalidGitRevisionError,
+} from "../../../utils/git-file-history.js";
+import type { ParsedDiffFile } from "../../utils/diff-highlighter.js";
+import { parseAndHighlightDiff } from "../../utils/diff-highlighter.js";
 import { execCommand } from "../../../utils/spawn.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
@@ -69,6 +81,25 @@ export interface CheckoutSessionHost {
     cwd: string,
     branch: string,
   ): Promise<{ previousBranch: string | null; currentBranch: string | null }>;
+}
+
+/**
+ * Map a git-file-investigation failure onto the wire error union. These are pure
+ * reads, so the interesting distinctions are "you are not in a repo" and "the
+ * path or revision was rejected"; everything else is git's own complaint.
+ */
+function toCheckoutGitFileError(error: unknown): CheckoutGitFileError {
+  if (error instanceof NotGitRepoError) {
+    return { kind: "not_git_repo" };
+  }
+  if (error instanceof InvalidGitFilePathError || error instanceof InvalidGitRevisionError) {
+    return { kind: "invalid_path", detail: getErrorMessage(error) };
+  }
+  const detail = getErrorMessage(error);
+  if (/not a git repository/i.test(detail)) {
+    return { kind: "not_git_repo" };
+  }
+  return { kind: "git_failed", detail };
 }
 
 type CurrentWorkspacePullRequest = NonNullable<
@@ -779,6 +810,172 @@ export class CheckoutSession {
         requestId,
       },
     });
+  }
+
+  // ── Git file investigation ────────────────────────────────────────────────
+  // Four read-only local-git queries over one file (or a line range in it):
+  // history, per-commit diff, blame, and the commit that created it. They touch
+  // no hosting provider and need no remote, and — unusually for this repo —
+  // there is no per-provider rollout, because git is the same for every agent
+  // provider. See utils/git-file-history.ts.
+
+  async handleCheckoutGitFileHistoryRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.get_file_history.request" }>,
+  ): Promise<void> {
+    const { cwd, path, requestId } = msg;
+    try {
+      const result = await getFileHistory(expandTilde(cwd), {
+        path,
+        limit: msg.limit,
+        offset: msg.offset,
+        startLine: msg.startLine,
+        endLine: msg.endLine,
+      });
+      this.host.emit({
+        type: "checkout.git.get_file_history.response",
+        payload: {
+          cwd,
+          path,
+          entries: result.entries,
+          hasMore: result.hasMore,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.get_file_history.response",
+        payload: {
+          cwd,
+          path,
+          entries: [],
+          hasMore: false,
+          error: toCheckoutGitFileError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutGitFileCommitDiffRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.get_file_commit_diff.request" }>,
+  ): Promise<void> {
+    const { cwd, path, sha, requestId } = msg;
+    try {
+      const resolvedCwd = expandTilde(cwd);
+      const result = await getFileCommitDiff(resolvedCwd, {
+        path,
+        sha,
+        ignoreWhitespace: msg.ignoreWhitespace,
+      });
+      // Best-effort structuring: a diff we cannot parse still ships as raw text
+      // rather than failing the whole request.
+      let structured: ParsedDiffFile[] | undefined;
+      try {
+        structured = await parseAndHighlightDiff(result.diff, resolvedCwd);
+      } catch (parseError) {
+        this.logger.debug(
+          { err: parseError, path, sha },
+          "Failed to structure file commit diff; sending raw text only",
+        );
+      }
+      this.host.emit({
+        type: "checkout.git.get_file_commit_diff.response",
+        payload: {
+          cwd,
+          path,
+          sha,
+          diff: result.diff,
+          ...(structured ? { structured } : {}),
+          ...(result.previousSha ? { previousSha: result.previousSha } : {}),
+          ...(result.previousPath ? { previousPath: result.previousPath } : {}),
+          truncated: result.truncated,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.get_file_commit_diff.response",
+        payload: {
+          cwd,
+          path,
+          sha,
+          diff: "",
+          truncated: false,
+          error: toCheckoutGitFileError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutGitFileBlameRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.get_file_blame.request" }>,
+  ): Promise<void> {
+    const { cwd, path, requestId } = msg;
+    const startLine = msg.startLine ?? 1;
+    try {
+      const result = await getFileBlame(expandTilde(cwd), {
+        path,
+        startLine: msg.startLine,
+        lineCount: msg.lineCount,
+        sha: msg.sha,
+      });
+      this.host.emit({
+        type: "checkout.git.get_file_blame.response",
+        payload: {
+          cwd,
+          path,
+          lines: result.lines,
+          commits: result.commits,
+          startLine: result.startLine,
+          endLine: result.endLine,
+          reachedEndOfFile: result.reachedEndOfFile,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.get_file_blame.response",
+        payload: {
+          cwd,
+          path,
+          lines: [],
+          commits: [],
+          startLine,
+          endLine: startLine - 1,
+          reachedEndOfFile: true,
+          error: toCheckoutGitFileError(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  async handleCheckoutGitFileOriginRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.git.get_file_origin.request" }>,
+  ): Promise<void> {
+    const { cwd, path, requestId } = msg;
+    try {
+      const entry = await getFileOriginCommit(expandTilde(cwd), { path });
+      this.host.emit({
+        type: "checkout.git.get_file_origin.response",
+        payload: { cwd, path, entry, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.git.get_file_origin.response",
+        payload: {
+          cwd,
+          path,
+          entry: null,
+          error: toCheckoutGitFileError(error),
+          requestId,
+        },
+      });
+    }
   }
 
   async handleCheckoutMergeRequest(
