@@ -18,8 +18,8 @@ const accentColorMapping = (theme: Theme) => ({ color: theme.colors.primary });
 
 // Accent while cues can speak, so the button reads as the state toggle it is —
 // same convention as the Visualizer button beside it.
-function resolveGlyphColor(input: { speaking: boolean; hovered: boolean }) {
-  if (input.speaking) {
+function resolveGlyphColor(input: { unmuted: boolean; hovered: boolean }) {
+  if (input.unmuted) {
     return accentColorMapping;
   }
   return input.hovered ? foregroundColorMapping : mutedColorMapping;
@@ -33,13 +33,16 @@ function triggerStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boole
   ];
 }
 
-/** Whether this host can actually speak cues — the same capability pair the
- * playback hook gates on. A mute for something that can never make noise is
- * just clutter, so the header button is only worth a slot when both are there. */
+/** Whether a cue mute is worth a header slot: the host can speak cues (the same
+ * capability pair the playback hook gates on) AND the user has the feature
+ * enabled. A mute for something that can never make noise is just clutter — so
+ * turning cues off in settings takes the button away with them, and turning
+ * them back on brings it back. Muting is not disabling: a muted button stays. */
 export function useVoiceCuesAvailable(serverId: string): boolean {
   const canAuthorCues = useVisualizerVoiceCuesFeature(serverId);
   const canPreviewVoice = useTtsPreviewFeature(serverId);
-  return canAuthorCues && canPreviewVoice;
+  const { settings } = useAppSettings();
+  return canAuthorCues && canPreviewVoice && settings.agentVoiceCues;
 }
 
 /** Quick mute for agent voice cues, in the workspace header's title cluster,
@@ -47,12 +50,18 @@ export function useVoiceCuesAvailable(serverId: string): boolean {
  *
  * Cues are a notification channel that fires while you are looking at something
  * else, so the moment you need to silence them is rarely the moment you want to
- * open Settings. This is the same `agentVoiceCues` switch as the Agents settings
- * row — one boolean, two places to flip it — not a separate transient mute, so
- * the state survives a restart and the two surfaces can never disagree.
+ * open Settings.
  *
- * Rendered only when the host can actually speak cues; the caller owns that gate
- * (and the responsive drop-off) via `resolveCompactHeaderActions`. */
+ * This is a MUTE, which is not the same thing as the Agents settings toggle.
+ * That toggle is "do I want cues at all"; this is "not right now" — exactly the
+ * split the Visualizer already has between its feature switch and its in-page
+ * speaker button. So this writes `agentVoiceCuesMuted`, never `agentVoiceCues`:
+ * muting leaves the feature configured (and this button on screen, showing its
+ * muted glyph), while disabling cues in settings removes the button altogether,
+ * because a mute for something switched off is a control over nothing.
+ *
+ * The caller owns both gates — availability and the responsive drop-off — via
+ * `useVoiceCuesAvailable` and `resolveCompactHeaderActions`. */
 export function WorkspaceVoiceCuesButton() {
   const isCompact = useIsCompactFormFactor();
   const iconSize = useIconSize(1.5);
@@ -60,13 +69,13 @@ export function WorkspaceVoiceCuesButton() {
   // stays at the smaller md glyph shared with the "..." trigger.
   const glyphSize = isCompact ? iconSize.lg : iconSize.md;
   const { settings, updateSettings } = useAppSettings();
-  const speaking = settings.agentVoiceCues;
+  const unmuted = !settings.agentVoiceCuesMuted;
 
-  const label = speaking ? "Mute voice cues" : "Unmute voice cues";
+  const label = unmuted ? "Mute voice cues" : "Unmute voice cues";
   const onPress = useCallback(() => {
-    void updateSettings({ agentVoiceCues: !speaking });
-  }, [speaking, updateSettings]);
-  const Glyph = speaking ? ThemedRecordVoiceOver : ThemedVoiceOverOff;
+    void updateSettings({ agentVoiceCuesMuted: unmuted });
+  }, [unmuted, updateSettings]);
+  const Glyph = unmuted ? ThemedRecordVoiceOver : ThemedVoiceOverOff;
 
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -80,7 +89,7 @@ export function WorkspaceVoiceCuesButton() {
         {({ hovered }: { hovered?: boolean }) => (
           <Glyph
             size={glyphSize}
-            uniProps={resolveGlyphColor({ speaking, hovered: Boolean(hovered) })}
+            uniProps={resolveGlyphColor({ unmuted, hovered: Boolean(hovered) })}
           />
         )}
       </TooltipTrigger>

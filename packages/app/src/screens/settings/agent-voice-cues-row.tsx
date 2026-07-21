@@ -93,7 +93,8 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
             Speak a short line in the agent&apos;s personality voice when it starts, first starts
             thinking, waits on its sub-agents, and finishes. Only the main agent speaks, and only
             for personality-backed agents — write the lines in the personality&apos;s Voice tab.
-            Plays wherever you are in the app, whether or not the Visualizer is open.
+            Plays wherever you are in the app, whether or not the Visualizer is open. To silence
+            them temporarily, use the speech button in the workspace header instead.
           </Text>
         </View>
         <Switch

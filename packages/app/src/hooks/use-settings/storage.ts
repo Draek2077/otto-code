@@ -167,6 +167,14 @@ export interface AppSettings {
   // that suits one rarely suits the other. 0 is silence; the toggle above is the
   // real off-switch. Device-local.
   agentVoiceCuesVolume: number;
+  // Quick silence for cues, flipped by the workspace header's speech button —
+  // NOT the same thing as `agentVoiceCues` above. Enable is "do I want this
+  // feature at all" and lives in settings; mute is "not right now", one click
+  // away from wherever you are working, the way the Visualizer's speaker button
+  // silences its effects without disabling the graph. Muting therefore leaves
+  // the feature configured and the header button present; disabling removes the
+  // button entirely, because there is nothing left to mute. Device-local.
+  agentVoiceCuesMuted: boolean;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -423,6 +431,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   voiceThinkingTone: true,
   agentVoiceCues: true,
   agentVoiceCuesVolume: 50,
+  agentVoiceCuesMuted: false,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -776,6 +785,9 @@ function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSet
       0,
       Math.min(100, Math.round(stored.agentVoiceCuesVolume)),
     );
+  }
+  if (typeof stored.agentVoiceCuesMuted === "boolean") {
+    result.agentVoiceCuesMuted = stored.agentVoiceCuesMuted;
   }
   return result;
 }
