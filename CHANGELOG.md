@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.6 - 2026-07-20
+
+### Added
+
+- Investigate any file through git: which commits touched it, what each one changed, and who created it
+- Blame shows who last wrote each line of the file you are reading
+- The Visualizer can run as a small picture-in-picture viewport pinned over your workspace, so the graph stays glanceable while you work
+- Drag the picture-in-picture anywhere and pick between two sizes
+- Workspace scripts now run as real terminal tabs with their own environment
+- Agent voice cues are their own feature with a toggle and volume in Agents settings, and they keep working when the Visualizer is turned off
+- A speech button in the workspace header silences voice cues without opening settings, separately from the setting that turns them off for good
+- Three new working-indicator text effects: Wave, Flames, and Matrix
+- Detail cards above the composer now rise from behind the message box and sink back down when they close
+- A setting hides "merge into base branch" for pull-request-only workflows
+- The Visualizer's context readout can be a ring hugging the node instead of a segmented bar
+- The Visualizer gained a toolbar for its display and sound options
+
+### Fixed
+
+- The composer no longer drops the keystroke that wraps a line
+- Starting a chat with a team's default personality no longer falls back to a random base model with no personality applied
+- The Linux desktop icon is no longer blurry, now shipping sizes up to 512px
+- Each personality gets its own distinct voice cue lines instead of every agent sounding the same
+- Asking an agent to suggest a task now actually produces one
+- The Visualizer fills its pane on small graphs instead of leaving most of the frame as margin
+- Splitters follow the pointer from the first pixel rather than sticking and then jumping
+- Dragging the vertical tab rail no longer stutters while it resizes
+- The workspace tools row shows its labels as soon as they fit instead of waiting for a much wider sidebar
+- Bundled third-party agents Factory Droid, fast-agent, and GLM are pinned to their current releases
+
 ## 0.6.5 - 2026-07-20
 
 ### Added
