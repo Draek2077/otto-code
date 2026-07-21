@@ -79,6 +79,10 @@ import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
+import {
+  useVoiceCuesAvailable,
+  WorkspaceVoiceCuesButton,
+} from "@/voice/workspace-voice-cues-button";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
@@ -1566,6 +1570,7 @@ interface WorkspaceHeaderTitleBarProps {
   isMobile: boolean;
   // Compact responsive drops (see `fitCompactHeaderActions`); always true on desktop.
   showVisualizerAction: boolean;
+  showVoiceCuesAction: boolean;
   showPlayAction: boolean;
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
@@ -1615,6 +1620,7 @@ function WorkspaceHeaderTitleBar({
   showCreateBrowserTab,
   isMobile,
   showVisualizerAction,
+  showVoiceCuesAction,
   showPlayAction,
   createTerminalDisabled,
   importAgentDisabled,
@@ -1689,6 +1695,7 @@ function WorkspaceHeaderTitleBar({
           onOpenSetupTab={onOpenSetupTab}
           onOpenContextManagement={onOpenContextManagement}
         />
+        {showVoiceCuesAction ? <WorkspaceVoiceCuesButton /> : null}
         {showVisualizerAction ? (
           <WorkspaceVisualizerButton
             serverId={normalizedServerId}
@@ -2501,10 +2508,12 @@ function WorkspaceScreenContent({
   // Unmeasured (0) counts as narrow, matching the label-first initial render.
   const showCompactButtonLabels = headerRowWidth < 700;
   // Compact only: the "..." menu and a readable title always win, so the action
-  // buttons drop in order (Visualizer, then Explorer, then Play) as the row
-  // narrows. Decided once here because the strip straddles the header's `left`
-  // and `right` containers and both halves must spend the same budget.
+  // buttons drop in order (Voice cues, then Visualizer, then Explorer, then
+  // Play) as the row narrows. Decided once here because the strip straddles the
+  // header's `left` and `right` containers and both halves must spend the same
+  // budget.
   const visualizerEnabled = useFeatureEnabled("visualizer");
+  const voiceCuesAvailable = useVoiceCuesAvailable(normalizedServerId);
   const headerActionFit = useMemo(
     () =>
       resolveCompactHeaderActions({
@@ -2512,6 +2521,7 @@ function WorkspaceScreenContent({
         rowWidth: headerRowWidth,
         isDeveloperMode,
         visualizerEnabled,
+        voiceCuesAvailable,
         hasWorkspaceScripts: workspaceScripts.length > 0,
         hasWorkspaceDirectory: Boolean(workspaceDirectory),
       }),
@@ -2520,6 +2530,7 @@ function WorkspaceScreenContent({
       headerRowWidth,
       isDeveloperMode,
       visualizerEnabled,
+      voiceCuesAvailable,
       workspaceScripts.length,
       workspaceDirectory,
     ],
@@ -4420,6 +4431,7 @@ function WorkspaceScreenContent({
                 showCreateBrowserTab={showCreateBrowserTab}
                 isMobile={isMobile}
                 showVisualizerAction={headerActionFit.showVisualizer}
+                showVoiceCuesAction={headerActionFit.showVoiceCues}
                 showPlayAction={headerActionFit.showPlay}
                 createTerminalDisabled={createTerminalDisabled}
                 importAgentDisabled={!canOpenImportSheet}
