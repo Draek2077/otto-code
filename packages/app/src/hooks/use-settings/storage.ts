@@ -150,6 +150,23 @@ export interface AppSettings {
   // Repeating cue tone while voice mode waits for the agent's reply.
   // Device-local: gates playback on this device only.
   voiceThinkingTone: boolean;
+  // Whether agents speak short personality "voice cues" — a spoken line in the
+  // agent's own personality voice when it starts, first thinks, waits on its
+  // sub-agents, and completes. An AGENT notification channel, not a Visualizer
+  // feature: playback is app-global and does not care whether any Visualizer
+  // surface is open, or whether the Visualizer is enabled at all. Only the main
+  // (root) agent speaks, only for personality-backed agents, and only when the
+  // host advertises the visualizerVoiceCues + ttsPreview capabilities. On by
+  // default. See docs/agent-personalities.md "Voice cues".
+  agentVoiceCues: boolean;
+  // Loudness of those cues as a 0-100 percent — a SEPARATE audio channel from
+  // the Visualizer's sound effects (visualizerSoundVolume / visualizerSoundMuted),
+  // which no longer touch cues at all. Two channels, because they are two
+  // unrelated things: one is ambience for a graph you are watching, the other is
+  // a notification that fires while you are somewhere else entirely, and a level
+  // that suits one rarely suits the other. 0 is silence; the toggle above is the
+  // real off-switch. Device-local.
+  agentVoiceCuesVolume: number;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -304,15 +321,6 @@ export interface AppSettings {
   // webview partition. Defaults unmuted so first-time users hear the feature
   // at the default 50% level; muting is one click away in the page.
   visualizerSoundMuted: boolean;
-  // Whether the Visualizer speaks short personality "voice cues" — a spoken line
-  // in the agent's own personality voice when its node joins the graph, first
-  // starts thinking, and completes. Only the main (root) agent speaks, only for
-  // personality-backed agents, and only when the host advertises the
-  // visualizerVoiceCues + ttsPreview capabilities. On by default; the cues are
-  // part of the intended Visualizer experience and muting the Visualizer's
-  // sound silences them too. The effective volume follows visualizerSoundVolume and
-  // is silenced by visualizerSoundMuted. See docs/visualizer.md "Voice cues".
-  visualizerVoiceCues: boolean;
   // Whether the Visualizer's HUD chrome (top bar + bottom control bar) is
   // hidden, leaving just the canvas graph and its informational surfaces.
   // Toggled by the native toolbar's HUD-eye and persisted here so it applies to
@@ -413,6 +421,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   workspaceTitleSource: "title",
   autoExpandReasoning: false,
   voiceThinkingTone: true,
+  agentVoiceCues: true,
+  agentVoiceCuesVolume: 50,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -453,7 +463,6 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerContextDisplay: "ring",
   visualizerSoundVolume: 50,
   visualizerSoundMuted: false,
-  visualizerVoiceCues: true,
   visualizerHudHidden: false,
   visualizerPipOpen: false,
   visualizerSurface: "tab",
@@ -746,6 +755,31 @@ function copyStoredBooleans(
   }
 }
 
+// Agent voice cues used to be a Visualizer sub-setting, so a device that already
+// made a choice has it under the old key. The new key wins when both are
+// present; otherwise the old choice is carried over rather than silently reset
+// to the default (a user who turned cues OFF must not have them come back).
+// COMPAT(agentVoiceCues): `visualizerVoiceCues` was the v0.6.3 name; drop this
+// fallback after 2027-01-20.
+function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.agentVoiceCues === "boolean") {
+    result.agentVoiceCues = stored.agentVoiceCues;
+  } else {
+    const legacy = (stored as { visualizerVoiceCues?: unknown }).visualizerVoiceCues;
+    if (typeof legacy === "boolean") {
+      result.agentVoiceCues = legacy;
+    }
+  }
+  if (typeof stored.agentVoiceCuesVolume === "number") {
+    result.agentVoiceCuesVolume = Math.max(
+      0,
+      Math.min(100, Math.round(stored.agentVoiceCuesVolume)),
+    );
+  }
+  return result;
+}
+
 function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
   const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
@@ -972,9 +1006,6 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   if (typeof stored.visualizerSoundMuted === "boolean") {
     result.visualizerSoundMuted = stored.visualizerSoundMuted;
   }
-  if (typeof stored.visualizerVoiceCues === "boolean") {
-    result.visualizerVoiceCues = stored.visualizerVoiceCues;
-  }
   if (typeof stored.visualizerHudHidden === "boolean") {
     result.visualizerHudHidden = stored.visualizerHudHidden;
   }
@@ -1047,6 +1078,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickOnboardingSettings(stored),
     ...pickPreviewSettings(stored),
     ...pickVisualizerSettings(stored),
+    ...pickAgentVoiceCueSettings(stored),
     ...pickFeatureFlagSettings(stored),
   };
 }

@@ -968,6 +968,81 @@ describe("suggested tasks enabled", () => {
   });
 });
 
+describe("agent voice cues", () => {
+  it("defaults agentVoiceCues to true on a fresh install", async () => {
+    const deps = makeDeps();
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
+  });
+
+  it("loads a persisted agentVoiceCues=false", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(false);
+  });
+
+  // Cues used to be a Visualizer sub-setting. A user who turned them OFF back
+  // then must not have them start talking again after the move.
+  it("carries over a legacy visualizerVoiceCues=false", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ visualizerVoiceCues: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(false);
+  });
+
+  it("prefers the new key when both are persisted", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: true, visualizerVoiceCues: false }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
+  });
+
+  // Cues are their own audio channel — the Visualizer's volume must not reach
+  // them, in either direction.
+  it("defaults agentVoiceCuesVolume to 50 independently of the visualizer volume", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ visualizerSoundVolume: 100 }),
+      }),
+    });
+
+    const settings = await loadAppSettingsFromStorage(deps);
+
+    expect(settings.agentVoiceCuesVolume).toBe(50);
+    expect(settings.visualizerSoundVolume).toBe(100);
+  });
+
+  it("clamps a persisted agentVoiceCuesVolume into 0..100", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCuesVolume: 140 }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCuesVolume).toBe(100);
+  });
+
+  it("drops a non-boolean agentVoiceCues back to the true default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: "nope" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
+  });
+});
+
 describe("suggested tasks default mode", () => {
   it("defaults suggestedTasksDefaultMode to 'new_chat' on a fresh install", async () => {
     const deps = makeDeps();

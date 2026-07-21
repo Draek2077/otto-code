@@ -1,32 +1,34 @@
-// Visualizer voice cues — speaks a short line in the agent's own personality
-// voice at four moments: its node JOINS the graph, it FIRST starts thinking, it
-// finishes its own turn while its observed sub-agents are still running
-// (WAITING), and it COMPLETES a turn. Only the main (root) agent speaks, only for
+// Agent voice cues — speaks a short line in the agent's own personality voice at
+// four moments: it JOINS (spawns), it FIRST starts thinking, it finishes its own
+// turn while its observed sub-agents are still running (WAITING), and it
+// COMPLETES a turn. Only the main (root) agent speaks, only for
 // personality-backed agents, only on a host that advertises both the
 // visualizerVoiceCues + ttsPreview capabilities, and only when the user has
 // enabled it (and not muted it).
 //
-// PLAYBACK IS APP-GLOBAL, NOT PANEL-SCOPED. Cues are the Visualizer's
-// notification channel: the whole point is hearing that something happened
-// while you are looking at something else. This hook is therefore mounted once
-// per connected host by `visualizer-voice-cues-host.tsx` (a headless component
-// in the app's root provider tree), with `workspaceId: null` meaning "every
-// workspace on this host" — NOT by visualizer-panel.tsx, which only ran while a
-// Visualizer tab was mounted and visible. The audio fires without any of the
-// visual performance; the graph is a separate, independently-gated concern.
+// NOT A VISUALIZER FEATURE. Cues were born there and the wire capability flag
+// still carries the old `visualizerVoiceCues` name, but everything they need —
+// agent status, the personality roster, its stored lines, a TTS voice — is agent
+// state. Nothing here reads the graph, and disabling the Visualizer does not
+// silence them; the switch is in Settings -> <host> -> Agents.
+//
+// PLAYBACK IS APP-GLOBAL, NOT PANEL-SCOPED: the whole point is hearing that
+// something happened while you are looking at something else. This hook is
+// mounted once per connected host by `agent-voice-cues-host.tsx` (a headless
+// component in the app's root provider tree), with `workspaceId: null` meaning
+// "every workspace on this host".
 //
 // The lines are PRE-STORED on the personality (`voiceCues`, authored/edited in
 // the personality editor) — this hook just reads them, no runtime generation.
 // A personality with no stored cues stays silent. Audio is synthesized with the
 // personality's TTS voice via the same `previewTtsVoice` + shared voice audio
-// engine the voice-preview button uses, scaled to the Visualizer sound volume.
+// engine the voice-preview button uses, scaled to the cue channel's own volume.
 //
-// Attach behavior mirrors the visualizer's hydrate/settle: agents that already
-// exist when the hook starts watching — including ones the adapter's directory
-// refresh backfills into the store moments later (createdAt predates attach) —
-// are SEEDED SILENTLY, so opening the Visualizer never re-announces history.
-// Only agents that spawn / think / finish while you're watching speak. See
-// docs/visualizer.md "Voice cues".
+// Attach behavior: agents that already exist when the hook starts watching —
+// including ones a directory refresh backfills into the store moments later
+// (createdAt predates attach) — are SEEDED SILENTLY, so connecting to a host
+// never re-announces history. Only agents that spawn / think / finish while
+// you're watching speak. See docs/agent-personalities.md "Voice cues".
 import { Buffer } from "buffer";
 import { useEffect, useRef } from "react";
 import type {
@@ -69,17 +71,16 @@ function newCueState(): AgentCueState {
   };
 }
 
-// Coalesce duplicate fires of the same cue across hook instances (e.g. two
-// visible Visualizer panels) and rapid store re-emits. Long enough to swallow
+// Coalesce duplicate fires of the same cue across hook instances (one per
+// connected host) and rapid store re-emits. Long enough to swallow
 // a burst, short enough that a genuine later turn's "done" still speaks.
 const CUE_DEDUPE_MS = 1500;
 
 // Module-level so all panels share one recent-cue guard.
 const recentCue = new Map<string, number>();
 
-// Global rate limit. Now that cues fire app-wide instead of only for the one
-// workspace you had a Visualizer open on, the failure mode the charter calls
-// out is real: every agent in every workspace on every host hitting a cue
+// Global rate limit. Because cues fire app-wide, the failure mode the charter
+// calls out is real: every agent in every workspace on every host hitting a cue
 // moment at the same instant. `engine.isPlaying()` already serializes playback,
 // but it only rejects cues that overlap an *in-flight* line — a burst of short
 // lines would still queue up back-to-back into a chorus. This is the second
@@ -99,7 +100,7 @@ function claimGlobalCueSlot(nowMs: number): boolean {
 }
 
 /** Test seam — the module-level throttle/dedupe state is global by design. */
-export function __resetVisualizerVoiceCueThrottleForTests(): void {
+export function __resetAgentVoiceCueThrottleForTests(): void {
   recentCue.clear();
   lastGlobalCueAtMs = 0;
 }
@@ -120,12 +121,12 @@ function resolveVoice(
     : undefined;
 }
 
-// Match the Visualizer's sound-effect volume pipeline: the voice audio engine
-// has no per-play volume, but the TTS default is signed 16-bit PCM, so scale
-// each sample by the same `muted ? 0 : volume/100` gain the vendor page applies
-// to its effects (config.soundVolume) — linear amplitude, same as the page's
-// gain node. Only PCM can be scaled here; a non-PCM format (e.g. mp3) plays
-// unscaled. `gain >= 1` is a no-op (return the buffer as-is).
+// The voice audio engine has no per-play volume, but the TTS default is signed
+// 16-bit PCM, so apply the cue channel's level by scaling each sample by
+// `agentVoiceCuesVolume/100` — linear amplitude, the same shape the Visualizer
+// page's gain node uses for its own (separate) effects channel. Only PCM can be
+// scaled here; a non-PCM format (e.g. mp3) plays unscaled. `gain >= 1` is a
+// no-op (return the buffer as-is).
 function applyPcm16Gain(bytes: Buffer, gain: number): Buffer {
   if (gain >= 1) {
     return bytes;
@@ -152,7 +153,7 @@ async function speak(
   input: {
     text: string;
     voice?: { provider?: string; model?: string; name: string };
-    /** 0..1 — the Visualizer sound volume (muted → 0). */
+    /** 0..1 — the agent voice-cue channel's volume (0 → silence). */
     gain: number;
   },
 ): Promise<void> {
@@ -226,7 +227,7 @@ function hasRunningSubagents(serverId: string, parentAgentId: string): boolean {
   return agents ? hasRunningObservedSubagent(agents, parentAgentId) : false;
 }
 
-export interface UseVisualizerVoiceCuesInput {
+export interface UseAgentVoiceCuesInput {
   serverId: string;
   /** null = every workspace on this host (the app-global host's mode). */
   workspaceId: string | null;
@@ -236,7 +237,7 @@ export interface UseVisualizerVoiceCuesInput {
   agentIdFilter?: ReadonlySet<string> | null;
 }
 
-export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void {
+export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
   const { serverId, workspaceId, active, agentIdFilter = null } = input;
   const client = useHostRuntimeClient(serverId);
   const engine = useVoiceAudioEngineOptional();
@@ -245,17 +246,20 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
 
   const features = useSessionStore((state) => state.sessions[serverId]?.serverInfo?.features);
   // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when floor >= v0.6.3.
+  // The flag keeps its original name because it is a wire capability — cues
+  // stopped being a Visualizer feature, but renaming a `server_info.features`
+  // key would break the contract with older daemons.
   const featureOk = Boolean(features?.visualizerVoiceCues && features?.ttsPreview);
-  const enabled = settings.visualizerVoiceCues && !settings.visualizerSoundMuted;
+  const enabled = settings.agentVoiceCues;
 
   // Roster + volume changes shouldn't tear down the subscription; read them at
-  // fire time. The gain mirrors visualizer-panel.tsx's config.soundVolume
-  // exactly (`muted ? 0 : volume/100`), so cues track the same Sound slider as
-  // the effects.
+  // fire time. Cues are their OWN audio channel: the Visualizer's sound volume
+  // and its speaker-button mute are ambience for a graph you are watching and
+  // have no say over a notification that fires while you are somewhere else.
   const rosterRef = useRef<readonly AgentPersonality[] | undefined>(undefined);
   rosterRef.current = config?.agentPersonalities?.personalities;
   const gainRef = useRef(1);
-  gainRef.current = settings.visualizerSoundMuted ? 0 : settings.visualizerSoundVolume / 100;
+  gainRef.current = settings.agentVoiceCuesVolume / 100;
 
   useEffect(() => {
     if (!active || !enabled || !featureOk || !client || !engine) {
@@ -266,8 +270,8 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
     const watchStartMs = Date.now();
 
     // Pre-existing agents are seeded silently: joined, and (when currently
-    // running) already "thought", so attaching the Visualizer to an in-flight
-    // session never replays cues.
+    // running) already "thought", so attaching to an in-flight session never
+    // replays cues.
     const seedSilently = (agent: Agent): void => {
       states.set(agent.id, {
         ...newCueState(),
@@ -320,7 +324,7 @@ export function useVisualizerVoiceCues(input: UseVisualizerVoiceCuesInput): void
       let state = states.get(agent.id);
       if (!state) {
         // A record landing in the store isn't necessarily a NEW agent: the
-        // visualizer adapter's directory refresh upserts pre-existing chats
+        // directory refresh upserts pre-existing chats
         // moments after this effect's initial seed. `createdAt` is the
         // daemon-stamped spawn time, so anything created before we started
         // watching is history — seed it silently instead of announcing a

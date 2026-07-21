@@ -214,10 +214,6 @@ export function VisualizerSection() {
     (value: number) => setSetting("visualizerSoundVolume", value),
     [setSetting],
   );
-  const handleVoiceCuesChange = useCallback(
-    (value: boolean) => setSetting("visualizerVoiceCues", value),
-    [setSetting],
-  );
 
   const qualityRowStyle = useMemo(
     () => [settingsStyles.rowResponsive, settingsStyles.rowBorder],
@@ -406,21 +402,15 @@ export function VisualizerSection() {
           </SettingsSection>
           <SettingsSection title="Sound">
             <View style={settingsStyles.card}>
+              {/* Sound EFFECTS only. Agent voice cues are a separate channel
+                  with its own volume in Settings -> <host> -> Agents; this
+                  slider and the in-page mute have no say over them. */}
               <VolumeRow
                 title="Volume"
-                hint="Sound effect loudness — mute with the speaker button in the Visualizer."
+                hint="Sound effect loudness — mute with the speaker button in the Visualizer. Agent voice cues have their own volume in Agents settings."
                 accessibilityLabel="Visualizer sound volume"
                 value={settings.visualizerSoundVolume}
                 onCommit={handleVolumeCommit}
-              />
-              <ToggleRow
-                title="Voice cues"
-                hint="Speak a short line in the agent's personality voice when its node joins the graph, first starts thinking, and finishes. Only the main agent speaks, only for personality-backed agents, and only on a host with text-to-speech. Follows the volume above."
-                accessibilityLabel="Visualizer voice cues"
-                value={settings.visualizerVoiceCues}
-                withBorder
-                onValueChange={handleVoiceCuesChange}
-                testID="settings-visualizer-voice-cues-switch"
               />
             </View>
           </SettingsSection>
