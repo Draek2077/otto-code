@@ -582,10 +582,12 @@ export function VisualizerSurface({
     postMessage: handlePostMessage,
   });
 
-  // NOTE: voice cues are NOT mounted here any more. They moved to the
-  // app-global `VisualizerVoiceCuesHost` (_layout.tsx) so they fire while the
-  // Visualizer is closed — which is the entire point of a notification channel.
-  // Mounting them here as well would double-fire for the focused workspace.
+  // NOTE: voice cues are NOT mounted here. They are an agent feature, not a
+  // Visualizer one — `AgentVoiceCuesHost` (_layout.tsx) plays them app-wide,
+  // including while the Visualizer is closed or disabled, which is the entire
+  // point of a notification channel. Mounting them here as well would
+  // double-fire for the focused workspace. The only thing this surface still
+  // owns is the shared sound volume + the speaker button's mute.
 
   // Follow the focused chat: whenever follow is on, drive the page's selection
   // to the workspace's focused chat. Guards keep it inert unless there's real
