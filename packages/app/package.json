@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/app",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "main": "index.ts",
