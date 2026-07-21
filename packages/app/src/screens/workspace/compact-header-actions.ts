@@ -1,21 +1,24 @@
 /**
  * Responsive fitting for the compact workspace header's action strip.
  *
- * The strip is `[menu toggle] [title / subtitle] [...] [Visualizer] [Play]` in
- * the header's `left` container plus `[Explorer]` in `right`. The "..." menu is
- * the one non-negotiable control, and the project name / workspace subtitle must
- * always keep at least `MIN_TITLE_WIDTH` — so when the row can't hold
- * everything the optional buttons drop in the order Visualizer, Explorer, Play.
+ * The strip is `[menu toggle] [title / subtitle] [...] [Voice cues] [Visualizer]
+ * [Play]` in the header's `left` container plus `[Explorer]` in `right`. The
+ * "..." menu is the one non-negotiable control, and the project name / workspace
+ * subtitle must always keep at least `MIN_TITLE_WIDTH` — so when the row can't
+ * hold everything the optional buttons drop in the order Voice cues,
+ * Visualizer, Explorer, Play.
  *
- * Play is the last to go on purpose. None of these three are duplicated in the
- * "..." menu, so a dropped button is a *lost* capability, and Play is the only
- * one with no other route: a Visualizer or Explorer view can be reopened as a
+ * Voice cues drop first because they are the only one that is *not* a lost
+ * capability: the same switch lives in Agents settings, so the header button is
+ * pure convenience. Play is the last to go for the mirror-image reason — none of
+ * the other three are duplicated in the "..." menu, and Play is the only one
+ * with no other route at all: a Visualizer or Explorer view can be reopened as a
  * tab, but with no Play button there is no way to run a workspace script on a
- * narrow screen at all.
+ * narrow screen.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
-const DROP_ORDER = ["visualizer", "explorer", "play"] as const;
+const DROP_ORDER = ["voiceCues", "visualizer", "explorer", "play"] as const;
 
 type CompactHeaderAction = (typeof DROP_ORDER)[number];
 
@@ -36,7 +39,7 @@ const SLOT_PADDING = 12 * 2;
 const SIDEBAR_TOGGLE_WIDTH = SLOT_PADDING + 32;
 /** The "..." trigger scales its glyph at 1.5x `md` (16 -> 24). */
 const MENU_TRIGGER_WIDTH = SLOT_PADDING + 24;
-/** Play / Visualizer / Explorer all scale `lg` (20) at 1.5x. */
+/** Play / Voice cues / Visualizer / Explorer all scale `lg` (20) at 1.5x. */
 const ACTION_WIDTH = SLOT_PADDING + 30;
 /** `ScreenHeader`'s row padding plus the `left` container's one gap. */
 const ROW_CHROME_WIDTH = 8 * 2 + 8;
@@ -51,6 +54,10 @@ export interface CompactHeaderActionsInput {
   rowWidth: number;
   isDeveloperMode: boolean;
   visualizerEnabled: boolean;
+  /** The host advertises both cue authoring and TTS, so cues can actually
+   * speak. Not gated on developer mode: a mute for something audible belongs
+   * wherever the noise reaches you. */
+  voiceCuesAvailable: boolean;
   hasWorkspaceScripts: boolean;
   hasWorkspaceDirectory: boolean;
 }
@@ -60,6 +67,8 @@ export interface CompactHeaderActionsFit {
   showPlay: boolean;
   /** Visualizer button, in the title cluster. */
   showVisualizer: boolean;
+  /** Voice-cue mute, in the title cluster left of the Visualizer. */
+  showVoiceCues: boolean;
   /** Developer-mode Explorer toggle, in the compact `headerRight`. */
   showCompactExplorer: boolean;
   /** User-mode Explorer toggle, which also renders on desktop. */
@@ -85,6 +94,9 @@ export function resolveCompactHeaderActions(
   if (input.isDeveloperMode && input.visualizerEnabled) {
     requested.add("visualizer");
   }
+  if (input.voiceCuesAvailable) {
+    requested.add("voiceCues");
+  }
   if (input.isDeveloperMode || input.hasWorkspaceDirectory) {
     requested.add("explorer");
   }
@@ -95,6 +107,7 @@ export function resolveCompactHeaderActions(
   return {
     showPlay: fitted.has("play"),
     showVisualizer: fitted.has("visualizer"),
+    showVoiceCues: fitted.has("voiceCues"),
     showCompactExplorer: input.isCompact && fitted.has("explorer"),
     showPlainExplorer: input.hasWorkspaceDirectory && fitted.has("explorer"),
   };

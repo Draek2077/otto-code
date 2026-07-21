@@ -9,6 +9,7 @@ const DEVELOPER_MOBILE: CompactHeaderActionsInput = {
   rowWidth: 600,
   isDeveloperMode: true,
   visualizerEnabled: true,
+  voiceCuesAvailable: true,
   hasWorkspaceScripts: true,
   hasWorkspaceDirectory: true,
 };
@@ -19,22 +20,37 @@ function survivors(overrides: Partial<CompactHeaderActionsInput> = {}) {
     fit.showPlay ? "play" : null,
     fit.showVisualizer ? "visualizer" : null,
     fit.showCompactExplorer ? "explorer" : null,
+    fit.showVoiceCues ? "voiceCues" : null,
   ].filter((name): name is string => name !== null);
 }
 
 describe("resolveCompactHeaderActions", () => {
   it("renders everything before the row has been measured", () => {
-    expect(survivors({ rowWidth: 0 })).toEqual(["play", "visualizer", "explorer"]);
+    expect(survivors({ rowWidth: 0 })).toEqual(["play", "visualizer", "explorer", "voiceCues"]);
   });
 
   it("keeps every button on a wide row", () => {
-    expect(survivors()).toEqual(["play", "visualizer", "explorer"]);
+    expect(survivors()).toEqual(["play", "visualizer", "explorer", "voiceCues"]);
   });
 
-  it("drops Visualizer first, then Explorer, and keeps Play longest", () => {
+  it("drops Voice cues first, then Visualizer, then Explorer, and keeps Play longest", () => {
+    expect(survivors({ rowWidth: 420 })).toEqual(["play", "visualizer", "explorer"]);
     expect(survivors({ rowWidth: 380 })).toEqual(["play", "explorer"]);
     expect(survivors({ rowWidth: 320 })).toEqual(["play"]);
     expect(survivors({ rowWidth: 260 })).toEqual([]);
+  });
+
+  // The cue mute is the one button whose loss costs nothing — the same switch
+  // is in Agents settings — so it yields its slot to everything else.
+  it("keeps the voice-cue mute off a crowded row even when the host supports it", () => {
+    expect(survivors({ rowWidth: 380 })).not.toContain("voiceCues");
+    expect(
+      survivors({ rowWidth: 380, hasWorkspaceScripts: false, visualizerEnabled: false }),
+    ).toEqual(["explorer", "voiceCues"]);
+  });
+
+  it("never shows the voice-cue mute on a host that cannot speak cues", () => {
+    expect(survivors({ voiceCuesAvailable: false })).toEqual(["play", "visualizer", "explorer"]);
   });
 
   it("leaves only the menu on an extremely narrow row", () => {
@@ -44,8 +60,12 @@ describe("resolveCompactHeaderActions", () => {
 
   it("never shows a button the workspace did not request, however wide the row", () => {
     // A script-less workspace has no Play button to drop in the first place.
-    expect(survivors({ hasWorkspaceScripts: false })).toEqual(["visualizer", "explorer"]);
-    expect(survivors({ visualizerEnabled: false })).toEqual(["play", "explorer"]);
+    expect(survivors({ hasWorkspaceScripts: false })).toEqual([
+      "visualizer",
+      "explorer",
+      "voiceCues",
+    ]);
+    expect(survivors({ visualizerEnabled: false })).toEqual(["play", "explorer", "voiceCues"]);
     // Play outlives the others, but only where the workspace has scripts.
     expect(survivors({ hasWorkspaceScripts: false, rowWidth: 320 })).toEqual(["explorer"]);
   });
