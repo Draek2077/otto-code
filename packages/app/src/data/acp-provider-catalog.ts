@@ -183,10 +183,10 @@ const CATALOG_DATA = [
     id: "factory-droid",
     title: "Factory Droid",
     description: "Factory Droid - AI coding agent powered by Factory AI",
-    version: "0.175.1",
+    version: "0.176.0",
     iconId: "factory-droid",
     installLink: "https://factory.ai/product/cli",
-    command: ["npx", "-y", "droid@0.175.1", "exec", "--output-format", "acp-daemon"],
+    command: ["npx", "-y", "droid@0.176.0", "exec", "--output-format", "acp-daemon"],
     env: {
       DROID_DISABLE_AUTO_UPDATE: "true",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
@@ -197,10 +197,10 @@ const CATALOG_DATA = [
     id: "fast-agent",
     title: "fast-agent",
     description: "Code and build agents with comprehensive multi-provider support",
-    version: "0.9.17",
+    version: "0.9.18",
     iconId: "fast-agent",
     installLink: "https://fast-agent.ai/acp/",
-    command: ["uvx", "--from", "fast-agent-acp==0.9.17", "fast-agent-acp", "-x"],
+    command: ["uvx", "--from", "fast-agent-acp==0.9.18", "fast-agent-acp", "-x"],
   },
   {
     id: "gemini",
@@ -216,10 +216,10 @@ const CATALOG_DATA = [
     title: "GLM Agent",
     description:
       "ACP agent powered by Zhipu AI's GLM Coding Plan models (glm-5.1, glm-5-turbo, glm-4.7, glm-4.5-air). Supports streaming, tool calls, mid-session model switching, image input via Z.AI Coding Plan Vision MCP, and session load/fork/resume with on-disk persistence.",
-    version: "1.2.0",
+    version: "1.3.0",
     iconId: "glm-acp-agent",
     installLink: "https://github.com/stefandevo/glm-acp-agent",
-    command: ["npx", "-y", "glm-acp-agent@1.2.0"],
+    command: ["npx", "-y", "glm-acp-agent@1.3.0"],
   },
   {
     id: "goose",
