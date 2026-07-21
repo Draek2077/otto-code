@@ -1022,6 +1022,21 @@ describe("agent voice cues", () => {
     expect(settings.visualizerSoundVolume).toBe(100);
   });
 
+  // Mute and enable are different switches: the header button flips the former,
+  // settings the latter, and they must not collapse into one another.
+  it("defaults agentVoiceCuesMuted to false and keeps it independent of enable", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCuesMuted: true }),
+      }),
+    });
+
+    const settings = await loadAppSettingsFromStorage(deps);
+
+    expect(settings.agentVoiceCuesMuted).toBe(true);
+    expect(settings.agentVoiceCues).toBe(true);
+  });
+
   it("clamps a persisted agentVoiceCuesVolume into 0..100", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

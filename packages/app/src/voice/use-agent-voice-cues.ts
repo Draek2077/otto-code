@@ -250,7 +250,10 @@ export function useAgentVoiceCues(input: UseAgentVoiceCuesInput): void {
   // stopped being a Visualizer feature, but renaming a `server_info.features`
   // key would break the contract with older daemons.
   const featureOk = Boolean(features?.visualizerVoiceCues && features?.ttsPreview);
-  const enabled = settings.agentVoiceCues;
+  // Two separate gates on purpose: `agentVoiceCues` is whether the feature is
+  // configured at all, `agentVoiceCuesMuted` is the header button's "not right
+  // now". Either one stops playback.
+  const enabled = settings.agentVoiceCues && !settings.agentVoiceCuesMuted;
 
   // Roster + volume changes shouldn't tear down the subscription; read them at
   // fire time. Cues are their OWN audio channel: the Visualizer's sound volume
