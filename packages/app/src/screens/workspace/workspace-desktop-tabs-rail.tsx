@@ -1,5 +1,13 @@
-import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ScrollView, View } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { ScrollView, StyleSheet as RNStyleSheet, View, type ViewStyle } from "react-native";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -26,7 +34,6 @@ import {
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
-  clamp,
   computeWorkspaceTabRailWidth,
   RAIL_TAB_MAX_WIDTH,
   TAB_CLOSE_BUTTON_WIDTH,
@@ -201,24 +208,29 @@ export function WorkspaceDesktopTabsRail({
     [tabLabelLengths, railMetrics],
   );
   const savedRailWidth = useAppSettingValue(selectVerticalTabRailWidth);
-  const { railWidth, railResizeGesture } = useRailResize({
+  const { railWidth, railAnimatedStyle, railResizeGesture } = useRailResize({
     contentDrivenWidth,
     savedRailWidth,
   });
-  // Only the content's left padding is subtracted: chips run flush to the
-  // rail's right edge so the active chip's open right side fuses with the
-  // pane content (covering the right hairline), like the horizontal row's
-  // active tab fuses with the pane below.
-  const railChipWidth = railWidth - 4;
+  // Chips stretch to the rail rather than taking a pixel width, so only this
+  // one node's width changes during a resize drag. They still run flush to the
+  // rail's right edge (the content's left padding is the only inset), so the
+  // active chip's open right side fuses with the pane content, covering the
+  // right hairline — the vertical counterpart of the row's active tab.
+  //
   // maxWidth is a fraction of the pane rather than the rail's own width so one
   // device-wide saved width degrades gracefully across panes of different sizes:
   // a rail dragged wide on a full-width pane caps itself in a narrow split
   // instead of squeezing that pane's content to nothing. Flexbox resolves it
   // against the parent, so no pane measurement (and no per-frame re-render of
   // every pane during a split drag) is needed to enforce it.
+  //
+  // The width lives on a plain node carrying the Reanimated style; Unistyles
+  // must not own a node Reanimated also patches, so the themed surface is a
+  // separate child (see explorer-sidebar.tsx for the same split).
   const railOuterStyle = useMemo(
-    () => [styles.rail, { width: railWidth, maxWidth: RAIL_MAX_PANE_FRACTION }],
-    [railWidth],
+    () => [staticRailStyles.railOuter, railAnimatedStyle],
+    [railAnimatedStyle],
   );
   // No dragging highlight: the splitter is an invisible grab band, and the
   // rail's own edge already moves with the pointer as feedback.
@@ -325,7 +337,7 @@ export function WorkspaceDesktopTabsRail({
           onCloseTabsToLeft={onCloseTabsToLeft}
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
-          resolvedTabWidth={railChipWidth}
+          resolvedTabWidth="stretch"
           showLabel
           showCloseButton
           orientation="vertical"
@@ -354,7 +366,6 @@ export function WorkspaceDesktopTabsRail({
       onNavigateTab,
       onReloadAgent,
       onRenameTab,
-      railChipWidth,
       setHoveredCloseTabKey,
       tabDropPreviewIndex,
       tabMenuLabels,
@@ -363,68 +374,72 @@ export function WorkspaceDesktopTabsRail({
   );
 
   const rail = (
-    <View
+    <Animated.View
       style={railOuterStyle}
       testID="workspace-tabs-rail"
       onPointerEnter={handleRailPointerEnter}
       onPointerLeave={handleRailPointerLeave}
     >
-      <View style={styles.railRightHairline} pointerEvents="none" />
-      <GestureDetector gesture={railResizeGesture}>
-        <View
-          role="separator"
-          aria-orientation="vertical"
-          style={splitterStyle}
-          testID="workspace-tabs-rail-splitter"
-        />
-      </GestureDetector>
-      <View style={styles.header}>
-        <TabOrientationToggleButton
-          orientation={tabOrientation}
-          onToggle={onToggleTabOrientation}
-        />
-        <WorkspaceTabRowExtras
-          onCreateAgentTab={handleCreateAgentTab}
-          onCreateTerminal={handleCreateTerminal}
-          onCreateBrowser={handleCreateBrowser}
-          onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
-          onEditProfiles={handleEditProfiles}
-          normalizedServerId={normalizedServerId}
-          normalizedWorkspaceId={normalizedWorkspaceId}
-          paneId={paneId}
-          focusedAgentId={focusedAgentId}
-          showCreateBrowserTab={showCreateBrowserTab}
-          showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab}
-          terminalDisabled={terminalDisabled}
-          tabsContainerWidth={0}
-          tabCount={tabs.length}
-          onSplitRight={onSplitRight}
-          onSplitDown={onSplitDown}
-          showPaneSplitActions={showPaneSplitActions}
-          onStripLayout={noopStripLayout}
-          toolsAvailableWidth={Math.max(0, railWidth - RAIL_HEADER_FIXED_CHROME_WIDTH)}
-          rowHovered={railHovered}
-        />
+      <View style={styles.railSurface}>
+        <View style={styles.railRightHairline} pointerEvents="none" />
+        <GestureDetector gesture={railResizeGesture}>
+          <View
+            role="separator"
+            aria-orientation="vertical"
+            style={splitterStyle}
+            testID="workspace-tabs-rail-splitter"
+          />
+        </GestureDetector>
+        <View style={styles.header}>
+          <TabOrientationToggleButton
+            orientation={tabOrientation}
+            onToggle={onToggleTabOrientation}
+          />
+          <WorkspaceTabRowExtras
+            onCreateAgentTab={handleCreateAgentTab}
+            onCreateTerminal={handleCreateTerminal}
+            onCreateBrowser={handleCreateBrowser}
+            onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
+            onEditProfiles={handleEditProfiles}
+            normalizedServerId={normalizedServerId}
+            normalizedWorkspaceId={normalizedWorkspaceId}
+            paneId={paneId}
+            focusedAgentId={focusedAgentId}
+            showCreateBrowserTab={showCreateBrowserTab}
+            showPreviewButton={
+              showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab
+            }
+            terminalDisabled={terminalDisabled}
+            tabsContainerWidth={0}
+            tabCount={tabs.length}
+            onSplitRight={onSplitRight}
+            onSplitDown={onSplitDown}
+            showPaneSplitActions={showPaneSplitActions}
+            onStripLayout={noopStripLayout}
+            toolsAvailableWidth={Math.max(0, railWidth - RAIL_HEADER_FIXED_CHROME_WIDTH)}
+            rowHovered={railHovered}
+          />
+        </View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <SortableInlineList
+            data={tabs}
+            keyExtractor={tabKeyExtractor}
+            useDragHandle
+            disabled={!externalDndContext && tabs.length < 2}
+            onDragEnd={handleDragEnd}
+            externalDndContext={externalDndContext}
+            activeId={activeDragTabId}
+            getItemData={getTabDragData}
+            renderItem={renderTab}
+            orientation="vertical"
+          />
+        </ScrollView>
       </View>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <SortableInlineList
-          data={tabs}
-          keyExtractor={tabKeyExtractor}
-          useDragHandle
-          disabled={!externalDndContext && tabs.length < 2}
-          onDragEnd={handleDragEnd}
-          externalDndContext={externalDndContext}
-          activeId={activeDragTabId}
-          getItemData={getTabDragData}
-          renderItem={renderTab}
-          orientation="vertical"
-        />
-      </ScrollView>
-    </View>
+    </Animated.View>
   );
 
   return <RenderProfile id="WorkspaceDesktopTabsRail">{rail}</RenderProfile>;
@@ -436,7 +451,10 @@ interface RailResizeInput {
 }
 
 interface RailResizeState {
+  /** The committed width. Does not change during a drag — see useRailResize. */
   railWidth: number;
+  /** Live width for the rail shell, driven on the UI thread. */
+  railAnimatedStyle: ReturnType<typeof useAnimatedStyle<ViewStyle>>;
   railResizeGesture: ReturnType<typeof Gesture.Race>;
 }
 
@@ -444,77 +462,54 @@ interface RailResizeState {
 // AppSettings when it ends, and the double-tap that clears the saved width and
 // hands the rail back to its content-driven size.
 //
-// The drag runs on the JS thread and re-renders the rail every frame, unlike the
-// app's other splitters (explorer sidebar, context panel, settings sidebar),
-// which drive a Reanimated shared value so the container resizes without any
-// React work. Those all resize a container whose content flexes to fill it; the
-// rail's chips take a hard pixel width prop (`resolvedTabWidth`), so a width the
-// chips never see would leave them at their old size while the rail grew around
-// them. What re-renders here is one header plus N chips, only while the pointer
-// is actually down on the splitter.
+// The drag drives a Reanimated shared value on the UI thread and re-renders
+// nothing, matching the app's other splitters (explorer sidebar, context panel,
+// settings sidebar). This used to hold the live width in React state, which
+// re-rendered the header and every chip on every frame of the drag — the chips
+// took a hard pixel width (`resolvedTabWidth`), so they had to re-render or they
+// would keep their old size while the rail grew around them. They now pass
+// "stretch" and inherit the rail's width, which leaves this node's width as the
+// only thing a drag has to touch.
+//
+// React still sees `railWidth`, but only the committed value: it feeds the
+// header's pinned-tool budget, which would be jarring to reflow mid-drag anyway.
 function useRailResize({ contentDrivenWidth, savedRailWidth }: RailResizeInput): RailResizeState {
-  const [dragWidth, setDragWidth] = useState<number | null>(null);
-  // Precedence, widest scope last: live drag > saved user width > content.
-  const railWidth = dragWidth ?? savedRailWidth ?? contentDrivenWidth;
+  // Precedence, widest scope last: saved user width > content. The live drag no
+  // longer participates: it drives a shared value on the UI thread instead, so
+  // dragging re-renders nothing. React only sees the committed width.
+  const railWidth = savedRailWidth ?? contentDrivenWidth;
 
-  // The gesture is built once, so its callbacks read through refs instead of
-  // closing over a render's values.
-  const railWidthRef = useRef(railWidth);
-  railWidthRef.current = railWidth;
-  const dragStartWidthRef = useRef(railWidth);
-  const dragWidthRef = useRef<number | null>(null);
+  const resizeWidth = useSharedValue(railWidth);
+  const dragStartWidth = useSharedValue(railWidth);
+  const isDragging = useSharedValue(false);
 
-  const handleResizeStart = useCallback(() => {
-    dragStartWidthRef.current = railWidthRef.current;
-    dragWidthRef.current = railWidthRef.current;
-    setDragWidth(railWidthRef.current);
-  }, []);
-
-  const handleResizeUpdate = useCallback((translationX: number) => {
-    const next = Math.round(
-      clamp(
-        dragStartWidthRef.current + translationX,
-        WORKSPACE_TABS_RAIL_MIN_WIDTH,
-        WORKSPACE_TABS_RAIL_MAX_WIDTH,
-      ),
-    );
-    if (next === dragWidthRef.current) {
+  // Mirror the committed width into the shared value, but never mid-drag —
+  // that would yank the rail out from under the pointer.
+  useEffect(() => {
+    if (isDragging.value) {
       return;
     }
-    dragWidthRef.current = next;
-    setDragWidth(next);
-  }, []);
+    resizeWidth.value = railWidth;
+  }, [railWidth, resizeWidth, isDragging]);
+
+  const railAnimatedStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }));
 
   // Fires on both a released and a cancelled drag: whichever width the user was
   // last shown is the one that sticks, which is less surprising than snapping
-  // back because the pointer left the window. The live width is held until the
-  // write resolves so the rail never flashes through its pre-drag size while the
-  // settings query catches up.
-  const handleResizeFinalize = useCallback(() => {
-    const committed = dragWidthRef.current;
-    dragWidthRef.current = null;
-    if (committed === null) {
-      return;
-    }
+  // back because the pointer left the window.
+  const commitRailWidth = useCallback((committed: number, started: number) => {
     // A press that ended where it started is not a resize. Writing it anyway
     // would silently pin a still-content-driven rail to whatever width it
     // happened to have, turning a stray click into a permanent override.
-    if (committed === dragStartWidthRef.current) {
-      setDragWidth(null);
+    if (committed === started) {
       return;
     }
-    void persistAppSettings({ verticalTabRailWidth: committed })
-      .catch((error: unknown) => {
-        console.error("[TabsRail] Failed to save rail width:", error);
-      })
-      .finally(() => {
-        setDragWidth(null);
-      });
+    void persistAppSettings({ verticalTabRailWidth: committed }).catch((error: unknown) => {
+      console.error("[TabsRail] Failed to save rail width:", error);
+    });
   }, []);
 
   const handleResizeReset = useCallback(() => {
-    dragWidthRef.current = null;
-    setDragWidth(null);
     void persistAppSettings({ verticalTabRailWidth: null }).catch((error: unknown) => {
       console.error("[TabsRail] Failed to clear rail width:", error);
     });
@@ -528,29 +523,58 @@ function useRailResize({ contentDrivenWidth, savedRailWidth }: RailResizeInput):
         // only way back on touch, where there is no context menu to hang a
         // "Reset width" item off.
         Gesture.Tap().runOnJS(true).numberOfTaps(2).onEnd(handleResizeReset),
+        // Worklet callbacks, so a drag stays on the UI thread and never
+        // re-renders the rail. Only the commit hops back to JS.
         Gesture.Pan()
-          .runOnJS(true)
+          // Pan's default 15px activation slop reads as a dead zone on a 1px
+          // divider. 2px is imperceptible while still sitting above the stray
+          // movement in a double-tap, so the reset gesture still wins the Race.
+          .minDistance(2)
           // Inward only: the band already sits flush against the rail's right
           // edge, and RNW's View overflow clipping would swallow anything the
           // slop added on the outside.
           .hitSlop({ left: 6, right: 0, top: 0, bottom: 0 })
-          .onStart(handleResizeStart)
-          .onUpdate((event) => {
-            handleResizeUpdate(event.translationX);
+          .onStart(() => {
+            "worklet";
+            isDragging.value = true;
+            dragStartWidth.value = resizeWidth.value;
           })
-          .onFinalize(handleResizeFinalize),
+          .onUpdate((event) => {
+            "worklet";
+            const next = dragStartWidth.value + event.translationX;
+            resizeWidth.value = Math.round(
+              Math.min(
+                WORKSPACE_TABS_RAIL_MAX_WIDTH,
+                Math.max(WORKSPACE_TABS_RAIL_MIN_WIDTH, next),
+              ),
+            );
+          })
+          .onFinalize(() => {
+            "worklet";
+            isDragging.value = false;
+            runOnJS(commitRailWidth)(resizeWidth.value, dragStartWidth.value);
+          }),
       ),
-    [handleResizeFinalize, handleResizeReset, handleResizeStart, handleResizeUpdate],
+    [commitRailWidth, handleResizeReset, dragStartWidth, isDragging, resizeWidth],
   );
 
-  return { railWidth, railResizeGesture };
+  return { railWidth, railAnimatedStyle, railResizeGesture };
 }
 
-const styles = StyleSheet.create((theme) => ({
-  rail: {
-    // width/maxWidth are applied dynamically via railOuterStyle — see railWidth
-    // (the saved user width, else computeWorkspaceTabRailWidth) above.
+// Plain RN styles, not Unistyles: this is the node the Reanimated width style
+// lands on, and the two must not share a node. Width comes from railAnimatedStyle.
+const staticRailStyles = RNStyleSheet.create({
+  railOuter: {
     height: "100%",
+    maxWidth: RAIL_MAX_PANE_FRACTION,
+  },
+});
+
+const styles = StyleSheet.create((theme) => ({
+  // Fills the animated shell above; carries the theming and hosts the
+  // absolutely-positioned hairline and splitter.
+  railSurface: {
+    flex: 1,
     backgroundColor: theme.colors.surfaceSidebar,
   },
   // Sits above the chips (which run flush to the rail's right edge) so the grab

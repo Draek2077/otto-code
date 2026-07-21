@@ -220,6 +220,10 @@ export function ContextManagementPanel(): ReactElement {
   const resizeGesture = useMemo(
     () =>
       Gesture.Pan()
+        // Pan defaults to a 15px activation slop, which on a 1px divider reads
+        // as a dead zone followed by a catch-up jump. A resize handle has to
+        // track from the first pixel, so opt out of the slop entirely.
+        .minDistance(0)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
         .onStart(() => {
           startWidthRef.current = contextSidebarWidth;
