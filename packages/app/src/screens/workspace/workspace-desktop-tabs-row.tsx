@@ -1712,6 +1712,13 @@ function TabHandleContent({
   );
 }
 
+/**
+ * A chip's width: an explicit pixel value (the horizontal row, which sizes each
+ * tab from its layout pass) or "stretch" to inherit the container's width (the
+ * vertical rail, where every chip is as wide as the rail itself).
+ */
+export type ResolvedTabWidth = number | "stretch";
+
 function TabChip({
   tab,
   isActive,
@@ -1735,7 +1742,7 @@ function TabChip({
   isActive: boolean;
   isDragging: boolean;
   isFocused: boolean;
-  resolvedTabWidth: number;
+  resolvedTabWidth: ResolvedTabWidth;
   showLabel: boolean;
   showCloseButton: boolean;
   isCloseHovered: boolean;
@@ -1780,11 +1787,16 @@ function TabChip({
       isActive && (vertical ? styles.tabActiveVertical : styles.tabActive),
       onBlack && (vertical ? styles.tabActiveBlackVertical : styles.tabActiveBlack),
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
-      {
-        minWidth: resolvedTabWidth,
-        width: resolvedTabWidth,
-        maxWidth: resolvedTabWidth,
-      },
+      // "stretch" lets the chip take its width from the container instead of a
+      // number. The vertical rail uses it so a resize drag only has to change
+      // the rail's own width — no per-frame re-render of every chip.
+      resolvedTabWidth === "stretch"
+        ? { alignSelf: "stretch" as const }
+        : {
+            minWidth: resolvedTabWidth,
+            width: resolvedTabWidth,
+            maxWidth: resolvedTabWidth,
+          },
     ],
     [isActive, isDragging, onBlack, resolvedTabWidth, vertical],
   );
@@ -2301,7 +2313,7 @@ export interface ResolvedDesktopTabChipProps {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
-  resolvedTabWidth: number;
+  resolvedTabWidth: ResolvedTabWidth;
   showLabel: boolean;
   showCloseButton: boolean;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;

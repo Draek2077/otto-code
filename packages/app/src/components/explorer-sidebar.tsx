@@ -201,6 +201,9 @@ export function ExplorerSidebar({
     () =>
       Gesture.Pan()
         .enabled(true)
+        // See the context-management splitter: Pan's default 15px activation
+        // slop turns a 1px divider into a dead zone plus a catch-up jump.
+        .minDistance(0)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
         .onStart(() => {
           startWidthRef.current = explorerWidth;
