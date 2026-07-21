@@ -108,6 +108,7 @@ import {
   WEB_NOTIFICATION_CLICK_EVENT,
   type WebNotificationClickDetail,
 } from "@/utils/os-notifications";
+import { VisualizerVoiceCuesHost } from "@/visualizer/visualizer-voice-cues-host";
 
 polyfillCrypto();
 
@@ -671,6 +672,11 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       <HostSessionManager />
       <FaviconStatusSync />
+      {/* Visualizer voice cues are a notification channel, so playback lives
+          here — app-global, above the router — instead of inside the Visualizer
+          panel, which only ran while its tab was frontmost. Headless: it fires
+          the cue audio without any of the visual performance. */}
+      <VisualizerVoiceCuesHost />
       {children}
     </VoiceProvider>
   );

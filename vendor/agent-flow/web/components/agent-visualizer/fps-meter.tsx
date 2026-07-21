@@ -8,9 +8,11 @@ import { COLORS } from '@/lib/colors'
 // Counts the page's own requestAnimationFrame ticks — the same clock the canvas
 // draw loop rides — so the number reflects real render throughput. Themed with
 // the HUD holo palette (matches the top-bar toggle chrome) and pinned to the
-// top-left corner. Mounted only while enabled (config.render.showFps), so its rAF loop costs
-// nothing when off.
-export function FpsMeter() {
+// top-left corner — or the BOTTOM-left in compact ("mini"/PIP) mode, where the
+// split stats readout takes the top-left corner and the bottom bar is hidden,
+// so the bottom edge is the only free real estate. Mounted only while enabled
+// (config.render.showFps), so its rAF loop costs nothing when off.
+export function FpsMeter({ compact }: { compact?: boolean }) {
   const [fps, setFps] = useState(0)
   const rafRef = useRef(0)
 
@@ -36,7 +38,7 @@ export function FpsMeter() {
 
   return (
     <div
-      className="absolute top-3 left-3 font-mono text-[10px] px-2 py-1 rounded flex items-center gap-1.5"
+      className={`absolute ${compact ? 'bottom-3' : 'top-3'} left-3 font-mono text-[10px] px-2 py-1 rounded flex items-center gap-1.5`}
       style={{
         zIndex: Z.info,
         background: COLORS.holoBg03,

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
@@ -9,7 +8,6 @@ import {
   type UseAgentFormStateResult,
 } from "@/hooks/use-agent-form-state";
 import { useFormRolePersonality } from "@/provider-selection/role-model-personality";
-import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import {
   areAttachmentsEqual,
@@ -37,6 +35,8 @@ interface AgentInputDraftComposerOptions {
   isVisible?: boolean;
   onlineServerIds?: string[];
   lockedWorkingDir?: string;
+  /** Personality identity inherited from a fork / "new tab from this agent". */
+  initialPersonalityId?: string | null;
 }
 
 interface UseAgentInputDraftInput {
@@ -91,15 +91,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   // New-chat (Chatter) personality picker. Applies a personality's
   // provider/model/mode/effort to the draft form; mode matters here because
   // chat is attended (unlike artifacts/schedules).
-  const { setProviderAndModelFromUser, setModeFromUser, setThinkingOptionFromUser } = formState;
-  const applyPersonality = useCallback(
-    (values: PersonalityFormValues) => {
-      setProviderAndModelFromUser(values.provider as AgentProvider, values.model);
-      setModeFromUser(values.modeId);
-      setThinkingOptionFromUser(values.thinkingOptionId);
-    },
-    [setProviderAndModelFromUser, setModeFromUser, setThinkingOptionFromUser],
-  );
+  const applyPersonality = formState.applyPersonalityValues;
   const personalityCurrentSelection = useMemo(
     () => ({
       provider: formState.selectedProvider,
@@ -125,10 +117,11 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       label: "Team's Chatter",
       roleLabel: "Chatter",
     },
-    // A fresh install has no last-used personality to restore, and the composer
-    // would otherwise open on no personality at all despite an active team.
-    // "fallback" keeps device memory in charge once it exists.
-    autoSelectDefault: "fallback",
+    // The chat composer runs the full ladder like every other apply-now
+    // surface: team's Chatter, else the remembered Chatter, else the first
+    // available one. Seeing a bare model here means you have no Chatter at all.
+    autoSelectDefault: "always",
+    initialPersonalityId: composerOptions?.initialPersonalityId ?? null,
   });
   const [text, setText] = useState("");
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);

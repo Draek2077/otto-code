@@ -5,9 +5,9 @@ import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
 /**
  * Short spoken "cue" lines for a personality's Visualizer node — a few
- * variations each for three lifecycle moments. Authored by the Writer mini-task
- * chain (same routing as commit messages), flavored by the persona's name +
- * prompt. This is an editor-time action: the result is stored on the
+ * variations each for the lifecycle moments in CUE_MOMENTS. Authored by the
+ * Writer mini-task chain (same routing as commit messages), flavored by the
+ * persona's name + prompt. This is an editor-time action: the result is stored on the
  * personality (`voiceCues`) and read directly by the Visualizer at runtime.
  *
  * See docs/visualizer.md "Voice cues".
@@ -19,6 +19,7 @@ import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 export type VoiceCueLines = {
   join: string[];
   thinking: string[];
+  waiting: string[];
   done: string[];
 };
 
@@ -33,9 +34,9 @@ export interface VoiceCueGenerator {
    * lines. Not cached — the caller stores the result on the personality.
    *
    * Pass `moment` to author only that one group (a focused, single-moment
-   * prompt) — the other two groups come back empty. This is how the editor
-   * drives a per-moment progress bar and keeps each moment's lines distinct.
-   * Omit `moment` to author all three at once (the legacy all-in-one path).
+   * prompt) — the other groups come back empty. This is how the editor drives a
+   * per-moment progress bar and keeps each moment's lines distinct. Omit
+   * `moment` to author every moment at once (the legacy all-in-one path).
    */
   generate(input: {
     name: string;
@@ -54,6 +55,7 @@ const GROUP = z.array(LINE).min(1).max(8);
 const VOICE_CUE_SCHEMA = z.object({
   join: GROUP,
   thinking: GROUP,
+  waiting: GROUP,
   done: GROUP,
 });
 // Single-moment response — just the lines for the one moment being authored.
@@ -62,7 +64,7 @@ const SINGLE_MOMENT_SCHEMA = z.object({ lines: GROUP });
 interface MomentSpec {
   // Human word for the moment, used in the prompt heading.
   label: string;
-  // What is TRUE at this exact instant — the discriminator that keeps the three
+  // What is TRUE at this exact instant — the discriminator that keeps the
   // groups from blurring into each other.
   meaning: string;
   // The stock lines everyone reaches for at this moment. Fed to the model as a
@@ -88,6 +90,12 @@ const MOMENT_SPECS: Record<CueMoment, MomentSpec> = {
     meaning:
       "the agent is in the middle of the work, actively reasoning or figuring something out — it has already started but is NOT finished. Every line must sound like effort in progress.",
     overused: ["Let me think", "Digging in", "Working through this", "Hmm, one sec", "Still going"],
+  },
+  waiting: {
+    label: "WAITING",
+    meaning:
+      "the agent has finished ITS OWN part of the turn but helpers it delegated to are still running, so it has nothing to do but wait on them — the work as a whole is NOT complete and it is not reasoning either. Every line must sound like idling on someone else, never like finality.",
+    overused: ["Waiting on it", "Hang tight", "Almost there", "Any second now", "Just waiting"],
   },
   done: {
     label: "COMPLETED",
@@ -121,7 +129,7 @@ const LINE_RULES = [
   `Rules for every line:`,
   `- VERY short: 1–5 words, the kind of thing you'd blurt out loud.`,
   `- Casual and natural spoken English — no robotic phrasing, no emoji, no quotes, minimal punctuation.`,
-  `- Each line must clearly belong to ITS moment and would sound wrong at the other two. Do not reuse a generic line (like "All set", "Okay", "Ready") that could fit more than one moment.`,
+  `- Each line must clearly belong to ITS moment and would sound wrong at the others. Do not reuse a generic line (like "All set", "Okay", "Ready") that could fit more than one moment.`,
   // The four rules below are the anti-sameness ones. Without them the model
   // returns the same neutral agent-speak for every personality, which is the
   // whole complaint: cues that don't sound like the character they belong to.
@@ -164,20 +172,21 @@ function buildCombinedPrompt(name: string, prompt?: string, roles?: string[]): s
     "",
     ...personaBlock(name, prompt, roles),
     "",
-    `Write lines ${name.trim() || "the agent"} says OUT LOUD at three DISTINCT moments:`,
+    `Write lines ${name.trim() || "the agent"} says OUT LOUD at four DISTINCT moments:`,
     moment("join"),
     moment("thinking"),
+    moment("waiting"),
     moment("done"),
     "",
     ...LINE_RULES,
     "",
     `Give 4 distinct variations for each moment, in ${name.trim() || "the agent"}'s voice.`,
-    `Return JSON only: { "join": [...], "thinking": [...], "done": [...] }.`,
+    `Return JSON only: { "join": [...], "thinking": [...], "waiting": [...], "done": [...] }.`,
   ].join("\n");
 }
 
 function emptyLines(): VoiceCueLines {
-  return { join: [], thinking: [], done: [] };
+  return { join: [], thinking: [], waiting: [], done: [] };
 }
 
 export function createVoiceCueGenerator(deps: {

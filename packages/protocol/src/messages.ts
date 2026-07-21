@@ -330,22 +330,27 @@ const AgentPersonalityVoiceSchema = z
   })
   .passthrough();
 
-// The three Visualizer lifecycle moments a personality voice-cue line can
-// belong to. Protocol owns this vocabulary — the daemon's cue generator, the
-// personality editor, and the Visualizer playback hook all import it from here.
-export const CUE_MOMENTS = ["join", "thinking", "done"] as const;
+// The Visualizer lifecycle moments a personality voice-cue line can belong to.
+// Protocol owns this vocabulary — the daemon's cue generator, the personality
+// editor, and the Visualizer playback hook all import it from here.
+// "waiting" is the parent's turn ending while its observed sub-agents are still
+// running; it DEFERS "done" rather than replacing it (see docs/visualizer.md).
+export const CUE_MOMENTS = ["join", "thinking", "waiting", "done"] as const;
 export type CueMoment = (typeof CUE_MOMENTS)[number];
 
 // Pre-generated (and user-editable) spoken "voice cue" lines for the personality
-// — a few short variations for each of three Visualizer moments (its node joins
-// the graph, first starts thinking, completes). Stored on the personality so
-// they're deterministic and hand-tunable in the editor; the Visualizer reads
-// them directly (no runtime generation). All groups optional/loose — a
-// personality may have none, or only some. See docs/visualizer.md "Voice cues".
+// — a few short variations for each Visualizer moment (its node joins the graph,
+// first starts thinking, finishes its turn but waits on sub-agents, completes).
+// Stored on the personality so they're deterministic and hand-tunable in the
+// editor; the Visualizer reads them directly (no runtime generation). All groups
+// optional/loose — a personality may have none, or only some (personalities
+// authored before "waiting" existed simply stay silent for that moment).
+// See docs/visualizer.md "Voice cues".
 const AgentPersonalityVoiceCuesSchema = z
   .object({
     join: z.array(z.string()).optional(),
     thinking: z.array(z.string()).optional(),
+    waiting: z.array(z.string()).optional(),
     done: z.array(z.string()).optional(),
   })
   .passthrough();
@@ -2830,6 +2835,62 @@ export const CheckoutGitRollbackRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// ── Git file investigation (local git, no hosting provider) ─────────────────
+// History / per-commit diff / blame / origin commit for one file or one line
+// range within it. Everything below is plain local git: it works in a repo with
+// no remote and no forge connection, and it is provider-neutral by construction
+// (it inspects the repo, not an agent), so there is no per-provider rollout to
+// look for. Gated by server_info.features.checkoutGitFileHistory.
+
+// Commits that touched a file, newest first. Whole-file mode follows renames;
+// passing startLine/endLine switches to `git log -L` for that range instead.
+export const CheckoutGitFileHistoryRequestSchema = z.object({
+  type: z.literal("checkout.git.get_file_history.request"),
+  cwd: z.string(),
+  // Repo-relative path, as the file is named today.
+  path: z.string(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  // 1-based inclusive line range. Both or neither.
+  startLine: z.number().int().positive().optional(),
+  endLine: z.number().int().positive().optional(),
+  requestId: z.string(),
+});
+
+// What a single commit did to a single file, as a unified diff. `path` must be
+// the file's name *at that commit* (history entries carry it) or the pathspec
+// misses across a rename.
+export const CheckoutGitFileCommitDiffRequestSchema = z.object({
+  type: z.literal("checkout.git.get_file_commit_diff.request"),
+  cwd: z.string(),
+  path: z.string(),
+  sha: z.string(),
+  ignoreWhitespace: z.boolean().optional(),
+  requestId: z.string(),
+});
+
+// One page of blame. Always paged — blaming a large file whole would block the
+// daemon — so the client walks the file a page at a time.
+export const CheckoutGitFileBlameRequestSchema = z.object({
+  type: z.literal("checkout.git.get_file_blame.request"),
+  cwd: z.string(),
+  path: z.string(),
+  startLine: z.number().int().positive().optional(),
+  lineCount: z.number().int().positive().optional(),
+  // Blame at a specific commit instead of the working tree.
+  sha: z.string().optional(),
+  requestId: z.string(),
+});
+
+// The commit that first added the file ("who originally wrote this"), following
+// renames so a moved file reports its true origin.
+export const CheckoutGitFileOriginRequestSchema = z.object({
+  type: z.literal("checkout.git.get_file_origin.request"),
+  cwd: z.string(),
+  path: z.string(),
+  requestId: z.string(),
+});
+
 export const CheckoutMergeRequestSchema = z.object({
   type: z.literal("checkout_merge_request"),
   cwd: z.string(),
@@ -3619,6 +3680,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGitCommitAgentRequestSchema,
   CheckoutGitRollbackRequestSchema,
   CheckoutGitGetOperationLogRequestSchema,
+  CheckoutGitFileHistoryRequestSchema,
+  CheckoutGitFileCommitDiffRequestSchema,
+  CheckoutGitFileBlameRequestSchema,
+  CheckoutGitFileOriginRequestSchema,
   RunsGetSnapshotRequestSchema,
   RunsGateRespondRequestSchema,
   RunsCancelRequestSchema,
@@ -3963,6 +4028,12 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutGitRollback: z.boolean().optional(),
         // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
         checkoutGitLog: z.boolean().optional(),
+        // Local-git file investigation: history, per-commit diff, blame, origin
+        // commit — for a whole file or a line range. No forge connection needed
+        // and no per-provider rollout; it is git, so every provider gets it at
+        // once.
+        // COMPAT(checkoutGitFileHistory): added in v0.6.6, drop the gate when daemon floor >= v0.6.6.
+        checkoutGitFileHistory: z.boolean().optional(),
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         agentTeams: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
@@ -5306,6 +5377,125 @@ export const CheckoutGitRollbackResponseSchema = z.object({
   }),
 });
 
+// ── Git file investigation responses ────────────────────────────────────────
+
+// A structured failure any of the four file-investigation RPCs can report. They
+// are pure reads, so the failure modes are narrow: not a repo, path/revision
+// rejected, or git itself refused.
+export const CheckoutGitFileErrorSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("not_git_repo"),
+  }),
+  z.object({
+    kind: z.literal("invalid_path"),
+    detail: z.string(),
+  }),
+  z.object({
+    kind: z.literal("git_failed"),
+    detail: z.string(),
+  }),
+]);
+
+export const GitFileHistoryEntrySchema = z.object({
+  sha: z.string(),
+  shortSha: z.string(),
+  subject: z.string(),
+  body: z.string(),
+  authorName: z.string(),
+  authorEmail: z.string(),
+  // Unix seconds.
+  authoredAt: z.number(),
+  committerName: z.string(),
+  committedAt: z.number(),
+  // The file's name at this commit — differs from the requested path across a
+  // rename. Diff requests must echo this one back, not the current name.
+  path: z.string(),
+  previousPath: z.string().optional(),
+  // Single-letter git status (A/M/D/R/C).
+  changeKind: z.string().optional(),
+  isMerge: z.boolean(),
+  // Parent object names, so a diff view can name the revision it is comparing
+  // against instead of writing "<sha>^". Empty for a root commit.
+  parentShas: z.array(z.string()).optional(),
+});
+
+export const CheckoutGitFileHistoryResponseSchema = z.object({
+  type: z.literal("checkout.git.get_file_history.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    entries: z.array(GitFileHistoryEntrySchema),
+    hasMore: z.boolean(),
+    error: CheckoutGitFileErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutGitFileCommitDiffResponseSchema = z.object({
+  type: z.literal("checkout.git.get_file_commit_diff.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    sha: z.string(),
+    diff: z.string(),
+    // Highlighted/parsed form of the same diff, when it parsed cleanly.
+    structured: z.array(ParsedDiffFileSchema).optional(),
+    // The file's previous revision — the diff's left-hand side, and the honest
+    // label for it. Absent when this revision created the file.
+    previousSha: z.string().optional(),
+    previousPath: z.string().optional(),
+    truncated: z.boolean(),
+    error: CheckoutGitFileErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const GitBlameLineSchema = z.object({
+  line: z.number(),
+  sha: z.string(),
+  originalLine: z.number(),
+});
+
+// Blame commit metadata is deduped by sha rather than inlined per line: a
+// thousand-line page usually references a handful of commits.
+export const GitBlameCommitSchema = z.object({
+  sha: z.string(),
+  shortSha: z.string(),
+  summary: z.string(),
+  authorName: z.string(),
+  authorEmail: z.string(),
+  authoredAt: z.number(),
+  path: z.string().optional(),
+});
+
+export const CheckoutGitFileBlameResponseSchema = z.object({
+  type: z.literal("checkout.git.get_file_blame.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    lines: z.array(GitBlameLineSchema),
+    commits: z.array(GitBlameCommitSchema),
+    startLine: z.number(),
+    endLine: z.number(),
+    reachedEndOfFile: z.boolean(),
+    error: CheckoutGitFileErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CheckoutGitFileOriginResponseSchema = z.object({
+  type: z.literal("checkout.git.get_file_origin.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    // Null when the file has no commit history (never committed, or a shallow
+    // clone that does not reach its creation).
+    entry: GitFileHistoryEntrySchema.nullable(),
+    error: CheckoutGitFileErrorSchema.nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CheckoutMergeResponseSchema = z.object({
   type: z.literal("checkout_merge_response"),
   payload: z.object({
@@ -6481,6 +6671,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutGitRollbackResponseSchema,
   CheckoutGitGetOperationLogResponseSchema,
   CheckoutGitLogAppendedNotificationSchema,
+  CheckoutGitFileHistoryResponseSchema,
+  CheckoutGitFileCommitDiffResponseSchema,
+  CheckoutGitFileBlameResponseSchema,
+  CheckoutGitFileOriginResponseSchema,
   RunsGetSnapshotResponseSchema,
   RunsUpdatedNotificationSchema,
   RunsGateRespondResponseSchema,
@@ -6908,6 +7102,22 @@ export type CommitMessageAgent = z.infer<typeof CommitMessageAgentSchema>;
 export type CheckoutGitRollbackRequest = z.infer<typeof CheckoutGitRollbackRequestSchema>;
 export type CheckoutGitRollbackResponse = z.infer<typeof CheckoutGitRollbackResponseSchema>;
 export type CheckoutGitRollbackError = z.infer<typeof CheckoutGitRollbackErrorSchema>;
+export type CheckoutGitFileError = z.infer<typeof CheckoutGitFileErrorSchema>;
+export type GitFileHistoryEntry = z.infer<typeof GitFileHistoryEntrySchema>;
+export type GitBlameLine = z.infer<typeof GitBlameLineSchema>;
+export type GitBlameCommit = z.infer<typeof GitBlameCommitSchema>;
+export type CheckoutGitFileHistoryRequest = z.infer<typeof CheckoutGitFileHistoryRequestSchema>;
+export type CheckoutGitFileHistoryResponse = z.infer<typeof CheckoutGitFileHistoryResponseSchema>;
+export type CheckoutGitFileCommitDiffRequest = z.infer<
+  typeof CheckoutGitFileCommitDiffRequestSchema
+>;
+export type CheckoutGitFileCommitDiffResponse = z.infer<
+  typeof CheckoutGitFileCommitDiffResponseSchema
+>;
+export type CheckoutGitFileBlameRequest = z.infer<typeof CheckoutGitFileBlameRequestSchema>;
+export type CheckoutGitFileBlameResponse = z.infer<typeof CheckoutGitFileBlameResponseSchema>;
+export type CheckoutGitFileOriginRequest = z.infer<typeof CheckoutGitFileOriginRequestSchema>;
+export type CheckoutGitFileOriginResponse = z.infer<typeof CheckoutGitFileOriginResponseSchema>;
 export type GitOperationLogEntry = z.infer<typeof GitOperationLogEntrySchema>;
 export type CheckoutGitGetOperationLogRequest = z.infer<
   typeof CheckoutGitGetOperationLogRequestSchema

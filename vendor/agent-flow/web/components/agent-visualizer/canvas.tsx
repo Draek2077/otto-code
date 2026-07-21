@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Agent, Particle, Edge, Discovery, DepthParticle, type NodeShape } from '@/lib/agent-types'
+import { Agent, Particle, Edge, Discovery, DepthParticle, type ContextDisplay, type NodeShape } from '@/lib/agent-types'
 import type { SimulationState } from '@/hooks/simulation/types'
 import { getStateColor } from '@/lib/colors'
 import { ANIM_SPEED, PERF_OVERLAY, PERF_OVERLAY_ENABLED } from '@/lib/canvas-constants'
@@ -20,7 +20,7 @@ import {
   drawCostLabels,
   detectStateChanges as detectStateChangesPure,
 } from './canvas/index'
-import { useCanvasCamera } from '@/hooks/use-canvas-camera'
+import { useCanvasCamera, type CameraFramingConfig } from '@/hooks/use-canvas-camera'
 import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
 
 interface CanvasProps {
@@ -46,14 +46,18 @@ interface CanvasProps {
   /** OTTO PATCH (see OTTO-PATCHES.md): host-toggleable render layers plus the
    * agent-node silhouette. Omitted keys (and an omitted object) keep every
    * layer on and the node shape at its historical hexagon. */
-  renderOptions?: { bloom?: boolean; nodeGlow?: boolean; stars?: boolean; backdrop?: boolean; nodeShape?: NodeShape }
+  renderOptions?: { bloom?: boolean; nodeGlow?: boolean; stars?: boolean; backdrop?: boolean; nodeShape?: NodeShape; contextDisplay?: ContextDisplay }
+  /** OTTO PATCH (see OTTO-PATCHES.md): auto-fit framing profile. Omitted keys
+   * keep the tab-tuned defaults; Otto's PIP sends a tighter profile because the
+   * shared constants were tuned for a full-tab viewport. */
+  cameraFraming?: CameraFramingConfig
 }
 
 export function AgentCanvas({
   simulationRef,
   selectedAgentId, hoveredAgentId, showStats, zoomToFitTrigger, pauseAutoFit,
   onAgentClick, onAgentHover, onAgentDrag, onContextMenu, onToolCallClick, selectedToolCallId, onDiscoveryClick, selectedDiscoveryId, showCostOverlay,
-  renderOptions,
+  renderOptions, cameraFraming,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mainCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -117,6 +121,7 @@ export function AgentCanvas({
   } = useCanvasCamera({
     mainCanvasRef, drawPropsRef, simTimeRef, dimensions,
     agentCount: sim.agents.size, zoomToFitTrigger, selectedAgentId,
+    framing: cameraFraming,
   })
 
   // ─── Interaction ────────────────────────────────────────────────────────
@@ -240,6 +245,7 @@ export function AgentCanvas({
       const showStars = renderOptions?.stars !== false
       const showBackdrop = renderOptions?.backdrop !== false
       const nodeShape = renderOptions?.nodeShape ?? 'hexagon'
+      const contextDisplay = renderOptions?.contextDisplay ?? 'ring'
       const transform = transformRef.current
 
       const deltaTime = lastFrameTimeRef.current ? (timestamp - lastFrameTimeRef.current) / 1000 : ANIM_SPEED.defaultDeltaTime
@@ -314,7 +320,7 @@ export function AgentCanvas({
       drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape, showNodeGlow)
+      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape, showNodeGlow, contextDisplay)
       drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
       if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls, showStats)
       drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)

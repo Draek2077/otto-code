@@ -371,8 +371,8 @@ function useRunningChatPersonality(input: {
     applyPersonality(null, null);
   }, [applyPersonality]);
   // Picking a raw model with a personality bound: one confirm, then clear the
-  // personality and apply the model as a single locked flow. The model half
-  // also persists the last-used-model preference, mirroring handleSelectModel.
+  // personality and apply the model as a single locked flow. Nothing persists —
+  // a started agent's picker is no-save (see handleSelectModel).
   const boundPersonalityLabel =
     familyRoster.find((entry) => entry.id === selectedPersonalityId)?.name ?? personalityName;
   const onSelectModelOverPersonality = useCallback(
@@ -387,15 +387,6 @@ function useRunningChatPersonality(input: {
         if (!(await confirmWithSuppression(dialog))) {
           return;
         }
-        void updatePreferences((current) =>
-          mergeProviderPreferences({
-            preferences: current,
-            provider: providerId,
-            updates: { model: modelId },
-          }),
-        ).catch((error) => {
-          console.warn("[AgentControls] persist model preference failed", error);
-        });
         await runLockedSwitch(async () => {
           const notice = await client.setAgentPersonality(agentId, null);
           await client.setAgentModel(agentId, modelId);
@@ -411,7 +402,6 @@ function useRunningChatPersonality(input: {
       entries,
       runLockedSwitch,
       toast,
-      updatePreferences,
     ],
   );
 
@@ -2013,30 +2003,23 @@ export const AgentControls = memo(function AgentControls({
   }, [modelSelection.thinkingOptions]);
 
   const agentProvider = agent?.provider;
-  const activeModelId = modelSelection.activeModelId;
 
+  // A started agent's picker is no-save: switching its model retargets THIS
+  // agent and nothing else. It must not write the device's last-used-model
+  // preference, because that preference exists to seed the create surfaces —
+  // letting a mid-chat switch feed back into it is what made the New Chat
+  // picker open on a model nobody had chosen for it.
   const handleSelectModel = useCallback(
     (modelId: string) => {
       if (!client || !agentProvider) {
         return;
       }
-      void updatePreferences((current) =>
-        mergeProviderPreferences({
-          preferences: current,
-          provider: agentProvider,
-          updates: {
-            model: modelId,
-          },
-        }),
-      ).catch((error) => {
-        console.warn("[AgentControls] persist model preference failed", error);
-      });
       void client.setAgentModel(agentId, modelId).catch((error) => {
         console.warn("[AgentControls] setAgentModel failed", error);
         toast.error(toErrorMessage(error));
       });
     },
-    [agentId, agentProvider, client, toast, updatePreferences],
+    [agentId, agentProvider, client, toast],
   );
 
   const handleToggleFavoriteModel = useCallback(
@@ -2055,22 +2038,7 @@ export const AgentControls = memo(function AgentControls({
       if (!client || !agentProvider) {
         return;
       }
-      if (activeModelId) {
-        void updatePreferences((current) =>
-          mergeProviderPreferences({
-            preferences: current,
-            provider: agentProvider,
-            updates: {
-              model: activeModelId,
-              thinkingByModel: {
-                [activeModelId]: thinkingOptionId,
-              },
-            },
-          }),
-        ).catch((error) => {
-          console.warn("[AgentControls] persist thinking preference failed", error);
-        });
-      }
+      // No-save, same as handleSelectModel — effort rides with the model.
       void client
         .setAgentThinkingOption(agentId, thinkingOptionId)
         .then((notice) => showProviderNoticeToast(toast, notice))
@@ -2079,7 +2047,7 @@ export const AgentControls = memo(function AgentControls({
           toast.error(toErrorMessage(error));
         });
     },
-    [activeModelId, agentId, agentProvider, client, toast, updatePreferences],
+    [agentId, agentProvider, client, toast],
   );
 
   const handleSetFeature = useCallback(

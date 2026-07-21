@@ -164,6 +164,12 @@ export interface MessageInputRef {
   blur: () => void;
   runKeyboardAction: (action: MessageInputKeyboardActionKind) => boolean;
   /**
+   * Collapse the caret to the end of the current text. Callers that swap the
+   * value programmatically (history recall, ghost-text accept) need this: a
+   * controlled value change does not reposition the caret on every platform.
+   */
+  moveCaretToEnd: () => void;
+  /**
    * Web-only: return the underlying DOM element for focus assertions/retries.
    * May return null if not mounted or on native.
    */
@@ -1377,6 +1383,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           isRealtimeVoiceForCurrentAgent,
           voice,
         }),
+      moveCaretToEnd: () => {
+        const end = valueRef.current.length;
+        if (isWeb) {
+          const element = getTextInputNativeElement(textInputRef.current);
+          if (element && "setSelectionRange" in element) {
+            (element as HTMLTextAreaElement).setSelectionRange(end, end);
+          }
+          return;
+        }
+        const handle = textInputRef.current as
+          | (TextInput & { setSelection?: (start: number, end: number) => void })
+          | null;
+        handle?.setSelection?.(end, end);
+      },
       getNativeElement: () => (isWeb ? getTextInputNativeElement(textInputRef.current) : null),
     }));
     const inputHeightRef = useRef(MIN_INPUT_HEIGHT);

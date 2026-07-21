@@ -1,43 +1,51 @@
 # Git investigation tools for files and selections
 
-From a file open in the editor, be able to investigate it through git — history,
-blame, who wrote a line and when. The bar is **JetBrains-grade functionality**
-with a better UI.
+**Capability shipped 0.6.6.** The durable architecture moved to
+[docs/git-file-history.md](../../docs/git-file-history.md). This file now tracks
+only what is left, which is presentation.
 
-Related: [docs/text-editor.md](../../docs/text-editor.md),
-[docs/git-providers.md](../../docs/git-providers.md),
-[projects/diff-base](../diff-base/diff-base.md).
+## Shipped
 
-## Scope
+- Daemon primitives (`packages/server/src/utils/git-file-history.ts`) and four
+  `checkout.git.get_file_*` RPCs behind `features.checkoutGitFileHistory`.
+- History for the whole file (`--follow`, so renames don't cut it short) and for
+  a line range (`git log -L`), paged.
+- The patch a chosen commit applied to the file, raw plus structured.
+- Blame, paged so a large file never blocks the daemon.
+- The commit that first added the file, followed across renames.
+- Client entry point: a selection-aware **Git history** button in the file tab
+  toolbar (editor and preview).
+- A dedicated **`fileHistory` tab** — commit table, revision diff, and commit
+  message as three vertically stacked resizable panes, with blame annotating the
+  diff's gutter. Splitter positions persist as one global setting. Whole-file
+  and line-scoped are separate tabs.
 
-Acting on **a file, or a selection within a file**:
+Two presentation attempts were discarded along the way. The first was a modal
+sheet: a bounded card leaves a table floating in whitespace, and master/detail
+navigation loses your place every time you step to the next commit. The second
+put the list and diff side by side and gave blame its own view — the diff was
+starved of the horizontal space code actually needs, and blame-as-a-table sat
+apart from the code it describes.
 
-- **View git history** for the file — the list of commits that touched it.
-- **Diffs per history entry** — pick an entry, see what that commit did to this
-  file.
-- **Blame** — per-line author and commit.
-- **Original commit** — who first committed the file.
-- History for a **selected range**, not just the whole file (`git log -L`).
+## What's left — presentation
 
-UI is explicitly unsettled. **A popup window is acceptable for now** while the
-real UI is worked out; the point is to get the capability in and iterate on
-presentation.
+- **Blame in the _editor_ gutter.** Gutter blame now exists in the history
+  pane's diff. The editor itself (CM6, plus a native equivalent and the
+  read-only viewer) still has none, so "annotate this file while I read it"
+  is unanswered.
+- **Diff presentation.** The revision diff is unified-only. Side-by-side,
+  next/previous difference navigation, and word-level highlighting all want more
+  of what the virtualized `diff-pane` renderer already does.
+- **Compare arbitrary revisions.** Today you see what one revision changed.
+  Selecting two rows and diffing them directly is the other half of the
+  JetBrains behavior.
+- **Sortable / filterable columns.** Filter by author or by message substring;
+  the table is there, the affordances are not.
+- **Mobile.** The stacked layout works and drops the splitters, but the column
+  set is desktop-shaped — a phone wants fewer, larger rows.
 
-## Where it plugs in
+## Related
 
-- Daemon side: new `checkout.git.*` RPCs alongside the existing commit/log ones
-  (`checkoutGitCommit` / `checkoutGitLog` flags — see
-  [docs/rpc-namespacing.md](../../docs/rpc-namespacing.md) for naming; these are
-  `domain.provider.operation.request`/`.response` pairs).
-- App side: entry points from the file tab and from an editor selection's
-  context menu.
-
-## Design notes
-
-- This is **local git**, not a hosting provider — it must work with no remote
-  and no GitHub/Bitbucket connection. Keep it out of the forge layer.
-- Blame on a large file is expensive; needs to stream or page rather than block.
-- Follow renames (`git log --follow`) or the history stops at the rename, which
-  is exactly when people reach for this.
-- Provider-neutral by construction (it's git), so there's no per-provider
-  rollout — unusual for this repo, and worth stating so nobody looks for one.
+[docs/text-editor.md](../../docs/text-editor.md),
+[docs/git-providers.md](../../docs/git-providers.md) (this feature deliberately
+stays out of the forge layer), [projects/diff-base](../diff-base/diff-base.md).

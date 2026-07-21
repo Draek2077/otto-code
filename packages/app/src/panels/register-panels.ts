@@ -4,6 +4,7 @@ import { artifactPanelRegistration } from "@/panels/artifact-panel";
 import { browserPanelRegistration } from "@/panels/browser-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
+import { fileHistoryPanelRegistration } from "@/panels/file-history-panel";
 import { gitLogPanelRegistration } from "@/panels/git-log-panel";
 import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
@@ -24,6 +25,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(filePanelRegistration);
   registerPanel(artifactPanelRegistration);
   registerPanel(gitLogPanelRegistration);
+  registerPanel(fileHistoryPanelRegistration);
   registerPanel(visualizerPanelRegistration);
   registerPanel(contextManagementPanelRegistration);
   panelsRegistered = true;

@@ -1,7 +1,11 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@otto-code/highlight";
 import type { TasksSuggestedStartMode } from "@otto-code/protocol/messages";
 import type { QueryClient } from "@tanstack/react-query";
-import type { ChatWidth } from "@/constants/layout";
+import {
+  WORKSPACE_TABS_RAIL_MAX_WIDTH,
+  WORKSPACE_TABS_RAIL_MIN_WIDTH,
+  type ChatWidth,
+} from "@/constants/layout";
 import { FEATURE_IDS, type FeatureId } from "@/features/feature-catalog";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { parseAppLanguage, type AppLanguage } from "@/i18n/locales";
@@ -156,6 +160,16 @@ export interface AppSettings {
   // Default tab-strip orientation for new panes (horizontal row vs. vertical
   // rail). Per-pane `SplitPane.tabOrientation` overrides this individually.
   defaultTabOrientation: TabOrientation;
+  // Width, in px, the user dragged the vertical tab rail's splitter to. One
+  // width for EVERY rail on the device, not per-pane: a rail's width is a
+  // reading preference (how much of a tab label you want to see), not a
+  // property of the pane it sits in. `null` — the default — means no user width
+  // yet, so the rail keeps sizing itself to its widest current label. A saved
+  // number is an outright override of that content-driven width, never a
+  // second clamp on top of it: a splitter that sometimes refuses to move is
+  // worse than one that always does. Clamped to [WORKSPACE_TABS_RAIL_MIN_WIDTH,
+  // WORKSPACE_TABS_RAIL_MAX_WIDTH]. Device-local presentation only.
+  verticalTabRailWidth: number | null;
   chatWidth: ChatWidth;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
@@ -270,6 +284,13 @@ export interface AppSettings {
   // to "circle" (the vendored page's own omitted-config fallback remains
   // "hexagon", its historical look). Device-local.
   visualizerNodeShape: VisualizerNodeShape;
+  // How the main agent node reports context occupancy (sent to the page as
+  // config.render.contextDisplay — see vendor/agent-flow/OTTO-PATCHES.md). The
+  // page used to draw the ring AND the bar, which is the same number twice, so
+  // this picks one: "ring" hugs the node and leaves only the token count where
+  // the bar was; "bar" is the segmented bar. Sub-agents have no ring and keep
+  // their bar either way. Device-local.
+  visualizerContextDisplay: VisualizerContextDisplay;
   // Visualizer master audio volume as a 0-100 percent — the LEVEL used when the
   // page is unmuted (sent to the page as a 0..1 `config.soundVolume`, gated by
   // visualizerSoundMuted below — see vendor/agent-flow/OTTO-PATCHES.md). The
@@ -299,6 +320,26 @@ export interface AppSettings {
   // resets on Otto's fresh webview partition). Sent to the page as
   // `config.hudHidden` — see vendor/agent-flow/OTTO-PATCHES.md.
   visualizerHudHidden: boolean;
+  // Picture-in-picture Visualizer: a small always-on-top viewport pinned to the
+  // top-right of the workspace content, so the graph stays glanceable while you
+  // work in the chat. Mutually exclusive with the Visualizer TAB by design —
+  // one live guest at a time, so there is only ever one simulation and one star
+  // field (see docs/visualizer.md "PIP mode"). Device-local.
+  visualizerPipOpen: boolean;
+  // Which surface the header's Visualizer button opens. Sticky: whichever
+  // surface you last used is the one that comes back. Collapsing the tab to PIP
+  // writes "pip"; expanding the PIP to a tab writes "tab". Closing either one
+  // leaves it alone, so "close PIP, reopen" gives you the PIP again.
+  visualizerSurface: VisualizerSurface;
+  visualizerPipSize: VisualizerPipSize;
+  // Where the user dragged it, stored as a 0..1 fraction of the free space
+  // (container size minus the PIP's own size) rather than pixels. That is what
+  // makes it survive a window resize sensibly: 1 stays pinned to the right/
+  // bottom edge, 0 to the left/top, anything between keeps its proportion — and
+  // it can never end up outside the workspace, whatever size the window becomes.
+  // Defaults to the top-right corner.
+  visualizerPipX: number;
+  visualizerPipY: number;
   // Per-feature enable/disable flags for the gated-feature registry (see
   // features/feature-catalog.ts). A disabled feature is kept out of memory — its
   // panel sits behind a React.lazy boundary that never fires while off. Sparse
@@ -318,6 +359,22 @@ const VISUALIZER_RENDER_QUALITIES: readonly VisualizerRenderQuality[] = [
 ];
 
 export type VisualizerNodeShape = "square" | "hexagon" | "octagon" | "circle";
+
+/** Which single context-occupancy readout the main agent node draws. */
+export type VisualizerContextDisplay = "ring" | "bar";
+
+export const VISUALIZER_CONTEXT_DISPLAYS: readonly VisualizerContextDisplay[] = ["ring", "bar"];
+
+/** PIP viewport sizes. Two, per the charter — small is a glance, medium is
+ * watchable without giving up the chat underneath. */
+export type VisualizerPipSize = "small" | "medium";
+
+export const VISUALIZER_PIP_SIZES: readonly VisualizerPipSize[] = ["small", "medium"];
+
+/** The two mutually-exclusive Visualizer surfaces. */
+export type VisualizerSurface = "tab" | "pip";
+
+export const VISUALIZER_SURFACES: readonly VisualizerSurface[] = ["tab", "pip"];
 
 const VISUALIZER_NODE_SHAPES: readonly VisualizerNodeShape[] = [
   "square",
@@ -362,6 +419,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   workspaceToolsPlacement: "header",
   teamSwitcherPlacement: "sidebar",
   defaultTabOrientation: "horizontal",
+  verticalTabRailWidth: null,
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
@@ -392,10 +450,16 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerRenderQuality: "sharp",
   visualizerShowFps: false,
   visualizerNodeShape: "circle",
+  visualizerContextDisplay: "ring",
   visualizerSoundVolume: 50,
   visualizerSoundMuted: false,
   visualizerVoiceCues: true,
   visualizerHudHidden: false,
+  visualizerPipOpen: false,
+  visualizerSurface: "tab",
+  visualizerPipSize: "small",
+  visualizerPipX: 1,
+  visualizerPipY: 0,
   featureEnabled: {},
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -810,7 +874,30 @@ function pickTabLayoutSettings(stored: Partial<AppSettings>): Partial<AppSetting
   ) {
     result.defaultTabOrientation = stored.defaultTabOrientation as TabOrientation;
   }
+  // `null` is a real persisted value here ("no user width — size to content"),
+  // so it has to survive the round trip rather than fall through to the default
+  // by absence, which is why this is not just a number check.
+  const verticalTabRailWidth = parseVerticalTabRailWidth(stored.verticalTabRailWidth);
+  if (verticalTabRailWidth !== undefined) {
+    result.verticalTabRailWidth = verticalTabRailWidth;
+  }
   return result;
+}
+
+// Returns `undefined` for junk (keep the default), `null` for an explicit
+// "content-driven" choice, or a width pinned into the rail's bounds. A stored
+// width can fall outside those bounds when the bounds themselves change between
+// versions, so it is clamped on read rather than trusted.
+export function parseVerticalTabRailWidth(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.round(
+    Math.min(WORKSPACE_TABS_RAIL_MAX_WIDTH, Math.max(WORKSPACE_TABS_RAIL_MIN_WIDTH, value)),
+  );
 }
 
 function pickPreviewSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
@@ -870,6 +957,12 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   ) {
     result.visualizerNodeShape = stored.visualizerNodeShape;
   }
+  if (
+    typeof stored.visualizerContextDisplay === "string" &&
+    (VISUALIZER_CONTEXT_DISPLAYS as readonly string[]).includes(stored.visualizerContextDisplay)
+  ) {
+    result.visualizerContextDisplay = stored.visualizerContextDisplay;
+  }
   if (typeof stored.visualizerSoundVolume === "number") {
     result.visualizerSoundVolume = Math.max(
       0,
@@ -885,7 +978,42 @@ function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<AppSettin
   if (typeof stored.visualizerHudHidden === "boolean") {
     result.visualizerHudHidden = stored.visualizerHudHidden;
   }
+  return { ...result, ...pickVisualizerPipSettings(stored) };
+}
+
+// Split out of pickVisualizerSettings purely to keep that function inside the
+// repo's complexity budget — the visualizer picker is one long flat chain of
+// independent field guards, so where it's cut is arbitrary; PIP is the natural
+// seam because it's the newest, self-contained group.
+function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (typeof stored.visualizerPipOpen === "boolean") {
+    result.visualizerPipOpen = stored.visualizerPipOpen;
+  }
+  if (
+    typeof stored.visualizerSurface === "string" &&
+    (VISUALIZER_SURFACES as readonly string[]).includes(stored.visualizerSurface)
+  ) {
+    result.visualizerSurface = stored.visualizerSurface;
+  }
+  if (
+    typeof stored.visualizerPipSize === "string" &&
+    (VISUALIZER_PIP_SIZES as readonly string[]).includes(stored.visualizerPipSize)
+  ) {
+    result.visualizerPipSize = stored.visualizerPipSize;
+  }
+  if (typeof stored.visualizerPipX === "number" && Number.isFinite(stored.visualizerPipX)) {
+    result.visualizerPipX = clampUnit(stored.visualizerPipX);
+  }
+  if (typeof stored.visualizerPipY === "number" && Number.isFinite(stored.visualizerPipY)) {
+    result.visualizerPipY = clampUnit(stored.visualizerPipY);
+  }
   return result;
+}
+
+/** A stored 0..1 fraction, defended against a corrupt/out-of-range blob. */
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 // Validates the sparse per-feature enable map: only known FeatureId keys with a

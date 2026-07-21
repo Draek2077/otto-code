@@ -3,14 +3,19 @@
  *
  * The strip is `[menu toggle] [title / subtitle] [...] [Visualizer] [Play]` in
  * the header's `left` container plus `[Explorer]` in `right`. The "..." menu is
- * the one non-negotiable control (it's the only way to reach the actions the
- * dropped buttons duplicate), and the project name / workspace subtitle must
+ * the one non-negotiable control, and the project name / workspace subtitle must
  * always keep at least `MIN_TITLE_WIDTH` — so when the row can't hold
- * everything the optional buttons drop in the order Play, Visualizer, Explorer.
+ * everything the optional buttons drop in the order Visualizer, Explorer, Play.
+ *
+ * Play is the last to go on purpose. None of these three are duplicated in the
+ * "..." menu, so a dropped button is a *lost* capability, and Play is the only
+ * one with no other route: a Visualizer or Explorer view can be reopened as a
+ * tab, but with no Play button there is no way to run a workspace script on a
+ * narrow screen at all.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
-const DROP_ORDER = ["play", "visualizer", "explorer"] as const;
+const DROP_ORDER = ["visualizer", "explorer", "play"] as const;
 
 type CompactHeaderAction = (typeof DROP_ORDER)[number];
 

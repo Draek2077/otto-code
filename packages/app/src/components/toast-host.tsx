@@ -9,6 +9,11 @@ import { isNative, isWeb } from "@/constants/platform";
 import { AlertTriangle, CheckCircle2 } from "@/components/icons/material-icons";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import {
+  selectIsAgentListOpen,
+  selectIsFileExplorerOpen,
+  usePanelStore,
+} from "@/stores/panel-store";
+import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
@@ -103,6 +108,38 @@ export function useToastHost(): {
   return { api, toast, dismiss };
 }
 
+/**
+ * The app-shell toast portals to the whole viewport, but on desktop the agent
+ * list and file explorer are inline row siblings that shrink the content region.
+ * Centering on the viewport therefore reads as off-center against the content
+ * the toast belongs to, so inset by whichever sidebars are currently open.
+ *
+ * Compact layouts overlay their panels (nothing is taken out of the content
+ * region), and the `panel` placement is already scoped to its own pane.
+ */
+function useContentRegionInsets(placement: ToastViewportPlacement): {
+  left: number;
+  right: number;
+} {
+  const isCompact = useIsCompactFormFactor();
+  const isAgentListOpen = usePanelStore((state) =>
+    selectIsAgentListOpen(state, { isCompact: isCompact }),
+  );
+  const isFileExplorerOpen = usePanelStore((state) =>
+    selectIsFileExplorerOpen(state, { isCompact: isCompact }),
+  );
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
+  const explorerWidth = usePanelStore((state) => state.explorerWidth);
+
+  if (placement !== "app-shell" || isCompact) {
+    return { left: 0, right: 0 };
+  }
+  return {
+    left: isAgentListOpen ? sidebarWidth : 0,
+    right: isFileExplorerOpen ? explorerWidth : 0,
+  };
+}
+
 export function ToastViewport({
   toast,
   onDismiss,
@@ -115,6 +152,7 @@ export function ToastViewport({
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = useIsCompactFormFactor();
+  const regionInsets = useContentRegionInsets(placement);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-8)).current;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -244,6 +282,16 @@ export function ToastViewport({
     () => [styles.message, toastVariant === "error" ? styles.messageError : null],
     [toastVariant],
   );
+  const containerStyle = useMemo(
+    () => [
+      styles.container,
+      {
+        left: regionInsets.left + theme.spacing[4],
+        right: regionInsets.right + theme.spacing[4],
+      },
+    ],
+    [regionInsets.left, regionInsets.right, theme.spacing],
+  );
 
   if (!toast) {
     return null;
@@ -258,7 +306,7 @@ export function ToastViewport({
   const icon = toast.icon ?? defaultIcon;
 
   const content = (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={containerStyle} pointerEvents="box-none">
       <Animated.View
         testID={toast.testID ?? "app-toast"}
         onPointerEnter={isWeb ? pauseDismiss : undefined}
@@ -288,16 +336,18 @@ export function ToastViewport({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // `left`/`right` are supplied at render time from the content-region insets.
   container: {
     position: "absolute",
-    left: theme.spacing[4],
-    right: theme.spacing[4],
     top: 0,
     zIndex: OVERLAY_Z.toast,
     alignItems: "center",
   },
   toast: {
     alignSelf: "center",
+    // Belt-and-braces with the container's `alignItems`: RN-web honours auto
+    // margins, so the toast stays centered even if a parent stretches it.
+    marginHorizontal: "auto",
     maxWidth: "92%",
     flexDirection: "row",
     alignItems: "center",

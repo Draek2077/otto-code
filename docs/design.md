@@ -139,6 +139,8 @@ The workspace screen (`packages/app/src/screens/workspace/workspace-screen.tsx`)
 
 On desktop each pane draws its tab strip in one of two orientations: a horizontal row across the top (the default) or a vertical rail down the left edge (`packages/app/src/screens/workspace/workspace-desktop-tabs-rail.tsx`, mounted per pane in `packages/app/src/components/split-container.tsx`). Orientation is a per-pane property (`SplitPane.tabOrientation`), so a split layout can mix a rail on one pane with a row on a sibling; a pane that never sets it inherits the `defaultTabOrientation` Appearance setting (`packages/app/src/hooks/use-settings/storage.ts`, the `TabOrientationRow` in `packages/app/src/screens/settings/appearance/appearance-section.tsx`). This is desktop/web only — compact still routes tabs through `MobileWorkspaceTabSwitcher`, unchanged.
 
+The rail sizes itself to its widest current tab label until the user drags the splitter on its right edge, at which point the dragged width takes over outright — it is an override of the content-driven formula, not a second cap it can shrink under, because a splitter that sometimes refuses to move is worse than one that always does. That width is **one number for every rail on the device** (`verticalTabRailWidth` in `AppSettings`), not per-pane: how much of a tab label you want to read is a preference about the reader, not about the pane. Panes of very different sizes are handled by a `maxWidth` of 60% of the pane rather than by remembering a width per pane, so a rail dragged wide on a full-width pane caps itself in a narrow split instead of squeezing that pane to nothing. Double-tapping the splitter clears the saved width and returns the rail to content-driven — that reset is also the touch-reachable path, since the drag itself is a pan gesture and works wherever the rail renders.
+
 A new list+detail feature copies the settings shell. A new workspace-shaped feature copies the workspace shell. Inventing a third shape happens in design review, not in a PR.
 
 ---
@@ -208,6 +210,10 @@ Selected state on rows in a desktop list+detail uses `surfaceSidebarHover` as th
 Status pills are `palette.<color>[300]` foreground on a 10%-alpha background of the same color. Success uses green, warning uses amber, danger uses red, muted uses zinc. The `<StatusBadge>` primitive (`packages/app/src/components/ui/status-badge.tsx`) is canonical.
 
 Status dots — the small filled circles next to a host or agent name — are `borderRadius.full` filled with the status color (`statusSuccess`, `statusWarning`, `statusDanger`, or `foregroundMuted`). They sit in the trailing slot of a sidebar row or as a leading marker on a status pill.
+
+The `status<Tone>Surface` fills are the same tones as chrome rather than as a pill: alpha washes (`statusInfoSurface`, `statusWarningSurface`, `statusDangerSurface`, `statusSuccessSurface`, `statusMergedSurface`) that tint whatever sits below them, so one token is correct on the app background, an elevated card, or the pure-black chat pane. Use them to tone a whole surface that carries a meaning — the suggested-task card (`packages/app/src/suggested-tasks/overlay.tsx`) is the reference: a `statusInfo` ring around a `statusInfoSurface`-washed interior, because a suggestion is an offer, not chrome.
+
+An alpha wash needs an opaque base underneath when the surface floats over content, or the content shows through. Do not reach for the theme accent to tone a surface: accent is the CTA colour and usually already paints the action inside that surface, and on the monochrome variants `accentBright` is near-white, so an "accent tint" has no hue at all. A status tone stays a status tone across all 13 variants.
 
 The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `packages/app/src/components/agent-list.tsx:607-632`, and `packages/app/src/components/sidebar-workspace-list.tsx:2889-2894` are drift to be removed. New code uses `<StatusBadge>`.
 

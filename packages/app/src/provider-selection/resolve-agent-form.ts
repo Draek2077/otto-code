@@ -319,7 +319,12 @@ function resolveModelField(input: {
   if (preferredModel) {
     return !availableModels || isValidModel(preferredModel) ? preferredModel : defaultModelId;
   }
-  return "";
+  // The provider's own default, materialized into state rather than painted in
+  // at label time. It used to return "" here and let resolveSelectedModelLabel
+  // display the default anyway, so the picker showed a model the form did not
+  // actually hold — the last tier of the ladder has to be a real value or
+  // "what you see" and "what you'll get" can disagree.
+  return defaultModelId;
 }
 
 function resolveThinkingOption(input: {
@@ -535,11 +540,17 @@ export function resolveAgentForm(
 ): AgentFormReducerState {
   switch (action.type) {
     case "REQUEST_RESOLUTION":
-      return {
-        ...state,
-        userModified: INITIAL_USER_MODIFIED,
-        resolution: PENDING_AGENT_FORM_RESOLUTION,
-      };
+      // Re-open the resolution window WITHOUT forgetting what has already been
+      // explicitly set. This fires on every isVisible/resolutionIntentKey
+      // change, and the intent key flips mid-life whenever a late-arriving
+      // workingDir turns `undefined` initialValues into real ones. Clearing the
+      // flags there let the next COMPLETE_RESOLUTION re-derive from
+      // initialValues/device prefs and silently revert values a personality (or
+      // the active team's holder) had already applied — the picker kept showing
+      // "Team's Chatter" while the model underneath had reverted. Closing the
+      // form still dispatches RESET, which is the one place a genuinely fresh
+      // start clears these flags.
+      return { ...state, resolution: PENDING_AGENT_FORM_RESOLUTION };
 
     case "COMPLETE_RESOLUTION":
       return completeResolution(state, action);

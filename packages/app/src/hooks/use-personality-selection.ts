@@ -91,6 +91,17 @@ export interface UsePersonalitySelectionInput {
    * false so the remembered pick doesn't race ahead of that default.
    */
   preselectRemembered?: boolean;
+  /**
+   * Seed the picker with an inherited personality identity (a fork / "new tab
+   * from this agent" carrying the source agent's personality). Read once, on
+   * mount, and treated as an explicit pick: it suppresses the remembered
+   * preselect and survives `preselectRemembered` flipping to false, because
+   * inheriting from a specific agent is a stronger signal than either device
+   * memory or the active team's default. Values are NOT re-applied — the fork's
+   * provider/model already arrive through the form's initialValues, and
+   * deviation keeps identity.
+   */
+  initialSelectedPersonalityId?: string | null;
 }
 
 /**
@@ -117,8 +128,24 @@ export interface UsePersonalitySelectionResult {
    */
   personalityGroups: SelectorPersonalityGroupSection[];
   selectedPersonalityId: string | null;
-  selectPersonality: (id: string) => void;
+  /**
+   * Apply a personality. `persist: false` marks the pick as machine-made (a
+   * surface's tier-2 default resolving) so it does NOT overwrite device memory —
+   * `lastPersonalityByRole` must keep meaning "what the user chose", or an
+   * auto-pick of "first available" would freeze itself in place the moment the
+   * roster order changes.
+   */
+  selectPersonality: (id: string, options?: { persist?: boolean }) => void;
   clearPersonality: () => void;
+  /**
+   * Device-local last-used personality for this role — tier 2's memory, read by
+   * surfaces that impose their own default (see `useFormRolePersonality`). Null
+   * when nothing is remembered; the id is returned as stored, so callers must
+   * still check it against their own role/availability filter.
+   */
+  rememberedPersonalityId: string | null;
+  /** Preferences are still loading — a default must wait rather than pick blind. */
+  isPreferencesLoading: boolean;
 }
 
 function selectionMatches(
@@ -162,10 +189,30 @@ export function usePersonalitySelection(
   const preselectRemembered = input.preselectRemembered ?? true;
   const { config } = useDaemonConfig(serverId);
   const { preferences, isLoading: preferencesLoading, updatePreferences } = useFormPreferences();
-  const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(null);
+  const initialSelectedPersonalityId = input.initialSelectedPersonalityId ?? null;
+  const [selectedPersonalityId, setSelectedPersonalityId] = useState<string | null>(
+    initialSelectedPersonalityId,
+  );
   // Set once the user explicitly picks or clears — freezes auto-preselection so
-  // clearing can't immediately re-select the still-matching personality.
-  const interactedRef = useRef(false);
+  // clearing can't immediately re-select the still-matching personality. An
+  // inherited seed counts as explicit for the same reason (see
+  // `initialSelectedPersonalityId`).
+  const interactedRef = useRef(initialSelectedPersonalityId !== null);
+
+  // Un-latch. `preselectRemembered` used to gate only NEW preselects, so a
+  // single render where it was still true (its inputs load from different
+  // sources — the daemon config via react-query, the teams feature flag via the
+  // session store — so a warm cache can produce one) latched the remembered
+  // personality forever: flipping the flag false afterwards left the id set,
+  // and every surface default then bailed out because a selection already
+  // existed. Computed during render rather than dropped in an effect, so the
+  // suppression is visible in the SAME render the flag flips — an effect leaves
+  // one render where the stale id is still returned, and a surface default
+  // reading it there settles on "already picked" and never retries.
+  // interactedRef covers explicit picks AND an inherited seed; those are the
+  // user's, not memory's, and survive.
+  const latchedPersonalityId =
+    !preselectRemembered && !interactedRef.current ? null : selectedPersonalityId;
 
   // Depend on the roster slice, not the whole config — unrelated daemon-config
   // changes must not rebuild the roster → resolutions → personalities chain.
@@ -224,9 +271,9 @@ export function usePersonalitySelection(
   const isHiddenPersonality = useCallback(
     (personality: AgentPersonality): boolean =>
       brokenProviders.has(personality.provider) &&
-      personality.id !== selectedPersonalityId &&
+      personality.id !== latchedPersonalityId &&
       personality.id !== (alwaysIncludePersonalityId ?? null),
-    [brokenProviders, selectedPersonalityId, alwaysIncludePersonalityId],
+    [brokenProviders, latchedPersonalityId, alwaysIncludePersonalityId],
   );
 
   const buildSelectorPersonality = useCallback(
@@ -322,7 +369,7 @@ export function usePersonalitySelection(
   );
 
   const selectPersonality = useCallback(
-    (id: string) => {
+    (id: string, options?: { persist?: boolean }) => {
       const resolution = resolutions.get(id);
       if (!resolution || !resolution.available) {
         return;
@@ -330,7 +377,9 @@ export function usePersonalitySelection(
       interactedRef.current = true;
       onApply(resolution.values);
       setSelectedPersonalityId(id);
-      persistLastPersonality(id);
+      if (options?.persist ?? true) {
+        persistLastPersonality(id);
+      }
     },
     [resolutions, onApply, persistLastPersonality],
   );
@@ -401,8 +450,8 @@ export function usePersonalitySelection(
   // against the FULL roster: any personality is selectable via the grouped
   // browse section, so a role change alone must not drop the selection.
   const effectiveSelectedPersonalityId =
-    selectedPersonalityId && fullRoster.some((entry) => entry.id === selectedPersonalityId)
-      ? selectedPersonalityId
+    latchedPersonalityId && fullRoster.some((entry) => entry.id === latchedPersonalityId)
+      ? latchedPersonalityId
       : null;
 
   return {
@@ -411,5 +460,7 @@ export function usePersonalitySelection(
     selectedPersonalityId: effectiveSelectedPersonalityId,
     selectPersonality,
     clearPersonality,
+    rememberedPersonalityId: rememberedId ?? null,
+    isPreferencesLoading: preferencesLoading,
   };
 }

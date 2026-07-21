@@ -8,6 +8,12 @@ export type AgentState = 'idle' | 'thinking' | 'tool_calling' | 'complete' | 'er
  *  ripples) follows one shape. `hexagon` is the historical default. */
 export type NodeShape = 'square' | 'hexagon' | 'octagon' | 'circle'
 
+/** OTTO PATCH (OTTO-PATCHES.md): how the main agent node reports context
+ *  occupancy. Upstream drew the ring AND the bar — the same number twice — so
+ *  the host picks one. In `ring` mode the bar is dropped and its token label
+ *  moves up into the bar's slot; in `bar` mode the ring is dropped. */
+export type ContextDisplay = 'ring' | 'bar'
+
 // Context window composition — the key insight
 export interface ContextBreakdown {
   systemPrompt: number   // fixed cost, always there

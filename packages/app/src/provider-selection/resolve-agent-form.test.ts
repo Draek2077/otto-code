@@ -350,11 +350,28 @@ describe("resolveFormState", () => {
     expect(resolved.thinkingOptionId).toBe("");
   });
 
-  it("does not auto-select a model on fresh drafts without preferences", () => {
+  it("falls back to the provider's default model on fresh drafts without preferences", () => {
+    // Tier 4 of the picker ladder. This used to resolve to "" and let the
+    // trigger label paint the default in anyway, so the form held a different
+    // model than the one on screen.
     const resolved = resolveFormState(
       undefined,
       { provider: "codex" },
       CODEX_MODELS,
+      INITIAL_USER_MODIFIED,
+      makeState({ provider: "codex" }).form,
+
+      codexProviderMap,
+    );
+
+    expect(resolved.model).toBe("gpt-5.3-codex");
+  });
+
+  it("resolves to no model when the provider offers none (tier 5)", () => {
+    const resolved = resolveFormState(
+      undefined,
+      { provider: "codex" },
+      [],
       INITIAL_USER_MODIFIED,
       makeState({ provider: "codex" }).form,
 
@@ -726,8 +743,41 @@ describe("resolveAgentForm", () => {
       const next = resolveAgentForm(state, { type: "REQUEST_RESOLUTION" });
 
       expect(next.form).toEqual(state.form);
-      expect(next.userModified).toEqual(INITIAL_USER_MODIFIED);
+      // Explicit selections survive — only RESET (form closed) clears them.
+      expect(next.userModified).toEqual(state.userModified);
       expect(next.resolution.status).toBe("pending");
+    });
+
+    it("keeps applied personality values when a late intent change re-requests resolution", () => {
+      // The draft tab's resolutionIntentKey flips mid-life the moment a
+      // late-arriving workingDir turns `undefined` initialValues into real
+      // ones. That used to clear the userModified flags, so the next
+      // COMPLETE_RESOLUTION re-derived from device prefs and silently reverted
+      // the model the active team's holder had already applied — while the
+      // picker still read "Team's Chatter".
+      const applied = resolveAgentForm(makeState({ serverId: "host-1" }), {
+        type: "SET_PROVIDER_AND_MODEL_FROM_USER",
+        provider: "codex",
+        modelId: "gpt-5.3-codex-mini",
+        providerDef: undefined,
+        providerModels: CODEX_MODELS,
+      });
+      expect(applied.form.model).toBe("gpt-5.3-codex-mini");
+
+      const reRequested = resolveAgentForm(applied, { type: "REQUEST_RESOLUTION" });
+      const next = resolveAgentForm(reRequested, {
+        type: "COMPLETE_RESOLUTION",
+        initialValues: undefined,
+        preferences: {
+          provider: "codex",
+          providerPreferences: { codex: { model: "gpt-5.3-codex" } },
+        },
+        providerModelsByProvider: makeProviderModelsByProvider([["codex", CODEX_MODELS]]),
+        allowedProviderMap: codexProviderMap,
+      });
+
+      expect(next.form.provider).toBe("codex");
+      expect(next.form.model).toBe("gpt-5.3-codex-mini");
     });
 
     it("completes a pending open resolution when snapshot models arrive late", () => {
@@ -1035,7 +1085,9 @@ describe("resolveAgentForm", () => {
       });
 
       expect(next.form.model).toBe("claude-haiku-4-5");
-      expect(next.form.modeId).toBe("");
+      // Not the provider default — Auto's closest safe analog is the
+      // guardrailed no-prompt mode. See coerceModeForModel.
+      expect(next.form.modeId).toBe("dontAsk");
     });
 
     it("keeps a selected auto mode when the new model supports it", () => {

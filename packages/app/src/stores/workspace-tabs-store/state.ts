@@ -14,6 +14,14 @@ export interface WorkspaceDraftTabSetup {
   model: string | null;
   thinkingOptionId: string | null;
   featureValues: Record<string, unknown>;
+  /**
+   * Personality identity inherited from the source agent. Without it a fork /
+   * "new tab from this agent" opened on a raw model with no identity at all:
+   * the rest of this setup becomes the form's `initialValues`, which outrank
+   * device memory, so nothing else could put a personality back. Optional —
+   * older persisted tabs simply don't carry one.
+   */
+  personality?: string | null;
 }
 
 export type WorkspaceTabTarget =
@@ -33,6 +41,13 @@ export type WorkspaceTabTarget =
   // separate, run-scoped tab (`runId` set) restricted to that run's agent set
   // — one per run per workspace, same as `gitLog`'s one-per-operation shape.
   | { kind: "visualizer"; runId?: string }
+  // Git investigation for one file: commit history, per-commit diff, blame,
+  // origin commit. A tab rather than a dialog because it is a two-pane working
+  // surface (commit table + diff) you keep open while reading the file, not a
+  // question you answer and dismiss. One tab per (path, scope): investigating a
+  // selection is a different question from investigating the whole file, so the
+  // scoped tab lives beside the unscoped one instead of replacing it.
+  | { kind: "fileHistory"; path: string; startLine?: number; endLine?: number }
   // Context Management — everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.

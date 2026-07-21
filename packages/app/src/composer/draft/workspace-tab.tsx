@@ -266,6 +266,10 @@ function buildDraftInitialValues(input: {
   };
 }
 
+function resolveDraftInitialPersonalityId(setup: WorkspaceDraftTabSetup | null): string | null {
+  return setup?.personality ?? null;
+}
+
 function resolveDraftWorkingDirectory(input: {
   workspaceDirectory: string | null;
   initialSetup: WorkspaceDraftTabSetup | null;
@@ -353,6 +357,7 @@ export function WorkspaceDraftAgentTab({
       isVisible: true,
       onlineServerIds,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,
+      initialPersonalityId: resolveDraftInitialPersonalityId(draftSetup),
     },
   });
   const composerState = draftInput.composerState;

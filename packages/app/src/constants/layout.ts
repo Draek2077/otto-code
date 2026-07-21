@@ -11,11 +11,20 @@ export const HEADER_INNER_HEIGHT_MOBILE = 56;
 export const WORKSPACE_SECONDARY_HEADER_HEIGHT = 36;
 export const HEADER_TOP_PADDING_MOBILE = 8;
 // A pane's vertical tab rail (left edge) sizes itself to its widest current
-// tab label, clamped between this floor and RAIL_TAB_MAX_WIDTH (see
+// tab label, clamped between this floor and WORKSPACE_TABS_RAIL_MAX_WIDTH (see
 // computeWorkspaceTabRailWidth in workspace-tab-layout.ts) — every tab in the
-// rail shares that one computed width. Not user-resizable in v1 — see
-// docs/design.md.
+// rail shares that one computed width. Dragging the rail's splitter replaces
+// that content-driven width outright with a saved one (AppSettings
+// `verticalTabRailWidth`, one width for every rail on the device), clamped to
+// the same two bounds — see workspace-desktop-tabs-rail.tsx.
 export const WORKSPACE_TABS_RAIL_MIN_WIDTH = 180;
+// The rail trades horizontal room for label space (labels are all it shows), so
+// its ceiling is deliberately wider than a horizontal tab's TAB_MAX_WIDTH —
+// 2.25x it. Re-exported as RAIL_TAB_MAX_WIDTH from workspace-tab-layout.ts,
+// where the rest of the tab metrics live; it is defined here because the
+// settings layer (use-settings/storage.ts) clamps the saved user width to it
+// and must not reach into `screens/` to do so.
+export const WORKSPACE_TABS_RAIL_MAX_WIDTH = 450;
 
 // Max width for chat content (stream view, input area, new agent form)
 export const MAX_CONTENT_WIDTH = 820;
@@ -24,6 +33,18 @@ export const MAX_CONTENT_WIDTH = 820;
 // window. Only "full" (see resolveChatMaxWidth) is meant to track the window.
 export const WIDE_CONTENT_WIDTH = 1200;
 export const COMPACT_FORM_FACTOR_WIDTH = 500;
+
+// Stacking order for absolutely-positioned overlays that share the chat
+// content container (siblings of the stream, inside the pane — not the web
+// portal root, which has its own scale in lib/overlay-root.ts). Anything that
+// floats over the conversation claims a slot here rather than picking a bare
+// number, so the ordering is stated in one place instead of inferred from
+// sibling paint order. The suggested-task card sits above a Visualizer PIP:
+// the PIP is ambient, the card is an offer the user has to answer.
+export const CHAT_PANE_OVERLAY_Z = {
+  visualizerPip: 20,
+  suggestedTasks: 30,
+} as const;
 
 export type ChatWidth = "default" | "wide" | "full";
 

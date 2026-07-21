@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ScrollView, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useRouter, type Href } from "expo-router";
@@ -7,8 +8,12 @@ import { SortableInlineList } from "@/components/sortable-inline-list";
 import type { DraggableRenderItemInfo } from "@/components/draggable-list.types";
 import {
   WORKSPACE_SECONDARY_HEADER_HEIGHT,
+  WORKSPACE_TABS_RAIL_MAX_WIDTH,
   WORKSPACE_TABS_RAIL_MIN_WIDTH,
 } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { persistAppSettings, useAppSettingValue } from "@/hooks/use-settings";
+import type { AppSettings } from "@/hooks/use-settings/storage";
 import {
   getFallbackTabLabel,
   ResolvedDesktopTabChip,
@@ -21,6 +26,7 @@ import {
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
+  clamp,
   computeWorkspaceTabRailWidth,
   RAIL_TAB_MAX_WIDTH,
   TAB_CLOSE_BUTTON_WIDTH,
@@ -62,6 +68,8 @@ interface WorkspaceDesktopTabsRailProps {
   showPaneSplitActions?: boolean;
   externalDndContext?: boolean;
   activeDragTabId?: string | null;
+  /** Index the dragged tab would land at, or null when nothing is over this rail. */
+  tabDropPreviewIndex?: number | null;
   tabOrientation: "horizontal" | "vertical";
   onToggleTabOrientation: () => void;
 }
@@ -77,6 +85,23 @@ const RAIL_HEADER_FIXED_CHROME_WIDTH = 68;
 // row's per-char metrics — see railMetrics below.
 const RAIL_WIDTH_SCALE = 1.5;
 
+// Grab band for the resize splitter, pinned inside the rail's right edge. It is
+// 8px because that is exactly the tab chip's right paddingHorizontal (styles.tab
+// in the row file): the band sits over chip padding only, so it never steals a
+// press from the close button next to it. It stays inside the rail rather than
+// straddling the edge because React Native Web clips View overflow, which would
+// eat any part hanging outside.
+const RAIL_SPLITTER_WIDTH = 8;
+
+// Ceiling on how much of its pane a rail may take, whatever width was saved.
+// See railOuterStyle for why this is a percentage rather than a measurement.
+const RAIL_MAX_PANE_FRACTION = "60%" as const;
+
+// No user width yet ⇒ `null` ⇒ the rail stays content-driven, as it always was.
+function selectVerticalTabRailWidth(settings: AppSettings): number | null {
+  return settings.verticalTabRailWidth;
+}
+
 function noopStripLayout() {}
 
 // The rail's column-shaped counterpart to WorkspaceDesktopTabsRow. It reuses
@@ -87,8 +112,16 @@ function noopStripLayout() {}
 // plain vertical scroll, and the rail's width is content-driven instead
 // (computeWorkspaceTabRailWidth) — every tab shares one width, sized to the
 // widest current label and clamped to [WORKSPACE_TABS_RAIL_MIN_WIDTH,
-// RAIL_TAB_MAX_WIDTH]. Every row always shows icon + a single-line truncated
-// label (no icon-only sub-mode in v1).
+// WORKSPACE_TABS_RAIL_MAX_WIDTH]. Every row always shows icon + a single-line
+// truncated label (no icon-only sub-mode in v1).
+//
+// Dragging the splitter on the rail's right edge replaces that content-driven
+// width with a saved one (AppSettings `verticalTabRailWidth`) — an outright
+// override, not a second cap the content could still shrink under, so the
+// splitter always moves. The saved width is one number for every rail on the
+// device rather than per-pane: how much of a tab label you want to read is a
+// preference about you, not about the pane. Double-tapping the splitter clears
+// it and hands the rail back to the content-driven formula.
 export function WorkspaceDesktopTabsRail({
   paneId,
   isFocused = false,
@@ -119,6 +152,7 @@ export function WorkspaceDesktopTabsRail({
   showPaneSplitActions = true,
   externalDndContext = false,
   activeDragTabId = null,
+  tabDropPreviewIndex = null,
   tabOrientation,
   onToggleTabOrientation,
 }: WorkspaceDesktopTabsRailProps) {
@@ -161,18 +195,36 @@ export function WorkspaceDesktopTabsRail({
   // Content-driven, not viewport-driven: every tab in the rail shares this one
   // width, sized to the widest current label (short labels shrink the rail,
   // long ones truncate past RAIL_TAB_MAX_WIDTH — see computeWorkspaceTabRailWidth).
-  const railWidth = useMemo(
+  // Used only until the user drags the splitter; after that the saved width wins.
+  const contentDrivenWidth = useMemo(
     () => computeWorkspaceTabRailWidth({ tabLabelLengths, metrics: railMetrics }),
     [tabLabelLengths, railMetrics],
   );
+  const savedRailWidth = useAppSettingValue(selectVerticalTabRailWidth);
+  const { railWidth, railResizeGesture } = useRailResize({
+    contentDrivenWidth,
+    savedRailWidth,
+  });
   // Only the content's left padding is subtracted: chips run flush to the
   // rail's right edge so the active chip's open right side fuses with the
   // pane content (covering the right hairline), like the horizontal row's
   // active tab fuses with the pane below.
   const railChipWidth = railWidth - 4;
+  // maxWidth is a fraction of the pane rather than the rail's own width so one
+  // device-wide saved width degrades gracefully across panes of different sizes:
+  // a rail dragged wide on a full-width pane caps itself in a narrow split
+  // instead of squeezing that pane's content to nothing. Flexbox resolves it
+  // against the parent, so no pane measurement (and no per-frame re-render of
+  // every pane during a split drag) is needed to enforce it.
   const railOuterStyle = useMemo(
-    () => [styles.rail, { width: railWidth, minWidth: railWidth, maxWidth: railWidth }],
+    () => [styles.rail, { width: railWidth, maxWidth: RAIL_MAX_PANE_FRACTION }],
     [railWidth],
+  );
+  // No dragging highlight: the splitter is an invisible grab band, and the
+  // rail's own edge already moves with the pointer as feedback.
+  const splitterStyle = useMemo(
+    () => [styles.splitter, isWeb && ({ cursor: "col-resize" } as object)],
+    [],
   );
 
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
@@ -245,38 +297,50 @@ export function WorkspaceDesktopTabsRail({
       index,
       dragHandleProps,
       isActive,
-    }: DraggableRenderItemInfo<WorkspaceDesktopTabRowItem>) => (
-      <ResolvedDesktopTabChip
-        key={`${item.tab.key}:${item.tab.kind}`}
-        item={item}
-        isFocused={isFocused}
-        isDragging={isActive}
-        index={index}
-        tabCount={tabs.length}
-        normalizedServerId={normalizedServerId}
-        normalizedWorkspaceId={normalizedWorkspaceId}
-        onCopyResumeCommand={onCopyResumeCommand}
-        onCopyAgentId={onCopyAgentId}
-        onCopyFilePath={onCopyFilePath}
-        onReloadAgent={onReloadAgent}
-        onRenameTab={onRenameTab}
-        onCloseTabsToLeft={onCloseTabsToLeft}
-        onCloseTabsToRight={onCloseTabsToRight}
-        onCloseOtherTabs={onCloseOtherTabs}
-        resolvedTabWidth={railChipWidth}
-        showLabel
-        showCloseButton
-        orientation="vertical"
-        setHoveredCloseTabKey={setHoveredCloseTabKey}
-        onNavigateTab={onNavigateTab}
-        onCloseTab={onCloseTab}
-        labels={tabMenuLabels}
-        dragHandleProps={dragHandleProps}
-        showDropIndicatorBefore={false}
-        showDropIndicatorAfter={false}
-      />
-    ),
+    }: DraggableRenderItemInfo<WorkspaceDesktopTabRowItem>) => {
+      // Same rule as the horizontal row: the pill sits above the chip the tab
+      // would land in front of, and only the last chip can also carry the
+      // trailing one (index === tabs.length).
+      const showDropIndicatorBefore = activeDragTabId !== null && tabDropPreviewIndex === index;
+      const showDropIndicatorAfter =
+        activeDragTabId !== null &&
+        tabDropPreviewIndex === tabs.length &&
+        index === tabs.length - 1;
+
+      return (
+        <ResolvedDesktopTabChip
+          key={`${item.tab.key}:${item.tab.kind}`}
+          item={item}
+          isFocused={isFocused}
+          isDragging={isActive}
+          index={index}
+          tabCount={tabs.length}
+          normalizedServerId={normalizedServerId}
+          normalizedWorkspaceId={normalizedWorkspaceId}
+          onCopyResumeCommand={onCopyResumeCommand}
+          onCopyAgentId={onCopyAgentId}
+          onCopyFilePath={onCopyFilePath}
+          onReloadAgent={onReloadAgent}
+          onRenameTab={onRenameTab}
+          onCloseTabsToLeft={onCloseTabsToLeft}
+          onCloseTabsToRight={onCloseTabsToRight}
+          onCloseOtherTabs={onCloseOtherTabs}
+          resolvedTabWidth={railChipWidth}
+          showLabel
+          showCloseButton
+          orientation="vertical"
+          setHoveredCloseTabKey={setHoveredCloseTabKey}
+          onNavigateTab={onNavigateTab}
+          onCloseTab={onCloseTab}
+          labels={tabMenuLabels}
+          dragHandleProps={dragHandleProps}
+          showDropIndicatorBefore={showDropIndicatorBefore}
+          showDropIndicatorAfter={showDropIndicatorAfter}
+        />
+      );
+    },
     [
+      activeDragTabId,
       isFocused,
       normalizedServerId,
       normalizedWorkspaceId,
@@ -292,6 +356,7 @@ export function WorkspaceDesktopTabsRail({
       onRenameTab,
       railChipWidth,
       setHoveredCloseTabKey,
+      tabDropPreviewIndex,
       tabMenuLabels,
       tabs.length,
     ],
@@ -305,6 +370,14 @@ export function WorkspaceDesktopTabsRail({
       onPointerLeave={handleRailPointerLeave}
     >
       <View style={styles.railRightHairline} pointerEvents="none" />
+      <GestureDetector gesture={railResizeGesture}>
+        <View
+          role="separator"
+          aria-orientation="vertical"
+          style={splitterStyle}
+          testID="workspace-tabs-rail-splitter"
+        />
+      </GestureDetector>
       <View style={styles.header}>
         <TabOrientationToggleButton
           orientation={tabOrientation}
@@ -357,12 +430,139 @@ export function WorkspaceDesktopTabsRail({
   return <RenderProfile id="WorkspaceDesktopTabsRail">{rail}</RenderProfile>;
 }
 
+interface RailResizeInput {
+  contentDrivenWidth: number;
+  savedRailWidth: number | null;
+}
+
+interface RailResizeState {
+  railWidth: number;
+  railResizeGesture: ReturnType<typeof Gesture.Race>;
+}
+
+// Owns the splitter: the live width while a drag is in flight, the commit to
+// AppSettings when it ends, and the double-tap that clears the saved width and
+// hands the rail back to its content-driven size.
+//
+// The drag runs on the JS thread and re-renders the rail every frame, unlike the
+// app's other splitters (explorer sidebar, context panel, settings sidebar),
+// which drive a Reanimated shared value so the container resizes without any
+// React work. Those all resize a container whose content flexes to fill it; the
+// rail's chips take a hard pixel width prop (`resolvedTabWidth`), so a width the
+// chips never see would leave them at their old size while the rail grew around
+// them. What re-renders here is one header plus N chips, only while the pointer
+// is actually down on the splitter.
+function useRailResize({ contentDrivenWidth, savedRailWidth }: RailResizeInput): RailResizeState {
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  // Precedence, widest scope last: live drag > saved user width > content.
+  const railWidth = dragWidth ?? savedRailWidth ?? contentDrivenWidth;
+
+  // The gesture is built once, so its callbacks read through refs instead of
+  // closing over a render's values.
+  const railWidthRef = useRef(railWidth);
+  railWidthRef.current = railWidth;
+  const dragStartWidthRef = useRef(railWidth);
+  const dragWidthRef = useRef<number | null>(null);
+
+  const handleResizeStart = useCallback(() => {
+    dragStartWidthRef.current = railWidthRef.current;
+    dragWidthRef.current = railWidthRef.current;
+    setDragWidth(railWidthRef.current);
+  }, []);
+
+  const handleResizeUpdate = useCallback((translationX: number) => {
+    const next = Math.round(
+      clamp(
+        dragStartWidthRef.current + translationX,
+        WORKSPACE_TABS_RAIL_MIN_WIDTH,
+        WORKSPACE_TABS_RAIL_MAX_WIDTH,
+      ),
+    );
+    if (next === dragWidthRef.current) {
+      return;
+    }
+    dragWidthRef.current = next;
+    setDragWidth(next);
+  }, []);
+
+  // Fires on both a released and a cancelled drag: whichever width the user was
+  // last shown is the one that sticks, which is less surprising than snapping
+  // back because the pointer left the window. The live width is held until the
+  // write resolves so the rail never flashes through its pre-drag size while the
+  // settings query catches up.
+  const handleResizeFinalize = useCallback(() => {
+    const committed = dragWidthRef.current;
+    dragWidthRef.current = null;
+    if (committed === null) {
+      return;
+    }
+    // A press that ended where it started is not a resize. Writing it anyway
+    // would silently pin a still-content-driven rail to whatever width it
+    // happened to have, turning a stray click into a permanent override.
+    if (committed === dragStartWidthRef.current) {
+      setDragWidth(null);
+      return;
+    }
+    void persistAppSettings({ verticalTabRailWidth: committed })
+      .catch((error: unknown) => {
+        console.error("[TabsRail] Failed to save rail width:", error);
+      })
+      .finally(() => {
+        setDragWidth(null);
+      });
+  }, []);
+
+  const handleResizeReset = useCallback(() => {
+    dragWidthRef.current = null;
+    setDragWidth(null);
+    void persistAppSettings({ verticalTabRailWidth: null }).catch((error: unknown) => {
+      console.error("[TabsRail] Failed to clear rail width:", error);
+    });
+  }, []);
+
+  const railResizeGesture = useMemo(
+    () =>
+      Gesture.Race(
+        // Double-tap resets to the content-driven width, mirroring the explorer
+        // sidebar's double-tap-to-close on its own resize handle. It is also the
+        // only way back on touch, where there is no context menu to hang a
+        // "Reset width" item off.
+        Gesture.Tap().runOnJS(true).numberOfTaps(2).onEnd(handleResizeReset),
+        Gesture.Pan()
+          .runOnJS(true)
+          // Inward only: the band already sits flush against the rail's right
+          // edge, and RNW's View overflow clipping would swallow anything the
+          // slop added on the outside.
+          .hitSlop({ left: 6, right: 0, top: 0, bottom: 0 })
+          .onStart(handleResizeStart)
+          .onUpdate((event) => {
+            handleResizeUpdate(event.translationX);
+          })
+          .onFinalize(handleResizeFinalize),
+      ),
+    [handleResizeFinalize, handleResizeReset, handleResizeStart, handleResizeUpdate],
+  );
+
+  return { railWidth, railResizeGesture };
+}
+
 const styles = StyleSheet.create((theme) => ({
   rail: {
-    // width/minWidth/maxWidth are applied dynamically via railOuterStyle —
-    // see railWidth (computeWorkspaceTabRailWidth) above.
+    // width/maxWidth are applied dynamically via railOuterStyle — see railWidth
+    // (the saved user width, else computeWorkspaceTabRailWidth) above.
     height: "100%",
     backgroundColor: theme.colors.surfaceSidebar,
+  },
+  // Sits above the chips (which run flush to the rail's right edge) so the grab
+  // band is reachable over a tab row, not just in the empty space below the last
+  // tab. It overlays chip padding only — see RAIL_SPLITTER_WIDTH.
+  splitter: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: RAIL_SPLITTER_WIDTH,
+    zIndex: 20,
   },
   // The rail/pane separator is a positioned child rather than a borderRight so
   // the active chip (which runs flush to the rail's right edge) can paint over

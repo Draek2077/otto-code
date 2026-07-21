@@ -344,6 +344,8 @@ function buildForkDraftSetup(agent: AgentScreenAgent): WorkspaceDraftTabSetup | 
     model: agent.model ?? agent.runtimeInfo?.model ?? null,
     thinkingOptionId: agent.thinkingOptionId ?? agent.runtimeInfo?.thinkingOptionId ?? null,
     featureValues,
+    // A fork inherits the source agent's identity, not just its model.
+    personality: agent.personalityId ?? null,
   };
 }
 

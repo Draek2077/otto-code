@@ -156,7 +156,11 @@ const LIVE_TERMINAL_IDS: string[] = ["terminal-script-1"];
 interface RenderScriptsOptions {
   hideLabels?: boolean;
   presentation?: "split" | "ghost";
+  onScriptTerminalStarted?: (terminalId: string) => void;
+  onViewTerminal?: (terminalId: string) => void;
 }
+
+function noop(): void {}
 
 function renderScripts(
   scripts: WorkspaceScriptPayload[],
@@ -183,6 +187,8 @@ function renderScripts(
           workspaceId="workspace-1"
           scripts={nextScripts}
           liveTerminalIds={LIVE_TERMINAL_IDS}
+          onScriptTerminalStarted={options.onScriptTerminalStarted ?? noop}
+          onViewTerminal={options.onViewTerminal ?? noop}
           hideLabels={options.hideLabels}
           presentation={options.presentation}
         />

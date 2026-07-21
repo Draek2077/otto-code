@@ -116,12 +116,31 @@ export type VisualizerHostToPageMessage =
           nodeShape: "square" | "hexagon" | "octagon" | "circle";
           // Bottom-right HUD FPS meter (OTTO PATCH).
           showFps: boolean;
+          // Which single context-occupancy readout the main agent node draws —
+          // the page used to draw both the ring and the bar (OTTO PATCH).
+          contextDisplay: "ring" | "bar";
+        }>;
+        // Auto-fit framing profile (OTTO PATCH). The camera's constants are
+        // tuned for a full-tab viewport; PIP mode sends a tighter profile.
+        // Omitted keys — and an omitted object — keep the tab's values, so the
+        // Visualizer tab simply never sends this.
+        camera: Partial<{
+          viewportPadding: number;
+          autoFitMaxScale: number;
         }>;
         // Master audio volume (0..1). 0 mutes; > 0 is audible at that level.
         soundVolume: number;
         // Hide the entire HUD (every panel/bar/popup) except the in-page HUD
         // toggle button. Authoritative when present (OTTO PATCH).
         hudHidden: boolean;
+        // Hide ONLY the bottom play/scrubber control bar, leaving the top stats
+        // bar up (OTTO PATCH). PIP mode is "top HUD, no controls". Independent
+        // of hudHidden, which still hides both.
+        hudBottomHidden: boolean;
+        // Compact ("mini") HUD layout (OTTO PATCH). PIP-sized viewports split
+        // the stats readout across both top corners and move the FPS meter to
+        // the bottom-left; the tab keeps the single top-right block.
+        hudCompact: boolean;
       }>;
     }
   // Remote-control the page's session switcher from the Otto toolbar (OTTO

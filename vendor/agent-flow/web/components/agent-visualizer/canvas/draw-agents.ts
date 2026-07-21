@@ -1,4 +1,4 @@
-import { Agent, NODE, ANIM, type NodeShape } from '@/lib/agent-types'
+import { Agent, NODE, ANIM, type ContextDisplay, type NodeShape } from '@/lib/agent-types'
 import { COLORS, getStateColor, contextSegments } from '@/lib/colors'
 import {
   AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY,
@@ -97,6 +97,11 @@ export function drawContextComposition(
   ctx: CanvasRenderingContext2D,
   agent: Agent,
   radius: number,
+  // OTTO PATCH (OTTO-PATCHES.md): 'bar' is upstream's segmented bar + token
+  // label beneath it; 'label' drops the bar and lifts the token label into the
+  // bar's own slot, for hosts that show context as the ring instead (the ring
+  // and the bar are the same number drawn twice).
+  mode: 'bar' | 'label' = 'bar',
 ) {
   const bd = agent.contextBreakdown
   const total = agent.tokensUsed
@@ -106,18 +111,35 @@ export function drawContextComposition(
   const barHeight = CONTEXT_BAR.barHeight
   const barX = agent.x - barWidth / 2
   const barY = agent.y + radius + CONTEXT_BAR.yOffset
+  const labelOnly = mode === 'label'
 
-  // Background
+  // Background — sized to whatever this mode actually draws.
   ctx.fillStyle = COLORS.cardBgDark
   ctx.beginPath()
-  ctx.roundRect(barX - 2, barY - 2, barWidth + 4, barHeight + 14, CONTEXT_BAR.borderRadius)
+  ctx.roundRect(
+    barX - 2,
+    barY - 2,
+    barWidth + 4,
+    labelOnly ? CONTEXT_BAR.fontSize + 4 : barHeight + 14,
+    CONTEXT_BAR.borderRadius,
+  )
   ctx.fill()
 
-  // Label
+  // Label — in the bar's place when the bar is hidden, below it otherwise.
+  // textBaseline is explicit: drawAgentLabel leaves 'top' set, and the label-only
+  // Y math below is written against the text's TOP edge so it tucks right under
+  // the node name instead of floating a line-height lower.
   ctx.fillStyle = COLORS.textMuted
   ctx.font = `${CONTEXT_BAR.fontSize}px monospace`
   ctx.textAlign = 'center'
-  ctx.fillText(`${formatTokens(total)} / ${formatTokens(agent.tokensMax)} tokens`, agent.x, barY + barHeight + CONTEXT_BAR.labelPadding)
+  ctx.textBaseline = 'top'
+  ctx.fillText(
+    `${formatTokens(total)} / ${formatTokens(agent.tokensMax)} tokens`,
+    agent.x,
+    labelOnly ? barY : barY + barHeight + CONTEXT_BAR.labelPadding,
+  )
+
+  if (labelOnly) return
 
   // Segments
   const segments = contextSegments(bd)
@@ -476,6 +498,12 @@ export function drawAgents(
   // OTTO PATCH: host toggle for the per-node glow halo sprite (config.render
   // .nodeGlow). Defaults on; gates only the soft halo, not the node body/ring.
   showNodeGlow: boolean = true,
+  // OTTO PATCH: how the MAIN agent shows context occupancy (config.render
+  // .contextDisplay). Upstream drew both the ring and the bar — the same
+  // number twice. 'ring' keeps the ring and leaves only the token label under
+  // the node; 'bar' keeps upstream's bar and drops the ring. Sub-agents have
+  // no ring and always keep their bar.
+  contextDisplay: ContextDisplay = 'ring',
 ) {
   for (const [id, agent] of agents) {
     const radius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
@@ -516,12 +544,15 @@ export function drawAgents(
 
     drawAgentLabel(ctx, agent, labelR, isHovered)
 
-    // Context composition — ring for main agent, bar for sub-agents
+    // Context composition — the main agent shows the ring OR the bar (OTTO
+    // PATCH: it used to show both, which is the same value drawn twice); sub-
+    // agents keep the bar.
     if (agent.state !== 'complete' || agent.opacity > 0.5) {
-      if (agent.isMain) {
+      const useRing = agent.isMain && contextDisplay === 'ring'
+      if (useRing) {
         drawContextRing(ctx, agent, r, time)
       }
-      drawContextComposition(ctx, agent, r)
+      drawContextComposition(ctx, agent, r, useRing ? 'label' : 'bar')
     }
 
     if (showStats && agent.state !== 'complete') {

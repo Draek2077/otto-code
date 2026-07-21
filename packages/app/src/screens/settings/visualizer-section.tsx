@@ -13,6 +13,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import {
   useAppSettings,
   type AppSettings,
+  type VisualizerContextDisplay,
   type VisualizerNodeShape,
   type VisualizerRenderQuality,
 } from "@/hooks/use-settings";
@@ -69,10 +70,15 @@ const QUALITY_OPTIONS: SegmentedControlOption<VisualizerRenderQuality>[] = [
 ];
 
 const NODE_SHAPE_OPTIONS: SegmentedControlOption<VisualizerNodeShape>[] = [
-  { value: "hexagon", label: "Hexagon" },
   { value: "square", label: "Square" },
+  { value: "hexagon", label: "Hexagon" },
   { value: "octagon", label: "Octagon" },
   { value: "circle", label: "Circle" },
+];
+
+const CONTEXT_DISPLAY_OPTIONS: SegmentedControlOption<VisualizerContextDisplay>[] = [
+  { value: "ring", label: "Ring" },
+  { value: "bar", label: "Bar" },
 ];
 
 interface VolumeRowProps {
@@ -163,6 +169,12 @@ export function VisualizerSection() {
   const handleNodeShapeChange = useCallback(
     (visualizerNodeShape: VisualizerNodeShape) => {
       void updateSettings({ visualizerNodeShape });
+    },
+    [updateSettings],
+  );
+  const handleContextDisplayChange = useCallback(
+    (visualizerContextDisplay: VisualizerContextDisplay) => {
+      void updateSettings({ visualizerContextDisplay });
     },
     [updateSettings],
   );
@@ -294,6 +306,24 @@ export function VisualizerSection() {
                   onValueChange={handleNodeShapeChange}
                   options={NODE_SHAPE_OPTIONS}
                   testID="settings-visualizer-node-shape"
+                />
+              </View>
+              <View style={qualityRowStyle}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>Context readout</Text>
+                  <Text style={settingsStyles.rowHint}>
+                    How the main agent node reports context occupancy. The ring hugs the node; the
+                    bar sits under it. They show the same number, so you pick one — with the ring,
+                    the token count moves up into the bar&apos;s place. Sub-agent nodes always use
+                    the bar. Applies live to open Visualizer tabs.
+                  </Text>
+                </View>
+                <SegmentedControl
+                  size="sm"
+                  value={settings.visualizerContextDisplay}
+                  onValueChange={handleContextDisplayChange}
+                  options={CONTEXT_DISPLAY_OPTIONS}
+                  testID="settings-visualizer-context-display"
                 />
               </View>
               <ToggleRow

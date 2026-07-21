@@ -26,28 +26,9 @@ export function canCreateWorkspaceTerminal(input: {
   );
 }
 
-export function reconcilePendingScriptTerminals(liveTerminalIds: string[], dataUpdatedAt: number) {
-  return function update(pendingTerminalIds: Map<string, number>): Map<string, number> {
-    if (pendingTerminalIds.size === 0) {
-      return pendingTerminalIds;
-    }
-    const liveIds = new Set(liveTerminalIds);
-    let changed = false;
-    const nextTerminalIds = new Map<string, number>();
-    for (const [terminalId, listedAt] of pendingTerminalIds) {
-      if (liveIds.has(terminalId) || dataUpdatedAt > listedAt) {
-        changed = true;
-        continue;
-      }
-      nextTerminalIds.set(terminalId, listedAt);
-    }
-    return changed ? nextTerminalIds : pendingTerminalIds;
-  };
-}
-
 export function collectKnownTerminalIds(input: {
   liveTerminalIds: string[];
-  pendingScriptTerminalIds: Map<string, number>;
+  pendingScriptTerminalIds: ReadonlyMap<string, number>;
 }): string[] {
   const terminalIds = new Set(input.liveTerminalIds);
   for (const terminalId of input.pendingScriptTerminalIds.keys()) {
@@ -57,7 +38,7 @@ export function collectKnownTerminalIds(input: {
 }
 
 export function collectScriptTerminalIds(input: {
-  pendingScriptTerminalIds: Map<string, number>;
+  pendingScriptTerminalIds: ReadonlyMap<string, number>;
   scripts: Array<{ terminalId?: string | null }>;
 }): Set<string> {
   const terminalIds = new Set(input.pendingScriptTerminalIds.keys());

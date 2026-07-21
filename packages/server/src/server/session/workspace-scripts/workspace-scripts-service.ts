@@ -130,7 +130,8 @@ export function createWorkspaceScriptsService(deps: {
       const gitMetadata = await workspaceGitService.getWorkspaceGitMetadata(workspace.cwd);
 
       const serviceResult = await spawnWorkspaceScript({
-        repoRoot: workspace.cwd,
+        // The workspace's own base folder (worktree path for worktrees).
+        workspaceDirectory: workspace.cwd,
         workspaceId: workspace.workspaceId,
         projectSlug: gitMetadata.projectSlug,
         branchName: gitMetadata.currentBranch,

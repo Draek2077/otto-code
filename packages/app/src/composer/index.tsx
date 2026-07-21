@@ -1392,6 +1392,9 @@ export function Composer({
       if ((result === "submitted" || result === "queued") && outgoingMessage.trim()) {
         appendSentPrompt(serverId, agentId, outgoingMessage);
         historyNavRef.current = { index: null, stashed: "" };
+        // The box was just cleared programmatically, which fires no selection
+        // event — mirror that so the ArrowUp caret gate is not left stale.
+        selectionRef.current = { start: 0, end: 0 };
         setAgentPromptSuggestion(serverId, agentId, null);
       }
       return true;
@@ -1577,6 +1580,7 @@ export function Composer({
 
   const clearComposerText = useCallback(() => {
     historyNavRef.current = { index: null, stashed: "" };
+    selectionRef.current = { start: 0, end: 0 };
     setUserInput("");
   }, [setUserInput]);
 
@@ -1741,9 +1745,18 @@ export function Composer({
     return true;
   }, [agentId, serverId, setAgentPromptSuggestion, setUserInput]);
 
+  // Recall swaps the value programmatically, which does not move the caret on
+  // every platform — park it at the end so the next keystroke appends, matching
+  // shell history. Deferred a frame so the new value has reached the TextInput.
+  const parkCaretAtEnd = useCallback(() => {
+    setTimeout(() => {
+      messageInputRef.current?.moveCaretToEnd();
+    }, 0);
+  }, []);
+
   // ArrowUp/ArrowDown walk the sent-message stack (shell-history semantics). The
-  // first ArrowUp requires the caret at the very start so it never hijacks
-  // multiline cursor movement; once navigating, arrows own the box.
+  // first ArrowUp requires an empty box or the caret at the very start so it
+  // never hijacks multiline cursor movement; once navigating, arrows own the box.
   const recallSentPrompt = useCallback(
     (direction: "prev" | "next") => {
       const history = sentPromptHistoryRef.current;
@@ -1752,12 +1765,16 @@ export function Composer({
       if (direction === "prev") {
         if (nav.index === null) {
           const sel = selectionRef.current;
-          if (sel.start !== 0 || sel.end !== 0) return false;
+          // An empty box has nowhere for ArrowUp to move the caret, so it always
+          // recalls — `selectionRef` can still hold the pre-clear offset after a
+          // send, since clearing the value fires no selection event.
+          if (userInputRef.current.length > 0 && (sel.start !== 0 || sel.end !== 0)) return false;
           historyNavRef.current = { index: history.length - 1, stashed: userInputRef.current };
         } else if (nav.index > 0) {
           historyNavRef.current = { index: nav.index - 1, stashed: nav.stashed };
         }
         setUserInput(history[historyNavRef.current.index ?? 0]);
+        parkCaretAtEnd();
         return true;
       }
       if (nav.index === null) return false;
@@ -1770,9 +1787,10 @@ export function Composer({
         historyNavRef.current = { index: null, stashed: "" };
         setUserInput(stashed);
       }
+      parkCaretAtEnd();
       return true;
     },
-    [setUserInput],
+    [parkCaretAtEnd, setUserInput],
   );
 
   // Compose the composer key handler: autocomplete popover first (it consumes

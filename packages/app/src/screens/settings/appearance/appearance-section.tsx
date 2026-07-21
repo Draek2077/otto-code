@@ -609,6 +609,7 @@ function getTextEffectLabel(t: TFunction, value: TextEffectThemeId): string {
     nightRider: "settings.appearance.agents.textEffects.options.nightRider",
     wave: "settings.appearance.agents.textEffects.options.wave",
     flames: "settings.appearance.agents.textEffects.options.flames",
+    matrix: "settings.appearance.agents.textEffects.options.matrix",
   };
   return t(labelKeys[value]);
 }

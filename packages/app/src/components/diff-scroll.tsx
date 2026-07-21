@@ -3,6 +3,7 @@ import {
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
+  type ScrollView as RNScrollView,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -16,6 +17,16 @@ interface DiffScrollProps {
   onScrollViewWidthChange: (width: number) => void;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /**
+   * Web-only overlay-scrollbar wiring — see diff-scroll.web.tsx. Accepted here so
+   * the two implementations share one prop shape, and ignored: native's platform
+   * indicator already auto-hides, and this scroller's own onScroll drives the
+   * sidebar close gesture below.
+   */
+  scrollRef?: React.RefObject<RNScrollView | null>;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onContentSizeChange?: (width: number, height: number) => void;
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
 export function DiffScroll({

@@ -16,6 +16,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  History,
   List,
   Save,
   Search,
@@ -52,6 +53,9 @@ import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
+import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
+import { useGitFileHistoryFeature } from "@/git/use-git-file-history-feature";
 import {
   FilePreview,
   type FilePreviewFileInfo,
@@ -94,6 +98,7 @@ const foregroundMutedIconColorMapping = (theme: Theme) => ({
 });
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
+const ThemedHistory = withUnistyles(History);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedWrapText = withUnistyles(WrapText);
@@ -311,6 +316,7 @@ function PreviewOnlyView({
   toolbarLeadingSlot,
   fileInfo,
   onFileInfo,
+  onOpenHistory,
 }: {
   serverId: string;
   workspaceId: string;
@@ -320,13 +326,17 @@ function PreviewOnlyView({
   toolbarLeadingSlot: ReactNode;
   fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
+  onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
 }) {
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
+  // Preview has no selection to scope by, so it always investigates the file.
+  const handleOpenHistory = useCallback(() => onOpenHistory?.(null), [onOpenHistory]);
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
       <View style={styles.previewToolbar}>
         {toolbarLeadingSlot}
         <View style={styles.toolbarSpacer} />
+        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
       <FilePreview
@@ -348,6 +358,32 @@ function PreviewOnlyView({
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The git-investigation entry point, shown once the host serves the local-git
+ * file RPCs. A component rather than an inline conditional so both toolbars
+ * (editor and preview) spell it the same way.
+ */
+function FileHistoryToolbarButton({
+  supported,
+  onPress,
+}: {
+  supported: boolean;
+  onPress: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!supported) {
+    return null;
+  }
+  return (
+    <ToolbarIconButton
+      label={t("gitFileHistory.open")}
+      testID="file-history-open"
+      Icon={ThemedHistory}
+      onPress={onPress}
+    />
   );
 }
 
@@ -540,6 +576,7 @@ function EditorModeView({
   toolbarLeadingSlot,
   controllerRef,
   onFileInfo,
+  onOpenHistory,
 }: {
   serverId: string;
   workspaceId: string;
@@ -550,6 +587,7 @@ function EditorModeView({
   toolbarLeadingSlot: ReactNode;
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
+  onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
 }) {
   const { t } = useTranslation();
   const path = location.path;
@@ -741,6 +779,19 @@ function EditorModeView({
     },
     [controllerRef],
   );
+
+  // Git investigation is selection-aware from the toolbar, not from a
+  // right-click menu. Right-click inside the editor belongs to the platform's
+  // own edit menu (copy/paste/spellcheck) — and on Electron that menu fires
+  // even when the renderer calls preventDefault (see
+  // shouldShowDefaultContextMenu in packages/desktop), so an app menu here
+  // would double up. Selecting lines and pressing History is the same gesture
+  // in one fewer step, and the sheet shows the scope with a way out of it.
+  const handleOpenHistory = useCallback(() => {
+    if (onOpenHistory) {
+      void openHistoryForSelection(controllerRef.current, onOpenHistory);
+    }
+  }, [controllerRef, onOpenHistory]);
 
   // No AI action lives in this toolbar. The editor is a plain document editor;
   // an AI rewrite belongs behind a surface that can scope and review it, which
@@ -953,6 +1004,7 @@ function EditorModeView({
           Icon={ThemedSearch}
           onPress={find.open ? closeFind : openFind}
         />
+        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
 
@@ -1026,6 +1078,29 @@ function EditorModeView({
       />
     </View>
   );
+}
+
+/**
+ * Open git investigation scoped to whatever is selected right now, or to the
+ * whole file when nothing is. A failed selection read is not worth an error —
+ * the whole file is always a valid, useful answer.
+ */
+async function openHistoryForSelection(
+  controller: EditorController | null,
+  onOpenHistory: (range: FileHistoryRange | null) => void,
+): Promise<void> {
+  if (!controller) {
+    onOpenHistory(null);
+    return;
+  }
+  try {
+    const selection = await controller.getSelection();
+    onOpenHistory(
+      selection.isEmpty ? null : { startLine: selection.lineStart, endLine: selection.lineEnd },
+    );
+  } catch {
+    onOpenHistory(null);
+  }
 }
 
 /**
@@ -1189,6 +1264,30 @@ export function FileTabPane({
     [editorAllowed, effectiveMode, handleModeChange, splitAllowed],
   );
 
+  // Git file investigation — history, per-commit diffs, blame, origin commit.
+  // No per-provider rollout to gate on (it is git, not an agent): the host
+  // either serves the RPCs or it doesn't. It is limited to in-project files
+  // because the queries run `git` in this workspace with a workspace-relative
+  // pathspec — a linked or outside-project file belongs to a different repo, so
+  // asking here would be a question about the wrong tree.
+  const hostServesGitFileHistory = useGitFileHistoryFeature(serverId);
+  const gitFileHistorySupported = hostServesGitFileHistory && editGate.kind === "free";
+  // Opens a tab, not an overlay: reading history means walking commits with the
+  // diff beside you, which wants the whole frame and wants to stay open while
+  // you go back to the code.
+  const openHistory = useCallback(
+    (range: FileHistoryRange | null) => {
+      openFileHistoryTab({
+        serverId,
+        workspaceId,
+        path: location.path,
+        ...(range ? { startLine: range.startLine, endLine: range.endLine } : {}),
+      });
+    },
+    [location.path, serverId, workspaceId],
+  );
+  const onOpenHistory = gitFileHistorySupported ? openHistory : null;
+
   const content =
     effectiveMode === "preview" ? (
       <PreviewOnlyView
@@ -1200,6 +1299,7 @@ export function FileTabPane({
         toolbarLeadingSlot={toolbarLeadingSlot}
         fileInfo={fileInfo}
         onFileInfo={setFileInfo}
+        onOpenHistory={onOpenHistory}
       />
     ) : (
       <EditorModeView
@@ -1212,6 +1312,7 @@ export function FileTabPane({
         toolbarLeadingSlot={toolbarLeadingSlot}
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
+        onOpenHistory={onOpenHistory}
       />
     );
 

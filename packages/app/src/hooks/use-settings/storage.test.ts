@@ -14,6 +14,7 @@ import {
   type SettingsDeps,
 } from "./storage";
 import { createFakeDesktopBridge, createInMemoryKeyValueStorage } from "./fakes";
+import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
 
 const LEGACY_SETTINGS_KEY = "@otto:settings";
 
@@ -215,6 +216,64 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.defaultTabOrientation).toBe("horizontal");
+  });
+
+  it("defaults the vertical tab rail width to null (content-driven) when storage is empty", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.verticalTabRailWidth).toBeNull();
+  });
+
+  it("loads a saved vertical tab rail width", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: 320 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.verticalTabRailWidth).toBe(320);
+  });
+
+  // An explicit null is "the user reset it", which has to survive the round trip
+  // rather than be treated as an absent field.
+  it("keeps an explicitly stored null vertical tab rail width", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: null }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.verticalTabRailWidth).toBeNull();
+  });
+
+  it("clamps an out-of-bounds vertical tab rail width into the rail's range", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: 9_000 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.verticalTabRailWidth).toBe(WORKSPACE_TABS_RAIL_MAX_WIDTH);
+  });
+
+  it("drops a non-numeric vertical tab rail width back to content-driven", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: "wide" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.verticalTabRailWidth).toBeNull();
   });
 
   it("normalizes terminal scrollback lines from storage", async () => {

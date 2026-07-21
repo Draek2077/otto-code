@@ -91,6 +91,25 @@ export function AgentVisualizer() {
     if (bridge.hudHidden != null) setHudHidden(bridge.hudHidden)
   }, [bridge.hudHidden])
 
+  // OTTO PATCH (OTTO-PATCHES.md): hide ONLY the bottom control bar, keeping the
+  // top stats bar. `hudHidden` is all-or-nothing, but Otto's PIP mode wants the
+  // top HUD and no controls at all (it is a glanceable viewport, not an
+  // interactive surface), so the two halves need independent gates. Purely
+  // config-driven, same shape as hudHidden; `hudHidden` still wins over both.
+  const [hudBottomHidden, setHudBottomHidden] = useState(false)
+  useEffect(() => {
+    if (bridge.hudBottomHidden != null) setHudBottomHidden(bridge.hudBottomHidden)
+  }, [bridge.hudBottomHidden])
+
+  // OTTO PATCH (OTTO-PATCHES.md): compact ("mini") HUD layout — Otto's PIP.
+  // Not a third visibility gate: the same HUD pieces render, they just get
+  // arranged for a ~240x150 viewport (stats split across both top corners, FPS
+  // meter down to the bottom-left).
+  const [hudCompact, setHudCompact] = useState(false)
+  useEffect(() => {
+    if (bridge.hudCompact != null) setHudCompact(bridge.hudCompact)
+  }, [bridge.hudCompact])
+
   // Mutually exclusive panel toggling — opening one closes the others.
   // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") panel was removed
   // from Otto's embed, so the exclusive group is just files/cost now.
@@ -400,6 +419,7 @@ export function AgentVisualizer() {
         selectedDiscoveryId={selection.selectedDiscoveryId}
         showCostOverlay={showCostOverlay}
         renderOptions={bridge.renderConfig ?? undefined}
+        cameraFraming={bridge.cameraConfig ?? undefined}
       />
 
       {/* Otto patch (OTTO-PATCHES.md): the HUD chrome — top bar + control bar —
@@ -452,7 +472,7 @@ export function AgentVisualizer() {
           removed — its actions moved to the native Otto toolbar. */}
 
       {/* Floating control strip */}
-      {!hudHidden && (
+      {!hudHidden && !hudBottomHidden && (
       <ControlBar
         isPlaying={isPlaying}
         speed={speed}
@@ -513,12 +533,14 @@ export function AgentVisualizer() {
           session-tab column and every control button (Files/Cost/Audio/eye and
           the Timeline toggle) were pulled OUT into the native Otto toolbar above
           the tab; only the stats readout remains in the HUD. */}
-      {!hudHidden && <TopBar agentCount={agents.size} totalTokens={totalTokens} />}
+      {!hudHidden && (
+        <TopBar agentCount={agents.size} totalTokens={totalTokens} compact={hudCompact} />
+      )}
 
       {/* OTTO PATCH (OTTO-PATCHES.md): host-toggleable FPS meter
           (config.render.showFps), pinned bottom-right. Independent of the HUD
           visibility toggle — it's a perf diagnostic, useful even in clean view. */}
-      {bridge.renderConfig?.showFps && <FpsMeter />}
+      {bridge.renderConfig?.showFps && <FpsMeter compact={hudCompact} />}
     </div>
     </OpenFileProvider>
   )

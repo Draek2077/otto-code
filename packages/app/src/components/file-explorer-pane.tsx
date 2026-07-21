@@ -31,6 +31,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  History,
   MoreVertical,
   Paperclip,
   RotateCw,
@@ -76,6 +77,8 @@ import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import { isNative, isWeb } from "@/constants/platform";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
@@ -95,6 +98,8 @@ interface TreeRowItemProps {
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  /** Undefined outside a git repo, or on a host that cannot answer. */
+  onShowHistory?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
   isInContext: boolean;
 }
@@ -147,6 +152,7 @@ function TreeRowItem({
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
+  onShowHistory,
   onShowContextMenu,
   isInContext,
 }: TreeRowItemProps) {
@@ -213,6 +219,10 @@ function TreeRowItem({
     onToggleContextEntry?.(entry);
   }, [onToggleContextEntry, entry]);
 
+  const handleShowHistory = useCallback(() => {
+    onShowHistory?.(entry);
+  }, [onShowHistory, entry]);
+
   const copyLeading = useMemo(
     () => <Copy size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
@@ -227,6 +237,10 @@ function TreeRowItem({
   );
   const contextLeading = useMemo(
     () => <Paperclip size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const historyLeading = useMemo(
+    () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
   );
 
@@ -295,6 +309,15 @@ function TreeRowItem({
                   {t("workspace.fileExplorer.context.edit")}
                 </DropdownMenuItem>
               ) : null}
+              {entry.kind === "file" && onShowHistory ? (
+                <DropdownMenuItem
+                  leading={historyLeading}
+                  onSelect={handleShowHistory}
+                  testID="file-explorer-git-history"
+                >
+                  {t("gitFileHistory.open")}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
                 {t("workspace.fileExplorer.context.copyPath")}
               </DropdownMenuItem>
@@ -346,6 +369,7 @@ function EntryContextMenu({
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
+  onShowHistory,
   isInContext,
 }: {
   request: EntryContextMenuRequest | null;
@@ -354,6 +378,7 @@ function EntryContextMenu({
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  onShowHistory?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
 }) {
   const { theme } = useUnistyles();
@@ -367,6 +392,9 @@ function EntryContextMenu({
   const handleEdit = useCallback(() => {
     if (entry) onEditEntry?.(entry);
   }, [entry, onEditEntry]);
+  const handleShowHistory = useCallback(() => {
+    if (entry) onShowHistory?.(entry);
+  }, [entry, onShowHistory]);
   const handleCopy = useCallback(() => {
     if (entry) onCopyPath(entry.path);
   }, [entry, onCopyPath]);
@@ -388,6 +416,10 @@ function EntryContextMenu({
   );
   const downloadLeading = useMemo(
     () => <Download size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const historyLeading = useMemo(
+    () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
   );
 
@@ -416,6 +448,15 @@ function EntryContextMenu({
             {entry.kind === "file" && onEditEntry ? (
               <ContextMenuItem leading={editLeading} onSelect={handleEdit}>
                 {t("workspace.fileExplorer.context.edit")}
+              </ContextMenuItem>
+            ) : null}
+            {entry.kind === "file" && onShowHistory ? (
+              <ContextMenuItem
+                leading={historyLeading}
+                onSelect={handleShowHistory}
+                testID="file-explorer-context-menu-git-history"
+              >
+                {t("gitFileHistory.open")}
               </ContextMenuItem>
             ) : null}
             <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
@@ -574,6 +615,26 @@ export function FileExplorerPane({
       onOpenFile(entry.path, { edit: true });
     };
   }, [canEditFiles, hasWorkspaceScope, onOpenFile, selectExplorerEntry]);
+
+  // Git history is offered only where the question has an answer: a host that
+  // can serve it, a workspace to open the tab in, and — unlike the Changes view,
+  // where every row is by definition tracked — an actual git repository. The
+  // explorer happily browses folders that are not repos at all.
+  const fileHistorySupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitFileHistory === true,
+  );
+  const { status: checkoutStatus } = useCheckoutStatusQuery({
+    serverId,
+    cwd: normalizedWorkspaceRoot,
+  });
+  const handleShowHistoryEntry = useMemo(() => {
+    if (!fileHistorySupported || !checkoutStatus || !workspaceId) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) => {
+      openFileHistoryTab({ serverId, workspaceId, path: entry.path });
+    };
+  }, [checkoutStatus, fileHistorySupported, serverId, workspaceId]);
 
   // "Add to chat" mirrors the diff pane's review comments: the file lands
   // in the workspace-scoped attachment store, shows as a composer pill, and
@@ -741,6 +802,7 @@ export function FileExplorerPane({
         onDownloadEntry={handleDownloadEntry}
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
+        onShowHistory={handleShowHistoryEntry}
         onShowContextMenu={handleShowContextMenu}
         contextFilePaths={contextFilePaths}
       />
@@ -753,6 +815,7 @@ export function FileExplorerPane({
       handleDownloadEntry,
       handleEditEntry,
       handleToggleContextEntry,
+      handleShowHistoryEntry,
       handleShowContextMenu,
       isDirectoryLoading,
       selectedEntryPath,
@@ -915,6 +978,7 @@ export function FileExplorerPane({
         onDownloadEntry={handleDownloadEntry}
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
+        onShowHistory={handleShowHistoryEntry}
         isInContext={Boolean(
           contextMenuRequest && contextFilePaths.has(contextMenuRequest.entry.path),
         )}
@@ -1339,6 +1403,7 @@ function TreeRowDispatcher({
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
+  onShowHistory,
   onShowContextMenu,
   contextFilePaths,
 }: {
@@ -1351,6 +1416,7 @@ function TreeRowDispatcher({
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
+  onShowHistory?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
   contextFilePaths: ReadonlySet<string>;
 }) {
@@ -1373,6 +1439,7 @@ function TreeRowDispatcher({
       onDownloadEntry={onDownloadEntry}
       onEditEntry={onEditEntry}
       onToggleContextEntry={onToggleContextEntry}
+      onShowHistory={onShowHistory}
       onShowContextMenu={onShowContextMenu}
       isInContext={contextFilePaths.has(entry.path)}
     />

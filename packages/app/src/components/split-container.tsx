@@ -38,6 +38,7 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import {
   computeTabDropPreview,
   type TabDropPreview,
+  type TabStripOrientation,
 } from "@/components/split-container-tab-drop-preview";
 import {
   SplitDropZone,
@@ -274,8 +275,9 @@ function computeTabOverDropPreview(input: {
   rects: DragMoveRects;
   panesById: Map<string, SplitPane>;
   uiTabs: WorkspaceTab[];
+  defaultTabOrientation: TabStripOrientation;
 }): TabDropPreview | null {
-  const { activeData, overData, rects, panesById, uiTabs } = input;
+  const { activeData, overData, rects, panesById, uiTabs, defaultTabOrientation } = input;
   const targetPane = panesById.get(overData.paneId) ?? null;
   if (!targetPane) {
     return null;
@@ -287,14 +289,12 @@ function computeTabOverDropPreview(input: {
     overPaneId: overData.paneId,
     overTabId: overData.tabId,
     targetTabs,
-    activeRect: {
-      left: rects.translatedRect.left,
-      width: rects.translatedRect.width,
-    },
-    overRect: {
-      left: rects.overRect.left,
-      width: rects.overRect.width,
-    },
+    // The drop axis is the *target* strip's, not the dragged tab's: dragging a
+    // chip out of a horizontal row and onto a vertical rail must resolve
+    // against the rail's stacking order.
+    orientation: targetPane.tabOrientation ?? defaultTabOrientation,
+    activeRect: rects.translatedRect,
+    overRect: rects.overRect,
   });
 }
 
@@ -419,6 +419,10 @@ export function SplitContainer({
   );
 
   const panesById = useMemo(() => collectPanesById(layout.root), [layout.root]);
+  // Panes without their own tabOrientation follow this; the drop math needs it
+  // to know whether the target strip stacks tabs across or down.
+  const { settings } = useAppSettings();
+  const defaultTabOrientation = settings.defaultTabOrientation;
 
   // Focus mode maximizes the whole workspace by hiding the surrounding chrome
   // (header + explorer sidebar, gated in workspace-screen); it deliberately keeps
@@ -468,6 +472,7 @@ export function SplitContainer({
           rects,
           panesById,
           uiTabs,
+          defaultTabOrientation,
         });
         setDropPreview(null);
         setTabDropPreview((prev) => reuseIfSameTabDropPreview(prev, preview));
@@ -483,7 +488,7 @@ export function SplitContainer({
       const nextDropPreview = computePaneOverDropPreview({ overData, rects });
       setDropPreview((prev) => reuseIfSameDropPreview(prev, nextDropPreview));
     },
-    [panesById, uiTabs],
+    [defaultTabOrientation, panesById, uiTabs],
   );
 
   const applyTabDropEnd = useCallback(
@@ -1096,6 +1101,9 @@ function SplitPaneView({
             onSplitDown={handleSplitDown}
             externalDndContext
             activeDragTabId={activeDragTabId}
+            tabDropPreviewIndex={
+              tabDropPreview?.paneId === pane.id ? tabDropPreview.indicatorIndex : null
+            }
             tabOrientation={resolvedTabOrientation}
             onToggleTabOrientation={handleToggleTabOrientation}
           />
@@ -1231,6 +1239,11 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     maxWidth: 200,
+    // The chip rides directly under the cursor, which is exactly where the drop
+    // indicator and the tab it would land next to are. Translucent so the
+    // target stays readable through it — not so faint that the chip itself
+    // stops reading as the thing being dragged.
+    opacity: 0.7,
   },
   dragOverlayLabel: {
     fontSize: theme.fontSize.sm,

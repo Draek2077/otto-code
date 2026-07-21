@@ -562,7 +562,7 @@ async function assertPortAvailable(port: number): Promise<void> {
   });
 }
 
-async function inferRepoRootPathFromWorktreePath(worktreePath: string): Promise<string> {
+export async function inferRepoRootPathFromWorktreePath(worktreePath: string): Promise<string> {
   try {
     const commonDir = await getGitCommonDir(worktreePath);
     const normalizedCommonDir = normalizePathForOwnership(commonDir);

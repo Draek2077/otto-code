@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type SessionStateReport, type TogglablePanel } from '@/lib/vscode-bridge'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type SessionStateReport, type TogglablePanel } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
@@ -21,6 +21,9 @@ interface BridgeHookResult {
   /** Latest `config.render` seed from the host, or null if none received yet.
    *  Updates on every config message that carries render (OTTO PATCH). */
   renderConfig: RenderConfig | null
+  /** Latest `config.camera` seed from the host, or null if none received yet.
+   *  Auto-fit framing profile — Otto's PIP sends a tighter one (OTTO PATCH). */
+  cameraConfig: CameraConfig | null
   /** Latest `config.soundVolume` seed from the host (0..1), or null if none
    *  received yet. Authoritative master volume — 0 mutes (OTTO PATCH). */
   soundVolume: number | null
@@ -28,6 +31,16 @@ interface BridgeHookResult {
    *  yet. Authoritative — when set, hides every HUD panel/bar except the HUD
    *  toggle button itself (OTTO PATCH). */
   hudHidden: boolean | null
+  /** Latest `config.hudBottomHidden` seed from the host, or null if none
+   *  received yet. Hides ONLY the bottom control bar (play/scrubber), leaving
+   *  the top stats bar up — Otto's PIP shows the top HUD and no controls
+   *  (OTTO PATCH). Independent of `hudHidden`, which hides both. */
+  hudBottomHidden: boolean | null
+  /** Latest `config.hudCompact` seed from the host, or null if none received
+   *  yet. Otto's PIP ("mini") surface: the HUD is laid out for a ~240x150 box
+   *  instead of a full tab — the stats readout splits across both top corners
+   *  and the FPS meter moves out of the top-left they now occupy (OTTO PATCH). */
+  hudCompact: boolean | null
   /** Open a file in the VS Code editor */
   bridgeOpenFile: (filePath: string, line?: number) => void
   /** OTTO PATCH: report the in-page mute toggle to the host so it persists the
@@ -85,8 +98,11 @@ export function useVSCodeBridge(): BridgeHookResult {
   const [disable1MContext, setDisable1MContext] = useState(false)
   const [panelsConfig, setPanelsConfig] = useState<PanelsConfig | null>(null)
   const [renderConfig, setRenderConfig] = useState<RenderConfig | null>(null)
+  const [cameraConfig, setCameraConfig] = useState<CameraConfig | null>(null)
   const [soundVolume, setSoundVolume] = useState<number | null>(null)
   const [hudHidden, setHudHidden] = useState<boolean | null>(null)
+  const [hudBottomHidden, setHudBottomHidden] = useState<boolean | null>(null)
+  const [hudCompact, setHudCompact] = useState<boolean | null>(null)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
   const [, setEventVersion] = useState(0) // trigger re-render on new events
 
@@ -208,8 +224,11 @@ export function useVSCodeBridge(): BridgeHookResult {
       if (config.disable1MContext !== undefined) { setDisable1MContext(config.disable1MContext) }
       if (config.panels !== undefined) { setPanelsConfig(config.panels) }
       if (config.render !== undefined) { setRenderConfig(config.render) }
+      if (config.camera !== undefined) { setCameraConfig(config.camera) }
       if (config.soundVolume !== undefined) { setSoundVolume(config.soundVolume) }
       if (config.hudHidden !== undefined) { setHudHidden(config.hudHidden) }
+      if (config.hudBottomHidden !== undefined) { setHudBottomHidden(config.hudBottomHidden) }
+      if (config.hudCompact !== undefined) { setHudCompact(config.hudCompact) }
     })
 
     // Session lifecycle tracking
@@ -387,8 +406,11 @@ export function useVSCodeBridge(): BridgeHookResult {
     disable1MContext,
     panelsConfig,
     renderConfig,
+    cameraConfig,
     soundVolume,
     hudHidden,
+    hudBottomHidden,
+    hudCompact,
     bridgeOpenFile,
     bridgeSetSoundMuted,
     bridgeTogglePanel,

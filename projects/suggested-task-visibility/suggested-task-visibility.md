@@ -38,14 +38,44 @@ cross-harness fluency is the goal.
 at the same rate they do in Claude Desktop. If not, the next lever is
 prompt-level guidance rather than more description text.
 
-## Open — the card blends in
+## Fixed 2026-07-20 — the card now carries a blue tint
 
-The suggested-task chip doesn't stand out enough in the chat stream. Use
-**colour tints** to make it pop — it's an offer of work, not a log line.
+The card was neutral panel chrome (`surface2` fill, `borderAccent` ring) — the
+same treatment as every quiet surface in the app, which is exactly why it read
+as a log line.
 
-- Tints must work in light, dark, and the black chat theme (see
-  [docs/design.md](../../docs/design.md) — use theme tokens, and note the
-  `useUnistyles()` ban in [docs/unistyles.md](../../docs/unistyles.md)).
-- Related layering note: suggested-task chips must render **above** a Visualizer
-  PIP if that ships — see
-  [projects/visualizer-pip](../visualizer-pip/visualizer-pip.md).
+It now takes the **info tone**: a `statusInfo` ring around a
+`statusInfoSurface`-washed header and body, with the lightbulb in `statusInfo`.
+Both tokens already existed in the status-tint family, calibrated per light and
+dark, so this added no theme tokens at all. Because the fills are alpha and
+every black variant is built through `buildDarkSemanticColors`, one token is
+correct in light, dark, and the black chat scope with no branching and no
+`useUnistyles()` — the whole change lives in
+`StyleSheet.create((theme) => …)`.
+
+Blue over the theme accent, deliberately:
+
+- Accent is the CTA colour and already paints the start button inside this
+  card, so an accent-washed card would read as more of the same chrome rather
+  than as a different kind of thing.
+- On the monochrome variants (Graphite, Midnight) `accentBright` is near-white,
+  so an accent "tint" would have carried no hue at all — failing the colour
+  requirement on those themes specifically.
+- Blue reads as _suggestion_ in every variant instead of shifting hue with the
+  user's theme pick.
+
+The split button keeps an opaque `surface2` fill so it separates from the wash
+instead of dissolving into it; its accent chrome is what marks it as the action
+inside a blue card. Documented in [docs/design.md](../../docs/design.md) §12.
+
+The card floats over the stream, so the wash sits on the children over an
+opaque `surface2` base — washing the card itself would let chat text show
+through.
+
+**Layering:** `CHAT_PANE_OVERLAY_Z` in
+`packages/app/src/constants/layout.ts` now states the stacking order for
+overlays that float over the conversation, and the card claims
+`suggestedTasks: 30` above a reserved `visualizerPip: 20`. Previously the card
+relied on sibling paint order, which any later-mounted overlay would win — see
+[projects/visualizer-pip](../visualizer-pip/visualizer-pip.md), which should
+read its slot from that map rather than picking a number.

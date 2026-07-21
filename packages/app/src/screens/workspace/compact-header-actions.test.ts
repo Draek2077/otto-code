@@ -31,9 +31,9 @@ describe("resolveCompactHeaderActions", () => {
     expect(survivors()).toEqual(["play", "visualizer", "explorer"]);
   });
 
-  it("drops Play first, then Visualizer, then Explorer as the row narrows", () => {
-    expect(survivors({ rowWidth: 380 })).toEqual(["visualizer", "explorer"]);
-    expect(survivors({ rowWidth: 320 })).toEqual(["explorer"]);
+  it("drops Visualizer first, then Explorer, and keeps Play longest", () => {
+    expect(survivors({ rowWidth: 380 })).toEqual(["play", "explorer"]);
+    expect(survivors({ rowWidth: 320 })).toEqual(["play"]);
     expect(survivors({ rowWidth: 260 })).toEqual([]);
   });
 
@@ -46,6 +46,8 @@ describe("resolveCompactHeaderActions", () => {
     // A script-less workspace has no Play button to drop in the first place.
     expect(survivors({ hasWorkspaceScripts: false })).toEqual(["visualizer", "explorer"]);
     expect(survivors({ visualizerEnabled: false })).toEqual(["play", "explorer"]);
+    // Play outlives the others, but only where the workspace has scripts.
+    expect(survivors({ hasWorkspaceScripts: false, rowWidth: 320 })).toEqual(["explorer"]);
   });
 
   it("never drops anything on desktop, however narrow the measurement", () => {

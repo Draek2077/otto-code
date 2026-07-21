@@ -260,8 +260,13 @@ export const CONTEXT_BAR = {
   borderRadius: 3,
   /** Font for token count label */
   fontSize: 7,
-  /** Y padding below bar for label */
-  labelPadding: 9,
+  /** Y padding below bar for label.
+      OTTO PATCH (see OTTO-PATCHES.md): 9 → 2. The value was tuned for an
+      alphabetic baseline, but drawAgentLabel leaves textBaseline at 'top' and
+      never restores it, so this measured the label's TOP edge and left a 9px
+      hole between the bar and its own caption. drawContextComposition now sets
+      the baseline explicitly ('top'), and 2 is the gap that reads as one unit. */
+  labelPadding: 2,
 } as const
 
 export const CONTEXT_RING = {
