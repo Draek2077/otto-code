@@ -1,20 +1,41 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Run, RunPhase } from "@otto-code/protocol/orchestration";
 import { isTerminalRunStatus } from "@otto-code/protocol/orchestration";
 import { judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
-import { Network, Plus, Trash2, Waypoints } from "@/components/icons/material-icons";
+import {
+  MoreVertical,
+  Network,
+  Pencil,
+  Plus,
+  Trash2,
+  Waypoints,
+  X,
+} from "@/components/icons/material-icons";
 import { MenuHeader } from "@/components/headers/menu-header";
-import { NewOrchestrationSheet } from "@/components/orchestration/new-orchestration-sheet";
+import {
+  NewOrchestrationSheet,
+  type NewOrchestrationPrefill,
+} from "@/components/orchestration/new-orchestration-sheet";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { isDev } from "@/constants/platform";
+import { isDev, isNative } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import type { Theme } from "@/styles/theme";
 import { LiveElapsed } from "@/components/live-elapsed";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ProjectRow } from "@/components/project-row";
+import { ExecutorRow, ProjectNameLine } from "@/components/project-row";
 import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import {
@@ -26,11 +47,11 @@ import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { formatDuration } from "@/utils/time";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useSessionStore, type Agent, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   collectRunAgentIds,
   useCancelRun,
-  useClearFinishedRuns,
+  useDeleteRun,
   useRespondToRunGate,
   useRuns,
   type RunWithHost,
@@ -99,10 +120,22 @@ export function summarizeVerdicts(phase: RunPhase): string | null {
 
 const plural = (n: number, one: string): string => `${n} ${n === 1 ? one : `${one}s`}`;
 
-/** Short complexity chips derived from the run's shape (phases, agents, fan-out…). */
+/**
+ * The footer's shape pill, sitting beside the status pill: which engine drives
+ * this orchestration. Graph runs say so by name — their node count isn't the
+ * phase count a plan run reports — everything else counts phases.
+ */
+export function describeRunShape(run: Run): string {
+  return run.kind === "graph" ? "Graph" : plural(run.phases.length, "phase");
+}
+
+/**
+ * Short complexity chips derived from the run's shape (agents, fan-out…).
+ * Phase count is deliberately absent — it's the footer's shape pill.
+ */
 export function describeRunComplexity(run: Run): string[] {
   const phases = run.phases;
-  const chips: string[] = [plural(phases.length, "phase")];
+  const chips: string[] = [];
   const agents =
     run.agentCount ?? phases.reduce((total, p) => total + (p.candidates?.length ?? 0), 0);
   if (agents > 0) {
@@ -121,6 +154,37 @@ export function describeRunComplexity(run: Run): string[] {
     chips.push(plural(gates, "gate"));
   }
   return chips;
+}
+
+/**
+ * The card's location line: "Project · Workspace", falling back to the project
+ * name alone when the workspace adds nothing (an unnamed main workspace) and to
+ * the cwd-derived name when the client doesn't know the run's workspace at all.
+ * A bare folder path is the last resort, never the first answer.
+ */
+export function describeRunLocation(input: {
+  serverId: string;
+  cwd: string | undefined;
+  workspaceId: string | undefined;
+  workspaces: ReadonlyMap<string, WorkspaceDescriptor> | undefined;
+  projectNameByCwd: ReadonlyMap<string, string>;
+}): string | null {
+  const workspace = input.workspaceId ? input.workspaces?.get(input.workspaceId) : undefined;
+  if (workspace) {
+    const projectName = workspace.projectCustomName ?? workspace.projectDisplayName;
+    const workspaceName = workspace.title ?? workspace.name;
+    return workspaceName && workspaceName !== projectName
+      ? `${projectName} · ${workspaceName}`
+      : projectName;
+  }
+  if (!input.cwd) {
+    return null;
+  }
+  return describeScheduleCwd({
+    serverId: input.serverId,
+    cwd: input.cwd,
+    projectNameByCwd: input.projectNameByCwd,
+  });
 }
 
 /** A one-line reason a run/phase didn't succeed, for the failure banner. */
@@ -275,9 +339,9 @@ function RunsScreenContent(): ReactElement {
   const hosts = useHosts();
   const { projects } = useProjects();
   const sessions = useSessionStore((state) => state.sessions);
-  const { clearAll, isPending: isClearing } = useClearFinishedRuns();
 
   const [newOrchestrationOpen, setNewOrchestrationOpen] = useState(false);
+  const [editPrefill, setEditPrefill] = useState<NewOrchestrationPrefill | null>(null);
   const [status, setStatus] = useState<RunStatusFilter>("all");
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [runsByHost, setRunsByHost] = useState<Record<string, Run[]>>({});
@@ -323,23 +387,6 @@ function RunsScreenContent(): ReactElement {
   const filter = useMemo(() => ({ status, cwd: projectFilter }), [status, projectFilter]);
   const filtered = useMemo(() => applyRunFilters(runs, filter), [runs, filter]);
 
-  const clearableServerIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const run of runs) {
-      if (
-        isTerminalRunStatus(run.status) &&
-        sessions[run.serverId]?.serverInfo?.features?.runsClear === true
-      ) {
-        ids.add(run.serverId);
-      }
-    }
-    return [...ids];
-  }, [runs, sessions]);
-
-  const handleClearAll = useCallback(() => {
-    clearAll(clearableServerIds);
-  }, [clearAll, clearableServerIds]);
-
   // The user-initiated front door (projects/orchestration-graphs). Dev builds
   // only for now, then gated on any connected host advertising the capability;
   // the dialog itself picks the host. See useOrchestrationGraphsFeature.
@@ -352,13 +399,30 @@ function RunsScreenContent(): ReactElement {
       ),
     [hosts, sessions],
   );
-  const openNewOrchestration = useCallback(() => setNewOrchestrationOpen(true), []);
-  const closeNewOrchestration = useCallback(() => setNewOrchestrationOpen(false), []);
+  const openNewOrchestration = useCallback(() => {
+    setEditPrefill(null);
+    setNewOrchestrationOpen(true);
+  }, []);
+  const closeNewOrchestration = useCallback(() => {
+    setNewOrchestrationOpen(false);
+    setEditPrefill(null);
+  }, []);
+  // Editing a draft reopens the same dialog on that record (see
+  // NewOrchestrationPrefill.draft) — a draft with nothing to reopen onto (no
+  // graph, no project) can't be edited, which the card's gate already covers.
+  const editOrchestration = useCallback((prefill: NewOrchestrationPrefill) => {
+    setNewOrchestrationOpen(false);
+    setEditPrefill(prefill);
+  }, []);
 
   return (
     <View style={styles.container}>
       <MenuHeader title="Orchestrations" />
-      <NewOrchestrationSheet visible={newOrchestrationOpen} onClose={closeNewOrchestration} />
+      <NewOrchestrationSheet
+        visible={newOrchestrationOpen || editPrefill !== null}
+        onClose={closeNewOrchestration}
+        {...(editPrefill ? { prefill: editPrefill } : {})}
+      />
       {hosts.map((host) => (
         <HostRunsCollector key={host.serverId} serverId={host.serverId} onRuns={handleHostRuns} />
       ))}
@@ -372,11 +436,9 @@ function RunsScreenContent(): ReactElement {
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}
         projectNameByCwd={projectNameByCwd}
-        onClearAll={handleClearAll}
-        canClearAll={clearableServerIds.length > 0}
-        isClearing={isClearing}
         canCreate={canCreateOrchestration}
         onCreate={openNewOrchestration}
+        onEdit={editOrchestration}
       />
     </View>
   );
@@ -392,11 +454,9 @@ interface RunsScreenBodyProps {
   projectFilter: string | undefined;
   onProjectFilterChange: (projectId: string | undefined) => void;
   projectNameByCwd: ReadonlyMap<string, string>;
-  onClearAll: () => void;
-  canClearAll: boolean;
-  isClearing: boolean;
   canCreate: boolean;
   onCreate: () => void;
+  onEdit: (prefill: NewOrchestrationPrefill) => void;
 }
 
 function resolveEmptyFilterText(status: RunStatusFilter): string {
@@ -425,11 +485,9 @@ function RunsScreenBody({
   projectFilter,
   onProjectFilterChange,
   projectNameByCwd,
-  onClearAll,
-  canClearAll,
-  isClearing,
   canCreate,
   onCreate,
+  onEdit,
 }: RunsScreenBodyProps): ReactElement {
   if (isLoading && !hasAny) {
     return (
@@ -472,17 +530,6 @@ function RunsScreenBody({
             onChange={onProjectFilterChange}
           />
         </View>
-        <Button
-          leftIcon={Trash2}
-          variant="secondary"
-          onPress={onClearAll}
-          disabled={!canClearAll || isClearing}
-          size="sm"
-          style={styles.clearButton}
-          testID="runs-clear-all"
-        >
-          Clear all
-        </Button>
         {canCreate ? (
           <Button
             leftIcon={Plus}
@@ -516,6 +563,7 @@ function RunsScreenBody({
               key={`${run.serverId}:${run.id}`}
               run={run}
               projectNameByCwd={projectNameByCwd}
+              onEdit={onEdit}
             />
           ))
         ) : (
@@ -591,17 +639,80 @@ function RunFooterMeta({
   );
 }
 
+/**
+ * A draft is an orchestration the user configured but hasn't run — the one run
+ * state that is still editable, so it's the only one that offers "Edit
+ * Orchestration". Reopening the dialog needs the graph the draft executes and
+ * the project it belongs to; a draft missing either can't be seeded back.
+ */
+function useDraftEditAction(input: {
+  run: RunWithHost;
+  enabled: boolean;
+  onEdit: (prefill: NewOrchestrationPrefill) => void;
+}): { canEdit: boolean; editDraft: () => void } {
+  const { run, enabled, onEdit } = input;
+  const graphId = run.graphId;
+  const cwd = run.cwd;
+  const canEdit = enabled && run.status === "draft" && Boolean(graphId) && Boolean(cwd);
+  const editDraft = useCallback(() => {
+    if (!graphId || !cwd) {
+      return;
+    }
+    onEdit({
+      serverId: run.serverId,
+      projectCwd: cwd,
+      graphId,
+      runId: run.id,
+      draft: {
+        title: run.title,
+        ...(run.description ? { description: run.description } : {}),
+        ...(run.graphInputs ? { graphInputs: run.graphInputs } : {}),
+      },
+    });
+  }, [onEdit, graphId, cwd, run.serverId, run.id, run.title, run.description, run.graphInputs]);
+  return { canEdit, editDraft };
+}
+
+/**
+ * One orchestration run, rendered as a card matching ArtifactCard/ScheduleCard:
+ * glyph + title + kebab in the header, the executor and project lines as the
+ * details rows, run-specific detail (chips, summary, phases) below them, a
+ * spacer, and a footer of status pill + meta text. The only thing that stays
+ * out of the kebab is the approval gate — it's a time-sensitive prompt, not an
+ * action the user goes looking for.
+ *
+ * Hover lives on the outer plain View (docs/hover.md): the inner Pressable owns
+ * press, the nested kebab Pressable never fights it, and the card background
+ * highlights without reflow.
+ */
 function RunCard({
   run,
   projectNameByCwd,
+  onEdit,
 }: {
   run: RunWithHost;
   projectNameByCwd: ReadonlyMap<string, string>;
+  onEdit: (prefill: NewOrchestrationPrefill) => void;
 }): ReactElement {
   const serverId = run.serverId;
+  const isCompact = useIsCompactFormFactor();
+  const [isHovered, setIsHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+
   const gateMutation = useRespondToRunGate(serverId);
   const cancelMutation = useCancelRun(serverId);
+  const deleteMutation = useDeleteRun(serverId);
   const agentsById = useSessionStore((state) => state.sessions[serverId]?.agents);
+  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+  const hostCanDelete = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.runsDelete === true,
+  );
+  // COMPAT(runsDraftEdit): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+  const hostCanEditDraft = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.runsDraftEdit === true,
+  );
   const gatePhase = findBlockedGatePhase(run);
   const isActive = !isTerminalRunStatus(run.status);
   const gatePhaseId = gatePhase?.id;
@@ -616,12 +727,42 @@ function RunCard({
       gateMutation.mutate({ runId: run.id, phaseId: gatePhaseId, approved: false });
     }
   }, [gateMutation, run.id, gatePhaseId]);
+
+  const runTitle = run.title;
   const cancelRun = useCallback(() => {
-    cancelMutation.mutate(run.id);
-  }, [cancelMutation, run.id]);
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: "Cancel orchestration",
+        message: `Cancel "${runTitle}"? Its agents stop where they are.`,
+        confirmLabel: "Cancel orchestration",
+        destructive: true,
+      });
+      if (confirmed) {
+        cancelMutation.mutate(run.id);
+      }
+    })();
+  }, [cancelMutation, run.id, runTitle]);
+
+  const deleteRun = useCallback(() => {
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: "Delete orchestration",
+        message: `Delete "${runTitle}"? This cannot be undone.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (confirmed) {
+        deleteMutation.mutate(run.id);
+      }
+    })();
+  }, [deleteMutation, run.id, runTitle]);
+
   const workspaceId = run.workspaceId;
   const runId = run.id;
+
+  const { canEdit, editDraft } = useDraftEditAction({ run, enabled: hostCanEditDraft, onEdit });
   const visualizerEnabled = useFeatureEnabled("visualizer");
+  const canVisualize = Boolean(workspaceId) && visualizerEnabled;
   const handleVisualize = useCallback(() => {
     if (workspaceId) {
       openVisualizerTab({ serverId, workspaceId, runId });
@@ -630,123 +771,291 @@ function RunCard({
 
   const complexity = describeRunComplexity(run);
   const failure = describeRunFailure(run);
-  const provider = run.conductorAgentId
-    ? (agentsById?.get(run.conductorAgentId)?.provider ?? null)
-    : null;
-  const projectName = run.cwd
-    ? describeScheduleCwd({ serverId, cwd: run.cwd, projectNameByCwd })
-    : null;
+  const conductor = run.conductorAgentId ? agentsById?.get(run.conductorAgentId) : undefined;
+  const location = describeRunLocation({
+    serverId,
+    cwd: run.cwd,
+    workspaceId,
+    workspaces,
+    projectNameByCwd,
+  });
   const totalTokens = sumRunTokens(run, agentsById);
+  const isErrorCard = run.status === "failed" || run.status === "canceled";
+
+  const cardStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.card,
+      isErrorCard && styles.cardError,
+      isHovered && !isCompact && styles.cardHovered,
+      pressed && canVisualize && styles.cardPressed,
+    ],
+    [isErrorCard, isHovered, isCompact, canVisualize],
+  );
 
   return (
-    <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <Network size={16} color={styles.icon.color} />
-        <Text style={styles.cardTitle} numberOfLines={2}>
-          {run.title}
-        </Text>
-      </View>
-
-      <ProjectRow provider={provider} projectName={projectName} />
-
-      <View style={styles.chips}>
-        {complexity.map((chip) => (
-          <Text key={chip} style={styles.chip}>
-            {chip}
+    <View
+      style={styles.cardContainer}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+    >
+      <Pressable
+        style={cardStyle}
+        onPress={canVisualize ? handleVisualize : undefined}
+        accessibilityRole={canVisualize ? "button" : undefined}
+        accessibilityLabel={canVisualize ? `Visualize ${run.title}` : undefined}
+        testID={`run-card-${run.id}`}
+      >
+        <View style={styles.headerRow}>
+          <Network size={16} color={styles.icon.color} />
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {run.title}
           </Text>
-        ))}
-      </View>
-
-      {failure ? (
-        <View style={styles.failureBanner}>
-          <Text style={styles.failureText}>{failure}</Text>
+          <RunKebabMenu
+            run={run}
+            canEdit={canEdit}
+            onEdit={editDraft}
+            canVisualize={canVisualize}
+            canCancel={isActive}
+            cancelPending={cancelMutation.isPending}
+            // The daemon refuses to delete a live run, so the item only shows
+            // once the run is finished — cancel first, then delete.
+            canDelete={hostCanDelete && !isActive}
+            deletePending={deleteMutation.isPending}
+            onVisualize={handleVisualize}
+            onCancel={cancelRun}
+            onDelete={deleteRun}
+          />
         </View>
-      ) : null}
 
-      <RunSummary run={run} />
+        <ExecutorRow
+          serverId={serverId}
+          personalityName={conductor?.personalityName ?? null}
+          provider={conductor?.provider ?? null}
+          model={conductor?.model ?? null}
+        />
+        <ProjectNameLine projectName={location} />
 
-      <View style={styles.phases}>
-        {run.phases.map((phase) => {
-          const verdicts = summarizeVerdicts(phase);
-          const showNotes =
-            phase.notes &&
-            (phase.status === "failed" || phase.status === "skipped" || phase.status === "blocked");
-          return (
-            <View key={phase.id} style={styles.phaseBlock}>
-              <View style={styles.phaseRow}>
-                <View style={styles.phaseMain}>
-                  <Text style={styles.phaseType}>{phase.type}</Text>
-                  <Text style={styles.phaseTitle} numberOfLines={1}>
-                    {phase.title}
-                  </Text>
-                </View>
-                <View style={styles.phaseRight}>
-                  {verdicts ? <Text style={styles.verdictText}>{verdicts}</Text> : null}
-                  <StatusBadge label={phase.status} variant={phaseStatusVariant(phase.status)} />
-                </View>
-              </View>
-              {showNotes ? <Text style={styles.phaseNotes}>{phase.notes}</Text> : null}
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Spacer pins the footer to the bottom of the card regardless of how
-          much detail sits above it, so cards in a row align. */}
-      <View style={styles.spacer} />
-
-      <View style={styles.footerRow}>
-        <StatusBadge label={runStatusLabel(run.status)} variant={runStatusVariant(run.status)} />
-        <RunFooterMeta run={run} totalTokens={totalTokens} />
-      </View>
-
-      {workspaceId && visualizerEnabled ? (
-        <View style={styles.gateRow}>
-          <Button
-            variant="ghost"
-            size="sm"
-            leftIcon={Waypoints}
-            onPress={handleVisualize}
-            testID="run-visualize-button"
-          >
-            Visualize
-          </Button>
-        </View>
-      ) : null}
-
-      {gatePhase ? (
-        <View style={styles.gateRow}>
-          <Text style={styles.gateLabel}>Awaiting approval: {gatePhase.title}</Text>
-          <View style={styles.gateButtons}>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={gateMutation.isPending}
-              onPress={rejectGate}
-            >
-              Reject
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              disabled={gateMutation.isPending}
-              onPress={approveGate}
-            >
-              Approve
-            </Button>
+        {/* Empty detail blocks are omitted, not rendered empty — an empty View
+            still consumes one of the card's row gaps, which is what pushed the
+            footer away from the details. */}
+        {complexity.length > 0 ? (
+          <View style={styles.chips}>
+            {complexity.map((chip) => (
+              <Text key={chip} style={styles.chip}>
+                {chip}
+              </Text>
+            ))}
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {!gatePhase && isActive ? (
-        <View style={styles.gateRow}>
-          <Button variant="ghost" size="sm" disabled={cancelMutation.isPending} onPress={cancelRun}>
-            Cancel orchestration
-          </Button>
+        {failure ? (
+          <View style={styles.failureBanner}>
+            <Text style={styles.failureText}>{failure}</Text>
+          </View>
+        ) : null}
+
+        <RunSummary run={run} />
+
+        {run.phases.length > 0 ? (
+          <View style={styles.phases}>
+            {run.phases.map((phase) => {
+              const verdicts = summarizeVerdicts(phase);
+              const showNotes =
+                phase.notes &&
+                (phase.status === "failed" ||
+                  phase.status === "skipped" ||
+                  phase.status === "blocked");
+              return (
+                <View key={phase.id} style={styles.phaseBlock}>
+                  <View style={styles.phaseRow}>
+                    <View style={styles.phaseMain}>
+                      <Text style={styles.phaseType}>{phase.type}</Text>
+                      <Text style={styles.phaseTitle} numberOfLines={1}>
+                        {phase.title}
+                      </Text>
+                    </View>
+                    <View style={styles.phaseRight}>
+                      {verdicts ? <Text style={styles.verdictText}>{verdicts}</Text> : null}
+                      <StatusBadge
+                        label={phase.status}
+                        variant={phaseStatusVariant(phase.status)}
+                      />
+                    </View>
+                  </View>
+                  {showNotes ? <Text style={styles.phaseNotes}>{phase.notes}</Text> : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {/* The one action that stays on the card: a blocked gate is a prompt the
+            user has to answer, not something to hunt for in a menu. */}
+        {gatePhase ? (
+          <View style={styles.gateRow}>
+            <Text style={styles.gateLabel} numberOfLines={1}>
+              Awaiting approval: {gatePhase.title}
+            </Text>
+            <View style={styles.gateButtons}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={gateMutation.isPending}
+                onPress={rejectGate}
+                onPressIn={stopPressInPropagation}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={gateMutation.isPending}
+                onPress={approveGate}
+                onPressIn={stopPressInPropagation}
+              >
+                Approve
+              </Button>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.footerRow}>
+          <View style={styles.footerBadges}>
+            <StatusBadge
+              label={runStatusLabel(run.status)}
+              variant={runStatusVariant(run.status)}
+            />
+            <StatusBadge label={describeRunShape(run)} />
+          </View>
+          <RunFooterMeta run={run} totalTokens={totalTokens} />
         </View>
-      ) : null}
+      </Pressable>
     </View>
   );
+}
+
+// Inner controls (kebab, gate buttons) sit inside the card's Pressable. Stopping
+// the press-in here keeps a tap on them from also firing the card's visualize
+// action.
+function stopPressInPropagation(event: { stopPropagation?: () => void }) {
+  event.stopPropagation?.();
+}
+
+// Themed icon wrappers so menu icons can live as module-scope constants (avoids
+// the react-perf jsx-as-prop rule) without calling useUnistyles in render — see
+// docs/unistyles.md and the artifact-card precedent.
+const ThemedWaypoints = withUnistyles(Waypoints);
+const ThemedPencil = withUnistyles(Pencil);
+const ThemedX = withUnistyles(X);
+const ThemedTrash2 = withUnistyles(Trash2);
+
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+
+const MENU_ICON_SIZE = 14;
+
+const editLeading = <ThemedPencil size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const visualizeLeading = <ThemedWaypoints size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
+const cancelLeading = <ThemedX size={MENU_ICON_SIZE} uniProps={destructiveColorMapping} />;
+const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveColorMapping} />;
+
+function RunKebabMenu({
+  run,
+  canEdit,
+  onEdit,
+  canVisualize,
+  canCancel,
+  cancelPending,
+  canDelete,
+  deletePending,
+  onVisualize,
+  onCancel,
+  onDelete,
+}: {
+  run: RunWithHost;
+  canEdit: boolean;
+  onEdit: () => void;
+  canVisualize: boolean;
+  canCancel: boolean;
+  cancelPending: boolean;
+  canDelete: boolean;
+  deletePending: boolean;
+  onVisualize: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+}): ReactElement {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        hitSlop={8}
+        onPressIn={stopPressInPropagation}
+        style={kebabTriggerStyle}
+        accessibilityRole={isNative ? "button" : undefined}
+        accessibilityLabel="Orchestration actions"
+        testID={`run-kebab-${run.id}`}
+      >
+        <MoreVertical size={18} color={styles.icon.color} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" width={220}>
+        {/* Drafts only: reopens the New Orchestration dialog on this record so
+            its name, project, graph and inputs can be changed before it runs. */}
+        {canEdit ? (
+          <DropdownMenuItem
+            leading={editLeading}
+            onSelect={onEdit}
+            testID={`run-menu-edit-${run.id}`}
+          >
+            Edit Orchestration
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem
+          leading={visualizeLeading}
+          disabled={!canVisualize}
+          onSelect={canVisualize ? onVisualize : undefined}
+          testID={`run-menu-visualize-${run.id}`}
+        >
+          Visualize
+        </DropdownMenuItem>
+        {canCancel || canDelete ? <DropdownMenuSeparator /> : null}
+        {canCancel ? (
+          <DropdownMenuItem
+            leading={cancelLeading}
+            destructive
+            disabled={cancelPending}
+            onSelect={cancelPending ? undefined : onCancel}
+            testID={`run-menu-cancel-${run.id}`}
+          >
+            Cancel orchestration
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <DropdownMenuItem
+            leading={deleteLeading}
+            destructive
+            disabled={deletePending}
+            onSelect={deletePending ? undefined : onDelete}
+            testID={`run-menu-delete-${run.id}`}
+          >
+            Delete
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Chrome for the header's kebab. The hovered card is already surface2, so the
+// control's own hover/press states step up to surfaceHover/surface4 — anything
+// lower is invisible against the card.
+function kebabTriggerStyle({
+  hovered = false,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [
+    styles.headerAction,
+    hovered && styles.headerActionHovered,
+    pressed && styles.headerActionPressed,
+  ];
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -776,14 +1085,11 @@ const styles = StyleSheet.create((theme) => ({
   projectFilterSlot: {
     flexShrink: 1,
   },
-  // Tames the compactUp button doubling so the button and the project filter
-  // beside it share the same field height at every width.
-  clearButton: {
-    minHeight: 44,
-    paddingHorizontal: theme.spacing[4],
-  },
+  // Tames the compactUp button doubling so the button, the project filter
+  // beside it, and the status filter below all share the compact 32px control
+  // height at every width — matching Artifacts and Schedules.
   newButton: {
-    minHeight: 44,
+    minHeight: 32,
     paddingHorizontal: theme.spacing[4],
   },
   statusRow: {
@@ -823,6 +1129,11 @@ const styles = StyleSheet.create((theme) => ({
   spinner: {
     color: theme.colors.foregroundMuted,
   },
+  // Runs render as a single-column list (not the Artifacts/Schedules grid), so
+  // the card sizes to its content — no flex:1 stretch inside the scroll view.
+  cardContainer: {
+    position: "relative",
+  },
   card: {
     backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
@@ -831,10 +1142,30 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[4],
     gap: theme.spacing[2],
   },
+  cardError: {
+    borderColor: theme.colors.palette.red[500],
+  },
+  cardHovered: {
+    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.borderAccent,
+  },
+  cardPressed: {
+    backgroundColor: theme.colors.surface3,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+  },
+  headerAction: {
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.base,
+  },
+  headerActionHovered: {
+    backgroundColor: theme.colors.surfaceHover,
+  },
+  headerActionPressed: {
+    backgroundColor: theme.colors.surface4,
   },
   icon: {
     color: theme.colors.foregroundMuted,
@@ -934,16 +1265,22 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
-  spacer: {
-    flex: 1,
-    minHeight: theme.spacing[2],
-  },
+  // No bottom spacer here (unlike the Artifacts/Schedules grid cards): this card
+  // sizes to its content in a single-column list, so there is no sibling to
+  // align the footer with — the spacer only ever added dead space under the
+  // details. The card's own row gap is the whole separation.
   footerRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
     gap: theme.spacing[2],
-    marginTop: theme.spacing[1],
+  },
+  footerBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    flexShrink: 1,
+    minWidth: 0,
   },
   footerMeta: {
     flexDirection: "row",

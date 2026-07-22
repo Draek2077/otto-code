@@ -324,6 +324,48 @@ describe("OpenAICompatAgentClient", () => {
     ]);
   });
 
+  // Workspace access on this provider is total enforcement: the daemon owns
+  // the tool loop, so a withheld tool is never advertised to the model and
+  // cannot be called. These assert on the tools array in the real request body.
+  async function toolNamesForAccess(workspaceAccess?: string): Promise<string[]> {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+      ...(workspaceAccess ? { workspaceAccess } : {}),
+    });
+    await session.run("Say hello");
+    const body = endpoint.completionBodies[0] as {
+      tools?: Array<{ function?: { name?: string } }>;
+    };
+    return (body.tools ?? []).map((tool) => tool.function?.name ?? "");
+  }
+
+  test("no declared access offers the full built-in tool surface", async () => {
+    const names = await toolNamesForAccess();
+    expect(names).toContain("write_file");
+    expect(names).toContain("read_file");
+    expect(names).toContain("run_command");
+  });
+
+  test('"read" withholds the write tools from the request entirely', async () => {
+    const names = await toolNamesForAccess("read");
+    expect(names).not.toContain("write_file");
+    expect(names).not.toContain("edit_file");
+    // Reading and running checks stay — that is what "read" is for.
+    expect(names).toContain("read_file");
+    expect(names).toContain("run_command");
+  });
+
+  test('"none" withholds reading and commands as well', async () => {
+    const names = await toolNamesForAccess("none");
+    expect(names).not.toContain("write_file");
+    expect(names).not.toContain("read_file");
+    expect(names).not.toContain("run_command");
+  });
+
   test("resolves the context window from LM Studio's native model listing", async () => {
     const endpoint = await startEndpoint({ nativeContextLength: 8192 });
     const client = createClient(endpoint.baseUrl);

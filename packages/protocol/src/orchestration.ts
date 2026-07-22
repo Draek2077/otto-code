@@ -164,6 +164,9 @@ export const RunPhaseCandidateSchema = z
     // The candidate's final message (synthesis input); may be large — clients
     // truncate for display.
     summary: z.string().optional(),
+    // Validated output fields, when the node declared them (GraphNode.output).
+    // Values only — anything large belongs in a file the next node reads.
+    outputFields: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 
@@ -185,12 +188,33 @@ export const RunPhaseSchema = z
     candidates: z.array(RunPhaseCandidateSchema).optional(),
     // Free-text runtime notes (why it blocked, which cap tripped, gap named).
     notes: z.string().optional(),
+    // Machine-readable reason a phase is "skipped" — the human sentence stays in
+    // `notes`. Absent on a skipped phase means an older daemon wrote it (read it
+    // as "upstream-failed", the only skip that existed then). Open vocabulary,
+    // plain string on the wire; known values in GRAPH_SKIP_REASONS.
+    skipReason: z.string().optional(),
+    // How many extra attempts a node's retry policy spent (0/absent = none).
+    retryAttempts: z.number().int().min(0).optional(),
+    // True when the phase's last attempt ended at its time limit rather than
+    // by failing on its own — a different diagnosis, so a different flag.
+    timedOut: z.boolean().optional(),
     startedAt: z.string().optional(),
     completedAt: z.string().optional(),
   })
   .passthrough();
 
 export type RunPhase = z.infer<typeof RunPhaseSchema>;
+
+// Why a phase is "skipped" (see RunPhase.skipReason). A skip is never an error:
+// "condition" means an edge's condition routed around this node, the other two
+// mean an upstream node was itself skipped or failed. Plain string on the wire.
+export const GRAPH_SKIP_REASONS = [
+  "condition",
+  "upstream-skipped",
+  "upstream-failed",
+  "canceled",
+] as const;
+export type GraphSkipReason = (typeof GRAPH_SKIP_REASONS)[number];
 
 export const RunSchema = z
   .object({
@@ -266,6 +290,44 @@ export const GraphInputSchema = z
 
 export type GraphInput = z.infer<typeof GraphInputSchema>;
 
+// ── Prompt templates ────────────────────────────────────────────────────────
+// Host-level reusable prompts, stored like Graphs. A template with
+// `snippet: true` is meant to be included by other templates rather than bound
+// to a node directly — the shared "how to submit your output" block is the
+// motivating case, since repeating it in every node is both duplication and
+// tokens on every dispatch.
+export const PromptTemplateSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    // EJS source. Rendered with HTML escaping disabled — these are prompts,
+    // not markup, and characters like & must survive verbatim.
+    content: z.string(),
+    // Variables the template expects, so the designer can render a binding
+    // form instead of asking the author to remember them.
+    variables: z.array(GraphInputSchema).optional(),
+    snippet: z.boolean().optional(),
+    builtIn: z.boolean().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+
+export type PromptTemplate = z.infer<typeof PromptTemplateSchema>;
+
+// A node's binding to a stored template. A value is a literal, `$inputs.<key>`
+// (a declared graph input), or `$output.<nodeId>.<field>` (an upstream node's
+// output field).
+export const NodePromptTemplateRefSchema = z
+  .object({
+    templateId: z.string().min(1),
+    variables: z.record(z.string(), z.string()).optional(),
+  })
+  .passthrough();
+
+export type NodePromptTemplateRef = z.infer<typeof NodePromptTemplateRefSchema>;
+
 // Node kinds (open vocabulary): "orchestrator" — the single root that hosts
 // the orchestration chat and anchors the Visualizer; "agent" — a worker node.
 export const GRAPH_NODE_KINDS = ["orchestrator", "agent"] as const;
@@ -292,6 +354,85 @@ export const GraphNodeLoopSchema = z
 
 export type GraphNodeLoop = z.infer<typeof GraphNodeLoopSchema>;
 
+// ── Output fields (the value plane) ─────────────────────────────────────────
+// What a node declares it will produce. Plain JSON descriptors, never a
+// serialized Zod schema: they have to be three things at once — wire-safe, a
+// form the designer can render, and compilable to both Zod (validation) and
+// JSON Schema (the submit_output tool's input). `type` is an open string
+// vocabulary so a new type can never break an old parser.
+export const GRAPH_OUTPUT_FIELD_TYPES = ["string", "number", "boolean", "array"] as const;
+export type GraphOutputFieldType = (typeof GRAPH_OUTPUT_FIELD_TYPES)[number];
+
+export const GraphOutputFieldSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.string().min(1),
+    // Shown to the node's agent as the field's description — this is the whole
+    // instruction it gets about what to put here, so it earns its place.
+    description: z.string().optional(),
+    // Absent ⇒ required. You declared the field; producing it is the contract.
+    required: z.boolean().optional(),
+  })
+  .passthrough();
+
+export type GraphOutputField = z.infer<typeof GraphOutputFieldSchema>;
+
+export const GraphNodeOutputSchema = z
+  .object({
+    fields: z.array(GraphOutputFieldSchema),
+  })
+  .passthrough();
+
+export type GraphNodeOutput = z.infer<typeof GraphNodeOutputSchema>;
+
+// ── Query tools (per-node read-only lookups) ────────────────────────────────
+// Author-defined tools that exist only inside one node's session, so a node can
+// be given exactly the lookup it needs instead of the whole workspace.
+//
+// Three kinds, all read-only by construction:
+//   command    argv array only — no shell, so no operators and no injection
+//              surface. A pipeline belongs in a script the tool points at.
+//   http-get   GET only, no author-supplied headers (credentials can't leak
+//              into a graph template).
+//   file-read  path must resolve inside the run's cwd.
+export const GRAPH_QUERY_TOOL_KINDS = ["command", "http-get", "file-read"] as const;
+export type GraphQueryToolKind = (typeof GRAPH_QUERY_TOOL_KINDS)[number];
+
+export const GraphQueryToolSchema = z
+  .object({
+    // Tool name the agent calls. Namespaced at registration so it can never
+    // shadow a built-in Otto tool.
+    name: z.string().min(1),
+    description: z.string().min(1),
+    kind: z.string().min(1),
+    // Declared parameters, reusing the output-field descriptor shape.
+    parameters: z.array(GraphOutputFieldSchema).optional(),
+    // kind "command": the executable plus its arguments, each argument a
+    // separate entry. `{{param}}` substitutes a declared parameter's value as
+    // one argument — never as a fragment the shell could re-split.
+    command: z.array(z.string()).optional(),
+    // kind "http-get": the URL, with `{{param}}` substitution (encoded).
+    url: z.string().optional(),
+    // kind "file-read": workspace-relative path, with `{{param}}` substitution.
+    path: z.string().optional(),
+  })
+  .passthrough();
+
+export type GraphQueryTool = z.infer<typeof GraphQueryToolSchema>;
+
+// Bounded re-dispatch with exponential backoff. `maxAttempts` counts the first
+// try, so 1 means "no retry" and is allowed (a designer default that hasn't
+// been changed yet shouldn't be a validation error).
+export const GraphNodeRetrySchema = z
+  .object({
+    maxAttempts: z.number().int().min(1).max(10),
+    backoffMs: z.number().int().min(0).max(600_000),
+    multiplier: z.number().min(1).max(4).optional(),
+  })
+  .passthrough();
+
+export type GraphNodeRetry = z.infer<typeof GraphNodeRetrySchema>;
+
 export const GraphNodeSchema = z
   .object({
     id: z.string().min(1),
@@ -304,10 +445,47 @@ export const GraphNodeSchema = z
     prompt: z.string().optional(),
     // Key of a declared input whose value joins (or forms) the prompt.
     promptFromInput: z.string().optional(),
+    // Load this node's prompt from a stored template instead of `prompt`.
+    // Resolution failure falls back to `prompt`, so a deleted template
+    // degrades a node rather than breaking a graph.
+    promptTemplate: NodePromptTemplateRefSchema.optional(),
     // Leaf-only: the node may orchestrate its own agents (full otto toolset
     // minus start_run). Non-autonomous nodes get no orchestration tools at all.
     autonomous: z.boolean().optional(),
     loop: GraphNodeLoopSchema.optional(),
+    // Declared output fields. Present ⇒ the node's agent gets a submit_output
+    // tool it must call, its result is validated, and downstream nodes receive
+    // the fields as data instead of re-reading prose. Absent ⇒ today exactly.
+    output: GraphNodeOutputSchema.optional(),
+    // How much of the workspace this node's agent may touch: "none" (no
+    // filesystem), "read", or "write". Absent ⇒ "write", today's behaviour.
+    //
+    // Enforced by withholding tools at spawn, never by asking the model — and a
+    // provider that can't enforce it refuses the node at compile time rather
+    // than running it with full access. Open string vocabulary; known values in
+    // WORKSPACE_ACCESS_LEVELS (protocol/agent-types).
+    access: z.string().optional(),
+    // Per-node Otto tool allowlist, by group (see OTTO_TOOL_GROUPS). Absent ⇒
+    // whatever the node's tool policy already allows. Present ⇒ only these
+    // groups, intersected with that policy and the daemon-wide allowlist — a
+    // node can narrow its own authority, never widen it.
+    //
+    // Narrowing is a cost lever as much as a safety one: the tool catalog is
+    // paid for in input tokens on every request the node's agent makes, and a
+    // smaller catalog measurably helps smaller models stay on task.
+    tools: z.array(z.string().min(1)).optional(),
+    // Read-only lookups available only inside this node's session.
+    queryTools: z.array(GraphQueryToolSchema).optional(),
+    // Resilience against transient failure. Distinct from `loop`, which is
+    // quality iteration: a loop re-runs work that succeeded but wasn't good
+    // enough; a retry re-runs work that never completed. Retry wraps the whole
+    // node including its loop, and every attempt is charged to the run's agent
+    // cap — a retry is never a private allowance.
+    retry: GraphNodeRetrySchema.optional(),
+    // Wall-clock ceiling for one attempt of this node. On expiry the agent is
+    // really cancelled (not merely stopped being awaited) and the node fails,
+    // which its retry policy may then catch.
+    timeoutMs: z.number().int().min(1000).max(21_600_000).optional(),
     // Explicit model override (otherwise the resolved personality/team decides).
     model: z.string().optional(),
     // Designer canvas layout.
@@ -317,6 +495,16 @@ export const GraphNodeSchema = z
 
 export type GraphNode = z.infer<typeof GraphNodeSchema>;
 
+// An edge condition. Kept as a wrapper object rather than a bare string so a
+// future evaluation dialect can be named without a second field.
+export const GraphEdgeConditionSchema = z
+  .object({
+    expression: z.string().min(1),
+  })
+  .passthrough();
+
+export type GraphEdgeCondition = z.infer<typeof GraphEdgeConditionSchema>;
+
 // A directed edge: `from`'s final output becomes labeled input material for
 // `to`. Fan-in is an all-inputs barrier held by the daemon — agents never know
 // about waiting.
@@ -325,6 +513,30 @@ export const GraphEdgeSchema = z
     id: z.string().min(1).optional(),
     from: z.string().min(1),
     to: z.string().min(1),
+    // Named ports. Absent ⇒ "output" → "input", which is every edge today, so
+    // existing graphs parse and execute identically. Reserved ahead of the
+    // control nodes that need more than one outcome (a gate's approved/rejected,
+    // a check's pass/fail): adding two optional fields now is free, and adding a
+    // second port later would mean changing the canvas, the schema and the
+    // engine's value routing at once.
+    fromPort: z.string().min(1).optional(),
+    toPort: z.string().min(1).optional(),
+    // Condition: a JSONata expression evaluated against the upstream node's
+    // output fields once it settles (falling back to its prose as `output`
+    // when it declared none). Truthy ⇒ this edge delivers; falsy ⇒ the edge is
+    // inactive and its target is skipped with reason "condition". Absent ⇒
+    // always delivers, which is every edge today.
+    //
+    // The condition lives on the edge rather than inside a node so the branch
+    // is visible as a labelled wire — the graph shows its own control flow.
+    when: GraphEdgeConditionSchema.optional(),
+    // Which of the upstream node's output fields this edge carries. Absent ⇒
+    // all of them. Selection only, never renaming: downstream is a prompt, not
+    // a typed function signature, so remapping keys would buy nothing and
+    // cost the reader the ability to trace a value by name.
+    fields: z.array(z.string().min(1)).optional(),
+    // Display-only label for the wire.
+    label: z.string().optional(),
   })
   .passthrough();
 
@@ -395,6 +607,31 @@ function validateGraphEdges(graph: OrchestrationGraph, nodeIds: ReadonlySet<stri
   return problems;
 }
 
+/**
+ * Advisory findings: things that are almost certainly authoring mistakes but
+ * leave the graph executable. Separate from `validateOrchestrationGraph`
+ * because that one is the daemon's hard gate — anything it returns stops a run,
+ * and none of these should.
+ *
+ * Expression *syntax* is not checked here: the JSONata parser is daemon-side,
+ * so this stays dependency-free for the client bundle.
+ */
+export function reviewOrchestrationGraph(graph: OrchestrationGraph): string[] {
+  const warnings: string[] = [];
+  for (const edge of graph.edges ?? []) {
+    if (!edge.when?.expression?.trim()) {
+      continue;
+    }
+    const source = graph.nodes.find((node) => node.id === edge.from);
+    if (source && !source.output?.fields?.length) {
+      warnings.push(
+        `The edge from "${source.title}" has a condition, but "${source.title}" declares no output fields — the condition can only test its prose as \`output\`.`,
+      );
+    }
+  }
+  return warnings;
+}
+
 // Cycle check (loops are node-level annotations, never cyclic edges): Kahn.
 function hasGraphCycle(
   graph: OrchestrationGraph,
@@ -445,6 +682,26 @@ function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>)
     }
   }
   problems.push(...validateGraphNodeLoop(node));
+  problems.push(...validateGraphNodeOutput(node));
+  return problems;
+}
+
+function validateGraphNodeOutput(node: GraphNode): string[] {
+  if (!node.output) {
+    return [];
+  }
+  const fields = node.output.fields ?? [];
+  if (fields.length === 0) {
+    return [`Node "${node.title}" declares output fields but lists none.`];
+  }
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const field of fields) {
+    if (seen.has(field.key)) {
+      problems.push(`Node "${node.title}" declares the output field "${field.key}" twice.`);
+    }
+    seen.add(field.key);
+  }
   return problems;
 }
 

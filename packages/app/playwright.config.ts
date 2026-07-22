@@ -21,7 +21,14 @@ export default defineConfig({
   // is pure environmental flake a retry clears. Deterministic failures still fail
   // every attempt, so this doesn't mask real regressions.
   retries: process.env.CI ? 2 : 0,
-  reporter: [["list"]],
+  // `list` for the terminal, `html` for the native trace/log viewer, and the QA
+  // reporter for the release-check artifacts (per-module TOC, per-test evidence,
+  // money-shot digest, failure report). See projects/e2e-qa-coverage/reporting.md.
+  reporter: [
+    ["list"],
+    ["html", { open: "never", outputFolder: "playwright-report" }],
+    ["./e2e/reporters/qa-reporter.ts", { outputDir: "e2e-report" }],
+  ],
   use: {
     baseURL,
     trace: "retain-on-failure",

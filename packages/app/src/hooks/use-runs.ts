@@ -1,10 +1,6 @@
 import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import type { Run } from "@otto-code/protocol/orchestration";
-import {
-  getHostRuntimeStore,
-  useHostRuntimeClient,
-  useHostRuntimeIsConnected,
-} from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useReplicaQuery } from "@/data/query";
 import { applyRunsCleared, fetchRuns, runsQueryKey } from "@/data/runs";
@@ -99,33 +95,22 @@ export function useCancelRun(serverId: string | null) {
 }
 
 /**
- * Delete every finished run on every given host in parallel. Prunes each
- * host's cache immediately so the UI updates without waiting on the
- * runs.cleared.notification round trip (that push still lands and is a
- * no-op once the ids are already gone).
+ * Delete one finished run. Prunes the host's cache immediately so the card
+ * disappears without waiting on the runs.cleared.notification round trip (that
+ * push still lands and is a no-op once the id is already gone). The daemon
+ * refuses active runs, so the mutation rejects with its reason.
  */
-export function useClearFinishedRuns(): {
-  clearAll: (serverIds: readonly string[]) => void;
-  isPending: boolean;
-} {
-  const runtime = getHostRuntimeStore();
+export function useDeleteRun(serverId: string | null) {
+  const client = useHostRuntimeClient(serverId ?? "");
   const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: async (serverIds: readonly string[]) => {
-      await Promise.all(
-        serverIds.map(async (serverId) => {
-          const client = runtime.getClient(serverId);
-          if (!client) {
-            return;
-          }
-          const runIds = await client.clearFinishedRuns();
-          applyRunsCleared({ queryClient, serverId, runIds });
-        }),
-      );
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      if (!client || !serverId) {
+        throw new Error("Host disconnected");
+      }
+      const deletedId = await client.deleteRun(runId);
+      applyRunsCleared({ queryClient, serverId, runIds: [deletedId] });
+      return deletedId;
     },
   });
-  return {
-    clearAll: (serverIds) => mutation.mutate(serverIds),
-    isPending: mutation.isPending,
-  };
 }

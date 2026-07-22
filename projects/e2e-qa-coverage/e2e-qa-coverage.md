@@ -42,6 +42,12 @@ with the covering spec files named inline.
 
 The check is pure file analysis (no daemon, no browser, <1s) and is safe to wire into CI later.
 
+The matrix is also what groups the **run report** — the reporter reads its sections to bucket
+every test under its module, so the plan document and the run artifacts stay in lockstep. What a
+run produces (per-module table of contents, per-test evidence directories, the money-shot digest,
+the failure report) and the conventions for money shots and regression specs are in
+[reporting.md](reporting.md).
+
 ## Running locally
 
 The repo rule "never run the full Playwright suite locally" exists because whole-suite runs
@@ -49,13 +55,25 @@ freeze the machine. The unit of local execution is therefore the **category batc
 already runs `workers: 1`, so one category at a time is tractable:
 
 ```powershell
-# One category (filenames are grouped per category in the matrix):
-$env:E2E_BROWSER_CHANNEL = "msedge"   # Windows: drive installed Edge, skip chromium download
-npm run test:e2e --workspace=@otto-code/app -- e2e/terminal-*.spec.ts
-
-# Release-night full sweep: run categories sequentially, output to a file, read after
-npm run test:e2e --workspace=@otto-code/app > $env:TEMP\e2e-sweep.txt 2>&1
+npm run e2e -- e2e/terminal-*.spec.ts    # one category (filenames grouped per category in the matrix)
+npm run e2e                              # T1: every mock spec
+npm run e2e:local-ai                     # T2: *.local.spec.ts against LM Studio
+npm run e2e:real                         # T3: *.real.spec.ts (paid)
+npm run e2e:coverage                     # matrix <-> disk drift check (no daemon, <1s)
+npm run e2e:report                       # open Playwright's HTML report from the last run
 ```
+
+A full sweep should go to a file and be read afterwards, never watched:
+`npm run e2e > $env:TEMP\e2e-sweep.txt 2>&1`.
+
+**Browsers are a one-time install, not a per-run flag.** `npm run e2e:install` fetches the
+chromium build the pinned Playwright needs. Missing it produces
+`Executable doesn't exist at ...chromium_headless_shell-<rev>`, because headless mode launches
+the headless shell — having the full `chromium-<rev>` is not enough, and a bare
+`playwright install` after a version bump only lands what that version pins. Setting
+`E2E_BROWSER_CHANNEL=msedge` drives installed Edge instead; that is an escape hatch for a
+machine that can't download browsers, not the normal path, and it tests Edge rather than the
+browser CI runs.
 
 Phase 1 adds Playwright `@cat:*` tags to every `test.describe`, so category runs become
 `--grep @cat:terminal` instead of filename globs, and the coverage check can verify tags too.

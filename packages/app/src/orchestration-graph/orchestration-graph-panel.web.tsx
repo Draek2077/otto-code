@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
+  reviewOrchestrationGraph,
   validateOrchestrationGraph,
   type GraphInput,
   type OrchestrationGraph,
@@ -25,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/contexts/toast-context";
 import {
   useOrchestrationGraphs,
+  usePromptTemplates,
   useSaveOrchestrationGraph,
 } from "@/hooks/use-orchestration-graphs";
 import { usePaneContext } from "@/panels/pane-context";
@@ -62,6 +64,8 @@ function OrchestrationGraphPanelInner({
     [graphsQuery.data, graphId],
   );
   const saveGraph = useSaveOrchestrationGraph(serverId);
+  const templatesQuery = usePromptTemplates(serverId);
+  const templates = templatesQuery.data;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<GraphCanvasHandle | null>(null);
@@ -121,6 +125,15 @@ function OrchestrationGraphPanelInner({
     setLoadedGraphId(graph.id);
   }, [graph, loadedGraphId, serverId]);
 
+  // The node cards' "Prompt template" select is populated from the host's
+  // stored templates, which can arrive before or after the graph loads —
+  // re-push on either, since the canvas repopulates in place.
+  useEffect(() => {
+    if (templates) {
+      handleRef.current?.setPromptTemplates(templates);
+    }
+  }, [templates, loadedGraphId]);
+
   const buildCurrentGraph = useCallback((): OrchestrationGraph | null => {
     if (!graph || !handleRef.current) {
       return null;
@@ -160,11 +173,12 @@ function OrchestrationGraphPanelInner({
     setDirty(false);
     clearGraphDraft(serverId, saved.id);
     // Validation problems never block saving — a half-built graph is a normal
-    // thing to save. They only gate Run, and they report as a warning toast
-    // rather than sitting in the toolbar looking like a failure.
+    // thing to save. They only gate Run. The toast stays a one-word verdict;
+    // the detail of what's wrong belongs in the toolbar warnings, not here.
     const problems = validateOrchestrationGraph(saved);
-    if (problems.length > 0) {
-      toast.show(`Saved · ${describeProblems(problems)}`, { durationMs: 4200 });
+    const warnings = reviewOrchestrationGraph(saved);
+    if (problems.length > 0 || warnings.length > 0) {
+      toast.show("Saved — With Issues");
     } else {
       toast.show("Saved", { variant: "success" });
     }
@@ -245,7 +259,7 @@ function OrchestrationGraphPanelInner({
             label="Save graph"
             onPress={save}
             testID="graph-save"
-            disabled={saveGraph.isPending}
+            disabled={!dirty || saveGraph.isPending}
           />
           <GraphToolbarButton
             renderIcon={renderRunIcon}
@@ -301,6 +315,10 @@ const toolbarButtonStyle = (
   (Boolean(state.hovered) || state.pressed) && styles.toolbarButtonHovered,
 ];
 
+const disabledToolbarButtonStyle = (
+  state: PressableStateCallbackType & { hovered?: boolean },
+): StyleProp<ViewStyle> => [toolbarButtonStyle(state), styles.toolbarButtonDisabled];
+
 /** One toolbar action: glyph only, with the label carried by a tooltip. */
 function GraphToolbarButton({
   renderIcon,
@@ -324,7 +342,7 @@ function GraphToolbarButton({
         testID={testID}
         disabled={disabled}
         onPress={onPress}
-        style={toolbarButtonStyle}
+        style={disabled === true ? disabledToolbarButtonStyle : toolbarButtonStyle}
       >
         {renderIcon(size)}
       </TooltipTrigger>
@@ -554,6 +572,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   toolbarButtonHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  toolbarButtonDisabled: {
+    opacity: 0.4,
+    backgroundColor: "transparent",
   },
   tooltipText: {
     color: theme.colors.foreground,

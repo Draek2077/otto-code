@@ -1472,6 +1472,15 @@ export class AgentManager {
     );
   }
 
+  /**
+   * What a provider's adapter can do, or null if no client is registered for
+   * it. Callers that must refuse rather than degrade (a graph node declaring
+   * restricted workspace access, say) read this before spawning.
+   */
+  getProviderCapabilities(provider: AgentProvider): AgentCapabilityFlags | null {
+    return this.clients.get(provider)?.capabilities ?? null;
+  }
+
   async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
     const client = this.clients.get(provider);
     if (!client) {

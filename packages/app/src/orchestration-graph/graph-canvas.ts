@@ -1,8 +1,28 @@
-import type { GraphEdge, GraphNode, OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import type {
+  GraphEdge,
+  GraphNode,
+  GraphQueryTool,
+  OrchestrationGraph,
+  PromptTemplate,
+} from "@otto-code/protocol/orchestration";
+import { OTTO_TOOL_GROUP_META } from "@/screens/settings/otto-tools-config";
 
 import Drawflow from "./vendor/drawflow.min.js";
 import type { GraphCanvasTheme } from "./graph-canvas-theme";
-import { GRAPH_NODE_ROLES, buildRootNode, newGraphNodeId } from "./graph-doc";
+import {
+  GRAPH_NODE_ROLES,
+  buildRootNode,
+  carryUneditedEdgeFields,
+  carryUneditedNodeFields,
+  formatOutputFields,
+  formatQueryTools,
+  formatTemplateVariables,
+  graphEdgeKey,
+  newGraphNodeId,
+  parseOutputFields,
+  parseQueryTools,
+  parseTemplateVariables,
+} from "./graph-doc";
 
 // The DOM half of the graph designer (projects/orchestration-graphs): a
 // Drawflow instance wrapped with the editor design ported from Draekz Forge's
@@ -35,6 +55,35 @@ interface CanvasNodeInfo {
   loopCount: number;
   loopCriteria: string;
   model: string;
+  /** Workspace access ceiling: "" (inherit/write), "read" or "none". */
+  access: string;
+  /** Declared output fields, in the card's one-per-line text form. */
+  outputFields: string;
+  /** Total attempts including the first; 1 means no retry. */
+  retryAttempts: number;
+  /** Wall-clock ceiling in seconds; 0 means none. */
+  timeLimitSeconds: number;
+  /** "" = inherit the tool policy; "only" = just the checked groups. */
+  toolGroupsMode: "" | "only";
+  /** Checked Otto tool groups, meaningful only while mode is "only". */
+  toolGroups: Set<string>;
+  /** Declared query tools, in the card's one-per-line text form. */
+  queryTools: string;
+  /** What the node arrived with, so an untouched line keeps its full detail. */
+  queryToolsSource: GraphQueryTool[];
+  /** Bound prompt template id; "" = use the node's own prompt. */
+  templateId: string;
+  /** Template variable bindings, one `name = value` per line. */
+  templateVariables: string;
+  /**
+   * Everything about this node the canvas doesn't edit.
+   *
+   * The export path rebuilds each node from scratch, so without carrying these
+   * forward, opening a graph that uses them and pressing Save would silently
+   * delete them. A designer that can't yet edit a property must still be
+   * incapable of destroying it.
+   */
+  carried: Partial<GraphNode>;
 }
 
 export interface GraphCanvasHandle {
@@ -44,6 +93,8 @@ export interface GraphCanvasHandle {
   addAgentNode(): void;
   /** Refresh the declared-input affordances inside every node card. */
   setDeclaredInputs(keys: readonly string[]): void;
+  /** Refresh the bindable prompt templates inside every node card. */
+  setPromptTemplates(templates: readonly PromptTemplate[]): void;
   setTheme(theme: GraphCanvasTheme): void;
   destroy(): void;
 }
@@ -104,7 +155,11 @@ export function createGraphCanvas(
   ed.start();
 
   const infoByDfid = new Map<string, CanvasNodeInfo>();
+  // Edge properties the canvas doesn't edit, keyed from→to, so a save can't
+  // strip a condition the designer can't yet show.
+  const carriedEdgeFields = new Map<string, Partial<GraphEdge>>();
   let declaredInputKeys: string[] = [];
+  let promptTemplates: PromptTemplate[] = [];
   let suspended = false;
   const notifyChange = () => {
     if (!suspended) {
@@ -117,13 +172,22 @@ export function createGraphCanvas(
   // drifts off its own grid. Drawflow transforms the precanvas rather than
   // painting a background, so the background offset/scale is mirrored by hand
   // from its translate + zoom on every change.
-  const syncGrid = () => {
+  const paintGrid = (x: number, y: number) => {
     const spacing = GRID_SPACING * ed.zoom;
     canvasEl.style.backgroundSize = `${spacing}px ${spacing}px`;
-    canvasEl.style.backgroundPosition = `${ed.canvas_x}px ${ed.canvas_y}px`;
+    canvasEl.style.backgroundPosition = `${x}px ${y}px`;
   };
-  ed.on("translate", syncGrid);
-  ed.on("zoom", syncGrid);
+  const syncGrid = () => paintGrid(ed.canvas_x, ed.canvas_y);
+  // Mid-drag, Drawflow transforms the precanvas from a local offset and only
+  // writes canvas_x/canvas_y back on drag END, so the live pan is in the event
+  // payload — reading ed.canvas_x here would leave the dots a whole drag behind.
+  ed.on("translate", (payload) => {
+    const pos = payload as { x: number; y: number };
+    paintGrid(pos.x, pos.y);
+  });
+  // zoom_refresh dispatches "zoom" BEFORE rescaling canvas_x/canvas_y; defer a
+  // tick so the offset we read is the post-scale one.
+  ed.on("zoom", () => queueMicrotask(syncGrid));
   syncGrid();
 
   // Cursor-anchored wheel zoom (ported from Forge's orchWheelZoom, simplified
@@ -170,6 +234,12 @@ export function createGraphCanvas(
     applyField(info, field, target);
     if (field === "loopMode") {
       updateLoopVisibility(nodeEl, info.loopMode);
+    }
+    if (field === "toolGroupsMode") {
+      updateToolGroupVisibility(nodeEl, info.toolGroupsMode);
+    }
+    if (field === "templateId") {
+      updateTemplateVisibility(nodeEl, info.templateId);
     }
     notifyChange();
   };
@@ -377,22 +447,112 @@ export function createGraphCanvas(
     notifyChange();
   });
 
+  // ── Edge inspector ────────────────────────────────────────────────────────
+  // A wire carries meaning the wire itself can't show: a condition deciding
+  // whether it delivers, and which of the upstream node's output fields it
+  // hands on. Selecting a wire opens this panel; deselecting closes it.
+  const edgeInspector = document.createElement("div");
+  edgeInspector.className = "og-edge-inspector og-hidden";
+  // The inspector positions against the container, so it must establish a
+  // containing block even if the caller left it static.
+  if (getComputedStyle(container).position === "static") {
+    container.style.position = "relative";
+  }
+  edgeInspector.innerHTML =
+    `<div class="og-edge-title" data-og-edge-title></div>` +
+    `<label class="og-label">Condition <span class="og-hint">(JSONata over the upstream node's fields)</span></label>` +
+    `<input class="og-input" data-og-edge="when" placeholder='complexity = "simple"' />` +
+    `<label class="og-label">Fields carried <span class="og-hint">(comma-separated; blank = all)</span></label>` +
+    `<input class="og-input" data-og-edge="fields" placeholder="all fields" />` +
+    `<div class="og-inputs-hint" data-og-edge-note></div>`;
+  container.appendChild(edgeInspector);
+
+  let selectedEdgeKey: string | null = null;
+
+  const inspectorInput = (name: string): HTMLInputElement | null =>
+    edgeInspector.querySelector<HTMLInputElement>(`[data-og-edge="${name}"]`);
+
+  const closeEdgeInspector = (): void => {
+    selectedEdgeKey = null;
+    edgeInspector.classList.add("og-hidden");
+  };
+
+  const openEdgeInspector = (from: string, to: string, fromTitle: string, toTitle: string) => {
+    selectedEdgeKey = graphEdgeKey(from, to);
+    const carried = carriedEdgeFields.get(selectedEdgeKey) ?? {};
+    const title = edgeInspector.querySelector<HTMLElement>("[data-og-edge-title]");
+    if (title) {
+      title.textContent = `${fromTitle} → ${toTitle}`;
+    }
+    const whenInput = inspectorInput("when");
+    if (whenInput) {
+      whenInput.value = carried.when?.expression ?? "";
+    }
+    const fieldsInput = inspectorInput("fields");
+    if (fieldsInput) {
+      fieldsInput.value = (carried.fields ?? []).join(", ");
+    }
+    // A condition can only test declared fields; say so rather than let the
+    // branch quietly never fire.
+    const source = [...infoByDfid.values()].find((entry) => entry.nodeId === from);
+    const note = edgeInspector.querySelector<HTMLElement>("[data-og-edge-note]");
+    if (note) {
+      note.textContent = source?.outputFields.trim()
+        ? "Leave the condition blank to always deliver."
+        : `"${fromTitle}" declares no output fields — a condition here can only test its prose as \`output\`.`;
+    }
+    edgeInspector.classList.remove("og-hidden");
+  };
+
+  const readEdgeInspector = (): void => {
+    if (!selectedEdgeKey) {
+      return;
+    }
+    const expression = inspectorInput("when")?.value.trim() ?? "";
+    const fields = (inspectorInput("fields")?.value ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    const existing = carriedEdgeFields.get(selectedEdgeKey) ?? {};
+    const next: Partial<GraphEdge> = {
+      ...existing,
+      ...(expression ? { when: { expression } } : {}),
+      ...(fields.length > 0 ? { fields } : {}),
+    };
+    if (!expression) {
+      delete next.when;
+    }
+    if (fields.length === 0) {
+      delete next.fields;
+    }
+    if (Object.keys(next).length > 0) {
+      carriedEdgeFields.set(selectedEdgeKey, next);
+    } else {
+      carriedEdgeFields.delete(selectedEdgeKey);
+    }
+    notifyChange();
+  };
+
+  edgeInspector.addEventListener("input", readEdgeInspector);
+  // Keep clicks and drags inside the panel from reaching the canvas beneath.
+  edgeInspector.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+  ed.on("connectionSelected", (payload) => {
+    const selection = payload as { output_id?: string; input_id?: string };
+    const from = infoByDfid.get(String(selection.output_id));
+    const to = infoByDfid.get(String(selection.input_id));
+    if (!from || !to) {
+      closeEdgeInspector();
+      return;
+    }
+    openEdgeInspector(from.nodeId, to.nodeId, from.title || "Upstream", to.title || "Downstream");
+  });
+  ed.on("connectionUnselected", closeEdgeInspector);
+  ed.on("nodeSelected", closeEdgeInspector);
+
   const addNode = (node: GraphNode, position: { x: number; y: number }) => {
     const isRoot = node.kind === "orchestrator";
-    const loop = readLoopSettings(node);
-    const info: CanvasNodeInfo = {
-      nodeId: node.id,
-      kind: isRoot ? "orchestrator" : "agent",
-      title: node.title,
-      role: node.role ?? "researcher",
-      prompt: node.prompt ?? "",
-      promptFromInput: node.promptFromInput ?? "",
-      autonomous: node.autonomous === true,
-      loopMode: loop.mode,
-      loopCount: loop.count,
-      loopCriteria: loop.criteria,
-      model: node.model ?? "",
-    };
+    const info = buildNodeInfo(node);
     // The root has an OUTPUT only: it is the entry point, fed automatically by
     // the orchestration's own prompt, so there is nothing to wire into it.
     const dfid = ed.addNode(
@@ -403,7 +563,9 @@ export function createGraphCanvas(
       position.y,
       isRoot ? "og-root" : "og-agent",
       {},
-      isRoot ? buildRootNodeHtml(info) : buildAgentNodeHtml(info, declaredInputKeys),
+      isRoot
+        ? buildRootNodeHtml(info)
+        : buildAgentNodeHtml(info, declaredInputKeys, promptTemplates),
     );
     infoByDfid.set(String(dfid), info);
     if (isRoot) {
@@ -414,6 +576,8 @@ export function createGraphCanvas(
     const nodeEl = ed.container.querySelector<HTMLElement>(`#node-${dfid}`);
     if (nodeEl && !isRoot) {
       updateLoopVisibility(nodeEl, info.loopMode);
+      updateToolGroupVisibility(nodeEl, info.toolGroupsMode);
+      updateTemplateVisibility(nodeEl, info.templateId);
     }
     return dfid;
   };
@@ -422,11 +586,19 @@ export function createGraphCanvas(
     loadGraph(graph) {
       suspended = true;
       try {
+        closeEdgeInspector();
         ed.clear();
         infoByDfid.clear();
         rootDfid = null;
         rootInfo = null;
         declaredInputKeys = (graph.inputs ?? []).map((input) => input.key);
+        carriedEdgeFields.clear();
+        for (const edge of graph.edges ?? []) {
+          const carried = carryUneditedEdgeFields(edge);
+          if (Object.keys(carried).length > 0) {
+            carriedEdgeFields.set(graphEdgeKey(edge.from, edge.to), carried);
+          }
+        }
         const dfidByNodeId = new Map<string, number>();
         const nodes = graph.nodes.some((node) => node.kind === "orchestrator")
           ? graph.nodes
@@ -485,7 +657,9 @@ export function createGraphCanvas(
           for (const connection of output.connections ?? []) {
             const to = nodeIdByDfid.get(String(connection.node));
             if (to && to !== from) {
-              edges.push({ from, to });
+              // Re-attach whatever this edge carried (condition, fields, ports,
+              // label) — the canvas draws wires, it doesn't own their meaning.
+              edges.push({ ...carriedEdgeFields.get(graphEdgeKey(from, to)), from, to });
             }
           }
         }
@@ -504,7 +678,7 @@ export function createGraphCanvas(
           title: `Agent ${existing.size}`,
           role: "researcher",
           prompt: "",
-        },
+        } satisfies GraphNode,
         { x: 420 + (offset % 3) * 60, y: 80 + (offset % 5) * 60 },
       );
       notifyChange();
@@ -534,6 +708,21 @@ export function createGraphCanvas(
       }
     },
 
+    setPromptTemplates(templates) {
+      promptTemplates = [...templates];
+      for (const [dfid, info] of infoByDfid) {
+        if (info.kind === "orchestrator") {
+          continue;
+        }
+        const select = ed.container.querySelector<HTMLSelectElement>(
+          `#node-${dfid} select[data-og-field="templateId"]`,
+        );
+        if (select) {
+          select.innerHTML = buildTemplateOptions(info.templateId, promptTemplates);
+        }
+      }
+    },
+
     setTheme(theme) {
       styleEl.textContent = buildCanvasCss(theme);
     },
@@ -553,6 +742,37 @@ export function createGraphCanvas(
     },
   };
   return handle;
+}
+
+/** Project a graph node onto the editable state one card holds. */
+function buildNodeInfo(node: GraphNode): CanvasNodeInfo {
+  const loop = readLoopSettings(node);
+  return {
+    nodeId: node.id,
+    kind: node.kind === "orchestrator" ? "orchestrator" : "agent",
+    title: node.title,
+    role: node.role ?? "researcher",
+    prompt: node.prompt ?? "",
+    promptFromInput: node.promptFromInput ?? "",
+    autonomous: node.autonomous === true,
+    loopMode: loop.mode,
+    loopCount: loop.count,
+    loopCriteria: loop.criteria,
+    model: node.model ?? "",
+    access: node.access ?? "",
+    outputFields: formatOutputFields(node.output?.fields),
+    retryAttempts: node.retry?.maxAttempts ?? 1,
+    timeLimitSeconds: node.timeoutMs ? Math.round(node.timeoutMs / 1000) : 0,
+    // An absent `tools` means "whatever the policy allows"; a present one —
+    // including an empty array — is a deliberate narrowing.
+    toolGroupsMode: node.tools ? "only" : "",
+    toolGroups: new Set(node.tools ?? []),
+    queryTools: formatQueryTools(node.queryTools),
+    queryToolsSource: [...(node.queryTools ?? [])],
+    templateId: node.promptTemplate?.templateId ?? "",
+    templateVariables: formatTemplateVariables(node.promptTemplate?.variables),
+    carried: carryUneditedNodeFields(node),
+  };
 }
 
 function readLoopSettings(node: GraphNode): {
@@ -619,11 +839,50 @@ const FIELD_SETTERS: Record<string, (info: CanvasNodeInfo, value: string | boole
   model: (info, value) => {
     info.model = String(value);
   },
+  access: (info, value) => {
+    info.access = String(value);
+  },
+  outputFields: (info, value) => {
+    info.outputFields = String(value);
+  },
+  retryAttempts: (info, value) => {
+    const parsed = Number.parseInt(String(value), 10);
+    info.retryAttempts = Number.isInteger(parsed) ? Math.min(Math.max(parsed, 1), 10) : 1;
+  },
+  timeLimitSeconds: (info, value) => {
+    const parsed = Number.parseInt(String(value), 10);
+    info.timeLimitSeconds = Number.isInteger(parsed) ? Math.min(Math.max(parsed, 0), 21_600) : 0;
+  },
+  toolGroupsMode: (info, value) => {
+    info.toolGroupsMode = value === "only" ? "only" : "";
+  },
+  queryTools: (info, value) => {
+    info.queryTools = String(value);
+  },
+  templateId: (info, value) => {
+    info.templateId = String(value);
+  },
+  templateVariables: (info, value) => {
+    info.templateVariables = String(value);
+  },
 };
 
 function applyField(info: CanvasNodeInfo, field: string, element: HTMLElement): void {
   const value = readControlValue(element);
   if (value === null) {
+    return;
+  }
+  // Tool-group checkboxes all share one field name and name their group in a
+  // data attribute, so the set — not a scalar — is what they mutate.
+  if (field === "toolGroup") {
+    const group = element.dataset.ogGroup;
+    if (group) {
+      if (value === true) {
+        info.toolGroups.add(group);
+      } else {
+        info.toolGroups.delete(group);
+      }
+    }
     return;
   }
   FIELD_SETTERS[field]?.(info, value);
@@ -636,6 +895,7 @@ function buildGraphNode(
 ): GraphNode {
   if (info.kind === "orchestrator") {
     return {
+      ...info.carried,
       id: nodeId,
       kind: "orchestrator",
       title: info.title.trim() || "Orchestrator",
@@ -643,7 +903,12 @@ function buildGraphNode(
     };
   }
   const loop = buildLoopFromInfo(info);
+  const outputFields = parseOutputFields(info.outputFields);
+  const queryTools = parseQueryTools(info.queryTools, info.queryToolsSource);
+  const templateVariables = parseTemplateVariables(info.templateVariables);
   return {
+    // Carried first: canvas-owned properties below always win.
+    ...info.carried,
     id: nodeId,
     kind: "agent",
     title: info.title.trim() || "Agent",
@@ -653,6 +918,25 @@ function buildGraphNode(
     ...(info.autonomous ? { autonomous: true } : {}),
     ...(loop ? { loop } : {}),
     ...(info.model.trim() ? { model: info.model.trim() } : {}),
+    ...(info.access ? { access: info.access } : {}),
+    ...(outputFields.length > 0 ? { output: { fields: outputFields } } : {}),
+    // 1 attempt is "no retry", so it writes no retry block at all.
+    ...(info.retryAttempts > 1
+      ? { retry: { maxAttempts: info.retryAttempts, backoffMs: 2000 } }
+      : {}),
+    ...(info.timeLimitSeconds > 0 ? { timeoutMs: info.timeLimitSeconds * 1000 } : {}),
+    // "Only these groups" with nothing checked is a real declaration — no Otto
+    // tools at all — so the empty array is written, not dropped.
+    ...(info.toolGroupsMode === "only" ? { tools: [...info.toolGroups] } : {}),
+    ...(queryTools.length > 0 ? { queryTools } : {}),
+    ...(info.templateId
+      ? {
+          promptTemplate: {
+            templateId: info.templateId,
+            ...(Object.keys(templateVariables).length > 0 ? { variables: templateVariables } : {}),
+          },
+        }
+      : {}),
     position,
   };
 }
@@ -683,6 +967,18 @@ function updateLoopVisibility(nodeEl: HTMLElement, mode: "none" | "times" | "unt
   nodeEl
     .querySelector<HTMLElement>(".og-loop-criteria")
     ?.classList.toggle("og-hidden", mode !== "until");
+}
+
+function updateToolGroupVisibility(nodeEl: HTMLElement, mode: "" | "only"): void {
+  nodeEl
+    .querySelector<HTMLElement>(".og-tool-groups")
+    ?.classList.toggle("og-hidden", mode !== "only");
+}
+
+function updateTemplateVisibility(nodeEl: HTMLElement, templateId: string): void {
+  nodeEl
+    .querySelector<HTMLElement>(".og-template-vars")
+    ?.classList.toggle("og-hidden", !templateId);
 }
 
 function escapeHtml(value: string): string {
@@ -720,6 +1016,47 @@ function buildPromptFromInputOptions(current: string, keys: readonly string[]): 
   return options.join("");
 }
 
+function buildToolGroupsHtml(info: CanvasNodeInfo): string {
+  // A group the node selected that this build doesn't know about still gets a
+  // checkbox, so saving can't quietly drop it.
+  const known = new Set(OTTO_TOOL_GROUP_META.map((meta) => meta.group as string));
+  const entries = [
+    ...OTTO_TOOL_GROUP_META.map((meta) => ({ group: meta.group as string, label: meta.label })),
+    ...[...info.toolGroups]
+      .filter((group) => !known.has(group))
+      .map((group) => ({ group, label: `${group} (unknown)` })),
+  ];
+  return entries
+    .map(
+      ({ group, label }) =>
+        `<label class="og-check og-tool-group"><input type="checkbox" data-og-field="toolGroup" data-og-group="${escapeHtml(group)}"${info.toolGroups.has(group) ? " checked" : ""} /> ${escapeHtml(label)}</label>`,
+    )
+    .join("");
+}
+
+function buildTemplateOptions(current: string, templates: readonly PromptTemplate[]): string {
+  // Snippets are meant to be included by other templates, not bound to a node —
+  // offering them here would invite a node whose whole prompt is a fragment.
+  // One a node is already bound to still shows, or the select would silently
+  // misreport what the node does.
+  const offered = templates.filter(
+    (template) => template.snippet !== true || template.id === current,
+  );
+  const options = [
+    `<option value=""${current ? "" : " selected"}>Use this node's prompt</option>`,
+    ...offered.map(
+      (template) =>
+        `<option value="${escapeHtml(template.id)}"${template.id === current ? " selected" : ""}>${escapeHtml(template.name)}</option>`,
+    ),
+  ];
+  if (current && !offered.some((template) => template.id === current)) {
+    options.push(
+      `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)} (missing)</option>`,
+    );
+  }
+  return options.join("");
+}
+
 function buildRootNodeHtml(info: CanvasNodeInfo): string {
   return (
     `<div class="og-node og-node-root">` +
@@ -731,14 +1068,80 @@ function buildRootNodeHtml(info: CanvasNodeInfo): string {
   );
 }
 
-function buildAgentNodeHtml(info: CanvasNodeInfo, declaredInputs: readonly string[]): string {
+/** Whether anything only the Advanced disclosure shows is set — if so it opens,
+ * because a collapsed card that hides a real constraint reads as a plain node. */
+function hasAdvancedSettings(info: CanvasNodeInfo): boolean {
+  return (
+    info.autonomous ||
+    info.promptFromInput !== "" ||
+    info.model !== "" ||
+    info.loopMode !== "none" ||
+    info.access !== "" ||
+    info.outputFields.trim().length > 0 ||
+    info.retryAttempts > 1 ||
+    info.timeLimitSeconds > 0 ||
+    info.toolGroupsMode === "only" ||
+    info.queryTools.trim().length > 0 ||
+    info.templateId !== ""
+  );
+}
+
+/** Dispatch shape: what the node is asked, by which brain, and how it repeats. */
+function buildDispatchControlsHtml(
+  info: CanvasNodeInfo,
+  declaredInputs: readonly string[],
+): string {
+  return (
+    `<label class="og-label">Prompt from input</label>` +
+    `<select class="og-select" data-og-field="promptFromInput">${buildPromptFromInputOptions(info.promptFromInput, declaredInputs)}</select>` +
+    `<label class="og-label">Model override <span class="og-hint">(provider/model)</span></label>` +
+    `<input class="og-input" data-og-field="model" value="${escapeHtml(info.model)}" placeholder="Uses the team role's brain" />` +
+    `<label class="og-check"><input type="checkbox" data-og-field="autonomous"${info.autonomous ? " checked" : ""} /> Autonomous <span class="og-hint">(may spawn its own agents)</span></label>` +
+    `<div class="og-row">` +
+    `<select class="og-select og-loop" data-og-field="loopMode">` +
+    `<option value="none"${info.loopMode === "none" ? " selected" : ""}>No loop</option>` +
+    `<option value="times"${info.loopMode === "times" ? " selected" : ""}>Repeat N times</option>` +
+    `<option value="until"${info.loopMode === "until" ? " selected" : ""}>Until judge passes</option>` +
+    `</select>` +
+    `<input class="og-input og-loop-count og-hidden" data-og-field="loopCount" type="number" min="1" max="16" value="${info.loopCount}" />` +
+    `</div>` +
+    `<textarea class="og-prompt og-loop-criteria og-hidden" data-og-field="loopCriteria" rows="2" placeholder="Judge criteria, one per line">${escapeHtml(info.loopCriteria)}</textarea>`
+  );
+}
+
+/** Catalog controls: which Otto tools the node keeps, what private read-only
+ * lookups it gains, and whether its prompt comes from a stored template. */
+function buildCatalogControlsHtml(
+  info: CanvasNodeInfo,
+  templates: readonly PromptTemplate[],
+): string {
+  return (
+    `<label class="og-label">Otto tools</label>` +
+    `<select class="og-select" data-og-field="toolGroupsMode">` +
+    `<option value=""${info.toolGroupsMode === "" ? " selected" : ""}>Whatever the policy allows</option>` +
+    `<option value="only"${info.toolGroupsMode === "only" ? " selected" : ""}>Only these groups</option>` +
+    `</select>` +
+    `<div class="og-tool-groups${info.toolGroupsMode === "only" ? "" : " og-hidden"}">${buildToolGroupsHtml(info)}</div>` +
+    `<div class="og-inputs-hint">Narrowing intersects with the policy — a node can hand itself less authority, never more. Nothing checked means no Otto tools at all.</div>` +
+    `<label class="og-label">Query tools <span class="og-hint">(name | kind | spec | description)</span></label>` +
+    `<textarea class="og-prompt" data-og-field="queryTools" rows="2" placeholder="recent_commits | command | git log --oneline -n {{count}} | Recent commits">${escapeHtml(info.queryTools)}</textarea>` +
+    `<div class="og-inputs-hint">Read-only lookups only this node gets. Kind is command (argv, no shell), http-get or file-read. Each {{name}} in the spec becomes a parameter.</div>` +
+    `<label class="og-label">Prompt template</label>` +
+    `<select class="og-select" data-og-field="templateId">${buildTemplateOptions(info.templateId, templates)}</select>` +
+    `<textarea class="og-prompt og-template-vars${info.templateId ? "" : " og-hidden"}" data-og-field="templateVariables" rows="2" placeholder="topic = $inputs.subject">${escapeHtml(info.templateVariables)}</textarea>` +
+    `<div class="og-inputs-hint">A bound template replaces this node's own prompt. Values are literals, $inputs.key, or $output.nodeId.field — one binding per line.</div>`
+  );
+}
+
+function buildAgentNodeHtml(
+  info: CanvasNodeInfo,
+  declaredInputs: readonly string[],
+  templates: readonly PromptTemplate[],
+): string {
   const roleOptions = GRAPH_NODE_ROLES.map(
     (role) =>
       `<option value="${role}"${role === info.role ? " selected" : ""}>${role[0]?.toUpperCase()}${role.slice(1)}</option>`,
   ).join("");
-  const loopValue = info.loopMode;
-  const advancedOpen =
-    info.autonomous || info.promptFromInput || info.model || info.loopMode !== "none";
   const hintText = buildInputsHintText(declaredInputs);
   return (
     `<div class="og-node">` +
@@ -756,23 +1159,26 @@ function buildAgentNodeHtml(info: CanvasNodeInfo, declaredInputs: readonly strin
     `<textarea class="og-prompt" data-og-field="prompt" rows="3" placeholder="Instruction for this agent…">${escapeHtml(info.prompt)}</textarea>` +
     `<div class="og-inputs-hint${hintText ? "" : " og-hidden"}" data-og-inputs-hint>${escapeHtml(hintText)}</div>` +
     `</div>` +
-    `<details class="og-adv"${advancedOpen ? " open" : ""}>` +
+    `<details class="og-adv"${hasAdvancedSettings(info) ? " open" : ""}>` +
     `<summary><span class="og-caret"></span>Advanced</summary>` +
     `<div class="og-body og-adv-body">` +
-    `<label class="og-label">Prompt from input</label>` +
-    `<select class="og-select" data-og-field="promptFromInput">${buildPromptFromInputOptions(info.promptFromInput, declaredInputs)}</select>` +
-    `<label class="og-label">Model override <span class="og-hint">(provider/model)</span></label>` +
-    `<input class="og-input" data-og-field="model" value="${escapeHtml(info.model)}" placeholder="Uses the team role's brain" />` +
-    `<label class="og-check"><input type="checkbox" data-og-field="autonomous"${info.autonomous ? " checked" : ""} /> Autonomous <span class="og-hint">(may spawn its own agents)</span></label>` +
-    `<div class="og-row">` +
-    `<select class="og-select og-loop" data-og-field="loopMode">` +
-    `<option value="none"${loopValue === "none" ? " selected" : ""}>No loop</option>` +
-    `<option value="times"${loopValue === "times" ? " selected" : ""}>Repeat N times</option>` +
-    `<option value="until"${loopValue === "until" ? " selected" : ""}>Until judge passes</option>` +
+    buildDispatchControlsHtml(info, declaredInputs) +
+    `<label class="og-label">Workspace access</label>` +
+    `<select class="og-select" data-og-field="access">` +
+    `<option value=""${info.access === "" ? " selected" : ""}>Write (full access)</option>` +
+    `<option value="read"${info.access === "read" ? " selected" : ""}>Read only</option>` +
+    `<option value="none"${info.access === "none" ? " selected" : ""}>No workspace access</option>` +
     `</select>` +
-    `<input class="og-input og-loop-count og-hidden" data-og-field="loopCount" type="number" min="1" max="16" value="${info.loopCount}" />` +
+    `<div class="og-inputs-hint">Enforced by withholding tools at spawn, not by asking the model. A seat whose provider can't enforce it refuses the run.</div>` +
+    `<label class="og-label">Output fields <span class="og-hint">(one per line: name : type : description)</span></label>` +
+    `<textarea class="og-prompt" data-og-field="outputFields" rows="3" placeholder="complexity : string : simple or complex">${escapeHtml(info.outputFields)}</textarea>` +
+    `<div class="og-inputs-hint">Declaring fields gives this node a submit_output tool and lets edges from it carry conditions. Add ? after a name to make it optional.</div>` +
+    `<div class="og-row">` +
+    `<input class="og-input" data-og-field="retryAttempts" type="number" min="1" max="10" value="${info.retryAttempts}" title="Attempts (1 = no retry)" />` +
+    `<input class="og-input" data-og-field="timeLimitSeconds" type="number" min="0" max="21600" value="${info.timeLimitSeconds}" title="Time limit in seconds (0 = none)" />` +
     `</div>` +
-    `<textarea class="og-prompt og-loop-criteria og-hidden" data-og-field="loopCriteria" rows="2" placeholder="Judge criteria, one per line">${escapeHtml(info.loopCriteria)}</textarea>` +
+    `<div class="og-inputs-hint">Attempts · time limit (seconds, 0 = none)</div>` +
+    buildCatalogControlsHtml(info, templates) +
     `</div>` +
     `</details>` +
     `</div>`
@@ -838,10 +1244,22 @@ function buildCanvasCss(theme: GraphCanvasTheme): string {
 .og-canvas .og-inputs-hint{font-size:10.5px;color:${theme.foregroundMuted};font-family:${theme.fontFamilyMono};line-height:1.5;word-break:break-all;}
 .og-canvas .og-row{display:flex;align-items:center;gap:8px;}
 .og-canvas .og-check{display:flex;align-items:center;gap:6px;font-size:11.5px;color:${theme.foreground};}
+.og-canvas .og-tool-groups{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;padding:2px 0;}
+.og-canvas .og-tool-group{font-size:11px;color:${theme.foregroundMuted};}
 .og-canvas .og-loop{flex:1;}
 .og-canvas .og-loop-count{width:58px;flex:none;}
 .og-canvas .og-root-note{font-size:11px;color:${theme.foregroundMuted};line-height:1.5;padding:8px 10px 10px;}
 .og-canvas .og-hidden{display:none;}
+.og-hidden{display:none;}
+
+/* Edge inspector — floats over the canvas while a wire is selected. */
+.og-edge-inspector{position:absolute;top:12px;right:12px;z-index:6;width:250px;display:flex;flex-direction:column;gap:5px;padding:10px;border:1px solid ${theme.border};border-radius:10px;background:${theme.surface};box-shadow:0 10px 28px rgba(0,0,0,0.28);}
+.og-edge-inspector .og-edge-title{font-size:11.5px;font-weight:700;color:${theme.foreground};margin-bottom:2px;}
+.og-edge-inspector .og-label{font-size:10.5px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${theme.foregroundMuted};}
+.og-edge-inspector .og-hint{font-weight:400;text-transform:none;letter-spacing:0;}
+.og-edge-inspector .og-input{background:${theme.surfaceRaised};border:1px solid ${theme.border};border-radius:7px;color:${theme.foreground};font-family:${theme.fontFamilyMono};font-size:12px;padding:5px 8px;outline:none;width:100%;box-sizing:border-box;}
+.og-edge-inspector .og-input:focus{border-color:${theme.accent};box-shadow:0 0 0 2px ${accentSoft};}
+.og-edge-inspector .og-inputs-hint{font-size:10.5px;color:${theme.foregroundMuted};line-height:1.45;}
 
 /* Advanced disclosure (Forge .of-adv) */
 .og-canvas .og-adv{border-top:1px solid ${theme.border};}

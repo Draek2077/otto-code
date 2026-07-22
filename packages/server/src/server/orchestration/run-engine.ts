@@ -67,6 +67,14 @@ export interface RunEngineAwaitResult {
   finalMessage: string | null;
   /** True when the child ended in an error/failed state. */
   failed: boolean;
+  /**
+   * What the child submitted through submit_output, when its node declared
+   * output fields (graph runs only). Already validated against the node's
+   * contract by the tool itself — the engine only has to notice it arrived.
+   * Absent/null means the tool was never called successfully, which sends the
+   * engine to its prose fallback.
+   */
+  submittedOutput?: Record<string, unknown> | null;
 }
 
 export interface RunEngineGateDecision {

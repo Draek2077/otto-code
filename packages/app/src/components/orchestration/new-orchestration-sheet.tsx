@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { Brain, ChevronDown, Folder, Schema } from "@/components/icons/material-icons";
+import { Brain, ChevronDown, Folder, GitBranch, Schema } from "@/components/icons/material-icons";
 import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
 import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
 import {
@@ -45,7 +45,13 @@ import {
   buildScheduleProjectTargets,
   type ScheduleProjectTarget,
 } from "@/schedules/schedule-project-targets";
-import { useSessionStore } from "@/stores/session-store";
+import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
+import {
+  buildOrchestrationWorkspaceTargets,
+  resolveProjectKeyForWorkspaceCwd,
+  resolveSelectedWorkspaceTarget,
+  type OrchestrationWorkspaceTarget,
+} from "@/components/orchestration/orchestration-workspace-targets";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import { shortenPath } from "@/utils/shorten-path";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
@@ -65,6 +71,19 @@ export interface NewOrchestrationPrefill {
   projectCwd: string;
   graphId: string;
   runId?: string;
+  /**
+   * Edit mode — the dialog reopens on an existing Draft orchestration and is
+   * seeded from that record (not from the graph). Save writes the draft back in
+   * place; Run executes it. Only drafts are editable, so this always rides with
+   * a `runId`.
+   */
+  draft?: NewOrchestrationDraftSeed;
+}
+
+export interface NewOrchestrationDraftSeed {
+  title: string;
+  description?: string;
+  graphInputs?: Record<string, string>;
 }
 
 export interface NewOrchestrationSheetProps {
@@ -74,6 +93,25 @@ export interface NewOrchestrationSheetProps {
 }
 
 type OrchestrationFlavor = "ai" | "graph";
+/** Which footer button was pressed — "save-draft" exists only in edit mode. */
+type SubmitIntent = "run" | "save-draft";
+
+function resolveSheetTitle(isEditingDraft: boolean): string {
+  return isEditingDraft ? "Edit Orchestration" : "New Orchestration";
+}
+
+/** Create mode starts empty; edit mode starts on the draft's own values. */
+function resolveDraftSeedValues(draft: NewOrchestrationDraftSeed | undefined): {
+  title: string;
+  description: string;
+  graphInputs: Record<string, string>;
+} {
+  return {
+    title: draft?.title ?? "",
+    description: draft?.description ?? "",
+    graphInputs: { ...draft?.graphInputs },
+  };
+}
 type ThinkingOptions = NonNullable<AgentModelDefinition["thinkingOptions"]>;
 
 const NEW_GRAPH_VALUE = "__new-graph__";
@@ -106,24 +144,9 @@ function buildOrchestrationProjectOptions(
   return { targets, options, targetByOptionId };
 }
 
-function resolveSelectedTarget(input: {
-  targets: readonly ScheduleProjectTarget[];
-  serverId: string | null;
-  cwd: string;
-}): ScheduleProjectTarget | null {
-  const cwd = normalizeWorkspacePath(input.cwd);
-  if (!input.serverId || !cwd) {
-    return null;
-  }
-  return (
-    input.targets.find(
-      (target) => target.serverId === input.serverId && normalizeWorkspacePath(target.cwd) === cwd,
-    ) ?? null
-  );
-}
-
-// A designer tab's workspace cwd may be a worktree under the project root —
-// match by normalized containment, preferring the most specific root.
+// The selected cwd is a *workspace* directory, which may be a worktree under
+// the project root — match by normalized containment, preferring the most
+// specific root.
 function resolveProjectTargetForCwd(input: {
   targets: readonly ScheduleProjectTarget[];
   serverId: string | null | undefined;
@@ -150,6 +173,59 @@ function resolveProjectTargetForCwd(input: {
     }
   }
   return best;
+}
+
+/**
+ * The project the form is targeting: the explicitly picked one, else the
+ * project owning the selected workspace, else the project containing the cwd
+ * (a plain checkout, or a prefill from a tab whose workspace is not loaded).
+ */
+function resolveSelectedProjectTarget(input: {
+  targets: readonly ScheduleProjectTarget[];
+  targetByOptionId: ReadonlyMap<string, ScheduleProjectTarget>;
+  projectOptionId: string;
+  serverId: string;
+  cwd: string;
+  workspaces: ReadonlyMap<string, WorkspaceDescriptor> | undefined;
+}): ScheduleProjectTarget | null {
+  const picked = input.targetByOptionId.get(input.projectOptionId);
+  if (picked) {
+    return picked;
+  }
+  const projectKey = resolveProjectKeyForWorkspaceCwd(input.workspaces, input.cwd);
+  if (projectKey) {
+    const owner = input.targets.find(
+      (target) => target.serverId === input.serverId && target.projectKey === projectKey,
+    );
+    if (owner) {
+      return owner;
+    }
+  }
+  return resolveProjectTargetForCwd({
+    targets: input.targets,
+    serverId: input.serverId,
+    cwd: input.cwd,
+  });
+}
+
+/** The host whose workspaces the form reads — the picked one, else the prefill's. */
+function resolveSessionServerId(
+  selectedServerId: string | null,
+  prefillServerId: string | undefined,
+): string {
+  return selectedServerId ?? prefillServerId ?? "";
+}
+
+/**
+ * Where the orchestration actually runs: the picked workspace, else whatever
+ * directory the form holds, else the project root.
+ */
+function resolveEffectiveCwd(input: {
+  workspaceCwd: string | undefined;
+  workingDir: string;
+  projectCwd: string | undefined;
+}): string {
+  return input.workspaceCwd ?? (input.workingDir.trim() || input.projectCwd || "");
 }
 
 /**
@@ -243,9 +319,9 @@ function resolveSubmitLabel(flavor: OrchestrationFlavor, graphId: string): strin
 function resolveInitialSelection(
   targets: readonly ScheduleProjectTarget[],
   prefill: NewOrchestrationPrefill | undefined,
-): { serverId: string | null; cwd: string } {
+): { serverId: string | null; cwd: string; projectOptionId: string } {
   if (!prefill) {
-    return { serverId: null, cwd: "" };
+    return { serverId: null, cwd: "", projectOptionId: "" };
   }
   const target = resolveProjectTargetForCwd({
     targets,
@@ -254,7 +330,10 @@ function resolveInitialSelection(
   });
   return {
     serverId: target?.serverId ?? prefill.serverId,
-    cwd: target?.cwd ?? prefill.projectCwd,
+    // The designer tab's own workspace, not the project root — the run should
+    // land back where it was designed.
+    cwd: prefill.projectCwd || (target?.cwd ?? ""),
+    projectOptionId: target?.optionId ?? "",
   };
 }
 
@@ -273,7 +352,8 @@ function resolveFlavorHint(flavor: OrchestrationFlavor): string {
 }
 
 function openKey(props: NewOrchestrationSheetProps): string {
-  return `create:${props.prefill?.serverId ?? ""}:${props.prefill?.graphId ?? ""}:${props.prefill?.runId ?? ""}`;
+  const mode = props.prefill?.draft ? "edit" : "create";
+  return `${mode}:${props.prefill?.serverId ?? ""}:${props.prefill?.graphId ?? ""}:${props.prefill?.runId ?? ""}`;
 }
 
 /** Mount gate — same shape as ArtifactCreateSheet / ScheduleFormSheet, so a
@@ -344,7 +424,11 @@ function OpenNewOrchestrationSheet({
     [projectOptions.targets],
   );
 
-  const { serverId: resolvedInitialServerId, cwd: resolvedInitialCwd } = useMemo(
+  const {
+    serverId: resolvedInitialServerId,
+    cwd: resolvedInitialCwd,
+    projectOptionId: resolvedInitialProjectOptionId,
+  } = useMemo(
     () => resolveInitialSelection(projectOptions.targets, prefill),
     [projectOptions.targets, prefill],
   );
@@ -380,14 +464,26 @@ function OpenNewOrchestrationSheet({
     persistFormPreferences,
   } = form;
 
+  // The project is chosen explicitly rather than derived from the cwd: an Otto
+  // worktree lives outside its repo root, so once a workspace is selected the
+  // path alone no longer names the project.
+  const [projectOptionId, setProjectOptionId] = useState(resolvedInitialProjectOptionId);
+  const sessionServerId = resolveSessionServerId(selectedServerId, prefill?.serverId);
+  const workspacesForServer = useSessionStore(
+    (state) => state.sessions[sessionServerId]?.workspaces,
+  );
+
   const selectedTarget = useMemo(
     () =>
-      resolveSelectedTarget({
+      resolveSelectedProjectTarget({
         targets: projectOptions.targets,
-        serverId: selectedServerId,
+        targetByOptionId: projectOptions.targetByOptionId,
+        projectOptionId,
+        serverId: sessionServerId,
         cwd: workingDir,
+        workspaces: workspacesForServer,
       }),
-    [projectOptions.targets, selectedServerId, workingDir],
+    [projectOptions, projectOptionId, sessionServerId, workingDir, workspacesForServer],
   );
   const selectedProjectOptionId = selectedTarget?.optionId ?? "";
   const mutationServerId = resolveMutationServerId({
@@ -443,7 +539,10 @@ function OpenNewOrchestrationSheet({
       if (selectedServerId && selectedServerId !== target.serverId) {
         clearProviderSelectionFromUser();
       }
+      setProjectOptionId(target.optionId);
       setSelectedServerIdFromUser(target.serverId);
+      // Switching project resets the workspace to that project's root; the
+      // Workspace picker below narrows it to a worktree.
       setWorkingDirFromUser(target.cwd);
     },
     [
@@ -453,6 +552,30 @@ function OpenNewOrchestrationSheet({
       setWorkingDirFromUser,
     ],
   );
+
+  const workspaceTargets = useMemo(
+    () =>
+      buildOrchestrationWorkspaceTargets({
+        workspaces: workspacesForServer,
+        project: selectedTarget,
+      }),
+    [selectedTarget, workspacesForServer],
+  );
+  const selectedWorkspaceTarget = useMemo(
+    () => resolveSelectedWorkspaceTarget(workspaceTargets, workingDir),
+    [workspaceTargets, workingDir],
+  );
+  const handleSelectWorkspace = useCallback(
+    (target: OrchestrationWorkspaceTarget) => {
+      setWorkingDirFromUser(target.cwd);
+    },
+    [setWorkingDirFromUser],
+  );
+  const effectiveCwd = resolveEffectiveCwd({
+    workspaceCwd: selectedWorkspaceTarget?.cwd,
+    workingDir,
+    projectCwd: selectedTarget?.cwd,
+  });
 
   const renderModelTrigger = useCallback(
     ({
@@ -489,12 +612,19 @@ function OpenNewOrchestrationSheet({
     ],
   );
 
+  // Editing a Draft: the record is the source of truth for Name/Description/
+  // inputs, and the flavor is fixed (only graph orchestrations have drafts).
+  const draftSeed = prefill?.draft;
+  const isEditingDraft = Boolean(draftSeed);
+
+  const seed = resolveDraftSeedValues(draftSeed);
+
   const [flavor, setFlavor] = useState<OrchestrationFlavor>(prefill ? "graph" : "ai");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState(seed.title);
+  const [description, setDescription] = useState(seed.description);
   const [prompt, setPrompt] = useState("");
   const [graphId, setGraphId] = useState<string>(prefill?.graphId ?? NEW_GRAPH_VALUE);
-  const [graphInputs, setGraphInputs] = useState<Record<string, string>>({});
+  const [graphInputs, setGraphInputs] = useState<Record<string, string>>(seed.graphInputs);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -511,17 +641,15 @@ function OpenNewOrchestrationSheet({
   // loads (editable before running).
   const prefillSeededRef = useRef(false);
   useEffect(() => {
-    if (!prefill || !selectedGraph || prefillSeededRef.current) {
+    // Edit mode already carries the draft's own Name/Description — the graph's
+    // identity must not overwrite what the user named this orchestration.
+    if (!prefill || draftSeed || !selectedGraph || prefillSeededRef.current) {
       return;
     }
     prefillSeededRef.current = true;
     setName((current) => current || selectedGraph.name);
     setDescription((current) => current || (selectedGraph.description ?? ""));
-  }, [prefill, selectedGraph]);
-
-  const workspacesForServer = useSessionStore((state) =>
-    mutationServerId ? state.sessions[mutationServerId]?.workspaces : undefined,
-  );
+  }, [prefill, draftSeed, selectedGraph]);
 
   const handleGraphChange = useCallback((value: string) => {
     setGraphId(value);
@@ -535,7 +663,7 @@ function OpenNewOrchestrationSheet({
     if (!selectedTarget || !selectedGraph || !workspacesForServer) {
       return;
     }
-    const workspaceId = resolveWorkspaceIdForCwd(workspacesForServer, selectedTarget.cwd);
+    const workspaceId = resolveWorkspaceIdForCwd(workspacesForServer, effectiveCwd);
     if (!workspaceId) {
       setSubmitError("Open this project in a workspace first to design its graphs.");
       return;
@@ -546,7 +674,7 @@ function OpenNewOrchestrationSheet({
       workspaceId,
       graphId: selectedGraph.id,
     });
-  }, [selectedTarget, selectedGraph, workspacesForServer, onClose]);
+  }, [selectedTarget, selectedGraph, workspacesForServer, effectiveCwd, onClose]);
 
   const nameTrimmed = name.trim();
   const descriptionTrimmed = description.trim();
@@ -574,90 +702,100 @@ function OpenNewOrchestrationSheet({
     requiredInputsMissing,
   });
 
-  const handleSubmit = useCallback(async () => {
-    if (!selectedTarget || !nameTrimmed || !descriptionTrimmed) {
-      return;
-    }
-    setSubmitError(null);
-    setIsSubmitting(true);
-    try {
-      await persistFormPreferences();
-      await submitOrchestrationForm({
-        flavor,
-        target: selectedTarget,
-        name: nameTrimmed,
-        description: descriptionTrimmed,
-        prompt: promptTrimmed,
-        graphId,
-        graphInputs,
-        selectedGraph,
-        prefillRunId: prefill?.runId,
-        seatFields: buildSeatFields({
-          selectedPersonalityId,
-          selectedProvider,
-          selectedModel,
-          selectedThinkingOptionId,
-        }),
-        workspaces: workspacesForServer,
-        start: startOrchestration.mutateAsync,
-        saveGraph: saveGraph.mutateAsync,
-        onClose,
-      });
-    } catch (error) {
-      setSubmitError(toErrorMessage(error));
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [
-    selectedTarget,
-    nameTrimmed,
-    descriptionTrimmed,
-    persistFormPreferences,
-    flavor,
-    promptTrimmed,
-    graphId,
-    graphInputs,
-    selectedGraph,
-    prefill?.runId,
-    selectedPersonalityId,
-    selectedProvider,
-    selectedModel,
-    selectedThinkingOptionId,
-    workspacesForServer,
-    startOrchestration.mutateAsync,
-    saveGraph.mutateAsync,
-    onClose,
-  ]);
+  const handleSubmit = useCallback(
+    async (intent: SubmitIntent) => {
+      if (!selectedTarget || !nameTrimmed || !descriptionTrimmed) {
+        return;
+      }
+      setSubmitError(null);
+      setIsSubmitting(true);
+      try {
+        await persistFormPreferences();
+        await submitOrchestrationForm({
+          intent,
+          flavor,
+          target: selectedTarget,
+          cwd: effectiveCwd,
+          name: nameTrimmed,
+          description: descriptionTrimmed,
+          prompt: promptTrimmed,
+          graphId,
+          graphInputs,
+          selectedGraph,
+          prefillRunId: prefill?.runId,
+          seatFields: buildSeatFields({
+            selectedPersonalityId,
+            selectedProvider,
+            selectedModel,
+            selectedThinkingOptionId,
+          }),
+          workspaces: workspacesForServer,
+          start: startOrchestration.mutateAsync,
+          saveGraph: saveGraph.mutateAsync,
+          onClose,
+        });
+      } catch (error) {
+        setSubmitError(toErrorMessage(error));
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [
+      selectedTarget,
+      effectiveCwd,
+      nameTrimmed,
+      descriptionTrimmed,
+      persistFormPreferences,
+      flavor,
+      promptTrimmed,
+      graphId,
+      graphInputs,
+      selectedGraph,
+      prefill?.runId,
+      selectedPersonalityId,
+      selectedProvider,
+      selectedModel,
+      selectedThinkingOptionId,
+      workspacesForServer,
+      startOrchestration.mutateAsync,
+      saveGraph.mutateAsync,
+      onClose,
+    ],
+  );
   const handleSubmitPress = useCallback(() => {
-    void handleSubmit();
+    void handleSubmit("run");
+  }, [handleSubmit]);
+  const handleSaveDraftPress = useCallback(() => {
+    void handleSubmit("save-draft");
   }, [handleSubmit]);
 
-  const header = useMemo<SheetHeader>(() => ({ title: "New Orchestration" }), []);
+  const header = useMemo<SheetHeader>(
+    () => ({ title: resolveSheetTitle(isEditingDraft) }),
+    [isEditingDraft],
+  );
 
+  const submitLabel = resolveSubmitLabel(flavor, graphId);
   const footer = useMemo(
     () => (
-      <View style={styles.footer}>
-        <Button
-          style={styles.footerButton}
-          variant="secondary"
-          onPress={onClose}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          style={styles.footerButton}
-          variant="default"
-          onPress={handleSubmitPress}
-          disabled={!canSubmit}
-          loading={isSubmitting}
-          testID="new-orchestration-submit"
-        >
-          {resolveSubmitLabel(flavor, graphId)}
-        </Button>
-      </View>
+      <OrchestrationSheetFooter
+        isEditingDraft={isEditingDraft}
+        canSubmit={canSubmit}
+        isSubmitting={isSubmitting}
+        submitLabel={submitLabel}
+        onCancel={onClose}
+        onSaveDraft={handleSaveDraftPress}
+        onSubmit={handleSubmitPress}
+      />
     ),
-    [canSubmit, flavor, graphId, handleSubmitPress, isSubmitting, onClose],
+    [
+      isEditingDraft,
+      canSubmit,
+      isSubmitting,
+      submitLabel,
+      onClose,
+      handleSaveDraftPress,
+      handleSubmitPress,
+    ],
   );
 
   return (
@@ -670,16 +808,9 @@ function OpenNewOrchestrationSheet({
       webScrollbar
       testID="new-orchestration-sheet"
     >
-      <View style={styles.field}>
-        <SegmentedControl<OrchestrationFlavor>
-          options={FLAVOR_OPTIONS}
-          value={flavor}
-          onValueChange={setFlavor}
-          stretch
-          size="sm"
-        />
-        <Text style={styles.hint}>{resolveFlavorHint(flavor)}</Text>
-      </View>
+      {/* A draft is always a graph orchestration — editing one can't change
+          that, so the flavor switch is a create-time control only. */}
+      <FlavorField hidden={isEditingDraft} value={flavor} onChange={setFlavor} />
 
       <View style={styles.field}>
         <Text style={styles.label}>Name</Text>
@@ -716,15 +847,30 @@ function OpenNewOrchestrationSheet({
 
       <View style={styles.field}>
         <Text style={styles.label}>Project</Text>
-        <ProjectField
-          options={projectOptions.options}
-          targetByOptionId={projectOptions.targetByOptionId}
-          value={selectedProjectOptionId}
-          selectedTarget={selectedTarget}
-          fallbackCwd={workingDir}
-          onSelect={handleSelectProject}
-        />
+        {/* A draft belongs to the project it was created in — moving it there
+            would orphan its graph and its workspace, so editing shows the
+            project rather than offering it. The Workspace picker below still
+            moves the run between that project's worktrees. */}
+        {isEditingDraft ? (
+          <ReadOnlyProjectField selectedTarget={selectedTarget} fallbackCwd={workingDir} />
+        ) : (
+          <ProjectField
+            options={projectOptions.options}
+            targetByOptionId={projectOptions.targetByOptionId}
+            value={selectedProjectOptionId}
+            selectedTarget={selectedTarget}
+            fallbackCwd={workingDir}
+            onSelect={handleSelectProject}
+          />
+        )}
       </View>
+
+      <WorkspaceFieldSection
+        hasProject={Boolean(selectedTarget)}
+        targets={workspaceTargets}
+        selectedTarget={selectedWorkspaceTarget}
+        onSelect={handleSelectWorkspace}
+      />
 
       <View style={styles.field}>
         <Text style={styles.label}>Agent Personality or Model</Text>
@@ -786,11 +932,98 @@ function OpenNewOrchestrationSheet({
   );
 }
 
+/** AI vs Graph. Hidden while editing a draft — a draft is always a graph
+ * orchestration, so the flavor switch is a create-time control only. */
+function FlavorField({
+  hidden,
+  value,
+  onChange,
+}: {
+  hidden: boolean;
+  value: OrchestrationFlavor;
+  onChange: (flavor: OrchestrationFlavor) => void;
+}): ReactElement | null {
+  if (hidden) {
+    return null;
+  }
+  return (
+    <View style={styles.field}>
+      <SegmentedControl<OrchestrationFlavor>
+        options={FLAVOR_OPTIONS}
+        value={value}
+        onValueChange={onChange}
+        stretch
+        size="sm"
+      />
+      <Text style={styles.hint}>{resolveFlavorHint(value)}</Text>
+    </View>
+  );
+}
+
+/** Cancel + submit, plus the edit-mode-only Save Draft between them. Saving is
+ * the non-committal action; running stays primary — a draft exists to be run. */
+function OrchestrationSheetFooter({
+  isEditingDraft,
+  canSubmit,
+  isSubmitting,
+  submitLabel,
+  onCancel,
+  onSaveDraft,
+  onSubmit,
+}: {
+  isEditingDraft: boolean;
+  canSubmit: boolean;
+  isSubmitting: boolean;
+  submitLabel: string;
+  onCancel: () => void;
+  onSaveDraft: () => void;
+  onSubmit: () => void;
+}): ReactElement {
+  return (
+    <View style={styles.footer}>
+      <Button
+        style={styles.footerButton}
+        variant="secondary"
+        onPress={onCancel}
+        disabled={isSubmitting}
+      >
+        Cancel
+      </Button>
+      {isEditingDraft ? (
+        <Button
+          style={styles.footerButton}
+          variant="outline"
+          onPress={onSaveDraft}
+          disabled={!canSubmit}
+          loading={isSubmitting}
+          testID="edit-orchestration-save-draft"
+        >
+          Save Draft
+        </Button>
+      ) : null}
+      <Button
+        style={styles.footerButton}
+        variant="default"
+        onPress={onSubmit}
+        disabled={!canSubmit}
+        loading={isSubmitting}
+        testID="new-orchestration-submit"
+      >
+        {submitLabel}
+      </Button>
+    </View>
+  );
+}
+
 // The whole submit path, module-level (complexity + readability, same shape as
 // submitArtifactForm).
 async function submitOrchestrationForm(input: {
+  /** "run" executes; "save-draft" rewrites the edited draft and stays put. */
+  intent: SubmitIntent;
   flavor: OrchestrationFlavor;
   target: ScheduleProjectTarget;
+  /** The selected workspace directory — the project root when none was picked. */
+  cwd: string;
   name: string;
   description: string;
   prompt: string;
@@ -811,7 +1044,7 @@ async function submitOrchestrationForm(input: {
   onClose: () => void;
 }): Promise<void> {
   const common = {
-    cwd: input.target.cwd,
+    cwd: input.cwd || input.target.cwd,
     title: input.name,
     description: input.description,
     ...input.seatFields,
@@ -829,7 +1062,7 @@ async function submitOrchestrationForm(input: {
     // orchestration, then land in the designer. The designer tab needs a
     // workspace; a project without one can't host the canvas yet.
     const workspaceId = input.workspaces
-      ? resolveWorkspaceIdForCwd(input.workspaces, input.target.cwd)
+      ? resolveWorkspaceIdForCwd(input.workspaces, input.cwd || input.target.cwd)
       : null;
     if (!workspaceId) {
       throw new Error("Open this project in a workspace first to design its graphs.");
@@ -860,6 +1093,22 @@ async function submitOrchestrationForm(input: {
       answers[declared.key] = value;
     }
   }
+
+  // Save Draft (edit mode only): the daemon rewrites that draft record in place
+  // — same id, no execution, no navigation.
+  if (input.intent === "save-draft" && input.prefillRunId) {
+    await input.start({
+      flavor: "graph",
+      ...common,
+      graphId: input.graphId,
+      graphInputs: answers,
+      draft: true,
+      runId: input.prefillRunId,
+    });
+    input.onClose();
+    return;
+  }
+
   const result = await input.start({
     flavor: "graph",
     ...common,
@@ -1102,6 +1351,202 @@ function GraphOptionItem({
       onPress={onPress}
       leadingSlot={leadingSlot}
     />
+  );
+}
+
+// A project holds its checkout plus any worktrees; the run lands in exactly
+// one of them. Nothing to narrow until a project is chosen.
+function WorkspaceFieldSection({
+  hasProject,
+  targets,
+  selectedTarget,
+  onSelect,
+}: {
+  hasProject: boolean;
+  targets: readonly OrchestrationWorkspaceTarget[];
+  selectedTarget: OrchestrationWorkspaceTarget | null;
+  onSelect: (target: OrchestrationWorkspaceTarget) => void;
+}): ReactElement | null {
+  if (!hasProject) {
+    return null;
+  }
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>Workspace</Text>
+      <WorkspaceField targets={targets} selectedTarget={selectedTarget} onSelect={onSelect} />
+    </View>
+  );
+}
+
+function WorkspaceField({
+  targets,
+  selectedTarget,
+  onSelect,
+}: {
+  targets: readonly OrchestrationWorkspaceTarget[];
+  selectedTarget: OrchestrationWorkspaceTarget | null;
+  onSelect: (target: OrchestrationWorkspaceTarget) => void;
+}): ReactElement {
+  const anchorRef = useRef<View>(null);
+  const [open, setOpen] = useState(false);
+
+  const options = useMemo<ComboboxOption[]>(
+    () =>
+      targets.map((target) => ({
+        id: target.id,
+        label: target.name,
+        description: target.branch
+          ? `${target.branch} - ${shortenPath(target.cwd)}`
+          : shortenPath(target.cwd),
+      })),
+    [targets],
+  );
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      const target = targets.find((candidate) => candidate.id === id);
+      if (!target) {
+        return;
+      }
+      onSelect(target);
+      setOpen(false);
+    },
+    [onSelect, targets],
+  );
+  const handlePress = useCallback(() => setOpen((current) => !current), []);
+  const triggerStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.selectTrigger,
+      (Boolean(hovered) || pressed || open) && styles.selectTriggerActive,
+    ],
+    [open],
+  );
+
+  const displayValue = selectedTarget?.name ?? "Select workspace";
+  const description = selectedTarget ? shortenPath(selectedTarget.cwd) : null;
+
+  const renderOption = useCallback(
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <WorkspaceOptionItem
+        option={option}
+        isProjectRoot={targets.find((target) => target.id === option.id)?.isProjectRoot ?? false}
+        selected={selected}
+        active={active}
+        onPress={onPress}
+      />
+    ),
+    [targets],
+  );
+
+  return (
+    <>
+      <View ref={anchorRef} collapsable={false}>
+        <Pressable
+          onPress={handlePress}
+          style={triggerStyle}
+          accessibilityRole="button"
+          accessibilityLabel={`Select workspace (${displayValue})`}
+          testID="orchestration-workspace-trigger"
+        >
+          <Text
+            style={selectedTarget ? styles.selectTriggerText : styles.selectTriggerPlaceholder}
+            numberOfLines={1}
+          >
+            {displayValue}
+          </Text>
+          <ChevronDown size={16} color={styles.chevron.color} />
+        </Pressable>
+      </View>
+      {description ? <Text style={styles.hint}>{description}</Text> : null}
+      <Combobox
+        options={options}
+        value={selectedTarget?.id ?? ""}
+        onSelect={handleSelect}
+        searchable={options.length > 6}
+        searchPlaceholder="Search workspaces..."
+        emptyText="No workspaces found"
+        title="Select workspace"
+        open={open}
+        onOpenChange={setOpen}
+        anchorRef={anchorRef}
+        desktopPlacement="bottom-start"
+        renderOption={renderOption}
+      />
+    </>
+  );
+}
+
+function WorkspaceOptionItem({
+  option,
+  isProjectRoot,
+  selected,
+  active,
+  onPress,
+}: {
+  option: ComboboxOption;
+  isProjectRoot: boolean;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+}): ReactElement {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        {isProjectRoot ? (
+          <Folder size={16} color={styles.chevron.color} />
+        ) : (
+          <GitBranch size={16} color={styles.chevron.color} />
+        )}
+      </View>
+    ),
+    [isProjectRoot],
+  );
+  return (
+    <ComboboxItem
+      label={option.label}
+      description={option.description}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
+/** The project as a statement of fact — same row shape as the picker trigger,
+ * minus the chevron and the press target, so edit mode reads as "this is where
+ * it lives" instead of a control that refuses to do anything. */
+function ReadOnlyProjectField({
+  selectedTarget,
+  fallbackCwd,
+}: {
+  selectedTarget: ScheduleProjectTarget | null;
+  fallbackCwd: string;
+}): ReactElement {
+  const storedPath = fallbackCwd.trim();
+  const displayValue = selectedTarget?.projectName ?? (storedPath ? shortenPath(storedPath) : "—");
+  const description = selectedTarget
+    ? `${selectedTarget.serverName} - ${shortenPath(selectedTarget.cwd)}`
+    : null;
+  return (
+    <>
+      <View style={styles.readOnlyValue} testID="orchestration-project-readonly">
+        <Text style={styles.selectTriggerText} numberOfLines={1}>
+          {displayValue}
+        </Text>
+      </View>
+      {description ? <Text style={styles.hint}>{description}</Text> : null}
+    </>
   );
 }
 
@@ -1513,6 +1958,20 @@ const styles = StyleSheet.create((theme) => ({
   },
   selectTriggerActive: {
     borderColor: theme.colors.borderAccent,
+  },
+  // The picker row minus its affordances: no chevron, no hover/active border,
+  // no press target — a value the form states rather than asks for.
+  readOnlyValue: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    minHeight: 44,
   },
   selectTriggerDisabled: {
     opacity: theme.opacity[50],

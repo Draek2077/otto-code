@@ -35,6 +35,10 @@ type RunsGraphsChangedNotificationMessage = Extract<
   SessionOutboundMessage,
   { type: "runs.graphs.changed.notification" }
 >;
+type RunsTemplatesChangedNotificationMessage = Extract<
+  SessionOutboundMessage,
+  { type: "runs.templates.changed.notification" }
+>;
 type RouterMessage =
   | ProvidersSnapshotUpdateMessage
   | CheckoutDiffUpdateMessage
@@ -43,7 +47,8 @@ type RouterMessage =
   | TerminalsChangedMessage
   | RunsUpdatedNotificationMessage
   | RunsClearedNotificationMessage
-  | RunsGraphsChangedNotificationMessage;
+  | RunsGraphsChangedNotificationMessage
+  | RunsTemplatesChangedNotificationMessage;
 type RouterMessageType = RouterMessage["type"];
 type RouterHandler = (message: RouterMessage) => void;
 type RouterClient = Parameters<typeof mountServerDataPushRouter>[0]["client"];
@@ -89,6 +94,7 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
     "runs.updated.notification": [],
     "runs.cleared.notification": [],
     "runs.graphs.changed.notification": [],
+    "runs.templates.changed.notification": [],
   };
   const subscribeCheckoutDiffCalls: Array<{
     cwd: string;

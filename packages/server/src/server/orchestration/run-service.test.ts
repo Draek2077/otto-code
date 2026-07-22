@@ -176,6 +176,90 @@ describe("RunService", () => {
     expect(recovered?.error).toContain("Daemon restarted");
   });
 
+  test("deleteRun removes a finished run from memory, disk, and listeners", async () => {
+    const removed: string[][] = [];
+    service.onRemove((runIds) => removed.push(runIds));
+    const { run, settled } = service.startRun({ plan: simplePlan, spawnPort: fakeSpawnPort() });
+    await settled;
+
+    const result = await service.deleteRun(run.id);
+    expect(result).toEqual({ deleted: true });
+    expect(service.getRun(run.id)).toBeNull();
+    expect(await store.get(run.id)).toBeNull();
+    expect(removed).toEqual([[run.id]]);
+  });
+
+  test("deleteRun refuses an in-flight run and an unknown id", async () => {
+    // Delete before the run settles: the guard exists so a cleanup click can't
+    // orphan the run's agents — the caller has to cancel first.
+    const { run, settled } = service.startRun({ plan: simplePlan, spawnPort: fakeSpawnPort() });
+    const refused = await service.deleteRun(run.id);
+    expect(refused.deleted).toBe(false);
+    expect(refused.error).toContain("Cancel");
+    await settled;
+    expect(service.getRun(run.id)).not.toBeNull();
+
+    expect(await service.deleteRun("run_nope")).toEqual({
+      deleted: false,
+      error: "Run not found",
+    });
+  });
+
+  test("re-saves a draft in place when given its runId (Edit Orchestration)", async () => {
+    const graph = {
+      id: "g1",
+      name: "Sweep",
+      inputs: [{ key: "goal", label: "Goal" }],
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "a", kind: "agent", title: "A", role: "coder", prompt: "Do {{inputs.goal}}" },
+      ],
+      edges: [{ from: "root", to: "a" }],
+    };
+    const draft = await service.createDraftGraphRun({
+      graph,
+      title: "First name",
+      description: "First description",
+      graphInputs: { goal: "one" },
+      cwd: "/repo",
+    });
+    expect(draft.status).toBe("draft");
+
+    const edited = await service.createDraftGraphRun({
+      graph,
+      title: "Second name",
+      description: "Second description",
+      graphInputs: { goal: "two" },
+      cwd: "/repo",
+      runId: draft.id,
+    });
+    // Same record, new values — an edit must not leave a second draft behind.
+    expect(edited.id).toBe(draft.id);
+    expect(edited.status).toBe("draft");
+    expect(service.getRun(draft.id)?.title).toBe("Second name");
+    expect(service.getRun(draft.id)?.description).toBe("Second description");
+    expect(service.getRun(draft.id)?.graphInputs).toEqual({ goal: "two" });
+    expect(service.listRuns().filter((run) => run.status === "draft")).toHaveLength(1);
+  });
+
+  test("refuses to re-save a draft that isn't one", async () => {
+    const graph = {
+      id: "g1",
+      name: "Sweep",
+      nodes: [{ id: "root", kind: "orchestrator", title: "Orchestrator" }],
+      edges: [],
+    };
+    await expect(
+      service.createDraftGraphRun({ graph, title: "T", runId: "run_nope" }),
+    ).rejects.toThrow("not found");
+
+    const { run, settled } = service.startRun({ plan: simplePlan, spawnPort: fakeSpawnPort() });
+    await settled;
+    await expect(service.createDraftGraphRun({ graph, title: "T", runId: run.id })).rejects.toThrow(
+      "not a draft",
+    );
+  });
+
   test("hard-fails and names the gap when the team lacks a role", async () => {
     const port = fakeSpawnPort({
       async resolveRole(role) {

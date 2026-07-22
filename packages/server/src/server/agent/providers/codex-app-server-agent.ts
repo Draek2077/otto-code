@@ -45,6 +45,7 @@ import path from "node:path";
 import { z } from "zod";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { composeSystemPromptParts } from "../system-prompt.js";
+import { codexSandboxModeForAccess, resolveWorkspaceAccess } from "../workspace-access.js";
 import { curateAgentActivity } from "../activity-curator.js";
 import {
   mapCodexToolCallEnvelope,
@@ -197,6 +198,9 @@ const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: false,
   supportsRewindBoth: false,
+  // Codex models sandbox tiers natively; resolveSandboxPolicyType narrows the
+  // seat's tier to the session's access ceiling on every turn.
+  supportsWorkspaceAccess: true,
 };
 
 const CODEX_MODES: AgentMode[] = [
@@ -3587,7 +3591,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     const input = await this.buildUserInput(prompt);
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
     const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
-    const sandboxPolicyType = this.config.sandboxMode ?? preset.sandbox;
+    const sandboxPolicyType = this.resolveSandboxPolicyType(preset.sandbox);
 
     const params: Record<string, unknown> = {
       threadId: this.currentThreadId,
@@ -4391,7 +4395,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
     const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
-    const sandbox = this.config.sandboxMode ?? preset.sandbox;
+    const sandbox = this.resolveSandboxPolicyType(preset.sandbox);
     const innerConfig = this.buildCodexInnerConfig();
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,
@@ -4427,6 +4431,20 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.cachedRuntimeInfo = null;
     }
     this.currentThreadId = threadId;
+  }
+
+  /**
+   * The sandbox tier for this turn: the seat's own setting, narrowed by the
+   * session's workspace access ceiling if it declares one.
+   *
+   * Codex is the one provider that already models this natively, so the mapping
+   * is direct — and it is a *ceiling*, never a widening: a graph node asking for
+   * read-only can't be handed workspace-write by a mode preset.
+   */
+  private resolveSandboxPolicyType(presetSandbox: string): string {
+    const configured = this.config.sandboxMode ?? presetSandbox;
+    const ceiling = codexSandboxModeForAccess(resolveWorkspaceAccess(this.config.workspaceAccess));
+    return ceiling ?? configured;
   }
 
   private buildCodexInnerConfig(): Record<string, unknown> | null {

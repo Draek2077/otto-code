@@ -573,6 +573,23 @@ export interface AgentRunResult {
   canceled?: boolean;
 }
 
+// ── Workspace access ────────────────────────────────────────────────────────
+// How much of its workspace one agent session may touch. Provider-neutral by
+// intent: each adapter maps it onto whatever its own runtime enforces, and a
+// provider that cannot enforce it must say so (AgentCapabilities) rather than
+// accept the setting and ignore it.
+//
+// This is a *boundary*, not an instruction. "read" means the write tools are
+// not offered, so there is no write to make — never a line of prompt asking the
+// model to behave. A control a user relies on when deciding to run something
+// unattended has to be true in exactly the cases where the model is confused.
+export const WORKSPACE_ACCESS_LEVELS = ["none", "read", "write"] as const;
+export type WorkspaceAccess = (typeof WORKSPACE_ACCESS_LEVELS)[number];
+
+export function isWorkspaceAccess(value: unknown): value is WorkspaceAccess {
+  return value === "none" || value === "read" || value === "write";
+}
+
 export interface AgentSessionConfig {
   provider: AgentProvider;
   cwd: string;
@@ -588,6 +605,13 @@ export interface AgentSessionConfig {
   title?: string | null;
   approvalPolicy?: string;
   sandboxMode?: string;
+  /**
+   * Ceiling on what this session may do to its workspace (see
+   * WORKSPACE_ACCESS_LEVELS). Absent ⇒ "write", today's behaviour. Set by graph
+   * nodes that declare an access level; each provider adapter narrows its own
+   * tool surface to match.
+   */
+  workspaceAccess?: string;
   networkAccess?: boolean;
   webSearch?: boolean;
   extra?: {

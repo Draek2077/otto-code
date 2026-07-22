@@ -3,8 +3,11 @@ import type { Logger } from "pino";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { getActiveAgentTeam, type AgentTeamsConfigView } from "@otto-code/protocol/agent-teams";
 import {
+  ORCHESTRATION_OUTPUT_FIELDS_LABEL,
   ORCHESTRATION_POLICY_LABEL,
+  ORCHESTRATION_QUERY_TOOLS_LABEL,
   ORCHESTRATION_RUN_ID_LABEL,
+  ORCHESTRATION_TOOL_GROUPS_LABEL,
 } from "@otto-code/protocol/agent-labels";
 import {
   type OrchestrationGraph,
@@ -12,7 +15,7 @@ import {
 } from "@otto-code/protocol/orchestration";
 
 import type { AgentManager } from "../agent/agent-manager.js";
-import type { ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
+import type { AgentProvider, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import {
   resolvePersonality,
   type ResolvedPersonalitySnapshot,
@@ -30,6 +33,14 @@ import {
 } from "../agent/create-agent/create.js";
 import type { GraphEngineSpawnInput } from "./graph-engine.js";
 import type { GraphStore } from "./graph-store.js";
+import {
+  type WorkspaceAccess,
+  describeUnsupportedAccess,
+  resolveWorkspaceAccess,
+} from "../agent/workspace-access.js";
+import type { NodeOutputStore } from "./node-output.js";
+import type { PromptTemplateStore } from "./prompt-template-store.js";
+import { renderPromptTemplate, resolveTemplateVariables } from "./prompt-render.js";
 import { resolveTeamRoleMember } from "./resolve-team-role.js";
 import type { GraphSpawnPort, RunService } from "./run-service.js";
 
@@ -60,6 +71,14 @@ export interface UserOrchestrationDependencies {
   getPersonalityRoster(): AgentPersonality[];
   getAgentTeams(): AgentTeamsConfigView | undefined;
   listProviderEntries(cwd: string): Promise<readonly ProviderSnapshotEntry[]>;
+  /**
+   * Where node agents' submit_output calls land (shared with the Otto tool
+   * catalog). Absent on hosts that never execute graphs — such a node then
+   * falls back to recovering its fields from prose.
+   */
+  nodeOutputStore?: NodeOutputStore;
+  /** Host-level prompt templates. Absent ⇒ nodes use their inline prompts. */
+  promptTemplateStore?: PromptTemplateStore;
 }
 
 export interface StartUserOrchestrationInput {
@@ -150,6 +169,9 @@ async function startGraphOrchestration(
       cwd: input.cwd,
       ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...teamFields,
+      // With a runId this re-saves that draft in place (Edit Orchestration);
+      // without one it mints a new draft (the designer flow).
+      ...(input.runId ? { runId: input.runId } : {}),
     });
     return { runId: run.id };
   }
@@ -250,6 +272,38 @@ interface SpawnOrchestrationAgentInput {
   labels?: Record<string, string>;
   /** true ⇒ a top-level chat (the orchestrator); false ⇒ bound child node. */
   detached: boolean;
+  /** Workspace access ceiling, when the node declared one. */
+  access?: string;
+  /** The node's title, for the refusal message if its seat can't enforce access. */
+  nodeTitle?: string;
+}
+
+/**
+ * Refuse to spawn a restricted node onto a seat that can't restrict it.
+ *
+ * The alternative — spawn anyway and hope — would make the designer's access
+ * control mean different things on different seats with nothing in the UI to
+ * say which. A node that asked for "read" and silently got "write" is the exact
+ * failure this feature exists to prevent, so the run stops here and names both
+ * the node and the provider.
+ */
+function assertProviderEnforcesAccess(
+  deps: UserOrchestrationDependencies,
+  input: { provider: string; access: WorkspaceAccess; nodeTitle: string },
+): void {
+  // `provider` may be "provider" or "provider/model"; capabilities are per provider.
+  const providerId = input.provider.split("/")[0] ?? input.provider;
+  const capabilities = deps.agentManager.getProviderCapabilities(providerId as AgentProvider);
+  if (capabilities?.supportsWorkspaceAccess) {
+    return;
+  }
+  throw new Error(
+    describeUnsupportedAccess({
+      nodeTitle: input.nodeTitle,
+      access: input.access,
+      provider: providerId,
+    }),
+  );
 }
 
 async function spawnOrchestrationAgent(
@@ -276,10 +330,21 @@ async function spawnOrchestrationAgent(
     thinking = input.seat.thinkingOptionId;
   }
 
+  const access = resolveWorkspaceAccess(input.access);
+  if (access !== "write") {
+    assertProviderEnforcesAccess(deps, {
+      provider,
+      access,
+      nodeTitle: input.nodeTitle ?? input.title,
+    });
+  }
+
   const { snapshot } = await createAgentCommand(deps.createAgentDeps, {
     kind: "mcp",
     provider,
-    ...(config ? { config } : {}),
+    // The ceiling rides on the session config, so each provider adapter
+    // narrows its own tool surface from one declaration.
+    config: { ...config, ...(access !== "write" ? { workspaceAccess: access } : {}) },
     title: input.title,
     initialPrompt: input.prompt,
     cwd: input.cwd,
@@ -349,6 +414,17 @@ function buildGraphSpawnPort(
       ...(context.runIdRef.current
         ? { [ORCHESTRATION_RUN_ID_LABEL]: context.runIdRef.current }
         : {}),
+      // The node's contract travels with the agent, so its tool catalog can
+      // mint submit_output for it and no provider needs special handling.
+      ...(spawnInput.outputFields
+        ? { [ORCHESTRATION_OUTPUT_FIELDS_LABEL]: JSON.stringify(spawnInput.outputFields) }
+        : {}),
+      ...(spawnInput.toolGroups
+        ? { [ORCHESTRATION_TOOL_GROUPS_LABEL]: JSON.stringify(spawnInput.toolGroups) }
+        : {}),
+      ...(spawnInput.queryTools
+        ? { [ORCHESTRATION_QUERY_TOOLS_LABEL]: JSON.stringify(spawnInput.queryTools) }
+        : {}),
     };
     const member = spawnInput.role
       ? resolveTeamRoleMember({
@@ -365,6 +441,8 @@ function buildGraphSpawnPort(
       callerAgentId: context.orchestratorAgentId,
       labels,
       detached: false,
+      ...(spawnInput.access ? { access: spawnInput.access } : {}),
+      nodeTitle: spawnInput.title,
     } satisfies Omit<SpawnOrchestrationAgentInput, "seat">;
     if (member) {
       const agentId = await spawnOrchestrationAgent(deps, {
@@ -396,9 +474,49 @@ function buildGraphSpawnPort(
         const result = await deps.agentManager.waitForAgentFullySettled(agentId, { signal });
         const finalMessage =
           result.lastMessage ?? (await deps.agentManager.getLastAssistantMessage(agentId));
-        return { finalMessage: finalMessage ?? null, failed: result.status === "error" };
+        // Taken (not read) — one submission belongs to one settle, and leaving
+        // it behind would let a later iteration inherit an earlier answer.
+        const submittedOutput = deps.nodeOutputStore?.take(agentId) ?? null;
+        return {
+          finalMessage: finalMessage ?? null,
+          failed: result.status === "error",
+          submittedOutput,
+        };
       } catch {
+        deps.nodeOutputStore?.forget(agentId);
         return { finalMessage: null, failed: true };
+      }
+    },
+    renderPromptTemplate: async ({ ref, graphInputs, upstreamFields }) => {
+      const store = deps.promptTemplateStore;
+      if (!store) {
+        return null;
+      }
+      const template = await store.get(ref.templateId);
+      if (!template) {
+        return null;
+      }
+      // Snippets are resolved from a snapshot taken once per render, so a
+      // template that includes another can't turn into a storm of reads.
+      const all = await store.list();
+      const byId = new Map(all.map((entry) => [entry.id, entry]));
+      return renderPromptTemplate({
+        template,
+        variables: resolveTemplateVariables({
+          bindings: ref.variables,
+          graphInputs,
+          upstreamFields,
+        }),
+        resolveSnippet: (id) => byId.get(id) ?? null,
+      });
+    },
+    cancelAgent: async ({ agentId }) => {
+      try {
+        await deps.agentManager.cancelAgentRun(agentId);
+      } catch (error) {
+        // Best-effort: an agent that settled between the timer firing and this
+        // call is the expected race, not a problem worth failing the run over.
+        deps.logger.warn({ err: error, agentId }, "Could not cancel a timed-out node agent");
       }
     },
     notifyOrchestrator: async ({ text }) => {

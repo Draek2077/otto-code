@@ -152,6 +152,97 @@ export const STARTER_GRAPHS: OrchestrationGraph[] = [
     createdAt: SEED_TIMESTAMP,
     updatedAt: SEED_TIMESTAMP,
   },
+  {
+    id: "starter-triage",
+    name: "Triage → Quick or Deep",
+    description:
+      "A classifier decides how much the question deserves, and only that branch runs. The reviewer then works from whichever answer was produced. Shows declared output fields and conditional edges.",
+    inputs: [
+      {
+        key: "question",
+        label: "Question",
+        description: "What should be answered?",
+        multiline: true,
+        required: true,
+      },
+    ],
+    nodes: [
+      { id: "root", kind: "orchestrator", title: "Orchestrator", position: { x: 40, y: 240 } },
+      {
+        id: "classify",
+        kind: "agent",
+        title: "Triage",
+        role: "researcher",
+        prompt:
+          "Decide how much work this question deserves. Do not answer it — classify it.\n\nQuestion:\n{{inputs.question}}",
+        // Classifying needs no workspace at all, so it gets none: the node is
+        // cheaper (no file tools in its catalog) and structurally unable to
+        // touch anything.
+        access: "none",
+        // Declared fields are what the edge conditions below test. Without
+        // them a condition could only match against prose.
+        output: {
+          fields: [
+            {
+              key: "complexity",
+              type: "string",
+              description: 'Exactly "simple" or "complex".',
+            },
+            { key: "rationale", type: "string", description: "One sentence on why." },
+          ],
+        },
+        position: { x: 360, y: 240 },
+      },
+      {
+        id: "quick",
+        kind: "agent",
+        title: "Quick answer",
+        role: "writer",
+        prompt: "Answer this directly and briefly.\n\nQuestion:\n{{inputs.question}}",
+        position: { x: 720, y: 120 },
+      },
+      {
+        id: "deep",
+        kind: "agent",
+        title: "Deep answer",
+        role: "coder",
+        prompt:
+          "This question needs real work. Investigate properly, then answer thoroughly.\n\nQuestion:\n{{inputs.question}}",
+        position: { x: 720, y: 380 },
+      },
+      {
+        id: "review",
+        kind: "agent",
+        title: "Review",
+        role: "judger",
+        prompt:
+          "Review the answer above for correctness and completeness, then deliver the final version to the user.",
+        position: { x: 1080, y: 240 },
+      },
+    ],
+    edges: [
+      { from: "root", to: "classify" },
+      // Exactly one of these two delivers; the other branch is skipped with a
+      // stated reason, and Review runs off whichever answer exists.
+      {
+        from: "classify",
+        to: "quick",
+        when: { expression: 'complexity = "simple"' },
+        label: "simple",
+      },
+      {
+        from: "classify",
+        to: "deep",
+        when: { expression: 'complexity != "simple"' },
+        label: "complex",
+      },
+      { from: "quick", to: "review" },
+      { from: "deep", to: "review" },
+    ],
+    builtIn: true,
+    createdAt: SEED_TIMESTAMP,
+    updatedAt: SEED_TIMESTAMP,
+  },
 ];
 
 /** Seed missing starter graphs. Never overwrites an existing file (user edits win). */

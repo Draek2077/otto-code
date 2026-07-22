@@ -1,5 +1,6 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { getE2EDaemonPort } from "./helpers/daemon-port";
+import { EVIDENCE_SEPARATOR, MONEY_SHOT_PREFIX } from "./helpers/evidence";
 import { buildCreateAgentPreferences, buildSeededHost } from "./helpers/daemon-registry";
 import {
   createProjectPickerFixture,
@@ -107,11 +108,32 @@ const test = base.extend<{
 
       await provide();
 
-      if (entries.length > 0 && testInfo.status !== testInfo.expectedStatus) {
+      // The console log is evidence for passing runs too — the QA report keeps
+      // it beside each test so a human can audit a green result, not just a red
+      // one. (It used to attach only on failure.)
+      if (entries.length > 0) {
         await testInfo.attach("browser-console", {
           body: entries.join("\n"),
           contentType: "text/plain",
         });
+      }
+
+      // Fallback money shot: every passing test ships visual proof even if it
+      // never called `moneyShot()` itself. An explicit call always wins — this
+      // frame is captured at teardown, which is often past the interesting
+      // state. See helpers/evidence.ts.
+      const hasExplicitMoneyShot = testInfo.attachments.some((attachment) =>
+        attachment.name.startsWith(MONEY_SHOT_PREFIX),
+      );
+      if (testInfo.status === testInfo.expectedStatus && !hasExplicitMoneyShot) {
+        try {
+          await testInfo.attach(`${MONEY_SHOT_PREFIX}${EVIDENCE_SEPARATOR}final frame (auto)`, {
+            body: await page.screenshot(),
+            contentType: "image/png",
+          });
+        } catch {
+          // Page already closed by the test — nothing to prove, nothing to fail.
+        }
       }
     },
     { auto: true },

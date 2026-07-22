@@ -1,6 +1,7 @@
 # Orchestration Graphs — Enhancement Plan
 
-**Status:** Plan (agreed direction, not yet commissioned per stage)
+**Status:** Stages 0–5 BUILT and complete, including workspace access, the designer
+surfaces and the template RPCs. Uncommitted. See "What landed" for the remainder.
 **Date:** 2026-07-21
 **Scope:** The capability set that turns Graph orchestrations from prose relay into a
 structured pipeline: honest node results, declared output fields, tool-enforced
@@ -301,6 +302,99 @@ Recorded so review can check the temptation never creeps in:
    is write-once with a loud second-write error.
 4. **Serialized code in data** — typed lambdas / Zod shapes can't cross a wire. Ours are
    JSON descriptors and JSONata strings, renderable by the designer.
+
+## What landed (2026-07-21)
+
+Every stage's daemon half is built, green (lint 0, server + app typecheck, 103
+orchestration tests, 127 agent-tool tests, format clean) and documented in
+[docs/orchestration-node-capabilities.md](../../docs/orchestration-node-capabilities.md).
+Glossary entries added for all new vocabulary.
+
+| Stage                | State | Notes                                                                                                          |
+| -------------------- | ----- | -------------------------------------------------------------------------------------------------------------- |
+| 0 — Truth            | Done  | `NodeResult` union; `skipReason` + `notes`; wrap-up names skips; `fromPort`/`toPort` reserved                  |
+| 1 — Output fields    | Done  | Descriptors → Zod + JSON Schema; `submit_output` on the per-agent catalog; timeline/label seam; prose fallback |
+| 2 — Conditional flow | Done  | JSONata `when`; pre-dispatch gate; `fields` selection; `starter-triage` golden graph                           |
+| 3 — Node authority   | Done  | Tool-group allowlist, query tools, and workspace access enforced per provider                                  |
+| 4 — Resilience       | Done  | One bounded retry loop charged to run caps; time limit with real `cancelAgent`                                 |
+| 5 — Prompt reuse     | Done  | Store + EJS renderer + snippets + seeded starters. **RPCs not wired** — see below                              |
+
+### Designer + RPCs (second pass)
+
+- **Round-trip safety first.** The canvas rebuilds nodes and edges on export, so opening
+  a graph that used a new capability and pressing Save would have deleted it. Unedited
+  node and edge properties are now carried across explicitly (`graph-doc.ts`, proven in
+  `graph-doc.test.ts`) — a live data-loss bug from the moment the daemon gained fields the
+  designer didn't know about.
+- **Node card** edits output fields (one per line, `name : type : description`, `?` marks
+  optional), retry attempts, and time limit.
+- **Edge inspector** — selecting a wire opens a panel for its condition and fields
+  carried, and says so when the upstream node declares no output fields.
+- **Advisory warnings** from `reviewOrchestrationGraph` surface as a toast on save.
+- **`runs.templates.*`** list/save/delete plus a changed-notification, wired end to end
+  with copy-on-edit for bundled templates.
+
+### Workspace access (third pass — now built)
+
+Declared per node as `GraphNode.access` (`none` | `read` | `write`, absent = `write`) and
+carried on `AgentSessionConfig.workspaceAccess`. The meaning of each level lives in
+`agent/workspace-access.ts`; each adapter imposes it with its own runtime:
+
+- **openai-compat** (including local models) — total: `availableToolSpecs` withholds the
+  forbidden specs, so the model is never told they exist.
+- **Claude** — `applyWorkspaceAccess` denies the level's tools and strips them from
+  `allowedTools`, applied after the dontAsk allowlist so a deny always wins.
+- **Codex** — narrows its native sandbox tier as a ceiling; never widens it.
+- **Anything else** — refused at spawn, naming the node, the level and the provider.
+
+Two judgement calls worth remembering. `Bash` is denied at `none` but allowed at `read`,
+because `read` exists for reviewer nodes that run tests and git queries — so `read` bounds
+_tools_, and a shell can still write; a node that must touch nothing is `none`. And an
+unrecognised access value resolves to `write` rather than to a half-restriction, with the
+compile-time capability check as the thing that refuses unsupported setups.
+
+Proven by tests that assert on what the provider was actually handed: the Claude options
+(`agent.workspace-access.test.ts`, including that dontAsk can't hand back a denied tool)
+and the real openai-compat request body's `tools` array.
+
+### Designer, completed (fourth pass)
+
+The node card's Advanced disclosure now edits **every** property on this page — the
+tool-group picker, the query-tool form and the prompt-template binding joined workspace
+access, output fields, retry and time limit. The disclosure auto-opens whenever any of
+them is set.
+
+- **Otto tools** is tri-state: "Whatever the policy allows" writes no `tools` property;
+  "Only these groups" writes the array, _including the empty one_, which is the real
+  declaration "no Otto tools at all". Groups the build doesn't recognise still get a
+  checkbox so a save can't drop them. Labels come from `OTTO_TOOL_GROUP_META`, so the
+  designer and Host settings can't drift.
+- **Query tools** use `name | kind | spec | description` — pipe-separated because a URL
+  carries colons. Parameters are derived from the `{{name}}` placeholders in the spec.
+  That is lossy against a hand-authored tool with typed parameters, so `parseQueryTools`
+  hands back the **original object** for any line that still formats identically: editing
+  a line rewrites it in the simple form, leaving it alone keeps every detail.
+- **Prompt template** is a select over the host's stored templates, with variable bindings
+  as `name = value` lines. Snippets are filtered out (they're for inclusion, not binding)
+  unless a node is already bound to one — the select must never misreport what a node
+  does. A template that no longer exists shows as `id (missing)` rather than silently
+  reading as "uses its own prompt".
+- The app gained `runs.templates.list` as a replica query (`usePromptTemplates`) with the
+  changed-notification wired into the push router, matching the graphs list exactly.
+
+`CANVAS_OWNED_NODE_KEYS` grew `tools`, `queryTools` and `promptTemplate` in the same
+commit as their controls — the carry set and the controls have to move together, or Save
+deletes what it can no longer see.
+
+### Outstanding
+
+1. **Skipped-branch painting.** The canvas doesn't yet show which branch was skipped and
+   why during or after a run. The data is on the run (`skipReason`).
+2. **Prompt-template editor.** Templates can be bound from a node and are seeded with
+   starters, but writing a new one still means the RPC — there is no authoring surface.
+3. **Provider proof.** Stage 1's acceptance criterion ("the same node produces validated
+   fields on a Claude seat _and_ a local openai-compat seat") is proven by construction
+   and unit tests, not yet by a live run on both.
 
 ## Glossary entries to add as stages ship
 
