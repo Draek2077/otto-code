@@ -56,6 +56,11 @@ coverage/
 # Playwright
 test-results/
 **/test-results/
+playwright-report/
+**/playwright-report/
+# QA run artifacts (index/evidence/money-shot digest/failure report) — regenerated every run
+e2e-report/
+**/e2e-report/
 
 # Vercel
 .vercel/

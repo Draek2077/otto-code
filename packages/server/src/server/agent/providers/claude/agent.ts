@@ -38,6 +38,7 @@ import {
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
   claudeManifestModelAutoModeSupport,
 } from "./model-manifest.js";
+import { deniedToolsForAccess, resolveWorkspaceAccess } from "../../workspace-access.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
@@ -298,6 +299,9 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
+  // Enforced in applyWorkspaceAccess: the level's denied tools are added to
+  // disallowedTools and stripped from allowedTools at every option build.
+  supportsWorkspaceAccess: true,
 };
 
 const DEFAULT_MODES: AgentMode[] = [
@@ -3594,7 +3598,32 @@ class ClaudeAgentSession implements AgentSession {
       ];
     }
     this.applyDontAskAllowlist(base);
+    this.applyWorkspaceAccess(base);
     return base;
+  }
+
+  /**
+   * Impose the session's workspace access ceiling by denying the tools the
+   * level forbids (see agent/workspace-access.ts).
+   *
+   * Applied LAST, after the dontAsk allowlist, because a deny here must win: an
+   * allowlist grants Edit/Write for unattended coding work, and a node that
+   * declared "read" must not get them back that way. The SDK resolves
+   * disallowedTools over allowedTools, and this ordering keeps the intent
+   * legible to the next reader as well.
+   */
+  private applyWorkspaceAccess(base: ClaudeOptions): void {
+    const denied = deniedToolsForAccess(resolveWorkspaceAccess(this.config.workspaceAccess));
+    if (denied.length === 0) {
+      return;
+    }
+    base.disallowedTools = [...new Set([...(base.disallowedTools ?? []), ...denied])];
+    // A denial that only removed the tool would still leave the allowlist
+    // advertising it, so drop it from there too.
+    if (base.allowedTools?.length) {
+      const deniedSet = new Set(denied);
+      base.allowedTools = base.allowedTools.filter((tool) => !deniedSet.has(tool));
+    }
   }
 
   /**

@@ -65,7 +65,10 @@ export interface StartRunResult {
 export interface GraphSpawnPort {
   spawn(input: GraphEngineSpawnInput): Promise<RunEngineSpawnResult>;
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
+  /** Stop one agent that reached its node's time limit. */
+  cancelAgent(input: { agentId: string }): Promise<void>;
   notifyOrchestrator(input: { text: string }): Promise<void>;
+  renderPromptTemplate?: GraphEnginePort["renderPromptTemplate"];
 }
 
 export interface CreateDraftGraphRunInput {
@@ -77,6 +80,8 @@ export interface CreateDraftGraphRunInput {
   workspaceId?: string;
   teamId?: string;
   teamName?: string;
+  /** Rewrite an existing draft in place (Edit Orchestration), keeping its id. */
+  runId?: string;
 }
 
 export interface StartGraphRunInput {
@@ -216,6 +221,31 @@ export class RunService {
     return finishedIds;
   }
 
+  /**
+   * Delete one run from memory and disk. Terminal and draft runs only — an
+   * active/paused run is refused so a cleanup click can't orphan its agents;
+   * the caller cancels first. Returns why nothing was deleted, if anything.
+   */
+  async deleteRun(runId: string): Promise<{ deleted: boolean; error?: string }> {
+    const run = this.runs.get(runId);
+    if (!run) {
+      return { deleted: false, error: "Run not found" };
+    }
+    if (!isTerminalRunStatus(run.status) && run.status !== "draft") {
+      return { deleted: false, error: "Cancel the orchestration before deleting it" };
+    }
+    this.runs.delete(runId);
+    await this.safeDelete(runId);
+    for (const listener of this.removeListeners) {
+      try {
+        listener([runId]);
+      } catch (error) {
+        this.logger.error({ err: error, runId }, "Run remove listener threw");
+      }
+    }
+    return { deleted: true };
+  }
+
   /** Build and start executing a run. Returns immediately; execution runs on. */
   startRun(input: StartRunInput): StartRunResult {
     const id = generateRunId();
@@ -268,12 +298,25 @@ export class RunService {
    * before the user finishes designing the graph. Not executed; no orchestrator
    * agent exists yet. Executing later (startGraphRun with this id) replaces the
    * record in place, keeping the id stable for clients.
+   *
+   * With `runId`, this re-saves an existing draft in place instead — the Edit
+   * Orchestration flow, where the dialog reopens on a draft and saves without
+   * running. Only a draft may be rewritten; anything else is a loud error.
    */
   async createDraftGraphRun(input: CreateDraftGraphRunInput): Promise<Run> {
+    if (input.runId) {
+      const existing = this.runs.get(input.runId);
+      if (!existing) {
+        throw new Error(`Run ${input.runId} not found`);
+      }
+      if (existing.status !== "draft") {
+        throw new Error(`Run ${input.runId} is not a draft (status: ${existing.status})`);
+      }
+    }
     const run = buildRunFromGraph({
       graph: input.graph,
       graphInputs: input.graphInputs ?? {},
-      id: generateRunId(),
+      id: input.runId ?? generateRunId(),
       title: input.title,
       ...(input.description ? { description: input.description } : {}),
       now: this.clock(),
@@ -327,7 +370,11 @@ export class RunService {
     const port: GraphEnginePort = {
       spawn: input.spawnPort.spawn,
       awaitAgent: input.spawnPort.awaitAgent,
+      cancelAgent: input.spawnPort.cancelAgent,
       notifyOrchestrator: input.spawnPort.notifyOrchestrator,
+      ...(input.spawnPort.renderPromptTemplate
+        ? { renderPromptTemplate: input.spawnPort.renderPromptTemplate }
+        : {}),
       emit: (updated) => this.persistAndEmit(updated),
       now: this.clock,
       logger: this.logger,

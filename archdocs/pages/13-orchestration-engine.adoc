@@ -42,6 +42,19 @@ session and edits a repository. *Unbounded concurrency is a cost and safety bug 
 
 == Node result states
 
+[IMPORTANT]
+====
+*Shipped terminology: the third state is `skipped`, not `excluded`.* This page was
+written before implementation; the wire vocabulary already contained `skipped`, and the
+glossary rule is one term per concept, so that is the name in code and in the UI. The
+distinction this page draws with `excluded` is carried by `RunPhase.skipReason`
+(`condition` / `upstream-skipped` / `upstream-failed` / `canceled`) rather than by a
+second noun. Read "excluded" below as "skipped with reason `condition`". `excluded` in
+the Rivet comparisons stays — that is Rivet's own term.
+
+See `docs/orchestration-node-capabilities.md` for the shipped behaviour.
+====
+
 The single most important type in the engine. A node result is *three*-valued, not two:
 
 [cols="1,3"]

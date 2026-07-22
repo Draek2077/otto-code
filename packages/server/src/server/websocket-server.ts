@@ -16,6 +16,8 @@ import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
+import type { NodeOutputStore } from "./orchestration/node-output.js";
+import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -447,6 +449,11 @@ export class VoiceAssistantWebSocketServer {
   private readonly scheduleService: ScheduleService;
   private readonly runService: RunService | null;
   private readonly graphStore: GraphStore | null;
+  // Late-wired (setNodeOutputStore) rather than another constructor
+  // positional: it is one in-memory side channel for graph runs, and every
+  // session reads the same instance.
+  private nodeOutputStore: NodeOutputStore | null = null;
+  private promptTemplateStore: PromptTemplateStore | null = null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -674,6 +681,14 @@ export class VoiceAssistantWebSocketServer {
     fn: () => Record<string, number> | Promise<Record<string, number>>,
   ): void {
     this.getPersonalityStatsFn = fn;
+  }
+
+  public setNodeOutputStore(store: NodeOutputStore | null): void {
+    this.nodeOutputStore = store;
+  }
+
+  public setPromptTemplateStore(store: PromptTemplateStore | null): void {
+    this.promptTemplateStore = store;
   }
 
   private assignOptionalServices(params: {
@@ -1116,6 +1131,8 @@ export class VoiceAssistantWebSocketServer {
       scheduleService: this.scheduleService,
       runService: this.runService,
       graphStore: this.graphStore,
+      nodeOutputStore: this.nodeOutputStore,
+      promptTemplateStore: this.promptTemplateStore,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
@@ -1408,6 +1425,10 @@ export class VoiceAssistantWebSocketServer {
         activityStats: this.getActivityRollups !== undefined,
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: this.runService !== null,
+        // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        runsDelete: this.runService !== null,
+        // COMPAT(runsDraftEdit): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        runsDraftEdit: this.runService !== null,
         // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         orchestrationGraphs: this.runService !== null && this.graphStore !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.

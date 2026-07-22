@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
-import { OrchestrationGraphSchema, RunSchema } from "./orchestration.js";
+import { OrchestrationGraphSchema, PromptTemplateSchema, RunSchema } from "./orchestration.js";
 import { ArtifactMetadataSchema } from "./artifacts/types.js";
 import {
   ArtifactListRequestSchema,
@@ -2813,8 +2813,28 @@ export const RunsClearResponseSchema = z.object({
   }),
 });
 
+// Delete one run by id. Terminal (done/failed/canceled) and draft runs only —
+// deleting an active run is refused so a cleanup click can't silently orphan
+// running agents; cancel it first. Gated by server_info.features.runsDelete.
+export const RunsDeleteRequestSchema = z.object({
+  type: z.literal("runs.delete.request"),
+  requestId: z.string(),
+  runId: z.string(),
+});
+export const RunsDeleteResponseSchema = z.object({
+  type: z.literal("runs.delete.response"),
+  payload: z.object({
+    // The deleted id, or absent when nothing was deleted (unknown or still
+    // active) — `error` then carries why.
+    runId: z.string().optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
 // Broadcast to every connected client (including the requester) so all
 // caches drop the same runs, mirroring runs.updated.notification's upsert.
+// Serves both runs.clear (many ids) and runs.delete (one).
 export const RunsClearedNotificationSchema = z.object({
   type: z.literal("runs.cleared.notification"),
   payload: z.object({
@@ -2878,12 +2898,64 @@ export const RunsGraphsChangedNotificationSchema = z.object({
   }),
 });
 
+// ── Prompt templates ────────────────────────────────────────────────────────
+// Host-level reusable prompts and snippets a graph node can bind to. Same shape
+// as the graph trio above, for the same reason: one store, list/save/delete,
+// plus a full-list push so every client converges.
+export const RunsTemplatesListRequestSchema = z.object({
+  type: z.literal("runs.templates.list.request"),
+  requestId: z.string(),
+});
+export const RunsTemplatesListResponseSchema = z.object({
+  type: z.literal("runs.templates.list.response"),
+  payload: z.object({
+    templates: z.array(PromptTemplateSchema),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesSaveRequestSchema = z.object({
+  type: z.literal("runs.templates.save.request"),
+  template: PromptTemplateSchema,
+  requestId: z.string(),
+});
+export const RunsTemplatesSaveResponseSchema = z.object({
+  type: z.literal("runs.templates.save.response"),
+  payload: z.object({
+    template: PromptTemplateSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesDeleteRequestSchema = z.object({
+  type: z.literal("runs.templates.delete.request"),
+  templateId: z.string(),
+  requestId: z.string(),
+});
+export const RunsTemplatesDeleteResponseSchema = z.object({
+  type: z.literal("runs.templates.delete.response"),
+  payload: z.object({
+    deleted: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsTemplatesChangedNotificationSchema = z.object({
+  type: z.literal("runs.templates.changed.notification"),
+  payload: z.object({
+    templates: z.array(PromptTemplateSchema),
+  }),
+});
+
 // Start (or draft) a user-initiated orchestration from the New Orchestration
 // dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go — the daemon
 // spawns an orchestrator agent that declares its own plan via start_run) or
 // "graph" (deterministic — the daemon executes `graphId` with `graphInputs`).
 // `draft: true` creates the record without executing (the designer flow);
-// `runId` executes an existing draft in place.
+// `runId` executes an existing draft in place — or, with `draft: true`, re-saves
+// that draft in place (Edit Orchestration).
 export const RunsStartRequestSchema = z.object({
   type: z.literal("runs.start.request"),
   flavor: z.string(),
@@ -2925,6 +2997,15 @@ export type RunsGraphsSaveResponse = z.infer<typeof RunsGraphsSaveResponseSchema
 export type RunsGraphsDeleteRequest = z.infer<typeof RunsGraphsDeleteRequestSchema>;
 export type RunsGraphsDeleteResponse = z.infer<typeof RunsGraphsDeleteResponseSchema>;
 export type RunsGraphsChangedNotification = z.infer<typeof RunsGraphsChangedNotificationSchema>;
+export type RunsTemplatesListRequest = z.infer<typeof RunsTemplatesListRequestSchema>;
+export type RunsTemplatesListResponse = z.infer<typeof RunsTemplatesListResponseSchema>;
+export type RunsTemplatesSaveRequest = z.infer<typeof RunsTemplatesSaveRequestSchema>;
+export type RunsTemplatesSaveResponse = z.infer<typeof RunsTemplatesSaveResponseSchema>;
+export type RunsTemplatesDeleteRequest = z.infer<typeof RunsTemplatesDeleteRequestSchema>;
+export type RunsTemplatesDeleteResponse = z.infer<typeof RunsTemplatesDeleteResponseSchema>;
+export type RunsTemplatesChangedNotification = z.infer<
+  typeof RunsTemplatesChangedNotificationSchema
+>;
 export type RunsStartRequest = z.infer<typeof RunsStartRequestSchema>;
 export type RunsStartResponse = z.infer<typeof RunsStartResponseSchema>;
 
@@ -2937,6 +3018,8 @@ export type RunsCancelRequest = z.infer<typeof RunsCancelRequestSchema>;
 export type RunsCancelResponse = z.infer<typeof RunsCancelResponseSchema>;
 export type RunsClearRequest = z.infer<typeof RunsClearRequestSchema>;
 export type RunsClearResponse = z.infer<typeof RunsClearResponseSchema>;
+export type RunsDeleteRequest = z.infer<typeof RunsDeleteRequestSchema>;
+export type RunsDeleteResponse = z.infer<typeof RunsDeleteResponseSchema>;
 export type RunsClearedNotification = z.infer<typeof RunsClearedNotificationSchema>;
 
 // Namespaced successor to checkout_commit_request: per-file selection and
@@ -3886,9 +3969,13 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RunsGateRespondRequestSchema,
   RunsCancelRequestSchema,
   RunsClearRequestSchema,
+  RunsDeleteRequestSchema,
   RunsGraphsListRequestSchema,
   RunsGraphsSaveRequestSchema,
   RunsGraphsDeleteRequestSchema,
+  RunsTemplatesListRequestSchema,
+  RunsTemplatesSaveRequestSchema,
+  RunsTemplatesDeleteRequestSchema,
   RunsStartRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
@@ -4269,6 +4356,12 @@ export const ServerInfoStatusPayloadSchema = z
         activityStats: z.boolean().optional(),
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: z.boolean().optional(),
+        // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        runsDelete: z.boolean().optional(),
+        // COMPAT(runsDraftEdit): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        // The daemon accepts `runs.start` with `draft: true` AND a `runId`,
+        // re-saving that draft in place instead of minting a second one.
+        runsDraftEdit: z.boolean().optional(),
         // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         orchestrationGraphs: z.boolean().optional(),
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
@@ -7013,11 +7106,16 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RunsGateRespondResponseSchema,
   RunsCancelResponseSchema,
   RunsClearResponseSchema,
+  RunsDeleteResponseSchema,
   RunsClearedNotificationSchema,
   RunsGraphsListResponseSchema,
   RunsGraphsSaveResponseSchema,
   RunsGraphsDeleteResponseSchema,
   RunsGraphsChangedNotificationSchema,
+  RunsTemplatesListResponseSchema,
+  RunsTemplatesSaveResponseSchema,
+  RunsTemplatesDeleteResponseSchema,
+  RunsTemplatesChangedNotificationSchema,
   RunsStartResponseSchema,
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,

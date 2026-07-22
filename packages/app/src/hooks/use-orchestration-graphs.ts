@@ -1,10 +1,11 @@
 import { useMutation, type UseQueryResult } from "@tanstack/react-query";
-import type { OrchestrationGraph } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph, PromptTemplate } from "@otto-code/protocol/orchestration";
 import { isDev } from "@/constants/platform";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useReplicaQuery } from "@/data/query";
 import { fetchOrchestrationGraphs, orchestrationGraphsQueryKey } from "@/data/orchestration-graphs";
+import { fetchPromptTemplates, promptTemplatesQueryKey } from "@/data/prompt-templates";
 
 /**
  * The single detection point for the orchestration-graphs capability
@@ -44,6 +45,30 @@ export function useOrchestrationGraphs(
         throw new Error("Host disconnected");
       }
       return fetchOrchestrationGraphs({ client });
+    },
+  });
+}
+
+/**
+ * Live list of the host's reusable prompt templates and snippets — what a graph
+ * node's "Prompt template" select offers. Same capability gate as the graphs
+ * themselves: both halves ship together.
+ */
+export function usePromptTemplates(
+  serverId: string | null,
+): UseQueryResult<PromptTemplate[], Error> {
+  const client = useHostRuntimeClient(serverId ?? "");
+  const isConnected = useHostRuntimeIsConnected(serverId ?? "");
+  const supported = useOrchestrationGraphsFeature(serverId ?? "");
+  return useReplicaQuery<PromptTemplate[]>({
+    queryKey: promptTemplatesQueryKey(serverId ?? ""),
+    enabled: Boolean(serverId && client && isConnected && supported),
+    pushEvent: "runs.templates.changed.notification",
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("Host disconnected");
+      }
+      return fetchPromptTemplates({ client });
     },
   });
 }

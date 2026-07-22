@@ -113,12 +113,13 @@ test.describe("Runs screen", () => {
     await expect(runsList).toContainText("Verify the change");
     await expect(runsList).toContainText("3m 30s");
 
-    // Visualize: opens (or focuses) the run-scoped Visualizer tab in the run's
-    // workspace layout, then the workspace tab row shows it. Navigation happens
-    // client-side via the sidebar so the in-memory layout store is preserved.
-    const visualizeButton = page.getByTestId("run-visualize-button");
-    await expect(visualizeButton).toBeVisible({ timeout: 30_000 });
-    await visualizeButton.click();
+    // Visualize is the card's primary press (the kebab repeats it): it opens (or
+    // focuses) the run-scoped Visualizer tab in the run's workspace layout, then
+    // the workspace tab row shows it. Navigation happens client-side via the
+    // sidebar so the in-memory layout store is preserved.
+    const runCard = page.getByTestId(`run-card-${runId}`);
+    await expect(runCard).toBeVisible({ timeout: 30_000 });
+    await runCard.click();
 
     await switchWorkspaceViaSidebar({
       page,

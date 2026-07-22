@@ -4,6 +4,7 @@
 import { test } from "./fixtures";
 import { connectSeedClient } from "./helpers/seed-client";
 import { expectSessionsEmptyState, openSessions } from "./helpers/archive-tab";
+import { moneyShot } from "./helpers/evidence";
 
 test.describe("Sessions screen empty state", () => {
   // This is the first browser test in the shard (the "00-" prefix forces it to
@@ -40,5 +41,6 @@ test.describe("Sessions screen empty state", () => {
     await workspace.navigateTo();
     await openSessions(page);
     await expectSessionsEmptyState(page);
+    await moneyShot(page, "Sessions shows the empty placeholder, not a session list");
   });
 });

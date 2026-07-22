@@ -131,7 +131,7 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@otto-code/protocol/agent-types";
-import type { OrchestrationGraph, Run } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph, PromptTemplate, Run } from "@otto-code/protocol/orchestration";
 import type {
   CueMoment,
   MutableDaemonConfig,
@@ -2586,6 +2586,20 @@ export class DaemonClient {
     return payload.runIds;
   }
 
+  /**
+   * Orchestration: delete one finished (or draft) run. Throws with the
+   * daemon's reason when it refuses — an active run has to be canceled first.
+   */
+  async deleteRun(runId: string): Promise<string> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.delete.response">({
+      message: { type: "runs.delete.request", runId },
+    });
+    if (!payload.runId) {
+      throw new Error(payload.error ?? "Failed to delete the orchestration");
+    }
+    return payload.runId;
+  }
+
   /** Orchestration: list the host's reusable graph templates. */
   async listOrchestrationGraphs(): Promise<OrchestrationGraph[]> {
     const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.list.response">({
@@ -2610,6 +2624,39 @@ export class DaemonClient {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.delete.response">({
         message: { type: "runs.graphs.delete.request", graphId },
+      });
+    if (payload.error !== undefined) {
+      throw new Error(payload.error);
+    }
+    return payload.deleted;
+  }
+
+  /** Orchestration: list the host's reusable prompt templates and snippets. */
+  async listPromptTemplates(): Promise<PromptTemplate[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"runs.templates.list.response">({
+        message: { type: "runs.templates.list.request" },
+      });
+    return payload.templates;
+  }
+
+  /** Orchestration: upsert a prompt template. Returns the persisted template. */
+  async savePromptTemplate(template: PromptTemplate): Promise<PromptTemplate> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"runs.templates.save.response">({
+        message: { type: "runs.templates.save.request", template },
+      });
+    if (payload.error !== undefined || payload.template === undefined) {
+      throw new Error(payload.error ?? "savePromptTemplate rejected");
+    }
+    return payload.template;
+  }
+
+  /** Orchestration: delete a prompt template (built-in starters refuse). */
+  async deletePromptTemplate(templateId: string): Promise<boolean> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"runs.templates.delete.response">({
+        message: { type: "runs.templates.delete.request", templateId },
       });
     if (payload.error !== undefined) {
       throw new Error(payload.error);

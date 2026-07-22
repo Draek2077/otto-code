@@ -224,6 +224,8 @@ import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
+import type { NodeOutputStore } from "./orchestration/node-output.js";
+import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import {
   startUserOrchestration,
   type StartUserOrchestrationInput,
@@ -519,6 +521,11 @@ export interface SessionOptions {
   // the same test-harness reason as runService; features.orchestrationGraphs
   // rides on both being present.
   graphStore?: GraphStore | null;
+  // Where graph nodes' submit_output calls land before the engine harvests
+  // them (orchestration/node-output.ts). Optional for the same reason.
+  nodeOutputStore?: NodeOutputStore | null;
+  // Host-level reusable prompts and snippets. Optional for the same reason.
+  promptTemplateStore?: PromptTemplateStore | null;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
@@ -659,6 +666,8 @@ export class Session {
   private agentManager: AgentManager;
   private readonly runService: RunService | null | undefined;
   private readonly graphStore: GraphStore | null | undefined;
+  private readonly nodeOutputStore: NodeOutputStore | null | undefined;
+  private readonly promptTemplateStore: PromptTemplateStore | null | undefined;
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
@@ -757,6 +766,8 @@ export class Session {
       scheduleService,
       runService,
       graphStore,
+      nodeOutputStore,
+      promptTemplateStore,
       loopService,
       checkoutDiffManager,
       github,
@@ -841,6 +852,8 @@ export class Session {
     this.agentManager = agentManager;
     this.runService = runService;
     this.graphStore = graphStore;
+    this.nodeOutputStore = nodeOutputStore;
+    this.promptTemplateStore = promptTemplateStore;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
@@ -2418,12 +2431,20 @@ export class Session {
       }
       case "runs.clear.request":
         return this.handleRunsClearRequest(msg);
+      case "runs.delete.request":
+        return this.handleRunsDeleteRequest(msg);
       case "runs.graphs.list.request":
         return this.handleRunsGraphsListRequest(msg);
       case "runs.graphs.save.request":
         return this.handleRunsGraphsSaveRequest(msg);
       case "runs.graphs.delete.request":
         return this.handleRunsGraphsDeleteRequest(msg);
+      case "runs.templates.list.request":
+        return this.handleRunsTemplatesListRequest(msg);
+      case "runs.templates.save.request":
+        return this.handleRunsTemplatesSaveRequest(msg);
+      case "runs.templates.delete.request":
+        return this.handleRunsTemplatesDeleteRequest(msg);
       case "runs.start.request":
         return this.handleRunsStartRequest(msg);
       case "checkout_merge_request":
@@ -7474,6 +7495,23 @@ export class Session {
     });
   }
 
+  private async handleRunsDeleteRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.delete.request" }>,
+  ): Promise<void> {
+    const result = (await this.runService?.deleteRun(msg.runId)) ?? {
+      deleted: false,
+      error: "Orchestration is not available on this host",
+    };
+    this.emit({
+      type: "runs.delete.response",
+      payload: {
+        ...(result.deleted ? { runId: msg.runId } : {}),
+        ...(result.error ? { error: result.error } : {}),
+        requestId: msg.requestId,
+      },
+    });
+  }
+
   // ── Orchestration graphs (projects/orchestration-graphs) ──────────────────
 
   private async handleRunsGraphsListRequest(
@@ -7546,6 +7584,78 @@ export class Session {
     }
   }
 
+  // ── Prompt templates (projects/orchestration-graphs) ──────────────────────
+
+  private async handleRunsTemplatesListRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.templates.list.request" }>,
+  ): Promise<void> {
+    const templates = (await this.promptTemplateStore?.list()) ?? [];
+    this.emit({
+      type: "runs.templates.list.response",
+      payload: { templates, requestId: msg.requestId },
+    });
+  }
+
+  private async handleRunsTemplatesSaveRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.templates.save.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.promptTemplateStore) {
+        throw new Error("Prompt templates are not available on this daemon.");
+      }
+      // Copy-on-edit, exactly as graphs do: saving over a bundled template
+      // persists a plain user-owned copy.
+      const { builtIn: _builtIn, ...rest } = msg.template;
+      const now = new Date().toISOString();
+      const template = {
+        ...rest,
+        createdAt: msg.template.createdAt ?? now,
+        updatedAt: now,
+      };
+      await this.promptTemplateStore.save(template);
+      this.emit({
+        type: "runs.templates.save.response",
+        payload: { template, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "runs.templates.save.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleRunsTemplatesDeleteRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.templates.delete.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.promptTemplateStore) {
+        throw new Error("Prompt templates are not available on this daemon.");
+      }
+      const existing = await this.promptTemplateStore.get(msg.templateId);
+      if (existing?.builtIn) {
+        throw new Error("Bundled templates can't be deleted.");
+      }
+      await this.promptTemplateStore.delete(msg.templateId);
+      this.emit({
+        type: "runs.templates.delete.response",
+        payload: { deleted: existing !== null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "runs.templates.delete.response",
+        payload: {
+          deleted: false,
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
   private async handleRunsStartRequest(
     msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
   ): Promise<void> {
@@ -7579,6 +7689,8 @@ export class Session {
           getAgentTeams: () => this.daemonConfigStore.get().agentTeams,
           listProviderEntries: (cwd) =>
             this.providerSnapshotManager.listProviders({ cwd, wait: true }),
+          ...(this.nodeOutputStore ? { nodeOutputStore: this.nodeOutputStore } : {}),
+          ...(this.promptTemplateStore ? { promptTemplateStore: this.promptTemplateStore } : {}),
         },
         buildStartUserOrchestrationInput(msg),
       );

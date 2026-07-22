@@ -113,6 +113,7 @@ from the AI-generated `summary`) and seed a new graph's name/description. Flow:
 4. Graph flavor → **pick existing graph** (its declared inputs render as a form; fill → Run) or **create new** (creates the orchestration as Draft + opens the graph designer tab in the target workspace).
 5. Designer's **Save & Use** returns to the dialog with that graph selected and its inputs form showing.
 6. Run → daemon executes → client navigates to the workspace chat (root agent).
+7. **Editing a Draft:** the Orchestrations card kebab offers **Edit Orchestration** for drafts only (the one run state that hasn't executed). It reopens this same dialog seeded from the draft record — name, description, project, graph, declared inputs — with the flavor switch hidden (a draft is always a graph). **Save Draft** rewrites the record in place (`runs.start` with `draft: true` + the draft's `runId`, gated on `server_info.features.runsDraftEdit`); **Run** executes it in place, as the designer's Run… already did.
 
 ### Graph designer (workspace tab; web + Electron)
 

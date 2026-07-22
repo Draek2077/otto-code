@@ -276,6 +276,11 @@ Namespaced per `docs/rpc-namespacing.md`, request/response pairs:
 
 |`runs.cancel`, `runs.clear`
 |Existing.
+
+|`runs.delete`
+|Delete one run by id — terminal/draft only, refused while it is in flight so cleanup
+ cannot orphan live agents. Broadcasts the same `runs.cleared.notification` as
+ `runs.clear`. Gated by `server_info.features.runsDelete`.
 |===
 
 == Capability gating

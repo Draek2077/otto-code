@@ -42,6 +42,7 @@ import {
   type CompatToolSpec,
 } from "./openai-compat-tools.js";
 import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../tools/types.js";
+import { resolveWorkspaceAccess } from "../workspace-access.js";
 import {
   ottoToolGroupForName,
   MAX_TOOL_ROUNDS_DEFAULT,
@@ -289,6 +290,9 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: false,
   supportsRewindBoth: false,
+  // Total enforcement: availableToolSpecs withholds the specs a level forbids,
+  // and the daemon owns the loop, so an unoffered tool cannot be called.
+  supportsWorkspaceAccess: true,
 };
 
 // Icons/colorTiers live here (not in AGENT_PROVIDER_DEFINITIONS) because
@@ -1660,7 +1664,15 @@ export class OpenAICompatAgentSession implements AgentSession {
   }
 
   private availableToolSpecs(): CompatToolSpec[] {
+    // The session's workspace access ceiling. The daemon owns this provider's
+    // tool loop, so withholding a spec here is total enforcement: the model is
+    // never told the tool exists and there is nothing to call.
+    const access = resolveWorkspaceAccess(this.config.workspaceAccess);
     return COMPAT_TOOL_SPECS.filter((spec) => {
+      if (access !== "write" && spec.kind === "edit") return false;
+      // "none" means no workspace at all — reading and running commands go too.
+      // Web access is a separate axis and stays governed by its tool group.
+      if (access === "none" && (spec.kind === "read" || spec.kind === "execute")) return false;
       // Read-only "plan" mode offers no actions against the local machine.
       // "network" tools (web_fetch) stay available for research but prompt.
       if (this.modeId === "plan" && spec.kind !== "read" && spec.kind !== "network") return false;

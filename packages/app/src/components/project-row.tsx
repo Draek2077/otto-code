@@ -8,33 +8,6 @@ import { resolveModelLabel, resolveProviderLabel } from "@/utils/provider-defini
 
 const PROVIDER_ICON_SIZE = 14;
 
-export interface ProjectRowProps {
-  /** Provider glyph for the project's target agent, when known. */
-  provider: string | null;
-  /** Resolved project name; the row renders nothing when this isn't known. */
-  projectName: string | null;
-}
-
-/**
- * Identity row shown under the header of orchestration run cards: the provider
- * glyph followed by the project name (see runs-screen.tsx). Artifact and
- * Schedule cards split this into two lines instead — ExecutorRow (who ran it)
- * plus ProjectNameLine (where) — via the components below.
- */
-export function ProjectRow({ provider, projectName }: ProjectRowProps): ReactElement | null {
-  if (!projectName) {
-    return null;
-  }
-  return (
-    <View style={styles.row}>
-      {provider ? <ProviderGlyph provider={provider} /> : null}
-      <Text style={styles.text} numberOfLines={1}>
-        {projectName}
-      </Text>
-    </View>
-  );
-}
-
 export interface ExecutorRowProps {
   /** Host the item lives on — used to resolve the provider's display label. */
   serverId: string;
@@ -47,7 +20,8 @@ export interface ExecutorRowProps {
 }
 
 /**
- * The "who ran it" identity line for Artifact and Schedule cards: the provider
+ * The "who ran it" identity line for Artifact, Schedule and Orchestration
+ * cards, which all pair it with ProjectNameLine below: the provider
  * glyph followed by `Personality · Provider · Model` (or just `Provider ·
  * Model` when no personality was used). This reflects the actual last executor,
  * not a configured "Team's Role" slot. Renders nothing when nothing is known.

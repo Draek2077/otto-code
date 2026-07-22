@@ -205,6 +205,14 @@ export interface AgentCapabilityFlags {
   supportsDynamicModes: boolean;
   supportsMcpServers: boolean;
   supportsNativeOttoTools?: boolean;
+  /**
+   * The adapter honours `AgentSessionConfig.workspaceAccess` by actually
+   * narrowing the tools it offers. Absent/false means it does not — and a graph
+   * node asking for restricted access on such a seat is refused at compile
+   * time rather than silently running with full access. Never set this true
+   * without the enforcement to back it.
+   */
+  supportsWorkspaceAccess?: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
   supportsRewindConversation?: boolean;
@@ -747,6 +755,14 @@ export interface AgentSessionConfig {
   title?: string | null;
   approvalPolicy?: string;
   sandboxMode?: string;
+  /**
+   * Ceiling on what this session may do to its workspace: "none" | "read" |
+   * "write" (absent ⇒ "write", today's behaviour). Set by graph nodes that
+   * declare an access level; every adapter that advertises
+   * `supportsWorkspaceAccess` narrows its own tool surface to match. See
+   * agent/workspace-access.ts.
+   */
+  workspaceAccess?: string;
   networkAccess?: boolean;
   webSearch?: boolean;
   extra?: {

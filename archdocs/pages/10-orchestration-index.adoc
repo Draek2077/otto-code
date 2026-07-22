@@ -7,6 +7,20 @@ deliberately kept as its own 10-series page set: the feature is in build, and me
 into the link:00-index.html[main Otto set] is a later step (renumber, link from the
 master ToC, fold subsystem gotchas into `docs/`).
 
+[IMPORTANT]
+====
+*Partly built — and one word changed.* Stages 0–5 of
+`projects/orchestration-graphs/enhancement-plan.md` are implemented in the daemon:
+three-valued node results, declared output fields with a `submit_output` tool, conditional
+edges, per-node tool authority and query tools, retry and time limits, prompt templates.
+`docs/orchestration-node-capabilities.md` describes the shipped behaviour and is
+authoritative where it and these pages differ.
+
+The one deliberate divergence: this set says *excluded* for the third node state; the
+shipped name is *skipped*, with `RunPhase.skipReason` carrying the distinction. See
+link:13-orchestration-engine.html[Engine] for the mapping.
+====
+
 [NOTE]
 ====
 *Read the design rationale first.* `projects/orchestration-graphs/orchestration-design.md`

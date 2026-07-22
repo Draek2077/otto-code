@@ -24,7 +24,12 @@ import {
 } from "@otto-code/protocol/agent-personalities";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
-import { getOrchestrationPolicyFromLabels } from "@otto-code/protocol/agent-labels";
+import {
+  getOrchestrationPolicyFromLabels,
+  getOutputFieldsFromLabels,
+  getQueryToolsFromLabels,
+  getToolGroupsFromLabels,
+} from "@otto-code/protocol/agent-labels";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -54,6 +59,12 @@ import {
 } from "../create-agent/create.js";
 import { RunPlanSchema } from "@otto-code/protocol/orchestration";
 import { summarizeRunOutput } from "../../orchestration/run-engine.js";
+import {
+  type NodeOutputStore,
+  compileOutputToolInputShape,
+  validateNodeOutput,
+} from "../../orchestration/node-output.js";
+import { executeQueryTool, queryToolName } from "../../orchestration/node-query-tools.js";
 import type { RunService, RunSpawnPort } from "../../orchestration/run-service.js";
 import { resolveTeamRoleMember } from "../../orchestration/resolve-team-role.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
@@ -211,6 +222,13 @@ export interface OttoToolHostDependencies {
   voiceOnly?: boolean;
   /** Fun-stats counters — see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
+  /**
+   * Where submit_output writes what a graph node's agent submitted. Present
+   * when orchestration is wired; the tool only registers for agents that carry
+   * declared output fields on their labels, so hosts without graphs never see
+   * it. See packages/server/src/server/orchestration/node-output.ts.
+   */
+  nodeOutputStore?: NodeOutputStore | null;
   logger: Logger;
 }
 
@@ -922,6 +940,51 @@ function buildOrchestrationPolicyGate(
   };
 }
 
+/**
+ * Two independent narrowings of the tool catalog, combined.
+ *
+ * `enabledGroups` is the daemon-wide allowlist (undefined = every group).
+ * `nodeGroups` is one graph node's own declaration, read from its labels
+ * (null = the node didn't declare one). They intersect, never union: a node can
+ * hand itself less authority than the daemon allows, never more. An empty node
+ * list is meaningful — "no Otto tools at all" — which is why it is an empty
+ * array rather than null.
+ */
+// Validate a tool's input against its declared schema before the handler sees
+// it. A tool may declare either a raw Zod shape or a whole ZodType; the shape
+// form is wrapped as a passthrough object so unknown keys survive.
+async function parseToolInput(tool: OttoToolDefinition, input: unknown): Promise<unknown> {
+  const inputSchema = tool.inputSchema;
+  if (!inputSchema) {
+    return input;
+  }
+  const schema =
+    typeof inputSchema === "object" &&
+    inputSchema !== null &&
+    typeof (inputSchema as { safeParseAsync?: unknown }).safeParseAsync === "function"
+      ? (inputSchema as z.ZodType)
+      : z.object(inputSchema as z.ZodRawShape).passthrough();
+  return schema.parseAsync(input);
+}
+
+function buildToolGroupGate(input: {
+  enabledGroups: OttoToolGroup[] | undefined;
+  agentManager: AgentManager;
+  callerAgentId: string | undefined;
+}): (name: string) => boolean {
+  const { enabledGroups, agentManager, callerAgentId } = input;
+  const nodeGroups = getToolGroupsFromLabels(
+    callerAgentId ? agentManager.getAgent(callerAgentId)?.labels : undefined,
+  );
+  return (name: string): boolean => {
+    const group = ottoToolGroupForName(name);
+    if (enabledGroups !== undefined && !enabledGroups.includes(group)) {
+      return false;
+    }
+    return nodeGroups === null || nodeGroups.includes(group);
+  };
+}
+
 export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoToolCatalog {
   const {
     agentManager,
@@ -941,26 +1004,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   const childLogger = logger.child({ module: "agent", component: "otto-tool-catalog" });
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
 
-  const parseToolInput = async (tool: OttoToolDefinition, input: unknown): Promise<unknown> => {
-    const inputSchema = tool.inputSchema;
-    if (!inputSchema) {
-      return input;
-    }
-    const schema =
-      typeof inputSchema === "object" &&
-      inputSchema !== null &&
-      typeof (inputSchema as { safeParseAsync?: unknown }).safeParseAsync === "function"
-        ? (inputSchema as z.ZodType)
-        : z.object(inputSchema as z.ZodRawShape).passthrough();
-    return schema.parseAsync(input);
-  };
-
   const tools = new Map<string, OttoToolDefinition>();
   // undefined = all groups enabled (mirrors openai-compat per-provider
   // semantics); a defined set gates every tool by its ottoToolGroupForName.
   const enabledGroups = options.enabledOttoToolGroups;
-  const isToolGroupEnabled = (name: string): boolean =>
-    enabledGroups === undefined || enabledGroups.includes(ottoToolGroupForName(name));
+  // A graph node may narrow its own catalog (projects/orchestration-graphs).
+  // Intersecting rather than replacing is the whole contract: a node can give
+  // itself less than the daemon allows, never more.
+  const isToolGroupEnabled = buildToolGroupGate({ enabledGroups, agentManager, callerAgentId });
   // Orchestration tool policy (projects/orchestration-graphs): agents the
   // daemon spawned as graph nodes carry a policy label; the gate below strips
   // the tools that policy forbids. Enforced here at registration so every
@@ -4388,7 +4439,149 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     );
   }
 
+  registerGraphNodeTools({
+    tools,
+    agentManager,
+    callerAgentId,
+    nodeOutputStore: options.nodeOutputStore,
+    logger: childLogger,
+  });
+
   return toCatalog();
+}
+
+/**
+ * Tools that belong to one graph node rather than to Otto: its submit_output
+ * channel and its author-defined lookups. Both are read from the agent's own
+ * labels, so they exist for exactly one agent and reach every provider the same
+ * way (MCP-served seats through the daemon's MCP server, openai-compat seats
+ * through the native tool loop).
+ */
+function registerGraphNodeTools(input: {
+  tools: Map<string, OttoToolDefinition>;
+  agentManager: AgentManager;
+  callerAgentId: string | undefined;
+  nodeOutputStore: NodeOutputStore | null | undefined;
+  logger: Logger;
+}): void {
+  registerNodeOutputTool({ ...input, nodeOutputStore: input.nodeOutputStore ?? null });
+  registerNodeQueryTools(input);
+}
+
+/**
+ * Register a graph node's own read-only query tools, from its labels.
+ *
+ * Like submit_output these sit past the group gates, because they are not Otto
+ * capabilities being handed out — they are lookups this node's author defined
+ * for this node, and each one is read-only by construction
+ * (orchestration/node-query-tools.ts). Names are prefixed so a query tool can
+ * never shadow a built-in.
+ */
+function registerNodeQueryTools(input: {
+  tools: Map<string, OttoToolDefinition>;
+  agentManager: AgentManager;
+  callerAgentId: string | undefined;
+  logger: Logger;
+}): void {
+  const { tools, agentManager, callerAgentId, logger } = input;
+  if (!callerAgentId) {
+    return;
+  }
+  const agent = agentManager.getAgent(callerAgentId);
+  const declared = getQueryToolsFromLabels(agent?.labels);
+  if (!declared) {
+    return;
+  }
+  const cwd = agent?.cwd;
+  for (const tool of declared) {
+    const name = queryToolName(tool);
+    tools.set(name, {
+      name,
+      title: tool.name,
+      description: tool.description,
+      inputSchema: compileOutputToolInputShape(tool.parameters ?? []),
+      handler: async (rawInput: unknown, context): Promise<OttoToolResult> => {
+        if (!cwd) {
+          return {
+            content: [{ type: "text", text: "This agent has no working directory." }],
+            isError: true,
+          };
+        }
+        const result = await executeQueryTool({
+          tool,
+          args: (rawInput ?? {}) as Record<string, unknown>,
+          cwd,
+          ...(context.signal ? { signal: context.signal } : {}),
+        });
+        logger.debug({ agentId: callerAgentId, tool: name }, "Query tool executed");
+        return {
+          content: [{ type: "text", text: result.text }],
+          ...(result.isError ? { isError: true } : {}),
+        };
+      },
+    });
+  }
+}
+
+/**
+ * Register submit_output for an agent the daemon spawned as a graph node with
+ * declared output fields (projects/orchestration-graphs). The contract rides on
+ * the agent's own labels, so the tool exists for exactly one agent and every
+ * provider reaches it the same way — MCP-served seats through the daemon's MCP
+ * server, openai-compat seats through the native tool loop.
+ *
+ * Deliberately registered past the group and orchestration-policy gates. Those
+ * gates decide which Otto *capabilities* a node may use; this is not a
+ * capability, it is the node's own deliverable channel. A deterministic node —
+ * the very kind most likely to declare fields — would otherwise have its submit
+ * tool stripped as part of the "agents" group and could never satisfy the
+ * contract its graph gave it.
+ *
+ * Validation failure is returned as a tool error rather than thrown: the model
+ * sees the message and corrects within the same session, which costs one turn
+ * instead of a re-dispatch.
+ */
+function registerNodeOutputTool(input: {
+  tools: Map<string, OttoToolDefinition>;
+  agentManager: AgentManager;
+  callerAgentId: string | undefined;
+  nodeOutputStore: NodeOutputStore | null;
+  logger: Logger;
+}): void {
+  const { tools, agentManager, callerAgentId, nodeOutputStore, logger } = input;
+  if (!callerAgentId || !nodeOutputStore) {
+    return;
+  }
+  const fields = getOutputFieldsFromLabels(agentManager.getAgent(callerAgentId)?.labels);
+  if (!fields) {
+    return;
+  }
+  tools.set("submit_output", {
+    name: "submit_output",
+    title: "Submit output",
+    description:
+      "Submit this node's declared output fields. Call exactly once when your work is complete — this call is the deliverable, not your chat message.",
+    inputSchema: compileOutputToolInputShape(fields),
+    handler: async (rawInput: unknown): Promise<OttoToolResult> => {
+      const validation = validateNodeOutput(fields, rawInput);
+      if (!validation.ok) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Validation error: ${validation.message}. Correct the values and call submit_output again.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      nodeOutputStore.record(callerAgentId, validation.value);
+      logger.debug({ agentId: callerAgentId }, "Node output submitted");
+      return {
+        content: [{ type: "text", text: "Output submitted." }],
+      };
+    },
+  });
 }
 
 type McpCreateWorktreeTarget =

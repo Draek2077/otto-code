@@ -134,6 +134,9 @@ import { RunStore } from "./orchestration/run-store.js";
 import { buildRunSummaryPrompt } from "./orchestration/run-engine.js";
 import { GraphStore } from "./orchestration/graph-store.js";
 import { seedStarterGraphs } from "./orchestration/starter-graphs.js";
+import { NodeOutputStore } from "./orchestration/node-output.js";
+import { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
+import { seedStarterPromptTemplates } from "./orchestration/starter-prompt-templates.js";
 import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
@@ -1524,9 +1527,24 @@ export async function createOttoDaemon(
   // Orchestration graph templates (projects/orchestration-graphs) — host-level,
   // like personalities/teams. Starter graphs seed once; user edits win forever.
   const graphStore = new GraphStore(path.join(config.ottoHome, "orchestration-graphs"));
+  // Where a graph node's submit_output call lands on its way to the engine.
+  // One per daemon, shared by the tool catalog (writes) and the orchestration
+  // spawn port (reads); see orchestration/node-output.ts.
+  const nodeOutputStore = new NodeOutputStore();
+  // Reusable prompts + snippets, stored like graphs and for the same reason.
+  const promptTemplateStore = new PromptTemplateStore(
+    path.join(config.ottoHome, "prompt-templates"),
+  );
   await seedStarterGraphs(graphStore, logger);
+  await seedStarterPromptTemplates(promptTemplateStore, logger);
   graphStore.onChange((graphs) => {
     emitExternalSessionMessage({ type: "runs.graphs.changed.notification", payload: { graphs } });
+  });
+  promptTemplateStore.onChange((templates) => {
+    emitExternalSessionMessage({
+      type: "runs.templates.changed.notification",
+      payload: { templates },
+    });
   });
   logger.info({ elapsed: elapsed() }, "Orchestration graph store initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
@@ -1592,6 +1610,7 @@ export async function createOttoDaemon(
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
     onActivity: recordActivity,
+    nodeOutputStore,
     logger,
   });
   const createAgentToolCatalog = (runtime: OttoToolRuntimeContext) =>
@@ -1923,6 +1942,8 @@ export async function createOttoDaemon(
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
+            wsServer.setNodeOutputStore(nodeOutputStore);
+            wsServer.setPromptTemplateStore(promptTemplateStore);
 
             // Sanity guard: never let preview "stop external server" tree-kill
             // Otto's own runtime — the daemon's listen port or a loopback dev

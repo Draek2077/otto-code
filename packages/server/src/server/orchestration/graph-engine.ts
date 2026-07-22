@@ -1,5 +1,10 @@
 import {
+  type GraphEdge,
   type GraphNode,
+  type GraphOutputField,
+  type GraphQueryTool,
+  type GraphSkipReason,
+  type NodePromptTemplateRef,
   type OrchestrationGraph,
   type Run,
   type RunPhase,
@@ -17,6 +22,12 @@ import {
   buildJudgeTask,
   parseVerdict,
 } from "./run-engine.js";
+import { buildOutputInstruction, extractOutputFieldsFromProse } from "./node-output.js";
+import {
+  resolveEdgeCondition,
+  selectCarriedFields,
+  validateEdgeConditions,
+} from "./edge-conditions.js";
 
 // The deterministic-graph engine (projects/orchestration-graphs): executes a
 // user-authored OrchestrationGraph exactly as drawn. Pure control flow over an
@@ -50,15 +61,44 @@ export interface GraphEngineSpawnInput {
   attempt: number;
   /** Worker does the node's work; judge grades an `until` iteration. */
   purpose: "worker" | "judge";
+  /**
+   * The node's declared output fields, when it has them. The port stamps them
+   * on the spawned agent so its tool catalog can register submit_output —
+   * which is how structured output reaches every provider identically.
+   */
+  outputFields?: GraphOutputField[];
+  /** Workspace access ceiling for this node's agent ("none" | "read" | "write"). */
+  access?: string;
+  /** Per-node Otto tool-group allowlist; narrows what the spawned agent gets. */
+  toolGroups?: string[];
+  /** Read-only lookups registered for this agent alone. */
+  queryTools?: GraphQueryTool[];
 }
 
 export interface GraphEnginePort {
   spawn(input: GraphEngineSpawnInput): Promise<RunEngineSpawnResult>;
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
+  /**
+   * Really stop one agent — used when a node hits its time limit. Racing a
+   * timer against `awaitAgent` would only stop *waiting*; the agent would keep
+   * running and keep spending. Best-effort: an agent that already settled is
+   * not an error.
+   */
+  cancelAgent(input: { agentId: string }): Promise<void>;
   /** Deliver a labeled node completion (or the final wrap-up) to the orchestrator's chat. */
   notifyOrchestrator(input: { text: string }): Promise<void>;
   emit(run: Run): void | Promise<void>;
   now(): string;
+  /**
+   * Render a node's prompt from a stored template. Absent on hosts without the
+   * template store — a node bound to a template then falls back to its inline
+   * prompt, which is the same degradation as a deleted template.
+   */
+  renderPromptTemplate?(input: {
+    ref: NodePromptTemplateRef;
+    graphInputs: Record<string, string>;
+    upstreamFields: Map<string, Record<string, unknown>>;
+  }): Promise<string | null>;
   logger: OrchestrationLogger;
 }
 
@@ -90,7 +130,13 @@ export function buildRunFromGraph(input: {
   teamId?: string;
   teamName?: string;
 }): Run {
-  const problems = validateOrchestrationGraph(input.graph);
+  // Structural problems first, then expression syntax — the latter needs the
+  // JSONata parser, which is daemon-only (the designer's shared validator must
+  // stay dependency-free for the client bundle).
+  const problems = [
+    ...validateOrchestrationGraph(input.graph),
+    ...validateEdgeConditions(input.graph.edges ?? []),
+  ];
   if (problems.length > 0) {
     throw new RunEngineError(`Graph is not executable: ${problems.join(" ")}`);
   }
@@ -160,10 +206,31 @@ function buildNodeBasePrompt(node: GraphNode, inputs: Record<string, string>): s
   return parts.join("\n\n");
 }
 
-interface NodeResult {
-  output: string | null;
-  failed: boolean;
+// A node settles three ways, not two. `skipped` is control flow routing around
+// the node — an ordinary outcome that must never read as an error, and never as
+// silence: every skip carries a reason so the run can say why part of the graph
+// didn't run. Adding the third state before conditional edges exist is
+// deliberate; threading it through joins and the wrap-up afterwards is strictly
+// harder.
+type NodeResult =
+  | { status: "done"; output: string | null; fields: Record<string, unknown> | null }
+  | { status: "failed" }
+  | { status: "skipped"; reason: GraphSkipReason };
+
+/** One upstream node's contribution to a downstream node's task. */
+interface UpstreamMaterial {
+  nodeId: string;
+  title: string;
+  output: string;
+  fields: Record<string, unknown> | null;
 }
+
+const SKIP_SENTENCES: Record<GraphSkipReason, string> = {
+  condition: "A condition on an incoming edge routed around this node.",
+  "upstream-skipped": "An upstream node was skipped.",
+  "upstream-failed": "An upstream node failed.",
+  canceled: "Run canceled.",
+};
 
 // Minimal counting semaphore — bounds concurrent child agents without waves
 // (a node whose inputs are ready never waits on an unrelated branch).
@@ -241,18 +308,19 @@ export async function executeGraphRun(input: {
 
   const root = ctx.graph.nodes.find((node) => node.kind === "orchestrator");
   const workers = ctx.graph.nodes.filter((node) => node.kind !== "orchestrator");
-  const upstreamByNode = new Map<string, string[]>();
+  // Incoming edges, not just upstream ids: a condition and a field selection
+  // belong to the edge, so two edges between the same pair are two different
+  // deliveries.
+  const incomingByNode = new Map<string, GraphEdge[]>();
   for (const node of workers) {
-    upstreamByNode.set(
+    incomingByNode.set(
       node.id,
-      (ctx.graph.edges ?? [])
-        .filter(
-          (edge) =>
-            edge.to === node.id &&
-            edge.from !== root?.id &&
-            workers.some((candidate) => candidate.id === edge.from),
-        )
-        .map((edge) => edge.from),
+      (ctx.graph.edges ?? []).filter(
+        (edge) =>
+          edge.to === node.id &&
+          edge.from !== root?.id &&
+          workers.some((candidate) => candidate.id === edge.from),
+      ),
     );
   }
 
@@ -265,7 +333,7 @@ export async function executeGraphRun(input: {
     if (existing) {
       return existing;
     }
-    const promise = executeNode(ctx, node, upstreamByNode.get(node.id) ?? [], runNode);
+    const promise = executeNode(ctx, node, incomingByNode.get(node.id) ?? [], runNode);
     results.set(node.id, promise);
     return promise;
   };
@@ -317,34 +385,47 @@ function collectDeliverables(
 async function executeNode(
   ctx: GraphRunContext,
   node: GraphNode,
-  upstreamIds: string[],
+  incoming: GraphEdge[],
   runNode: (node: GraphNode) => Promise<NodeResult>,
 ): Promise<NodeResult> {
   const phase = ctx.run.phases.find((candidate) => candidate.id === node.id);
-  const upstreamNodes = upstreamIds
-    .map((id) => ctx.graph.nodes.find((candidate) => candidate.id === id))
-    .filter((candidate): candidate is GraphNode => candidate !== undefined);
-  const upstreamResults = await Promise.all(upstreamNodes.map((upstream) => runNode(upstream)));
+  const upstreams = incoming.flatMap((edge) => {
+    const upstream = ctx.graph.nodes.find((candidate) => candidate.id === edge.from);
+    return upstream ? [{ edge, node: upstream }] : [];
+  });
+  // Awaiting every upstream before deciding anything is what lets the
+  // memoised-promise schedule carry conditional edges with no fixed-point
+  // pass: by the time this node decides, nothing it read can still change.
+  const settled: SettledUpstream[] = await Promise.all(
+    upstreams.map(async (upstream): Promise<SettledUpstream> => {
+      const result = await runNode(upstream.node);
+      return { edge: upstream.edge, node: upstream.node, result };
+    }),
+  );
 
-  if (ctx.signal.aborted || upstreamResults.some((result) => result.failed)) {
-    if (phase && phase.status === "pending") {
-      phase.status = "skipped";
-      phase.notes = ctx.signal.aborted ? "Run canceled." : "An upstream node failed.";
-      ctx.run.updatedAt = ctx.port.now();
-      await ctx.port.emit(ctx.run);
-    }
-    return { output: null, failed: true };
+  if (ctx.signal.aborted) {
+    await markSkipped(ctx, phase, "canceled");
+    return { status: "skipped", reason: "canceled" };
+  }
+  if (settled.some((upstream) => upstream.result.status === "failed")) {
+    await markSkipped(ctx, phase, "upstream-failed");
+    return { status: "skipped", reason: "upstream-failed" };
   }
 
-  const upstreamMaterial = upstreamNodes.map((upstream, index) => ({
-    title: upstream.title,
-    output: upstreamResults[index]?.output ?? "",
-  }));
+  const gate = await resolveIncomingEdges(node, settled);
+  if (gate.status === "error") {
+    return failNode(ctx, node, phase, gate.message);
+  }
+  if (gate.status === "skip") {
+    await markSkipped(ctx, phase, gate.reason, gate.detail);
+    return { status: "skipped", reason: gate.reason };
+  }
+  const upstreamMaterial = gate.material;
 
   try {
-    const output = await dispatchNode(ctx, node, phase, upstreamMaterial);
-    if (output !== null) {
-      ctx.outputsById.set(node.id, output);
+    const dispatched = await dispatchNode(ctx, node, phase, upstreamMaterial);
+    if (dispatched.output !== null) {
+      ctx.outputsById.set(node.id, dispatched.output);
     }
     if (phase) {
       phase.status = "done";
@@ -354,9 +435,9 @@ async function executeNode(
     }
     await safeNotify(
       ctx,
-      `Node "${node.title}" finished.\n\n${truncateForChat(output ?? "(no output)")}`,
+      `Node "${node.title}" finished.\n\n${truncateForChat(dispatched.output ?? "(no output)")}`,
     );
-    return { output, failed: false };
+    return { status: "done", output: dispatched.output, fields: dispatched.fields };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.failure = ctx.failure ?? `Node "${node.title}" failed: ${message}`;
@@ -368,24 +449,200 @@ async function executeNode(
       await ctx.port.emit(ctx.run);
     }
     await safeNotify(ctx, `Node "${node.title}" FAILED: ${truncateForChat(message)}`);
-    return { output: null, failed: true };
+    return { status: "failed" };
   }
+}
+
+async function failNode(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  phase: RunPhase | undefined,
+  message: string,
+): Promise<NodeResult> {
+  ctx.failure = ctx.failure ?? `Node "${node.title}" failed: ${message}`;
+  if (phase) {
+    phase.status = "failed";
+    phase.notes = message;
+    phase.completedAt = ctx.port.now();
+    ctx.run.updatedAt = ctx.port.now();
+    await ctx.port.emit(ctx.run);
+  }
+  await safeNotify(ctx, `Node "${node.title}" FAILED: ${truncateForChat(message)}`);
+  return { status: "failed" };
+}
+
+interface SettledUpstream {
+  edge: GraphEdge;
+  node: GraphNode;
+  result: NodeResult;
+}
+
+type IncomingGate =
+  | { status: "run"; material: UpstreamMaterial[] }
+  | { status: "skip"; reason: GraphSkipReason; detail?: string }
+  | { status: "error"; message: string };
+
+/**
+ * Decide whether this node runs, from the state of its incoming edges.
+ *
+ * A drawn edge is a *requirement*, so the rule is: run when at least one edge
+ * delivers and none was ruled out by its own condition. That distinction —
+ * between an edge whose condition said no (this node is not on the taken path)
+ * and an edge whose upstream was itself skipped (the path died further back) —
+ * is what makes a diamond work: a join below two conditional branches still
+ * runs off whichever branch executed, because the pruned side reaches it as
+ * *upstream-skipped* rather than as a veto.
+ */
+async function resolveIncomingEdges(
+  node: GraphNode,
+  settled: SettledUpstream[],
+): Promise<IncomingGate> {
+  if (settled.length === 0) {
+    return { status: "run", material: [] };
+  }
+  const material: UpstreamMaterial[] = [];
+  let vetoedBy: string | null = null;
+  for (const upstream of settled) {
+    if (upstream.result.status !== "done") {
+      continue; // skipped upstream: contributes nothing, vetoes nothing.
+    }
+    const resolution = await resolveEdgeCondition(upstream.edge, {
+      fields: upstream.result.fields,
+      output: upstream.result.output,
+    });
+    if (resolution.status === "error") {
+      return { status: "error", message: resolution.message };
+    }
+    if (resolution.status === "inactive") {
+      vetoedBy = vetoedBy ?? upstream.node.title;
+      continue;
+    }
+    material.push({
+      nodeId: upstream.node.id,
+      title: upstream.node.title,
+      output: upstream.result.output ?? "",
+      fields: selectCarriedFields(upstream.result.fields, upstream.edge.fields),
+    });
+  }
+  if (vetoedBy) {
+    return {
+      status: "skip",
+      reason: "condition",
+      detail: `The condition on the edge from "${vetoedBy}" chose another branch.`,
+    };
+  }
+  if (material.length === 0) {
+    return {
+      status: "skip",
+      reason: "upstream-skipped",
+      detail: `Every node feeding "${node.title}" was skipped.`,
+    };
+  }
+  return { status: "run", material };
+}
+
+// Record a skip on the projection: the machine-readable reason for clients and
+// the sentence for humans. Never touches an already-settled phase.
+async function markSkipped(
+  ctx: GraphRunContext,
+  phase: RunPhase | undefined,
+  reason: GraphSkipReason,
+  detail?: string,
+): Promise<void> {
+  if (!phase || phase.status !== "pending") {
+    return;
+  }
+  phase.status = "skipped";
+  phase.skipReason = reason;
+  phase.notes = detail ?? SKIP_SENTENCES[reason];
+  phase.completedAt = ctx.port.now();
+  ctx.run.updatedAt = ctx.port.now();
+  await ctx.port.emit(ctx.run);
 }
 
 // Run one node to completion, including its loop annotation. Returns the final
 // output. Throws on hard failure (agent error, judge never passing, cap trip).
+/**
+ * Run a node, retrying transient failure within its policy.
+ *
+ * One loop, one counter, and every attempt spawns through the same capped path
+ * — so a retry is charged to the run's agent budget like any other agent. The
+ * failure path never re-enters this function: retry that can be triggered from
+ * inside a failure handler compounds without bound, which is a real failure
+ * mode in the prior art this design learned from.
+ */
 async function dispatchNode(
   ctx: GraphRunContext,
   node: GraphNode,
   phase: RunPhase | undefined,
-  upstream: Array<{ title: string; output: string }>,
-): Promise<string | null> {
-  const basePrompt = buildNodeBasePrompt(node, ctx.inputs);
+  upstream: UpstreamMaterial[],
+): Promise<NodeDispatchResult> {
+  const maxAttempts = Math.max(1, node.retry?.maxAttempts ?? 1);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      const backoff = backoffDelayMs(node.retry, attempt);
+      ctx.port.logger.warn(
+        { nodeId: node.id, attempt, backoff },
+        "Retrying node after a failed attempt",
+      );
+      await delay(backoff, ctx.signal);
+      if (phase) {
+        phase.retryAttempts = attempt;
+        ctx.run.updatedAt = ctx.port.now();
+        await ctx.port.emit(ctx.run);
+      }
+    }
+    try {
+      return await dispatchNodeAttempt(ctx, node, phase, upstream);
+    } catch (error) {
+      // A cancelled run is not a transient failure — stop immediately.
+      if (ctx.signal.aborted) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function backoffDelayMs(retry: GraphNode["retry"], attempt: number): number {
+  if (!retry) {
+    return 0;
+  }
+  const multiplier = retry.multiplier ?? 2;
+  return Math.round(retry.backoffMs * Math.pow(multiplier, attempt - 1));
+}
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  // Whichever comes first — a backoff must never outlive the run it belongs to,
+  // so a cancel ends the wait immediately.
+  return Promise.race([
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    }),
+    new Promise<void>((resolve) => {
+      signal.addEventListener("abort", () => resolve(), { once: true });
+    }),
+  ]);
+}
+
+async function dispatchNodeAttempt(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  phase: RunPhase | undefined,
+  upstream: UpstreamMaterial[],
+): Promise<NodeDispatchResult> {
+  const basePrompt = await resolveNodePrompt(ctx, node, upstream);
+  const declaredFields = node.output?.fields ?? null;
   const until = node.loop?.until;
   const times = node.loop?.times ?? 1;
   const maxAttempts = until ? until.max : times;
 
-  let lastOutput: string | null = null;
+  let last: NodeDispatchResult = { output: null, fields: null };
   let judgeFeedback: string | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -395,18 +652,16 @@ async function dispatchNode(
     const task = assembleNodeTask({
       basePrompt,
       upstream,
-      previousOutput: attempt > 0 ? lastOutput : null,
+      declaredFields,
+      previousOutput: attempt > 0 ? last.output : null,
       judgeFeedback,
       iteration: attempt,
       totalIterations: until ? null : times,
     });
-    lastOutput = await spawnAndAwait(ctx, node, phase, {
-      role: node.role ?? null,
-      model: node.model ?? null,
+    last = await spawnAndAwait(ctx, node, phase, {
+      ...buildWorkerSpawn(node, declaredFields),
       task,
-      policy: node.autonomous ? "autonomous" : "deterministic",
       attempt,
-      purpose: "worker",
     });
 
     if (!until) {
@@ -415,11 +670,11 @@ async function dispatchNode(
     const graded = await judgeIteration(ctx, node, phase, {
       until,
       basePrompt,
-      output: lastOutput,
+      output: last.output,
       attempt,
     });
     if (graded.passed) {
-      return lastOutput;
+      return last;
     }
     judgeFeedback = graded.feedback;
   }
@@ -430,7 +685,26 @@ async function dispatchNode(
       node.id,
     );
   }
-  return lastOutput;
+  return last;
+}
+
+// Everything about a worker spawn that comes from the node itself rather than
+// from the iteration. Authority (tools, lookups) is deliberately the node's
+// alone: a judge grades output and never needs the node's reach.
+function buildWorkerSpawn(
+  node: GraphNode,
+  declaredFields: GraphOutputField[] | null,
+): Omit<SpawnRequest, "task" | "attempt"> {
+  return {
+    role: node.role ?? null,
+    model: node.model ?? null,
+    policy: node.autonomous ? "autonomous" : "deterministic",
+    purpose: "worker",
+    ...(declaredFields ? { outputFields: declaredFields } : {}),
+    ...(node.access ? { access: node.access } : {}),
+    ...(node.tools ? { toolGroups: node.tools } : {}),
+    ...(node.queryTools?.length ? { queryTools: node.queryTools } : {}),
+  };
 }
 
 // Grade one `until` iteration with a structured judge; a pass ends the loop,
@@ -446,7 +720,7 @@ async function judgeIteration(
     attempt: number;
   },
 ): Promise<{ passed: boolean; feedback: string }> {
-  const verdictMessage = await spawnAndAwait(ctx, node, phase, {
+  const judged = await spawnAndAwait(ctx, node, phase, {
     role: input.until.judgeRole ?? "judger",
     model: null,
     task: buildJudgeTask({
@@ -458,7 +732,7 @@ async function judgeIteration(
     attempt: input.attempt,
     purpose: "judge",
   });
-  const verdict = parseVerdict(verdictMessage);
+  const verdict = parseVerdict(judged.output);
   const candidates = phase?.candidates;
   const lastCandidate = candidates?.[candidates.length - 1];
   if (lastCandidate && verdict) {
@@ -478,19 +752,119 @@ async function judgeIteration(
 
 // Spawn one agent for a node iteration, record it on the phase, and await its
 // terminal output. Applies the concurrency semaphore and the total-agents cap.
+interface NodeDispatchResult {
+  output: string | null;
+  fields: Record<string, unknown> | null;
+}
+
+/**
+ * The node's own instruction — from its bound template when it has one, and
+ * from its inline prompt otherwise.
+ *
+ * A template that can't be rendered (deleted, bad syntax, host without the
+ * store) falls back to the inline prompt and logs. This is the one place a
+ * fallback is right: the alternative is that removing a shared snippet breaks
+ * every graph that referenced it, and a node with a stale prompt is a far
+ * better failure than a run that won't start.
+ */
+async function resolveNodePrompt(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  upstream: UpstreamMaterial[],
+): Promise<string> {
+  const inline = buildNodeBasePrompt(node, ctx.inputs);
+  const ref = node.promptTemplate;
+  if (!ref || !ctx.port.renderPromptTemplate) {
+    return inline;
+  }
+  const upstreamFields = new Map<string, Record<string, unknown>>();
+  for (const material of upstream) {
+    if (material.fields) {
+      upstreamFields.set(material.nodeId, material.fields);
+    }
+  }
+  try {
+    const rendered = await ctx.port.renderPromptTemplate({
+      ref,
+      graphInputs: ctx.inputs,
+      upstreamFields,
+    });
+    if (rendered?.trim()) {
+      return inline ? `${rendered}\n\n${inline}` : rendered;
+    }
+  } catch (error) {
+    ctx.port.logger.error(
+      { err: error, nodeId: node.id, templateId: ref.templateId },
+      "Prompt template failed to render; using the node's inline prompt",
+    );
+  }
+  return inline;
+}
+
+/**
+ * Await one agent, bounded by the node's time limit.
+ *
+ * The limit has to *cancel*, not just stop waiting: an abandoned agent keeps
+ * running and keeps spending, which is the difference between a time limit and
+ * a wishful one. Otto can do this because node agents are managed processes.
+ */
+async function awaitWithTimeLimit(
+  ctx: GraphRunContext,
+  node: GraphNode,
+  phase: RunPhase | undefined,
+  agentId: string,
+): Promise<RunEngineAwaitResult> {
+  const limit = node.timeoutMs;
+  if (!limit) {
+    return ctx.port.awaitAgent({ agentId, signal: ctx.signal });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      void ctx.port
+        .cancelAgent({ agentId })
+        .catch((error: unknown) =>
+          ctx.port.logger.error({ err: error, agentId }, "Time-limit cancel failed"),
+        );
+      reject(
+        new RunEngineError(
+          `Reached its ${Math.round(limit / 1000)}s time limit; the agent was canceled.`,
+          node.id,
+        ),
+      );
+    }, limit);
+  });
+  try {
+    return await Promise.race([ctx.port.awaitAgent({ agentId, signal: ctx.signal }), expiry]);
+  } finally {
+    clearTimeout(timer);
+    if (timedOut && phase) {
+      phase.timedOut = true;
+    }
+  }
+}
+
+interface SpawnRequest {
+  role: string | null;
+  model: string | null;
+  task: string;
+  policy: "deterministic" | "autonomous";
+  attempt: number;
+  purpose: "worker" | "judge";
+  outputFields?: GraphOutputField[];
+  access?: string;
+  toolGroups?: string[];
+  queryTools?: GraphQueryTool[];
+}
+
 async function spawnAndAwait(
   ctx: GraphRunContext,
   node: GraphNode,
   phase: RunPhase | undefined,
-  input: {
-    role: string | null;
-    model: string | null;
-    task: string;
-    policy: "deterministic" | "autonomous";
-    attempt: number;
-    purpose: "worker" | "judge";
-  },
-): Promise<string | null> {
+  input: SpawnRequest,
+): Promise<NodeDispatchResult> {
   if (ctx.agentsSpawned >= ctx.caps.maxAgents) {
     throw new RunEngineError(
       `Agent cap reached (${ctx.caps.maxAgents}) — the run stops rather than sprawl.`,
@@ -513,6 +887,10 @@ async function spawnAndAwait(
       policy: input.policy,
       attempt: input.attempt,
       purpose: input.purpose,
+      ...(input.outputFields ? { outputFields: input.outputFields } : {}),
+      ...(input.access ? { access: input.access } : {}),
+      ...(input.toolGroups ? { toolGroups: input.toolGroups } : {}),
+      ...(input.queryTools ? { queryTools: input.queryTools } : {}),
     });
     if (phase) {
       const candidate: RunPhaseCandidate = {
@@ -527,29 +905,81 @@ async function spawnAndAwait(
       ctx.run.updatedAt = ctx.port.now();
       await ctx.port.emit(ctx.run);
     }
-    const awaited = await ctx.port.awaitAgent({ agentId: spawned.agentId, signal: ctx.signal });
+    const awaited = await awaitWithTimeLimit(ctx, node, phase, spawned.agentId);
     if (awaited.failed) {
       throw new RunEngineError(
         input.purpose === "judge" ? "The judge agent failed." : "The node's agent failed.",
         node.id,
       );
     }
-    if (phase && input.purpose === "worker") {
-      const candidates = phase.candidates ?? [];
-      const candidate = candidates.find((entry) => entry.agentId === spawned.agentId);
-      if (candidate && awaited.finalMessage) {
-        candidate.summary = awaited.finalMessage;
-      }
+    const fields = input.outputFields
+      ? harvestOutputFields(node, input.outputFields, awaited)
+      : null;
+    if (input.purpose === "worker") {
+      recordWorkerResult(phase, spawned.agentId, awaited.finalMessage, fields);
     }
-    return awaited.finalMessage;
+    return { output: awaited.finalMessage, fields };
   } finally {
     ctx.semaphore.release();
   }
 }
 
+// Attach what a worker produced to its candidate row on the phase, so the
+// Orchestrations page and any later phase read it from the run record.
+function recordWorkerResult(
+  phase: RunPhase | undefined,
+  agentId: string,
+  finalMessage: string | null,
+  fields: Record<string, unknown> | null,
+): void {
+  const candidate = phase?.candidates?.find((entry) => entry.agentId === agentId);
+  if (!candidate) {
+    return;
+  }
+  if (finalMessage) {
+    candidate.summary = finalMessage;
+  }
+  if (fields) {
+    candidate.outputFields = fields;
+  }
+}
+
+/**
+ * Take what the node actually produced against what it declared.
+ *
+ * The submit_output tool is the contract, and a node that declared fields and
+ * never delivered them has failed at its job — but a model that wrote correct
+ * JSON in prose instead of calling the tool has done the work, and small local
+ * models do this often enough that discarding it would be the wrong kind of
+ * strict. So: tool call first, prose second, failure third — and the failure
+ * names the contract so the author can see what was missing.
+ */
+function harvestOutputFields(
+  node: GraphNode,
+  declared: readonly GraphOutputField[],
+  awaited: RunEngineAwaitResult,
+): Record<string, unknown> {
+  if (awaited.submittedOutput) {
+    return awaited.submittedOutput;
+  }
+  const recovered = extractOutputFieldsFromProse(declared, awaited.finalMessage);
+  if (recovered) {
+    return recovered;
+  }
+  throw new RunEngineError(
+    `Declared output fields (${declared
+      .map((field) => field.key)
+      .join(
+        ", ",
+      )}) but never submitted them — the submit_output tool was not called and the final message had no matching object.`,
+    node.id,
+  );
+}
+
 function assembleNodeTask(input: {
   basePrompt: string;
-  upstream: Array<{ title: string; output: string }>;
+  upstream: UpstreamMaterial[];
+  declaredFields: GraphOutputField[] | null;
   previousOutput: string | null;
   judgeFeedback: string | null;
   iteration: number;
@@ -560,6 +990,18 @@ function assembleNodeTask(input: {
     parts.push(input.basePrompt);
   }
   for (const material of input.upstream) {
+    // Structured fields go first and labelled: they are the part a downstream
+    // node can act on without re-reading anything. The prose still follows —
+    // it carries the reasoning the fields deliberately don't.
+    if (material.fields) {
+      parts.push(
+        `Input from "${material.title}" (fields):\n\`\`\`json\n${JSON.stringify(
+          material.fields,
+          null,
+          2,
+        )}\n\`\`\``,
+      );
+    }
     if (material.output.trim()) {
       parts.push(`Input from "${material.title}":\n${material.output.trim()}`);
     }
@@ -575,6 +1017,11 @@ function assembleNodeTask(input: {
       `A judge reviewed the previous iteration and failed it. Address this feedback:\n${input.judgeFeedback.trim()}`,
     );
   }
+  // Last, so it is the freshest instruction in the context when the agent
+  // starts working — and so it survives a long upstream material block.
+  if (input.declaredFields) {
+    parts.push(buildOutputInstruction(input.declaredFields));
+  }
   return parts.join("\n\n");
 }
 
@@ -582,13 +1029,26 @@ function buildWrapUpMessage(
   run: Run,
   deliverables: Array<{ title: string; output: string }>,
 ): string {
-  const lines = run.phases.map((phase) => `- ${phase.title}: ${phase.status}`);
+  const lines = run.phases.map((phase) => {
+    const reason =
+      phase.status === "skipped" && phase.skipReason
+        ? ` — ${SKIP_SENTENCES[phase.skipReason as GraphSkipReason] ?? phase.skipReason}`
+        : "";
+    return `- ${phase.title}: ${phase.status}${reason}`;
+  });
+  const skipped = run.phases.filter((phase) => phase.status === "skipped");
   let heading: string;
   if (run.status === "done") {
+    // A run that skipped part of the graph is still done — but saying so
+    // silently is the one outcome this engine must never produce.
+    const skipNote =
+      skipped.length > 0
+        ? ` ${skipped.length} node${skipped.length === 1 ? "" : "s"} did not run (see the outcomes below) — say so in your answer.`
+        : "";
     heading =
       deliverables.length > 0
-        ? "Every node has finished. The outputs below are this graph's final answers — relay them to the user (synthesized, not paraphrased away)."
-        : "Every node has finished. Synthesize the results above into a final answer for the user.";
+        ? `Every node has settled.${skipNote} The outputs below are this graph's final answers — relay them to the user (synthesized, not paraphrased away).`
+        : `Every node has settled.${skipNote} Synthesize the results above into a final answer for the user.`;
   } else if (run.status === "canceled") {
     heading = "The orchestration was canceled. Briefly summarize what completed before the cancel.";
   } else {
