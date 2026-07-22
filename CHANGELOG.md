@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.7 - 2026-07-21
+
+### Added
+
+- Reopen a worktree you archived earlier from the workspace list, recreated from its branch if the folder is gone
+- Archiving a worktree offers to delete the branch it sat on, saying whether it is fully merged and how many commits deleting would discard
+- A playback button on each agent message reads that message aloud
+- The agent's task list is now an open checklist that shows which item is in progress
+- Pin the task list above the chat so it stays visible while the agent works, and it closes itself once every task is done
+- Search inside a file you are previewing, with case, whole-word, and regular-expression matching
+- Open a worktree's base checkout from the workspace menu
+- Workspace tabs that no longer fit collapse into an overflow menu instead of being cut off
+
+### Changed
+
+- Spoken replies start playing sooner in voice mode
+
+### Fixed
+
+- Voice mode recovers on its own when the microphone stops capturing audio
+- In voice mode the agent no longer repeats its spoken reply as message text
+
 ## 0.6.6 - 2026-07-20
 
 ### Added
