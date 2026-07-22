@@ -943,6 +943,21 @@ export const fr: TranslationResources = {
           deletedLines: "{{count}}lignes supprimées",
           unpushedCommit: "Validation non poussée{{count}}",
           unpushedCommits: "Validations non poussées{{count}}",
+          // Branch cleanup section (worktreeArchiveBranchCleanup)
+          branchIntro: "Ce worktree est sur la branche {{branchName}}.",
+          deleteBranchCheckbox: "Supprimer aussi la branche {{branchName}}",
+          branchMerged: "Entièrement fusionnée dans {{baseBranch}} — suppression sans risque.",
+          branchMergedNoBase: "Entièrement fusionnée — suppression sans risque.",
+          branchUnmergedCommit:
+            "Non fusionnée dans {{baseBranch}} — la suppression abandonne {{count}} commit.",
+          branchUnmergedCommits:
+            "Non fusionnée dans {{baseBranch}} — la suppression abandonne {{count}} commits.",
+          branchUnmergedCommitNoBase: "Non fusionnée — la suppression abandonne {{count}} commit.",
+          branchUnmergedCommitsNoBase:
+            "Non fusionnée — la suppression abandonne {{count}} commits.",
+          branchMergeUnknown: "Impossible de déterminer l'état de fusion.",
+          branchRemoteKept: "La copie sur origin est conservée.",
+          branchDeleted: "Branche {{branchName}} supprimée.",
         },
       },
       diff: {
@@ -1141,11 +1156,22 @@ export const fr: TranslationResources = {
         copyPath: "Copier le chemin",
         copyBranchName: "Copier le nom de la branche",
         rename: "Renommer l'espace de travail",
+        openBaseCheckout: "Ouvrir le checkout de base",
+        openBaseCheckoutFailed: "Échec de l'ouverture du checkout de base",
         archive: "Archive",
         archiveWorkspace: "Archiver l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
         hiding: "Dissimulation...",
+      },
+      reopenWorktree: {
+        menu: "Rouvrir le worktree...",
+        title: "Rouvrir le worktree",
+        empty: "Aucun worktree à rouvrir.",
+        failed: "Échec de la réouverture du worktree",
+        offBase: "depuis {{base}}",
+        orphan: "Non suivi",
+        willRecreate: "Recréé depuis la branche",
       },
       confirmations: {
         hideTitle: "Masquer l'espace de travail?",

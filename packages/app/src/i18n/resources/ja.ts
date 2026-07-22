@@ -931,6 +931,22 @@ export const ja: TranslationResources = {
           deletedLines: "{{count}}行削除",
           unpushedCommit: "{{count}}件の未プッシュコミット",
           unpushedCommits: "{{count}}件の未プッシュコミット",
+          // Branch cleanup section (worktreeArchiveBranchCleanup)
+          branchIntro: "このワークツリーはブランチ {{branchName}} 上にあります。",
+          deleteBranchCheckbox: "ブランチ {{branchName}} も削除する",
+          branchMerged: "{{baseBranch}} に完全にマージ済み — 安全に削除できます。",
+          branchMergedNoBase: "完全にマージ済み — 安全に削除できます。",
+          branchUnmergedCommit:
+            "{{baseBranch}} にマージされていません — 削除すると{{count}}件のコミットが失われます。",
+          branchUnmergedCommits:
+            "{{baseBranch}} にマージされていません — 削除すると{{count}}件のコミットが失われます。",
+          branchUnmergedCommitNoBase:
+            "マージされていません — 削除すると{{count}}件のコミットが失われます。",
+          branchUnmergedCommitsNoBase:
+            "マージされていません — 削除すると{{count}}件のコミットが失われます。",
+          branchMergeUnknown: "マージ状態を判定できませんでした。",
+          branchRemoteKept: "origin 上のコピーは保持されます。",
+          branchDeleted: "ブランチ {{branchName}} を削除しました。",
         },
       },
       diff: {
@@ -1129,11 +1145,22 @@ export const ja: TranslationResources = {
         copyPath: "パスをコピー",
         copyBranchName: "ブランチ名をコピー",
         rename: "ワークスペースの名前を変更",
+        openBaseCheckout: "ベースチェックアウトを開く",
+        openBaseCheckoutFailed: "ベースチェックアウトを開けませんでした",
         archive: "アーカイブ",
         archiveWorkspace: "ワークスペースをアーカイブ",
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",
         hiding: "非表示にしています...",
+      },
+      reopenWorktree: {
+        menu: "ワークツリーを再度開く...",
+        title: "ワークツリーを再度開く",
+        empty: "再度開けるワークツリーはありません。",
+        failed: "ワークツリーを再度開けませんでした",
+        offBase: "{{base}} から",
+        orphan: "未追跡",
+        willRecreate: "ブランチから再作成",
       },
       confirmations: {
         hideTitle: "ワークスペースを非表示にしますか？",

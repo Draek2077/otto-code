@@ -128,7 +128,10 @@ function fillEmptyPersistedCues(
   current: AgentPersonality["voiceCues"],
   generated: Partial<Record<CueMoment, string[]>>,
 ): AgentPersonality["voiceCues"] | null {
-  const next: Record<string, string[]> = { ...current };
+  // Mirror the wire type rather than `Record<string, string[]>`: the cues schema
+  // is a passthrough object, so its inferred type carries an `unknown` index
+  // signature that a plain string[] record cannot accept.
+  const next: NonNullable<AgentPersonality["voiceCues"]> = { ...current };
   let added = false;
   for (const moment of CUE_MOMENTS) {
     const existing = next[moment];
