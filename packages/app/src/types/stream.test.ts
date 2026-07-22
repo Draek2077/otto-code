@@ -1066,11 +1066,23 @@ describe("stream reducer canonical tool calls", () => {
       });
 
     const state = hydrateStreamState([
-      { event: taskCreate("c1", "1", "Search step handlers"), timestamp: new Date("2025-01-01T11:00:00Z") },
-      { event: taskCreate("c2", "2", "Search terminal states"), timestamp: new Date("2025-01-01T11:00:01Z") },
-      { event: taskCreate("c3", "3", "Search schema exports"), timestamp: new Date("2025-01-01T11:00:02Z") },
+      {
+        event: taskCreate("c1", "1", "Search step handlers"),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+      {
+        event: taskCreate("c2", "2", "Search terminal states"),
+        timestamp: new Date("2025-01-01T11:00:01Z"),
+      },
+      {
+        event: taskCreate("c3", "3", "Search schema exports"),
+        timestamp: new Date("2025-01-01T11:00:02Z"),
+      },
       // Narration between task ops must not split the checklist.
-      { event: assistantTimeline("Five tasks queued. Starting with #1.", "claude", "m1"), timestamp: new Date("2025-01-01T11:00:03Z") },
+      {
+        event: assistantTimeline("Five tasks queued. Starting with #1.", "claude", "m1"),
+        timestamp: new Date("2025-01-01T11:00:03Z"),
+      },
       { event: taskUpdate("u1", "1", "in_progress"), timestamp: new Date("2025-01-01T11:00:04Z") },
       { event: taskUpdate("u2", "1", "completed"), timestamp: new Date("2025-01-01T11:00:05Z") },
       { event: taskUpdate("u3", "2", "in_progress"), timestamp: new Date("2025-01-01T11:00:06Z") },
@@ -1146,10 +1158,7 @@ describe("stream reducer canonical tool calls", () => {
     ]);
 
     assert.strictEqual(state.filter(isAgentToolCallItem).length, 0);
-    assert.strictEqual(
-      state.filter((item) => item.kind === "todo_list").length,
-      0,
-    );
+    assert.strictEqual(state.filter((item) => item.kind === "todo_list").length, 0);
   });
 
   it("preserves optimistic user message images when authoritative user message arrives", () => {

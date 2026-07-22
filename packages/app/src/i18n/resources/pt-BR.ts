@@ -936,6 +936,20 @@ export const ptBR: TranslationResources = {
           deletedLines: "{{count}} linhas removidas",
           unpushedCommit: "{{count}} commit não enviado",
           unpushedCommits: "{{count}} commits não enviados",
+          // Branch cleanup section (worktreeArchiveBranchCleanup)
+          branchIntro: "Este worktree está na branch {{branchName}}.",
+          deleteBranchCheckbox: "Excluir também a branch {{branchName}}",
+          branchMerged: "Totalmente mesclada em {{baseBranch}} — seguro excluir.",
+          branchMergedNoBase: "Totalmente mesclada — seguro excluir.",
+          branchUnmergedCommit:
+            "Não mesclada em {{baseBranch}} — excluir descarta {{count}} commit.",
+          branchUnmergedCommits:
+            "Não mesclada em {{baseBranch}} — excluir descarta {{count}} commits.",
+          branchUnmergedCommitNoBase: "Não mesclada — excluir descarta {{count}} commit.",
+          branchUnmergedCommitsNoBase: "Não mesclada — excluir descarta {{count}} commits.",
+          branchMergeUnknown: "Não foi possível determinar o status de merge.",
+          branchRemoteKept: "A cópia no origin é mantida.",
+          branchDeleted: "Branch {{branchName}} excluída.",
         },
       },
       diff: {
@@ -1134,11 +1148,22 @@ export const ptBR: TranslationResources = {
         copyPath: "Copiar caminho",
         copyBranchName: "Copiar nome da branch",
         rename: "Renomear workspace",
+        openBaseCheckout: "Abrir checkout base",
+        openBaseCheckoutFailed: "Falha ao abrir o checkout base",
         archive: "Arquivar",
         archiveWorkspace: "Arquivar workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
         hiding: "Ocultando...",
+      },
+      reopenWorktree: {
+        menu: "Reabrir worktree...",
+        title: "Reabrir worktree",
+        empty: "Nenhum worktree para reabrir.",
+        failed: "Falha ao reabrir o worktree",
+        offBase: "a partir de {{base}}",
+        orphan: "Não rastreado",
+        willRecreate: "Recriado a partir da branch",
       },
       confirmations: {
         hideTitle: "Ocultar workspace?",

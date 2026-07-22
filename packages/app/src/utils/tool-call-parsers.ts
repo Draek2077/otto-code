@@ -374,9 +374,7 @@ const TaskUpdateInputSchema = z.object({
   subject: z.string().optional(),
 });
 const TaskListOutputSchema = z.object({
-  tasks: z.array(
-    z.object({ id: z.string(), subject: z.string(), status: TaskStatusSchema }),
-  ),
+  tasks: z.array(z.object({ id: z.string(), subject: z.string(), status: TaskStatusSchema })),
 });
 
 // Tool I/O may reach us as a structured object or a JSON-encoded string,

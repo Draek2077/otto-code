@@ -944,6 +944,20 @@ export const es: TranslationResources = {
           deletedLines: "{{count}}líneas eliminadas",
           unpushedCommit: "Confirmación no enviada de{{count}}",
           unpushedCommits: "Confirmaciones no enviadas de{{count}}",
+          // Branch cleanup section (worktreeArchiveBranchCleanup)
+          branchIntro: "Este worktree está en la rama {{branchName}}.",
+          deleteBranchCheckbox: "Eliminar también la rama {{branchName}}",
+          branchMerged: "Totalmente fusionada en {{baseBranch}}: es seguro eliminarla.",
+          branchMergedNoBase: "Totalmente fusionada: es seguro eliminarla.",
+          branchUnmergedCommit:
+            "No fusionada en {{baseBranch}}: eliminarla descarta {{count}} commit.",
+          branchUnmergedCommits:
+            "No fusionada en {{baseBranch}}: eliminarla descarta {{count}} commits.",
+          branchUnmergedCommitNoBase: "No fusionada: eliminarla descarta {{count}} commit.",
+          branchUnmergedCommitsNoBase: "No fusionada: eliminarla descarta {{count}} commits.",
+          branchMergeUnknown: "No se pudo determinar el estado de fusión.",
+          branchRemoteKept: "Se conserva la copia en origin.",
+          branchDeleted: "Rama {{branchName}} eliminada.",
         },
       },
       diff: {
@@ -1142,11 +1156,22 @@ export const es: TranslationResources = {
         copyPath: "Copiar ruta",
         copyBranchName: "Copiar nombre de sucursal",
         rename: "Cambiar nombre del espacio de trabajo",
+        openBaseCheckout: "Abrir checkout base",
+        openBaseCheckoutFailed: "No se pudo abrir el checkout base",
         archive: "Archivo",
         archiveWorkspace: "Archivar espacio de trabajo",
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",
         hiding: "Ocultación...",
+      },
+      reopenWorktree: {
+        menu: "Reabrir worktree...",
+        title: "Reabrir worktree",
+        empty: "No hay worktrees para reabrir.",
+        failed: "No se pudo reabrir el worktree",
+        offBase: "desde {{base}}",
+        orphan: "Sin seguimiento",
+        willRecreate: "Recreado desde la rama",
       },
       confirmations: {
         hideTitle: "¿Ocultar espacio de trabajo?",
