@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { ComposerTrackTransition } from "@/composer/track-transition";
+import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { TriangleAlert, X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -102,7 +102,7 @@ export function ContextHealthTrack({
   const manageLabel = t("composer.contextHealth.manage");
 
   return (
-    <ComposerTrackTransition>
+    <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.contextHealth}>
       <View style={styles.outer} testID="composer-context-health-track">
         <ChatWidthBounds style={styles.track}>
           <View style={surfaceStyle}>

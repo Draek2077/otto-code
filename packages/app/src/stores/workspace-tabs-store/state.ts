@@ -51,7 +51,12 @@ export type WorkspaceTabTarget =
   // Context Management — everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.
-  | { kind: "contextManagement" };
+  | { kind: "contextManagement" }
+  // The orchestration graph designer (projects/orchestration-graphs): edit one
+  // reusable graph template in a node-editor canvas. One tab per graph per
+  // workspace. `runId` carries the Draft orchestration the dialog minted so
+  // the designer's Run action can execute it in place.
+  | { kind: "orchestrationGraph"; graphId: string; runId?: string };
 
 export interface WorkspaceTab {
   tabId: string;
@@ -554,6 +559,14 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "visualizer") {
     return normalizeWorkspaceTabTarget({
       kind: "visualizer",
+      ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
+    });
+  }
+  // Like visualizer, orchestrationGraph has an optional second field (runId).
+  if (kind === "orchestrationGraph" && typeof raw.graphId === "string") {
+    return normalizeWorkspaceTabTarget({
+      kind: "orchestrationGraph",
+      graphId: raw.graphId,
       ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
     });
   }

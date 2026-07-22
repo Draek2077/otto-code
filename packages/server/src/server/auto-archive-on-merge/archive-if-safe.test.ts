@@ -117,6 +117,7 @@ function createHarness(overrides?: {
           archivedAgentIds: [],
           archivedWorkspaceIds: [],
           removedDirectory: false,
+          deletedBranch: null,
         }) satisfies ArchiveResult),
   ) as unknown as ArchiveIfSafeDependencies["archiveByScope"];
   const resolveWorkspaceIdAtPath = vi.fn(

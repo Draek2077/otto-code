@@ -70,14 +70,15 @@ npm run release:patch         # release:check → version:all:patch (bump+commit
 
 **If publish fails mid-chain** (auth expired, registry hiccup): the version commit + tag exist but are unpushed. Don't re-run the full chain — resume with `npm run release:publish` then `npm run release:push`.
 
-### 5. Post-release verification / babysit
+### 5. Done — `release:push` is the last step
+
+**Do NOT watch the builds.** No background polling loop, no `gh run list` heartbeat, no scheduled re-check, no "I'll report back when they settle." The user watches CI themselves and has ruled the monitoring a waste of tokens. Report what shipped and end the turn.
 
 The `v*` tag push triggers, in **your** repo: `Desktop Release`, `Android APK Release`, `Android Play Release` (AAB → Play internal track), `Docker`, `Deploy App` (web app), `Release Notes Sync`. `Deploy Website` runs when the GitHub release publishes (stable only).
 
-- **`gh` defaults to upstream Paseo here — always pass `--repo Draek2077/otto-code`** (or `gh run list --repo Draek2077/otto-code`).
-- macOS desktop jobs skip (no Apple signing) — **Windows/Linux artifacts + the `finalize-rollout` manifests are the signal that matters**, not a fully-green matrix.
-- Spot-check: `npm view @otto-code/cli version` shows the new version on `latest`; the GitHub Release body rendered the changelog.
-- The user rarely opens dashboards — set up a **long-delay babysit** that re-checks `gh run list` + EAS builds for the tag and surfaces failures inline. See `docs/release.md` → "Babysitting mobile after a release" for the heartbeat pattern (use a heartbeat that fires back into this conversation, not a fresh scheduled agent).
+- **`gh` defaults to upstream Paseo here — always pass `--repo Draek2077/otto-code`** — for the one-off checks below, or when the user asks about a specific failure later.
+- macOS desktop jobs **run and produce unsigned artifacts** (they no longer skip for want of Apple signing — changed as of 0.6.6). A red mac job is a **real failure**, not an expected skip. Unsigned means a Gatekeeper warning on first open; that is the known trade, not a defect.
+- Spot-check once, if at all: `npm view @otto-code/cli version` shows the new version on `latest`.
 
 Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit everyone immediately or tune the ramp, see **`docs/release.md` → "Staged rollout"**.
 

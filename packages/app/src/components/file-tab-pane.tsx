@@ -63,6 +63,7 @@ import {
   type PreviewPointerDown,
   type PreviewScrollMetrics,
 } from "@/components/file-pane";
+import { MAX_PREVIEW_FIND_MATCHES, type PreviewFindQuery } from "@/components/file-preview-find";
 import { FileViewModeBar, type FileViewModeBarProps } from "@/components/file-view-mode-bar";
 import {
   contentFractionToLine,
@@ -307,6 +308,128 @@ function useDraftOverride(input: {
   });
 }
 
+interface PreviewFindState {
+  open: boolean;
+  search: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regexp: boolean;
+}
+
+const INITIAL_PREVIEW_FIND_STATE: PreviewFindState = {
+  open: false,
+  search: "",
+  caseSensitive: false,
+  wholeWord: false,
+  regexp: false,
+};
+
+interface PreviewFindStripHandlers {
+  onSearchChange: (search: string) => void;
+  onToggleCase: () => void;
+  onToggleWord: () => void;
+  onToggleRegexp: () => void;
+  onFindNext: () => void;
+  onFindPrevious: () => void;
+  onKeyPress: (event: { nativeEvent: { key: string } }) => void;
+  onClose: () => void;
+}
+
+/**
+ * The read-only preview's find bar — the editor's find strip minus replace
+ * (there is no buffer to write to here). It drives a plain text scan over the
+ * previewed file rather than CodeMirror, but wears the same chrome so the two
+ * views feel like one editor.
+ */
+function PreviewFindStrip({
+  find,
+  matchCountLabel,
+  handlers,
+}: {
+  find: PreviewFindState;
+  matchCountLabel: string;
+  handlers: PreviewFindStripHandlers;
+}) {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  return (
+    <View style={styles.findStrip} testID="preview-find-strip">
+      <View style={styles.findRow}>
+        <ThemedFindInput
+          style={styles.findInput}
+          value={find.search}
+          onChangeText={handlers.onSearchChange}
+          placeholder={t("editor.find.placeholder")}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoFocus
+          blurOnSubmit={false}
+          onSubmitEditing={handlers.onFindNext}
+          onKeyPress={handlers.onKeyPress}
+          testID="preview-find-input"
+        />
+        {matchCountLabel ? (
+          <Text style={styles.matchCount} testID="preview-find-count">
+            {matchCountLabel}
+          </Text>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("editor.find.previous")}
+          testID="preview-find-previous"
+          onPress={handlers.onFindPrevious}
+          style={iconButtonStyle}
+        >
+          <ThemedArrowUp size={14} uniProps={foregroundMutedIconColorMapping} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("editor.find.next")}
+          testID="preview-find-next"
+          onPress={handlers.onFindNext}
+          style={iconButtonStyle}
+        >
+          <ThemedArrowDown size={14} uniProps={foregroundMutedIconColorMapping} />
+        </Pressable>
+        <FindToggle
+          label="Cc"
+          active={find.caseSensitive}
+          accessibilityLabel={t("editor.find.matchCase")}
+          testID="preview-find-case"
+          onPress={handlers.onToggleCase}
+        />
+        {isCompact ? null : (
+          <>
+            <FindToggle
+              label="W"
+              active={find.wholeWord}
+              accessibilityLabel={t("editor.find.wholeWord")}
+              testID="preview-find-word"
+              onPress={handlers.onToggleWord}
+            />
+            <FindToggle
+              label=".*"
+              active={find.regexp}
+              accessibilityLabel={t("editor.find.regexp")}
+              testID="preview-find-regex"
+              onPress={handlers.onToggleRegexp}
+            />
+          </>
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("editor.find.close")}
+          testID="preview-find-close"
+          onPress={handlers.onClose}
+          style={iconButtonStyle}
+        >
+          <ThemedX size={14} uniProps={foregroundMutedIconColorMapping} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function PreviewOnlyView({
   serverId,
   workspaceId,
@@ -328,23 +451,117 @@ function PreviewOnlyView({
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
 }) {
+  const { t } = useTranslation();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
   // Preview has no selection to scope by, so it always investigates the file.
   const handleOpenHistory = useCallback(() => onOpenHistory?.(null), [onOpenHistory]);
+
+  const [find, setFind] = useState<PreviewFindState>(INITIAL_PREVIEW_FIND_STATE);
+  const [matchCount, setMatchCount] = useState(0);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  // Find only makes sense over the syntax-highlighted text view: markdown
+  // renders to prose with no line mapping to highlight, and images/binaries
+  // have no text. The button and strip stay hidden for those.
+  const findAvailable = fileInfo?.kind === "text" && !fileInfo.isMarkdown;
+
+  const findQuery = useMemo<PreviewFindQuery | null>(
+    () =>
+      find.open && find.search
+        ? {
+            search: find.search,
+            caseSensitive: find.caseSensitive,
+            wholeWord: find.wholeWord,
+            regexp: find.regexp,
+          }
+        : null,
+    [find],
+  );
+
+  // A new query always starts at its first hit; the scan reports the fresh
+  // count, and the clamp below keeps the active index inside it.
+  useEffect(() => {
+    setActiveMatchIndex(0);
+  }, [findQuery]);
+  useEffect(() => {
+    setActiveMatchIndex((index) => (matchCount === 0 ? 0 : Math.min(index, matchCount - 1)));
+  }, [matchCount]);
+
+  // Close the strip if the file it was searching stops supporting find.
+  useEffect(() => {
+    if (!findAvailable) {
+      setFind(INITIAL_PREVIEW_FIND_STATE);
+    }
+  }, [findAvailable]);
+
+  const openFind = useCallback(() => setFind((prev) => ({ ...prev, open: true })), []);
+  const closeFind = useCallback(() => setFind((prev) => ({ ...prev, open: false })), []);
+  const goNext = useCallback(() => {
+    setActiveMatchIndex((index) => (matchCount === 0 ? 0 : (index + 1) % matchCount));
+  }, [matchCount]);
+  const goPrevious = useCallback(() => {
+    setActiveMatchIndex((index) => (matchCount === 0 ? 0 : (index - 1 + matchCount) % matchCount));
+  }, [matchCount]);
+
+  const findHandlers = useMemo<PreviewFindStripHandlers>(
+    () => ({
+      onSearchChange: (search: string) => setFind((prev) => ({ ...prev, search })),
+      onToggleCase: () => setFind((prev) => ({ ...prev, caseSensitive: !prev.caseSensitive })),
+      onToggleWord: () => setFind((prev) => ({ ...prev, wholeWord: !prev.wholeWord })),
+      onToggleRegexp: () => setFind((prev) => ({ ...prev, regexp: !prev.regexp })),
+      onFindNext: goNext,
+      onFindPrevious: goPrevious,
+      onKeyPress: (event) => {
+        if (event.nativeEvent.key === "Escape") {
+          closeFind();
+        }
+      },
+      onClose: closeFind,
+    }),
+    [closeFind, goNext, goPrevious],
+  );
+
+  const matchCountLabel = (() => {
+    if (!find.search) {
+      return "";
+    }
+    if (matchCount === 0) {
+      return t("editor.find.noMatches");
+    }
+    const total =
+      matchCount >= MAX_PREVIEW_FIND_MATCHES ? `${MAX_PREVIEW_FIND_MATCHES - 1}+` : `${matchCount}`;
+    return `${activeMatchIndex + 1}/${total}`;
+  })();
+
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
       <View style={styles.previewToolbar}>
         {toolbarLeadingSlot}
         <View style={styles.toolbarSpacer} />
+        {findAvailable ? (
+          <ToolbarIconButton
+            label={t("editor.find.open")}
+            testID="preview-find-toggle"
+            Icon={ThemedSearch}
+            onPress={find.open ? closeFind : openFind}
+            selected={find.open}
+          />
+        ) : null}
         <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
+      {findAvailable && find.open ? (
+        <PreviewFindStrip find={find} matchCountLabel={matchCountLabel} handlers={findHandlers} />
+      ) : null}
       <FilePreview
         serverId={serverId}
         workspaceRoot={workspaceRoot}
         location={location}
         contentOverride={draftOverride}
         onFileInfo={onFileInfo}
+        findQuery={findQuery}
+        activeMatchIndex={activeMatchIndex}
+        onFindMatchCount={setMatchCount}
       />
       {/* Null until the preview has read the file — the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}

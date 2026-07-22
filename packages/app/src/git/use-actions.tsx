@@ -20,7 +20,7 @@ import type {
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openLink } from "@/utils/open-link";
 import { useToast } from "@/contexts/toast-context";
-import { useAppSettings } from "@/hooks/use-settings";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   useActiveWorkspaceSelection,
@@ -304,7 +304,10 @@ function useWorkspaceScreenArchiveController({
 export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
   const { t } = useTranslation();
   const toast = useToast();
-  const { settings } = useAppSettings();
+  // Host-level PR-only workflow policy. Reads from the daemon config; absent on
+  // old daemons parses to false, so the action stays visible by default.
+  const { config: daemonConfig } = useDaemonConfig(serverId);
+  const hideMergeIntoBaseAction = daemonConfig?.hideMergeIntoBaseAction === true;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
@@ -727,7 +730,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       aheadOfOrigin,
       behindOfOrigin,
       shouldPromoteArchive,
-      hideMergeIntoBaseAction: settings.hideMergeIntoBaseAction,
+      hideMergeIntoBaseAction,
       shipDefault,
       runtime: {
         commit: {
@@ -845,7 +848,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       shipDefault,
       baseRefLabel,
       shouldPromoteArchive,
-      settings.hideMergeIntoBaseAction,
+      hideMergeIntoBaseAction,
       actionsDisabled,
       commitStatus,
       pullStatus,

@@ -10,6 +10,7 @@ import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
+import { applyOrchestrationGraphsChanged } from "@/data/orchestration-graphs";
 
 type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
@@ -29,7 +30,8 @@ type ServerDataEventType =
   | "status"
   | "terminals_changed"
   | "runs.updated.notification"
-  | "runs.cleared.notification";
+  | "runs.cleared.notification"
+  | "runs.graphs.changed.notification";
 type CheckoutDiffResponsePayload = SubscribeCheckoutDiffResponseMessage["payload"];
 type CheckoutDiffCachePayload = Omit<CheckoutDiffResponsePayload, "subscriptionId">;
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
@@ -315,6 +317,16 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       runIds: message.payload.runIds,
     });
   });
+  const unsubscribeGraphsChanged = input.client.on(
+    "runs.graphs.changed.notification",
+    (message) => {
+      applyOrchestrationGraphsChanged({
+        queryClient: input.queryClient,
+        serverId: input.serverId,
+        graphs: message.payload.graphs,
+      });
+    },
+  );
   let reconnectSubscriptionRepairs = reconnectSubscriptionRepairsByServerId.get(input.serverId);
   if (!reconnectSubscriptionRepairs) {
     reconnectSubscriptionRepairs = new Set();
@@ -338,6 +350,7 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     unsubscribeTerminalsChanged();
     unsubscribeRunUpdate();
     unsubscribeRunsCleared();
+    unsubscribeGraphsChanged();
     for (const subscriptionId of activeCheckoutDiffSubscriptions.keys()) {
       unsubscribeCheckoutDiff(input.client, subscriptionId);
     }

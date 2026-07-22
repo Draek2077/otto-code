@@ -93,11 +93,13 @@ import {
 import { BackgroundTasksTrack } from "@/background-tasks/track";
 import { RateLimitWarningTrack } from "@/composer/rate-limit-warning-track";
 import { ContextHealthTrack } from "@/composer/context-health-track";
+import { COMPOSER_TRACK_LAYERS } from "@/composer/track-transition";
 import {
   SuggestedTasksOverlay,
   useSuggestedTaskActions,
   useSuggestedTasksForParent,
 } from "@/suggested-tasks";
+import { PinnedTaskListOverlay, usePinnedTaskList } from "@/pinned-task-list";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1215,12 +1217,18 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     (state) => state.sessions[serverId]?.serverInfo?.features?.suggestedTasks === true,
   );
   const suggestedTaskActions = useSuggestedTaskActions({ serverId, parentAgentId: agentId });
+  // The live checklist, floated pinned at the top of the chat. While it's up we
+  // hide its inline copy in the transcript so the same list isn't shown twice;
+  // once dismissed (or the feature is off) it settles back inline as history.
+  const pinnedTaskList = usePinnedTaskList({ serverId, agentId });
+  const pinnedTaskListId = pinnedTaskList.item?.id;
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
         streamViewRef={streamViewRef}
         serverId={serverId}
         agentId={agentId}
+        hiddenTodoListId={pinnedTaskListId}
         agent={effectiveAgent}
         routeBottomAnchorRequest={routeBottomAnchorRequest}
         hasAppliedAuthoritativeHistory={hasAppliedAuthoritativeHistory}
@@ -1253,6 +1261,13 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const contentContainer = (
     <View style={styles.contentContainer}>
       {streamContent}
+      {pinnedTaskList.item ? (
+        <PinnedTaskListOverlay
+          item={pinnedTaskList.item}
+          autoDismiss={pinnedTaskList.autoDismiss}
+          onDismiss={pinnedTaskList.dismiss}
+        />
+      ) : null}
       {hasSuggestedTasks ? (
         <SuggestedTasksOverlay rows={suggestedTaskRows} actions={suggestedTaskActions} />
       ) : null}
@@ -1293,6 +1308,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   serverId,
   agentId,
   agent,
+  hiddenTodoListId,
   routeBottomAnchorRequest,
   hasAppliedAuthoritativeHistory,
   toast,
@@ -1302,6 +1318,9 @@ const AgentStreamSection = memo(function AgentStreamSection({
   serverId: string;
   agentId?: string;
   agent: AgentScreenAgent;
+  // When the pinned overlay is showing a checklist, its id is passed here so the
+  // inline copy is dropped from the transcript (no double render).
+  hiddenTodoListId?: string;
   routeBottomAnchorRequest: RouteBottomAnchorRequest;
   hasAppliedAuthoritativeHistory: boolean;
   toast: ReturnType<typeof useToastHost>["api"];
@@ -1325,7 +1344,19 @@ const AgentStreamSection = memo(function AgentStreamSection({
   if (isPanelActive) {
     frozenStreamItemsRef.current = streamItemsRaw;
   }
-  const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
+  const rawStreamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
+  // Drop the inline copy of the checklist currently shown in the pinned overlay,
+  // so it isn't rendered in two places at once. When nothing is pinned this is a
+  // no-op and the original array reference flows through untouched.
+  const streamItems = useMemo(() => {
+    if (!hiddenTodoListId) {
+      return rawStreamItems;
+    }
+    const filtered = rawStreamItems.filter(
+      (item) => !(item.kind === "todo_list" && item.id === hiddenTodoListId),
+    );
+    return filtered.length === rawStreamItems.length ? rawStreamItems : filtered;
+  }, [rawStreamItems, hiddenTodoListId]);
   const pendingPermissionList = useStoreWithEqualityFn(
     useSessionStore,
     (state) => {
@@ -1668,29 +1699,35 @@ function ActiveAgentComposer({
           onClearCompleted={handleClearCompletedBackgroundTasks}
         />
       ) : null}
-      <Composer
-        agentId={agentId}
-        serverId={serverId}
-        externalKeyboardShift
-        isPaneFocused={isPaneFocused}
-        value={agentInputDraft.text}
-        onChangeText={agentInputDraft.setText}
-        attachments={agentInputDraft.attachments}
-        attachmentScopeKeys={attachmentScopeKeys}
-        attachmentWriteScopeKey={workspaceAttachmentScopeKey}
-        onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
-        onChangeAttachments={agentInputDraft.setAttachments}
-        cwd={cwd}
-        clearDraft={agentInputDraft.clear}
-        autoFocus={isPaneFocused}
-        isSubmitLoading={isSubmitLoading}
-        onAttentionInputFocus={onAttentionInputFocus}
-        onAttentionPromptSend={onAttentionPromptSend}
-        onComposerHeightChange={onComposerHeightChange}
-        onMessageSent={onMessageSent}
-        onClientSlashCommand={handleClientSlashCommand}
-        isCompactLayout={isCompactComposerLayout}
-      />
+      {/* Top of the fan: an exiting card's absolutely-positioned web clone gets
+          appended after the composer in the DOM, so the composer needs the
+          highest explicit z-index to stay painted over it. See
+          COMPOSER_TRACK_LAYERS / the STACKING note in track-transition.tsx. */}
+      <View style={styles.composerLayer}>
+        <Composer
+          agentId={agentId}
+          serverId={serverId}
+          externalKeyboardShift
+          isPaneFocused={isPaneFocused}
+          value={agentInputDraft.text}
+          onChangeText={agentInputDraft.setText}
+          attachments={agentInputDraft.attachments}
+          attachmentScopeKeys={attachmentScopeKeys}
+          attachmentWriteScopeKey={workspaceAttachmentScopeKey}
+          onOpenWorkspaceAttachment={handleOpenWorkspaceAttachment}
+          onChangeAttachments={agentInputDraft.setAttachments}
+          cwd={cwd}
+          clearDraft={agentInputDraft.clear}
+          autoFocus={isPaneFocused}
+          isSubmitLoading={isSubmitLoading}
+          onAttentionInputFocus={onAttentionInputFocus}
+          onAttentionPromptSend={onAttentionPromptSend}
+          onComposerHeightChange={onComposerHeightChange}
+          onMessageSent={onMessageSent}
+          onClientSlashCommand={handleClientSlashCommand}
+          isCompactLayout={isCompactComposerLayout}
+        />
+      </View>
     </ReanimatedAnimated.View>
   );
 }
@@ -1786,6 +1823,11 @@ const styles = StyleSheet.create((theme) => ({
   inputAreaWrapper: {
     width: "100%",
     backgroundColor: theme.colors.surface0,
+  },
+  // Highest layer in the composer fan so a dismissed card's exiting web clone —
+  // appended after the composer in the DOM — still paints beneath it.
+  composerLayer: {
+    zIndex: COMPOSER_TRACK_LAYERS.composer,
   },
   historySyncOverlay: {
     position: "absolute",

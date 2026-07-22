@@ -157,6 +157,14 @@ export function GitActionsSplitButton({
     [theme.colors.surfaceHover],
   );
 
+  // With nothing to show, render nothing rather than an empty row. In the
+  // sidebar tools cluster every child carries `fill` (flexGrow: 1), so an empty
+  // View would still claim an equal share of the row and push a lone sibling
+  // (e.g. the "Open" button) off-center.
+  if (!gitActions.primary && gitActions.menu.length === 0) {
+    return null;
+  }
+
   return (
     <View style={rowStyle}>
       {gitActions.primary ? (
@@ -256,6 +264,9 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
+    // Cap the stretched sidebar-tools variant so a wide sidebar doesn't
+    // produce oversized buttons; the row centers the capped buttons instead.
+    maxWidth: 150,
   },
   splitButton: {
     flexDirection: "row",

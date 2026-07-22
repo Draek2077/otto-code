@@ -1,0 +1,165 @@
+= Orchestration — Architecture Index
+:description: Master table of contents for the agentic orchestration system: every subsystem needed to make user-authored agent graphs real.
+
+This is the architecture record for *Orchestration* — Otto's system for executing
+user-authored graphs of AI agents across every provider, local models included. It is
+deliberately kept as its own 10-series page set: the feature is in build, and merging it
+into the link:00-index.html[main Otto set] is a later step (renumber, link from the
+master ToC, fold subsystem gotchas into `docs/`).
+
+[NOTE]
+====
+*Read the design rationale first.* `projects/orchestration-graphs/orchestration-design.md`
+answers _why_ this system exists, what an orchestration is worth, and which ideas were
+taken from LangGraph, Rivet, Activepieces, Windmill, Kestra, Sim and Dify. This set
+answers _how it is built_. Where the two disagree, this set wins — but the design doc is
+where the arguments live.
+====
+
+== What this system is
+
+An *orchestration* is one execution of a *graph*: a user-authored, host-level template
+of agent nodes wired together, which the daemon executes deterministically in a real
+workspace. Every node is an ordinary Otto agent with a personality, a model, a tool
+authority and a working directory. The root node hosts the chat you watch.
+
+The thesis in one line: *an orchestration is a decision the user fixes in advance that
+the model would otherwise re-make, invisibly and differently, on every run.* The five
+decisions worth fixing are decomposition, isolation, sequencing, verification and
+authority — everything else this system does is in service of those.
+
+== Reading order
+
+[cols="1,3"]
+|===
+|Page |What it answers
+
+|link:11-orchestration-concepts.html[11. Concepts & Domain Model]
+|The vocabulary, the actors, the lifecycle of a graph and a run, and the honest test for
+when an orchestration is worth its cost.
+
+|link:12-orchestration-data-model.html[12. Data Model & Protocol]
+|Every schema: graph, node, port, edge, declared inputs, run projection, node output,
+artifact reference, pause metadata — and the wire-compatibility story for each.
+
+|link:13-orchestration-engine.html[13. Execution Engine]
+|How a graph runs: scheduling, barriers, the value plane, conditional control flow,
+excluded branches, loops, dynamic fan-out, budgets, failure policy, cancellation.
+
+|link:14-orchestration-durability.html[14. Durability & Human Gates]
+|Checkpointing, idempotent resume, pause/resume for human gates, orphan reclamation,
+and the hard problem: a crash when the child agent is still alive.
+
+|link:15-orchestration-agents.html[15. Agent Binding & Provider Coverage]
+|How a node becomes a running agent: seat resolution, tool authority, environment
+isolation, prompt assembly — and what each provider (including local models) supports.
+
+|link:16-orchestration-designer.html[16. Designer & Authoring Surface]
+|The canvas: port model, node palette, validation feedback, live run painting, the
+compact/mobile story.
+
+|link:17-orchestration-observability.html[17. Observability & Accounting]
+|Run events, the per-node record, cost roll-up into the existing ledger, Visualizer
+integration.
+
+|link:18-orchestration-rollout.html[18. Rollout, Testing & Invariants]
+|Build order, feature gating, test tiers, the numbered invariants and the audit
+checklist for the whole system.
+|===
+
+== Master table of contents — every subsystem to build
+
+Bold entries have a dedicated section in this set. The rest are named so the shape of
+the work is visible even where the detail is still open.
+
+=== 1. Authoring (design time)
+* **1.1 Graph document** — nodes, ports, edges, declared inputs, metadata, versioning
+* **1.2 Node taxonomy** — lifecycle / control / capability families and the palette
+* **1.3 Port & type system** — named ports, data types, connection legality, coercion
+* **1.4 Validation** — live designer feedback vs the hard gate before execution
+* **1.5 Canvas** — Drawflow wrapper, interaction model, live run painting
+* 1.6 Templates & starters — bundled graphs, copy-on-edit, import/export
+* 1.7 Composition — subgraphs, reuse, the 200-node-canvas defence
+* 1.8 Compact authoring — what a phone can do (run and watch; edit is desktop-shaped)
+
+=== 2. Compilation (graph → executable plan)
+* **2.1 Run projection** — graph nodes into the existing `phases[]` for old clients
+* **2.2 Static analysis** — DAG check, reachability, port type check, unreachable nodes
+* **2.3 Seat snapshot** — role → team member → personality → model, frozen at start
+* **2.4 Cost estimate** — agents, tokens and wall-clock predicted _before_ the run
+
+=== 3. Execution engine
+* **3.1 Scheduler** — ready set, all-inputs barrier, memoized node promises, concurrency
+* **3.2 Value plane** — node output contract, artifact references, port payloads
+* **3.3 Control flow** — conditional edges, router, excluded-branch propagation, merge
+* **3.4 Iteration** — per-node loops (`times`, `until` + judge) and dynamic map fan-out
+* **3.5 Failure policy** — per-node retry, error routing, run-level failure, skip cascade
+* **3.6 Budgets & caps** — agents, tokens, cost, wall-clock; the hard stop
+* **3.7 Cancellation** — user cancel, cascade to children, cleanup
+
+=== 4. Durability
+* **4.1 Checkpoint model** — what is written, when, and where
+* **4.2 Resume & idempotency** — memoization key, re-entrancy rules, replay safety
+* **4.3 Pause & interrupt** — gate suspension, typed resume payloads, rehydration on boot
+* **4.4 Orphan reclamation** — leases, visibility timeouts, adopting a still-live agent
+
+=== 5. Agent binding (Otto's differentiator)
+* **5.1 Seat resolution** — team role → personality → bare model, with snapshot semantics
+* **5.2 Tool authority** — per-node allowlist over the eight Otto tool groups, read-only
+* **5.3 Environment isolation** — shared cwd vs per-node worktree, ports, env
+* **5.4 Prompt assembly** — brief, node instruction, upstream material, artifact refs
+* **5.5 Lifecycle** — spawn, whole-subtree settle, output extraction, failure detection
+* **5.6 Provider coverage** — Claude, Codex, Copilot, OpenCode, Pi, OpenAI-compatible,
+  local models; per-provider capability matrix and the fallback ladder
+
+=== 6. Human in the loop
+* **6.1 Gate semantics** — approve, reject, edit-the-artifact, answer a typed form
+* **6.2 Remote approval** — push notification, approving from a phone, timeouts
+* **6.3 Unattended interplay** — how gates behave under `dontAsk` / scheduled runs
+
+=== 7. Data plane
+* **7.1 Node output contract** — summary, artifacts, structured fields, evidence
+* **7.2 Artifact references** — workspace files vs Otto artifacts; addressing and reads
+* **7.3 Structured output** — declaring a node's output schema, and what enforces it
+* 7.4 Retention — how long node outputs and evidence live
+
+=== 8. Observability
+* **8.1 Run event stream** — what the daemon emits and what clients do with it
+* **8.2 Per-node record** — inputs, outputs, cost, files touched, duration
+* **8.3 Live canvas** — painting run state onto the designer graph
+* **8.4 Accounting** — roll-up into activity stats and the usage ledger
+* 8.5 Visualizer — orchestration nodes as a live graph
+
+=== 9. Protocol & compatibility
+* **9.1 Wire schemas** — namespacing, optionality rules, open vocabularies
+* **9.2 Capability flags** — `server_info.features.*`, the single gate, COMPAT markers
+* **9.3 Old-client story** — what a six-month-old client renders for a graph run
+
+=== 10. Security & safety
+* **10.1 Authority model** — deny-by-default, enforced at spawn, never by prompt
+* **10.2 Blast radius** — write isolation, what a runaway graph can touch
+* **10.3 Budget as a safety control** — cost ceilings as the backstop for autonomy
+
+=== 11. Storage
+* **11.1 Graph store** — host-level JSON, atomic writes, no migrations
+* **11.2 Run store & checkpoints** — snapshot cadence, size discipline
+* **11.3 Designer drafts** — unsaved working copies, session-scoped
+
+=== 12. Testing
+* **12.1 Engine unit tests** — fake ports, deterministic schedules
+* **12.2 Golden graphs** — the canonical shapes, asserted end to end
+* **12.3 Tiered E2E** — mock, local AI (LM Studio), real provider
+
+=== 13. Delivery
+* **13.1 Build order** — which pieces are cheap now and expensive later
+* **13.2 Feature gating** — dev-only today, capability-gated after
+* 13.3 Documentation — glossary, `docs/` fold-in, this set merged into the main ToC
+
+== Provenance
+
+Authored 2026-07-21 against the working tree at v0.6.6 + uncommitted orchestration work.
+Grounded in direct source study of Rivet (`packages/core`), LangGraph.js
+(`libs/langgraph/src`) and Activepieces (`flow-run`), plus published guidance from
+Anthropic on agent workflow patterns and multi-agent failure modes. Sources and the
+argument for each borrowed idea live in
+`projects/orchestration-graphs/orchestration-design.md`.

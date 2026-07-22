@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactElement } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   ChevronDown,
@@ -22,6 +22,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/hooks/use-settings";
+import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import {
+  COMPOSER_TRACK_FLY_IN_DURATION_MS,
+  COMPOSER_TRACK_FLY_OUT_DURATION_MS,
+} from "@/constants/animation";
 import { CHAT_PANE_OVERLAY_Z } from "@/constants/layout";
 import { useVisualizerPipInset } from "@/visualizer/use-visualizer-pip-inset";
 import type { Theme } from "@/styles/theme";
@@ -99,6 +104,18 @@ export interface SuggestedTasksOverlayProps {
   actions: SuggestedTaskActions;
 }
 
+// The card rises into place from below when it appears and sinks back down when
+// dismissed — the same fly-up / fly-down idiom as the composer detail cards (see
+// composer/track-transition.tsx), so every card that pops over the chat reads as
+// one motion language. We use Reanimated's FadeInDown/FadeOutDown PRESETS (fade +
+// short rise/sink) rather than a custom worklet on purpose: the worklet-function
+// form of a layout animation is a no-op on web/Electron, and this overlay is
+// most often seen on desktop. Presets play on every platform. Both fire the exit
+// before unmount, so the card animates out even though it returns null when the
+// queue empties.
+const flyIn = FadeInDown.duration(COMPOSER_TRACK_FLY_IN_DURATION_MS);
+const flyOut = FadeOutDown.duration(COMPOSER_TRACK_FLY_OUT_DURATION_MS);
+
 // A floating, non-blocking card that pops over the TOP of the chat when an agent
 // suggests one or more tasks. The user answers each asynchronously via a split
 // button (primary = their default mode, caret = the other modes + Dismiss), or
@@ -111,6 +128,9 @@ export function SuggestedTasksOverlay({
   actions,
 }: SuggestedTasksOverlayProps): ReactElement | null {
   const enabled = useSettings((settings) => settings.suggestedTasksEnabled);
+  // Honors Appearance → Animations: with motion off the card mounts and unmounts
+  // instantly (no enter/exit), exactly as the composer detail cards do.
+  const animate = useAnimationsEnabled();
   // Keep clear of the Visualizer PIP, wherever the user has dragged it. The PIP
   // is mounted above this card's whole ancestry, so zIndex cannot save an
   // overlap — the card has to physically shift instead. Zeroes when no PIP is
@@ -148,8 +168,8 @@ export function SuggestedTasksOverlay({
   return (
     <View style={overlayWrapStyle} pointerEvents="box-none">
       <Animated.View
-        entering={FadeIn.duration(180)}
-        exiting={FadeOut.duration(140)}
+        entering={animate ? flyIn : undefined}
+        exiting={animate ? flyOut : undefined}
         style={styles.card}
         testID="suggested-tasks-overlay"
       >

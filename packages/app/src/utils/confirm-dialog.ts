@@ -9,6 +9,9 @@ export interface ConfirmDialogInput {
   // When set, a checkbox with this label is rendered above the actions. Its
   // state is returned as `checkboxChecked` from `confirmDialogWithCheckbox`.
   checkboxLabel?: string;
+  // Initial checked state for the checkbox (defaults to false). Lets a caller
+  // pre-select the recommended choice, e.g. "delete the merged branch".
+  checkboxDefaultChecked?: boolean;
   // "alert" drops the cancel action — one acknowledge button, nothing to
   // decide. Used by `alertDialog` for messages that only need to be seen.
   kind?: "confirm" | "alert";

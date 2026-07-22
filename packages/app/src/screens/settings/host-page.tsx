@@ -385,6 +385,7 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
         <>
           <SettingsSection title={t("settings.hostSections.workspaces")}>
             <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+            <HideMergeIntoBaseActionCard serverId={serverId} />
           </SettingsSection>
           {isDeveloperMode ? (
             <SettingsSection title={t("settings.hostSections.gitProviders")}>
@@ -1100,6 +1101,50 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
           onValueChange={handleValueChange}
           accessibilityLabel="Archive merged PR workspaces"
           testID="host-page-auto-archive-merged-workspaces-switch"
+        />
+      </View>
+    </View>
+  );
+}
+
+function HideMergeIntoBaseActionCard({ serverId }: { serverId: string }) {
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+  const isSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.hideMergeIntoBaseSetting === true,
+  );
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig({ hideMergeIntoBaseAction: next }).catch((error) => {
+        console.error("[HostPage] Failed to update hide merge into base action", error);
+        Alert.alert(
+          "Unable to update workspaces",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig],
+  );
+
+  if (!isConnected || !isSupported) return null;
+
+  return (
+    <View style={settingsStyles.card} testID="host-page-hide-merge-into-base-action-card">
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>Hide merge into base branch</Text>
+          <Text style={settingsStyles.rowHint}>
+            Remove the &quot;Merge into base&quot; action from the source control menu, for a
+            pull-request-only workflow
+          </Text>
+        </View>
+        <Switch
+          value={config?.hideMergeIntoBaseAction === true}
+          onValueChange={handleValueChange}
+          accessibilityLabel="Hide merge into base branch"
+          testID="host-page-hide-merge-into-base-action-switch"
         />
       </View>
     </View>

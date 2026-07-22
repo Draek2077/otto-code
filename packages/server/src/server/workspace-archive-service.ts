@@ -12,6 +12,7 @@ import {
   resolveOttoWorktreeRootForCwd,
   WorktreeTeardownError,
 } from "../utils/worktree.js";
+import { deleteLocalBranch as deleteLocalBranchImpl } from "./workspace-archive-branch.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
 
@@ -44,6 +45,12 @@ export interface ArchiveDependencies {
   markWorkspaceArchiving: (workspaceIds: Iterable<string>, archivingAt: string) => void;
   clearWorkspaceArchiving: (workspaceIds: Iterable<string>) => void;
   killTerminalsForWorkspace: (workspaceId: string) => Promise<void>;
+  // Deletes a local branch from the shared repo. Injectable for tests; defaults
+  // to the real git-backed implementation.
+  deleteLocalBranch?: (input: {
+    repoRoot: string;
+    branchName: string;
+  }) => Promise<{ deleted: boolean }>;
   sessionLogger?: Logger;
 }
 
@@ -61,6 +68,9 @@ export interface ArchiveResult {
   archivedAgentIds: string[];
   archivedWorkspaceIds: string[];
   removedDirectory: boolean;
+  // The local branch deleted as part of this archive, or null when none was
+  // requested / eligible / actually removed.
+  deletedBranch: string | null;
 }
 
 export interface ArchiveByScopeRequest {
@@ -71,6 +81,10 @@ export interface ArchiveByScopeRequest {
   // Base directory that may hold worktrees across repositories; falls back to the
   // dependency's base root for ownership checks and path resolution.
   ottoWorktreesBaseRoot?: string;
+  // When set, delete this local branch from `repoRoot` after the worktree
+  // directory is removed (i.e. only when this archive was the last reference to
+  // the directory and the branch is no longer checked out). Requires repoRoot.
+  branchCleanup?: { branchName: string } | null;
   requestId: string;
 }
 
@@ -106,6 +120,7 @@ export async function archiveByScope(
   }
 
   let removedDirectory = false;
+  let deletedBranch: string | null = null;
 
   try {
     if (targetWorkspaceIds.length > 0) {
@@ -133,18 +148,21 @@ export async function archiveByScope(
     }
 
     if (targetDir !== null) {
-      removedDirectory = await maybeRemoveDirectory(
+      const removal = await maybeRemoveDirectory(
         dependencies,
         request,
         targetDir,
         archivedWorkspaceIds,
       );
+      removedDirectory = removal.removedDirectory;
+      deletedBranch = removal.deletedBranch;
     }
 
     return {
       archivedAgentIds: Array.from(archivedAgents),
       archivedWorkspaceIds,
       removedDirectory,
+      deletedBranch,
     };
   } finally {
     if (targetWorkspaceIds.length > 0) {
@@ -222,23 +240,28 @@ async function archiveTargetRecords(
   return { archivedAgents, archivedWorkspaceIds };
 }
 
+interface RemoveDirectoryResult {
+  removedDirectory: boolean;
+  deletedBranch: string | null;
+}
+
 async function maybeRemoveDirectory(
   dependencies: ArchiveDependencies,
   request: Omit<ArchiveByScopeRequest, "scope">,
   targetDir: string,
   archivedWorkspaceIds: string[],
-): Promise<boolean> {
+): Promise<RemoveDirectoryResult> {
   const ownership = await isOttoOwnedWorktreeCwd(targetDir, {
     ottoHome: dependencies.ottoHome,
     worktreesRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
   });
   if (!ownership.allowed) {
-    return false;
+    return { removedDirectory: false, deletedBranch: null };
   }
 
   const remainingActive = await dependencies.listActiveWorkspaces();
   if (!isDirectoryUnreferenced(remainingActive, targetDir, new Set(archivedWorkspaceIds))) {
-    return false;
+    return { removedDirectory: false, deletedBranch: null };
   }
 
   try {
@@ -250,16 +273,48 @@ async function maybeRemoveDirectory(
       worktreesBaseRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
     });
     dependencies.github.invalidate({ cwd: targetDir });
-    return true;
+    // The worktree working tree is gone, so the branch is no longer checked out
+    // and git will accept its deletion. Only attempted here (last-reference path)
+    // so a directory still backing another workspace never loses its branch.
+    const deletedBranch = await maybeDeleteLeftoverBranch(dependencies, request);
+    return { removedDirectory: true, deletedBranch };
   } catch (error) {
     if (error instanceof WorktreeTeardownError) {
       dependencies.sessionLogger?.warn(
         { err: error, targetPath: targetDir, requestId: request.requestId },
         "Worktree disk removal failed during archive; workspace already archived",
       );
-      return false;
+      return { removedDirectory: false, deletedBranch: null };
     }
     throw error;
+  }
+}
+
+async function maybeDeleteLeftoverBranch(
+  dependencies: ArchiveDependencies,
+  request: Omit<ArchiveByScopeRequest, "scope">,
+): Promise<string | null> {
+  const branchName = request.branchCleanup?.branchName;
+  if (!branchName || !request.repoRoot) {
+    return null;
+  }
+  const deleteBranch = dependencies.deleteLocalBranch ?? deleteLocalBranchImpl;
+  try {
+    const result = await deleteBranch({ repoRoot: request.repoRoot, branchName });
+    if (!result.deleted) {
+      dependencies.sessionLogger?.warn(
+        { branchName, repoRoot: request.repoRoot, requestId: request.requestId },
+        "Leftover worktree branch could not be deleted during archive; leaving it in place",
+      );
+      return null;
+    }
+    return branchName;
+  } catch (error) {
+    dependencies.sessionLogger?.warn(
+      { err: error, branchName, requestId: request.requestId },
+      "Leftover worktree branch deletion threw during archive; leaving it in place",
+    );
+    return null;
   }
 }
 

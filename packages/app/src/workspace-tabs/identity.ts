@@ -58,6 +58,16 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "contextManagement") {
     return { kind: "contextManagement" };
   }
+  if (value.kind === "orchestrationGraph") {
+    const graphId = trimNonEmpty(value.graphId);
+    if (!graphId) {
+      return null;
+    }
+    const runId = trimNonEmpty(value.runId);
+    return runId
+      ? { kind: "orchestrationGraph", graphId, runId }
+      : { kind: "orchestrationGraph", graphId };
+  }
   return null;
 }
 
@@ -159,6 +169,11 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "contextManagement") {
     return true;
   }
+  // One designer tab per graph; the draft runId doesn't change identity (the
+  // dialog retargets the same tab when it attaches a draft to the graph).
+  if (left.kind === "orchestrationGraph" && right.kind === "orchestrationGraph") {
+    return left.graphId === right.graphId;
+  }
   const field = SIMPLE_ID_FIELD_BY_KIND[left.kind];
   if (!field) {
     return false;
@@ -237,6 +252,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "contextManagement") {
     return "context-management";
+  }
+  if (target.kind === "orchestrationGraph") {
+    return `orchestration-graph_${target.graphId}`;
   }
   // Out-of-project files are namespaced by their origin workspace so they never
   // collide with an in-project file of the same relative path (gated-multi-root).

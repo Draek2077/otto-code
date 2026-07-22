@@ -154,6 +154,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "contextManagement") {
     return "workspace-context-management-close";
   }
+  if (tab.target.kind === "orchestrationGraph") {
+    return `workspace-orchestration-graph-close-${tab.target.graphId}`;
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

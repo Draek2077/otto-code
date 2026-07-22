@@ -5,10 +5,12 @@ import { StyleSheet } from "react-native-unistyles";
 import type { Run, RunPhase } from "@otto-code/protocol/orchestration";
 import { isTerminalRunStatus } from "@otto-code/protocol/orchestration";
 import { judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
-import { Network, Trash2, Waypoints } from "@/components/icons/material-icons";
+import { Network, Plus, Trash2, Waypoints } from "@/components/icons/material-icons";
 import { MenuHeader } from "@/components/headers/menu-header";
+import { NewOrchestrationSheet } from "@/components/orchestration/new-orchestration-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { isDev } from "@/constants/platform";
 import { LiveElapsed } from "@/components/live-elapsed";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -197,20 +199,28 @@ export function sumRunTokens(
 
 // ── Filtering ────────────────────────────────────────────────────────────────
 
-export type RunStatusFilter = "all" | "succeeded" | "failed";
+export type RunStatusFilter = "all" | "draft" | "active" | "failed" | "completed";
 
 const STATUS_FILTER_OPTIONS: SegmentedControlOption<RunStatusFilter>[] = [
   { value: "all", label: "All", testID: "runs-filter-all" },
-  { value: "succeeded", label: "Completed", testID: "runs-filter-succeeded" },
+  { value: "draft", label: "Draft", testID: "runs-filter-draft" },
+  { value: "active", label: "Active", testID: "runs-filter-active" },
   { value: "failed", label: "Failed", testID: "runs-filter-failed" },
+  { value: "completed", label: "Completed", testID: "runs-filter-completed" },
 ];
 
 export function matchesStatusFilter(run: Run, filter: RunStatusFilter): boolean {
-  if (filter === "succeeded") {
-    return run.status === "done";
+  if (filter === "draft") {
+    return run.status === "draft";
+  }
+  if (filter === "active") {
+    return run.status === "running" || run.status === "pending" || run.status === "paused";
   }
   if (filter === "failed") {
     return run.status === "failed" || run.status === "canceled";
+  }
+  if (filter === "completed") {
+    return run.status === "done";
   }
   return true;
 }
@@ -267,6 +277,7 @@ function RunsScreenContent(): ReactElement {
   const sessions = useSessionStore((state) => state.sessions);
   const { clearAll, isPending: isClearing } = useClearFinishedRuns();
 
+  const [newOrchestrationOpen, setNewOrchestrationOpen] = useState(false);
   const [status, setStatus] = useState<RunStatusFilter>("all");
   const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
   const [runsByHost, setRunsByHost] = useState<Record<string, Run[]>>({});
@@ -329,9 +340,25 @@ function RunsScreenContent(): ReactElement {
     clearAll(clearableServerIds);
   }, [clearAll, clearableServerIds]);
 
+  // The user-initiated front door (projects/orchestration-graphs). Dev builds
+  // only for now, then gated on any connected host advertising the capability;
+  // the dialog itself picks the host. See useOrchestrationGraphsFeature.
+  // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+  const canCreateOrchestration = useMemo(
+    () =>
+      isDev &&
+      hosts.some(
+        (host) => sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true,
+      ),
+    [hosts, sessions],
+  );
+  const openNewOrchestration = useCallback(() => setNewOrchestrationOpen(true), []);
+  const closeNewOrchestration = useCallback(() => setNewOrchestrationOpen(false), []);
+
   return (
     <View style={styles.container}>
       <MenuHeader title="Orchestrations" />
+      <NewOrchestrationSheet visible={newOrchestrationOpen} onClose={closeNewOrchestration} />
       {hosts.map((host) => (
         <HostRunsCollector key={host.serverId} serverId={host.serverId} onRuns={handleHostRuns} />
       ))}
@@ -348,6 +375,8 @@ function RunsScreenContent(): ReactElement {
         onClearAll={handleClearAll}
         canClearAll={clearableServerIds.length > 0}
         isClearing={isClearing}
+        canCreate={canCreateOrchestration}
+        onCreate={openNewOrchestration}
       />
     </View>
   );
@@ -366,6 +395,24 @@ interface RunsScreenBodyProps {
   onClearAll: () => void;
   canClearAll: boolean;
   isClearing: boolean;
+  canCreate: boolean;
+  onCreate: () => void;
+}
+
+function resolveEmptyFilterText(status: RunStatusFilter): string {
+  if (status === "draft") {
+    return "No draft orchestrations";
+  }
+  if (status === "active") {
+    return "No active orchestrations";
+  }
+  if (status === "failed") {
+    return "No failed orchestrations";
+  }
+  if (status === "completed") {
+    return "No completed orchestrations";
+  }
+  return "No orchestrations match the current filters";
 }
 
 function RunsScreenBody({
@@ -381,6 +428,8 @@ function RunsScreenBody({
   onClearAll,
   canClearAll,
   isClearing,
+  canCreate,
+  onCreate,
 }: RunsScreenBodyProps): ReactElement {
   if (isLoading && !hasAny) {
     return (
@@ -394,17 +443,24 @@ function RunsScreenBody({
     return (
       <View style={styles.centered} testID="runs-empty">
         <Text style={styles.message}>No orchestrations yet</Text>
-        <Text style={styles.messageSub}>Teams will orchestrate work on their own.</Text>
+        {canCreate ? (
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={Plus}
+            onPress={onCreate}
+            testID="runs-empty-new"
+          >
+            Create an orchestration
+          </Button>
+        ) : (
+          <Text style={styles.messageSub}>Teams will orchestrate work on their own.</Text>
+        )}
       </View>
     );
   }
 
-  let emptyFilterText = "No orchestrations match the current filters";
-  if (status === "succeeded") {
-    emptyFilterText = "No completed orchestrations";
-  } else if (status === "failed") {
-    emptyFilterText = "No failed orchestrations";
-  }
+  const emptyFilterText = resolveEmptyFilterText(status);
 
   return (
     <View style={styles.body}>
@@ -418,6 +474,7 @@ function RunsScreenBody({
         </View>
         <Button
           leftIcon={Trash2}
+          variant="secondary"
           onPress={onClearAll}
           disabled={!canClearAll || isClearing}
           size="sm"
@@ -426,6 +483,17 @@ function RunsScreenBody({
         >
           Clear all
         </Button>
+        {canCreate ? (
+          <Button
+            leftIcon={Plus}
+            onPress={onCreate}
+            size="sm"
+            style={styles.newButton}
+            testID="runs-new-orchestration"
+          >
+            New Orchestration
+          </Button>
+        ) : null}
       </View>
       <View style={styles.statusRow}>
         <SegmentedControl
@@ -711,6 +779,10 @@ const styles = StyleSheet.create((theme) => ({
   // Tames the compactUp button doubling so the button and the project filter
   // beside it share the same field height at every width.
   clearButton: {
+    minHeight: 44,
+    paddingHorizontal: theme.spacing[4],
+  },
+  newButton: {
     minHeight: 44,
     paddingHorizontal: theme.spacing[4],
   },

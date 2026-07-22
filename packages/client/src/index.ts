@@ -357,7 +357,7 @@ export function createOttoClient(config: OttoClientConfig): OttoClient {
       create: (input, requestId) =>
         openWorkspace(daemonClient, createWorkspaceHandle, input, requestId),
       archive: (workspace, requestId) =>
-        daemonClient.archiveWorkspace(resolveWorkspaceId(workspace), requestId),
+        daemonClient.archiveWorkspace(resolveWorkspaceId(workspace), { requestId }),
       subscribe: (handler) =>
         daemonClient.on("workspace_update", (message) => {
           handler(message.payload);
@@ -427,7 +427,7 @@ function createWorkspaceHandleFactory(daemonClient: DaemonClient): WorkspaceHand
         return latest;
       },
       archive: async (requestId) => {
-        const result = await daemonClient.archiveWorkspace(id, requestId);
+        const result = await daemonClient.archiveWorkspace(id, { requestId });
         if (latest) {
           latest = { ...latest, archivingAt: result.archivedAt };
         }

@@ -30,6 +30,13 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import {
+  findPreviewMatches,
+  splitTokensForMatches,
+  type MatchedTokenSegment,
+  type PreviewFindQuery,
+  type PreviewLineMatchRange,
+} from "@/components/file-preview-find";
 import { splitMarkdownFrontmatter } from "@/components/markdown-frontmatter";
 import { isNative, isWeb } from "@/constants/platform";
 import { SvgXml } from "react-native-svg";
@@ -55,6 +62,8 @@ interface CodeLineProps {
   lineNumber: number;
   gutterWidth: number;
   highlighted: boolean;
+  /** Find hits on this line, if any; drives the search-match tinting. */
+  matchRanges?: readonly PreviewLineMatchRange[];
 }
 
 /** What the preview learned about the file after reading it. */
@@ -119,6 +128,12 @@ interface FilePreviewBodyProps {
   svgXml: string | null;
   /** Live buffer contents to render instead of the disk read (split view). */
   contentOverride?: string | null;
+  /** Active find-in-preview query; null when the find strip is closed/empty. */
+  findQuery?: PreviewFindQuery | null;
+  /** Which match (0-based) is active, for the stronger highlight + scroll. */
+  activeMatchIndex?: number;
+  /** Reports the total match count back to the find strip on every change. */
+  onFindMatchCount?: (count: number) => void;
   syncRef?: React.Ref<FilePreviewSyncHandle>;
   onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
@@ -201,6 +216,7 @@ const CodeLine = React.memo(function CodeLine({
   lineNumber,
   gutterWidth,
   highlighted,
+  matchRanges,
 }: CodeLineProps) {
   const gutterStyle = useMemo(
     () => [codeLineStyles.gutter, inlineUnistylesStyle({ width: gutterWidth })],
@@ -210,6 +226,18 @@ const CodeLine = React.memo(function CodeLine({
     () => [codeLineStyles.line, highlighted && codeLineStyles.highlightedLine],
     [highlighted],
   );
+  // With find hits on the line, re-cut the tokens so each match becomes its own
+  // (still syntax-styled) segment carrying the highlight; otherwise the plain
+  // token stream renders as before.
+  const keyedSegments = useMemo(() => {
+    if (!matchRanges || matchRanges.length === 0) {
+      return null;
+    }
+    return splitTokensForMatches(tokens, matchRanges).map((segment, index) => ({
+      key: `${index}-${segment.text}`,
+      segment,
+    }));
+  }, [tokens, matchRanges]);
   const keyedTokens = useMemo(
     () => tokens.map((token, index) => ({ key: `${index}-${token.text}`, token })),
     [tokens],
@@ -222,9 +250,9 @@ const CodeLine = React.memo(function CodeLine({
         </Text>
       </View>
       <Text selectable style={codeLineStyles.lineText}>
-        {keyedTokens.map(({ key, token }) => (
-          <CodeLineToken key={key} token={token} />
-        ))}
+        {keyedSegments
+          ? keyedSegments.map(({ key, segment }) => <CodeLineSegment key={key} segment={segment} />)
+          : keyedTokens.map(({ key, token }) => <CodeLineToken key={key} token={token} />)}
       </Text>
     </View>
   );
@@ -238,12 +266,32 @@ function CodeLineToken({ token }: CodeLineTokenProps) {
   return <Text style={syntaxTokenStyleFor(token.style)}>{token.text}</Text>;
 }
 
+function CodeLineSegment({ segment }: { segment: MatchedTokenSegment }) {
+  const style = useMemo(() => {
+    const base = syntaxTokenStyleFor(segment.style);
+    if (segment.highlight === "active") {
+      return [base, codeLineStyles.findMatchActive];
+    }
+    if (segment.highlight === "match") {
+      return [base, codeLineStyles.findMatch];
+    }
+    return base;
+  }, [segment.highlight, segment.style]);
+  return <Text style={style}>{segment.text}</Text>;
+}
+
 const codeLineStyles = StyleSheet.create((theme) => ({
   line: {
     flexDirection: "row",
   },
   highlightedLine: {
     backgroundColor: theme.colors.accentBorder,
+  },
+  findMatch: {
+    backgroundColor: theme.colors.terminal.selectionBackground,
+  },
+  findMatchActive: {
+    backgroundColor: theme.colors.borderAccent,
   },
   gutter: {
     alignItems: "flex-end",
@@ -285,6 +333,76 @@ function NativeSvgPreview({ xml, size }: { xml: string; size: number }) {
   );
 }
 
+/**
+ * Find-in-preview: scan the file for the query, report the count, keep the
+ * active match in view, and hand back the per-line ranges the code lines tint.
+ * Lives as a hook so its several effects don't spend FilePreviewBody's
+ * cyclomatic-complexity budget. `enabled` is false for the markdown and
+ * image/binary views, which have no line-mapped text to highlight.
+ */
+function usePreviewFindHighlights({
+  enabled,
+  content,
+  findQuery,
+  activeMatchIndex,
+  onFindMatchCount,
+  scrollRef,
+  metricsRef,
+  lineHeight,
+}: {
+  enabled: boolean;
+  content: string;
+  findQuery: PreviewFindQuery | null;
+  activeMatchIndex: number;
+  onFindMatchCount?: (count: number) => void;
+  scrollRef: React.RefObject<RNScrollView | null>;
+  metricsRef: React.RefObject<PreviewScrollMetrics>;
+  lineHeight: number;
+}): Map<number, PreviewLineMatchRange[]> {
+  const findMatches = useMemo(() => {
+    if (!enabled || !findQuery) {
+      return [];
+    }
+    return findPreviewMatches(content, findQuery);
+  }, [enabled, findQuery, content]);
+
+  const onFindMatchCountRef = useRef(onFindMatchCount);
+  onFindMatchCountRef.current = onFindMatchCount;
+  useEffect(() => {
+    onFindMatchCountRef.current?.(findMatches.length);
+  }, [findMatches]);
+
+  // The active match's line carries the stronger highlight; every other hit
+  // (on this line or another) gets the base match tint.
+  const matchRangesByLine = useMemo(() => {
+    const byLine = new Map<number, PreviewLineMatchRange[]>();
+    findMatches.forEach((match, index) => {
+      const ranges = byLine.get(match.line) ?? [];
+      ranges.push({ start: match.start, end: match.end, active: index === activeMatchIndex });
+      byLine.set(match.line, ranges);
+    });
+    return byLine;
+  }, [findMatches, activeMatchIndex]);
+
+  // Keep the active match in view: land it a third of the way down so there is
+  // context above it, clamped at the document start.
+  const activeMatchLine =
+    findMatches.length > 0 ? (findMatches[activeMatchIndex]?.line ?? null) : null;
+  useEffect(() => {
+    if (activeMatchLine === null) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      const targetTop = (activeMatchLine - 1) * lineHeight;
+      const viewportLead = Math.min(metricsRef.current.clientHeight / 3, targetTop);
+      scrollRef.current?.scrollTo({ y: Math.max(0, targetTop - viewportLead), animated: false });
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [activeMatchLine, lineHeight, metricsRef, scrollRef]);
+
+  return matchRangesByLine;
+}
+
 function FilePreviewBody({
   preview,
   state,
@@ -294,6 +412,9 @@ function FilePreviewBody({
   imagePreviewUri,
   svgXml,
   contentOverride,
+  findQuery,
+  activeMatchIndex = 0,
+  onFindMatchCount,
   syncRef,
   onScrolledSync,
   onPointerDownSync,
@@ -460,6 +581,17 @@ function FilePreviewBody({
     [imagePreviewUri],
   );
 
+  const matchRangesByLine = usePreviewFindHighlights({
+    enabled: Boolean(highlightedLines),
+    content: effectiveContent,
+    findQuery: findQuery ?? null,
+    activeMatchIndex,
+    onFindMatchCount,
+    scrollRef: previewScrollRef,
+    metricsRef: syncMetricsRef,
+    lineHeight,
+  });
+
   useEffect(() => {
     if (!lineSelection) {
       return;
@@ -545,6 +677,7 @@ function FilePreviewBody({
               lineNumber >= (lineSelection?.lineStart ?? 0) &&
               lineNumber <= (lineSelection?.lineEnd ?? 0)
             }
+            matchRanges={matchRangesByLine.get(lineNumber)}
           />
         ))}
       </View>
@@ -639,6 +772,12 @@ export interface FilePreviewProps {
   contentOverride?: string | null;
   /** Reports what kind of file the read produced (gates the editor modes). */
   onFileInfo?: (info: FilePreviewFileInfo | null) => void;
+  /** Active find-in-preview query; null when the find strip is closed/empty. */
+  findQuery?: PreviewFindQuery | null;
+  /** Which match (0-based) is active, for the stronger highlight + scroll. */
+  activeMatchIndex?: number;
+  /** Reports the total match count back to the find strip on every change. */
+  onFindMatchCount?: (count: number) => void;
   syncRef?: React.Ref<FilePreviewSyncHandle>;
   onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
@@ -650,6 +789,9 @@ export function FilePreview({
   location,
   contentOverride,
   onFileInfo,
+  findQuery,
+  activeMatchIndex,
+  onFindMatchCount,
   syncRef,
   onScrolledSync,
   onPointerDownSync,
@@ -772,6 +914,9 @@ export function FilePreview({
         imagePreviewUri={imagePreviewUri}
         svgXml={query.data?.svgXml ?? null}
         contentOverride={contentOverride}
+        findQuery={findQuery}
+        activeMatchIndex={activeMatchIndex}
+        onFindMatchCount={onFindMatchCount}
         syncRef={syncRef}
         onScrolledSync={onScrolledSync}
         onPointerDownSync={onPointerDownSync}

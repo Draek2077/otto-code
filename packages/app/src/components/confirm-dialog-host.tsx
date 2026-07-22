@@ -22,11 +22,13 @@ export function ConfirmDialogHost() {
   const resolveActive = useConfirmDialogStore((state) => state.resolveActive);
   const [checkboxChecked, setCheckboxChecked] = useState(false);
 
-  // Reset the checkbox whenever a new request becomes active.
+  // Reset the checkbox to the request's default whenever a new request becomes
+  // active (defaults to unchecked when none is specified).
   const activeId = active?.id ?? null;
+  const activeCheckboxDefaultChecked = active?.checkboxDefaultChecked ?? false;
   useEffect(() => {
-    setCheckboxChecked(false);
-  }, [activeId]);
+    setCheckboxChecked(activeCheckboxDefaultChecked);
+  }, [activeId, activeCheckboxDefaultChecked]);
 
   const handleCancel = useCallback(() => {
     resolveActive({ confirmed: false, checkboxChecked });

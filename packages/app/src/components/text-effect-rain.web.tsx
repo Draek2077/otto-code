@@ -140,7 +140,7 @@ export const TextEffectRain = memo(function TextEffectRain({
     ensureRainKeyframes();
   }, []);
 
-  const columns = useMemo(
+  const { columns, cellWidth } = useMemo(
     () => buildRainColumns(width, effect.cellWidth, effect.scrambleAlphabet, seed),
     [width, effect.cellWidth, effect.scrambleAlphabet, seed],
   );
@@ -160,7 +160,7 @@ export const TextEffectRain = memo(function TextEffectRain({
         <WebRainColumn
           key={column.key}
           column={column}
-          cellWidth={effect.cellWidth}
+          cellWidth={cellWidth}
           cycleSeconds={effect.cycleSeconds}
           staggerSeconds={effect.staggerSeconds}
           headColor={effect.headColor}

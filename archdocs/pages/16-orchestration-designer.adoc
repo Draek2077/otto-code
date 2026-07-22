@@ -1,0 +1,161 @@
+= Orchestration — Designer & Authoring Surface
+:description: The graph canvas — port model, node palette, validation feedback, live run painting, drafts, and the compact-device story.
+
+The designer is a workspace tab (web + Electron; native gets a placeholder). It is the
+only surface where a user expresses structure, so its job is to make the *consequences*
+of structure visible — what runs in parallel, what waits, what a human approves, what
+proves the work.
+
+== Architecture
+
+A vendored, frozen Drawflow bundle (MIT) plus an Otto-owned TypeScript wrapper. None of
+the vendor's own UI comes along; Otto owns the toolbar, the node cards, the palette and
+the theme. The bundle is never formatted, linted or edited — `**/vendor/**` is
+ignore-listed, and the MIT notice lives beside it because the upstream build strips its
+own banner.
+
+The split that matters — *canvas here, executor in the daemon* — is not an Otto
+invention; Rivet arrived at the same shape independently, with an isomorphic executor
+decoupled from any database and a WebSocket debugger that lets its IDE attach to a
+processor running elsewhere. That is a strong signal we have the boundary in the right
+place, and it is also the argument for the live-run feature below.
+
+== Port model in the UI
+
+Ports are arrow-shaped, ride *outside* the card border, and read hollow until wired and
+solid once connected. Output ports carry the accent colour, inputs the warm counter-hue.
+
+Multi-port is the change the designer must absorb next
+(link:12-orchestration-data-model.html[Data Model]): a gate has `approved`/`rejected`, a
+check has `pass`/`fail`, a router has one port per branch. Requirements:
+
+* Every port renders a label. An unlabelled second output is unusable.
+* Ports are ordered and stable — a port's vertical position must not move when an
+  unrelated setting changes, or wires appear to jump.
+* Dynamic ports (map, subgraph) derive from data: a subgraph node's ports come from the
+  child graph's declared inputs and outputs, recomputed when the child changes.
+
+=== Connection legality has exactly one implementation
+
+If ports become typed, *the same function must answer "may I draw this wire?" and "may I
+pass this value?"*. Rivet is the cautionary tale: its editor-side check is advisory
+styling only, its runtime coercion is separate, and the source carries the comment that
+the two are hard to keep in sync. The result is that an illegal connection is drawable
+and fails at runtime, which is the worst of both worlds — the editor implied a guarantee
+it does not provide.
+
+== Easy snap
+
+A 13-pixel port is a miserable drop target and Drawflow only connects on a pixel-perfect
+release. While a wire is in flight the nearest input inside a radius attaches — it fills
+and scales, and the wire's loose end jumps to it — and releasing anywhere lands there.
+Implemented as a capture-phase `mouseup` that hands Drawflow's own `dragEnd` a synthetic
+event whose target is the snapped port.
+
+== Node palette
+
+Grouped by the three families, which is also how the Add menu reads:
+
+* *Lifecycle* — Orchestrator (root, structural, undeletable), Brief
+* *Control* — Gate, Router, Map, Merge, Subgraph
+* *Capability* — Agent, Check
+
+A node card is a title bar (type prefix, inline-editable name, delete), a body with the
+fields that matter at a glance (role, prompt), and an Advanced disclosure for the
+machinery (prompt-from-input, model override, tool authority, isolation, loop). The
+principle: *a node reads clean until you need the machinery.*
+
+Declared graph inputs surface inside nodes — a hint line listing the `{{inputs.key}}`
+references available, and a prompt-from-input select over the declared keys, both
+refreshed live as the Inputs sheet changes.
+
+== Validation feedback
+
+Two levels, and conflating them is a UX failure we already made once:
+
+* *Save is never blocked.* A half-built graph is a normal thing to save. Save failure —
+  the host rejected the write — is the only red.
+* *Validation gates execution only*, reported as a warning with the count and the first
+  blocker named, not as an error that implies the work was lost.
+
+Run saves first, then opens the New Orchestration dialog with this graph preselected so
+the user fills in Answers and confirms. The designer never executes directly, which keeps
+"what am I about to spend" in one place.
+
+== Live run painting — target
+
+The daemon already emits run events and the client already subscribes; wiring them to the
+canvas turns the designer into the run monitor. Node visual states, borrowing Rivet's
+vocabulary because it is well-chosen:
+
+[cols="1,3"]
+|===
+|State |Painting
+
+|`running`
+|Accent pulse, elapsed timer, current tool if reported
+
+|`ok`
+|Solid, with the output summary available on the card
+
+|`error`
+|Danger border, the message on the card
+
+|`notRan` / excluded
+|Greyed, *with the reason* — "branch not taken", "upstream failed", "run canceled"
+
+|`paused`
+|The gate node highlighted, with the approve/answer affordance inline
+|===
+
+Carrying the *reason* on an excluded node is what makes a conditional graph debuggable;
+without it, a greyed node is indistinguishable from a bug.
+
+[IMPORTANT]
+====
+*Throttle partial output.* Rivet throttles per-node partial outputs to ~100ms before they
+reach the IDE. A graph with six concurrent agents streaming tokens into a canvas will
+otherwise saturate the transport and the render loop — and on a phone, the battery.
+====
+
+== Drafts
+
+The tab unmounts on every workspace switch, and a graph is a document: leaving the room
+is not discarding. A session-scoped working copy is held per host and graph, so returning
+finds the canvas exactly as it was, still marked unsaved. Nothing reaches the host until
+the user saves.
+
+== Repair on load
+
+Graphs outlive schema changes. When a stored graph references a port that no longer
+exists on a node kind, the loader *drops that connection and continues* rather than
+refusing to open the graph — the same defensive behaviour Rivet applies when it snapshots
+port definitions at preprocess time. A graph that cannot be opened cannot be repaired by
+the user; one that opens with a missing wire can.
+
+== Compact devices
+
+The dialog and the execute/monitor flow are cross-platform and are the priority: starting
+an orchestration, watching it, and *approving a gate* must all work from a phone —
+approving a plan from anywhere is one of the strongest arguments for this whole feature.
+Authoring is desktop-shaped; native shows a placeholder pointing at the desktop. A mobile
+designer remains a stretch goal, never a commitment.
+
+== Invariants
+
+. The vendored canvas bundle is never edited, formatted or linted.
+. The orchestrator root is undeletable and restored immediately if removed.
+. Saving is never blocked by validation; only execution is.
+. Every port has a visible label, and port order is stable across unrelated edits.
+. If ports are typed, one function decides legality for both editor and engine.
+. An excluded node always paints its reason.
+. Streaming into the canvas is throttled.
+. Unsaved edits survive in-app navigation.
+
+== Change checklist
+
+* [ ] Does a new node kind declare its ports, their labels and their order?
+* [ ] Does a new field belong in the body (glanceable) or Advanced (machinery)?
+* [ ] Does the change keep save unblocked and validation advisory?
+* [ ] If it adds live data to the canvas, is it throttled and battery-sane on mobile?
+* [ ] Can a graph saved before this change still open, with a stated repair if not?

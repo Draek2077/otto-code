@@ -24,6 +24,7 @@ import {
 } from "@otto-code/protocol/agent-personalities";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 import { ottoToolGroupForName, type OttoToolGroup } from "@otto-code/protocol/provider-config";
+import { getOrchestrationPolicyFromLabels } from "@otto-code/protocol/agent-labels";
 import {
   AgentFeatureSchema,
   AgentPermissionRequestPayloadSchema,
@@ -885,6 +886,42 @@ async function resolveArtifactProjectId(params: {
   throw new Error("projectId is required because it could not be derived from your workspace");
 }
 
+// Read the caller agent's orchestration policy label, if it carries one.
+function resolveOrchestrationPolicy(
+  agentManager: AgentManager,
+  callerAgentId: string | undefined,
+): "deterministic" | "autonomous" | null {
+  if (!callerAgentId) {
+    return null;
+  }
+  return getOrchestrationPolicyFromLabels(agentManager.getAgent(callerAgentId)?.labels);
+}
+
+// The orchestration tool binary (projects/orchestration-graphs). No policy ⇒
+// everything allowed. "deterministic" — the daemon does all linking, so the
+// node loses every orchestration-shaped tool (the agents + schedules groups)
+// plus preview and browser control. "autonomous" — full toolset EXCEPT
+// start_run: orchestrations never nest orchestrations.
+function buildOrchestrationPolicyGate(
+  policy: "deterministic" | "autonomous" | null,
+): (name: string) => boolean {
+  return (name: string): boolean => {
+    if (!policy) {
+      return true;
+    }
+    if (name === "start_run") {
+      return false;
+    }
+    if (policy === "autonomous") {
+      return true;
+    }
+    const group = ottoToolGroupForName(name);
+    return (
+      group !== "agents" && group !== "schedules" && group !== "preview" && group !== "browser"
+    );
+  };
+}
+
 export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoToolCatalog {
   const {
     agentManager,
@@ -924,6 +961,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   const enabledGroups = options.enabledOttoToolGroups;
   const isToolGroupEnabled = (name: string): boolean =>
     enabledGroups === undefined || enabledGroups.includes(ottoToolGroupForName(name));
+  // Orchestration tool policy (projects/orchestration-graphs): agents the
+  // daemon spawned as graph nodes carry a policy label; the gate below strips
+  // the tools that policy forbids. Enforced here at registration so every
+  // catalog consumer (MCP and native tool loops alike) inherits the filter.
+  const isToolAllowedByOrchestrationPolicy = buildOrchestrationPolicyGate(
+    resolveOrchestrationPolicy(agentManager, callerAgentId),
+  );
   const registerTool = (
     name: string,
     config: OttoToolConfig,
@@ -933,6 +977,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     // Per-group gating: a tool whose group is disabled is never registered, so
     // both the MCP path and any future catalog consumer inherit the filter.
     if (!isToolGroupEnabled(name)) {
+      return;
+    }
+    if (!isToolAllowedByOrchestrationPolicy(name)) {
       return;
     }
     tools.set(name, {

@@ -72,6 +72,7 @@ import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import { MarkdownRenderer, type MarkdownStyles } from "@/components/markdown/renderer";
 import { applyTaskListMarkers } from "@/components/markdown/task-lists";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
+import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
@@ -95,6 +96,7 @@ import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
 // every settings write.
 const selectChatBubbleGradient = (settings: AppSettings) => settings.chatBubbleGradient;
 const selectHideChatMessageDetails = (settings: AppSettings) => settings.hideChatMessageDetails;
+const selectAnimationsEnabled = (settings: AppSettings) => settings.animationsEnabled;
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
 import {
@@ -108,6 +110,7 @@ import {
   reportBubbleSegmentHeight,
   useBubbleGroupOffset,
 } from "@/agent-stream/bubble-group-offsets";
+import { reportAssistantBubbleWidth } from "@/agent-stream/assistant-turn-width";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 import {
   createPreviewAttachmentId,
@@ -142,6 +145,7 @@ import type { AgentCapabilityFlags } from "@otto-code/protocol/agent-types";
 import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
 import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
+import { MessagePlaybackButton, useTtsSpeakFeature } from "@/components/message-playback-button";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -193,7 +197,7 @@ const MARKDOWN_ALLOWED_IMAGE_HANDLERS = [
 const MARKDOWN_TOP_LEVEL_MAX_EXCEEDED_ITEM = <Text key="dotdotdot">...</Text>;
 
 const ThemedMicVocal = withUnistyles(MicVocal);
-const ThemedTodoCheckIcon = withUnistyles(Check);
+const ThemedTodoHeaderIcon = withUnistyles(CheckSquare);
 const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
 const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
 const ThemedChevronRightIcon = withUnistyles(ChevronRight);
@@ -204,9 +208,6 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 const mutedForegroundColorMapping = (theme: Theme) => ({
   color: theme.colors.mutedForeground,
-});
-const primaryForegroundColorMapping = (theme: Theme) => ({
-  color: theme.colors.primaryForeground,
 });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
@@ -599,6 +600,17 @@ interface AssistantTurnFooterProps {
     target: AssistantForkTarget;
     boundaryMessageId?: string;
   }) => Promise<void> | void;
+  /** Host whose TTS reads the message aloud; gates and powers the playback button. */
+  serverId?: string;
+  /** Agent whose personality voice reads the message aloud. */
+  agentId?: string;
+  /**
+   * Rendered width of this turn's message bubble, in px (0 when unknown). The
+   * playback button pins to this width's right edge: for a short message the
+   * footer's own content is wider, so the button sits at the end; for a long
+   * message the row stretches to the bubble and the button pins right.
+   */
+  messageWidth?: number;
 }
 
 /**
@@ -635,6 +647,13 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
+  // Absorbs the slack between the left cluster and the right-pinned playback
+  // button. When the message is narrower than the footer's own content the
+  // container grows past its minWidth and this collapses to zero, so the
+  // button lands right after the details ("on the end").
+  spacer: {
+    flex: 1,
+  },
 }));
 
 /**
@@ -650,6 +669,9 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   usage,
   forkBoundaryMessageId,
   onFork,
+  serverId,
+  agentId,
+  messageWidth,
 }: AssistantTurnFooterProps) {
   const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
   const detailsLabel = useMemo(() => {
@@ -665,9 +687,22 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     [forkBoundaryMessageId, onFork],
   );
   const canFork = Boolean(onFork && forkBoundaryMessageId);
+  // Speak-this-message is available whenever the host can stream speech on
+  // demand (the ttsSpeak capability); no live voice session required.
+  const canPlay = useTtsSpeakFeature(serverId ?? "");
+  const showPlayback = canPlay && serverId !== undefined;
+  // Pin the button under the message's right edge by forcing the row at least
+  // as wide as the bubble; the flex spacer fills any slack (see the stylesheet).
+  const containerStyle = useMemo(
+    () =>
+      showPlayback && messageWidth && messageWidth > 0
+        ? [assistantTurnFooterStylesheet.container, { minWidth: messageWidth }]
+        : assistantTurnFooterStylesheet.container,
+    [showPlayback, messageWidth],
+  );
 
   return (
-    <View style={assistantTurnFooterStylesheet.container}>
+    <View style={containerStyle}>
       <TurnCopyButton
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
@@ -675,6 +710,12 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {detailsLabel ? (
         <Text style={assistantTurnFooterStylesheet.detailsLabel}>{detailsLabel}</Text>
+      ) : null}
+      {showPlayback && serverId !== undefined ? (
+        <>
+          <View style={assistantTurnFooterStylesheet.spacer} />
+          <MessagePlaybackButton serverId={serverId} agentId={agentId} getContent={getContent} />
+        </>
       ) : null}
     </View>
   );
@@ -686,6 +727,13 @@ interface AssistantMessageProps {
   workspaceRoot?: string;
   serverId?: string;
   client?: DaemonClient | null;
+  /**
+   * The stream item id. Used as the turn-width key fallback for a standalone
+   * (ungrouped) reply — the turn footer resolves the same `blockGroupId ?? id`
+   * to pin its playback button to this message's right edge
+   * (agent-stream/assistant-turn-width.ts).
+   */
+  id?: string;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
   /**
    * How many characters of the message the live-turn typewriter reveal has
@@ -1599,6 +1647,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   workspaceRoot,
   serverId,
   client,
+  id,
   spacing = "default",
   revealBudget,
   blockGroupId,
@@ -1954,36 +2003,50 @@ export const AssistantMessage = memo(function AssistantMessage({
   // it (agent-stream/bubble-group-offsets.ts).
   const bubbleRef = useRef<View>(null);
   const groupOffsetTop = useBubbleGroupOffset(blockGroupId, blockIndex);
+  // The turn footer pins its playback button to the message's right edge; it
+  // resolves the same key (blockGroupId ?? id) and reads the widest reported
+  // segment (assistant-turn-width.ts). A standalone reply hugs its content so
+  // its width is the true bubble width; grouped continuation segments stretch
+  // to the full column, which is what a long message should pin against.
+  const widthGroupId = blockGroupId ?? id;
+  const widthBlockIndex = blockIndex ?? 0;
   const handleBubbleLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      if (blockGroupId === undefined || blockIndex === undefined) {
-        return;
+      const { width, height } = event.nativeEvent.layout;
+      if (blockGroupId !== undefined && blockIndex !== undefined) {
+        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height });
       }
-      reportBubbleSegmentHeight({
-        groupId: blockGroupId,
-        blockIndex,
-        height: event.nativeEvent.layout.height,
-      });
+      if (widthGroupId !== undefined) {
+        reportAssistantBubbleWidth({ groupId: widthGroupId, blockIndex: widthBlockIndex, width });
+      }
     },
-    [blockGroupId, blockIndex],
+    [blockGroupId, blockIndex, widthGroupId, widthBlockIndex],
   );
   // RN-web fires onLayout only on mount/window-resize, so a segment that
   // grows after mount (the live-turn reveal typing into it) would report a
-  // stale height to the group registry; re-measure whenever the displayed
+  // stale height/width to the registries; re-measure whenever the displayed
   // text changes. Native onLayout re-fires on every layout change already.
   useEffect(() => {
-    if (!isWeb || blockGroupId === undefined || blockIndex === undefined) {
+    if (!isWeb || widthGroupId === undefined) {
       return;
     }
     const frame = requestAnimationFrame(() => {
       const node = bubbleRef.current as unknown as HTMLElement | null;
-      const height = node?.getBoundingClientRect?.().height;
-      if (typeof height === "number") {
-        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height });
+      const rect = node?.getBoundingClientRect?.();
+      if (!rect) {
+        return;
       }
+      if (blockGroupId !== undefined && blockIndex !== undefined) {
+        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height: rect.height });
+      }
+      reportAssistantBubbleWidth({
+        groupId: widthGroupId,
+        blockIndex: widthBlockIndex,
+        width: rect.width,
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [blockGroupId, blockIndex, displayMessage]);
+  }, [blockGroupId, blockIndex, widthGroupId, widthBlockIndex, displayMessage]);
 
   // Not yet reached by the live-turn reveal: take no space (not even the
   // container padding) until the typewriter arrives at this item.
@@ -2010,7 +2073,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <View
           ref={bubbleRef}
           style={bubbleStyle}
-          onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
+          onLayout={widthGroupId !== undefined ? handleBubbleLayout : undefined}
         >
           {sheen}
           {keyedBlocks.map(({ key, block }) => (
@@ -2331,119 +2394,87 @@ interface TodoListCardProps {
   disableOuterSpacing?: boolean;
 }
 
-interface TodoListItemRowProps {
-  text: string;
-  completed: boolean;
-}
-
-function TodoListItemRow({ text, completed }: TodoListItemRowProps) {
-  const badgeStyle = useMemo(
-    () => [
-      todoListCardStylesheet.radioBadge,
-      completed
-        ? todoListCardStylesheet.radioBadgeComplete
-        : todoListCardStylesheet.radioBadgeIncomplete,
-    ],
-    [completed],
-  );
-  const textStyle = useMemo(
-    () => [todoListCardStylesheet.itemText, completed && todoListCardStylesheet.itemTextCompleted],
-    [completed],
-  );
-  return (
-    <View style={todoListCardStylesheet.itemRow}>
-      <View style={badgeStyle}>
-        {completed ? (
-          <ThemedTodoCheckIcon size={12} uniProps={primaryForegroundColorMapping} />
-        ) : null}
-      </View>
-      <Text style={textStyle}>{text}</Text>
-    </View>
-  );
-}
-
-const todoListCardStylesheet = StyleSheet.create((theme) => ({
-  detailsWrapper: {
-    padding: theme.spacing[2],
-  },
-  list: {
-    gap: theme.spacing[1],
-  },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  radioBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: theme.colors.foregroundMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  radioBadgeIncomplete: {
-    opacity: 0.55,
-  },
-  radioBadgeComplete: {
-    opacity: 0.95,
-  },
-  itemText: {
-    flex: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  itemTextCompleted: {
-    color: theme.colors.foregroundMuted,
-    textDecorationLine: "line-through",
-  },
-  emptyText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-}));
-
+/**
+ * Prominent, always-open task list — the chat-native counterpart to the Claude
+ * terminal's todo list. It checks itself off in place as the agent works (one
+ * evolving card, not a snapshot per update; see appendTodoList), highlights the
+ * task in flight, and shows a running done/total with a progress bar. The
+ * checkable body is shared with the pinned overlay (components/todo-task-list).
+ * Motion is gated by the Appearance → Animations switch.
+ */
 export const TodoListCard = memo(function TodoListCard({
   items,
   disableOuterSpacing,
 }: TodoListCardProps) {
   const { t } = useTranslation();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const animationsEnabled = useAppSettingValue(selectAnimationsEnabled);
+  const { completedCount, total } = useTodoCounts(items);
 
-  const nextTask = useMemo(() => items.find((item) => !item.completed)?.text, [items]);
-
-  const handleToggle = useCallback(() => {
-    setIsExpanded((prev) => !prev);
-  }, []);
-
-  const renderDetails = useCallback(() => {
-    return (
-      <View style={todoListCardStylesheet.detailsWrapper}>
-        <View style={todoListCardStylesheet.list}>
-          {items.length === 0 ? (
-            <Text style={todoListCardStylesheet.emptyText}>{t("message.todo.empty")}</Text>
-          ) : (
-            items.map((item) => (
-              <TodoListItemRow key={item.text} text={item.text} completed={item.completed} />
-            ))
-          )}
-        </View>
-      </View>
-    );
-  }, [items, t]);
+  const cardStyle = useMemo(
+    () => [
+      todoListCardStylesheet.card,
+      disableOuterSpacing && todoListCardStylesheet.cardNoOuterSpacing,
+    ],
+    [disableOuterSpacing],
+  );
 
   return (
-    <ExpandableBadge
-      label={t("message.todo.title")}
-      secondaryLabel={nextTask}
-      icon={CheckSquare}
-      isExpanded={isExpanded}
-      onToggle={handleToggle}
-      renderDetails={renderDetails}
-      disableOuterSpacing={disableOuterSpacing}
-    />
+    <View style={cardStyle}>
+      <View style={todoListCardStylesheet.header}>
+        <ThemedTodoHeaderIcon size={13} uniProps={foregroundColorMapping} />
+        <Text style={todoListCardStylesheet.headerTitle} numberOfLines={1}>
+          {t("message.todo.title")}
+        </Text>
+        {total > 0 ? (
+          <Text style={todoListCardStylesheet.headerCount}>
+            {t("message.todo.progress", { completed: completedCount, total })}
+          </Text>
+        ) : null}
+      </View>
+      <TodoTaskList
+        items={items}
+        animationsEnabled={animationsEnabled}
+        emptyLabel={t("message.todo.empty")}
+      />
+    </View>
   );
 });
+
+const todoListCardStylesheet = StyleSheet.create((theme) => ({
+  card: {
+    marginVertical: theme.spacing[1],
+    // Green (success-tone) ring at the same 1px weight as the usage-alert band,
+    // matching the pinned overlay and the green progress bar — one task-list
+    // identity whether it renders inline or floated.
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.statusSuccess,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface2,
+    overflow: "hidden",
+  },
+  cardNoOuterSpacing: {
+    marginVertical: 0,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[2],
+    paddingBottom: theme.spacing[1],
+  },
+  headerTitle: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  headerCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontVariant: ["tabular-nums"],
+  },
+}));
 
 interface ExpandableBadgeProps {
   label: string;

@@ -13,6 +13,7 @@
   "bracketSpacing": true,
   "ignorePatterns": [
     "vendor/**",
+    "**/vendor/**",
     "*.lock",
     "**/*.gen.ts",
     "**/*.gen.tsx",

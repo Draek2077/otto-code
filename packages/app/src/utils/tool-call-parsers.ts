@@ -338,3 +338,116 @@ export function extractTaskEntriesFromToolCall(
 
   return null;
 }
+
+// ---- Incremental checklist tools (Claude Agent SDK: TaskCreate/TaskUpdate/TaskList) ----
+//
+// Unlike TodoWrite/update_plan (which resend the whole list every call), these
+// tools mutate one task at a time and identify tasks by an `id` the SDK assigns.
+// TaskCreate returns that id in its OUTPUT; TaskUpdate/TaskList reference it. The
+// reducer accumulates these ops into one evolving checklist — see stream.ts.
+
+/**
+ * A single mutation to the running checklist, extracted from one completed
+ * Task* tool call. `sync` (from TaskList) is authoritative and replaces the set.
+ */
+export type TaskListOperation =
+  | { kind: "create"; id: string | null; text: string }
+  | { kind: "update"; id: string; status?: TaskStatus; text?: string; deleted?: boolean }
+  | { kind: "sync"; tasks: { id: string; text: string; status: TaskStatus }[] };
+
+const CHECKLIST_TASK_TOOLS = new Set(["taskcreate", "taskupdate", "tasklist", "taskget"]);
+
+/**
+ * The checklist Task* family, by normalized name. Note this deliberately does
+ * NOT match the bare `Task` tool (subagent fan-out) or `TaskOutput`/`TaskStop`
+ * (background-task control) — only the todo-list tools.
+ */
+export function isChecklistTaskTool(toolName: string): boolean {
+  return CHECKLIST_TASK_TOOLS.has(normalizeToolName(toolName));
+}
+
+const TaskCreateInputSchema = z.object({ subject: z.string() });
+const TaskCreateOutputSchema = z.object({ task: z.object({ id: z.string() }) });
+const TaskUpdateInputSchema = z.object({
+  taskId: z.string(),
+  status: z.enum(["pending", "in_progress", "completed", "deleted"]).optional(),
+  subject: z.string().optional(),
+});
+const TaskListOutputSchema = z.object({
+  tasks: z.array(
+    z.object({ id: z.string(), subject: z.string(), status: TaskStatusSchema }),
+  ),
+});
+
+// Tool I/O may reach us as a structured object or a JSON-encoded string,
+// depending on how the provider serializes the result — tolerate both.
+function coerceToolPayload(value: unknown): unknown {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+export function extractTaskListOperation(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+): TaskListOperation | null {
+  const normalized = normalizeToolName(toolName);
+  const inputRecord = coerceToolPayload(input);
+  const outputRecord = coerceToolPayload(output);
+
+  if (normalized === "taskcreate") {
+    const parsedInput = TaskCreateInputSchema.safeParse(inputRecord);
+    if (!parsedInput.success) {
+      return null;
+    }
+    const text = parsedInput.data.subject.trim();
+    if (!text) {
+      return null;
+    }
+    const parsedOutput = TaskCreateOutputSchema.safeParse(outputRecord);
+    return { kind: "create", id: parsedOutput.success ? parsedOutput.data.task.id : null, text };
+  }
+
+  if (normalized === "taskupdate") {
+    const parsedInput = TaskUpdateInputSchema.safeParse(inputRecord);
+    if (!parsedInput.success) {
+      return null;
+    }
+    const { taskId, status, subject } = parsedInput.data;
+    if (status === "deleted") {
+      return { kind: "update", id: taskId, deleted: true };
+    }
+    // `status` is now narrowed to TaskStatus | undefined (deleted handled above).
+    const text = subject?.trim();
+    return {
+      kind: "update",
+      id: taskId,
+      status,
+      text: text && text.length > 0 ? text : undefined,
+    };
+  }
+
+  if (normalized === "tasklist") {
+    const parsedOutput = TaskListOutputSchema.safeParse(outputRecord);
+    if (!parsedOutput.success) {
+      return null;
+    }
+    return {
+      kind: "sync",
+      tasks: parsedOutput.data.tasks.map((task) => ({
+        id: task.id,
+        text: task.subject,
+        status: task.status,
+      })),
+    };
+  }
+
+  // taskget and anything else in the family are reads — no list mutation.
+  return null;
+}

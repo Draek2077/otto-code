@@ -14,7 +14,7 @@ import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { ComposerTrackTransition } from "@/composer/track-transition";
+import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import {
   WorkspaceTabIcon,
@@ -143,7 +143,7 @@ export function SubagentsTrack({
   const headerLabel = formatHeaderLabel({ active, completed }, clearedTokens);
 
   return (
-    <ComposerTrackTransition>
+    <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.subagents}>
       <View style={styles.outer} testID="subagents-track">
         <ChatWidthBounds style={styles.track}>
           <View style={surfaceStyle}>

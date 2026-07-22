@@ -1,0 +1,238 @@
+= Orchestration — Execution Engine
+:description: How a graph runs — scheduling, the value plane, control flow, excluded branches, loops, fan-out, budgets, failure and cancellation.
+
+The engine is pure control flow over an injected port
+(`packages/server/src/server/orchestration/graph-engine.ts`), mirroring the phase engine:
+no daemon dependencies, unit-testable with fakes. Everything on this page is engine
+behaviour; who the agent is and what it may touch is
+link:15-orchestration-agents.html[Agent Binding].
+
+== Scheduling model
+
+One memoised promise per node. A node awaits its upstream nodes' promises, so the
+schedule is event-driven rather than wave-based: a node whose inputs are ready never
+waits on an unrelated branch. The DAG check at compile time guarantees termination.
+
+Concurrency is bounded by a counting semaphore (default 6 concurrent child agents, hard
+cap 40 total). This is a deliberate divergence from Rivet, whose `GraphProcessor` uses
+`PQueue({ concurrency: Infinity })` with no backpressure knob at all. That is defensible
+when a node is an API call; it is not when a node is an OS process that opens a model
+session and edits a repository. *Unbounded concurrency is a cost and safety bug for us.*
+
+[cols="1,2,2"]
+|===
+|Concern |Rivet |Otto
+
+|Scheduling
+|Demand-driven pull from sink nodes, recursive
+|Memoised promise per node, awaited by dependents
+
+|Concurrency
+|Unbounded
+|Semaphore, plus a run-level agent cap
+
+|Node cost
+|Milliseconds, in-process
+|Minutes to hours, an external supervised process
+
+|Failure of a node
+|Downstream silently refuses to run
+|Downstream marked `skipped` with a stated reason, run fails with the first error
+|===
+
+== Node result states
+
+The single most important type in the engine. A node result is *three*-valued, not two:
+
+[cols="1,3"]
+|===
+|State |Meaning
+
+|`done`
+|Produced an output.
+
+|`failed`
+|Errored. Downstream nodes skip; the run fails with the first error.
+
+|`excluded`
+|Will not run, because control flow routed around it. *Not* an error, and not a
+failure — a legitimate terminal state that downstream nodes must be able to absorb.
+|===
+
+`excluded` does not exist yet and must be added *before* conditional edges, because
+retrofitting a third state through every join, every wrap-up and every projection is
+strictly harder than designing with it.
+
+=== The distinction that makes or breaks loops
+
+Rivet encodes exclusion as a data value carried on ports —
+`{ type: 'control-flow-excluded', value: undefined | 'loop-not-broken' }` — and that
+two-valued payload is doing essential double duty:
+
+* `undefined` — *will not run.* The branch was not taken; downstream is excluded.
+* `'loop-not-broken'` — *has not run yet.* A loop is still iterating; downstream must
+  **defer**, not exclude.
+
+In Rivet's `#excludedDueToControlFlow`, the second flavour is never consumable: when a
+node sees it, the function returns "not ready" *without* marking the node excluded. Get
+that distinction wrong and loops either hang forever or terminate on their first pass.
+
+Otto's equivalent is a status on the node result rather than a value on a port, because
+our ports carry structured outputs, not a tagged union of scalars. The two flavours
+become `excluded` (terminal) and simply *not yet resolved* (the promise is still pending)
+— which our promise-memoised scheduler expresses naturally, and is one place where our
+model is genuinely simpler than the one we are learning from.
+
+=== Which nodes may consume an excluded input
+
+Rivet hardcodes a six-element list — `if`, `ifElse`, `coalesce`, `graphOutput`,
+`raceInputs`, `loopController` — as a `BuiltInNodeType[]` in the processor, which means
+plugin nodes can never join it.
+
+*We take the mechanic and reject the shape.* Consuming exclusion is a **declared property
+of a node kind** (`consumesExcluded: true` in the kind definition), not a list inside the
+scheduler. Our consumers are `merge`, `router` (an else-branch is exclusion), `gate` (a
+rejected gate excludes its approved branch) and the root wrap-up.
+
+== The value plane
+
+An edge moves one node's output port to another node's input port. Today that payload is
+the agent's last chat message; the target is the structured node output — a bounded
+summary, artifact references, optional declared fields, optional evidence
+(link:12-orchestration-data-model.html[Data Model]).
+
+Two rules keep this honest:
+
+. *References, not contents.* A downstream node receives a path or artifact id and reads
+  it with its own tools. Inlining file contents into the prompt reproduces the lossy
+  re-summarisation the artifact plane exists to eliminate.
+. *One legality function.* If ports become typed, the editor's "can I draw this wire" and
+  the engine's "can I pass this value" must be the same function. Rivet is a cautionary
+  tale here: its editor-side `canBeCoerced` carries the comment _"hard to keep in sync
+  with coerceType"_, and connection legality turns out to be advisory CSS only — an
+  illegal wire is drawable and fails at runtime. Either one function decides, or the
+  editor is lying.
+
+== Control flow
+
+[mermaid]
+----
+flowchart TD
+  A["Node completes"] --> B{"Outgoing edges"}
+  B -->|"unconditional"| C["Downstream ready-check"]
+  B -->|"when: matched"| C
+  B -->|"when: unmatched"| D["Branch excluded"]
+  D --> E{"Downstream kind<br/>consumesExcluded?"}
+  E -->|"no"| F["Node excluded<br/>(propagates)"]
+  E -->|"yes"| G["Merge / Router / Gate<br/>absorbs it"]
+  C --> H{"All inputs<br/>resolved?"}
+  H -->|"no"| I["Wait"]
+  H -->|"yes"| J["Dispatch"]
+  F --> C
+  G --> J
+----
+
+*Conditional edges.* `when` on the edge, evaluated against the upstream node's declared
+output fields. Putting the condition on the wire rather than inside a node keeps the
+branch visible on the canvas.
+
+*Router node.* For the case where no predicate exists — classify in natural language,
+emit on one of N named ports. Unselected ports emit exclusion.
+
+*Merge node.* The explicit join, with a declared policy: `first` (first non-excluded
+wins — Rivet's `Coalesce`), `all` (wait for every non-excluded input), or `synthesize`
+(hand them to an agent). A join must account for pruned branches, and there are two
+_different_ wrong answers: deadlocking on a branch that will never arrive, and — the one
+LangGraph actually exhibits — never becoming runnable at all, so the run drains and
+reports success having quietly skipped part of the graph. Ours resolves `excluded` with a
+stated reason instead; see link:14-orchestration-durability.html[Durability].
+
+== Iteration
+
+=== Per-node loops (built)
+
+`{ times: N }` or `{ until: { criteria[], judgeRole, max } }`, graded between iterations
+by a structured judge verdict, hard-capped. This stays a *node annotation*, not a
+container node or a cyclic edge, for three reasons: it covers the overwhelmingly common
+case (retry this node until it passes), it needs no cycle detection, and Rivet's own
+loop implementation is the most fragile part of its engine — it re-runs by deleting
+entries from `#visitedNodes`/`#nodeResults` and re-firing the pull, it cannot nest
+(`Nested loops are not supported` is a thrown error), and its break check contains
+provably dead code.
+
+Guard semantics we adopt from it: a max-iteration ceiling with an explicit
+*action* — break, or fail — rather than a silent stop.
+
+=== Map (dynamic fan-out) — target
+
+The one shape a static DAG cannot express: *one node instance per item of an upstream
+list*. Needed for feature breakout ("one implementer per planned unit"). Requirements:
+
+* Items come from a declared output field or an artifact the upstream node produced.
+* A hard cap on instances, counted against the run's agent budget *before* spawning.
+* Per-instance isolation is the default when the instances write
+  (link:15-orchestration-agents.html[worktrees]).
+* Results collect on a `done` port in stable order; a failing instance follows the run's
+  failure policy rather than silently vanishing.
+
+Note Rivet has a weaker version of this (`isSplitRun`, capped at 10 by default) that
+fans a node over array inputs and re-aggregates per port. The cap-by-default instinct is
+right and we copy it.
+
+== Failure policy
+
+Today: a failed node fails the run, downstream nodes are marked `skipped` with a stated
+reason, and independent branches already in flight run to completion. That is a sound
+default and stays the default. The target adds per-node choice:
+
+* `fail` (default) — the run fails.
+* `continue` — the node's output is excluded and the graph carries on. For optional
+  enrichment steps.
+* `retry: N` — bounded, and counted against the run budget, never as a private allowance.
+
+[WARNING]
+====
+Nested retries compound. Three nodes at three attempts each is nine agents, and each
+agent is roughly four times the token cost of a chat turn. *A run-level budget is what
+makes per-node retry safe to offer* — never ship the second without the first.
+====
+
+== Budgets
+
+A run declares a ceiling in agents, tokens, cost and wall-clock. Reaching it is a hard
+stop with a stated reason, not a warning. The estimate is computed at compile time and
+shown before the user confirms — at an order-of-magnitude cost premium over a chat, a
+user who cannot see the bill before pressing go will eventually be surprised by it, once,
+and never use the feature again.
+
+== Cancellation
+
+A user cancel aborts the run signal; every in-flight node's agent is cancelled and its
+subtree cascades. Per-node abort handles is the mechanism Rivet uses to kill losing race
+branches, and it is the same machinery we need for map instances that are no longer
+wanted. Cancelled runs settle as `canceled`, never as `failed` — the distinction matters
+in the Orchestrations list and in accounting.
+
+== Invariants
+
+. A node's agent is spawned only when every input edge has resolved. Barrier state lives
+  in the daemon; agents never know they are waiting.
+. Node results are three-valued. `excluded` is not an error and never fails a run.
+. Whether a node kind can consume an excluded input is declared on the kind, never
+  listed inside the scheduler.
+. Concurrency is always bounded, and total agents are always capped.
+. Every loop has a hard maximum and an explicit at-maximum action.
+. A join never waits on a branch that has been excluded, and never fires early on a
+  branch that is merely slow.
+. If ports are typed, exactly one function decides legality for both the editor and the
+  engine.
+. Cancel and failure are distinct terminal states, both with a stated reason.
+
+== Change checklist
+
+* [ ] Does the change introduce a new terminal node state? (It should not.)
+* [ ] Can a join downstream of this change deadlock on a pruned branch?
+* [ ] Is any new parallelism bounded by the semaphore *and* counted against the budget?
+* [ ] Does any new loop or fan-out have a hard cap with a declared at-cap action?
+* [ ] Are new engine behaviours covered by a fake-port unit test with a deterministic
+  schedule (link:18-orchestration-rollout.html[Testing])?

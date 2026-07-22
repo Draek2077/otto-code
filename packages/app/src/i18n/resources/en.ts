@@ -426,6 +426,8 @@ export const en = {
     todo: {
       title: "Tasks",
       empty: "No tasks yet.",
+      progress: "{{completed}}/{{total}}",
+      dismiss: "Dismiss",
     },
     compaction: {
       loading: "Compacting...",
@@ -924,6 +926,20 @@ export const en = {
           deletedLines: "{{count}} deleted lines",
           unpushedCommit: "{{count}} unpushed commit",
           unpushedCommits: "{{count}} unpushed commits",
+          // Branch cleanup section (worktreeArchiveBranchCleanup)
+          branchIntro: "This worktree is on branch {{branchName}}.",
+          deleteBranchCheckbox: "Also delete branch {{branchName}}",
+          branchMerged: "Fully merged into {{baseBranch}} — safe to delete.",
+          branchMergedNoBase: "Fully merged — safe to delete.",
+          branchUnmergedCommit:
+            "Not merged into {{baseBranch}} — deleting discards {{count}} commit.",
+          branchUnmergedCommits:
+            "Not merged into {{baseBranch}} — deleting discards {{count}} commits.",
+          branchUnmergedCommitNoBase: "Not merged — deleting discards {{count}} commit.",
+          branchUnmergedCommitsNoBase: "Not merged — deleting discards {{count}} commits.",
+          branchMergeUnknown: "Merge status could not be determined.",
+          branchRemoteKept: "The copy on origin is kept.",
+          branchDeleted: "Deleted branch {{branchName}}.",
         },
       },
       diff: {
@@ -1122,11 +1138,22 @@ export const en = {
         copyPath: "Copy path",
         copyBranchName: "Copy branch name",
         rename: "Rename workspace",
+        openBaseCheckout: "Open base checkout",
+        openBaseCheckoutFailed: "Failed to open base checkout",
         archive: "Archive",
         archiveWorkspace: "Archive workspace",
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
         hiding: "Hiding...",
+      },
+      reopenWorktree: {
+        menu: "Reopen worktree...",
+        title: "Reopen worktree",
+        empty: "No worktrees to reopen.",
+        failed: "Failed to reopen worktree",
+        offBase: "off {{base}}",
+        orphan: "Not tracked",
+        willRecreate: "Recreated from branch",
       },
       confirmations: {
         hideTitle: "Hide workspace?",
@@ -2378,11 +2405,6 @@ export const en = {
           title: "Hide pinned toolbar options",
           hint: "Keep pinned tab-bar and diff-toolbar options hidden until you hover over their toolbar area",
           accessibilityLabel: "Hide pinned toolbar options",
-        },
-        hideMergeIntoBaseAction: {
-          title: "Hide merge into base branch",
-          hint: "Remove the 'Merge into <base>' action from the source control menu, for a pull-request-only workflow",
-          accessibilityLabel: "Hide merge into base branch",
         },
       },
       visualizer: {

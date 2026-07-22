@@ -132,6 +132,8 @@ import { ScheduleService } from "./schedule/service.js";
 import { RunService } from "./orchestration/run-service.js";
 import { RunStore } from "./orchestration/run-store.js";
 import { buildRunSummaryPrompt } from "./orchestration/run-engine.js";
+import { GraphStore } from "./orchestration/graph-store.js";
+import { seedStarterGraphs } from "./orchestration/starter-graphs.js";
 import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
@@ -674,7 +676,8 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
 
   // Per-project git hosting credentials round-trip config.json ⇄ mutable
   // config the same way the speech OpenAI key does.
-  const persistedGitHosting = loadPersistedConfig(config.ottoHome).gitHosting;
+  const persistedConfig = loadPersistedConfig(config.ottoHome);
+  const persistedGitHosting = persistedConfig.gitHosting;
 
   const initialConfig: MutableDaemonConfig = {
     mcp: buildInitialMcpSection(config),
@@ -683,6 +686,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     providers,
     metadataGeneration: buildInitialMetadataGeneration(config),
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
+    // Host-level client git-action policy; only the app consumes it, so it
+    // rides the daemon config round-trip without a field on OttoDaemonConfig.
+    hideMergeIntoBaseAction: persistedConfig.daemon?.hideMergeIntoBaseAction ?? false,
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
@@ -1515,6 +1521,14 @@ export async function createOttoDaemon(
     emitExternalSessionMessage({ type: "runs.cleared.notification", payload: { runIds } });
   });
   logger.info({ elapsed: elapsed() }, "Run service initialized");
+  // Orchestration graph templates (projects/orchestration-graphs) — host-level,
+  // like personalities/teams. Starter graphs seed once; user edits win forever.
+  const graphStore = new GraphStore(path.join(config.ottoHome, "orchestration-graphs"));
+  await seedStarterGraphs(graphStore, logger);
+  graphStore.onChange((graphs) => {
+    emitExternalSessionMessage({ type: "runs.graphs.changed.notification", payload: { graphs } });
+  });
+  logger.info({ elapsed: elapsed() }, "Orchestration graph store initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
   const persistedRecords = await agentStorage.list();
   logger.info(
@@ -1905,6 +1919,7 @@ export async function createOttoDaemon(
               async () => {
                 await Promise.all([activityStatsStore.reset(), usageLogStore.reset()]);
               },
+              graphStore,
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());

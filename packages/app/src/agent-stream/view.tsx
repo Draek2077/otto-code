@@ -155,11 +155,15 @@ function StreamItemWithTurnFooter({
   layoutItem,
   strategy,
   onForkAssistantTurn,
+  serverId,
+  agentId,
 }: {
   content: ReactNode;
   layoutItem: StreamLayoutItem;
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  serverId?: string;
+  agentId?: string;
 }): ReactNode {
   const [isHovered, setIsHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setIsHovered(true), []);
@@ -185,6 +189,8 @@ function StreamItemWithTurnFooter({
       startIndex={footerHost.startIndex}
       onForkAssistantTurn={onForkAssistantTurn}
       revealed={isHovered}
+      serverId={serverId}
+      agentId={agentId}
     />
   );
 
@@ -697,6 +703,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           workspaceRoot,
           serverId: resolvedServerId,
           client,
+          id: item.id,
           spacing: layoutItem.assistantSpacing,
           blockGroupId: item.blockGroupId,
           blockIndex: item.blockIndex,
@@ -878,10 +885,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             layoutItem={layoutItem}
             strategy={streamRenderStrategy}
             onForkAssistantTurn={handleForkAssistantTurn}
+            serverId={resolvedServerId}
+            agentId={agentId}
           />
         );
       },
-      [handleForkAssistantTurn, renderStreamItemContent, streamRenderStrategy],
+      [
+        agentId,
+        handleForkAssistantTurn,
+        renderStreamItemContent,
+        resolvedServerId,
+        streamRenderStrategy,
+      ],
     );
 
     const pendingPermissionItems = useMemo(
@@ -909,6 +924,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             strategy={streamRenderStrategy}
             onForkAssistantTurn={handleForkAssistantTurn}
             spinner={agent.personalitySpinner ?? undefined}
+            serverId={resolvedServerId}
+            agentId={agentId}
           />
         ) : null,
       [
@@ -919,6 +936,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         bottomTurnFooterHost,
         streamRenderStrategy,
         agent.personalitySpinner,
+        resolvedServerId,
+        agentId,
       ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {

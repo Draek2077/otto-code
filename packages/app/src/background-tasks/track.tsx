@@ -7,7 +7,7 @@ import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { ComposerTrackTransition } from "@/composer/track-transition";
+import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import type { BackgroundShellTaskRow } from "./select";
@@ -104,7 +104,7 @@ export function BackgroundTasksTrack({
   const headerLabel = formatHeaderLabel(rows);
 
   return (
-    <ComposerTrackTransition>
+    <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.backgroundTasks}>
       <View style={styles.outer} testID="background-tasks-track">
         <ChatWidthBounds style={styles.track}>
           <View style={surfaceStyle}>

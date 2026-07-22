@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,11 @@ import { X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
-import { isWeb } from "@/constants/platform";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
+
+// Stable reference so the handler doesn't re-register every render.
+const LIGHTBOX_KEYBOARD_ACTIONS: readonly KeyboardActionId[] = ["agent.interrupt"];
 
 interface AttachmentLightboxProps {
   metadata: AttachmentMetadata | null;
@@ -20,23 +24,30 @@ export function AttachmentLightbox({ metadata, onClose }: AttachmentLightboxProp
   const insets = useSafeAreaInsets();
   const url = useAttachmentPreviewUrl(metadata);
   const [errored, setErrored] = useState(false);
+  const keyboardHandlerId = useId();
 
   useEffect(() => {
     setErrored(false);
   }, [metadata?.id]);
 
-  useEffect(() => {
-    if (!isWeb || !metadata) return;
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", handleKeydown);
-    return () => {
-      window.removeEventListener("keydown", handleKeydown);
-    };
-  }, [metadata, onClose]);
+  // Close on Escape by claiming `agent.interrupt` at a priority above the
+  // composer's (100–200). The global shortcut listener runs in the capture
+  // phase, so a plain window `keydown` listener here would fire only after the
+  // composer had already cancelled the running agent — the exact bug this
+  // replaces. Routing through the dispatcher makes precedence explicit and
+  // order-independent. Only the open lightbox is `enabled`, so stacked
+  // instances (one per message) never contend.
+  const handleInterrupt = useCallback((): boolean => {
+    onClose();
+    return true;
+  }, [onClose]);
+  useKeyboardActionHandler({
+    handlerId: keyboardHandlerId,
+    actions: LIGHTBOX_KEYBOARD_ACTIONS,
+    enabled: metadata !== null,
+    priority: 1000,
+    handle: handleInterrupt,
+  });
 
   const closeButtonStyle = useMemo(
     () => [

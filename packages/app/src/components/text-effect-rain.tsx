@@ -125,7 +125,7 @@ export const TextEffectRain = memo(function TextEffectRain({
     };
   }, [cycleSeconds, progress]);
 
-  const columns = useMemo(
+  const { columns, cellWidth } = useMemo(
     () => buildRainColumns(width, effect.cellWidth, effect.scrambleAlphabet, seed),
     [width, effect.cellWidth, effect.scrambleAlphabet, seed],
   );
@@ -149,7 +149,7 @@ export const TextEffectRain = memo(function TextEffectRain({
           column={column}
           progress={progress}
           staggerFraction={staggerFraction}
-          cellWidth={effect.cellWidth}
+          cellWidth={cellWidth}
           headColor={effect.headColor}
           tailColor={effect.tailColor}
         />

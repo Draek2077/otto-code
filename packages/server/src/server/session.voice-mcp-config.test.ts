@@ -4,6 +4,8 @@ import {
   buildVoiceAgentMcpServerConfig,
   buildVoiceModeSystemPrompt,
   stripVoiceModeSystemPrompt,
+  unwrapSpokenInput,
+  wrapSpokenInput,
 } from "./voice-config.js";
 
 describe("voice MCP stdio config", () => {
@@ -74,5 +76,27 @@ describe("voice mode prompt instructions", () => {
         ["<otto_voice_mode>", "legacy voice instruction", "</otto_voice_mode>"].join("\n\n"),
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("spoken-input envelope", () => {
+  test("unwraps the words the user spoke from a wrapped prompt", () => {
+    const spoken = "refactor the login screen and run the tests";
+    expect(unwrapSpokenInput(wrapSpokenInput(spoken))).toBe(spoken);
+  });
+
+  test("tolerates edge whitespace a provider transcript may introduce", () => {
+    const wrapped = `\n  ${wrapSpokenInput("push my branch")}\n`;
+    expect(unwrapSpokenInput(wrapped)).toBe("push my branch");
+  });
+
+  test("leaves ordinary messages untouched (idempotent)", () => {
+    expect(unwrapSpokenInput("just a normal message")).toBe("just a normal message");
+    // An incidental mention of the tag without the full envelope is not rewritten.
+    expect(unwrapSpokenInput("talk about <spoken-input> tags")).toBe(
+      "talk about <spoken-input> tags",
+    );
+    const clean = unwrapSpokenInput(wrapSpokenInput("hello"));
+    expect(unwrapSpokenInput(clean)).toBe(clean);
   });
 });
