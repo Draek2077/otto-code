@@ -61,20 +61,35 @@ function pickGlyph(alphabet: string, value: number): string {
   return alphabet.charAt(Math.abs(hash) % alphabet.length);
 }
 
+export interface RainLayout {
+  columns: readonly RainColumn[];
+  /**
+   * Pitch that makes `columns` span the full measured `width` exactly. Equals
+   * the requested `cellWidth` for normal labels; on a label wide enough to hit
+   * MAX_RAIN_COLUMNS the cells widen instead, so the rain still reaches the end
+   * of the line rather than stopping short at the column cap.
+   */
+  cellWidth: number;
+}
+
 export function buildRainColumns(
   width: number,
   cellWidth: number,
   alphabet: string,
   seed: string,
-): readonly RainColumn[] {
+): RainLayout {
   const count = Math.min(MAX_RAIN_COLUMNS, Math.max(0, Math.ceil(width / cellWidth)));
+  // Spread the (capped) columns across the whole width so they always reach the
+  // end. The animation is unchanged — only the per-column pitch adapts.
+  const spanCellWidth = count > 0 ? width / count : cellWidth;
   const seedValue = hashSeed(seed);
-  return Array.from({ length: count }, (_unused, index) => ({
+  const columns = Array.from({ length: count }, (_unused, index) => ({
     key: `${index}`,
     index,
     glyphA: pickGlyph(alphabet, seedValue + index * 2 + 1),
     glyphB: pickGlyph(alphabet, seedValue + index * 2 + 977),
   }));
+  return { columns, cellWidth: spanCellWidth };
 }
 
 export const rainStylesheet = StyleSheet.create((theme) => ({

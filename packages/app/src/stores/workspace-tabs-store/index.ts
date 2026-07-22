@@ -21,6 +21,12 @@ import {
 
 export { buildWorkspaceTabPersistenceKey } from "./state";
 export type { WorkspaceDraftTabSetup, WorkspaceTab, WorkspaceTabTarget } from "./state";
+export {
+  computeVisibleTabCount,
+  reorderTabIntoVisible,
+  splitTabsForOverflow,
+  type TabOverflowSplit,
+} from "./overflow";
 
 interface WorkspaceTabsState extends WorkspaceTabsCoreState {
   openDraftTab: (input: {

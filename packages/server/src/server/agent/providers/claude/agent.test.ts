@@ -2433,6 +2433,76 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(repeat.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
   });
 
+  test("surfaces a monitor background task started via task_started", async () => {
+    const session = await createSessionForTest();
+
+    const started = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "mon-1",
+      task_type: "monitor",
+      description: "Watching files",
+      uuid: "task-started-mon",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "background_shell_task_updated",
+        update: expect.objectContaining({ taskId: "mon-1", status: "running" }),
+      }),
+    );
+    // A monitor is NOT an observable AI run — it must not land on the observed
+    // subagent track.
+    expect(started.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
+  });
+
+  test("level signal creates and settles a background row the edge stream missed", async () => {
+    const session = await createSessionForTest();
+
+    const live = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [{ task_id: "mon-2", task_type: "monitor", description: "tailing logs" }],
+      uuid: "bg-mon-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(live).toContainEqual(
+      expect.objectContaining({
+        type: "background_shell_task_updated",
+        update: expect.objectContaining({ taskId: "mon-2", status: "running" }),
+      }),
+    );
+
+    const gone = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [],
+      uuid: "bg-mon-2",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(gone).toContainEqual(
+      expect.objectContaining({
+        type: "background_shell_task_updated",
+        update: expect.objectContaining({ taskId: "mon-2", status: "idle" }),
+      }),
+    );
+  });
+
+  test("level signal does not create a background row for a subagent task", async () => {
+    const session = await createSessionForTest();
+
+    const live = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [{ task_id: "sub-1", task_type: "subagent", description: "child agent" }],
+      uuid: "bg-sub-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(live.filter((event) => event.type === "background_shell_task_updated")).toEqual([]);
+  });
+
   test("result.result is not duplicated when assistant text already streamed with zero token usage", async () => {
     const queryFactory = createQueryFactoryForTurns([
       [

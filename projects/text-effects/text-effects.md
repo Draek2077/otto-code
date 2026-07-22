@@ -91,10 +91,12 @@ staggerSeconds` is how many columns are lit at once, i.e. how wide the strip rea
   its own style from it by subtracting its staggered phase. One animation driver per badge,
   worklets on the UI thread, no re-render while the strip travels.
 
-`MAX_RAIN_COLUMNS` (48) caps animated columns; a very wide badge gets a shorter strip
-rather than hundreds of worklet evaluations. The text span (`textSpanStartX` /
-`textSpanWidth` out of `computeShimmerMetrics`) is now measured on **both** platforms —
-the web sweep needed it for its track, the rain needs it on native too.
+`MAX_RAIN_COLUMNS` (48) caps animated columns to avoid hundreds of worklet evaluations,
+but the strip still reaches the end of the line: `buildRainColumns` returns the pitch that
+makes its (capped) columns span the full measured `width`, so a very wide badge widens its
+cells rather than stopping short. The text span (`textSpanStartX` / `textSpanWidth` out of
+`computeShimmerMetrics`) is now measured on **both** platforms — the web sweep needed it for
+its track, the rain needs it on native too.
 
 Deliberately horizontal: this rides a single-line label, so there is nowhere for a vertical
 drip to go. If a _geometric_ wave (glyphs displaced vertically in a sine) is ever wanted, it

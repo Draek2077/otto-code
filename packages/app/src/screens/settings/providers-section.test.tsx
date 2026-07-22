@@ -234,6 +234,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     agentTeams: { teams: [] },
     modelTierOverrides: [],
     autoArchiveAfterMerge: false,
+    hideMergeIntoBaseAction: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
   };

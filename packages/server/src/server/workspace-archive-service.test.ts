@@ -82,6 +82,15 @@ function createGitRepo(): { tempDir: string; repoDir: string } {
   return { tempDir, repoDir };
 }
 
+function listBranch(repoDir: string, branchName: string): string {
+  return execFileSync("git", ["branch", "--list", branchName], {
+    cwd: repoDir,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+}
+
 async function createOttoOwnedWorktree(
   repoDir: string,
   ottoHome: string,
@@ -537,6 +546,87 @@ describe("archiveByScope", () => {
     );
     expect(result.archivedWorkspaceIds).toHaveLength(3);
     expect(result.removedDirectory).toBe(true);
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+  });
+
+  test("branchCleanup deletes the leftover local branch after the worktree is removed", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "cleanup-branch");
+    const workspaceId = "ws-cleanup-branch";
+
+    expect(listBranch(repoDir, "cleanup-branch")).not.toBe("");
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        ottoHome,
+        activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
+      }),
+      {
+        scope: { kind: "workspace", workspaceId },
+        repoRoot: repoDir,
+        branchCleanup: { branchName: "cleanup-branch" },
+        requestId: "req-cleanup-branch",
+      },
+    );
+
+    expect(result.removedDirectory).toBe(true);
+    expect(result.deletedBranch).toBe("cleanup-branch");
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+    expect(listBranch(repoDir, "cleanup-branch")).toBe("");
+  });
+
+  test("branchCleanup leaves the branch when the directory is not removed", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "kept-branch");
+    const workspaceA = "ws-kept-a";
+    const workspaceB = "ws-kept-b";
+
+    const deleteLocalBranch = vi.fn(async () => ({ deleted: true }));
+    const deps = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [
+        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
+        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
+      ],
+    });
+    deps.deleteLocalBranch = deleteLocalBranch;
+
+    const result = await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId: workspaceA },
+      repoRoot: repoDir,
+      branchCleanup: { branchName: "kept-branch" },
+      requestId: "req-kept-branch",
+    });
+
+    expect(result.removedDirectory).toBe(false);
+    expect(result.deletedBranch).toBeNull();
+    expect(deleteLocalBranch).not.toHaveBeenCalled();
+    expect(listBranch(repoDir, "kept-branch")).not.toBe("");
+  });
+
+  test("branchCleanup reports null when the branch delete fails but archives anyway", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "stubborn-branch");
+    const workspaceId = "ws-stubborn-branch";
+
+    const deps = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
+    });
+    deps.deleteLocalBranch = vi.fn(async () => ({ deleted: false }));
+
+    const result = await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      repoRoot: repoDir,
+      branchCleanup: { branchName: "stubborn-branch" },
+      requestId: "req-stubborn-branch",
+    });
+
+    expect(result.removedDirectory).toBe(true);
+    expect(result.deletedBranch).toBeNull();
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 });

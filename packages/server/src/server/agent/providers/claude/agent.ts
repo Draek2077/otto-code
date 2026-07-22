@@ -2028,6 +2028,23 @@ function isClaudeWorkflowTaskType(taskType: string | undefined): boolean {
   return taskType === "local_workflow" || taskType === "workflow";
 }
 
+// Background-tasks track membership, decided by the SDK's task_type discriminant
+// ('shell' | 'subagent' | 'monitor' | 'workflow' | a raw string for unknown
+// types). Subagents and workflows have their own richer observed-subagent rows,
+// so the background track takes everything else the CLI backgrounds — shell
+// (Bash run_in_background), monitors, and any future/unknown background type.
+// Previously only the Bash tool name was recognized, so monitors and other
+// non-shell background tasks were silently dropped. Returns false for an absent
+// task_type (later task_progress omits it); those events fall back to the
+// remembered classification, so this only decides first-sighting (task_started /
+// level-signal) routing.
+function isClaudeBackgroundTaskType(taskType: string | undefined): boolean {
+  if (!taskType) {
+    return false;
+  }
+  return taskType !== "subagent" && !isClaudeWorkflowTaskType(taskType);
+}
+
 // Frozen row label for an observed workflow run. workflow_name is meta.name from
 // the script (e.g. "spec"); prefix it so the observed track reads it as a
 // workflow rather than a plain subagent. Fed through the subAgentType title
@@ -4604,15 +4621,6 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "system"; subtype: "task_started" }>,
     events: AgentStreamEvent[],
   ): void {
-    if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
-      this.appendBackgroundShellTaskEvent(events, {
-        taskId: message.task_id,
-        toolUseId: message.tool_use_id,
-        description: message.description,
-        status: "running",
-      });
-      return;
-    }
     // A workflow orchestration run announces itself here with task_type
     // "local_workflow" (+ workflow_name) or a cached Workflow tool call. Fold
     // its name into the subAgentType title source so the observed row reads
@@ -4622,6 +4630,28 @@ class ClaudeAgentSession implements AgentSession {
     const cachedTool = message.tool_use_id ? this.toolUseCache.get(message.tool_use_id) : undefined;
     const isWorkflowStart =
       isClaudeWorkflowTaskType(message.task_type) || isClaudeWorkflowToolName(cachedTool?.name);
+    const isSubagentStart =
+      isClaudeSubagentToolName(cachedTool?.name) ||
+      readObservedSubagentText(message.subagent_type) !== undefined ||
+      message.task_type === "subagent";
+    // Route to the background-tasks track anything the CLI backgrounds that is
+    // not an observable AI run: an already-known background task, a Bash
+    // run_in_background, a monitor, or any other non-subagent, non-workflow
+    // task_type. This is where non-Bash background tasks used to be dropped.
+    const isBackgroundTaskStart =
+      !isWorkflowStart &&
+      !isSubagentStart &&
+      (this.isBackgroundShellTask(message.tool_use_id, message.task_id) ||
+        isClaudeBackgroundTaskType(message.task_type));
+    if (isBackgroundTaskStart) {
+      this.appendBackgroundShellTaskEvent(events, {
+        taskId: message.task_id,
+        toolUseId: message.tool_use_id,
+        description: message.description,
+        status: "running",
+      });
+      return;
+    }
     if (isWorkflowStart && message.tool_use_id) {
       this.workflowObservedKeys.add(message.tool_use_id);
       this.armWorkflowWatcher(message.tool_use_id, message.task_id);
@@ -4709,22 +4739,50 @@ class ClaudeAgentSession implements AgentSession {
    */
   /**
    * Reconcile against the CLI's background-task level signal (REPLACE
-   * semantics — the payload is the full set of live background tasks). Edge
-   * events (task_started/task_progress/task_notification) own row creation and
-   * rich terminal status; this settles any known background row whose task id
-   * vanished from the level set — the case where a lost or garbled
-   * task_notification otherwise left it running forever (workflow rows are
-   * exempt from the turn-end sweep, so they previously had no safety net).
-   * Never creates rows and never touches foreground subagents: only ids seen
-   * in a previous payload are eligible, and foreground tasks never appear in
-   * the level set. A later-arriving edge for the same transition still lands
-   * and refines the terminal status (idle → error/closed).
+   * semantics — the payload is the full set of live background tasks, each with
+   * its task_type + description). Two jobs:
+   *
+   * 1. CREATE/refresh a background row for every background-type task in the set
+   *    (shell, monitor, …) that the observed-subagent path doesn't own — the
+   *    authoritative membership signal, so a task whose task_started edge was
+   *    lost or late still shows up. Subagents and workflows are skipped (they
+   *    keep their richer observed rows and settle via their own path).
+   * 2. SETTLE any known background/observed row whose task id vanished from the
+   *    set — the case where a lost or garbled task_notification otherwise left
+   *    it running forever (workflow rows are exempt from the turn-end sweep, so
+   *    they previously had no safety net).
+   *
+   * Foreground subagents never appear in the level set, so they are untouched.
+   * A later-arriving edge for the same transition still lands and refines the
+   * terminal status (idle → error/closed); edge and level converge on one row
+   * because the key is remembered by task id.
    */
   private appendBackgroundTasksChangedEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "background_tasks_changed" }>,
     events: AgentStreamEvent[],
   ): void {
-    const liveTaskIds = new Set(message.tasks.map((task) => task.task_id));
+    const liveTaskIds = new Set<string>();
+    for (const task of message.tasks) {
+      liveTaskIds.add(task.task_id);
+      // The level set is authoritative for background-task membership and now
+      // carries each task's type + description, so create/refresh a background
+      // row for any background-type task the edge stream hasn't already surfaced
+      // (a lost or late task_started otherwise left it invisible — the very gap
+      // that hid non-Bash background tasks). Subagents and workflows keep their
+      // observed rows; skip them here so they never double as background rows.
+      if (this.observedKeyByTaskId.has(task.task_id)) {
+        continue;
+      }
+      if (!isClaudeBackgroundTaskType(task.task_type)) {
+        continue;
+      }
+      this.appendBackgroundShellTaskEvent(events, {
+        taskId: task.task_id,
+        toolUseId: undefined,
+        description: task.description,
+        status: "running",
+      });
+    }
     for (const taskId of this.lastBackgroundTaskIds) {
       if (liveTaskIds.has(taskId)) {
         continue;
@@ -4845,9 +4903,13 @@ class ClaudeAgentSession implements AgentSession {
       requiresAttention?: boolean;
     },
   ): void {
+    // Prefer a key already remembered for this task id so the edge stream
+    // (task_started/progress/notification, which carry a tool_use_id) and the
+    // level signal (background_tasks_changed, which does not) converge on ONE
+    // row. Whichever sighting lands first fixes the key; the rest reuse it.
     const key =
-      input.toolUseId ??
       this.backgroundShellKeyByTaskId.get(input.taskId) ??
+      input.toolUseId ??
       `task:${input.taskId}`;
     this.backgroundShellKeyByTaskId.set(input.taskId, key);
     this.announcedBackgroundShellTasks.add(key);

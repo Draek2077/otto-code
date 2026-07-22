@@ -234,6 +234,26 @@ export function createVoiceTurnController(params: {
     }
   }
 
+  // A turn that suffered two STT errors tears its session down to null and never
+  // rebuilds it (reconnect only fires once per turn). Without this, every later
+  // utterance is detected but never transcribed — the classic "voice input
+  // stopped, had to restart" wedge. Rebuild lazily at the top of each new turn so
+  // a dead session recovers on the next thing the user says.
+  async function ensureSttSession(): Promise<void> {
+    if (sttSession) {
+      return;
+    }
+    try {
+      const nextSession = createSttSession();
+      await nextSession.connect();
+      sttSession = nextSession;
+      params.logger.info("voice_turn.stt_session_recreated");
+    } catch (error) {
+      fail(error);
+      params.logger.warn({ err: error }, "voice_turn.stt_recreate_failed");
+    }
+  }
+
   async function reconnectSttSession(): Promise<void> {
     const previousSession = sttSession;
     sttSession = null;
@@ -402,6 +422,10 @@ export function createVoiceTurnController(params: {
     if (state.status === "capturing") {
       return;
     }
+
+    // Recover a session that a prior turn's errors tore down, so this utterance
+    // is actually transcribed instead of silently dropped.
+    await ensureSttSession();
 
     await params.callbacks.onSpeechStarted();
 

@@ -1,0 +1,226 @@
+= Orchestration — Rollout, Testing & Invariants
+:description: Build order, feature gating, golden graphs, test tiers, and the consolidated audit checklist for the whole orchestration system.
+
+== Build order
+
+Ordered by dependency and by what is cheap now versus expensive later, not by appeal.
+
+[cols="1,2,3"]
+|===
+|Stage |Work |Why this order
+
+|*0 — Structural*
+|Named ports on edges (`fromPort`/`toPort`, absent ⇒ today's defaults); the third node
+result state (`excluded`)
+|Every control node needs multiple ports, and every conditional graph needs a third
+terminal state. Both are two optional fields today, and a coordinated change to schema +
+canvas + engine later.
+
+|*1 — Make it real*
+|Structured node output (summary + artifact refs + fields + evidence); Check node; Gate
+node with durable pause; Brief node; per-node tool groups; worktree isolation
+|After this, _researched implementation_ is fully expressible: brief → parallel read-only
+research → plan artifact → human gate → implement in isolation → check → review by a
+different seat → loop until the check passes. That is the first shape a single agent
+genuinely cannot match.
+
+|*2 — Make it powerful*
+|Conditional edges + Router; Map fan-out; Merge with a policy; Subgraph
+|_Feature breakout_ becomes expressible: plan emits a list → one implementer per item,
+isolated → each self-checks → integration → verification.
+
+|*3 — Make it trustworthy*
+|Run budget with a hard stop; per-node failure policy; checkpoint restore + agent
+adoption; the per-node record
+|Everything here is about a user being willing to press go a second time.
+|===
+
+Deliberately out of scope: reducers with declared merge semantics, time-travel/fork from a
+checkpoint, deterministic replay with saga compensation. Real primitives in LangGraph and
+Temporal; problems we do not have at this scale
+(link:14-orchestration-durability.html[Durability]).
+
+== Feature gating
+
+Two gates, one check each.
+
+* *Dev-only, for now.* While the designer is under construction, every door in — the New
+  Orchestration button, the designer tab, running a graph orchestration — additionally
+  requires a dev build (`isDev`, Metro's `__DEV__`, dead-code-stripped from production
+  bundles). Release builds keep the Orchestrations page exactly as it was.
+* *Capability-gated, after.* `server_info.features.orchestrationGraphs`, detected in
+  exactly one place client-side, with a `COMPAT(orchestrationGraphs)` marker naming the
+  version and the cleanup condition. No fallback paths: a client either has a capable host
+  or tells the user to update it.
+
+Daemon ships before client, always — the capability flag exists so a new client can detect
+an old host, not the reverse.
+
+== Golden graphs
+
+The four shapes that pass the cost test, each shipped as a starter and asserted end to
+end. They double as the acceptance criteria for the stages above.
+
+[cols="1,2,2"]
+|===
+|Graph |Shape |Proves
+
+|*Directed research*
+|Brief → N researchers on declared disjoint angles (read-only, parallel) → synthesis →
+verification against sources
+|Fan-out, barrier fan-in, deliverable extraction
+
+|*Researched implementation*
+|Research → plan artifact → *gate* → implement (isolated) → check → review by a different
+seat → loop until the check passes
+|Gates, artifacts, isolation, ground-truth verification, loop-until-pass
+
+|*Feature breakout*
+|Plan emits a list → *map* one implementer per item → each self-checks → integration →
+verify
+|Dynamic fan-out, per-instance isolation, ordered collection
+
+|*Adversarial evaluation*
+|Same task N ways in parallel → judge panel → keep best
+|Best-of-N, judging, merge policy
+|===
+
+== Test tiers
+
+[cols="1,3"]
+|===
+|Tier |What it covers
+
+|*Engine unit* (vitest, fake port)
+|The whole of link:13-orchestration-engine.html[Engine] with no daemon: barriers, excluded
+propagation, loop bounds, failure cascade, cancellation, budget trips. Deterministic
+schedules — no timing, no randomness.
+
+|*Protocol*
+|Schema round-trips, old-client parse of a graph run, unknown-vocabulary tolerance.
+
+|*Durability*
+|Kill and restart mid-run. A resumed run must not re-spawn a completed node's agent, must
+adopt a still-running one, and must never mark a paused run failed. This is the tier that
+catches the expensive class of bug.
+
+|*App*
+|Designer interactions, draft survival across navigation, validation feedback, gate
+approval UI.
+
+|*E2E, three tiers*
+|Mock provider (structure), local AI via LM Studio (real models, no cost), real provider
+(the honest end-to-end). Per `projects/e2e-qa-coverage`.
+|===
+
+The house rule stands: never run a full suite locally — run the file you changed, push to
+CI for breadth.
+
+== Migration
+
+There is nothing to migrate *to*, by design. Every schema change here is additive with
+absent-means-today semantics, so existing graphs keep working untouched. Two behaviours
+make that true in practice:
+
+* A stored graph whose edges carry no ports runs exactly as it does today.
+* A stored graph referencing a port that no longer exists opens with that connection
+  dropped rather than refusing to open.
+
+Built-in starters are re-seeded only when absent, so a user's edits are never overwritten.
+Changing a starter's shape means users who already have it keep the old one until they
+delete it.
+
+== Consolidated invariants
+
+The per-page invariants, gathered for audit. Each is checkable against the code.
+
+*Structure*
+
+. Exactly one orchestrator root per graph; undeletable, restored immediately if removed.
+. The root has no input port — it receives the orchestration's prompt automatically.
+. A graph with validation problems can always be saved and never be executed.
+. Edges with no ports mean `output` → `input`; existing graphs never need rewriting.
+
+*Execution*
+
+[start=5]
+. A node's agent is spawned only when every input has resolved; barrier state lives in the
+  daemon, and agents never know they are waiting.
+. Node results are three-valued; `excluded` is not an error and never fails a run.
+. Whether a kind can consume an excluded input is declared on the kind, not listed inside
+  the scheduler.
+. Concurrency is bounded and total agents are capped, always.
+. Every loop and fan-out has a hard maximum and a declared at-maximum action.
+. Cancel and failure are distinct terminal states, each with a stated reason.
+. A join that can never be satisfied resolves excluded with a reason — never a hang, never
+  a silent skip.
+
+*Agents*
+
+[start=12]
+. A node names a role; the person is resolved once and frozen.
+. A role nothing fills is a loud compile error, never a silent default.
+. Authority is applied at spawn, never requested in prose.
+. `start_run` is stripped from every participant — orchestrations never nest.
+. Whole-subtree settle, never first-idle.
+. No node feature may require a specific provider without declaring it at compile time.
+
+*Data & protocol*
+
+[start=18]
+. Every added field is optional and its absence reproduces prior behaviour.
+. Vocabularies are plain strings on the wire with known-value arrays in code.
+. Node outputs are references plus a bounded summary — never inlined file contents.
+. A graph run is always also a valid `Run` for a client that has never heard of graphs.
+
+*Durability*
+
+[start=22]
+. A node result is persisted as it settles, distinguishably from "never ran".
+. The memo check precedes every side effect in node execution.
+. The memoisation key includes loop attempt and map instance, not just the node id.
+. Pause state is persisted, unique per `(runId, nodeId, iteration)`, and resume payloads
+  are keyed by node identity rather than call position.
+. A restart resumes in-flight runs and adopts still-running agents; it never marks a
+  paused run failed.
+
+*Transparency*
+
+[start=27]
+. Every excluded node carries a machine-readable reason.
+. Node cost is counted once; run totals never double-count children.
+. Cost is derived from tokens and price, never independently reported.
+. An estimate is shown before a run, and the actual is shown against it after.
+
+== Audit checklist
+
+Run this against the implementation, not the documentation:
+
+* [ ] Grep the scheduler for a hardcoded list of node kinds. There should be none —
+  behaviour is declared on the kind.
+* [ ] Kill the daemon mid-run. Does the run resume, avoid re-spawning completed nodes, and
+  adopt an agent that is still alive?
+* [ ] Draw a conditional branch into a join. Does the join resolve with a reason when one
+  branch is pruned — rather than hanging or silently reporting success?
+* [ ] Put a gate inside a loop. Are two iterations' questions distinguishable?
+* [ ] Give a node a role no team fills. Is the error loud and specific?
+* [ ] Set a budget below the graph's estimate. Does the run refuse to start, or stop
+  cleanly at the ceiling?
+* [ ] Run a graph on a local-model seat. What degrades, and was it declared?
+* [ ] Open a graph saved before the current schema. Does it open?
+* [ ] Confirm an old client renders a graph run as a sensible phase list.
+
+== Open questions
+
+* Should a graph's drawn topology override the Visualizer's force layout for orchestration
+  runs?
+* Does the AI flavour eventually emit graphs — collapsing two engines into one — and if so,
+  what happens to phase-based runs?
+* Where does a gate's timeout belong: per gate, per run, or a host default? And what is the
+  correct behaviour when a gate is reached during an unattended scheduled run
+  (`docs/safe-unattended.md`)?
+* Do subgraphs need a cycle check on graph references? Rivet has none, and a graph that
+  includes itself is a trivially reachable footgun.
+* Should structured node output be *enforced* — retry the node until it emits valid fields
+  — or parsed best-effort? Enforcement costs tokens on every node that declares a contract,
+  and hits local models hardest.

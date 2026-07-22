@@ -418,6 +418,8 @@ interface GeneralSectionProps {
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
   handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
   handleContextWarningsEnabledChange: (enabled: boolean) => void;
+  handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
+  handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
@@ -507,6 +509,8 @@ function GeneralSection({
   handlePromptSuggestionsEnabledChange,
   handleRateLimitWarningsEnabledChange,
   handleContextWarningsEnabledChange,
+  handlePinnedTaskListEnabledChange,
+  handlePinnedTaskListAutoDismissChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLinkOpenBehaviorChange,
@@ -805,6 +809,42 @@ function GeneralSection({
               testID="settings-context-warnings-switch"
             />
           </View>
+        </View>
+      </SettingsSection>
+      <SettingsSection title="Chats">
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Pin task list</Text>
+              <Text style={settingsStyles.rowHint}>
+                Float the agent&apos;s task checklist at the top of the chat so it stays in view as
+                it fills in, instead of scrolling away inline. Turn off to keep it inline only.
+              </Text>
+            </View>
+            <Switch
+              value={settings.pinnedTaskListEnabled}
+              onValueChange={handlePinnedTaskListEnabledChange}
+              accessibilityLabel="Pin task list"
+              testID="settings-pinned-task-list-switch"
+            />
+          </View>
+          {settings.pinnedTaskListEnabled ? (
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>Auto-dismiss when done</Text>
+                <Text style={settingsStyles.rowHint}>
+                  Close the pinned task list automatically a moment after every task completes,
+                  instead of leaving it up for you to dismiss.
+                </Text>
+              </View>
+              <Switch
+                value={settings.pinnedTaskListAutoDismiss}
+                onValueChange={handlePinnedTaskListAutoDismissChange}
+                accessibilityLabel="Auto-dismiss task list when done"
+                testID="settings-pinned-task-list-auto-dismiss-switch"
+              />
+            </View>
+          ) : null}
         </View>
       </SettingsSection>
       {interfaceModeValue === "developer" ? (
@@ -1807,6 +1847,20 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handlePinnedTaskListEnabledChange = useCallback(
+    (pinnedTaskListEnabled: boolean) => {
+      void updateSettings({ pinnedTaskListEnabled });
+    },
+    [updateSettings],
+  );
+
+  const handlePinnedTaskListAutoDismissChange = useCallback(
+    (pinnedTaskListAutoDismiss: boolean) => {
+      void updateSettings({ pinnedTaskListAutoDismiss });
+    },
+    [updateSettings],
+  );
+
   const handleRateLimitWarningsEnabledChange = useCallback(
     (rateLimitWarningsEnabled: boolean) => {
       void updateSettings({ rateLimitWarningsEnabled });
@@ -2134,6 +2188,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
               handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
               handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
+              handlePinnedTaskListEnabledChange={handlePinnedTaskListEnabledChange}
+              handlePinnedTaskListAutoDismissChange={handlePinnedTaskListAutoDismissChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}

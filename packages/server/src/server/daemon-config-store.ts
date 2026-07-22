@@ -480,6 +480,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
         ...agentBehaviors,
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
+      hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
       appendSystemPrompt: mutable.appendSystemPrompt,
       ...(mutable.terminalProfiles !== undefined

@@ -4,8 +4,10 @@ const VOICE_PROMPT_BLOCK_END = "</otto_voice_mode>";
 const VOICE_AGENT_SYSTEM_INSTRUCTION = [
   "Otto voice mode is now on.",
   "You are the Otto voice assistant.",
-  "The user cannot see your chat messages or tool calls.",
+  "The user cannot see your chat messages or tool calls; they only hear the speech you produce.",
   "Always use the speak tool for all user-facing communication.",
+  "Put your entire user-facing reply inside the speak tool call.",
+  "Do NOT also write that reply as a normal assistant message. Your normal message text must stay empty — the user never sees it, and duplicating spoken content as text just doubles token cost.",
   "Before calling any non-speak tool, first call speak with a short acknowledgement of what you heard and what you will do next.",
   "For long-running work, use speak to provide progress updates before and during execution.",
   "Treat the user input as transcribed speech.",
@@ -84,7 +86,31 @@ export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled
 }
 
 export function wrapSpokenInput(text: string): string {
-  return `<spoken-input>\n${text}\n</spoken-input>\n<instruction>This message was spoken by the user. Respond using the speak tool only, not normal messages, because the user may not be looking at the chat.</instruction>`;
+  return `<spoken-input>\n${text}\n</spoken-input>\n<instruction>This message was spoken by the user. Reply only through the speak tool; do not also write a normal assistant message. The user only hears speech, so any text reply is invisible and just wastes tokens.</instruction>`;
+}
+
+// Matches the full `wrapSpokenInput` envelope — the `<spoken-input>` body plus
+// its trailing `<instruction>` block — anchored so incidental user text that
+// merely mentions the tag is never rewritten. Whitespace is tolerated because
+// providers may re-emit the prompt through their own transcript with the edges
+// trimmed or re-indented.
+const SPOKEN_INPUT_ENVELOPE_PATTERN =
+  /^\s*<spoken-input>\s*([\s\S]*?)\s*<\/spoken-input>\s*<instruction>[\s\S]*?<\/instruction>\s*$/;
+
+/**
+ * Recover the words the user actually spoke from a `wrapSpokenInput` envelope,
+ * for DISPLAY only. Voice input is sent to the model wrapped in
+ * `<spoken-input>`/`<instruction>` markup (see `wrapSpokenInput`); that markup
+ * is scaffolding for the model, not something the user should see echoed back in
+ * their own chat bubble. Returns the inner transcript when `text` is a complete
+ * envelope, otherwise the text unchanged (idempotent — safe to run on anything).
+ */
+export function unwrapSpokenInput(text: string): string {
+  const match = text.match(SPOKEN_INPUT_ENVELOPE_PATTERN);
+  if (!match) {
+    return text;
+  }
+  return match[1] ?? text;
 }
 
 export function buildVoiceAgentMcpServerConfig(params: {

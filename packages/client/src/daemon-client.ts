@@ -85,6 +85,10 @@ import type {
   ProjectAddResponse,
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
+  WorkspaceArchivePreflightResponse,
+  WorktreeReattachListResponse,
+  WorktreeReattachResponse,
+  WorktreeReattachTarget,
   WorkspaceSetupStatusResponseMessage,
   ListCommandsResponse,
   ListProviderFeaturesResponseMessage,
@@ -127,7 +131,7 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@otto-code/protocol/agent-types";
-import type { Run } from "@otto-code/protocol/orchestration";
+import type { OrchestrationGraph, Run } from "@otto-code/protocol/orchestration";
 import type {
   CueMoment,
   MutableDaemonConfig,
@@ -135,6 +139,8 @@ import type {
   ProjectLink,
   SpeechSettingsOptions,
   SpeechTtsPreviewResult,
+  SpeechTtsSpeakResult,
+  SpeechTtsSpeakCancelResult,
   VisualizerVoiceCuesResult,
 } from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
@@ -890,6 +896,9 @@ export interface RenameTerminalInput {
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ProjectAddPayload = ProjectAddResponse["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
+type WorkspaceArchivePreflightPayload = WorkspaceArchivePreflightResponse["payload"];
+type WorktreeReattachListPayload = WorktreeReattachListResponse["payload"];
+type WorktreeReattachPayload = WorktreeReattachResponse["payload"];
 type WorkspaceSetupStatusPayload = WorkspaceSetupStatusResponseMessage["payload"];
 
 export interface FetchAgentResult {
@@ -2144,15 +2153,66 @@ export class DaemonClient {
 
   async archiveWorkspace(
     workspaceId: string,
-    requestId?: string,
+    options?: { branchDisposition?: "keep" | "delete"; requestId?: string },
   ): Promise<ArchiveWorkspacePayload> {
     return this.sendCorrelatedSessionRequest({
-      requestId,
+      requestId: options?.requestId,
       message: {
         type: "archive_workspace_request",
         workspaceId,
+        ...(options?.branchDisposition ? { branchDisposition: options.branchDisposition } : {}),
       },
       responseType: "archive_workspace_response",
+    });
+  }
+
+  // Read-only pre-archive inspection of a worktree's leftover branch (merge
+  // state, deletability). Gated by server_info.features.worktreeArchiveBranchCleanup.
+  async workspaceArchivePreflight(
+    workspaceId: string,
+    requestId?: string,
+  ): Promise<WorkspaceArchivePreflightPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace.archive.preflight.request",
+        workspaceId,
+      },
+      responseType: "workspace.archive.preflight.response",
+    });
+  }
+
+  // List re-attachable Otto worktrees for a project (or the repo containing cwd):
+  // archived worktree workspaces with a kept branch, plus orphaned on-disk
+  // worktrees. Gated by server_info.features.worktreeReattach.
+  async listReattachableWorktrees(
+    scope: { projectId?: string; cwd?: string },
+    requestId?: string,
+  ): Promise<WorktreeReattachListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "worktree.reattach.list.request",
+        ...(scope.projectId ? { projectId: scope.projectId } : {}),
+        ...(scope.cwd ? { cwd: scope.cwd } : {}),
+      },
+      responseType: "worktree.reattach.list.response",
+    });
+  }
+
+  // Re-attach a "left" worktree as a live workspace: revive an archived workspace
+  // record in place, or bind a fresh workspace to an orphaned on-disk worktree.
+  async reattachWorktree(
+    target: WorktreeReattachTarget,
+    requestId?: string,
+  ): Promise<WorktreeReattachPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "worktree.reattach.request",
+        target,
+      },
+      responseType: "worktree.reattach.response",
     });
   }
 
@@ -2524,6 +2584,94 @@ export class DaemonClient {
       message: { type: "runs.clear.request" },
     });
     return payload.runIds;
+  }
+
+  /** Orchestration: list the host's reusable graph templates. */
+  async listOrchestrationGraphs(): Promise<OrchestrationGraph[]> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.list.response">({
+      message: { type: "runs.graphs.list.request" },
+    });
+    return payload.graphs;
+  }
+
+  /** Orchestration: upsert a graph template. Returns the persisted graph. */
+  async saveOrchestrationGraph(graph: OrchestrationGraph): Promise<OrchestrationGraph> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.save.response">({
+      message: { type: "runs.graphs.save.request", graph },
+    });
+    if (payload.error !== undefined || payload.graph === undefined) {
+      throw new Error(payload.error ?? "saveOrchestrationGraph rejected");
+    }
+    return payload.graph;
+  }
+
+  /** Orchestration: delete a graph template (built-in starters refuse). */
+  async deleteOrchestrationGraph(graphId: string): Promise<boolean> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"runs.graphs.delete.response">({
+        message: { type: "runs.graphs.delete.request", graphId },
+      });
+    if (payload.error !== undefined) {
+      throw new Error(payload.error);
+    }
+    return payload.deleted;
+  }
+
+  /**
+   * Orchestration: start (or draft) a user-initiated orchestration. Returns the
+   * run id (graph flavor) and the orchestrator chat's agent id to navigate to.
+   */
+  async startOrchestration(input: {
+    flavor: "ai" | "graph";
+    cwd: string;
+    workspaceId?: string;
+    title?: string;
+    description?: string;
+    orchestratorPersonalityId?: string;
+    orchestratorProvider?: string;
+    orchestratorModel?: string;
+    orchestratorThinkingOptionId?: string;
+    prompt?: string;
+    graphId?: string;
+    graphInputs?: Record<string, string>;
+    draft?: boolean;
+    runId?: string;
+  }): Promise<{ runId?: string; agentId?: string; workspaceId?: string }> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"runs.start.response">({
+      message: {
+        type: "runs.start.request",
+        flavor: input.flavor,
+        cwd: input.cwd,
+        ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.orchestratorPersonalityId !== undefined
+          ? { orchestratorPersonalityId: input.orchestratorPersonalityId }
+          : {}),
+        ...(input.orchestratorProvider !== undefined
+          ? { orchestratorProvider: input.orchestratorProvider }
+          : {}),
+        ...(input.orchestratorModel !== undefined
+          ? { orchestratorModel: input.orchestratorModel }
+          : {}),
+        ...(input.orchestratorThinkingOptionId !== undefined
+          ? { orchestratorThinkingOptionId: input.orchestratorThinkingOptionId }
+          : {}),
+        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+        ...(input.graphId !== undefined ? { graphId: input.graphId } : {}),
+        ...(input.graphInputs !== undefined ? { graphInputs: input.graphInputs } : {}),
+        ...(input.draft !== undefined ? { draft: input.draft } : {}),
+        ...(input.runId !== undefined ? { runId: input.runId } : {}),
+      },
+    });
+    if (payload.error !== undefined) {
+      throw new Error(payload.error);
+    }
+    return {
+      ...(payload.runId !== undefined ? { runId: payload.runId } : {}),
+      ...(payload.agentId !== undefined ? { agentId: payload.agentId } : {}),
+      ...(payload.workspaceId !== undefined ? { workspaceId: payload.workspaceId } : {}),
+    };
   }
 
   async updateAgent(
@@ -4764,6 +4912,32 @@ export class DaemonClient {
         text: params.text,
         ...(params.voice ? { voice: params.voice } : {}),
       },
+    });
+  }
+
+  // Stream a full message aloud on demand (per-message playback button). Audio
+  // arrives as `audio_output` chunks the session already plays; this promise
+  // resolves when playback finishes, is canceled, or errors. `voice` is the
+  // speaking agent's personality voice (resolved on the client).
+  async speakMessage(
+    params: { text: string; voice?: { provider?: string; model?: string; name: string } },
+    requestId?: string,
+  ): Promise<SpeechTtsSpeakResult> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "speech.tts.speak.request",
+        text: params.text,
+        ...(params.voice ? { voice: params.voice } : {}),
+      },
+    });
+  }
+
+  // Stop the in-flight message playback started by speakMessage.
+  async cancelSpeakMessage(requestId?: string): Promise<SpeechTtsSpeakCancelResult> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "speech.tts.speak.cancel.request" },
     });
   }
 

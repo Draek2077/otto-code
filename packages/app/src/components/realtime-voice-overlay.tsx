@@ -89,9 +89,12 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "center",
+    // Match the MessageBox (inputWrapper) exactly: fill its full bounds (the
+    // overlay container is absolutely sized to the input) and use the same
+    // corner radius, so the box never reads as a different size/shape.
     width: "100%",
-    height: FOOTER_HEIGHT,
-    borderRadius: theme.borderRadius["2xl"],
+    height: "100%",
+    borderRadius: theme.borderRadius.md,
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: OVERLAY_VERTICAL_PADDING,

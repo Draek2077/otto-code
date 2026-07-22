@@ -11,6 +11,17 @@ interface QueuedAudio {
   reject: (error: Error) => void;
 }
 
+// Capture-liveness watchdog. A ScriptProcessorNode stops firing
+// `onaudioprocess` the moment its AudioContext is suspended (tab/OS audio-focus
+// changes) or its MediaStream track ends (Bluetooth switch, device unplug, OS
+// reclaim). Nothing wakes it back up on its own, so the mic goes silent and the
+// user has to stop + restart voice mode — exactly the "input dropped" wedge.
+// While capturing we poll: resume a suspended context, and if no audio frame has
+// arrived within the stall window, rebuild the capture graph in place so voice
+// self-heals instead of dying.
+const CAPTURE_WATCHDOG_INTERVAL_MS = 1000;
+const CAPTURE_STALL_TIMEOUT_MS = 3000;
+
 function getAudioContextCtor(): typeof AudioContext | null {
   if (typeof window === "undefined") {
     return null;
@@ -98,6 +109,9 @@ export function createAudioEngine(
     gain: GainNode | null;
     started: boolean;
     muted: boolean;
+    lastCaptureTickAt: number;
+    captureWatchdog: ReturnType<typeof setInterval> | null;
+    recovering: boolean;
     queue: QueuedAudio[];
     processingQueue: boolean;
     activePlayback: {
@@ -115,6 +129,9 @@ export function createAudioEngine(
     gain: null,
     started: false,
     muted: false,
+    lastCaptureTickAt: 0,
+    captureWatchdog: null,
+    recovering: false,
     queue: [],
     processingQueue: false,
     activePlayback: null,
@@ -226,9 +243,10 @@ export function createAudioEngine(
     refs.processingQueue = false;
   }
 
-  async function stopCapture(): Promise<void> {
-    refs.started = false;
-
+  // Disconnect the capture graph nodes and release the mic stream, WITHOUT
+  // touching the AudioContext or the `started`/watchdog state. Used both for a
+  // full stop and for an in-place rebuild during watchdog recovery.
+  function teardownCaptureNodes(): void {
     try {
       refs.processor?.disconnect();
       refs.source?.disconnect();
@@ -251,6 +269,13 @@ export function createAudioEngine(
     refs.source = null;
     refs.processor = null;
     refs.gain = null;
+  }
+
+  async function stopCapture(): Promise<void> {
+    refs.started = false;
+    stopCaptureWatchdog();
+    refs.recovering = false;
+    teardownCaptureNodes();
     refs.muted = false;
     callbacks.onVolumeLevel(0);
 
@@ -259,6 +284,125 @@ export function createAudioEngine(
     if (captureContext && captureContext.state !== "closed") {
       await captureContext.close().catch(() => undefined);
     }
+  }
+
+  // (Re)build the mic → processor → gain graph on the capture context. Shared by
+  // startCapture and the watchdog's recovery path. Sets `started` and seeds the
+  // liveness clock; the caller owns validation and the watchdog lifecycle.
+  async function buildCaptureGraph(): Promise<void> {
+    const context = await ensureCaptureContext();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+      },
+    });
+    const source = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    const gain = context.createGain();
+    gain.gain.value = 0;
+
+    processor.onaudioprocess = (event) => {
+      if (!refs.started) {
+        return;
+      }
+      // Proof of life for the watchdog — updated even while muted (audio still
+      // flows; mute only suppresses the upstream send), so muting never looks
+      // like a stall.
+      refs.lastCaptureTickAt = Date.now();
+
+      const input = event.inputBuffer.getChannelData(0);
+      let sumSquares = 0;
+      for (let i = 0; i < input.length; i += 1) {
+        const sample = input[i];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
+      const normalized = Math.min(1, Math.max(0, rms * 2));
+      callbacks.onVolumeLevel(normalized);
+
+      if (refs.muted) {
+        return;
+      }
+
+      callbacks.onCaptureData(resampleToPcm16(input, context.sampleRate, 16000));
+    };
+
+    // A track that ends (device change/unplug/OS reclaim) will never emit audio
+    // again — recover immediately rather than waiting out the stall window.
+    for (const track of stream.getTracks()) {
+      track.addEventListener(
+        "ended",
+        () => {
+          if (refs.started && !refs.recovering) {
+            void recoverCapture();
+          }
+        },
+        { once: true },
+      );
+    }
+
+    source.connect(processor);
+    processor.connect(gain);
+    gain.connect(context.destination);
+
+    refs.started = true;
+    refs.lastCaptureTickAt = Date.now();
+    refs.stream = stream;
+    refs.source = source;
+    refs.processor = processor;
+    refs.gain = gain;
+  }
+
+  // Rebuild capture in place after the graph goes silent. Keeps the engine's
+  // `started` contract intact so the runtime never sees voice "stop"; only
+  // surfaces an error (and fully stops) if the rebuild itself fails.
+  async function recoverCapture(): Promise<void> {
+    if (!refs.started || refs.recovering) {
+      return;
+    }
+    refs.recovering = true;
+    try {
+      teardownCaptureNodes();
+      // A closed context can never resume — drop it so a fresh one is made.
+      if (refs.captureContext && refs.captureContext.state === "closed") {
+        refs.captureContext = null;
+      }
+      await buildCaptureGraph();
+    } catch (error) {
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      await stopCapture();
+      callbacks.onError?.(wrapped);
+    } finally {
+      refs.recovering = false;
+    }
+  }
+
+  function stopCaptureWatchdog(): void {
+    if (refs.captureWatchdog) {
+      clearInterval(refs.captureWatchdog);
+      refs.captureWatchdog = null;
+    }
+  }
+
+  function startCaptureWatchdog(): void {
+    if (refs.captureWatchdog) {
+      return;
+    }
+    refs.captureWatchdog = setInterval(() => {
+      if (!refs.started || refs.recovering) {
+        return;
+      }
+      const context = refs.captureContext;
+      if (context && context.state === "suspended") {
+        void context.resume().catch(() => undefined);
+      }
+      if (Date.now() - refs.lastCaptureTickAt > CAPTURE_STALL_TIMEOUT_MS) {
+        void recoverCapture();
+      }
+    }, CAPTURE_WATCHDOG_INTERVAL_MS);
   }
 
   return {
@@ -305,51 +449,8 @@ export function createAudioEngine(
       }
 
       try {
-        const context = await ensureCaptureContext();
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            noiseSuppression: true,
-            echoCancellation: true,
-            autoGainControl: true,
-          },
-        });
-        const source = context.createMediaStreamSource(stream);
-        const processor = context.createScriptProcessor(4096, 1, 1);
-        const gain = context.createGain();
-        gain.gain.value = 0;
-
-        processor.onaudioprocess = (event) => {
-          if (!refs.started) {
-            return;
-          }
-
-          const input = event.inputBuffer.getChannelData(0);
-          let sumSquares = 0;
-          for (let i = 0; i < input.length; i += 1) {
-            const sample = input[i];
-            sumSquares += sample * sample;
-          }
-          const rms = Math.sqrt(sumSquares / Math.max(1, input.length));
-          const normalized = Math.min(1, Math.max(0, rms * 2));
-          callbacks.onVolumeLevel(normalized);
-
-          if (refs.muted) {
-            return;
-          }
-
-          callbacks.onCaptureData(resampleToPcm16(input, context.sampleRate, 16000));
-        };
-
-        source.connect(processor);
-        processor.connect(gain);
-        gain.connect(context.destination);
-
-        refs.started = true;
-        refs.stream = stream;
-        refs.source = source;
-        refs.processor = processor;
-        refs.gain = gain;
+        await buildCaptureGraph();
+        startCaptureWatchdog();
       } catch (error) {
         await stopCapture();
         const wrapped = error instanceof Error ? error : new Error(String(error));

@@ -1,0 +1,222 @@
+= Orchestration — Durability & Human Gates
+:description: Checkpointing, idempotent resume, gate pause/resume, orphan reclamation, and the side-effect problem that makes agent graphs different.
+
+Durability matters more here than in any framework we studied, for one reason: *our nodes
+have side effects that cost money and edit repositories.* Re-running a completed node is
+not a wasted millisecond, it is a second agent making a second set of edits.
+
+Today a daemon restart marks every in-flight run `failed` (`RunService.init`), while the
+child agents may still be alive — so the work is orphaned rather than cleaned up. That is
+the gap this page closes.
+
+== What must survive a restart
+
+. *The frontier* — which nodes completed, which were excluded, which were in flight.
+. *Node outputs* — so a resumed run can feed downstream nodes without re-running upstream
+  ones.
+. *Pause state* — which gate is waiting, what it asked, and what form it expects back.
+. *The seat snapshot and budget spend* — resolution must not drift, and a restart must not
+  reset the spend counter.
+
+== Checkpoint cadence
+
+Two distinct persistence events, and conflating them is a common bug:
+
+[cols="1,3"]
+|===
+|Event |When
+
+|*Node settle*
+|As each node produces a result. LangGraph does exactly this — `putWrites(taskId, writes)`
+per task as it settles, separate from the checkpoint — and a task that produced nothing
+still writes a marker so "ran, produced nothing" is distinguishable from "never ran".
+
+|*Run snapshot*
+|Once per scheduling step, written *after* the completed step's results are applied and
+*before* the next ready set is prepared.
+|===
+
+Otto is already most of the way here: `persistAndEmit` snapshots the whole `Run`,
+broadcasts it and stores it on every state change, and node outputs already land on the
+phase candidates. What is missing is not the writing — it is the *reading*.
+
+== Idempotent resume
+
+The two studied systems solve this differently, and the difference decides ours.
+
+[cols="1,2,2"]
+|===
+| |LangGraph.js |Activepieces
+
+|Mechanism
+|Deterministic task ids (`uuid5` over namespace, step, node, trigger, seeded by the
+checkpoint id) plus persisted per-task writes. On resume, recompute the id; if a non-error
+write exists for it, skip.
+|Re-walk the whole step tree and short-circuit per step:
+`if (executionState.isCompleted({ stepName })) return` — a name-keyed output map loaded
+from an external log file.
+
+|Node body on resume
+|*Re-executes from the top.* No continuation capture.
+|Skipped entirely when the step is present and not paused.
+
+|Fits us?
+|The id derivation is machinery we do not need — our node ids are stable and
+user-authored.
+|*Yes.* This is the model.
+|===
+
+**Otto's rule:** the memoised result map is seeded from the persisted run before
+execution starts. A node whose phase is `done` resolves immediately to its recorded
+output; a node that is `excluded` resolves excluded; everything else runs.
+
+[IMPORTANT]
+====
+*The memo check must happen before anything side-effecting, always.* LangGraph's node
+bodies re-execute from the top on resume, which is harmless when a node is a function and
+catastrophic when a node spawns an agent that edits a repository. Our node execution must
+be structured so that nothing — no spawn, no file write, no notification — precedes the
+"have I already done this?" check.
+====
+
+=== The key must include the iteration
+
+A plain `(runId, nodeId)` key is wrong the moment a node is inside a loop or a map: the
+same node id legitimately runs many times. The key is `(runId, nodeId, attempt, instance)`.
+
+This is not hypothetical. Rivet's user-input pause is keyed by node id alone, with the
+direct consequence that *a looped or split-run input node cannot have two outstanding
+prompts.* Activepieces avoids it by making its execution path a
+`readonly [stepName, iteration][]` so completion is evaluated per iteration.
+
+== Gate pause and resume
+
+A gate suspends the orchestration and waits for a human. The persisted shape is on the run
+record (link:12-orchestration-data-model.html[Data Model]); the mechanics that matter:
+
+[mermaid]
+----
+flowchart TD
+  A["Gate node reached"] --> B["Persist pause:<br/>nodeId, prompt, form"]
+  B --> C["Run status: paused<br/>Notify (incl. push)"]
+  C --> D{"Decision arrives"}
+  D -->|"approve / answer"| E["Store payload<br/>keyed by nodeId+iteration"]
+  D -->|"reject"| F["Approved branch<br/>excluded"]
+  E --> G["Clear pause,<br/>resume scheduling"]
+  F --> G
+  C -.->|"daemon restarts"| H["Boot: run is paused,<br/>rehydrate — never fail it"]
+  H --> D
+----
+
+Three details are load-bearing, all learned from Activepieces' current implementation:
+
+*Uniqueness is the idempotency anchor.* Their waitpoint table carries a unique index on
+`(flowRunId, stepName)`. Ours is `(runId, nodeId, iteration)` — one outstanding question
+per node instance, enforced by the store rather than by convention, so a double-click or a
+retried RPC cannot create two pending gates.
+
+*Handle the decision-arrives-first race.* A user can respond before the engine has
+finished persisting the pause. Activepieces takes a lock on the run and, if the run has
+not yet reached `PAUSED`, marks the waitpoint completed and stashes the payload for the
+worker to pick up. Otto already solves this in memory — `RunService` buffers gate
+decisions that arrive before the engine registers its wait — and the durable version needs
+the same buffering, persisted.
+
+*Correction worth recording:* Activepieces' boot-time "refill paused jobs" pass is a
+one-shot migration guarded by a Redis key, **not** a watchdog. Their durable mechanism is
+a job scheduled *at pause time*. For Otto the equivalent is simpler — a paused run is a
+row nothing is driving, so the boot path only needs to stop marking it failed and instead
+restore it as paused. That is the entirety of the change for gates that wait
+indefinitely; gates with timeouts need the scheduled-job equivalent.
+
+*Resume payloads are keyed, never positional.* LangGraph matches resume values to
+`interrupt()` calls by call index within the task (`scratchpad.interruptCounter`), which
+means changing the number or order of interrupt calls silently misassigns answers. We key
+by node id and iteration from day one.
+
+== Orphan reclamation
+
+The genuinely hard case, and the one no studied framework has: *the daemon restarted, and
+the node's agent is still running.* Every framework surveyed assumes its work is
+in-process, so a crash kills the work. Ours does not — Otto agents are separate processes
+with persisted state.
+
+That makes the correct behaviour *adoption*, not restart:
+
+. On boot, for each in-flight run, look up each running node's `agentId`.
+. If the agent still exists and is not settled, **re-await it**. The node continues as
+  though nothing happened.
+. If the agent exists and has settled, harvest its output as the node's result.
+. Only if the agent is gone does the node count as failed, subject to the node's failure
+  policy.
+
+This is strictly better than what any in-process engine can offer, and it falls out of
+Otto's existing architecture rather than needing new machinery.
+
+A lease with a visibility timeout is the backstop for the case where two daemons could
+somehow drive the same run — currently impossible, but the invariant ("a node that is
+`running` is owned by exactly one executor, and ownership is provable") is worth stating
+before it becomes possible.
+
+== Joins under a pruned branch: pick a failure mode deliberately
+
+Worth stating explicitly, because the naive assumption is wrong. A join downstream of a
+branch that was never taken has two bad outcomes, and LangGraph's answer is the second:
+
+* *Deadlock* — the join waits forever for a branch that will never arrive.
+* *Silent skip* — the join simply never becomes runnable, the loop drains, and the run
+  reports `done` having quietly not run part of the graph.
+
+LangGraph's deferred joins are `NamedBarrierValueAfterFinish` channels whose `finish()`
+only flips when the seen-set equals the expected set; a pruned branch means it never
+flips, the channel stays unavailable, and the run terminates as done. No hang — but also
+no complaint.
+
+*Neither is acceptable for us.* A merge whose inputs can no longer be satisfied resolves
+as `excluded` **with a stated reason**, and that reason is painted on the canvas and
+recorded on the run. Silent partial execution is the worst outcome in a system whose
+entire value proposition is that the user decided the structure.
+
+== Storage discipline
+
+The run record is broadcast to every connected client on every change, so it must stay
+small. Node outputs are references plus a bounded summary; artifacts live in the workspace
+or the artifact store. For comparison, Activepieces offloads step outputs into a
+zstd-compressed log file and slices anything over 32KB out into separate objects — a
+reasonable design for their shape, and an argument for ours: *if the output is big enough
+to need slicing, it should have been an artifact.*
+
+== What we are deliberately not building
+
+* *Reducers with declared merge semantics.* LangGraph needs them because concurrent nodes
+  write shared state channels; a `LastValue` channel written twice in one superstep throws
+  `INVALID_CONCURRENT_GRAPH_UPDATE`. Our concurrent writers write *files*, and the
+  filesystem already has ownership semantics.
+* *Time travel / fork from a checkpoint.* Real value, real cost, and per-agent rewind
+  already exists.
+* *Deterministic replay with compensation.* Requires all nondeterminism behind activity
+  boundaries. Our side effect is "an agent edited your repo" — git is the compensation
+  mechanism, not us.
+
+== Invariants
+
+. A node's result is persisted as it settles, distinguishably from "never ran".
+. The memo check precedes every side effect in node execution.
+. The memoisation key includes the loop attempt and map instance, not just the node id.
+. Pause state is persisted on the run, unique per `(runId, nodeId, iteration)`.
+. Resume payloads are keyed by node identity, never by call position.
+. A gate decision that arrives before the pause is persisted is buffered, not lost.
+. A restart resumes in-flight runs; it never marks a paused run failed.
+. A still-running agent is adopted, not re-spawned.
+. A join that can never be satisfied resolves excluded with a stated reason — never a
+  hang, never a silent skip.
+. The run record stays bounded; anything large is an artifact.
+
+== Change checklist
+
+* [ ] Does the change introduce a side effect that could precede the memo check?
+* [ ] Does it add a way for the same node to run twice — and if so, is the key extended?
+* [ ] Can a decision or event arrive before the state it answers is persisted?
+* [ ] Does a restart mid-change leave a run in a state the boot path understands?
+* [ ] Does it add anything unbounded to the run record?
+* [ ] Is there a durability test that kills the daemon at this exact point?

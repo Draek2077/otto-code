@@ -499,6 +499,9 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "contextManagement") {
     return labels.contextManagement;
   }
+  if (tab.target.kind === "orchestrationGraph") {
+    return "Graph";
+  }
   return tab.target.path;
 }
 

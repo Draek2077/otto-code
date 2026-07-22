@@ -42,6 +42,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  GitBranch,
   Settings,
   MoreVertical,
   Plus,
@@ -59,6 +60,8 @@ import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useHostFeatureMap } from "@/runtime/host-features";
+import { useReopenWorktreeControl } from "@/workspace/reopen-worktree-sheet";
+import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import {
@@ -155,6 +158,7 @@ const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedGitBranch = withUnistyles(GitBranch);
 const ThemedSettings = withUnistyles(Settings);
 
 const foregroundColorMapping = (theme: Theme) => ({
@@ -278,6 +282,7 @@ interface WorkspaceRowInnerProps {
   onCopyPath?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
+  onOpenBaseCheckout?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
@@ -400,6 +405,7 @@ function ProjectRowTrailingActions({
   onBeginWorkspaceSetup,
   onRemoveProject,
   removeProjectStatus,
+  onReopenWorktree,
 }: {
   project: SidebarProjectEntry;
   displayName: string;
@@ -411,9 +417,11 @@ function ProjectRowTrailingActions({
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
+  onReopenWorktree?: () => void;
 }) {
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
-  const shouldRenderKebabSlot = Boolean(onRemoveProject || diffStat);
+  const hasKebabMenu = Boolean(onRemoveProject || onReopenWorktree);
+  const shouldRenderKebabSlot = Boolean(hasKebabMenu || diffStat);
   return (
     <View style={styles.projectTrailingActions}>
       {worktreeTarget ? (
@@ -427,7 +435,7 @@ function ProjectRowTrailingActions({
       ) : null}
       {shouldRenderKebabSlot ? (
         <SidebarWorkspaceTrailingActionSlot
-          style={onRemoveProject ? styles.projectKebabActionSlot : undefined}
+          style={hasKebabMenu ? styles.projectKebabActionSlot : undefined}
         >
           <SidebarWorkspaceTrailingActionBase visible={Boolean(diffStat) && !actionsVisible}>
             {diffStat && !actionsVisible ? (
@@ -435,12 +443,13 @@ function ProjectRowTrailingActions({
             ) : null}
           </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay visible={actionsVisible}>
-            {onRemoveProject ? (
+            {hasKebabMenu ? (
               <ProjectKebabMenu
                 projectKey={project.projectKey}
                 projectPath={project.iconWorkingDir}
                 onRemoveProject={onRemoveProject}
                 removeProjectStatus={removeProjectStatus}
+                onReopenWorktree={onReopenWorktree}
               />
             ) : null}
           </SidebarWorkspaceTrailingActionOverlay>
@@ -451,6 +460,9 @@ function ProjectRowTrailingActions({
 }
 
 const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
+const reopenWorktreeLeadingIcon = (
+  <ThemedGitBranch size={14} uniProps={foregroundMutedColorMapping} />
+);
 const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
@@ -466,8 +478,11 @@ interface ProjectMenuItemsProps {
   projectKey: string;
   projectPath: string;
   /** Used to resolve which workspace the context action should target. */
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
+  // Opens the "Reopen worktree" picker; omitted when the host lacks the
+  // worktreeReattach capability or the project has no git worktree target.
+  onReopenWorktree?: () => void;
 }
 
 /** Shared item list for the project kebab dropdown and the right-click context
@@ -478,6 +493,7 @@ function ProjectMenuItems({
   projectPath,
   onRemoveProject,
   removeProjectStatus,
+  onReopenWorktree,
 }: ProjectMenuItemsProps) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -526,15 +542,26 @@ function ProjectMenuItems({
           {t("sidebar.project.actions.openNewWindow")}
         </Item>
       ) : null}
-      <Item
-        testID={`sidebar-project-menu-remove-${projectKey}`}
-        leading={trash2LeadingIcon}
-        status={removeProjectStatus}
-        pendingLabel={t("sidebar.project.actions.removing")}
-        onSelect={onRemoveProject}
-      >
-        {t("sidebar.project.actions.remove")}
-      </Item>
+      {onReopenWorktree ? (
+        <Item
+          testID={`sidebar-project-menu-reopen-worktree-${projectKey}`}
+          leading={reopenWorktreeLeadingIcon}
+          onSelect={onReopenWorktree}
+        >
+          {t("sidebar.workspace.reopenWorktree.menu")}
+        </Item>
+      ) : null}
+      {onRemoveProject ? (
+        <Item
+          testID={`sidebar-project-menu-remove-${projectKey}`}
+          leading={trash2LeadingIcon}
+          status={removeProjectStatus}
+          pendingLabel={t("sidebar.project.actions.removing")}
+          onSelect={onRemoveProject}
+        >
+          {t("sidebar.project.actions.remove")}
+        </Item>
+      ) : null}
     </>
   );
 }
@@ -544,11 +571,13 @@ function ProjectKebabMenu({
   projectPath,
   onRemoveProject,
   removeProjectStatus,
+  onReopenWorktree,
 }: {
   projectKey: string;
   projectPath: string;
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
+  onReopenWorktree?: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -569,6 +598,7 @@ function ProjectKebabMenu({
           projectPath={projectPath}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
+          onReopenWorktree={onReopenWorktree}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -591,6 +621,7 @@ function WorkspaceRowRightGroup({
   onCopyBranchName,
   onCopyPath,
   onRename,
+  onOpenBaseCheckout,
 }: {
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
@@ -607,6 +638,7 @@ function WorkspaceRowRightGroup({
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
+  onOpenBaseCheckout?: () => void;
 }) {
   const { t } = useTranslation();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
@@ -631,6 +663,7 @@ function WorkspaceRowRightGroup({
                 onCopyBranchName={onCopyBranchName}
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
+                onOpenBaseCheckout={onOpenBaseCheckout}
                 onArchive={onArchive}
                 archiveLabel={archiveLabel}
                 archiveStatus={archiveStatus}
@@ -1149,6 +1182,15 @@ function ProjectHeaderRow({
       }) as Href,
     );
   }, [displayName, onWorkspacePress, project.projectKey, worktreeTarget]);
+  // "Reopen worktree" surfaces left/orphaned Otto worktrees for a git project.
+  // Gated on the host capability; only meaningful when the project has a worktree
+  // target (a git repo we can cut/reattach worktrees against).
+  const { onReopenWorktree, reopenWorktreeSheet } = useReopenWorktreeControl({
+    serverId: worktreeTarget?.serverId,
+    projectId: project.projectKey,
+    projectCwd: worktreeTarget?.iconWorkingDir,
+    onWorkspacePress,
+  });
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -1212,6 +1254,7 @@ function ProjectHeaderRow({
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
+        onReopenWorktree={onReopenWorktree}
       />
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.projectShortcutBadgeOverlay} pointerEvents="none">
@@ -1242,6 +1285,7 @@ function ProjectHeaderRow({
         >
           {rowChildren}
         </ContextMenuTrigger>
+        {reopenWorktreeSheet}
       </View>
     );
   }
@@ -1279,6 +1323,7 @@ function ProjectHeaderRow({
               projectPath={project.iconWorkingDir}
               onRemoveProject={onRemoveProject}
               removeProjectStatus={removeProjectStatus}
+              onReopenWorktree={onReopenWorktree}
             />
           </ContextMenuContent>
         </ContextMenu>
@@ -1295,6 +1340,7 @@ function ProjectHeaderRow({
           {rowChildren}
         </Pressable>
       )}
+      {reopenWorktreeSheet}
     </View>
   );
 }
@@ -1319,6 +1365,7 @@ function WorkspaceRowInner({
   onCopyBranchName,
   onCopyPath,
   onRename,
+  onOpenBaseCheckout,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
   const _isCompact = useIsCompactFormFactor();
@@ -1398,6 +1445,7 @@ function WorkspaceRowInner({
               onCopyBranchName={onCopyBranchName}
               onCopyPath={onCopyPath}
               onRename={onRename}
+              onOpenBaseCheckout={onOpenBaseCheckout}
             />
           </SidebarWorkspaceRowContent>
         );
@@ -1439,6 +1487,7 @@ function WorkspaceRowInner({
                     onCopyPath={onCopyPath}
                     onCopyBranchName={onCopyBranchName}
                     onRename={onRename}
+                    onOpenBaseCheckout={onOpenBaseCheckout}
                     onArchive={onArchive}
                     archiveLabel={archiveLabel}
                     archiveStatus={archiveStatus}
@@ -1588,6 +1637,48 @@ function WorkspaceRowWithMenu({
     });
   }, [clearAttention, toast]);
 
+  // Swap to the project's base (non-worktree) checkout: openProject dedups by
+  // directory, so it reveals the existing base workspace or creates one, then we
+  // navigate to it. Only offered from a worktree workspace whose base differs.
+  const openBaseCheckoutMutation = useMutation({
+    mutationFn: async () => {
+      const client = getHostRuntimeStore().getClient(workspace.serverId);
+      if (!client) {
+        throw new Error(t("sidebar.workspace.toasts.hostDisconnected"));
+      }
+      const rootPath = workspace.projectRootPath;
+      if (!rootPath) {
+        throw new Error(t("sidebar.workspace.actions.openBaseCheckoutFailed"));
+      }
+      const payload = await client.openProject(rootPath);
+      if (payload.error || !payload.workspace) {
+        throw new Error(payload.error ?? t("sidebar.workspace.actions.openBaseCheckoutFailed"));
+      }
+      return normalizeWorkspaceDescriptor(payload.workspace);
+    },
+    onSuccess: (baseWorkspace) => {
+      useSessionStore.getState().mergeWorkspaces(workspace.serverId, [baseWorkspace]);
+      navigateToWorkspace(workspace.serverId, baseWorkspace.id);
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("sidebar.workspace.actions.openBaseCheckoutFailed"),
+      );
+    },
+  });
+  const canOpenBaseCheckout =
+    workspace.workspaceKind === "worktree" &&
+    Boolean(workspace.projectRootPath) &&
+    workspace.projectRootPath !== workspace.workspaceDirectory;
+  const handleOpenBaseCheckout = useCallback(() => {
+    if (openBaseCheckoutMutation.isPending) {
+      return;
+    }
+    openBaseCheckoutMutation.mutate();
+  }, [openBaseCheckoutMutation]);
+
   useKeyboardActionHandler({
     handlerId: `workspace-archive-${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
@@ -1622,6 +1713,7 @@ function WorkspaceRowWithMenu({
         onCopyPath={handleCopyPath}
         onRename={handleOpenRename}
         onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
+        onOpenBaseCheckout={canOpenBaseCheckout ? handleOpenBaseCheckout : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
       />
       <AdaptiveRenameModal

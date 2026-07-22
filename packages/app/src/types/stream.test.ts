@@ -915,6 +915,243 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(todos.items[0]?.text, "Task 1");
   });
 
+  it("threads the three-state task status through from TodoWrite", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "todo-write",
+          name: "TodoWrite",
+          status: "running",
+          input: {
+            todos: [
+              { content: "Set up", status: "completed" },
+              { content: "Wire it up", activeForm: "Wiring it up", status: "in_progress" },
+              { content: "Ship it", status: "pending" },
+            ],
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+    ]);
+
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+
+    assert.ok(todos);
+    assert.deepStrictEqual(
+      todos.items.map((item) => item.status),
+      ["completed", "in_progress", "pending"],
+    );
+    // activeForm wins for the in-progress task, so the row reads as live work.
+    assert.strictEqual(todos.items[1]?.text, "Wiring it up");
+    assert.strictEqual(todos.items[0]?.completed, true);
+    assert.strictEqual(todos.items[1]?.completed, false);
+  });
+
+  it("evolves one todo card across a tool sequence instead of spawning snapshots", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "todo-1",
+          name: "TodoWrite",
+          status: "running",
+          input: {
+            todos: [
+              { content: "Read", status: "in_progress" },
+              { content: "Edit", status: "pending" },
+            ],
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "read-1",
+          name: "Read",
+          status: "completed",
+          input: { file_path: "/tmp/a.ts" },
+        }),
+        timestamp: new Date("2025-01-01T11:00:01Z"),
+      },
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "todo-2",
+          name: "TodoWrite",
+          status: "running",
+          input: {
+            todos: [
+              { content: "Read", status: "completed" },
+              { content: "Edit", status: "in_progress" },
+            ],
+          },
+        }),
+        timestamp: new Date("2025-01-01T11:00:02Z"),
+      },
+    ]);
+
+    const todos = state.filter(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+
+    assert.strictEqual(todos.length, 1);
+    assert.deepStrictEqual(
+      todos[0]?.items.map((item) => item.status),
+      ["completed", "in_progress"],
+    );
+    // The intervening Read still renders — the list merges past it, not over it.
+    const reads = state.filter(
+      (item) => isAgentToolCallItem(item) && item.payload.data.callId === "read-1",
+    );
+    assert.strictEqual(reads.length, 1);
+  });
+
+  it("starts a new todo card when an assistant message breaks the sequence", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "todo-1",
+          name: "TodoWrite",
+          status: "running",
+          input: { todos: [{ content: "Phase one", status: "completed" }] },
+        }),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+      {
+        event: assistantTimeline("Now starting the next phase.", "claude", "msg-phase"),
+        timestamp: new Date("2025-01-01T11:00:01Z"),
+      },
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "todo-2",
+          name: "TodoWrite",
+          status: "running",
+          input: { todos: [{ content: "Phase two", status: "in_progress" }] },
+        }),
+        timestamp: new Date("2025-01-01T11:00:02Z"),
+      },
+    ]);
+
+    const todos = state.filter(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+
+    assert.strictEqual(todos.length, 2);
+  });
+
+  it("accumulates incremental TaskCreate/TaskUpdate calls into one checklist", () => {
+    const taskCreate = (callId: string, id: string, subject: string) =>
+      canonicalToolTimeline({
+        provider: "claude",
+        callId,
+        name: "TaskCreate",
+        status: "completed",
+        input: { subject, description: subject },
+        output: { task: { id, subject } },
+      });
+    const taskUpdate = (callId: string, taskId: string, status: string) =>
+      canonicalToolTimeline({
+        provider: "claude",
+        callId,
+        name: "TaskUpdate",
+        status: "completed",
+        input: { taskId, status },
+        output: { success: true, taskId, updatedFields: ["status"] },
+      });
+
+    const state = hydrateStreamState([
+      { event: taskCreate("c1", "1", "Search step handlers"), timestamp: new Date("2025-01-01T11:00:00Z") },
+      { event: taskCreate("c2", "2", "Search terminal states"), timestamp: new Date("2025-01-01T11:00:01Z") },
+      { event: taskCreate("c3", "3", "Search schema exports"), timestamp: new Date("2025-01-01T11:00:02Z") },
+      // Narration between task ops must not split the checklist.
+      { event: assistantTimeline("Five tasks queued. Starting with #1.", "claude", "m1"), timestamp: new Date("2025-01-01T11:00:03Z") },
+      { event: taskUpdate("u1", "1", "in_progress"), timestamp: new Date("2025-01-01T11:00:04Z") },
+      { event: taskUpdate("u2", "1", "completed"), timestamp: new Date("2025-01-01T11:00:05Z") },
+      { event: taskUpdate("u3", "2", "in_progress"), timestamp: new Date("2025-01-01T11:00:06Z") },
+    ]);
+
+    // No raw tool badges — the Task* calls are folded into the list.
+    assert.strictEqual(state.filter(isAgentToolCallItem).length, 0);
+
+    const todos = state.filter(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+    assert.strictEqual(todos.length, 1);
+    assert.deepStrictEqual(
+      todos[0]?.items.map((item) => item.status),
+      ["completed", "in_progress", "pending"],
+    );
+    assert.deepStrictEqual(
+      todos[0]?.items.map((item) => item.text),
+      ["Search step handlers", "Search terminal states", "Search schema exports"],
+    );
+    assert.strictEqual(todos[0]?.items[0]?.completed, true);
+  });
+
+  it("removes a task from the checklist on a deleted TaskUpdate", () => {
+    const create = (callId: string, id: string, subject: string) =>
+      canonicalToolTimeline({
+        provider: "claude",
+        callId,
+        name: "TaskCreate",
+        status: "completed",
+        input: { subject, description: subject },
+        output: { task: { id, subject } },
+      });
+
+    const state = hydrateStreamState([
+      { event: create("c1", "1", "Keep me"), timestamp: new Date("2025-01-01T11:00:00Z") },
+      { event: create("c2", "2", "Delete me"), timestamp: new Date("2025-01-01T11:00:01Z") },
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "u1",
+          name: "TaskUpdate",
+          status: "completed",
+          input: { taskId: "2", status: "deleted" },
+          output: { success: true, taskId: "2", updatedFields: ["status"] },
+        }),
+        timestamp: new Date("2025-01-01T11:00:02Z"),
+      },
+    ]);
+
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
+    assert.ok(todos);
+    assert.deepStrictEqual(
+      todos.items.map((item) => item.text),
+      ["Keep me"],
+    );
+  });
+
+  it("does not render a checklist badge until a Task call completes", () => {
+    const state = hydrateStreamState([
+      {
+        event: canonicalToolTimeline({
+          provider: "claude",
+          callId: "c1",
+          name: "TaskCreate",
+          status: "running",
+          input: { subject: "Pending create", description: "x" },
+        }),
+        timestamp: new Date("2025-01-01T11:00:00Z"),
+      },
+    ]);
+
+    assert.strictEqual(state.filter(isAgentToolCallItem).length, 0);
+    assert.strictEqual(
+      state.filter((item) => item.kind === "todo_list").length,
+      0,
+    );
+  });
+
   it("preserves optimistic user message images when authoritative user message arrives", () => {
     const messageId = "msg-user-images";
     const optimisticTimestamp = new Date("2025-01-01T11:10:00Z");
@@ -1387,6 +1624,82 @@ describe("turn lifecycle events", () => {
     assert.strictEqual(second.head, first.head);
     assert.strictEqual(skipped.changedTail, false);
     assert.strictEqual(skipped.tail.length, 1);
+  });
+
+  it("back-fills images onto a same-id canonical row that landed before the optimistic append", () => {
+    // New-chat path: the daemon stamps the canonical (text-only) user row with
+    // our clientMessageId, and it can arrive before the deferred optimistic
+    // append runs. The append must merge the client's local image onto that row
+    // rather than skipping — otherwise the first message's image vanishes.
+    const image = {
+      id: "image-first-msg",
+      mimeType: "image/png",
+      storageType: "web-indexeddb" as const,
+      storageKey: "image-first-msg",
+      createdAt: 1,
+    };
+    const canonical: StreamItem = {
+      kind: "user_message",
+      id: "client-msg-1",
+      text: "look at this",
+      timestamp: new Date("2025-01-01T15:00:00Z"),
+    };
+    const optimistic = buildOptimisticUserMessage({
+      id: "client-msg-1",
+      text: "look at this",
+      timestamp: new Date("2025-01-01T15:00:00Z"),
+      images: [image],
+    });
+
+    const result = appendOptimisticUserMessageToStream({
+      tail: [canonical],
+      head: [],
+      message: optimistic,
+      placement: "tail",
+      skipIfUserMessageExists: true,
+    });
+
+    assert.strictEqual(result.changedTail, true);
+    // Merged in place — no duplicate row.
+    assert.strictEqual(result.tail.filter((item) => item.kind === "user_message").length, 1);
+    const merged = result.tail[0];
+    invariant(merged?.kind === "user_message");
+    assert.deepStrictEqual(merged.images, [image]);
+  });
+
+  it("no-ops when a same-id row already carries the images (mid-session ordering)", () => {
+    const image = {
+      id: "image-dup",
+      mimeType: "image/png",
+      storageType: "web-indexeddb" as const,
+      storageKey: "image-dup",
+      createdAt: 1,
+    };
+    const existing = buildOptimisticUserMessage({
+      id: "client-msg-2",
+      text: "hi",
+      timestamp: new Date("2025-01-01T15:00:00Z"),
+      images: [image],
+    });
+    const incoming = buildOptimisticUserMessage({
+      id: "client-msg-2",
+      text: "hi",
+      timestamp: new Date("2025-01-01T15:00:00Z"),
+      images: [image],
+    });
+
+    const result = appendOptimisticUserMessageToStream({
+      tail: [existing],
+      head: [],
+      message: incoming,
+      placement: "tail",
+    });
+
+    assert.strictEqual(result.changedTail, false);
+    assert.strictEqual(result.tail.length, 1);
+    const row = result.tail[0];
+    invariant(row?.kind === "user_message");
+    assert.deepStrictEqual(row.images, [image]);
   });
 
   it("reconciles an optimistic user message that was pending in the streaming head", () => {

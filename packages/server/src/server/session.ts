@@ -223,6 +223,41 @@ import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
+import type { GraphStore } from "./orchestration/graph-store.js";
+import {
+  startUserOrchestration,
+  type StartUserOrchestrationInput,
+} from "./orchestration/user-orchestration.js";
+
+// Map the wire message onto the orchestration input, dropping absent optionals
+// (exactOptionalPropertyTypes). Module-level so the RPC handler stays under
+// the complexity ceiling.
+function buildStartUserOrchestrationInput(
+  msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
+): StartUserOrchestrationInput {
+  return {
+    flavor: msg.flavor,
+    cwd: msg.cwd,
+    ...(msg.workspaceId !== undefined ? { workspaceId: msg.workspaceId } : {}),
+    ...(msg.title !== undefined ? { title: msg.title } : {}),
+    ...(msg.description !== undefined ? { description: msg.description } : {}),
+    ...(msg.orchestratorPersonalityId !== undefined
+      ? { orchestratorPersonalityId: msg.orchestratorPersonalityId }
+      : {}),
+    ...(msg.orchestratorProvider !== undefined
+      ? { orchestratorProvider: msg.orchestratorProvider }
+      : {}),
+    ...(msg.orchestratorModel !== undefined ? { orchestratorModel: msg.orchestratorModel } : {}),
+    ...(msg.orchestratorThinkingOptionId !== undefined
+      ? { orchestratorThinkingOptionId: msg.orchestratorThinkingOptionId }
+      : {}),
+    ...(msg.prompt !== undefined ? { prompt: msg.prompt } : {}),
+    ...(msg.graphId !== undefined ? { graphId: msg.graphId } : {}),
+    ...(msg.graphInputs !== undefined ? { graphInputs: msg.graphInputs } : {}),
+    ...(msg.draft !== undefined ? { draft: msg.draft } : {}),
+    ...(msg.runId !== undefined ? { runId: msg.runId } : {}),
+  };
+}
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
@@ -253,12 +288,14 @@ import {
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
 } from "./worktree-session.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
+import { detectWorktreeArchiveBranch } from "./workspace-archive-branch.js";
+import { buildReattachCandidates } from "./worktree-reattach.js";
 import {
   WorktreeRequestError,
   toWorktreeRequestError,
   toWorktreeWireError,
 } from "./worktree-errors.js";
-import { type WorktreeConfig, createWorktree } from "../utils/worktree.js";
+import { type WorktreeConfig, createWorktree, isOttoOwnedWorktreeCwd } from "../utils/worktree.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 
@@ -478,6 +515,10 @@ export interface SessionOptions {
   chatService: FileBackedChatService;
   scheduleService: ScheduleService;
   runService?: RunService | null;
+  // Orchestration graph templates (projects/orchestration-graphs). Optional for
+  // the same test-harness reason as runService; features.orchestrationGraphs
+  // rides on both being present.
+  graphStore?: GraphStore | null;
   loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
@@ -617,6 +658,7 @@ export class Session {
 
   private agentManager: AgentManager;
   private readonly runService: RunService | null | undefined;
+  private readonly graphStore: GraphStore | null | undefined;
   private readonly agentStorage: AgentStorage;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
@@ -714,6 +756,7 @@ export class Session {
       chatService,
       scheduleService,
       runService,
+      graphStore,
       loopService,
       checkoutDiffManager,
       github,
@@ -797,6 +840,7 @@ export class Session {
     });
     this.agentManager = agentManager;
     this.runService = runService;
+    this.graphStore = graphStore;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
@@ -1671,10 +1715,12 @@ export class Session {
       this.dispatchAgentTimelineMessage(msg) ??
       this.dispatchAgentLifecycleMessage(msg) ??
       this.dispatchAgentConfigMessage(msg) ??
+      this.dispatchSpeechMessage(msg) ??
       this.dispatchVisualizerMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchPreviewMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg) ??
+      this.dispatchWorktreeReattachMessage(msg) ??
       this.dispatchWorkspaceFilesMessage(msg) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
@@ -2141,18 +2187,6 @@ export class Session {
           },
         });
         return undefined;
-      case "speech.settings.get_options.request":
-        this.emit({
-          type: "speech.settings.get_options.response",
-          payload: {
-            requestId: msg.requestId,
-            options: this.getSpeechSettingsOptions?.() ?? EMPTY_SPEECH_SETTINGS_OPTIONS,
-          },
-        });
-        return undefined;
-      case "speech.tts.preview.request":
-        this.handleTtsPreviewRequest(msg.requestId, msg.text, msg.voice);
-        return undefined;
       case "agentPersonalities.get_stats.request": {
         const statsRequestId = msg.requestId;
         // The stats store is async (file-backed); resolve then emit.
@@ -2169,6 +2203,35 @@ export class Session {
         return this.projectConfigSession.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":
         return this.projectConfigSession.handleWriteProjectConfigRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchSpeechMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "speech.settings.get_options.request":
+        this.emit({
+          type: "speech.settings.get_options.response",
+          payload: {
+            requestId: msg.requestId,
+            options: this.getSpeechSettingsOptions?.() ?? EMPTY_SPEECH_SETTINGS_OPTIONS,
+          },
+        });
+        return undefined;
+      case "speech.tts.preview.request":
+        this.handleTtsPreviewRequest(msg.requestId, msg.text, msg.voice);
+        return undefined;
+      case "speech.tts.speak.request":
+        this.handleTtsSpeakRequest(msg.requestId, msg.text, msg.voice);
+        return undefined;
+      case "speech.tts.speak.cancel.request":
+        this.voiceSession.cancelMessagePlayback();
+        this.emit({
+          type: "speech.tts.speak.cancel.response",
+          payload: { requestId: msg.requestId },
+        });
+        return undefined;
       default:
         return undefined;
     }
@@ -2206,6 +2269,34 @@ export class Session {
           payload: {
             requestId,
             error: error instanceof Error ? error.message : "Voice preview failed.",
+          },
+        });
+      });
+  }
+
+  // Stream a full message aloud on demand (per-message playback button). Async
+  // work is fire-and-forget; the correlated response is emitted from the promise
+  // once playback finishes, is canceled, or errors — mirroring the preview path.
+  private handleTtsSpeakRequest(
+    requestId: string,
+    text: string,
+    voice?: { name: string; model?: string },
+  ): void {
+    void this.voiceSession
+      .speakMessage(text, voice)
+      .then((result) => {
+        this.emit({
+          type: "speech.tts.speak.response",
+          payload: { requestId, ok: !result.canceled, canceled: result.canceled },
+        });
+        return undefined;
+      })
+      .catch((error: unknown) => {
+        this.emit({
+          type: "speech.tts.speak.response",
+          payload: {
+            requestId,
+            error: error instanceof Error ? error.message : "Message playback failed.",
           },
         });
       });
@@ -2327,6 +2418,14 @@ export class Session {
       }
       case "runs.clear.request":
         return this.handleRunsClearRequest(msg);
+      case "runs.graphs.list.request":
+        return this.handleRunsGraphsListRequest(msg);
+      case "runs.graphs.save.request":
+        return this.handleRunsGraphsSaveRequest(msg);
+      case "runs.graphs.delete.request":
+        return this.handleRunsGraphsDeleteRequest(msg);
+      case "runs.start.request":
+        return this.handleRunsStartRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":
@@ -2430,6 +2529,17 @@ export class Session {
     }
   }
 
+  private dispatchWorktreeReattachMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "worktree.reattach.list.request":
+        return this.handleWorktreeReattachListRequest(msg);
+      case "worktree.reattach.request":
+        return this.handleWorktreeReattachRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2455,6 +2565,8 @@ export class Session {
         return this.handleProjectAddRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
+      case "workspace.archive.preflight.request":
+        return this.handleWorkspaceArchivePreflightRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
       case "project.links.list.request":
@@ -5341,10 +5453,25 @@ export class Session {
       return;
     }
 
-    const directoryExists = await this.filesystem.isDirectory(record.cwd).catch(() => false);
+    const restored = await this.restoreArchivedWorkspaceRecord(workspace);
+    if (!restored) {
+      return;
+    }
+    await this.emitWorkspaceUpdatesForWorkspaceIds([workspace.workspaceId]);
+  }
+
+  // Bring an archived worktree/local workspace back to life: recreate its backing
+  // worktree directory from the kept branch when the directory is gone, then clear
+  // archivedAt. Returns the unarchived record, or null when a worktree record has
+  // no branch to recreate its directory from (nothing to restore). Shared by the
+  // agent-triggered unarchive and the explicit worktree.reattach flow.
+  private async restoreArchivedWorkspaceRecord(
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<PersistedWorkspaceRecord | null> {
+    const directoryExists = await this.filesystem.isDirectory(workspace.cwd).catch(() => false);
     if (!directoryExists) {
       if (workspace.kind !== "worktree" || !workspace.branch) {
-        return;
+        return null;
       }
       // Recreate the worktree directory from its kept branch BEFORE clearing
       // archivedAt — the reconciler re-archives workspaces whose directory is
@@ -5352,8 +5479,7 @@ export class Session {
       await this.recreateOwningWorktreeForRestore(workspace, workspace.branch);
     }
 
-    await this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
-    await this.emitWorkspaceUpdatesForWorkspaceIds([workspace.workspaceId]);
+    return this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
   }
 
   private async recreateOwningWorktreeForRestore(
@@ -6371,7 +6497,29 @@ export class Session {
         .catch(() => null);
       const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
 
-      await archiveByScope(
+      // Resolve the leftover branch to delete before teardown removes the
+      // worktree. The client only asks for "delete" after preflight showed the
+      // branch is an Otto-owned, deletable one; re-check ownership here so a
+      // stale or crafted request can never delete a branch we don't own.
+      let branchCleanup: { branchName: string } | null = null;
+      if (request.branchDisposition === "delete" && repoRoot) {
+        const detection = await detectWorktreeArchiveBranch({
+          cwd: existing.cwd,
+          repoRoot,
+          ottoHome: this.ottoHome,
+          worktreesRoot: this.worktreesRoot,
+          directoryWillBeRemoved: true,
+        }).catch(() => null);
+        if (
+          detection?.isOttoWorktree &&
+          detection.branchName &&
+          !detection.branchCheckedOutElsewhere
+        ) {
+          branchCleanup = { branchName: detection.branchName };
+        }
+      }
+
+      const archiveResult = await archiveByScope(
         {
           ottoHome: this.ottoHome,
           ottoWorktreesBaseRoot: this.worktreesRoot,
@@ -6395,6 +6543,7 @@ export class Session {
           scope: { kind: "workspace", workspaceId: existing.workspaceId },
           repoRoot,
           ottoWorktreesBaseRoot: this.worktreesRoot,
+          branchCleanup,
           requestId: request.requestId,
         },
       );
@@ -6408,6 +6557,7 @@ export class Session {
           workspaceId: request.workspaceId,
           archivedAt,
           error: null,
+          deletedBranch: archiveResult.deletedBranch,
         },
       });
     } catch (error) {
@@ -6426,6 +6576,208 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleWorkspaceArchivePreflightRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.archive.preflight.request" }>,
+  ): Promise<void> {
+    try {
+      const existing = await this.workspaceRegistry.get(request.workspaceId);
+      if (!existing) {
+        throw new Error(`Workspace not found: ${request.workspaceId}`);
+      }
+
+      const gitSnapshot = await this.workspaceGitService
+        .getSnapshot(existing.cwd)
+        .catch(() => null);
+      const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
+
+      // The backing directory is removed only when no other active workspace
+      // still references it — the same last-reference rule archiveByScope applies.
+      const targetDir = resolve(existing.cwd);
+      const activeWorkspaces = await this.listActiveWorkspaceRefs();
+      const directoryWillBeRemoved = !activeWorkspaces.some(
+        (workspace) =>
+          workspace.workspaceId !== existing.workspaceId && resolve(workspace.cwd) === targetDir,
+      );
+
+      const detection = await detectWorktreeArchiveBranch({
+        cwd: existing.cwd,
+        repoRoot,
+        ottoHome: this.ottoHome,
+        worktreesRoot: this.worktreesRoot,
+        directoryWillBeRemoved,
+      });
+
+      this.emit({
+        type: "workspace.archive.preflight.response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          detection,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to inspect workspace for archive";
+      this.sessionLogger.warn(
+        { err: error, workspaceId: request.workspaceId },
+        "Workspace archive preflight failed",
+      );
+      this.emit({
+        type: "workspace.archive.preflight.response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          detection: null,
+          error: message,
+        },
+      });
+    }
+  }
+
+  private async handleWorktreeReattachListRequest(
+    request: Extract<SessionInboundMessage, { type: "worktree.reattach.list.request" }>,
+  ): Promise<void> {
+    try {
+      const scope = await this.resolveReattachScope(request);
+      const onDiskWorktrees = await this.listReattachOnDiskWorktrees(scope.repoRoot);
+      const candidates = buildReattachCandidates({
+        worktreeWorkspaces: scope.worktreeWorkspaces,
+        onDiskWorktrees,
+      });
+      this.emit({
+        type: "worktree.reattach.list.response",
+        payload: { requestId: request.requestId, candidates, error: null },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to list re-attachable worktrees";
+      this.sessionLogger.warn({ err: error }, "Worktree reattach list failed");
+      this.emit({
+        type: "worktree.reattach.list.response",
+        payload: { requestId: request.requestId, candidates: [], error: message },
+      });
+    }
+  }
+
+  private async listReattachOnDiskWorktrees(
+    repoRoot: string,
+  ): Promise<{ path: string; branchName: string | null }[]> {
+    try {
+      const worktrees = await this.workspaceGitService.listWorktrees(repoRoot);
+      return worktrees.map((entry) => ({ path: entry.path, branchName: entry.branchName ?? null }));
+    } catch {
+      return [];
+    }
+  }
+
+  // Resolve which project's worktrees a reattach-list request is scoped to. The
+  // client normally passes projectId (the sidebar project row); cwd is a fallback
+  // that resolves the repo root and matches a project by rootPath.
+  private async resolveReattachScope(request: {
+    projectId?: string;
+    cwd?: string;
+  }): Promise<{ repoRoot: string; worktreeWorkspaces: PersistedWorkspaceRecord[] }> {
+    const allWorkspaces = await this.workspaceRegistry.list();
+    if (request.projectId) {
+      const project = await this.projectRegistry.get(request.projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${request.projectId}`);
+      }
+      return {
+        repoRoot: project.rootPath,
+        worktreeWorkspaces: allWorkspaces.filter(
+          (workspace) => workspace.projectId === project.projectId && workspace.kind === "worktree",
+        ),
+      };
+    }
+    if (request.cwd) {
+      const snapshot = await this.workspaceGitService.getSnapshot(request.cwd).catch(() => null);
+      const repoRoot =
+        snapshot?.git?.mainRepoRoot ?? snapshot?.git?.repoRoot ?? resolve(request.cwd);
+      const projects = await this.projectRegistry.list();
+      const project = projects.find(
+        (candidate) => resolve(candidate.rootPath) === resolve(repoRoot),
+      );
+      return {
+        repoRoot,
+        worktreeWorkspaces: project
+          ? allWorkspaces.filter(
+              (workspace) =>
+                workspace.projectId === project.projectId && workspace.kind === "worktree",
+            )
+          : [],
+      };
+    }
+    throw new Error("projectId or cwd is required to list re-attachable worktrees");
+  }
+
+  private async handleWorktreeReattachRequest(
+    request: Extract<SessionInboundMessage, { type: "worktree.reattach.request" }>,
+  ): Promise<void> {
+    try {
+      const workspace = await this.reattachWorktreeTarget(request.target);
+      // Warm the git snapshot so the returned descriptor carries the live branch
+      // and dirty state the sidebar renders on first paint.
+      await this.workspaceGitService
+        .getSnapshot(workspace.cwd, { force: true, reason: "reattach-worktree" })
+        .catch(() => null);
+      const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
+      this.emit({ type: "workspace_update", payload: { kind: "upsert", workspace: descriptor } });
+      this.emit({
+        type: "worktree.reattach.response",
+        payload: { requestId: request.requestId, workspace: descriptor, error: null },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to re-attach worktree";
+      this.sessionLogger.warn({ err: error }, "Worktree reattach failed");
+      this.emit({
+        type: "worktree.reattach.response",
+        payload: { requestId: request.requestId, workspace: null, error: message },
+      });
+    }
+  }
+
+  private async reattachWorktreeTarget(
+    target: Extract<SessionInboundMessage, { type: "worktree.reattach.request" }>["target"],
+  ): Promise<PersistedWorkspaceRecord> {
+    if (target.kind === "workspace") {
+      const workspace = await this.workspaceRegistry.get(target.workspaceId);
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${target.workspaceId}`);
+      }
+      if (!workspace.archivedAt) {
+        // Already live — reattach is idempotent.
+        return workspace;
+      }
+      const restored = await this.restoreArchivedWorkspaceRecord(workspace);
+      if (!restored) {
+        throw new Error(
+          "Workspace cannot be re-attached: its worktree directory is gone and no branch was kept to recreate it",
+        );
+      }
+      return restored;
+    }
+
+    // Orphan: an on-disk Otto worktree with no live workspace. Bind a fresh
+    // workspace to the existing directory (findOrCreate unarchives any prior
+    // record at the path, otherwise classifies it as a worktree workspace).
+    const ownership = await isOttoOwnedWorktreeCwd(target.worktreePath, {
+      ottoHome: this.ottoHome,
+      worktreesRoot: this.worktreesRoot,
+    });
+    if (!ownership.allowed) {
+      throw new Error("Not a Otto-owned worktree");
+    }
+    const directoryExists = await this.filesystem
+      .isDirectory(target.worktreePath)
+      .catch(() => false);
+    if (!directoryExists) {
+      throw new Error("Worktree directory no longer exists");
+    }
+    return this.workspaceProvisioning.findOrCreateWorkspaceForDirectory(target.worktreePath);
   }
 
   private async handleWorkspaceClearAttentionRequest(
@@ -7120,6 +7472,146 @@ export class Session {
       type: "runs.clear.response",
       payload: { runIds, requestId: msg.requestId },
     });
+  }
+
+  // ── Orchestration graphs (projects/orchestration-graphs) ──────────────────
+
+  private async handleRunsGraphsListRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.graphs.list.request" }>,
+  ): Promise<void> {
+    const graphs = (await this.graphStore?.list()) ?? [];
+    this.emit({
+      type: "runs.graphs.list.response",
+      payload: { graphs, requestId: msg.requestId },
+    });
+  }
+
+  private async handleRunsGraphsSaveRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.graphs.save.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphStore) {
+        throw new Error("Orchestration graphs are not available on this daemon.");
+      }
+      // A saved graph is user-owned: saving over a built-in id persists a plain
+      // copy (builtIn stripped), so starter graphs are copy-on-edit.
+      const { builtIn: _builtIn, ...rest } = msg.graph;
+      const now = new Date().toISOString();
+      const graph = {
+        ...rest,
+        createdAt: msg.graph.createdAt ?? now,
+        updatedAt: now,
+      };
+      await this.graphStore.save(graph);
+      this.emit({
+        type: "runs.graphs.save.response",
+        payload: { graph, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "runs.graphs.save.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleRunsGraphsDeleteRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.graphs.delete.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.graphStore) {
+        throw new Error("Orchestration graphs are not available on this daemon.");
+      }
+      const existing = await this.graphStore.get(msg.graphId);
+      if (existing?.builtIn) {
+        throw new Error("Built-in starter graphs can't be deleted.");
+      }
+      await this.graphStore.delete(msg.graphId);
+      this.emit({
+        type: "runs.graphs.delete.response",
+        payload: { deleted: existing !== null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      this.emit({
+        type: "runs.graphs.delete.response",
+        payload: {
+          deleted: false,
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleRunsStartRequest(
+    msg: Extract<SessionInboundMessage, { type: "runs.start.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.runService || !this.graphStore) {
+        throw new Error("Orchestrations are not available on this daemon.");
+      }
+      const result = await startUserOrchestration(
+        {
+          runService: this.runService,
+          graphStore: this.graphStore,
+          agentManager: this.agentManager,
+          createAgentDeps: {
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            logger: this.sessionLogger,
+            ottoHome: this.ottoHome,
+            ...(this.worktreesRoot ? { worktreesRoot: this.worktreesRoot } : {}),
+            terminalManager: this.terminalManager,
+            providerSnapshotManager: this.providerSnapshotManager,
+            createOttoWorktree: (input, options) => this.createOttoWorktreeWorkflow(input, options),
+            scheduleAutoTitle: (request) =>
+              this.agentAutoTitle.schedule({
+                ...request,
+                currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
+              }),
+          },
+          logger: this.sessionLogger,
+          getPersonalityRoster: () =>
+            this.daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+          getAgentTeams: () => this.daemonConfigStore.get().agentTeams,
+          listProviderEntries: (cwd) =>
+            this.providerSnapshotManager.listProviders({ cwd, wait: true }),
+        },
+        buildStartUserOrchestrationInput(msg),
+      );
+      // Surface the new orchestrator chat to every client immediately (same
+      // forwarding the suggested-task spawn path does), and report the
+      // workspace the daemon resolved it into so the client can navigate.
+      let workspaceId: string | undefined;
+      if (result.agentId) {
+        const snapshot = this.agentManager.getAgent(result.agentId);
+        if (snapshot) {
+          workspaceId = snapshot.workspaceId ?? undefined;
+          await this.agentUpdates.forwardLiveAgent(snapshot);
+        }
+      }
+      this.emit({
+        type: "runs.start.response",
+        payload: {
+          ...(result.runId ? { runId: result.runId } : {}),
+          ...(result.agentId ? { agentId: result.agentId } : {}),
+          ...(workspaceId ? { workspaceId } : {}),
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "runs.start failed");
+      this.emit({
+        type: "runs.start.response",
+        payload: {
+          error: error instanceof Error ? error.message : String(error),
+          requestId: msg.requestId,
+        },
+      });
+    }
   }
 
   private emit(msg: SessionOutboundMessage): void {

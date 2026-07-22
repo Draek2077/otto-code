@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentMetadata } from "@/attachments/types";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { AttachmentLightbox } from "./attachment-lightbox";
 
 const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
@@ -53,6 +54,12 @@ vi.mock("react-native-unistyles", () => ({
 vi.mock("@/constants/platform", () => ({
   isWeb: true,
   isNative: false,
+}));
+
+// The keyboard-action dispatcher pulls in `use-interface-mode` only for its
+// dev-mode gate; stub it so the test doesn't drag in the settings/toast chain.
+vi.mock("@/hooks/use-interface-mode", () => ({
+  getIsDeveloperModeSnapshot: () => true,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -215,14 +222,31 @@ describe("AttachmentLightbox", () => {
     expect(document.body.textContent ?? "").toContain("Couldn't load image");
   });
 
-  it("closes on Escape key on web", () => {
+  it("closes on the interrupt action (Escape) and consumes it", () => {
     const onClose = vi.fn();
     render(<AttachmentLightbox metadata={imageMetadata} onClose={onClose} />);
 
+    let handled = false;
     act(() => {
-      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+      handled = keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" });
     });
 
+    // Returning true keeps the composer's lower-priority interrupt handler from
+    // also firing, so opening an image preview never cancels the running agent.
+    expect(handled).toBe(true);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not claim the interrupt action once closed", () => {
+    const onClose = vi.fn();
+    render(<AttachmentLightbox metadata={null} onClose={onClose} />);
+
+    let handled = false;
+    act(() => {
+      handled = keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" });
+    });
+
+    expect(handled).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

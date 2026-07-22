@@ -1,3 +1,4 @@
+import type { WorktreeArchiveBranchDetection } from "@otto-code/protocol/messages";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { i18n } from "@/i18n/i18next";
 
@@ -111,6 +112,81 @@ export function buildWorktreeArchiveConfirmationMessage(
   }
 
   return reasons.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Leftover-branch cleanup (server_info.features.worktreeArchiveBranchCleanup)
+// ---------------------------------------------------------------------------
+
+export interface WorktreeArchiveBranchLabels {
+  intro: (branchName: string) => string;
+  deleteCheckbox: (branchName: string) => string;
+  merged: (baseBranch: string | null) => string;
+  unmerged: (count: number, baseBranch: string | null) => string;
+  unknown: string;
+  remoteKept: string;
+}
+
+// True when the detection describes an Otto-owned worktree branch we can
+// actually delete once the workspace is archived: it exists, the backing
+// directory is going away, and the branch is not also checked out elsewhere.
+export function canOfferBranchDeletion(
+  detection: WorktreeArchiveBranchDetection | null | undefined,
+): boolean {
+  return Boolean(
+    detection?.isOttoWorktree &&
+    detection.branchName &&
+    detection.directoryWillBeRemoved &&
+    !detection.branchCheckedOutElsewhere,
+  );
+}
+
+function buildBranchContextLine(
+  detection: WorktreeArchiveBranchDetection,
+  labels: WorktreeArchiveBranchLabels,
+): string {
+  if (detection.mergeState === "merged") {
+    return labels.merged(detection.baseBranch);
+  }
+  if (detection.mergeState === "unmerged") {
+    return labels.unmerged(detection.unmergedCommitCount ?? 0, detection.baseBranch);
+  }
+  return labels.unknown;
+}
+
+export interface WorktreeArchiveBranchDialogContent {
+  message: string;
+  checkboxLabel: string;
+  // Merged branches default to "delete" — the leftover is safe to remove; every
+  // other state defaults to "keep" so commits are never discarded by inertia.
+  checkboxDefaultChecked: boolean;
+}
+
+export function buildWorktreeArchiveBranchDialog(input: {
+  detection: WorktreeArchiveBranchDetection;
+  risk: WorktreeArchiveRisk;
+  riskLabels?: WorktreeArchiveWarningLabels;
+  branchLabels: WorktreeArchiveBranchLabels;
+}): WorktreeArchiveBranchDialogContent {
+  const branchName = input.detection.branchName ?? "";
+  const lines: string[] = [];
+  const riskReasons = buildWorktreeArchiveRiskReasons(
+    input.risk,
+    input.riskLabels ?? DEFAULT_WORKTREE_ARCHIVE_WARNING_LABELS,
+  );
+  if (riskReasons.length > 0) {
+    lines.push(...riskReasons, "");
+  }
+  lines.push(input.branchLabels.intro(branchName));
+  lines.push(buildBranchContextLine(input.detection, input.branchLabels));
+  if (input.detection.hasRemoteBranch) {
+    lines.push(input.branchLabels.remoteKept);
+  }
+  return {
+    message: lines.join("\n"),
+    checkboxLabel: input.branchLabels.deleteCheckbox(branchName),
+    checkboxDefaultChecked: input.detection.mergeState === "merged",
+  };
 }
 
 export async function confirmRiskyWorktreeArchive(

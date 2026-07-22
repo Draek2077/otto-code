@@ -104,7 +104,7 @@ export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
 export const MIN_CODE_FONT_SIZE = 12;
 export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
 export const MAX_FONT_FAMILY_LENGTH = 200;
-export const DEFAULT_RULER_COLUMN = 80; // the classic terminal width
+export const DEFAULT_RULER_COLUMN = 120; // modern editor default width
 export const MIN_RULER_COLUMN = 80;
 export const MAX_RULER_COLUMN = 240;
 
@@ -144,7 +144,7 @@ export interface AppSettings {
   // an IDE marks the 80/120-column limit. Device-local presentation only.
   // Default on.
   rulerEnabled: boolean;
-  rulerColumn: number; // clamped character column, default 80
+  rulerColumn: number; // clamped character column, default 120
   workspaceTitleSource: WorkspaceTitleSource;
   autoExpandReasoning: boolean;
   // Repeating cue tone while voice mode waits for the agent's reply.
@@ -206,10 +206,6 @@ export interface AppSettings {
   // is over their toolbar area (web only — hover). When false (default), pinned
   // options are always visible.
   hidePinnedToolbarOptions: boolean;
-  // Drop the "Merge into <base>" action from the source-control menu (and stop
-  // promoting it to the primary CTA) for people who only ever merge via a pull
-  // request and don't want a one-click local merge sitting in the menu.
-  hideMergeIntoBaseAction: boolean;
   // Keep chat message operational details (timestamp, duration, copy/fork/
   // rewind actions) hidden until the pointer is over the message. Hover-only:
   // native and compact layouts always show details, and the running-turn
@@ -266,6 +262,13 @@ export interface AppSettings {
   suggestedTasksEnabled: boolean;
   // Default primary action of a suggested-task card. See SuggestedTasksDefaultMode.
   suggestedTasksDefaultMode: SuggestedTasksDefaultMode;
+  // Pin the agent's live task checklist as a floating card at the top of the
+  // chat, so it stays in view instead of scrolling away inline. Off keeps the
+  // list inline-only. Device-local presentation. Default on.
+  pinnedTaskListEnabled: boolean;
+  // Auto-dismiss the pinned task list a moment after every task completes,
+  // instead of leaving it up for the user to close. Default off.
+  pinnedTaskListAutoDismiss: boolean;
   // "Don't show this again" on the heads-up shown when a user opens a browser
   // tab while the host's Browser tools master is off — agents can't see or drive
   // that tab. Purely informational, so it is suppressible; the Preview warning
@@ -443,7 +446,6 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   blackTabBackground: false,
   groupConsecutiveActions: true,
   hidePinnedToolbarOptions: false,
-  hideMergeIntoBaseAction: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
   animationsEnabled: true,
@@ -457,6 +459,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   appStartScreen: "workspaces",
   suggestedTasksEnabled: true,
   suggestedTasksDefaultMode: "new_chat",
+  pinnedTaskListEnabled: true,
+  pinnedTaskListAutoDismiss: false,
   suppressBrowserToolsWarning: false,
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
@@ -746,9 +750,10 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "blackTabBackground",
   "groupConsecutiveActions",
   "hidePinnedToolbarOptions",
-  "hideMergeIntoBaseAction",
   "hideChatMessageDetails",
   "hasCompletedTutorial",
+  "pinnedTaskListEnabled",
+  "pinnedTaskListAutoDismiss",
 ] as const satisfies readonly (keyof AppSettings)[];
 
 function copyStoredBooleans(

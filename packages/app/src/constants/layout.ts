@@ -43,6 +43,10 @@ export const COMPACT_FORM_FACTOR_WIDTH = 500;
 // the PIP is ambient, the card is an offer the user has to answer.
 export const CHAT_PANE_OVERLAY_Z = {
   visualizerPip: 20,
+  // The pinned task checklist sits below the suggested-task card: the checklist
+  // is ambient progress the user watches, a suggestion is an offer they must
+  // answer, so on the rare occasion both show, the offer wins the top slot.
+  pinnedTaskList: 25,
   suggestedTasks: 30,
 } as const;
 

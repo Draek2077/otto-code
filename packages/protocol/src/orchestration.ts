@@ -70,6 +70,7 @@ export const RUN_PHASE_STATUSES = [
 export type RunPhaseStatus = (typeof RUN_PHASE_STATUSES)[number];
 
 export const RUN_STATUSES = [
+  "draft", // a user orchestration created by the dialog, graph not yet executed
   "pending",
   "running",
   "paused", // stopped at an attended gate, awaiting the user
@@ -195,7 +196,19 @@ export const RunSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),
+    // User-authored description from the New Orchestration dialog (what this
+    // orchestration is for). Distinct from `summary`, which is AI-generated
+    // after the run settles. Absent on conductor-declared (start_run) runs.
+    description: z.string().optional(),
     status: z.string().min(1),
+    // Which engine drives this orchestration: absent/"phases" = the conductor
+    // -declared phase plan; "graph" = a user-authored deterministic graph
+    // (projects/orchestration-graphs). Open vocabulary, plain string on the wire.
+    kind: z.string().optional(),
+    // Graph runs only: the executed graph template and the fill-in values the
+    // user supplied for its declared inputs.
+    graphId: z.string().optional(),
+    graphInputs: z.record(z.string(), z.string()).optional(),
     // Immutable requirements block (see RunPlan.requirements).
     requirements: z.array(z.string().min(1)).optional(),
     autopilot: z.boolean().optional(),
@@ -229,3 +242,221 @@ export type Run = z.infer<typeof RunSchema>;
 // Summary generation lifecycle (plain-string on the wire; see RunSchema.summaryStatus).
 export const RUN_SUMMARY_STATUSES = ["pending", "ready", "failed"] as const;
 export type RunSummaryStatus = (typeof RUN_SUMMARY_STATUSES)[number];
+
+// ── Orchestration graphs (user orchestrations) ──────────────────────────────
+// The reusable template a User orchestration executes — authored in the graph
+// designer, stored host-level, parameterized by declared inputs. Executing a
+// graph starts an orchestration (a Run with kind "graph"). See
+// projects/orchestration-graphs. Same wire-forward-compat posture as the Run
+// schemas: open string vocabularies, `.passthrough()` objects, no transforms.
+
+// A declared fill-in parameter. The New Orchestration dialog renders these as
+// a form when the graph is picked; values substitute into node prompts via
+// {{inputs.<key>}} and via GraphNode.promptFromInput.
+export const GraphInputSchema = z
+  .object({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().optional(),
+    multiline: z.boolean().optional(),
+    required: z.boolean().optional(),
+    defaultValue: z.string().optional(),
+  })
+  .passthrough();
+
+export type GraphInput = z.infer<typeof GraphInputSchema>;
+
+// Node kinds (open vocabulary): "orchestrator" — the single root that hosts
+// the orchestration chat and anchors the Visualizer; "agent" — a worker node.
+export const GRAPH_NODE_KINDS = ["orchestrator", "agent"] as const;
+export type GraphNodeKind = (typeof GRAPH_NODE_KINDS)[number];
+
+// Loop annotation — exactly one of `times` (fixed repeat) or `until` (bounded
+// retry graded by a structured judge between iterations; self-grading is not
+// an exit test). `max` is a hard cap in both readings.
+export const GraphNodeLoopSchema = z
+  .object({
+    times: z.number().int().min(1).max(64).optional(),
+    until: z
+      .object({
+        // What the judge grades each iteration's output against.
+        criteria: z.array(z.string().min(1)).min(1),
+        // Role that fills the judge seat; defaults to "judger".
+        judgeRole: z.string().min(1).optional(),
+        max: z.number().int().min(1).max(16),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export type GraphNodeLoop = z.infer<typeof GraphNodeLoopSchema>;
+
+export const GraphNodeSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.string().min(1),
+    title: z.string().min(1),
+    // Team role the node dispatches to (agent nodes). Resolution at execute
+    // time: active team fills the role → dialog personality → bare model.
+    role: z.string().min(1).optional(),
+    // Fixed prompt text; may reference {{inputs.<key>}}.
+    prompt: z.string().optional(),
+    // Key of a declared input whose value joins (or forms) the prompt.
+    promptFromInput: z.string().optional(),
+    // Leaf-only: the node may orchestrate its own agents (full otto toolset
+    // minus start_run). Non-autonomous nodes get no orchestration tools at all.
+    autonomous: z.boolean().optional(),
+    loop: GraphNodeLoopSchema.optional(),
+    // Explicit model override (otherwise the resolved personality/team decides).
+    model: z.string().optional(),
+    // Designer canvas layout.
+    position: z.object({ x: z.number(), y: z.number() }).passthrough().optional(),
+  })
+  .passthrough();
+
+export type GraphNode = z.infer<typeof GraphNodeSchema>;
+
+// A directed edge: `from`'s final output becomes labeled input material for
+// `to`. Fan-in is an all-inputs barrier held by the daemon — agents never know
+// about waiting.
+export const GraphEdgeSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    from: z.string().min(1),
+    to: z.string().min(1),
+  })
+  .passthrough();
+
+export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
+
+export const OrchestrationGraphSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional(),
+    inputs: z.array(GraphInputSchema).optional(),
+    nodes: z.array(GraphNodeSchema),
+    edges: z.array(GraphEdgeSchema).optional(),
+    // Bundled starter graphs; copy-on-edit, never deleted in place.
+    builtIn: z.boolean().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .passthrough();
+
+export type OrchestrationGraph = z.infer<typeof OrchestrationGraphSchema>;
+
+// ── Graph structural validation ──────────────────────────────────────────────
+// Shared by the daemon (hard gate before execute) and the designer (live
+// feedback). Returns human-readable problems; empty ⇒ executable. Split into
+// per-concern helpers to stay under the complexity ceiling.
+export function validateOrchestrationGraph(graph: OrchestrationGraph): string[] {
+  const nodeIds = new Set<string>();
+  const problems: string[] = [];
+  for (const node of graph.nodes) {
+    if (nodeIds.has(node.id)) problems.push(`Duplicate node id "${node.id}".`);
+    nodeIds.add(node.id);
+  }
+  const roots = graph.nodes.filter((n) => n.kind === "orchestrator");
+  if (roots.length === 0) {
+    problems.push("The graph needs exactly one Orchestrator node (the root).");
+  } else if (roots.length > 1) {
+    problems.push("The graph has more than one Orchestrator node.");
+  }
+  problems.push(...validateGraphEdges(graph, nodeIds));
+  const declaredInputs = new Set((graph.inputs ?? []).map((i) => i.key));
+  for (const node of graph.nodes) {
+    problems.push(...validateGraphNode(node, declaredInputs));
+  }
+  return problems;
+}
+
+function validateGraphEdges(graph: OrchestrationGraph, nodeIds: ReadonlySet<string>): string[] {
+  const problems: string[] = [];
+  const edges = graph.edges ?? [];
+  const rootId = graph.nodes.find((node) => node.kind === "orchestrator")?.id ?? null;
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.from)) problems.push(`Edge from unknown node "${edge.from}".`);
+    if (!nodeIds.has(edge.to)) problems.push(`Edge to unknown node "${edge.to}".`);
+    if (edge.from === edge.to) problems.push(`Node "${edge.from}" connects to itself.`);
+    // Edges INTO the orchestrator are passive answer-delivery, not execution
+    // dependencies — excluding them here keeps "root kicks off A, A delivers
+    // back to root" from reading as a cycle.
+    if (edge.to === rootId) continue;
+    outgoing.set(edge.from, [...(outgoing.get(edge.from) ?? []), edge.to]);
+    incoming.set(edge.to, [...(incoming.get(edge.to) ?? []), edge.from]);
+  }
+  if (hasGraphCycle(graph, outgoing, incoming)) {
+    problems.push("The graph contains a cycle.");
+  }
+  return problems;
+}
+
+// Cycle check (loops are node-level annotations, never cyclic edges): Kahn.
+function hasGraphCycle(
+  graph: OrchestrationGraph,
+  outgoing: ReadonlyMap<string, string[]>,
+  incoming: ReadonlyMap<string, string[]>,
+): boolean {
+  const indegree = new Map<string, number>();
+  for (const node of graph.nodes) indegree.set(node.id, incoming.get(node.id)?.length ?? 0);
+  const queue = graph.nodes.filter((n) => (indegree.get(n.id) ?? 0) === 0).map((n) => n.id);
+  let visited = 0;
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    visited += 1;
+    for (const next of outgoing.get(id) ?? []) {
+      const d = (indegree.get(next) ?? 0) - 1;
+      indegree.set(next, d);
+      if (d === 0) queue.push(next);
+    }
+  }
+  return visited !== graph.nodes.length;
+}
+
+const GRAPH_INPUT_REF = /\{\{\s*inputs\.([A-Za-z0-9_-]+)\s*\}\}/g;
+
+function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>): string[] {
+  const isRoot = node.kind === "orchestrator";
+  if (!isRoot && node.kind !== "agent") return []; // unknown kinds pass through
+  const problems: string[] = [];
+  // Autonomous nodes may feed results onward via edges; what they must not
+  // do is orchestrate deterministic children — which edges don't express, so
+  // autonomy is allowed on any node except the root.
+  if (node.autonomous && isRoot) {
+    problems.push("The Orchestrator node can't be autonomous.");
+  }
+  if (!isRoot && !node.prompt?.trim() && !node.promptFromInput) {
+    problems.push(`Node "${node.title}" has no prompt and no prompt input.`);
+  }
+  if (node.promptFromInput && !declaredInputs.has(node.promptFromInput)) {
+    problems.push(
+      `Node "${node.title}" reads input "${node.promptFromInput}", which isn't declared.`,
+    );
+  }
+  for (const match of (node.prompt ?? "").matchAll(GRAPH_INPUT_REF)) {
+    if (!declaredInputs.has(match[1] as string)) {
+      problems.push(
+        `Node "${node.title}" references {{inputs.${match[1]}}}, which isn't declared.`,
+      );
+    }
+  }
+  problems.push(...validateGraphNodeLoop(node));
+  return problems;
+}
+
+function validateGraphNodeLoop(node: GraphNode): string[] {
+  if (!node.loop) {
+    return [];
+  }
+  if (node.loop.times === undefined && node.loop.until === undefined) {
+    return [`Node "${node.title}" has a loop with neither "times" nor "until".`];
+  }
+  if (node.loop.times !== undefined && node.loop.until !== undefined) {
+    return [`Node "${node.title}" has both loop forms — pick "times" or "until".`];
+  }
+  return [];
+}

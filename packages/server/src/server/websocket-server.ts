@@ -15,6 +15,7 @@ import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
+import type { GraphStore } from "./orchestration/graph-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -380,6 +381,15 @@ interface RequiredWebSocketServices {
   checkoutDiffManager: CheckoutDiffManager;
 }
 
+// Normalizes the optional orchestration pair (projects/orchestration-graphs)
+// outside the constructor to keep it under the complexity ceiling.
+function resolveOrchestrationServices(
+  runService: RunService | null | undefined,
+  graphStore: GraphStore | null | undefined,
+): { runService: RunService | null; graphStore: GraphStore | null } {
+  return { runService: runService ?? null, graphStore: graphStore ?? null };
+}
+
 function requireWebSocketServices(params: {
   chatService?: FileBackedChatService;
   loopService?: LoopService;
@@ -436,6 +446,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
   private readonly runService: RunService | null;
+  private readonly graphStore: GraphStore | null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -557,6 +568,7 @@ export class VoiceAssistantWebSocketServer {
     agentAutoTitle?: AgentAutoTitle | null,
     getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>,
     resetActivityStats?: () => Promise<void>,
+    graphStore?: GraphStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -581,7 +593,9 @@ export class VoiceAssistantWebSocketServer {
     this.chatService = requiredServices.chatService;
     this.loopService = requiredServices.loopService;
     this.scheduleService = requiredServices.scheduleService;
-    this.runService = runService ?? null;
+    const orchestration = resolveOrchestrationServices(runService, graphStore);
+    this.runService = orchestration.runService;
+    this.graphStore = orchestration.graphStore;
     this.onActivity = onActivity;
     this.getActivityRollups = getActivityRollups;
     this.getUsageLogPage = getUsageLogPage;
@@ -1101,6 +1115,7 @@ export class VoiceAssistantWebSocketServer {
       loopService: this.loopService,
       scheduleService: this.scheduleService,
       runService: this.runService,
+      graphStore: this.graphStore,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
@@ -1357,6 +1372,8 @@ export class VoiceAssistantWebSocketServer {
         agentPersonalities: true,
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: this.speech !== null,
+        // COMPAT(ttsSpeak): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        ttsSpeak: this.speech !== null,
         // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         // Marks that the daemon can AUTHOR cue lines (Writer chain, always
         // available). Speaking them at runtime separately requires ttsPreview.
@@ -1373,6 +1390,12 @@ export class VoiceAssistantWebSocketServer {
         checkoutGitLog: true,
         // COMPAT(checkoutGitFileHistory): added in v0.6.6, drop the gate when daemon floor >= v0.6.6.
         checkoutGitFileHistory: true,
+        // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        worktreeArchiveBranchCleanup: true,
+        // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        worktreeReattach: true,
+        // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        hideMergeIntoBaseSetting: true,
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         agentTeams: true,
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
@@ -1385,8 +1408,14 @@ export class VoiceAssistantWebSocketServer {
         activityStats: this.getActivityRollups !== undefined,
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: this.runService !== null,
+        // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        orchestrationGraphs: this.runService !== null && this.graphStore !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: true,
+        // COMPAT(backgroundShellTasks): wire field reserved in v0.5.3 but never
+        // advertised; the daemon always emits background_shell_task events (Claude
+        // provider), so populate it now. Drop the gate when daemon floor >= v0.6.7.
+        backgroundShellTasks: true,
         // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
         contextManagement: true,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.

@@ -95,6 +95,7 @@ import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import { unwrapSpokenInput } from "../voice-config.js";
 import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { OttoToolCatalogFactory } from "./tools/types.js";
@@ -973,6 +974,26 @@ function buildExplicitTimelineSeedForRegister(
   };
 }
 
+/**
+ * Strip the voice `<spoken-input>` scaffolding from a `user_message` so the chat
+ * shows the words the user spoke, not the markup the model was fed (see
+ * `wrapSpokenInput`). Display-only and provider-agnostic: applied at the
+ * timeline chokepoint so every surface (chat, copy, rewind prefill, title, CLI)
+ * gets the clean text. The wrapped prompt was already delivered to the provider
+ * for the live turn; this only shapes Otto's own timeline projection. Idempotent
+ * and a no-op for every non-spoken message.
+ */
+function normalizeUserMessageForDisplay(item: AgentTimelineItem): AgentTimelineItem {
+  if (item.type !== "user_message") {
+    return item;
+  }
+  const unwrapped = unwrapSpokenInput(item.text);
+  if (unwrapped === item.text) {
+    return item;
+  }
+  return { ...item, text: unwrapped };
+}
+
 function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): AgentTimelineRow[] {
   const rows: AgentTimelineRow[] = [];
   for (const entry of entries) {
@@ -982,7 +1003,7 @@ function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): A
     rows.push({
       seq: rows.length + 1,
       timestamp: entry.timestamp ?? new Date().toISOString(),
-      item: entry.item,
+      item: normalizeUserMessageForDisplay(entry.item),
     });
   }
   return rows;
@@ -5370,10 +5391,13 @@ export class AgentManager {
 
   private recordAndDispatchTimelineItem(
     agentId: string,
-    item: AgentTimelineItem,
+    rawItem: AgentTimelineItem,
     provider: AgentProvider,
     turnId?: string,
   ): AgentStreamEvent {
+    // Normalize once so persistence, the dispatched event, and activity
+    // counters all see the same display-clean item (unwraps voice spoken-input).
+    const item = normalizeUserMessageForDisplay(rawItem);
     const row = this.recordTimeline(agentId, item);
     this.recordTimelineActivity(item);
     const event: AgentStreamEvent = {
@@ -5486,7 +5510,7 @@ export class AgentManager {
     item: AgentTimelineItem,
     options?: { timestamp?: string },
   ): AgentTimelineRow {
-    const row = this.timelineStore.append(agentId, item, options);
+    const row = this.timelineStore.append(agentId, normalizeUserMessageForDisplay(item), options);
     this.enqueueDurableTimelineAppend(agentId, row);
     return row;
   }

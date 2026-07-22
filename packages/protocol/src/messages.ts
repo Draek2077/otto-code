@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
-import { RunSchema } from "./orchestration.js";
+import { OrchestrationGraphSchema, RunSchema } from "./orchestration.js";
 import { ArtifactMetadataSchema } from "./artifacts/types.js";
 import {
   ArtifactListRequestSchema,
@@ -528,6 +528,12 @@ export const MutableDaemonConfigSchema = z
       preferWriterPersonalities: false,
     }),
     autoArchiveAfterMerge: z.boolean().default(false),
+    // Drop the "Merge into <base>" action from the client's source-control menu
+    // (and stop promoting it to the primary CTA) for a pull-request-only
+    // workflow. Host-level so the whole team's clients share one policy.
+    // Defaults false so a new client parsing an old daemon's config keeps the
+    // action visible. Gated by server_info features.hideMergeIntoBaseSetting.
+    hideMergeIntoBaseAction: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
@@ -569,6 +575,8 @@ export const MutableDaemonConfigPatchSchema = z
       .optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
+    // Gated by server_info features.hideMergeIntoBaseSetting.
+    hideMergeIntoBaseAction: z.boolean().optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
@@ -1656,6 +1664,37 @@ export const SpeechTtsPreviewRequestSchema = z.object({
     })
     .passthrough()
     .optional(),
+});
+
+// Read a full assistant message aloud on demand (the per-message playback
+// button). Unlike the preview RPC — which truncates to a short sample and
+// returns one buffered clip — this synthesizes the ENTIRE text and streams it
+// back as `audio_output` chunks (isVoiceMode: false), one group per sentence, so
+// playback starts after the first sentence instead of the whole message.
+// `voice` (optional) is the speaking agent's personality voice, resolved on the
+// client from the live personality (same soft-binding semantics as the preview
+// button); absent uses the host default. The correlated response lands once
+// playback finishes, is canceled, or errors.
+export const SpeechTtsSpeakRequestSchema = z.object({
+  type: z.literal("speech.tts.speak.request"),
+  requestId: z.string(),
+  text: z.string(),
+  voice: z
+    .object({
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      name: z.string(),
+    })
+    .passthrough()
+    .optional(),
+});
+
+// Stop the session's in-flight message playback (the button's stop press).
+// Aborts synthesis on the host; the pending speak response then resolves as
+// canceled and the client flushes its own audio queue.
+export const SpeechTtsSpeakCancelRequestSchema = z.object({
+  type: z.literal("speech.tts.speak.cancel.request"),
+  requestId: z.string(),
 });
 
 // COMPAT(visualizerVoiceCues): added in v0.6.3; gate lives in
@@ -2783,6 +2822,112 @@ export const RunsClearedNotificationSchema = z.object({
   }),
 });
 
+// ── Orchestration graphs (user orchestrations) ──────────────────────────────
+// Host-level reusable graph templates + user-initiated orchestration start.
+// Gated by server_info.features.orchestrationGraphs. UI says "Orchestration"
+// and "Graph"; the wire keeps the short `runs.` namespace (see docs/glossary.md).
+// See projects/orchestration-graphs.
+export const RunsGraphsListRequestSchema = z.object({
+  type: z.literal("runs.graphs.list.request"),
+  requestId: z.string(),
+});
+export const RunsGraphsListResponseSchema = z.object({
+  type: z.literal("runs.graphs.list.response"),
+  payload: z.object({
+    graphs: z.array(OrchestrationGraphSchema),
+    requestId: z.string(),
+  }),
+});
+
+// Upsert a graph template (create when the id is new). Built-in graphs are
+// copy-on-edit daemon-side: saving over a builtIn id persists a user copy.
+export const RunsGraphsSaveRequestSchema = z.object({
+  type: z.literal("runs.graphs.save.request"),
+  graph: OrchestrationGraphSchema,
+  requestId: z.string(),
+});
+export const RunsGraphsSaveResponseSchema = z.object({
+  type: z.literal("runs.graphs.save.response"),
+  payload: z.object({
+    graph: OrchestrationGraphSchema.optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export const RunsGraphsDeleteRequestSchema = z.object({
+  type: z.literal("runs.graphs.delete.request"),
+  graphId: z.string(),
+  requestId: z.string(),
+});
+export const RunsGraphsDeleteResponseSchema = z.object({
+  type: z.literal("runs.graphs.delete.response"),
+  payload: z.object({
+    deleted: z.boolean(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+// Broadcast after any save/delete so every client's graph cache converges,
+// mirroring runs.updated.notification's role for runs.
+export const RunsGraphsChangedNotificationSchema = z.object({
+  type: z.literal("runs.graphs.changed.notification"),
+  payload: z.object({
+    graphs: z.array(OrchestrationGraphSchema),
+  }),
+});
+
+// Start (or draft) a user-initiated orchestration from the New Orchestration
+// dialog. `flavor` is an open vocabulary: "ai" (prompt-and-go — the daemon
+// spawns an orchestrator agent that declares its own plan via start_run) or
+// "graph" (deterministic — the daemon executes `graphId` with `graphInputs`).
+// `draft: true` creates the record without executing (the designer flow);
+// `runId` executes an existing draft in place.
+export const RunsStartRequestSchema = z.object({
+  type: z.literal("runs.start.request"),
+  flavor: z.string(),
+  cwd: z.string(),
+  workspaceId: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  // Orchestrator seat when the active team doesn't fill it: a personality, or
+  // a bare provider/model pair.
+  orchestratorPersonalityId: z.string().optional(),
+  orchestratorProvider: z.string().optional(),
+  orchestratorModel: z.string().optional(),
+  orchestratorThinkingOptionId: z.string().optional(),
+  prompt: z.string().optional(),
+  graphId: z.string().optional(),
+  graphInputs: z.record(z.string(), z.string()).optional(),
+  draft: z.boolean().optional(),
+  runId: z.string().optional(),
+  requestId: z.string(),
+});
+export const RunsStartResponseSchema = z.object({
+  type: z.literal("runs.start.response"),
+  payload: z.object({
+    runId: z.string().optional(),
+    // The root/orchestrator agent whose chat the client navigates to, and the
+    // workspace the daemon resolved it into (the dialog only knows a project
+    // target's cwd).
+    agentId: z.string().optional(),
+    workspaceId: z.string().optional(),
+    error: z.string().optional(),
+    requestId: z.string(),
+  }),
+});
+
+export type RunsGraphsListRequest = z.infer<typeof RunsGraphsListRequestSchema>;
+export type RunsGraphsListResponse = z.infer<typeof RunsGraphsListResponseSchema>;
+export type RunsGraphsSaveRequest = z.infer<typeof RunsGraphsSaveRequestSchema>;
+export type RunsGraphsSaveResponse = z.infer<typeof RunsGraphsSaveResponseSchema>;
+export type RunsGraphsDeleteRequest = z.infer<typeof RunsGraphsDeleteRequestSchema>;
+export type RunsGraphsDeleteResponse = z.infer<typeof RunsGraphsDeleteResponseSchema>;
+export type RunsGraphsChangedNotification = z.infer<typeof RunsGraphsChangedNotificationSchema>;
+export type RunsStartRequest = z.infer<typeof RunsStartRequestSchema>;
+export type RunsStartResponse = z.infer<typeof RunsStartResponseSchema>;
+
 export type RunsGetSnapshotRequest = z.infer<typeof RunsGetSnapshotRequestSchema>;
 export type RunsGetSnapshotResponse = z.infer<typeof RunsGetSnapshotResponseSchema>;
 export type RunsUpdatedNotification = z.infer<typeof RunsUpdatedNotificationSchema>;
@@ -3206,6 +3351,24 @@ export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
   workspaceId: z.string(),
   requestId: z.string(),
+  // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the optional
+  // gate when daemon floor >= v0.6.7. Absent means "keep" — the leftover local
+  // branch is never touched (old-client behavior). "delete" asks the daemon to
+  // remove the worktree's local branch after the backing directory is torn down
+  // (only when this was the last reference to it and the branch is not checked
+  // out elsewhere). Gated by server_info.features.worktreeArchiveBranchCleanup.
+  branchDisposition: z.enum(["keep", "delete"]).optional(),
+});
+
+// Read-only pre-archive inspection for a worktree-backed workspace: what branch
+// it is on, whether that branch is merged into its base, and whether archiving
+// will actually free the branch (last reference, not checked out elsewhere). The
+// client uses this to render the "delete the leftover branch?" confirmation.
+// COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7.
+export const WorkspaceArchivePreflightRequestSchema = z.object({
+  type: z.literal("workspace.archive.preflight.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
 });
 
 // Create a new workspace record. Unlike open_project, this never deduplicates by
@@ -3238,6 +3401,39 @@ export const WorkspaceCreateRequestSchema = z.object({
       worktreeSlug: z.string().optional(),
     }),
   ]),
+});
+
+// Re-attach a "left" Otto worktree as a live workspace. Two targets: revive an
+// archived worktree workspace record in place (recreating its backing directory
+// from the kept branch when it is gone), or bind a fresh workspace to an orphaned
+// on-disk Otto worktree that no live workspace references.
+// COMPAT(worktreeReattach): added in v0.6.7. Gated by server_info.features.worktreeReattach.
+export const WorktreeReattachTargetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("workspace"),
+    workspaceId: z.string(),
+  }),
+  z.object({
+    kind: z.literal("orphan"),
+    worktreePath: z.string(),
+    projectId: z.string().optional(),
+  }),
+]);
+
+export const WorktreeReattachRequestSchema = z.object({
+  type: z.literal("worktree.reattach.request"),
+  requestId: z.string(),
+  target: WorktreeReattachTargetSchema,
+});
+
+// List re-attachable Otto worktrees for a project/repo: archived worktree
+// workspace records whose branch is kept, plus orphaned on-disk worktrees with no
+// live workspace. Either projectId or a cwd inside the repo is required.
+export const WorktreeReattachListRequestSchema = z.object({
+  type: z.literal("worktree.reattach.list.request"),
+  requestId: z.string(),
+  projectId: z.string().optional(),
+  cwd: z.string().optional(),
 });
 
 export const WorkspaceClearAttentionRequestSchema = z.object({
@@ -3627,6 +3823,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigRequestMessageSchema,
   SpeechSettingsGetOptionsRequestSchema,
   SpeechTtsPreviewRequestSchema,
+  SpeechTtsSpeakRequestSchema,
+  SpeechTtsSpeakCancelRequestSchema,
   VisualizerVoiceCuesGenerateRequestSchema,
   AgentPersonalitiesGetStatsRequestSchema,
   ReadProjectConfigRequestMessageSchema,
@@ -3688,6 +3886,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RunsGateRespondRequestSchema,
   RunsCancelRequestSchema,
   RunsClearRequestSchema,
+  RunsGraphsListRequestSchema,
+  RunsGraphsSaveRequestSchema,
+  RunsGraphsDeleteRequestSchema,
+  RunsStartRequestSchema,
   CheckoutMergeRequestSchema,
   CheckoutMergeFromBaseRequestSchema,
   CheckoutPullRequestSchema,
@@ -3723,6 +3925,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   OpenProjectRequestSchema,
   ProjectAddRequestSchema,
   ArchiveWorkspaceRequestSchema,
+  WorkspaceArchivePreflightRequestSchema,
+  WorktreeReattachListRequestSchema,
+  WorktreeReattachRequestSchema,
   WorkspaceCreateRequestSchema,
   WorkspaceClearAttentionRequestSchema,
   FileExplorerRequestSchema,
@@ -4016,6 +4221,9 @@ export const ServerInfoStatusPayloadSchema = z
         agentPersonalities: z.boolean().optional(),
         // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
         ttsPreview: z.boolean().optional(),
+        // COMPAT(ttsSpeak): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        // Host can stream a full message aloud on demand (per-message playback).
+        ttsSpeak: z.boolean().optional(),
         // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         visualizerVoiceCues: z.boolean().optional(),
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
@@ -4034,6 +4242,21 @@ export const ServerInfoStatusPayloadSchema = z
         // once.
         // COMPAT(checkoutGitFileHistory): added in v0.6.6, drop the gate when daemon floor >= v0.6.6.
         checkoutGitFileHistory: z.boolean().optional(),
+        // Set when the daemon can inspect a worktree's leftover branch before
+        // archiving (workspace.archive.preflight.*) and delete it as part of the
+        // archive (archive_workspace_request.branchDisposition). Without it the
+        // client archives the worktree exactly as before and never offers to
+        // remove the branch — no degraded client-side branch detection exists.
+        // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        worktreeArchiveBranchCleanup: z.boolean().optional(),
+        // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        worktreeReattach: z.boolean().optional(),
+        // Set when the daemon persists the host-level hideMergeIntoBaseAction
+        // workspace policy (read/written via the daemon config RPCs). Without
+        // it the client hides the Workspaces toggle, since patching the field
+        // on an old daemon would silently fail to stick.
+        // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        hideMergeIntoBaseSetting: z.boolean().optional(),
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         agentTeams: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
@@ -4046,6 +4269,8 @@ export const ServerInfoStatusPayloadSchema = z
         activityStats: z.boolean().optional(),
         // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
         runsClear: z.boolean().optional(),
+        // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
+        orchestrationGraphs: z.boolean().optional(),
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: z.boolean().optional(),
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
@@ -4645,6 +4870,84 @@ export const ArchiveWorkspaceResponseMessageSchema = z.object({
     workspaceId: z.string(),
     archivedAt: z.string().nullable(),
     error: z.string().nullable(),
+    // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7. The name of the
+    // local branch the daemon deleted as part of this archive (when the request
+    // asked for branchDisposition: "delete" and the branch was actually
+    // removed), else null/absent. Old daemons omit it.
+    deletedBranch: z.string().nullable().optional(),
+  }),
+});
+
+// Whether/how a worktree-backed workspace's local branch can be cleaned up when
+// the workspace is archived. See WorkspaceArchivePreflightRequestSchema.
+export const WorktreeArchiveBranchDetectionSchema = z.object({
+  // True only for Otto-owned worktrees whose branch we can offer to delete.
+  // False for local checkouts, plain directories, and non-owned worktrees — the
+  // client then skips the branch-cleanup UI entirely.
+  isOttoWorktree: z.boolean(),
+  // The local branch checked out in the worktree, or null when detached/unknown.
+  branchName: z.string().nullable(),
+  // The base ref the branch was created from (origin/ stripped), or null.
+  baseBranch: z.string().nullable(),
+  mergeState: z.enum(["merged", "unmerged", "unknown"]),
+  // Commits on the branch not contained in the base ref; null when unknown.
+  unmergedCommitCount: z.number().int().nonnegative().nullable(),
+  // A matching origin/<branch> exists — deleting the local branch keeps the
+  // remote copy. Purely informational for the confirmation copy.
+  hasRemoteBranch: z.boolean(),
+  // The branch is checked out in another worktree too, so git will refuse to
+  // delete it even after this worktree is removed. The client hides the option.
+  branchCheckedOutElsewhere: z.boolean(),
+  // Archiving will actually remove the backing directory (this is the last
+  // active workspace referencing it). Branch cleanup is only offered when true.
+  directoryWillBeRemoved: z.boolean(),
+});
+
+export const WorkspaceArchivePreflightResponseSchema = z.object({
+  type: z.literal("workspace.archive.preflight.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    // Null when detection failed (see error) or the workspace is gone.
+    detection: WorktreeArchiveBranchDetectionSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+// A re-attachable Otto worktree surfaced by worktree.reattach.list.
+// COMPAT(worktreeReattach): added in v0.6.7.
+export const WorktreeReattachCandidateSchema = z.object({
+  // Present when an archived workspace record still backs this worktree; null for
+  // an orphaned on-disk worktree with no record. The reattach request keys off
+  // whichever identity is available.
+  workspaceId: z.string().nullable(),
+  worktreePath: z.string(),
+  branchName: z.string().nullable(),
+  baseBranch: z.string().nullable(),
+  // The worktree directory currently exists on disk. False means the record was
+  // archived away and the directory must be recreated from the branch on reattach.
+  directoryOnDisk: z.boolean(),
+  // The workspace's human name when we have a record, else null.
+  displayName: z.string().nullable(),
+  archivedAt: z.string().nullable(),
+});
+
+export const WorktreeReattachListResponseSchema = z.object({
+  type: z.literal("worktree.reattach.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    candidates: z.array(WorktreeReattachCandidateSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const WorktreeReattachResponseSchema = z.object({
+  type: z.literal("worktree.reattach.response"),
+  payload: z.object({
+    requestId: z.string(),
+    // The revived/created workspace descriptor, or null on error.
+    workspace: WorkspaceDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -4861,6 +5164,31 @@ export const SpeechTtsPreviewResponseSchema = z.object({
 });
 
 export type SpeechTtsPreviewResult = z.infer<typeof SpeechTtsPreviewResponseSchema>["payload"];
+
+export const SpeechTtsSpeakResponseSchema = z.object({
+  type: z.literal("speech.tts.speak.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      // True when the full message played to completion; absent/false when it was
+      // canceled or produced no audio. `error` carries a human-readable failure.
+      ok: z.boolean().optional(),
+      canceled: z.boolean().optional(),
+      error: z.string().optional(),
+    })
+    .passthrough(),
+});
+
+export type SpeechTtsSpeakResult = z.infer<typeof SpeechTtsSpeakResponseSchema>["payload"];
+
+export const SpeechTtsSpeakCancelResponseSchema = z.object({
+  type: z.literal("speech.tts.speak.cancel.response"),
+  payload: z.object({ requestId: z.string() }).passthrough(),
+});
+
+export type SpeechTtsSpeakCancelResult = z.infer<
+  typeof SpeechTtsSpeakCancelResponseSchema
+>["payload"];
 
 export const VisualizerVoiceCuesGenerateResponseSchema = z.object({
   type: z.literal("visualizer.voiceCues.generate.response"),
@@ -6612,6 +6940,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LegacyListAvailableEditorsResponseMessageSchema,
   LegacyOpenInEditorResponseMessageSchema,
   ArchiveWorkspaceResponseMessageSchema,
+  WorkspaceArchivePreflightResponseSchema,
+  WorktreeReattachListResponseSchema,
+  WorktreeReattachResponseSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
   AgentForkContextResponseMessageSchema,
@@ -6628,6 +6959,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetDaemonConfigResponseMessageSchema,
   SpeechSettingsGetOptionsResponseSchema,
   SpeechTtsPreviewResponseSchema,
+  SpeechTtsSpeakResponseSchema,
+  SpeechTtsSpeakCancelResponseSchema,
   VisualizerVoiceCuesGenerateResponseSchema,
   AgentPersonalitiesGetStatsResponseSchema,
   ReadProjectConfigResponseMessageSchema,
@@ -6681,6 +7014,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   RunsCancelResponseSchema,
   RunsClearResponseSchema,
   RunsClearedNotificationSchema,
+  RunsGraphsListResponseSchema,
+  RunsGraphsSaveResponseSchema,
+  RunsGraphsDeleteResponseSchema,
+  RunsGraphsChangedNotificationSchema,
+  RunsStartResponseSchema,
   CheckoutMergeResponseSchema,
   CheckoutMergeFromBaseResponseSchema,
   CheckoutPullResponseSchema,
@@ -6813,6 +7151,12 @@ export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePaylo
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
+export type WorktreeReattachTarget = z.infer<typeof WorktreeReattachTargetSchema>;
+export type WorktreeReattachRequest = z.infer<typeof WorktreeReattachRequestSchema>;
+export type WorktreeReattachListRequest = z.infer<typeof WorktreeReattachListRequestSchema>;
+export type WorktreeReattachCandidate = z.infer<typeof WorktreeReattachCandidateSchema>;
+export type WorktreeReattachListResponse = z.infer<typeof WorktreeReattachListResponseSchema>;
+export type WorktreeReattachResponse = z.infer<typeof WorktreeReattachResponseSchema>;
 export type WorkspaceProjectDescriptorPayload = z.infer<
   typeof WorkspaceProjectDescriptorPayloadSchema
 >;
@@ -6840,6 +7184,13 @@ export type LegacyOpenInEditorResponseMessage = z.infer<
   typeof LegacyOpenInEditorResponseMessageSchema
 >;
 export type ArchiveWorkspaceResponseMessage = z.infer<typeof ArchiveWorkspaceResponseMessageSchema>;
+export type WorkspaceArchivePreflightRequest = z.infer<
+  typeof WorkspaceArchivePreflightRequestSchema
+>;
+export type WorkspaceArchivePreflightResponse = z.infer<
+  typeof WorkspaceArchivePreflightResponseSchema
+>;
+export type WorktreeArchiveBranchDetection = z.infer<typeof WorktreeArchiveBranchDetectionSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
 export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema

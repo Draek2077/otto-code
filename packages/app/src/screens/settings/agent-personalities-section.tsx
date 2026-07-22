@@ -119,6 +119,31 @@ function isHexColor(value: string): boolean {
   return HEX_COLOR_PATTERN.test(value.trim());
 }
 
+// Merge freshly generated lines into a PERSISTED personality's cues, filling
+// only moments that are still empty — never clobbering lines the user added
+// after saving. Returns null when nothing changed (every produced moment was
+// already populated) so the caller can skip the write. Used by the background
+// cue generation that runs after a cue-less personality is saved.
+function fillEmptyPersistedCues(
+  current: AgentPersonality["voiceCues"],
+  generated: Partial<Record<CueMoment, string[]>>,
+): AgentPersonality["voiceCues"] | null {
+  const next: Record<string, string[]> = { ...current };
+  let added = false;
+  for (const moment of CUE_MOMENTS) {
+    const existing = next[moment];
+    const lines = generated[moment];
+    if ((!existing || existing.length === 0) && lines && lines.length > 0) {
+      next[moment] = lines;
+      added = true;
+    }
+  }
+  if (!added) {
+    return null;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 // A cue line carries a stable id so the editor's list rows key on identity, not
 // array index (keeps focus stable across add/remove and satisfies list-key
 // lint). `text` is the editable content.
@@ -515,6 +540,35 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     [patchConfig],
   );
 
+  // Background cue generation resolves after the editor has closed and can lag
+  // by seconds, during which the roster may change — read the freshest config
+  // at persist time, not a value closed over at render.
+  const configRef = useRef(config);
+  configRef.current = config;
+
+  // Persist voice cues generated in the background after a cue-less personality
+  // was saved. Fills only still-empty moments on the current roster entry, and
+  // no-ops if the personality was deleted or the user has since added cues.
+  const persistGeneratedCues = useCallback(
+    async (personalityId: string, generated: Partial<Record<CueMoment, string[]>>) => {
+      const current = configRef.current?.agentPersonalities?.personalities ?? [];
+      const target = current.find((entry) => entry.id === personalityId);
+      if (!target) {
+        return;
+      }
+      const mergedCues = fillEmptyPersistedCues(target.voiceCues, generated);
+      if (!mergedCues) {
+        return;
+      }
+      // Build the replacement once (outside the map) so the swap is a plain
+      // reference substitution rather than an allocate-per-iteration spread.
+      const updated: AgentPersonality = { ...target, voiceCues: mergedCues };
+      const next = current.map((entry) => (entry.id === personalityId ? updated : entry));
+      await savePersonalities(next);
+    },
+    [savePersonalities],
+  );
+
   const handleAdd = useCallback(() => {
     setEditing({ id: null, draft: emptyDraft(providerEntries) });
   }, [providerEntries]);
@@ -531,8 +585,8 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
   const handleClose = useCallback(() => setEditing(null), []);
 
   const handleSave = useCallback(
-    async (draft: PersonalityDraft) => {
-      if (!editing) return;
+    async (draft: PersonalityDraft): Promise<AgentPersonality | undefined> => {
+      if (!editing) return undefined;
       const id = editing.id ?? generatePersonalityId();
       // Draft conversion is inside the try with the save: anything that throws
       // between the click and the write has to reach the user, or the editor
@@ -549,11 +603,15 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
           : [...personalities, personality];
         await savePersonalities(next);
         setEditing(null);
+        // The saved personality lets the editor kick off (and later persist)
+        // background cue generation without blocking this save.
+        return personality;
       } catch (error) {
         void alertDialog({
           title: "Unable to save",
           message: error instanceof Error ? error.message : String(error),
         });
+        return undefined;
       }
     },
     [editing, personalities, savePersonalities],
@@ -699,6 +757,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
           speechOptions={speechOptions}
           onClose={handleClose}
           onSave={handleSave}
+          onPersistGeneratedCues={persistGeneratedCues}
         />
       ) : null}
     </>
@@ -898,7 +957,14 @@ interface PersonalityEditModalProps {
   takenNames: readonly string[];
   speechOptions: SpeechSettingsOptions | null;
   onClose: () => void;
-  onSave: (draft: PersonalityDraft) => Promise<void>;
+  // Resolves with the saved personality (or undefined if the save failed) so the
+  // editor can start background cue generation keyed to its id.
+  onSave: (draft: PersonalityDraft) => Promise<AgentPersonality | undefined>;
+  // Persists cues generated in the background after a cue-less save completes.
+  onPersistGeneratedCues: (
+    personalityId: string,
+    generated: Partial<Record<CueMoment, string[]>>,
+  ) => Promise<void>;
 }
 
 function PersonalityEditModal({
@@ -910,6 +976,7 @@ function PersonalityEditModal({
   speechOptions,
   onClose,
   onSave,
+  onPersistGeneratedCues,
 }: PersonalityEditModalProps): ReactElement {
   const canPreviewVoice = useTtsPreviewFeature(serverId);
   const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
@@ -1248,28 +1315,41 @@ function PersonalityEditModal({
     // a double-click cannot mint a duplicate personality.
     void (async () => {
       try {
-        // Auto-generate cues on save when the user never filled them, so every
-        // personality ends up with stored cues. Best-effort — a generation
-        // failure saves without (or with partial) cues rather than blocking
-        // the save. Same per-moment merge as the Generate button: only
-        // moments that succeeded land.
-        let toSave = draft;
-        if (canGenerateCues && client && draftVoiceCuesAreEmpty(draft.voiceCues)) {
-          try {
-            const generated = await runCueGeneration(draft);
-            if (Object.keys(generated).length > 0) {
-              toSave = { ...draft, voiceCues: mergeGeneratedCues(draft.voiceCues, generated) };
+        // Save the draft as-is — the save NEVER blocks on cue generation (that
+        // used to hang the editor; see the earlier bounded-timeout fix). onSave
+        // closes the editor and returns the saved personality.
+        const saved = await onSave(draft);
+        // Best-effort courtesy: when the user never filled cues, generate them in
+        // the BACKGROUND and persist onto the saved personality when they land.
+        // This runs detached (the editor is already closing), touches no modal
+        // state, and quietly does nothing on failure — a cue-less personality is
+        // valid (it simply stays silent).
+        if (saved && canGenerateCues && client && draftVoiceCuesAreEmpty(draft.voiceCues)) {
+          void (async () => {
+            try {
+              const { generated } = await generateCuesFor(draft);
+              if (Object.keys(generated).length > 0) {
+                await onPersistGeneratedCues(saved.id, generated);
+              }
+            } catch {
+              // best-effort — leave the personality without cues
             }
-          } catch {
-            // fall through and save without cues
-          }
+          })();
         }
-        await onSave(toSave);
       } finally {
         if (isMountedRef.current) setIsSaving(false);
       }
     })();
-  }, [canSave, draft, isSaving, onSave, canGenerateCues, client, runCueGeneration]);
+  }, [
+    canSave,
+    draft,
+    isSaving,
+    onSave,
+    canGenerateCues,
+    client,
+    generateCuesFor,
+    onPersistGeneratedCues,
+  ]);
 
   // Cancel/backdrop-close confirms before discarding a dirty draft. The draft
   // is plain JSON-safe data seeded from initialDraft, so a stringify comparison

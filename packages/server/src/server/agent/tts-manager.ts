@@ -12,6 +12,16 @@ interface PendingPlayback {
   streamEnded: boolean;
 }
 
+/** One `speak` call's playback: a group id, its pending-chunk accounting, and a
+ * promise that settles when the client has confirmed the whole utterance. */
+interface GroupPlayback {
+  groupId: string;
+  promise: Promise<void>;
+  pending: PendingPlayback;
+  /** Remove the abort listener registered for this group. */
+  dispose: () => void;
+}
+
 interface TtsSegment {
   index: number;
   text: string;
@@ -145,7 +155,19 @@ export class TTSManager {
 
   /**
    * Generate TTS audio, emit to client, and wait for playback confirmation
-   * Returns a Promise that resolves when the client confirms playback completed
+   * Returns a Promise that resolves when the client confirms playback completed.
+   *
+   * A single `speak` call is ONE utterance. We split its text into synthesis
+   * segments only to keep each provider request small and to start audio flowing
+   * sooner, but all segments belong to a SINGLE playback group and are emitted as
+   * contiguous chunks. Emission is pipelined — a segment ships the instant it is
+   * synthesized, never waiting for the previous segment's playback to be
+   * confirmed. That confirmation gate used to cost a full client round-trip
+   * between every sentence, which is exactly the multi-sentence lag users heard;
+   * the client already queues chunks and plays them back-to-back, so removing the
+   * gate makes multi-sentence answers gapless. Playback state on the client
+   * (start/finish, thinking-tone, barge-in) keys off the group, so it sees one
+   * clean utterance instead of a stutter of per-sentence groups.
    */
   public async generateAndWaitForPlayback(
     text: string,
@@ -190,6 +212,30 @@ export class TTSManager {
 
     scheduleNextSegments();
 
+    const group = this.beginGroupPlayback(abortSignal);
+    // Emit one chunk behind so the final emitted chunk — whichever segment it
+    // turns out to be — is the one flagged `isLastChunk`, and chunk indices stay
+    // contiguous even if a segment yields no audio (the client plays indices in
+    // strict +1 order and would otherwise stall on a gap).
+    let held: { buffer: Buffer; format: string } | null = null;
+    let nextChunkIndex = 0;
+    const flushHeld = (isLast: boolean): void => {
+      if (!held) {
+        return;
+      }
+      this.emitGroupChunk({
+        group,
+        chunkIndex: nextChunkIndex,
+        isLastChunk: isLast,
+        buffer: held.buffer,
+        format: held.format,
+        isVoiceMode,
+        emitMessage,
+      });
+      nextChunkIndex += 1;
+      held = null;
+    };
+
     try {
       for (const segment of segments) {
         if (abortSignal.aborted) {
@@ -211,6 +257,11 @@ export class TTSManager {
           throw result.error;
         }
 
+        const buffer = await this.collectSegmentBuffer(result.prepared.stream, abortSignal);
+        if (abortSignal.aborted) {
+          return;
+        }
+
         this.logger.info(
           {
             segmentIndex: segment.index,
@@ -221,30 +272,108 @@ export class TTSManager {
           `TTS segment ${segment.index} synthesis ready (waited ${synthWaitMs}ms, total ${Date.now() - ttsStartMs}ms)`,
         );
 
-        const emitStart = Date.now();
-        await this.emitPreparedSegment({
-          prepared: result.prepared,
-          emitMessage,
-          abortSignal,
-          isVoiceMode,
-        });
-        this.logger.info(
-          {
-            segmentIndex: segment.index,
-            emitAndPlayMs: Date.now() - emitStart,
-            totalElapsedMs: Date.now() - ttsStartMs,
-          },
-          `TTS segment ${segment.index} playback confirmed (emit+play ${Date.now() - emitStart}ms, total ${Date.now() - ttsStartMs}ms)`,
-        );
+        if (buffer && buffer.length > 0) {
+          // The previously held segment is now known not to be the last — ship it.
+          flushHeld(false);
+          held = { buffer, format: result.prepared.format };
+        }
 
         scheduleNextSegments();
       }
+
+      if (abortSignal.aborted) {
+        return;
+      }
+
+      // Ship the final held segment as the terminal chunk, then wait for the
+      // client to confirm every chunk in the group has played.
+      flushHeld(true);
+      this.finalizeGroupEmission(group);
+      await group.promise;
+    } catch (error) {
+      this.failGroupPlayback(group, error);
+      throw error;
     } finally {
+      group.dispose();
       this.cleanupPrefetchedSegments(inflight);
       this.logger.info(
         { totalMs: Date.now() - ttsStartMs },
         `TTS generateAndWaitForPlayback done (${Date.now() - ttsStartMs}ms)`,
       );
+    }
+  }
+
+  /**
+   * Stream arbitrary text aloud on demand (the per-message playback button),
+   * outside any agent turn. Same sentence-splitting and prefetch pipeline as
+   * `generateAndWaitForPlayback`, but each synthesis segment is emitted as its
+   * OWN single-chunk playback group with `isVoiceMode: false`. That matters
+   * because the client's non-voice audio path buffers a group until its final
+   * chunk before playing (it does not stream chunks within a group the way voice
+   * mode does) — one group per sentence makes each sentence play the moment it
+   * synthesizes, while the next is already prefetching, so audio starts after the
+   * first sentence instead of the whole message. The client's serial playback
+   * queue keeps the sentences in order. Resolves once every emitted sentence has
+   * been confirmed played (or the signal aborts).
+   */
+  public async speakStreaming(
+    text: string,
+    emitMessage: (msg: SessionOutboundMessage) => void,
+    abortSignal: AbortSignal,
+    voice?: SpeechVoiceOverride,
+  ): Promise<void> {
+    const segments = splitTextForTts(text);
+    const inflight = new Map<number, Promise<PreparedSegmentResult>>();
+    let nextSegmentToSchedule = 0;
+    const scheduleNextSegments = () => {
+      while (nextSegmentToSchedule < segments.length && inflight.size < TTS_PREFETCH_SEGMENTS) {
+        const segment = segments[nextSegmentToSchedule];
+        inflight.set(segment.index, this.scheduleSegmentSynthesis(segment, abortSignal, voice));
+        nextSegmentToSchedule += 1;
+      }
+    };
+    scheduleNextSegments();
+
+    const groupPromises: Promise<void>[] = [];
+    try {
+      for (const segment of segments) {
+        if (abortSignal.aborted) {
+          return;
+        }
+        const result = await inflight.get(segment.index)!;
+        inflight.delete(segment.index);
+        scheduleNextSegments();
+
+        if (result.kind === "aborted") {
+          return;
+        }
+        if (result.kind === "error") {
+          throw result.error;
+        }
+
+        const buffer = await this.collectSegmentBuffer(result.prepared.stream, abortSignal);
+        if (abortSignal.aborted) {
+          return;
+        }
+        if (buffer && buffer.length > 0) {
+          const group = this.beginGroupPlayback(abortSignal);
+          this.emitGroupChunk({
+            group,
+            chunkIndex: 0,
+            isLastChunk: true,
+            buffer,
+            format: result.prepared.format,
+            isVoiceMode: false,
+            emitMessage,
+          });
+          this.finalizeGroupEmission(group);
+          groupPromises.push(group.promise.finally(() => group.dispose()));
+        }
+        scheduleNextSegments();
+      }
+      await Promise.all(groupPromises);
+    } finally {
+      this.cleanupPrefetchedSegments(inflight);
     }
   }
 
@@ -345,105 +474,130 @@ export class TTSManager {
     this.recentlyClosedAudioIds.set(audioId, now + CLOSED_AUDIO_ID_TTL_MS);
   }
 
-  private async emitPreparedSegment(params: {
-    prepared: PreparedTtsSegment;
-    emitMessage: (msg: SessionOutboundMessage) => void;
-    abortSignal: AbortSignal;
-    isVoiceMode: boolean;
-  }): Promise<void> {
-    const { prepared, emitMessage, abortSignal, isVoiceMode } = params;
-    const { stream, format, text } = prepared;
-
-    const audioId = uuidv4();
-    let playbackResolve!: () => void;
-    let playbackReject!: (error: Error) => void;
-
-    const playbackPromise = new Promise<void>((resolve, reject) => {
-      playbackResolve = resolve;
-      playbackReject = reject;
+  /**
+   * Register a single playback group and the promise that resolves once the
+   * client has confirmed every chunk in it (or the turn is aborted). One group
+   * per `speak` call; chunks are added by `emitGroupChunk` as segments synthesize.
+   */
+  private beginGroupPlayback(abortSignal: AbortSignal): GroupPlayback {
+    const groupId = uuidv4();
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
     });
-
-    const pendingPlayback: PendingPlayback = {
-      resolve: playbackResolve,
-      reject: playbackReject,
+    const pending: PendingPlayback = {
+      resolve,
+      reject,
       pendingChunks: 0,
       streamEnded: false,
     };
+    this.pendingPlaybacks.set(groupId, pending);
 
-    this.pendingPlaybacks.set(audioId, pendingPlayback);
-
-    let onAbort: (() => void) | undefined;
-
-    onAbort = () => {
-      this.logger.debug("Aborted while waiting for playback");
-      pendingPlayback.streamEnded = true;
-      pendingPlayback.pendingChunks = 0;
-      this.pendingPlaybacks.delete(audioId);
-      this.rememberClosedAudioId(audioId);
-      playbackResolve();
-      this.destroySpeechStream(stream);
+    const onAbort = () => {
+      this.logger.debug("Aborted while waiting for group playback");
+      pending.streamEnded = true;
+      pending.pendingChunks = 0;
+      this.pendingPlaybacks.delete(groupId);
+      this.rememberClosedAudioId(groupId);
+      resolve();
     };
-
     abortSignal.addEventListener("abort", onAbort, { once: true });
 
+    return {
+      groupId,
+      promise,
+      pending,
+      dispose: () => abortSignal.removeEventListener("abort", onAbort),
+    };
+  }
+
+  /** Emit one already-buffered segment as the next chunk of its playback group. */
+  private emitGroupChunk(params: {
+    group: GroupPlayback;
+    chunkIndex: number;
+    isLastChunk: boolean;
+    buffer: Buffer;
+    format: string;
+    isVoiceMode: boolean;
+    emitMessage: (msg: SessionOutboundMessage) => void;
+  }): void {
+    const { group, chunkIndex, isLastChunk, buffer, format, isVoiceMode, emitMessage } = params;
+    group.pending.pendingChunks += 1;
+    emitMessage({
+      type: "audio_output",
+      payload: {
+        id: `${group.groupId}:${chunkIndex}`,
+        groupId: group.groupId,
+        chunkIndex,
+        isLastChunk,
+        audio: buffer.toString("base64"),
+        format,
+        isVoiceMode,
+      },
+    });
+  }
+
+  /**
+   * Mark the group as fully emitted. If every emitted chunk has already been
+   * confirmed (or none were emitted at all), resolve immediately; otherwise
+   * `confirmAudioPlayed` resolves once the last confirmation lands.
+   */
+  private finalizeGroupEmission(group: GroupPlayback): void {
+    group.pending.streamEnded = true;
+    if (group.pending.pendingChunks === 0) {
+      this.pendingPlaybacks.delete(group.groupId);
+      this.rememberClosedAudioId(group.groupId);
+      group.pending.resolve();
+    }
+  }
+
+  /**
+   * Tear down a group whose synthesis errored. The caller rethrows so the
+   * `speak` promise rejects; here we just drop the pending entry (settling its
+   * promise so it never dangles) so a late confirmation is ignored quietly.
+   */
+  private failGroupPlayback(group: GroupPlayback, error: unknown): void {
+    if (this.pendingPlaybacks.delete(group.groupId)) {
+      this.rememberClosedAudioId(group.groupId);
+    }
+    group.pending.resolve();
+    this.logger.debug({ err: error }, "Group playback failed");
+  }
+
+  /**
+   * Drain a synthesized segment's stream into a single buffer. Returns null when
+   * the turn was aborted mid-stream or the stream produced no audio. A genuine
+   * stream error (not an abort) is rethrown so the caller can fail the group.
+   */
+  private async collectSegmentBuffer(
+    stream: Readable,
+    abortSignal: AbortSignal,
+  ): Promise<Buffer | null> {
     try {
       const buffers: Buffer[] = [];
       for await (const chunk of stream) {
         if (abortSignal.aborted) {
           this.logger.debug("Aborted during stream collection");
-          break;
+          return null;
         }
         buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
-
-      if (!abortSignal.aborted && buffers.length > 0) {
-        const fullBuffer = Buffer.concat(buffers);
-        const chunkId = `${audioId}:0`;
-        pendingPlayback.pendingChunks = 1;
-
-        emitMessage({
-          type: "audio_output",
-          payload: {
-            id: chunkId,
-            groupId: audioId,
-            chunkIndex: 0,
-            isLastChunk: true,
-            audio: fullBuffer.toString("base64"),
-            format,
-            isVoiceMode,
-          },
-        });
+      if (abortSignal.aborted || buffers.length === 0) {
+        return null;
       }
-
-      pendingPlayback.streamEnded = true;
-
-      if (pendingPlayback.pendingChunks === 0) {
-        this.pendingPlaybacks.delete(audioId);
-        this.rememberClosedAudioId(audioId);
-        playbackResolve();
-      }
-
-      await playbackPromise;
+      return Buffer.concat(buffers);
     } catch (error) {
       if (abortSignal.aborted) {
         this.logger.debug("Audio stream closed after abort");
-      } else {
-        this.logger.error({ err: error }, "Error streaming audio");
-        this.pendingPlaybacks.delete(audioId);
-        throw error;
+        return null;
       }
+      this.logger.error({ err: error }, "Error streaming audio");
+      throw error;
     } finally {
-      if (onAbort) {
-        abortSignal.removeEventListener("abort", onAbort);
-      }
       this.destroySpeechStream(stream);
     }
-
-    if (abortSignal.aborted) {
-      return;
-    }
-
-    this.logger.debug({ audioId, textLength: text.length }, "Audio playback confirmed");
   }
 
   /**

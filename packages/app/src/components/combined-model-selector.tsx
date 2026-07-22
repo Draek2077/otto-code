@@ -1473,6 +1473,13 @@ export function CombinedModelSelector({
     handleOpenChange(!isOpen);
   }, [handleOpenChange, isOpen]);
 
+  // Fill-mode form fields want the full width; the composer's toolbar chip caps
+  // the label so a long model name ellipsizes instead of stretching the row.
+  const triggerTextStyle = useMemo(
+    () => (triggerFill ? styles.triggerText : [styles.triggerText, styles.triggerTextCapped]),
+    [triggerFill],
+  );
+
   const triggerStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => {
       // Fill mode: transparent full-width passthrough. The trigger paints its own
@@ -1624,7 +1631,7 @@ export function CombinedModelSelector({
               size={iconSize.md}
             />
           )}
-          <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={triggerTextStyle} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
           </Text>
         </ComboboxTrigger>
@@ -1703,6 +1710,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  // Toolbar-chip only: cap the label so a long model name ellipsizes instead of
+  // stretching the composer's control row. Fill-mode form fields want the full
+  // width, so this is applied only when !triggerFill. The icon + horizontal
+  // padding put the whole chip in the ~200–250px range the design targets.
+  triggerTextCapped: {
+    maxWidth: 200,
   },
   customTriggerWrapper: {
     paddingHorizontal: 0,

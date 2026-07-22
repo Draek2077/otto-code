@@ -29,6 +29,7 @@ import {
   RotateCw,
   Rows2,
   Globe,
+  MoreHorizontal,
   PlayFilled,
   SquareTerminal,
   Tabs,
@@ -71,6 +72,7 @@ import {
   TAB_HORIZONTAL_PADDING,
   TAB_ICON_WIDTH,
   TAB_MAX_WIDTH,
+  TAB_MIN_WIDTH,
 } from "@/screens/workspace/workspace-tab-layout";
 import {
   computeVisibleTabActionKeys,
@@ -124,6 +126,11 @@ import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
+import {
+  computeVisibleTabCount,
+  reorderTabIntoVisible,
+  splitTabsForOverflow,
+} from "@/stores/workspace-tabs-store";
 
 const DROPDOWN_WIDTH = 220;
 // Fixed colors for content on the forced-black chat tab (Black tab background
@@ -146,6 +153,10 @@ const TOOLS_STRIP_PADDING_TOTAL = 16;
 // the toggle lands in the same spot in both orientations) must be reserved
 // out of the row width before tabs divide the rest.
 const ORIENTATION_TOGGLE_RESERVED_WIDTH = SMALL_TOOL_WIDTH + 8;
+// Width the tab-overflow control (icon + hidden count) occupies at the end of
+// the strip. Reserved out of the tab-layout budget only while tabs are hidden,
+// so the visible chips never render underneath it.
+const TAB_OVERFLOW_CONTROL_WIDTH = 40;
 // Background refresh so the Preview icon reflects real server state without
 // requiring the user to open the picker first.
 const PREVIEW_SERVER_POLL_INTERVAL_MS = 10_000;
@@ -167,6 +178,7 @@ const ThemedRows2 = withUnistyles(Rows2);
 const ThemedTabs = withUnistyles(Tabs);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedFileText = withUnistyles(FileText);
+const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
@@ -197,6 +209,10 @@ const PREVIEW_BOOTSTRAP_PROMPT =
 
 function newTabActionButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
   return [styles.newTabActionButton, (hovered || pressed) && styles.newTabActionButtonHovered];
+}
+
+function tabOverflowButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
+  return [styles.tabOverflowButton, (hovered || pressed) && styles.newTabActionButtonHovered];
 }
 
 function previewServerStopButtonStyle({ hovered, pressed }: PressableStateCallbackType) {
@@ -1970,6 +1986,213 @@ function TabChip({
   );
 }
 
+// The resolved menu row — a real component (not the resolver's render callback)
+// so it can memoize the leading icon element, which the react-perf lint requires
+// for JSX-valued props.
+function HiddenTabMenuItemRow({
+  tab,
+  presentation,
+  onSelect,
+}: {
+  tab: WorkspaceTabDescriptor;
+  presentation: WorkspaceTabPresentation;
+  onSelect: () => void;
+}) {
+  const { t } = useTranslation();
+  const leading = useMemo(() => <WorkspaceTabIcon presentation={presentation} />, [presentation]);
+  return (
+    <DropdownMenuItem
+      testID={`workspace-tab-overflow-item-${buildDeterministicWorkspaceTabId(tab.target)}`}
+      onSelect={onSelect}
+      leading={leading}
+    >
+      {presentation.titleState === "loading"
+        ? t("workspace.tabs.loadingAgentTitle")
+        : presentation.label}
+    </DropdownMenuItem>
+  );
+}
+
+// One row of the tab-overflow menu: the tab's real icon + title (resolved the
+// same way the visible chips are), selecting it swaps the tab into the visible
+// strip and focuses it. Only mounts while the menu is open (DropdownMenuContent
+// renders nothing when closed), so hidden tabs cost no presentation resolvers
+// until the user looks.
+function HiddenTabMenuItem({
+  item,
+  normalizedServerId,
+  normalizedWorkspaceId,
+  onSelectTab,
+}: {
+  item: WorkspaceDesktopTabRowItem;
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  onSelectTab: (tabId: string) => void;
+}) {
+  const handleSelect = useCallback(
+    () => onSelectTab(item.tab.tabId),
+    [onSelectTab, item.tab.tabId],
+  );
+  return (
+    <WorkspaceTabPresentationResolver
+      tab={item.tab}
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
+    >
+      {(presentation) => (
+        <HiddenTabMenuItemRow tab={item.tab} presentation={presentation} onSelect={handleSelect} />
+      )}
+    </WorkspaceTabPresentationResolver>
+  );
+}
+
+/**
+ * The tab-overflow control: an always-visible button at the end of the strip
+ * showing the hidden-tab count, opening a menu of the tabs that didn't fit.
+ * Deliberately distinct from the trailing more-actions chevron (▾) next to it —
+ * a horizontal ellipsis plus a count, reading as "more tabs this way" rather
+ * than "more actions". Only rendered when at least one tab is hidden.
+ */
+function HiddenTabsOverflowMenu({
+  hiddenTabs,
+  normalizedServerId,
+  normalizedWorkspaceId,
+  onSelectTab,
+}: {
+  hiddenTabs: WorkspaceDesktopTabRowItem[];
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  onSelectTab: (tabId: string) => void;
+}) {
+  // i18n: English-only pending a translation pass (tab overflow).
+  const label = hiddenTabs.length === 1 ? "1 hidden tab" : `${hiddenTabs.length} hidden tabs`;
+  // Self-hide when nothing overflows, so the row can render this unconditionally.
+  if (hiddenTabs.length === 0) {
+    return null;
+  }
+  return (
+    <DropdownMenu>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild triggerRefProp="triggerRef">
+          <DropdownMenuTrigger
+            testID="workspace-tab-overflow-trigger"
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            style={tabOverflowButtonStyle}
+          >
+            <ThemedMoreHorizontal size={14} uniProps={mutedColorMapping} />
+            <Text style={styles.tabOverflowCount}>{hiddenTabs.length}</Text>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <Text style={styles.newTabTooltipText}>{label}</Text>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="bottom" align="end" offset={4} minWidth={220}>
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {hiddenTabs.map((item) => (
+          <HiddenTabMenuItem
+            key={`${item.tab.key}:${item.tab.kind}`}
+            item={item}
+            normalizedServerId={normalizedServerId}
+            normalizedWorkspaceId={normalizedWorkspaceId}
+            onSelectTab={onSelectTab}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Splits a pane's tabs into the visible strip and the overflow menu, and owns
+ * the select-to-swap reorder. Kept as a hook (rather than inline in the row) so
+ * the row stays under the cyclomatic-complexity cap; all overflow logic lives in
+ * one place.
+ */
+function useWorkspaceTabOverflow({
+  tabs,
+  focusedTab,
+  contentWidth,
+  toolsStripWidth,
+  onReorderTabs,
+  onNavigateTab,
+}: {
+  tabs: WorkspaceDesktopTabRowItem[];
+  focusedTab: WorkspaceTabDescriptor | null;
+  /** Measured content strip width (0 until laid out). */
+  contentWidth: number;
+  /** Measured width of the trailing tools/actions strip. */
+  toolsStripWidth: number;
+  onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
+  onNavigateTab: (tabId: string) => void;
+}): {
+  visibleTabs: WorkspaceDesktopTabRowItem[];
+  hiddenTabs: WorkspaceDesktopTabRowItem[];
+  hasHiddenTabs: boolean;
+  /** Width to reserve for the overflow control (0 when no tabs are hidden). */
+  overflowReservedWidth: number;
+  handleSelectHiddenTab: (tabId: string) => void;
+} {
+  const activeTabId = focusedTab?.tabId ?? tabs.find((item) => item.isActive)?.tab.tabId ?? null;
+  // Width the chips share, before any overflow reserve: the content strip minus
+  // the orientation toggle, the tools/actions strip, and the row's own padding
+  // (4px each side — mirrors layoutMetrics). 0 until measured.
+  const availableWidth =
+    contentWidth > 0
+      ? Math.max(0, contentWidth - ORIENTATION_TOGGLE_RESERVED_WIDTH - toolsStripWidth - 8)
+      : 0;
+  // Capacity, not a fixed number: as many tabs as fit at TAB_MIN_WIDTH, the rest
+  // overflow. Recomputed as the pane resizes, so widening reveals tabs and
+  // narrowing collapses them.
+  const cap = computeVisibleTabCount({
+    totalTabs: tabs.length,
+    availableWidth,
+    minTabWidth: TAB_MIN_WIDTH,
+    overflowControlWidth: TAB_OVERFLOW_CONTROL_WIDTH,
+  });
+  const split = useMemo(
+    () =>
+      splitTabsForOverflow({
+        items: tabs,
+        getId: (item) => item.tab.tabId,
+        activeId: activeTabId,
+        cap,
+      }),
+    [tabs, activeTabId, cap],
+  );
+
+  // Overflow-menu selection: swap the picked hidden tab into the last visible
+  // slot (bumping the tab there into the menu) and focus it. Reordering the full
+  // order — not just the visible slice — keeps the persisted tab order and the
+  // bump semantics intact.
+  const handleSelectHiddenTab = useCallback(
+    (tabId: string) => {
+      const orderedIds = reorderTabIntoVisible({
+        tabIds: tabs.map((item) => item.tab.tabId),
+        selectedId: tabId,
+        cap,
+      });
+      const byId = new Map(tabs.map((item) => [item.tab.tabId, item.tab]));
+      const nextDescriptors = orderedIds
+        .map((id) => byId.get(id))
+        .filter((tab): tab is WorkspaceTabDescriptor => Boolean(tab));
+      onReorderTabs(nextDescriptors);
+      onNavigateTab(tabId);
+    },
+    [cap, onNavigateTab, onReorderTabs, tabs],
+  );
+
+  const hasHiddenTabs = split.hidden.length > 0;
+  return {
+    visibleTabs: split.visible,
+    hiddenTabs: split.hidden,
+    hasHiddenTabs,
+    overflowReservedWidth: hasHiddenTabs ? TAB_OVERFLOW_CONTROL_WIDTH : 0,
+    handleSelectHiddenTab,
+  };
+}
+
 export function WorkspaceDesktopTabsRow({
   paneId,
   isFocused = false,
@@ -2047,10 +2270,31 @@ export function WorkspaceDesktopTabsRow({
     updateMeasuredWidth(setTabsActionsWidth, event);
   }, []);
 
+  // Tabs never squish below TAB_MIN_WIDTH; the ones that don't fit collapse into
+  // the overflow menu (count is space-driven, not fixed). The active tab is
+  // always kept visible (see splitTabsForOverflow). Only the visible slice feeds
+  // the shrink-to-fit layout below; the full `tabs` list still drives pane-level
+  // facts (usePaneTabAgentFacts) and the select-to-swap reorder.
+  const { visibleTabs, hiddenTabs, overflowReservedWidth, handleSelectHiddenTab } =
+    useWorkspaceTabOverflow({
+      tabs,
+      focusedTab,
+      contentWidth,
+      toolsStripWidth: tabsActionsWidth,
+      onReorderTabs,
+      onNavigateTab,
+    });
+
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
-      actionsReservedWidth: Math.max(0, tabsActionsWidth + ORIENTATION_TOGGLE_RESERVED_WIDTH),
+      // Reserve the overflow control's slot alongside the actions strip so the
+      // visible chips never render underneath it — reserve is 0 unless tabs are
+      // actually hidden and the control is mounted.
+      actionsReservedWidth: Math.max(
+        0,
+        tabsActionsWidth + ORIENTATION_TOGGLE_RESERVED_WIDTH + overflowReservedWidth,
+      ),
       // Mirrors tabsContent's paddingHorizontal so width math stays exact.
       rowPaddingHorizontal: 4,
       tabGap: 0,
@@ -2060,7 +2304,7 @@ export function WorkspaceDesktopTabsRow({
       estimatedCharWidth: TAB_ESTIMATED_CHAR_WIDTH,
       closeButtonWidth: TAB_CLOSE_BUTTON_WIDTH,
     }),
-    [tabsActionsWidth],
+    [overflowReservedWidth, tabsActionsWidth],
   );
 
   const fallbackTabLabels = useMemo(
@@ -2091,11 +2335,11 @@ export function WorkspaceDesktopTabsRow({
   );
   const tabLabelLengths = useMemo(
     () =>
-      tabs.map((tab) => {
+      visibleTabs.map((tab) => {
         const label = getFallbackTabLabel(tab.tab, fallbackTabLabels);
         return label.length;
       }),
-    [fallbackTabLabels, tabs],
+    [fallbackTabLabels, visibleTabs],
   );
   const { focusedAgentId, paneHasEditableAgentTab, paneHasPreviewTab } = usePaneTabAgentFacts({
     tabs,
@@ -2150,6 +2394,15 @@ export function WorkspaceDesktopTabsRow({
 
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
+  // Full-order index per tab id. The rendered list is only the visible slice, so
+  // the list's own index can't drive the chip's context-menu math (close
+  // left/right/others), which must reason about the tab's place in the whole
+  // pane, hidden tabs included.
+  const fullIndexById = useMemo(
+    () => new Map(tabs.map((item, index) => [item.tab.tabId, index])),
+    [tabs],
+  );
+
   const renderTab = useCallback(
     ({
       item,
@@ -2161,11 +2414,13 @@ export function WorkspaceDesktopTabsRow({
       const layoutItem = layout.items[index] ?? null;
       const resolvedTabWidth = layoutItem?.width ?? 150;
       const showLabel = layoutItem?.showLabel ?? true;
+      // Drop indicators reason about the rendered (visible) list, so they use the
+      // list index; the trailing pill only rides the last visible chip.
       const showDropIndicatorBefore = activeDragTabId !== null && tabDropPreviewIndex === index;
       const showDropIndicatorAfter =
         activeDragTabId !== null &&
-        tabDropPreviewIndex === tabs.length &&
-        index === tabs.length - 1;
+        tabDropPreviewIndex === visibleTabs.length &&
+        index === visibleTabs.length - 1;
 
       return (
         <ResolvedDesktopTabChip
@@ -2173,7 +2428,7 @@ export function WorkspaceDesktopTabsRow({
           item={item}
           isFocused={isFocused}
           isDragging={isActive}
-          index={index}
+          index={fullIndexById.get(item.tab.tabId) ?? index}
           tabCount={tabs.length}
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -2200,6 +2455,7 @@ export function WorkspaceDesktopTabsRow({
     },
     [
       activeDragTabId,
+      fullIndexById,
       isFocused,
       layout.closeButtonPolicy,
       layout.items,
@@ -2219,6 +2475,7 @@ export function WorkspaceDesktopTabsRow({
       tabMenuLabels,
       tabDropPreviewIndex,
       tabs.length,
+      visibleTabs.length,
     ],
   );
 
@@ -2257,10 +2514,10 @@ export function WorkspaceDesktopTabsRow({
         showsHorizontalScrollIndicator={false}
       >
         <SortableInlineList
-          data={tabs}
+          data={visibleTabs}
           keyExtractor={tabKeyExtractor}
           useDragHandle
-          disabled={!externalDndContext && tabs.length < 2}
+          disabled={!externalDndContext && visibleTabs.length < 2}
           onDragEnd={handleDragEnd}
           externalDndContext={externalDndContext}
           activeId={activeDragTabId}
@@ -2268,6 +2525,12 @@ export function WorkspaceDesktopTabsRow({
           renderItem={renderTab}
         />
       </ScrollView>
+      <HiddenTabsOverflowMenu
+        hiddenTabs={hiddenTabs}
+        normalizedServerId={normalizedServerId}
+        normalizedWorkspaceId={normalizedWorkspaceId}
+        onSelectTab={handleSelectHiddenTab}
+      />
       <WorkspaceTabRowExtras
         onCreateAgentTab={handleCreateAgentTab}
         onCreateTerminal={handleCreateTerminal}
@@ -2282,7 +2545,7 @@ export function WorkspaceDesktopTabsRow({
         showPreviewButton={showCreateBrowserTab && !paneHasPreviewTab && paneHasEditableAgentTab}
         terminalDisabled={terminalDisabled}
         tabsContainerWidth={contentWidth}
-        tabCount={tabs.length}
+        tabCount={visibleTabs.length}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
         showPaneSplitActions={showPaneSplitActions}
@@ -2844,6 +3107,24 @@ const styles = StyleSheet.create((theme) => ({
   },
   newTabActionButtonHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  // The tab-overflow control: wider than the square action buttons because it
+  // pairs the ellipsis icon with the hidden-tab count. alignSelf centers it in
+  // the row (its siblings — the tabs scroll and the actions strip — stretch).
+  tabOverflowButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[1],
+    height: 22,
+    paddingHorizontal: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    alignSelf: "center",
+  },
+  tabOverflowCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
   newTabTooltipText: {
     color: theme.colors.foreground,

@@ -136,9 +136,11 @@ export function SidebarActiveWorkspaceTools() {
 
   // WorkspaceScriptsButton renders nothing without scripts, and
   // WorkspaceOpenInEditorButton is web-only, so budget width for the buttons
-  // that will actually appear. WorkspaceActions always renders. Width 0 means
-  // "not measured yet" and stays compact, so a narrow sidebar never flashes
-  // ellipsized labels on the first frame.
+  // that will actually appear. WorkspaceActions is budgeted as always-present
+  // (it renders null only when a workspace has no git actions at all); over-
+  // counting just biases slightly toward compact, which is harmless. Width 0
+  // means "not measured yet" and stays compact, so a narrow sidebar never
+  // flashes ellipsized labels on the first frame.
   const labeledToolCount =
     1 + ((workspaceEntry?.scripts.length ?? 0) > 0 ? 1 : 0) + (isWeb ? 1 : 0);
   const isCompact = containerWidth < labeledToolCount * LABELED_TOOL_WIDTH + TOOLS_ROW_CHROME_WIDTH;

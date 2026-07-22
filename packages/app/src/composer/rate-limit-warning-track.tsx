@@ -9,6 +9,7 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { rateLimitDismissKey, useSessionStore } from "@/stores/session-store";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { FlyoutBand } from "@/composer/flyout-band";
+import { COMPOSER_TRACK_LAYERS } from "@/composer/track-transition";
 import type { FlyoutTone } from "@/styles/status-tone";
 
 interface RateLimitWarningTrackProps {
@@ -95,6 +96,7 @@ export function RateLimitWarningTrack({
   return (
     <FlyoutBand
       tone={tone}
+      layer={COMPOSER_TRACK_LAYERS.rateLimit}
       message={message}
       icon={TriangleAlert}
       onDismiss={handleDismiss}

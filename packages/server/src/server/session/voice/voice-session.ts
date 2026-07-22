@@ -211,6 +211,12 @@ export class VoiceSession {
   private voiceModeAgentId: string | null = null;
   private voiceModeBaseConfig: VoiceModeBaseConfig | null = null;
 
+  // On-demand message playback (the per-message playback button) runs through the
+  // same session TTSManager but is independent of voice mode, so it carries its
+  // own abort handle: starting a new playback or a cancel/cleanup aborts only
+  // this, never a live voice turn.
+  private messagePlaybackAbort: AbortController | null = null;
+
   constructor(options: VoiceSessionOptions) {
     const { host, logger, sessionId, sttLanguage, tts, stt, voice, voiceBridge, dictation } =
       options;
@@ -1138,6 +1144,41 @@ export class VoiceSession {
   }
 
   /**
+   * Read a full message aloud on demand (per-message playback button). Streams
+   * the whole text — no length cap — sentence by sentence via the session
+   * TTSManager, in the given personality `voice` (resolved on the client from the
+   * live personality, so it tracks the picked personality). Only one message
+   * playback runs at a time: a new call aborts the previous. Resolves once
+   * playback finishes; returns `{ canceled: true }` if it was superseded or
+   * stopped. Throws only on a genuine synthesis error.
+   */
+  async speakMessage(text: string, voice?: SpeechVoiceOverride): Promise<{ canceled: boolean }> {
+    this.cancelMessagePlayback();
+    const controller = new AbortController();
+    this.messagePlaybackAbort = controller;
+    if (controller.signal.aborted) {
+      return { canceled: true };
+    }
+    try {
+      await this.ttsManager.speakStreaming(text, (msg) => this.emit(msg), controller.signal, voice);
+      return { canceled: controller.signal.aborted };
+    } finally {
+      if (this.messagePlaybackAbort === controller) {
+        this.messagePlaybackAbort = null;
+      }
+    }
+  }
+
+  /** Stop any in-flight on-demand message playback (button stop press/cleanup). */
+  cancelMessagePlayback(): void {
+    if (!this.messagePlaybackAbort) {
+      return;
+    }
+    this.messagePlaybackAbort.abort();
+    this.messagePlaybackAbort = null;
+  }
+
+  /**
    * Mark speech detection start and abort any active playback/agent run.
    */
   private async handleVoiceSpeechStart(): Promise<void> {
@@ -1312,6 +1353,7 @@ export class VoiceSession {
    */
   async cleanup(): Promise<void> {
     this.abortController.abort();
+    this.cancelMessagePlayback();
     this.clearBufferTimeout();
     this.pendingAudioSegments = [];
     this.audioBuffer = null;

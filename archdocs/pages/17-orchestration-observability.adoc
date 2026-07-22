@@ -1,0 +1,123 @@
+= Orchestration — Observability & Accounting
+:description: The run event stream, the per-node record, cost roll-up into the existing ledger, and what makes a graph tunable rather than a slot machine.
+
+A graph you cannot inspect is a slot machine. Every visual builder surveyed ships a
+per-node execution log with inputs and outputs, and it is the feature that turns "this
+graph is bad" into "this node's prompt is bad".
+
+== The event stream
+
+The daemon already emits a run snapshot on every state change and persists it — the
+engine mutates a working `Run` and calls a persist-and-emit path that snapshots,
+broadcasts and stores. Clients keep a replica fed by pushes rather than polling.
+
+What the stream needs to carry for orchestration, beyond today's phase statuses:
+
+[cols="1,3"]
+|===
+|Event |Why
+
+|`node.started`
+|Paints the canvas and starts the elapsed timer.
+
+|`node.output`
+|The structured result — summary, artifact refs, declared fields, evidence.
+
+|`node.excluded`
+|*With a reason.* Branch not taken, upstream failed, run canceled. Without the reason a
+greyed node is indistinguishable from a bug.
+
+|`node.progress`
+|Optional, throttled: current tool, tokens so far. This is what makes a long node feel
+alive rather than hung.
+
+|`run.paused`
+|A gate is waiting. Drives the notification and the approve affordance.
+
+|`run.budget`
+|Spend against the ceiling, so the user can stop a run before it stops itself.
+|===
+
+Throttling is a requirement, not an optimisation: six concurrent agents streaming into a
+phone over a relay will saturate transport, render loop and battery. Rivet throttles
+per-node partial output to roughly 100ms; that is the right order of magnitude.
+
+== The per-node record
+
+`RunPhaseCandidate` already carries `agentId`, `personalityId` and `summary`. What makes
+a graph *tunable* is the rest:
+
+* `startedAt` / `completedAt` — where the wall-clock actually went
+* `tokens` / `cost` — per node, rolled up from the child agent's own accounting
+* `filesTouched` — the write-isolation story, and the honest answer to "what did this
+  thing do to my repo"
+* `output` — the structured result, which doubles as what resume reads
+* `attempt` — which loop iteration this was, so a retry ladder is legible
+
+== Accounting
+
+This is the part that came free and must stay free. Every node is an ordinary Otto agent,
+parented to the orchestrator, so activity stats, the usage ledger, per-personality stats
+and the sub-agent roll-up all work with no orchestration-specific plumbing. The rules
+from the audit architecture apply unchanged:
+
+. *No inflation.* A child's tokens are counted once. The parent's residual is
+  de-inflated so a run's total is not the sum of double-counted parts.
+. *Cost is derived from tokens and a model's price*, never reported independently.
+. *Local-only.* Nothing leaves the machine.
+
+The one orchestration-specific addition is a *run total* — what this orchestration cost,
+end to end, visible on the run and next to the estimate that was shown before it started.
+At an order-of-magnitude premium over a chat, estimate-versus-actual is the number that
+decides whether a user trusts the feature twice.
+
+== Live canvas
+
+Covered in link:16-orchestration-designer.html[Designer]; the point here is that it needs
+no new transport. The daemon emits, the client subscribes, the canvas paints. Rivet
+proves the shape works — its IDE attaches over WebSocket to a processor running elsewhere
+and paints node state from the same handlers it uses for local runs, so remote and local
+are identical downstream. We already have both halves.
+
+One lesson from its protocol worth *not* copying: its frames are asymmetric (`{type,
+data}` inbound, `{message, data}` outbound) with no versioning. Otto's RPC namespacing and
+compatibility rules already prevent that class of problem — keep orchestration events
+inside them rather than inventing a side channel.
+
+== Visualizer
+
+An orchestration is a parent agent with children, which is exactly what the Visualizer
+already renders. No orchestration-specific work is required for it to show a run; the
+open question is whether a graph's *drawn* topology should override the Visualizer's
+force layout for orchestration runs. That is a genuine product choice, not a technical
+constraint, and it is deferred.
+
+== What "good" looks like
+
+A user should be able to answer, after a run and without reading the chat:
+
+* Which node was slow, and which node was expensive.
+* Which nodes ran in parallel, and which waited on which.
+* Why a node did not run.
+* What each node actually produced, as an artifact they can open.
+* Whether the estimate was honest.
+
+If any of those needs a transcript read, the observability layer is incomplete.
+
+== Invariants
+
+. Every excluded node carries a machine-readable reason, and the UI shows it.
+. Node cost is counted once; run totals never double-count children.
+. Cost is always derived, never independently reported.
+. Streaming to clients is throttled and bounded.
+. Orchestration events live inside the existing RPC namespacing and compatibility rules.
+. Accounting requires no orchestration-specific plumbing — if it ever does, the node has
+  stopped being an ordinary agent and that is the bug.
+
+== Change checklist
+
+* [ ] Does the new event carry a reason where it represents a negative outcome?
+* [ ] Is it throttled, and bounded in size?
+* [ ] Does it round-trip through the existing push-replica machinery?
+* [ ] Does the per-node record still answer the five "good" questions above?
+* [ ] Does an old client tolerate the new event (ignore-unknown)?

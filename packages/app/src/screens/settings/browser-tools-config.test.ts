@@ -23,6 +23,7 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     agentTeams: { teams: [] },
     modelTierOverrides: [],
     autoArchiveAfterMerge: false,
+    hideMergeIntoBaseAction: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
   };

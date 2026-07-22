@@ -30,6 +30,8 @@ type FlyoutIcon = ComponentType<{ size: number; color: string }>;
 export interface FlyoutBandProps {
   /** Which color the band wears. The only knob that changes its look. */
   tone: FlyoutTone;
+  /** Paint layer in the composer fan, from COMPOSER_TRACK_LAYERS. */
+  layer: number;
   message: string;
   /** Leading status icon, tinted to the tone. */
   icon: FlyoutIcon;
@@ -43,6 +45,7 @@ export interface FlyoutBandProps {
 
 export function FlyoutBand({
   tone,
+  layer,
   message,
   icon,
   onDismiss,
@@ -55,7 +58,7 @@ export function FlyoutBand({
   const surfaceStyle = useMemo(() => [styles.surface, toneStyles[toneSurface(tone)]], [tone]);
   const messageStyle = useMemo(() => [styles.message, toneStyles[toneText(tone)]], [tone]);
   return (
-    <ComposerTrackTransition>
+    <ComposerTrackTransition layer={layer}>
       <View style={styles.outer} testID={testID}>
         <ChatWidthBounds style={styles.track}>
           <View style={surfaceStyle}>

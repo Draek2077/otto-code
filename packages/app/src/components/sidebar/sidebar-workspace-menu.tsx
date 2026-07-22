@@ -7,6 +7,7 @@ import {
   BookOpen,
   CircleCheck,
   Copy,
+  FolderOpen,
   MoreVertical,
   Pencil,
 } from "@/components/icons/material-icons";
@@ -31,6 +32,7 @@ const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
 const ThemedBookOpen = withUnistyles(BookOpen);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 
@@ -41,6 +43,9 @@ const markAsReadLeadingIcon = (
 );
 const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
 const contextLeadingIcon = <ThemedBookOpen size={14} uniProps={foregroundMutedColorMapping} />;
+const openBaseCheckoutLeadingIcon = (
+  <ThemedFolderOpen size={14} uniProps={foregroundMutedColorMapping} />
+);
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
@@ -57,6 +62,7 @@ interface SidebarWorkspaceMenuProps {
   onCopyBranchName?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
+  onOpenBaseCheckout?: () => void;
   serverId?: string;
   workspaceId?: string;
   onArchive: () => void;
@@ -87,6 +93,7 @@ export interface WorkspaceMenuItemsProps {
   onCopyBranchName?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
+  onOpenBaseCheckout?: () => void;
   serverId?: string;
   workspaceId?: string;
   onArchive: () => void;
@@ -103,6 +110,7 @@ export function WorkspaceMenuItems({
   onCopyBranchName,
   onRename,
   onMarkAsRead,
+  onOpenBaseCheckout,
   serverId,
   workspaceId,
   onArchive,
@@ -170,6 +178,15 @@ export function WorkspaceMenuItems({
           {t("workspace.contextManagement.openAction")}
         </Item>
       ) : null}
+      {onOpenBaseCheckout ? (
+        <Item
+          testID={`sidebar-workspace-menu-open-base-checkout-${workspaceKey}`}
+          leading={openBaseCheckoutLeadingIcon}
+          onSelect={onOpenBaseCheckout}
+        >
+          {t("sidebar.workspace.actions.openBaseCheckout")}
+        </Item>
+      ) : null}
       <Item
         testID={`sidebar-workspace-menu-archive-${workspaceKey}`}
         leading={archiveLeadingIcon}
@@ -190,6 +207,7 @@ export function SidebarWorkspaceMenu({
   onCopyBranchName,
   onRename,
   onMarkAsRead,
+  onOpenBaseCheckout,
   serverId,
   workspaceId,
   onArchive,
@@ -219,6 +237,7 @@ export function SidebarWorkspaceMenu({
           onCopyBranchName={onCopyBranchName}
           onRename={onRename}
           onMarkAsRead={onMarkAsRead}
+          onOpenBaseCheckout={onOpenBaseCheckout}
           serverId={serverId}
           workspaceId={workspaceId}
           onArchive={onArchive}

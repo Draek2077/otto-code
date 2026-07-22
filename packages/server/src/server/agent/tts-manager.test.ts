@@ -52,6 +52,69 @@ describe("TTSManager", () => {
     expect(audioMessage?.payload.isLastChunk).toBe(true);
   });
 
+  it("speakStreaming emits one non-voice group per sentence over the full text", async () => {
+    const synthesized: string[] = [];
+    const tts: TextToSpeechProvider = {
+      async synthesizeSpeech(text: string): Promise<{ stream: Readable; format: string }> {
+        synthesized.push(text);
+        return { stream: Readable.from([Buffer.from("x")]), format: "pcm;rate=24000" };
+      },
+    };
+    const manager = new TTSManager("s1", pino({ level: "silent" }), tts);
+    const abort = new AbortController();
+    const emitted: AudioOutputMessage[] = [];
+
+    await manager.speakStreaming(
+      "First sentence. Second sentence. Third sentence.",
+      (msg) => {
+        if (isAudioOutputMessage(msg)) {
+          emitted.push(msg);
+          manager.confirmAudioPlayed(msg.payload.id);
+        }
+      },
+      abort.signal,
+    );
+
+    // Three sentences => three distinct single-chunk groups, all non-voice.
+    expect(synthesized).toEqual(["First sentence.", "Second sentence.", "Third sentence."]);
+    expect(emitted).toHaveLength(3);
+    const groupIds = new Set(emitted.map((m) => m.payload.groupId));
+    expect(groupIds.size).toBe(3);
+    for (const message of emitted) {
+      expect(message.payload.isVoiceMode).toBe(false);
+      expect(message.payload.chunkIndex).toBe(0);
+      expect(message.payload.isLastChunk).toBe(true);
+    }
+  });
+
+  it("speakStreaming stops emitting once aborted", async () => {
+    const synthesized: string[] = [];
+    const tts: TextToSpeechProvider = {
+      async synthesizeSpeech(text: string): Promise<{ stream: Readable; format: string }> {
+        synthesized.push(text);
+        return { stream: Readable.from([Buffer.from("x")]), format: "pcm;rate=24000" };
+      },
+    };
+    const manager = new TTSManager("s1", pino({ level: "silent" }), tts);
+    const abort = new AbortController();
+    const emitted: AudioOutputMessage[] = [];
+
+    // Abort after the first group is emitted; the loop must not emit further
+    // groups and the call must resolve rather than hang.
+    await manager.speakStreaming(
+      "One. Two. Three. Four.",
+      (msg) => {
+        if (isAudioOutputMessage(msg)) {
+          emitted.push(msg);
+          abort.abort();
+        }
+      },
+      abort.signal,
+    );
+
+    expect(emitted.length).toBeLessThan(4);
+  });
+
   it("splits long text into safe synthesis segments", async () => {
     const calls: string[] = [];
     const tts: TextToSpeechProvider = {
@@ -87,7 +150,7 @@ describe("TTSManager", () => {
     expect(calls.slice(1).some((text) => text.length > calls[0].length)).toBe(true);
   });
 
-  it("prefetches the next segment before current playback completes", async () => {
+  it("prefetches synthesis and emits one gapless group without gating on acks", async () => {
     const started: string[] = [];
     const gateResolvers = new Map<string, () => void>();
     const tts: TextToSpeechProvider = {
@@ -106,62 +169,55 @@ describe("TTSManager", () => {
     const manager = new TTSManager("s1", pino({ level: "silent" }), tts);
     const abort = new AbortController();
     const segments = [
-      "One sentence that is long enough to stand alone in the first voice chunk.",
-      "Two sentence that is also long enough to require a separate synthesized group.",
-      "Three sentence that should only be synthesized after playback of the first group starts because it carries extra detail about the lookahead pipeline and should exceed the later packing target on its own.",
+      "One sentence that stands alone as the first voice chunk.",
+      "Two sentence that is a second separately synthesized segment.",
+      "Three sentence that is the final segment of this single utterance.",
     ];
     const text = segments.join(" ");
-    const emittedGroups: string[] = [];
-    let firstChunkId: string | null = null;
-    let releaseSecondAck: (() => void) | null = null;
+    const chunks: AudioOutputMessage["payload"][] = [];
 
     const task = manager.generateAndWaitForPlayback(
       text,
       (msg) => {
-        if (msg.type !== "audio_output") {
-          return;
+        if (msg.type === "audio_output") {
+          // Deliberately do NOT confirm here: emission must not depend on acks.
+          chunks.push(msg.payload);
         }
-
-        if (!emittedGroups.includes(msg.payload.groupId!)) {
-          emittedGroups.push(msg.payload.groupId!);
-        }
-
-        if (emittedGroups.length === 1) {
-          firstChunkId = msg.payload.id;
-          return;
-        }
-
-        releaseSecondAck?.();
-        manager.confirmAudioPlayed(msg.payload.id);
       },
       abort.signal,
       true,
     );
 
-    expect(started).toEqual([segments[0], segments[1]]);
-
-    gateResolvers.get(segments[0])?.();
+    // Prefetch: two segments are synthesizing before any audio has been emitted.
     await vi.waitFor(() => {
-      expect(firstChunkId).not.toBeNull();
+      expect(started).toEqual([segments[0], segments[1]]);
     });
+    expect(chunks).toHaveLength(0);
 
-    expect(started).toEqual(segments);
-    expect(emittedGroups).toHaveLength(1);
-
-    const secondGroupPlayed = new Promise<void>((resolve) => {
-      releaseSecondAck = resolve;
-    });
-
-    manager.confirmAudioPlayed(firstChunkId!);
-    gateResolvers.get(segments[1])?.();
+    // Release synthesis in order; the third is scheduled only once the first is
+    // consumed, so wait for each gate to register before releasing it. All three
+    // ship without a single playback confirmation.
+    for (const segment of segments) {
+      await vi.waitFor(() => {
+        expect(gateResolvers.has(segment)).toBe(true);
+      });
+      gateResolvers.get(segment)!();
+    }
 
     await vi.waitFor(() => {
-      expect(started).toEqual(segments);
-      expect(emittedGroups).toHaveLength(2);
+      expect(chunks).toHaveLength(3);
     });
 
-    gateResolvers.get(segments[2])?.();
-    await secondGroupPlayed;
+    // Everything is one group, indices are contiguous, only the last is final.
+    const groupIds = new Set(chunks.map((chunk) => chunk.groupId));
+    expect(groupIds.size).toBe(1);
+    expect(chunks.map((chunk) => chunk.chunkIndex)).toEqual([0, 1, 2]);
+    expect(chunks.map((chunk) => chunk.isLastChunk)).toEqual([false, false, true]);
+
+    // The call resolves only once the client confirms the whole group.
+    for (const chunk of chunks) {
+      manager.confirmAudioPlayed(chunk.id);
+    }
     await task;
   });
 

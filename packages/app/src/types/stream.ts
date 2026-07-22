@@ -1,7 +1,12 @@
 import type { AgentProvider, AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
+import {
+  extractTaskEntriesFromToolCall,
+  extractTaskListOperation,
+  isChecklistTaskTool,
+  type TaskListOperation,
+} from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 
 /**
@@ -206,9 +211,27 @@ export interface CompactionItem {
   preTokens?: number;
 }
 
+export type TodoEntryStatus = "pending" | "in_progress" | "completed";
+
 export interface TodoEntry {
+  /**
+   * Stable identity for incremental checklist tools (TaskCreate/TaskUpdate),
+   * where later calls mutate a task by the id the SDK assigned. Absent for
+   * full-snapshot providers (TodoWrite/update_plan), which resend the whole
+   * list each time and need no identity to reconcile against.
+   */
+  id?: string;
   text: string;
   completed: boolean;
+  /**
+   * Three-state progress mirroring the provider's own task status. `completed`
+   * is kept as a derived convenience (`status === "completed"`); `in_progress`
+   * is what lets the UI highlight the task the agent is actively working on —
+   * the signal that makes the list read as live progress. Providers that only
+   * report done/not-done (the wire `todo` timeline item) collapse to
+   * pending/completed.
+   */
+  status: TodoEntryStatus;
 }
 
 export interface TodoListItem {
@@ -298,6 +321,27 @@ function hasUserMessage(state: StreamItem[]): boolean {
   return state.some((item) => item.kind === "user_message");
 }
 
+// Merge the client's local images/attachments onto an existing user row that
+// lacks them. The daemon's canonical user row is text-only — it never
+// round-trips image bytes — so returns null when there is nothing to add (the
+// row already carries them), letting the caller no-op.
+function backfillUserMessageAttachments(
+  existing: UserMessageItem,
+  incoming: UserMessageItem,
+): UserMessageItem | null {
+  const addImages = (existing.images?.length ?? 0) === 0 && (incoming.images?.length ?? 0) > 0;
+  const addAttachments =
+    (existing.attachments?.length ?? 0) === 0 && (incoming.attachments?.length ?? 0) > 0;
+  if (!addImages && !addAttachments) {
+    return null;
+  }
+  return {
+    ...existing,
+    ...(addImages ? { images: incoming.images } : {}),
+    ...(addAttachments ? { attachments: incoming.attachments } : {}),
+  };
+}
+
 export function appendOptimisticUserMessageToStream(params: {
   tail: StreamItem[];
   head: StreamItem[];
@@ -306,11 +350,40 @@ export function appendOptimisticUserMessageToStream(params: {
   skipIfUserMessageExists?: boolean;
 }): ApplyStreamEventResult {
   const { tail, head, message, placement } = params;
-  if (
-    tail.some((item) => item.id === message.id) ||
-    head.some((item) => item.id === message.id) ||
-    (params.skipIfUserMessageExists && (hasUserMessage(tail) || hasUserMessage(head)))
-  ) {
+
+  // A row with our id already landed. In the new-chat path the daemon stamps
+  // the canonical user row with our clientMessageId and it can arrive before
+  // this (deferred) optimistic append runs. That row is text-only, so back-fill
+  // the client's local images/attachments onto it rather than dropping them —
+  // which also keeps the attachment GC from reclaiming the now-referenced bytes.
+  // A no-op when the existing row already carries them (mid-session, where the
+  // optimistic row lands first).
+  const tailIdx = tail.findIndex((item) => item.id === message.id);
+  if (tailIdx >= 0) {
+    const existing = tail[tailIdx];
+    const merged =
+      existing?.kind === "user_message" ? backfillUserMessageAttachments(existing, message) : null;
+    if (!merged) {
+      return { tail, head, changedTail: false, changedHead: false };
+    }
+    const nextTail = [...tail];
+    nextTail[tailIdx] = merged;
+    return { tail: nextTail, head, changedTail: true, changedHead: false };
+  }
+  const headIdx = head.findIndex((item) => item.id === message.id);
+  if (headIdx >= 0) {
+    const existing = head[headIdx];
+    const merged =
+      existing?.kind === "user_message" ? backfillUserMessageAttachments(existing, message) : null;
+    if (!merged) {
+      return { tail, head, changedTail: false, changedHead: false };
+    }
+    const nextHead = [...head];
+    nextHead[headIdx] = merged;
+    return { tail, head: nextHead, changedTail: false, changedHead: true };
+  }
+
+  if (params.skipIfUserMessageExists && (hasUserMessage(tail) || hasUserMessage(head))) {
     return { tail, head, changedTail: false, changedHead: false };
   }
 
@@ -567,6 +640,10 @@ function inputFromUnknownDetail(detail: ToolCallDetail): unknown {
   return detail.type === "unknown" ? detail.input : null;
 }
 
+function outputFromUnknownDetail(detail: ToolCallDetail): unknown {
+  return detail.type === "unknown" ? detail.output : null;
+}
+
 function mergeAgentToolCallStatus(
   existing: AgentToolCallStatus,
   incoming: AgentToolCallStatus,
@@ -673,27 +750,56 @@ function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamI
   return [...state, entry];
 }
 
+// Items that a provider interleaves between successive todo writes within a
+// single working phase — the agent re-emits its whole task list each turn, so
+// these never mark a new logical plan. Scanning past them lets one card evolve
+// (checking itself off in place) instead of spawning a near-duplicate snapshot
+// on every update. An assistant/user message, compaction, or error DOES break
+// the run: that begins a new phase, so a fresh list card is correct there.
+function isTodoSequenceFiller(kind: StreamItem["kind"]): boolean {
+  return kind === "tool_call" || kind === "thought" || kind === "action_group";
+}
+
+function findMergeableTodoIndex(state: StreamItem[], provider: AgentProvider): number {
+  for (let index = state.length - 1; index >= 0; index -= 1) {
+    const candidate = state[index];
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.kind === "todo_list") {
+      return candidate.provider === provider ? index : -1;
+    }
+    if (!isTodoSequenceFiller(candidate.kind)) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
 function appendTodoList(
   state: StreamItem[],
   provider: AgentProvider,
   items: TodoEntry[],
   timestamp: Date,
 ): StreamItem[] {
-  const normalizedItems = items.map((item) => ({
+  const normalizedItems: TodoEntry[] = items.map((item) => ({
     text: item.text,
     completed: item.completed,
+    status: item.status,
   }));
 
-  const lastItem = state[state.length - 1];
-  if (lastItem && lastItem.kind === "todo_list" && lastItem.provider === provider) {
-    const next = [...state];
-    const updated: TodoListItem = {
-      ...lastItem,
-      items: normalizedItems,
-      timestamp,
-    };
-    next[next.length - 1] = updated;
-    return next;
+  const mergeIndex = findMergeableTodoIndex(state, provider);
+  if (mergeIndex >= 0) {
+    const existing = state[mergeIndex];
+    if (existing && existing.kind === "todo_list") {
+      const next = [...state];
+      next[mergeIndex] = {
+        ...existing,
+        items: normalizedItems,
+        timestamp,
+      };
+      return next;
+    }
   }
 
   const idSeed = `${provider}:${JSON.stringify(normalizedItems)}`;
@@ -707,6 +813,98 @@ function appendTodoList(
     items: normalizedItems,
   };
 
+  return [...state, entry];
+}
+
+// The running checklist spans the whole assistant turn — narration and other
+// tool calls sit between task ops — so we accumulate across everything back to
+// the last user message, which marks where a new checklist would begin. (This
+// is looser than findMergeableTodoIndex, which the full-snapshot tools use to
+// stay within one contiguous tool run.)
+function findActiveChecklistIndex(state: StreamItem[], provider: AgentProvider): number {
+  for (let index = state.length - 1; index >= 0; index -= 1) {
+    const candidate = state[index];
+    if (!candidate) {
+      continue;
+    }
+    if (candidate.kind === "user_message") {
+      return -1;
+    }
+    if (candidate.kind === "todo_list") {
+      return candidate.provider === provider ? index : -1;
+    }
+  }
+  return -1;
+}
+
+function applyChecklistOp(items: TodoEntry[], op: TaskListOperation): TodoEntry[] {
+  if (op.kind === "sync") {
+    // TaskList is authoritative — rebuild the set from the snapshot.
+    return op.tasks.map((task) => ({
+      id: task.id,
+      text: task.text,
+      completed: task.status === "completed",
+      status: task.status,
+    }));
+  }
+
+  if (op.kind === "create") {
+    // Prefer the SDK-assigned id (from tool output); fall back to creation order
+    // so updates keyed by "1","2",... still line up if the output is missing.
+    const id = op.id ?? String(items.length + 1);
+    if (items.some((item) => item.id === id)) {
+      return items.map((item) => (item.id === id ? { ...item, text: op.text } : item));
+    }
+    return [...items, { id, text: op.text, completed: false, status: "pending" }];
+  }
+
+  if (op.deleted) {
+    return items.filter((item) => item.id !== op.id);
+  }
+
+  return items.map((item) => {
+    if (item.id !== op.id) {
+      return item;
+    }
+    const status = op.status ?? item.status;
+    return {
+      ...item,
+      status,
+      completed: status === "completed",
+      text: op.text ?? item.text,
+    };
+  });
+}
+
+function applyTaskListOperation(
+  state: StreamItem[],
+  provider: AgentProvider,
+  op: TaskListOperation,
+  timestamp: Date,
+): StreamItem[] {
+  const index = findActiveChecklistIndex(state, provider);
+  const existing =
+    index >= 0 && state[index]?.kind === "todo_list" ? (state[index] as TodoListItem) : null;
+  const nextItems = applyChecklistOp(existing ? existing.items : [], op);
+
+  if (existing && index >= 0) {
+    const next = [...state];
+    next[index] = { ...existing, items: nextItems, timestamp };
+    return next;
+  }
+
+  // An update/delete that lands before any create has nothing to show yet.
+  if (nextItems.length === 0) {
+    return state;
+  }
+
+  const entry: TodoListItem = {
+    kind: "todo_list",
+    id: createUniqueTimelineId(state, "todo", `${provider}:checklist`, timestamp),
+    timestamp,
+    provider,
+    items: nextItems,
+  };
   return [...state, entry];
 }
 
@@ -727,6 +925,24 @@ function reduceTimelineToolCall(
     return state;
   }
 
+  // Incremental checklist tools (TaskCreate/TaskUpdate/TaskList). Suppress the
+  // per-call tool badge and fold the call into one evolving task list. We settle
+  // on completion, when TaskCreate's output carries the id updates key off of.
+  if (isChecklistTaskTool(item.name)) {
+    if (item.status !== "completed") {
+      return state;
+    }
+    const op = extractTaskListOperation(
+      item.name,
+      inputFromUnknownDetail(item.detail),
+      outputFromUnknownDetail(item.detail),
+    );
+    if (!op) {
+      return state;
+    }
+    return applyTaskListOperation(state, event.provider, op, timestamp);
+  }
+
   if (
     event.provider === "claude" &&
     (normalizedToolName === "todowrite" || normalizedToolName === "todo_write")
@@ -738,7 +954,11 @@ function reduceTimelineToolCall(
     return appendTodoList(
       state,
       event.provider,
-      tasks.map((entry) => ({ text: entry.text, completed: entry.completed })),
+      tasks.map((entry) => ({
+        text: entry.text,
+        completed: entry.completed,
+        status: entry.status,
+      })),
       timestamp,
     );
   }
@@ -748,7 +968,11 @@ function reduceTimelineToolCall(
     return appendTodoList(
       state,
       event.provider,
-      tasks.map((entry) => ({ text: entry.text, completed: entry.completed })),
+      tasks.map((entry) => ({
+        text: entry.text,
+        completed: entry.completed,
+        status: entry.status,
+      })),
       timestamp,
     );
   }
@@ -834,9 +1058,12 @@ function reduceTimelineEvent(
       if (event.provider === "claude") {
         return finalizeActiveThoughts(state);
       }
+      // The wire `todo` timeline item only reports done/not-done, so providers
+      // routed through it collapse to pending/completed (no in-progress signal).
       const items: TodoEntry[] = (item.items ?? []).map((todo) => ({
         text: todo.text,
         completed: todo.completed,
+        status: todo.completed ? "completed" : "pending",
       }));
       return finalizeActiveThoughts(appendTodoList(state, event.provider, items, timestamp));
     }

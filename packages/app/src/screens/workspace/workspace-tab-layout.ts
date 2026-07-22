@@ -12,6 +12,11 @@ export const TAB_HORIZONTAL_PADDING = 8;
 export const TAB_ESTIMATED_CHAR_WIDTH = 7;
 export const TAB_CLOSE_BUTTON_WIDTH = 22;
 export const TAB_MAX_WIDTH = 200;
+// The narrowest a horizontal tab chip is allowed to get before the strip stops
+// squeezing and starts overflowing tabs into the menu instead. Wide enough to
+// keep the icon plus a few characters of label readable (icon + padding + close
+// ≈ 52px, leaving ~48px of label room), so tabs never collapse to icon-only.
+export const TAB_MIN_WIDTH = 100;
 // The rail trades horizontal room for label space (labels are all it shows),
 // so its cap is deliberately wider than a horizontal tab's — 2.25x TAB_MAX_WIDTH.
 // It lives in constants/layout.ts because the settings layer clamps the saved

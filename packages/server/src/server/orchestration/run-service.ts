@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import { type Run, type RunPlan, isTerminalRunStatus } from "@otto-code/protocol/orchestration";
+import {
+  type OrchestrationGraph,
+  type Run,
+  type RunPlan,
+  isTerminalRunStatus,
+} from "@otto-code/protocol/orchestration";
 
 import type { RunStore } from "./run-store.js";
 import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
@@ -16,6 +21,12 @@ import {
   buildRunFromPlan,
   executeRun,
 } from "./run-engine.js";
+import {
+  type GraphEnginePort,
+  type GraphEngineSpawnInput,
+  buildRunFromGraph,
+  executeGraphRun,
+} from "./graph-engine.js";
 
 // The daemon-integration half of the engine port: the spawn/await/role-resolve
 // seams. Supplied by the tool layer (otto-tools.ts) where the real
@@ -45,6 +56,43 @@ export interface StartRunResult {
   run: Run;
   /** Resolves with the terminal run when execution settles. Never rejects. */
   settled: Promise<Run>;
+}
+
+// The daemon-integration half of the graph engine port (projects/
+// orchestration-graphs) — spawn/await plus routing node completions into the
+// orchestrator agent's chat. Role resolution happens inside `spawn` (the graph
+// engine passes role/model through and never resolves personalities itself).
+export interface GraphSpawnPort {
+  spawn(input: GraphEngineSpawnInput): Promise<RunEngineSpawnResult>;
+  awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
+  notifyOrchestrator(input: { text: string }): Promise<void>;
+}
+
+export interface CreateDraftGraphRunInput {
+  graph: OrchestrationGraph;
+  title: string;
+  description?: string;
+  graphInputs?: Record<string, string>;
+  cwd?: string;
+  workspaceId?: string;
+  teamId?: string;
+  teamName?: string;
+}
+
+export interface StartGraphRunInput {
+  graph: OrchestrationGraph;
+  graphInputs: Record<string, string>;
+  title: string;
+  description?: string;
+  spawnPort: GraphSpawnPort;
+  /** The already-spawned root agent that hosts the orchestration chat. */
+  orchestratorAgentId: string;
+  cwd?: string;
+  workspaceId?: string;
+  teamId?: string;
+  teamName?: string;
+  /** Execute an existing draft in place (keeps its id, replaces its record). */
+  runId?: string;
 }
 
 export type RunChangeListener = (run: Run) => void;
@@ -144,12 +192,13 @@ export class RunService {
   }
 
   /**
-   * Delete every terminal (done/failed/canceled) run from memory and disk.
-   * Active/paused runs are left untouched. Returns the deleted run ids.
+   * Delete every terminal (done/failed/canceled) run — and any abandoned
+   * drafts — from memory and disk. Active/paused runs are left untouched.
+   * Returns the deleted run ids.
    */
   async clearFinishedRuns(): Promise<string[]> {
     const finishedIds = [...this.runs.values()]
-      .filter((run) => isTerminalRunStatus(run.status))
+      .filter((run) => isTerminalRunStatus(run.status) || run.status === "draft")
       .map((run) => run.id);
     for (const id of finishedIds) {
       this.runs.delete(id);
@@ -199,13 +248,111 @@ export class RunService {
       logger: this.logger,
     };
 
-    const settled = executeRun({
+    const settled = this.settleExecution(
+      id,
       run,
-      plan: input.plan,
-      caps: this.caps,
-      signal: controller.signal,
-      port,
-    })
+      executeRun({
+        run,
+        plan: input.plan,
+        caps: this.caps,
+        signal: controller.signal,
+        port,
+      }),
+    );
+
+    return { run: initialSnapshot, settled };
+  }
+
+  /**
+   * Create a Draft graph run — the record the New Orchestration dialog mints
+   * before the user finishes designing the graph. Not executed; no orchestrator
+   * agent exists yet. Executing later (startGraphRun with this id) replaces the
+   * record in place, keeping the id stable for clients.
+   */
+  async createDraftGraphRun(input: CreateDraftGraphRunInput): Promise<Run> {
+    const run = buildRunFromGraph({
+      graph: input.graph,
+      graphInputs: input.graphInputs ?? {},
+      id: generateRunId(),
+      title: input.title,
+      ...(input.description ? { description: input.description } : {}),
+      now: this.clock(),
+      status: "draft",
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.teamName ? { teamName: input.teamName } : {}),
+    });
+    await this.persistAndEmit(run);
+    return structuredClone(run);
+  }
+
+  /**
+   * Build and start executing a graph run (projects/orchestration-graphs).
+   * Mirrors startRun: returns immediately with the initial projection while the
+   * graph engine drives execution on. Throws (before any spawn) when the graph
+   * fails structural validation or `runId` names a non-draft record.
+   */
+  startGraphRun(input: StartGraphRunInput): StartRunResult {
+    if (input.runId) {
+      const existing = this.runs.get(input.runId);
+      if (!existing) {
+        throw new Error(`Run ${input.runId} not found`);
+      }
+      if (existing.status !== "draft") {
+        throw new Error(`Run ${input.runId} is not a draft (status: ${existing.status})`);
+      }
+    }
+    const id = input.runId ?? generateRunId();
+    const run = buildRunFromGraph({
+      graph: input.graph,
+      graphInputs: input.graphInputs,
+      id,
+      title: input.title,
+      ...(input.description ? { description: input.description } : {}),
+      now: this.clock(),
+      conductorAgentId: input.orchestratorAgentId,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.teamName ? { teamName: input.teamName } : {}),
+    });
+    this.runs.set(id, run);
+    this.onActivity?.("runsOrchestrated");
+    const controller = new AbortController();
+    this.controllers.set(id, controller);
+    const initialSnapshot = structuredClone(run);
+    void this.persistAndEmit(run);
+
+    const port: GraphEnginePort = {
+      spawn: input.spawnPort.spawn,
+      awaitAgent: input.spawnPort.awaitAgent,
+      notifyOrchestrator: input.spawnPort.notifyOrchestrator,
+      emit: (updated) => this.persistAndEmit(updated),
+      now: this.clock,
+      logger: this.logger,
+    };
+
+    const settled = this.settleExecution(
+      id,
+      run,
+      executeGraphRun({
+        run,
+        graph: input.graph,
+        graphInputs: input.graphInputs,
+        caps: this.caps,
+        signal: controller.signal,
+        port,
+      }),
+    );
+
+    return { run: initialSnapshot, settled };
+  }
+
+  // Shared tail for both engines: land the terminal run (or the failure), kick
+  // the after-settle summary, and release the per-run control state.
+  private settleExecution(id: string, run: Run, execution: Promise<Run>): Promise<Run> {
+    return execution
       .then((final) => {
         this.runs.set(final.id, final);
         return this.persistAndEmit(final).then(() => final);
@@ -232,8 +379,6 @@ export class RunService {
         this.pendingGates.delete(id);
         this.bufferedGateDecisions.delete(id);
       });
-
-    return { run: initialSnapshot, settled };
   }
 
   // Generate a Writer summary for a terminal run (done/failed/canceled) and land

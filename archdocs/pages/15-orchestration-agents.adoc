@@ -1,0 +1,216 @@
+= Orchestration — Agent Binding & Provider Coverage
+:description: How a graph node becomes a running agent — seat resolution, tool authority, environment isolation, prompt assembly — and what each provider supports.
+
+This is the layer no orchestration framework has, and it is where Otto's advantage
+actually lives. Rivet, LangGraph and every visual builder surveyed treat a node as a
+function or a model call. Here a node is *a named agent, with a personality, a model, an
+authority and a working directory, running as a supervised OS process*.
+
+== Seat resolution
+
+A node names a *role*, not a person. Resolution happens once, at execution start:
+
+[mermaid]
+----
+flowchart LR
+  A["Node declares<br/>role: coder"] --> B{"Active team<br/>fills the role?"}
+  B -->|"yes"| C["Team member's<br/>personality"]
+  B -->|"no"| D{"Node has an<br/>explicit model?"}
+  D -->|"yes"| E["Bare model seat"]
+  D -->|"no"| F["Compile error —<br/>stated loudly"]
+  C --> G["Snapshot into<br/>the run"]
+  E --> G
+----
+
+Two properties are deliberate. *Roles keep graphs portable* — the same graph runs on a
+host whose team is all-local models and on one that is all-Claude, because the graph
+names the job, not the brain. And *the snapshot is taken once*: editing a team mid-run
+cannot shear a running orchestration. The failure mode is loud on purpose — a role
+nothing fills is a compile error naming the role, never a silent fallback to some default
+model the user did not choose.
+
+== Tool authority
+
+The rule: *authority is applied at spawn, never requested in prose.* An agent told in its
+prompt not to use a tool it has been given will eventually use it.
+
+Today the model is binary — `autonomous` grants the Otto toolset minus `start_run`;
+everything else is stripped of orchestration, preview and browser tools. That collapses
+eight groups the daemon already understands (`preview`, `browser`, `web`, `agents`,
+`terminals`, `schedules`, `artifacts`, `workspace`) into one switch.
+
+The target is a per-node allowlist over those same groups, with a read-only marker:
+
+[cols="1,2,2"]
+|===
+|Node intent |Groups |Why
+
+|Research / gather
+|`web` (+ read-only workspace)
+|Nothing it can break. This is what makes the node safe to fan out.
+
+|Implement
+|`workspace`, `terminals`
+|Edits and runs commands. Never parallelised without isolation.
+
+|Verify
+|`terminals`, `preview`, `browser`
+|A verifier that cannot open the page can only read code — today's stripping of
+preview/browser from deterministic nodes makes browser-verified checking impossible,
+which is a real gap given Preview is a founding capability of this fork.
+
+|Autonomous leaf
+|everything except `start_run`
+|May spawn its own helpers; must remain a leaf.
+|===
+
+Orchestrations never nest: `start_run` is stripped from every participant, always.
+
+Provider-native sub-agents are a separate axis from Otto tools. Suppressing them where
+the provider allows it (Claude's `disallowedTools`) is what keeps a "deterministic" node
+actually deterministic; today only Otto tools are gated, which is an honest known gap.
+
+== Environment isolation
+
+Every node currently runs in the *same working directory*. That is correct for a
+sequential pipeline and wrong the moment two write nodes run in parallel — they will
+collide.
+
+[cols="1,3"]
+|===
+|Mode |Semantics
+
+|`shared` (default)
+|The orchestration's workspace. Correct for sequential work and for any node that only
+reads.
+
+|`worktree`
+|The node gets its own git worktree, created by the same machinery suggested tasks
+already use. Correct for parallel implementers.
+|===
+
+Two honest caveats belong in the UI, not just here. Worktrees fix *file* collisions, not
+*semantic* ones — two agents can still make incompatible assumptions, and that surfaces
+at integration. And a fresh worktree does not carry gitignored state: `node_modules`,
+`.env`, and any dev-server port assumption. A node that needs to run the app in a
+worktree needs those handled explicitly.
+
+== Prompt assembly
+
+What a node's agent actually receives, in order:
+
+. *The brief* — the graph-level shared context, if a Brief node exists. This is the
+  direct countermeasure to the best-documented multi-agent failure: parallel agents
+  making implicit decisions that must cohere but were never written down.
+. *The node instruction* — its `prompt` with `{{inputs.*}}` substituted, plus any bound
+  declared input.
+. *Upstream material* — labelled by source node, as summaries plus artifact
+  *references* the agent reads with its own tools.
+. *Iteration context* — for loops: which attempt this is, the previous output, and the
+  judge's feedback when an iteration failed.
+
+The agent is never told about the graph, its siblings, or that anything is waiting on it.
+It receives a task. That is the whole point of holding barriers in the daemon.
+
+== Lifecycle
+
+[cols="1,3"]
+|===
+|Step |Mechanism
+
+|Spawn
+|`createAgentCommand` with the resolved seat, labels for policy and run id, parented to
+the orchestrator agent, bound to the workspace.
+
+|Settle
+|`waitForAgentFullySettled` — *whole subtree*. An autonomous node that spawns helpers is
+re-invoked when they finish and writes its real answer afterwards; settling on the first
+idle would capture a premature answer.
+
+|Extract
+|Today: the last assistant message. Target: the structured node output
+(link:12-orchestration-data-model.html[Data Model]).
+
+|Failure
+|Agent status `error`, or the settle call throwing. Becomes a `failed` node result.
+|===
+
+Because every node is an ordinary agent, parentage, the ledger, activity stats, the
+sub-agents track and the Visualizer all work with no orchestration-specific plumbing.
+That is the compounding benefit of not inventing a parallel execution universe.
+
+== Provider coverage
+
+The fork's rule is that a capability is not done when one provider has it. Orchestration
+sits on the agent runtime, so most of it is provider-neutral by construction — but three
+axes differ per provider and need a filled-in matrix rather than an assumption.
+
+[cols="1,1,1,2"]
+|===
+|Provider |Otto tool gating |Native sub-agent suppression |Notes
+
+|Claude
+|Enforced at catalog registration
+|Possible (`disallowedTools`) — *not yet wired per node*
+|The reference implementation for observed sub-agents and accounting.
+
+|OpenAI-compatible (incl. local models via LM Studio)
+|Daemon owns the tool loop, so gating is direct
+|N/A — no native sub-agent concept
+|The provider that proves the "every provider equally" claim. Local models are first-class
+here; the graph shape is what supplies the structure a smaller model cannot hold on its own.
+
+|Codex
+|Via the shared catalog
+|Needs verification
+|
+
+|Copilot
+|Via the shared catalog
+|Needs verification
+|
+
+|OpenCode
+|Via the shared catalog
+|Needs verification
+|
+
+|Pi
+|Via the shared catalog
+|Needs verification
+|
+
+|ACP family
+|Via the shared catalog
+|Per-agent, needs verification
+|Pinned agent versions; capability varies by agent.
+|===
+
+[NOTE]
+====
+*Local AI is a design constraint, not a nice-to-have.* A graph is more valuable to a
+small local model than to a frontier one, because the graph supplies exactly what a
+smaller model is worst at holding: decomposition, sequencing and a definition of done.
+Any node feature that silently requires a frontier model — long structured outputs,
+sophisticated judging, deep tool use — must degrade to something a local model can do, or
+be declared as requiring a capable seat at compile time rather than failing at runtime.
+====
+
+== Invariants
+
+. A node names a role; a person is resolved once and frozen for the run.
+. A role nothing fills is a loud compile error, never a silent default.
+. Authority is applied at spawn. No node is asked in prose to refrain.
+. `start_run` is stripped from every participant — orchestrations never nest.
+. A node that writes and runs in parallel with another writer is isolated, or the
+  designer says why not.
+. Whole-subtree settle, never first-idle.
+. No node feature may require a specific provider without declaring it at compile time.
+
+== Change checklist
+
+* [ ] Does this work on a local model seat? If not, is that declared at compile time?
+* [ ] Is the per-provider matrix above still accurate, or does this add a new axis?
+* [ ] Does the new capability change what a node may touch? If so, is it in the tool
+  allowlist rather than the prompt?
+* [ ] If the change adds parallel writers, does isolation default to on?

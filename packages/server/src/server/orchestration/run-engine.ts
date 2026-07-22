@@ -203,7 +203,9 @@ async function mapWithConcurrency<T, R>(
 
 // Default judge instruction embedded around a candidate's output. Kept in the
 // engine so the structured-verdict contract travels with the control flow.
-function buildJudgeTask(input: {
+// Exported for the graph engine, which reuses the same contract for its
+// loop-until exit test (projects/orchestration-graphs).
+export function buildJudgeTask(input: {
   originalTask: string;
   candidateOutput: string;
   criteria?: readonly string[];
@@ -224,8 +226,9 @@ function buildJudgeTask(input: {
 // Pull a JudgeVerdict out of an agent's final message. The message may wrap the
 // JSON in prose or a code fence; we extract the first balanced JSON object and
 // validate it. Anything unparseable is a FAIL — a gate must never advance on a
-// verdict it cannot read (mirrors normalizeJudgeOutcome).
-function parseVerdict(finalMessage: string | null): RunPhaseCandidate["verdict"] {
+// verdict it cannot read (mirrors normalizeJudgeOutcome). Exported for the
+// graph engine (same contract for loop-until exit tests).
+export function parseVerdict(finalMessage: string | null): RunPhaseCandidate["verdict"] {
   if (!finalMessage) {
     return { verdict: "fail", summary: "No output produced." };
   }

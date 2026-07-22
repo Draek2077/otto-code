@@ -1,0 +1,198 @@
+= Orchestration — Concepts & Domain Model
+:description: The vocabulary, actors and lifecycles of the orchestration system, and the test for when an orchestration is worth its cost.
+
+== The nouns
+
+Terminology is load-bearing here: the wire, the code and the UI have historically used
+different words for the same thing, and `docs/glossary.md` binds the UI labels.
+
+[cols="1,1,3"]
+|===
+|UI term |Wire/code |Meaning
+
+|*Orchestration*
+|`run`
+|One execution instance. The Orchestrations page lists these. No user-facing surface ever
+says "Run" — the short name is frozen in the protocol for length, not for display.
+
+|*Graph*
+|`OrchestrationGraph`
+|The reusable, host-level template that an orchestration executes. Parameterised by
+declared inputs. Executing a graph mints a fresh orchestration.
+
+|*Node*
+|`GraphNode`
+|One unit of the graph. A capability node becomes a real Otto agent; control nodes are
+executed by the daemon itself and never spawn anything.
+
+|*Port*
+|`fromPort`/`toPort`
+|A named connection point on a node. Multi-port is what makes branching legible: a gate
+has `approved`/`rejected`, a check has `pass`/`fail`.
+
+|*Answers*
+|`graphInputs`
+|The fill-in values a user supplies when starting an orchestration, bound to the graph's
+declared inputs.
+
+|*Seat*
+|role → personality → model
+|_Who_ runs a node, resolved at execution start and then frozen.
+
+|*Gate*
+|`pause`
+|A point where the orchestration stops and waits for a human.
+|===
+
+Forbidden as UI labels: "workflow", "blueprint", "pipeline", "template" (as a noun for a
+graph), and "Run" as a heading.
+
+== The two flavours
+
+Both produce an orchestration; they differ only in who decides the shape.
+
+*AI orchestration* — the user supplies a prompt and parameters; a conductor agent
+declares a phase plan through `start_run` and the daemon executes it. Non-deterministic
+in structure, good when the subtasks genuinely cannot be predicted.
+
+*User orchestration* — the user draws a graph; the daemon executes it exactly as drawn.
+Deterministic in structure, and the subject of this document set. The long-term
+convergence is the AI flavour emitting graphs, at which point phases deprecate; that is
+explicitly not v1 work.
+
+== What the user controls
+
+The value of this system is entirely in what a person can fix *before* the work starts.
+There are five such decisions, and every subsystem in this set exists to serve one of
+them:
+
+. *Decomposition* — which subproblems exist and where their boundaries are. A single
+  agent re-derives this per run, differently each time.
+. *Isolation* — which work gets a clean context. A node is how a user says "this
+  exploration must not pollute the main thread".
+. *Sequencing* — what must be true before the next thing starts.
+. *Verification* — what "done" means, judged by something that is not the author.
+. *Authority* — where a human must approve, and what each participant may touch.
+
+Parallelism is _not_ on that list. It is a consequence, not a goal.
+
+== The cost test
+
+A multi-agent system costs roughly an order of magnitude more tokens than a single chat
+turn, and a large share of any measured quality gain is attributable to spending more
+compute rather than to structure. So the honest gate before drawing a graph is:
+
+[IMPORTANT]
+====
+*Would a single agent get this wrong in a way the structure prevents?* If the answer is
+no, the graph is a slower, more expensive chat. If the graph cannot state how it will be
+verified, it is probably not worth running at all.
+====
+
+Four shapes reliably pass that test: directed research (disjoint angles, then synthesis),
+researched implementation (research → plan → human gate → implement → verify), feature
+breakout (one unit of work per planned item), and adversarial evaluation (N attempts, one
+judge). Each is documented as a golden graph in
+link:18-orchestration-rollout.html[Rollout & Testing].
+
+== The safety rule that shapes the engine
+
+Read-heavy work parallelises safely. Write-heavy work does not — not because of file
+collisions alone (worktrees fix those) but because *every action an agent takes encodes
+an implicit decision*, and parallel agents cannot see each other's. Two agents told to
+build the same feature will disagree about things nobody specified, and the disagreement
+surfaces only at integration.
+
+This produces a rule the engine enforces structurally rather than advising in prose:
+
+* *Parallelise gathering.* Fan-out is safe when the nodes only read.
+* *Converge for deciding.* Anything whose parts must cohere runs through a single node,
+  or through an explicit brief that fixes the decisions in advance.
+
+== Lifecycle
+
+A graph and an orchestration have separate lifecycles that meet at execution.
+
+[mermaid]
+----
+flowchart LR
+  subgraph Design["Design time"]
+    A["Graph authored<br/>in the designer"] --> B["Saved to the<br/>host graph store"]
+    B --> C{"Valid?"}
+    C -->|"problems"| A
+  end
+  subgraph Run["Execution"]
+    C -->|"yes"| D["Answers collected<br/>in the dialog"]
+    D --> E["Compiled:<br/>seats snapshotted,<br/>run projected"]
+    E --> F["Running"]
+    F --> G{"Gate?"}
+    G -->|"yes"| H["Paused —<br/>awaiting a human"]
+    H --> F
+    G -->|"no"| I["Done / failed /<br/>canceled"]
+  end
+----
+
+Two properties of that picture matter downstream. *Saving is never blocked by validation*
+— a half-built graph is a normal thing to save; validation only gates execution. And
+*compilation happens once, at start*: seat resolution is frozen there, so editing a team
+mid-run cannot shear a running orchestration.
+
+== How this sits on existing Otto systems
+
+Nothing in this feature invents a parallel universe. Every node's agent is an ordinary
+Otto agent, which is why the expensive parts came free:
+
+[cols="1,2"]
+|===
+|Existing system |What orchestration gets from it
+
+|Agent runtime (`AgentManager`)
+|Spawn, supervision, whole-subtree settle detection, cancellation
+
+|Personalities & teams
+|Seat resolution — a node names a _role_, the active team names the member
+
+|Workspaces & worktrees
+|The execution environment, and per-node write isolation
+
+|Otto tool catalog + permission modes
+|Per-node authority, enforced at spawn rather than by prompt
+
+|Runs (`RunService`, `RunStore`)
+|Persistence, status vocabulary, the gate mechanism, the Orchestrations page
+
+|Accounting (activity stats, usage ledger)
+|Cost roll-up with no new plumbing — children are ordinary agents
+
+|Visualizer, chat, mobile client
+|Monitoring, from anywhere, with no orchestration-specific work
+|===
+
+The single genuinely new runtime concept is the *graph engine*: a scheduler that holds
+barriers, propagates values between nodes, and decides what runs next. Everything else is
+composition.
+
+== Invariants
+
+. There is exactly one orchestrator (root) node per graph; it is not deletable and is
+  restored immediately if removed.
+. The root is an entry point: it receives the orchestration's own prompt automatically
+  and has no input port.
+. Agents never know they are waiting. All barrier state is held by the daemon; a node's
+  agent is created only once every input is satisfied.
+. Seat resolution is snapshotted at execution start and never re-read mid-run.
+. Tool authority is applied at spawn. No node is asked in prose to refrain from
+  something it has been given.
+. An orchestration always lands in a chat — the root agent's — watchable from any device.
+. A graph with validation problems can always be saved and never be executed.
+
+== Change checklist
+
+When changing anything in this system, confirm:
+
+* [ ] The glossary still matches the UI labels used (`docs/glossary.md`).
+* [ ] Any new node kind states which of the five user decisions it serves.
+* [ ] Any new parallelism respects gather-vs-decide.
+* [ ] Any new field on the wire is optional and has an old-client answer
+  (link:12-orchestration-data-model.html[Data Model]).
+* [ ] The cost test is still answerable for the shapes the change enables.

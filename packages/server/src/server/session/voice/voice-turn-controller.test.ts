@@ -531,4 +531,33 @@ describe("voice turn controller", () => {
     expect(harness.sttSessions).toHaveLength(2);
     expect(harness.sttSessions[1]?.connectCount).toBe(1);
   });
+
+  it("recreates a torn-down STT session on the next utterance instead of wedging", async () => {
+    const harness = createControllerHarness();
+
+    await harness.controller.start();
+    expect(harness.sttSessions).toHaveLength(1);
+
+    // First error reconnects (session #2); a second error in the same turn gives
+    // up and leaves the controller with no STT session.
+    harness.sttSessions[0]?.emitError(new Error("boom-1"));
+    await settleSerialQueue();
+    expect(harness.sttSessions).toHaveLength(2);
+    harness.sttSessions[1]?.emitError(new Error("boom-2"));
+    await settleSerialQueue();
+    expect(harness.sttSessions[1]?.closeCount).toBe(1);
+
+    // The next utterance rebuilds a session (session #3) and actually transcribes.
+    harness.detector.emit("speech_started");
+    await settleSerialQueue();
+    expect(harness.sttSessions).toHaveLength(3);
+    expect(harness.sttSessions[2]?.connectCount).toBe(1);
+
+    await harness.controller.appendClientChunk({
+      audioBase64: Buffer.from([9, 8, 7, 6]).toString("base64"),
+      format: "audio/pcm;rate=16000;bits=16",
+    });
+    await settleSerialQueue();
+    expect(harness.sttSessions[2]?.appendedChunks).toEqual([Buffer.from([9, 8, 7, 6])]);
+  });
 });
