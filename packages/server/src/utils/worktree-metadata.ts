@@ -75,11 +75,9 @@ export function normalizeBaseRefName(input: string): string {
   return trimmed;
 }
 
-export function writeOttoWorktreeMetadata(
-  worktreeRoot: string,
-  options: { baseRefName: string },
-): void {
-  const baseRefName = normalizeBaseRefName(options.baseRefName);
+/** Normalizes and rejects anything git could read as a revision expression or a path escape. */
+export function normalizeAndValidateBaseRefName(input: string): string {
+  const baseRefName = normalizeBaseRefName(input);
   if (baseRefName === "HEAD") {
     throw new Error("Base branch cannot be HEAD");
   }
@@ -89,6 +87,14 @@ export function writeOttoWorktreeMetadata(
   if (!/^[0-9A-Za-z._/-]+$/.test(baseRefName)) {
     throw new Error(`Invalid base branch: ${baseRefName}`);
   }
+  return baseRefName;
+}
+
+export function writeOttoWorktreeMetadata(
+  worktreeRoot: string,
+  options: { baseRefName: string },
+): void {
+  const baseRefName = normalizeAndValidateBaseRefName(options.baseRefName);
 
   const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
   mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
@@ -170,6 +176,30 @@ export function markOttoWorktreeFirstAgentBranchAutoNameAttempted(
   };
   writeOttoWorktreeMetadataFile(worktreeRoot, next);
   return next;
+}
+
+/**
+ * Repoints an existing worktree at a different base branch, keeping every other v2 field
+ * (`writeOttoWorktreeMetadata` rewrites the file as a fresh v1 record and would drop them).
+ * The base is a single source of truth: diff, ahead/behind, merge-into-base and PR creation
+ * all read it, so a stacked branch retargeted at its parent stays consistent everywhere.
+ */
+export function setOttoWorktreeBaseRefName(worktreeRoot: string, baseRefName: string): string {
+  const normalized = normalizeAndValidateBaseRefName(baseRefName);
+  const current = readOttoWorktreeMetadata(worktreeRoot);
+  if (!current) {
+    throw new Error("Cannot change base branch: missing Otto worktree metadata");
+  }
+
+  writeOttoWorktreeMetadataFile(worktreeRoot, {
+    version: 2,
+    baseRefName: normalized,
+    ...(current.version === 2 && current.firstAgentBranchAutoName
+      ? { firstAgentBranchAutoName: current.firstAgentBranchAutoName }
+      : {}),
+    ...(current.version === 2 && current.runtime ? { runtime: current.runtime } : {}),
+  });
+  return normalized;
 }
 
 export function readOttoWorktreeMetadata(worktreeRoot: string): OttoWorktreeMetadata | null {

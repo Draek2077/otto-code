@@ -86,6 +86,7 @@ import type {
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
   WorkspaceArchivePreflightResponse,
+  WorktreeBaseRefSetResponse,
   WorktreeReattachListResponse,
   WorktreeReattachResponse,
   WorktreeReattachTarget,
@@ -897,6 +898,7 @@ type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ProjectAddPayload = ProjectAddResponse["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
 type WorkspaceArchivePreflightPayload = WorkspaceArchivePreflightResponse["payload"];
+type WorktreeBaseRefSetPayload = WorktreeBaseRefSetResponse["payload"];
 type WorktreeReattachListPayload = WorktreeReattachListResponse["payload"];
 type WorktreeReattachPayload = WorktreeReattachResponse["payload"];
 type WorkspaceSetupStatusPayload = WorkspaceSetupStatusResponseMessage["payload"];
@@ -2179,6 +2181,25 @@ export class DaemonClient {
         workspaceId,
       },
       responseType: "workspace.archive.preflight.response",
+    });
+  }
+
+  // Repoint a worktree-backed workspace's base branch (what Changes diffs against,
+  // and what merge-into-base / PR creation target). Pass null to reset to the
+  // repository default. Gated by server_info.features.worktreeDiffBase.
+  async setWorktreeBaseRef(
+    workspaceId: string,
+    baseRef: string | null,
+    requestId?: string,
+  ): Promise<WorktreeBaseRefSetPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "worktree.baseRef.set.request",
+        workspaceId,
+        baseRef,
+      },
+      responseType: "worktree.baseRef.set.response",
     });
   }
 

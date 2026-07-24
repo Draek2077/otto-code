@@ -30,7 +30,7 @@ Seven folders existed with no row in the table at all: `agent-orchestration`,
 
 Confirmed genuinely unbuilt by grep (zero hits in `packages/*/src`): steer-queue
 (`delivery.*queue`), personality-memory (`remember_`), computer-use (`computerUse`),
-diff-base (`diffBase`), preview-file-tabs (`isPreviewTab`), git-hosting GitLab
+preview-file-tabs (`isPreviewTab`), git-hosting GitLab
 (`gitlab`), visualizer Arena (`arenaMode`), subagent-liveness 6b/6c (`toolUseCount`).
 Mermaid: one hit repo-wide, so file-rendering's headline item is untouched.
 
@@ -87,7 +87,7 @@ This is where the queue starts.
 | ----------------------------------- | :---: | :--: | :----: | :--: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Push-disabled-after-commit**      |   1   |  2   | **4**  |  0   | You commit and cannot push. A core git workflow is dead on GitHub remotes. Already root-caused to exact line ranges in [remaining-work.md](remaining-work.md) — pure execution           |
 | **App-wide FPS degrades over time** |   3   |  4   | **4**  |  1   | The app gets worse the longer it stays open — brutal for a tool you leave running all day. Measure first; "no resource reporting at all" is the instrument. Underrated in v1             |
-| **diff-base**                       |   2   |  2   | **4**  |  0   | Changes view fills with other teams' merged work on a stacked branch. The feature is effectively unusable there. Field report, correctness bug                                           |
+| ~~**diff-base**~~ _(shipped)_       |   2   |  2   | **4**  |  0   | Was: Changes view fills with other teams' merged work on a stacked branch. Shipped 2026-07-24 — fork-point base resolution + per-worktree base override. See `docs/changes-view.md`      |
 | **Go-to-definition (client half)**  |   2   |  2   | **4**  |  0   | IDE table stakes, and the daemon `code.symbols` RPC **already shipped** — the client just never calls it. Best impact-per-hour on the board. `projects/todos/editor-go-to-definition.md` |
 | **steer-queue**                     |   2   |  3   | **4**  |  1   | Changes every supervision interaction: today any prompt to a busy agent clobbers its turn. Absorbs "queued messages should merge into one send"                                          |
 | Composer paste overflow             |   1   |  1   |   3    |  0   | Pasting a large block pushes Send off-screen. You paste code all day                                                                                                                     |
@@ -223,7 +223,9 @@ hour on the board, and all of it independently shippable.
 
 1. **Push-disabled-after-commit** — root-caused; pure execution
 2. **Go-to-definition, client half** — daemon RPC already shipped, best impact-per-hour
-3. **diff-base** — Changes view unusable on stacked branches
+3. ~~**diff-base**~~ — **shipped 2026-07-24** (`docs/changes-view.md`); only the
+   auto-fetch decision and non-worktree overrides remain, both parked in
+   `projects/diff-base/`
 4. **Composer paste overflow** — trivial fix, hit constantly
 5. **Mermaid** — via file-rendering; lights up chat + viewer together
 

@@ -199,7 +199,10 @@ import {
 } from "./workspace-archive-service.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
-import { renameCurrentBranch as renameCurrentBranchDefault } from "../utils/checkout-git.js";
+import {
+  renameCurrentBranch as renameCurrentBranchDefault,
+  setCheckoutBaseRef,
+} from "../utils/checkout-git.js";
 import {
   createGitMutationService,
   type GitMutationService,
@@ -2588,6 +2591,8 @@ export class Session {
         return this.handleArchiveWorkspaceRequest(msg);
       case "workspace.archive.preflight.request":
         return this.handleWorkspaceArchivePreflightRequest(msg);
+      case "worktree.baseRef.set.request":
+        return this.handleWorktreeBaseRefSetRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
       case "project.links.list.request":
@@ -6652,6 +6657,64 @@ export class Session {
           requestId: request.requestId,
           workspaceId: request.workspaceId,
           detection: null,
+          error: message,
+        },
+      });
+    }
+  }
+
+  private async handleWorktreeBaseRefSetRequest(
+    request: Extract<SessionInboundMessage, { type: "worktree.baseRef.set.request" }>,
+  ): Promise<void> {
+    try {
+      const existing = await this.workspaceRegistry.get(request.workspaceId);
+      if (!existing) {
+        throw new Error(`Workspace not found: ${request.workspaceId}`);
+      }
+
+      const result = await setCheckoutBaseRef(existing.cwd, request.baseRef, {
+        ottoHome: this.ottoHome,
+        worktreesRoot: this.worktreesRoot,
+        logger: this.sessionLogger,
+      });
+
+      this.emit({
+        type: "worktree.baseRef.set.response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          baseRef: result.baseRef,
+          isDefault: result.isDefault,
+          error: null,
+        },
+      });
+
+      // The stored base feeds ahead/behind, shortstat and the diff, so the snapshot
+      // the client is holding is stale the moment the write lands.
+      void this.workspaceGitService
+        .getSnapshot(existing.cwd, {
+          force: true,
+          reason: "worktree.baseRef.set",
+        })
+        .catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, cwd: existing.cwd },
+            "Background snapshot refresh failed after base branch change",
+          );
+        });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to set base branch";
+      this.sessionLogger.warn(
+        { err: error, workspaceId: request.workspaceId },
+        "Worktree base branch change failed",
+      );
+      this.emit({
+        type: "worktree.baseRef.set.response",
+        payload: {
+          requestId: request.requestId,
+          workspaceId: request.workspaceId,
+          baseRef: null,
+          isDefault: false,
           error: message,
         },
       });

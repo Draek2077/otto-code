@@ -3454,6 +3454,19 @@ export const WorkspaceArchivePreflightRequestSchema = z.object({
   workspaceId: z.string(),
 });
 
+// Repoint a worktree-backed workspace's base branch — what the Changes view diffs
+// against, and what merge-into-base and PR creation target. On a stacked branch the
+// useful base is the parent branch, not the repo default, the same way a forge PR
+// carries an explicit base. A null baseRef resets to the repository default branch.
+// COMPAT(worktreeDiffBase): added in v0.6.8.
+export const WorktreeBaseRefSetRequestSchema = z.object({
+  type: z.literal("worktree.baseRef.set.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  // Branch name, with or without an `origin/` prefix; null resets to the default branch.
+  baseRef: z.string().nullable(),
+});
+
 // Create a new workspace record. Unlike open_project, this never deduplicates by
 // directory: it always produces a fresh workspace. The source discriminates
 // between an existing local directory and a newly created otto worktree.
@@ -4013,6 +4026,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectAddRequestSchema,
   ArchiveWorkspaceRequestSchema,
   WorkspaceArchivePreflightRequestSchema,
+  WorktreeBaseRefSetRequestSchema,
   WorktreeReattachListRequestSchema,
   WorktreeReattachRequestSchema,
   WorkspaceCreateRequestSchema,
@@ -4338,6 +4352,12 @@ export const ServerInfoStatusPayloadSchema = z
         worktreeArchiveBranchCleanup: z.boolean().optional(),
         // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeReattach: z.boolean().optional(),
+        // Set when the daemon can repoint a worktree's stored base branch
+        // (worktree.baseRef.set.*). Without it the client renders the base as a
+        // read-only "vs <base>" label — there is no client-side override, since only
+        // the daemon can write the worktree's metadata.
+        // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        worktreeDiffBase: z.boolean().optional(),
         // Set when the daemon persists the host-level hideMergeIntoBaseAction
         // workspace policy (read/written via the daemon config RPCs). Without
         // it the client hides the Workspaces toggle, since patching the field
@@ -5003,6 +5023,20 @@ export const WorkspaceArchivePreflightResponseSchema = z.object({
     workspaceId: z.string(),
     // Null when detection failed (see error) or the workspace is gone.
     detection: WorktreeArchiveBranchDetectionSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+// COMPAT(worktreeDiffBase): added in v0.6.8.
+export const WorktreeBaseRefSetResponseSchema = z.object({
+  type: z.literal("worktree.baseRef.set.response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    // The stored base branch after the write; null when the write failed.
+    baseRef: z.string().nullable(),
+    // The stored base is the repository default branch (no stacked-branch override).
+    isDefault: z.boolean(),
     error: z.string().nullable(),
   }),
 });
@@ -7034,6 +7068,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LegacyOpenInEditorResponseMessageSchema,
   ArchiveWorkspaceResponseMessageSchema,
   WorkspaceArchivePreflightResponseSchema,
+  WorktreeBaseRefSetResponseSchema,
   WorktreeReattachListResponseSchema,
   WorktreeReattachResponseSchema,
   FetchAgentResponseMessageSchema,
@@ -7289,6 +7324,8 @@ export type WorkspaceArchivePreflightResponse = z.infer<
   typeof WorkspaceArchivePreflightResponseSchema
 >;
 export type WorktreeArchiveBranchDetection = z.infer<typeof WorktreeArchiveBranchDetectionSchema>;
+export type WorktreeBaseRefSetRequest = z.infer<typeof WorktreeBaseRefSetRequestSchema>;
+export type WorktreeBaseRefSetResponse = z.infer<typeof WorktreeBaseRefSetResponseSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
 export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema
