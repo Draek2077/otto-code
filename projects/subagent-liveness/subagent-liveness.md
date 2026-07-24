@@ -1,7 +1,7 @@
 # Charter: Subagent liveness signals (subagents-cleanup Phase 6)
 
 **Status:** Phase 6a (elapsed time) SHIPPED uncommitted 2026-07-13, client-only. Phases 6b/6c not started (daemon work).
-**Lineage:** Extends the shipped subagents-cleanup track (Items 1–6 done; that project has shipped and its durable rules are folded into [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md#the-subagents-track)). Same track/row/tab surface — this adds per-row liveness, not new structure.
+**Lineage:** Extends the shipped subagents-cleanup track (Items 1–6 done; that project has shipped and its durable rules are folded into [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track)). Same track/row/tab surface — this adds per-row liveness, not new structure.
 
 ## Why
 
@@ -111,5 +111,5 @@ Build sequence (mirror the Phase 4 `cumulativeTokens` accumulator precisely):
   (tracked in [observed-subagents/provider-adapters.md](../observed-subagents/provider-adapters.md)).
 - **Rebuild:** 6b/6c touch the daemon → `npm run build:server` + daemon restart to serve.
 - **Fold-in on ship:** when 6b/6c land, fold the durable row-anatomy facts into
-  [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md) (subagents track section — where the
+  [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md) (subagents track section — where the
   shipped subagents-cleanup rules already live), then delete this folder.

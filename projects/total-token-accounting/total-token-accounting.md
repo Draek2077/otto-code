@@ -2,7 +2,7 @@
 
 **Status:** Deep-dive audit in progress — charter drafted 2026-07-16, audit findings added 2026-07-17.
 **Lineage:** Builds on the universal `cumulativeTokens` accumulator (shipped 2026-07-13, any
-provider/spawn path — see [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md)) and the subagents
+provider/spawn path — see [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md)) and the subagents
 track's per-row/header token readouts.
 
 ## 2026-07-17 audit — why the numbers feel wrong (they mostly are)
@@ -138,5 +138,5 @@ descendants.cumulativeTokens` (walk `parentAgentId`, both observed and attended 
 - Steps 1–2 are client-only. Step 3 touches the vendor tree (OTTO-PATCHES.md entry + bundle rebuild)
   or adapter only, depending on the chosen shape. Step 4 is daemon + protocol (additive).
 - Fold-in on ship: the "context vs total" vocabulary into [docs/glossary.md](../../docs/glossary.md),
-  accounting mechanics into [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md), then delete this
+  accounting mechanics into [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md), then delete this
   folder.

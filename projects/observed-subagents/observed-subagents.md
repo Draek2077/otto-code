@@ -18,7 +18,7 @@ Known v1 limits: rows are ephemeral projections — daemon restart/client reconn
 
 Bridge the gap between an agent's **provider-managed subagents** (spawned by the CLI/SDK inside the agent's own process — Claude's `Task` tool, "ultracode" fan-out, etc.) and Otto's ability to **track and watch each of them separately**. Today Otto flattens all of a Claude subagent's activity into a single log string inside the parent's `Task` tool-call row and drops its failure signals entirely. This doc defines how to promote each provider-managed subagent to a first-class, separately-watchable — but **read-only / unattended** — entry in the parent's subagents track.
 
-Read [agent-lifecycle.md](./agent-lifecycle.md) first: it defines the existing **Otto-native** subagent (the thing we are _not_ changing) and the track/tab/pane/archive machinery we are reusing.
+Read [chat-lifecycle.md](./chat-lifecycle.md) first: it defines the existing **Otto-native** subagent (the thing we are _not_ changing) and the track/tab/pane/archive machinery we are reusing.
 
 ---
 
@@ -187,7 +187,7 @@ Set expectations before building — these bound what "bridge the gap" can deliv
 
 - **Level-signal reconcile shipped:** `system/background_tasks_changed` (full live-set, REPLACE
   semantics) now settles background rows whose `task_notification` edge was lost — see
-  "Edge events vs. the native level signal" in [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md).
+  "Edge events vs. the native level signal" in [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md).
   The edge stream stays the provider-neutral spine.
 - **Structured Task output (queued incorporation):** user messages carrying a Task tool*result now
   expose `tool_use_result` typed as `AgentToolCompletedOutput` — the subagent's final report

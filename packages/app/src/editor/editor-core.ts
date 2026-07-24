@@ -172,21 +172,32 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: spec.cursor,
+      borderLeftWidth: `${spec.cursorWidth}px`,
     },
     "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
       {
         backgroundColor: spec.selectionBackground,
       },
-    // The active line paints its own opaque background over the content layer,
-    // so it has to redraw the ruler or the stripe would break wherever the
-    // cursor sits. `.cm-line` shares the content's x origin (the content box
-    // has no horizontal padding), so the same gradient lands in the same place.
+    // The stripe is the line box itself — a plain background on `.cm-line`, the
+    // way CM6 ships it. That is what keeps it exactly the height of the row and
+    // exactly in step with the gutter: it IS the row, rather than a rectangle
+    // computed to match one.
+    //
+    // The catch is that `drawSelection` renders into `.cm-selectionLayer` at a
+    // NEGATIVE z-index — behind the content — so an OPAQUE line background hides
+    // the selection on the caret's line completely. `activeLineBackground` is
+    // therefore translucent (see editor-theme.ts), which is exactly why CM6's own
+    // default is `#cceeff44`. Keep it translucent: an opaque value here silently
+    // eats the selection, and moving the stripe into its own layer to dodge that
+    // is what broke the alignment (both were tried; see docs/text-editor.md).
+    //
+    // The ruler needs no redraw here for the same reason — the gradient on
+    // `.cm-content` shows through.
     ".cm-activeLine": {
       backgroundColor: spec.activeLineBackground,
-      ...rulerBackground(spec),
     },
     ".cm-gutters": {
-      backgroundColor: spec.background,
+      backgroundColor: spec.gutterBackground,
       color: spec.gutterForeground,
       border: "none",
       borderRight: `1px solid ${spec.gutterBorder}`,
@@ -199,11 +210,19 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       backgroundColor: spec.activeLineBackground,
       color: spec.gutterActiveForeground,
     },
+    // Outline, not border: an inline mark spanning a match must not add width
+    // and reflow the line under it. `borderRadius` rounds the fill; the outline
+    // is what makes a hit findable when the fill lands on a saturated syntax
+    // color. The active hit is deliberately a big step up, not a nudge — this
+    // is the "which one am I on" signal while stepping through results.
     ".cm-searchMatch": {
       backgroundColor: spec.searchMatchBackground,
+      outline: `1px solid ${spec.searchMatchBorder}`,
+      borderRadius: "2px",
     },
     ".cm-searchMatch.cm-searchMatch-selected": {
       backgroundColor: spec.activeSearchMatchBackground,
+      outline: `2px solid ${spec.activeSearchMatchBorder}`,
     },
     // The find UI is the React strip; CM6's own panel stays hidden (it still
     // has to be "open" for match decorations to render).
@@ -323,6 +342,60 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     options.onDirtyChanged?.(next);
   };
 
+  // Reveal the primary selection by scrolling to its ACTUAL rendered position.
+  //
+  // Why not CM6's own `scrollIntoView`: in this embedded editor CM6's scroll
+  // pass lands the scroller at the wrong offset — measured at ~175px (≈10 lines)
+  // past a search match, with no scrollable ancestor involved, so it is CM6's
+  // height-map estimate for the jump, not a feedback loop. It also does not
+  // self-correct, so the target sits just out of view. This bit both typing at
+  // an off-screen caret and stepping through search matches.
+  //
+  // `coordsAtPos` returns the target's real DOM rectangle (ground truth,
+  // independent of the height map) once the line is rendered — which it is after
+  // CM6's own pass, since CM6 lands close enough to render the region. We read
+  // that rect on the next frame and nudge `.cm-scroller` directly (via
+  // `setScrollTopSuppressed`, which also keeps split-view sync from echoing) so
+  // the target sits a comfortable margin inside the viewport. A no-op when it is
+  // already within that band, so it never fights the user mid-type. Falls back
+  // to the height map only when the line is somehow unrendered (a very far jump).
+  let revealFrame: number | null = null;
+  const revealSelectionInView = (v: EditorView): void => {
+    const scroller = v.scrollDOM;
+    if (scroller.clientHeight <= 0) {
+      return;
+    }
+    const head = v.state.selection.main.head;
+    const coords = v.coordsAtPos(head);
+    const margin = Math.min(80, scroller.clientHeight / 4);
+    if (!coords) {
+      const block = v.lineBlockAt(head);
+      setScrollTopSuppressed(block.top - margin);
+      return;
+    }
+    const rect = scroller.getBoundingClientRect();
+    let delta = 0;
+    if (coords.top < rect.top + margin) {
+      delta = coords.top - (rect.top + margin);
+    } else if (coords.bottom > rect.bottom - margin) {
+      delta = coords.bottom - (rect.bottom - margin);
+    }
+    if (Math.abs(delta) > 0.5) {
+      setScrollTopSuppressed(scroller.scrollTop + delta);
+    }
+  };
+  const scheduleReveal = (v: EditorView): void => {
+    if (typeof requestAnimationFrame !== "function" || revealFrame !== null) {
+      return;
+    }
+    revealFrame = requestAnimationFrame(() => {
+      revealFrame = null;
+      if (!destroyed) {
+        revealSelectionInView(v);
+      }
+    });
+  };
+
   const state = EditorState.create({
     doc: options.doc,
     extensions: [
@@ -375,6 +448,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         }
         if (update.docChanged && !isSetDoc) {
           setDirty(true);
+          scheduleReveal(update.view);
         }
         if (findActive && (update.docChanged || update.selectionSet)) {
           emitMatchInfo(update.view);
@@ -510,14 +584,20 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       view.dispatch({ effects: setSearchQuery.of(buildFindQuery(find)) });
       emitMatchInfo(view);
     },
+    // CM6's own scroll-to-match lands the scroller at the wrong offset here (see
+    // revealSelectionInView), so re-reveal the match by its real position on the
+    // next frame, after CM6 has moved the selection and rendered the match line.
     findNext: () => {
       findNext(view);
+      scheduleReveal(view);
     },
     findPrevious: () => {
       findPrevious(view);
+      scheduleReveal(view);
     },
     replaceNext: () => {
       replaceNext(view);
+      scheduleReveal(view);
     },
     replaceAll: () => {
       replaceAll(view);
@@ -532,6 +612,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         selection: { anchor: lineInfo.from },
         effects: EditorView.scrollIntoView(lineInfo.from, { y: "center" }),
       });
+      scheduleReveal(view);
       focusPersistently();
     },
     selectLines: (startLine, endLine) => {
@@ -546,6 +627,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         selection: { anchor: toInfo.to, head: fromInfo.from },
         effects: EditorView.scrollIntoView(fromInfo.from, { y: "center" }),
       });
+      scheduleReveal(view);
       focusPersistently();
     },
     getScrollMetrics: () => readScrollMetrics(),
@@ -578,6 +660,10 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       if (scrollFrame !== null) {
         cancelAnimationFrame(scrollFrame);
         scrollFrame = null;
+      }
+      if (revealFrame !== null) {
+        cancelAnimationFrame(revealFrame);
+        revealFrame = null;
       }
       view.scrollDOM.removeEventListener("scroll", handleScroll);
       view.destroy();

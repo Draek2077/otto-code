@@ -389,17 +389,35 @@ const FLAMES: SweepTextEffectSpec = {
 // The alphabet is deliberately ASCII: katakana is the iconic Matrix rain, but
 // nothing guarantees the label font has those glyphs on every platform, and a
 // row of tofu boxes is worse than no reference at all.
+//
+// Within ASCII it is weighted to read like prose rather than like a licence
+// key: mostly lowercase, a fifth of the letters uppercase, with digits and
+// symbols salted through. `pickGlyph` samples the string uniformly, so the
+// weighting *is* the repetition below — 4 copies of a–z against 1 of A–Z gives
+// the 80/20 letter split.
 // ---------------------------------------------------------------------------
+
+const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
+const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const DIGITS = "0123456789";
+const SYMBOLS = "#$%&*+=<>|/\\{}[]@!?~^-_:;.,";
+
+// 104 lowercase : 26 uppercase : 20 digits : 27 symbols ≈ 59% / 15% / 11% / 15%.
+// Letters dominate (prose-like), and the 80/20 case split holds within them.
+const MATRIX_ALPHABET = LOWERCASE.repeat(4) + UPPERCASE + DIGITS.repeat(2) + SYMBOLS;
 
 const MATRIX: GlyphTextEffectSpec = {
   kind: "glyph",
   headColor: "#c9ffc2",
   tailColor: "#35d94f",
-  cellWidth: 8,
+  // One character advance at fontSize.sm. Tighter than the glyph's natural
+  // advance on purpose — the columns should crowd, not sit in a dotted line.
+  cellWidth: 7,
   cycleSeconds: 2.4,
-  // ~(0.2 - 0.02) * 2.4 / 0.045 ≈ 10 columns lit at once.
-  staggerSeconds: 0.045,
-  scrambleAlphabet: "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ#$%&*+=<>|/\\{}[]",
+  // ~(0.2 - 0.02) * 2.4 / 0.027 ≈ 16 columns lit at once, so the strip reads as
+  // a band of rain rather than a handful of scattered glyphs.
+  staggerSeconds: 0.027,
+  scrambleAlphabet: MATRIX_ALPHABET,
 };
 
 // ---------------------------------------------------------------------------

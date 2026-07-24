@@ -77,7 +77,6 @@ import { ResizeHandle } from "@/components/resize-handle";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { confirmDialog, confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 import type { EditGate } from "@/projects/cross-project-open";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { Theme } from "@/styles/theme";
@@ -96,6 +95,11 @@ const SPLIT_DOC_SYNC_DEBOUNCE_MS = 250;
 
 const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+});
+// The alert glyph on a sync banner carries the banner's own tone — a muted grey
+// triangle on an amber bar reads as decoration rather than a warning.
+const warningIconColorMapping = (theme: Theme) => ({
+  color: theme.colors.statusWarningStrong,
 });
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
@@ -227,7 +231,7 @@ function EditorSyncBanners({
     <>
       {diskChange ? (
         <View style={styles.conflictBanner} testID="editor-disk-banner">
-          <ThemedTriangleAlert size={16} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedTriangleAlert size={16} uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>
             {diskChange.kind === "deleted"
               ? t("editor.diskChange.deletedMessage")
@@ -262,7 +266,7 @@ function EditorSyncBanners({
 
       {hasConflict ? (
         <View style={styles.conflictBanner} testID="editor-conflict-banner">
-          <ThemedTriangleAlert size={16} uniProps={foregroundMutedIconColorMapping} />
+          <ThemedTriangleAlert size={16} uniProps={warningIconColorMapping} />
           <Text style={styles.conflictText}>{t("editor.conflict.message")}</Text>
           <Button
             size="sm"
@@ -1332,14 +1336,8 @@ function resolveEffectiveMode(input: {
   mode: FileViewMode;
   editorAllowed: boolean;
   splitAllowed: boolean;
-  /** False for an out-of-project file whose edit warning hasn't been accepted. */
-  editUnlocked: boolean;
 }): FileViewMode {
   if (!input.editorAllowed) {
-    return "preview";
-  }
-  if (!input.editUnlocked) {
-    // Gated file: stays in preview until the user accepts the edit warning.
     return "preview";
   }
   if (input.mode === "split" && !input.splitAllowed) {
@@ -1367,36 +1365,24 @@ export function FileTabPane({
    *  action in the existing bar instead of stacking a second one above it. */
   toolbarLeadingSlot?: ReactNode;
 }) {
-  const { t } = useTranslation();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
-  // A warning must be accepted before editing an out-of-project file. The
-  // "other-project" warning is globally suppressible; "outside-project" always
-  // warns (no suppress). Reading the suppress flag reactively so accepting the
-  // checkbox unlocks other-project files immediately.
-  const suppressOtherProject = useEditorPrefsStore((state) => state.suppressOutOfProjectWarning);
-  const gateActive =
-    editGate.kind === "outside-project" ||
-    (editGate.kind === "other-project" && !suppressOtherProject);
-
-  // Rendered formats (markdown, images, binaries) open in preview; plain
-  // text and code open straight in the editor. Out-of-project files default to
-  // preview (editing is opt-in via the gate). The per-file memory wins, but the
-  // effective-mode clamp still forces preview until the gate is accepted.
+  // Editing an out-of-project file is no longer gated behind a confirm dialog —
+  // it just works, with a persistent red banner making the trade-off plain (the
+  // file is outside this project, so its edits are not part of the agent's
+  // context and not part of this workspace's Git changes). Rendered formats
+  // (markdown, images, binaries) still open in preview; plain text and code
+  // open straight in the editor, in-project or not.
   const { mode, setMode } = useFileViewMode({
     persistenceKey,
     path: location.path,
-    defaultMode: gateActive ? "preview" : defaultFileViewMode(location.path),
+    defaultMode: defaultFileViewMode(location.path),
   });
   const canEdit = useTextEditorFeature(serverId);
   const isCompact = useIsCompactFormFactor();
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
-  // Per-tab acceptance of the edit warning — lives until the tab unmounts
-  // (closes), so reopening a gated file warns again.
-  const [editOverridden, setEditOverridden] = useState(false);
   const controllerRef = useRef<EditorController | null>(null);
 
-  const editUnlocked = !gateActive || editOverridden;
   // Until the first read reports back, trust the remembered mode: a file that
   // was in editor view last time is a text file until proven otherwise.
   const editorAllowed = canEdit && (fileInfo === null || fileInfo.kind === "text");
@@ -1405,49 +1391,12 @@ export function FileTabPane({
     mode,
     editorAllowed,
     splitAllowed,
-    editUnlocked,
   });
 
   const otherProjectName = editGate.kind === "other-project" ? editGate.projectName : null;
-  const requestEditUnlock = useCallback(async (): Promise<boolean> => {
-    if (editGate.kind === "outside-project") {
-      return confirmDialog({
-        title: t("editor.outOfProject.editOutsideTitle"),
-        message: t("editor.outOfProject.editOutsideMessage"),
-        confirmLabel: t("editor.outOfProject.editConfirm"),
-        cancelLabel: t("editor.cancel"),
-        destructive: true,
-      });
-    }
-    const { confirmed, checkboxChecked } = await confirmDialogWithCheckbox({
-      title: t("editor.outOfProject.editOtherTitle"),
-      message: t("editor.outOfProject.editOtherMessage", {
-        project: otherProjectName ?? "",
-      }),
-      confirmLabel: t("editor.outOfProject.editConfirm"),
-      cancelLabel: t("editor.cancel"),
-      checkboxLabel: t("editor.outOfProject.editOtherSuppress"),
-    });
-    if (confirmed && checkboxChecked) {
-      useEditorPrefsStore.getState().setSuppressOutOfProjectWarning(true);
-    }
-    return confirmed;
-  }, [editGate.kind, otherProjectName, t]);
 
   const handleModeChange = useCallback(
     (next: FileViewMode) => {
-      // Switching into an editable mode on a gated file requires accepting the
-      // warning first; a rejection leaves the mode unchanged (stays in preview).
-      if ((next === "editor" || next === "split") && gateActive && !editOverridden) {
-        void (async () => {
-          const accepted = await requestEditUnlock();
-          if (accepted) {
-            setEditOverridden(true);
-            setMode(next);
-          }
-        })();
-        return;
-      }
       const controller = controllerRef.current;
       if (next === "preview" && controller) {
         // The doc-sync mirror is debounced; flush the real buffer into the
@@ -1470,7 +1419,7 @@ export function FileTabPane({
       }
       setMode(next);
     },
-    [editOverridden, gateActive, location.path, requestEditUnlock, serverId, setMode, workspaceId],
+    [location.path, serverId, setMode, workspaceId],
   );
 
   const modeBarProps = useMemo<FileViewModeBarProps | null>(
@@ -1545,14 +1494,15 @@ export function FileTabPane({
 }
 
 // A file opened from another project — or from no project at all — shows a
-// persistent, centered banner: a constant reminder that edits here won't be
-// part of this project's commit (gated-multi-root). `projectName` is null for
-// a file outside every project.
+// persistent, red banner across the top of the pane: editing works, but this
+// is a constant reminder that the file is outside this workspace, so its edits
+// are not part of the agent's context and not part of this workspace's Git
+// changes. `projectName` is null for a file outside every project.
 function OutOfProjectBanner({ projectName }: { projectName: string | null }) {
   const { t } = useTranslation();
   return (
     <View style={styles.outOfProjectBanner} testID="file-out-of-project-banner">
-      <Text style={styles.outOfProjectText} numberOfLines={1}>
+      <Text style={styles.outOfProjectText} numberOfLines={2}>
         {projectName
           ? t("editor.outOfProject.badge", { project: projectName })
           : t("editor.outOfProject.badgeNoProject")}
@@ -1575,16 +1525,17 @@ const styles = StyleSheet.create((theme) => {
     outOfProjectBanner: {
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: theme.spacing[2],
+      paddingHorizontal: theme.spacing[3],
       paddingVertical: theme.spacing[1],
-      backgroundColor: theme.colors.surface2,
+      backgroundColor: theme.colors.statusDangerSurface,
       borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
+      borderBottomColor: theme.colors.statusDanger,
     },
     outOfProjectText: {
-      color: theme.colors.statusWarning,
+      color: theme.colors.statusDanger,
       fontSize: theme.fontSize.xs,
       fontWeight: "600",
+      textAlign: "center",
     },
     centerState: {
       flex: 1,
@@ -1687,6 +1638,12 @@ const styles = StyleSheet.create((theme) => {
     findToggleTextActive: {
       color: theme.colors.foreground,
     },
+    // Both sync banners say the same kind of thing — "the file on disk and your
+    // buffer disagree, and you must choose" — so both carry the semantic
+    // warning tint rather than reading as neutral chrome. `statusWarningSurface`
+    // is alpha, so it tints whichever surface the active theme provides instead
+    // of replacing it, and it is already calibrated per scheme (heavier on dark,
+    // lighter on near-white). See docs/design.md.
     conflictBanner: {
       flexDirection: "row",
       alignItems: "center",
@@ -1694,8 +1651,8 @@ const styles = StyleSheet.create((theme) => {
       paddingHorizontal: theme.spacing[2],
       paddingVertical: theme.spacing[1],
       borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
-      backgroundColor: theme.colors.surface1,
+      borderBottomColor: theme.colors.statusWarningMuted,
+      backgroundColor: theme.colors.statusWarningSurface,
     },
     conflictText: {
       flex: 1,

@@ -397,11 +397,11 @@ The changelog is shown on the Otto homepage. Write it for **end users**, not dev
 
   | Wrong (implementation-facing)                                                       | Right (user-facing)                                         |
   | ----------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-  | Switching layouts no longer remounts the active agent                               | Splitting a pane no longer loses your scroll position       |
+  | Switching layouts no longer remounts the active chat                                | Splitting a pane no longer loses your scroll position       |
   | Model, mode, and thinking pickers — searchable virtualized lists with fuzzy ranking | Mobile model selector is faster and more straightforward    |
   | Text inputs in mobile sheets no longer flicker while typing fast                    | Typing in mobile sheets no longer flickers                  |
   | Compact web sheets no longer crash when swiped to dismiss                           | Sheets on mobile web no longer crash when swiped to dismiss |
-  | Reduced re-renders in the agent list                                                | Agent list scrolls smoothly                                 |
+  | Reduced re-renders in the chat list                                                 | Chat list scrolls smoothly                                  |
   | Added debouncing to the search input                                                | Search results no longer lag behind typing                  |
 
   Test: would a non-developer reader recognise what changed when using the app? If they'd need an engineer to translate ("what's a remount?"), the bullet is still implementation-facing — rewrite it as the symptom the user experiences.

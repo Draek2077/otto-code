@@ -1,6 +1,6 @@
 # Terminal Activity Indicators
 
-Otto surfaces terminal activity as a tab indicator (the same "running" dot used by agents).
+Otto surfaces terminal activity as a tab indicator (the same "running" dot used by chats).
 
 ## Current state
 

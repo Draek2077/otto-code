@@ -149,6 +149,7 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "toggle-both-sidebars": "settings.shortcuts.help.toggleBothSidebars",
   "open-files-sidebar": "settings.shortcuts.help.openFilesSidebar",
   "open-search-sidebar": "settings.shortcuts.help.openSearchSidebar",
+  "find-in-files": "settings.shortcuts.help.findInFiles",
   "open-changes-sidebar": "settings.shortcuts.help.openChangesSidebar",
   "toggle-settings": "settings.shortcuts.help.toggleSettings",
   "toggle-focus": "settings.shortcuts.help.toggleFocusMode",
@@ -767,11 +768,17 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Open files sidebar ---
+  // editable:false so the editor's own Find (CodeMirror Mod-f) wins when a text
+  // surface is focused. General rule: an Otto shortcut that OVERLAPS an editor
+  // shortcut carries editable:false so the editor's version takes over while
+  // editing; non-overlapping Otto shortcuts keep working in the editor. (Today's
+  // editor shortcuts are Save/Find/Go-to-line — only Save+Find overlap. The
+  // planned "File Editor" section generalizes this via the registry.)
   {
     id: "sidebar-open-files-cmd-f-mac",
     action: "sidebar.open.files",
     combo: "Cmd+F",
-    when: { mac: true, commandCenter: false },
+    when: { mac: true, commandCenter: false, editable: false },
     help: {
       id: "open-files-sidebar",
       section: "panels",
@@ -783,7 +790,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "sidebar-open-files-ctrl-f-non-mac",
     action: "sidebar.open.files",
     combo: "Ctrl+F",
-    when: { mac: false, commandCenter: false, terminal: false },
+    when: { mac: false, commandCenter: false, terminal: false, editable: false },
     help: {
       id: "open-files-sidebar",
       section: "panels",
@@ -794,10 +801,13 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
   // --- Open search sidebar ---
   {
+    // editable:false so a focused editor keeps Cmd+S for Save (CodeMirror's own
+    // Mod-s handler) — the universal shortcut wins over "open search sidebar"
+    // whenever a text surface is focused. Cmd+Shift+F still opens search.
     id: "sidebar-open-search-cmd-s-mac",
     action: "sidebar.open.search",
     combo: "Cmd+S",
-    when: { mac: true, commandCenter: false },
+    when: { mac: true, commandCenter: false, editable: false },
     help: {
       id: "open-search-sidebar",
       section: "panels",
@@ -809,12 +819,41 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "sidebar-open-search-ctrl-s-non-mac",
     action: "sidebar.open.search",
     combo: "Ctrl+S",
-    when: { mac: false, commandCenter: false, terminal: false },
+    when: { mac: false, commandCenter: false, terminal: false, editable: false },
     help: {
       id: "open-search-sidebar",
       section: "panels",
       label: "Open search sidebar",
       keys: ["mod", "S"],
+    },
+  },
+  // Find in files, on the combo every other editor uses for it. Mod+F stays
+  // find-in-*file*: that one is bound inside CodeMirror's own keymap, so it
+  // only ever fires while an editor has focus and never shadows a global.
+  // Both of these are second bindings for the same action — the Mod+S pair
+  // above keeps working, and the help dialog lists the id once.
+  {
+    id: "sidebar-open-search-cmd-shift-f-mac",
+    action: "sidebar.open.search",
+    combo: "Cmd+Shift+F",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "find-in-files",
+      section: "panels",
+      label: "Find in files",
+      keys: ["mod", "shift", "F"],
+    },
+  },
+  {
+    id: "sidebar-open-search-ctrl-shift-f-non-mac",
+    action: "sidebar.open.search",
+    combo: "Ctrl+Shift+F",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "find-in-files",
+      section: "panels",
+      label: "Find in files",
+      keys: ["mod", "shift", "F"],
     },
   },
 
@@ -897,28 +936,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Focus mode ---
+  // Mod+Alt+F, not Mod+Shift+F: the latter is find-in-files everywhere
+  // (VS Code, JetBrains), and reserving it for a view toggle meant the
+  // editor's find family had no room to grow. Same shape as theme cycling,
+  // which already lives on Mod+Alt.
   {
-    id: "view-toggle-focus-cmd-shift-f-mac",
+    id: "view-toggle-focus-cmd-alt-f-mac",
     action: "view.toggle.focus",
-    combo: "Cmd+Shift+F",
+    combo: "Cmd+Alt+F",
     when: { mac: true, commandCenter: false },
     help: {
       id: "toggle-focus",
       section: "panels",
       label: "Toggle focus mode",
-      keys: ["mod", "shift", "F"],
+      keys: ["mod", "alt", "F"],
     },
   },
   {
-    id: "view-toggle-focus-ctrl-shift-f-non-mac",
+    id: "view-toggle-focus-ctrl-alt-f-non-mac",
     action: "view.toggle.focus",
-    combo: "Ctrl+Shift+F",
+    combo: "Ctrl+Alt+F",
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-focus",
       section: "panels",
       label: "Toggle focus mode",
-      keys: ["mod", "shift", "F"],
+      keys: ["mod", "alt", "F"],
     },
   },
 

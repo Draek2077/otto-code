@@ -26,24 +26,41 @@ function row(
 }
 
 describe("formatHeaderLabel", () => {
-  it("uses singular 'background task' for a single row", () => {
-    expect(formatHeaderLabel([row({ id: "a", status: "idle" })])).toBe("1 background task");
+  it("uses singular wording for a single row in a group", () => {
+    expect(formatHeaderLabel(partitionBackgroundTaskRows([row({ id: "a", status: "idle" })]))).toBe(
+      "1 completed background task",
+    );
   });
 
-  it("uses plural 'background tasks' for two rows with no running rows", () => {
+  it("omits the active group when nothing is active", () => {
     expect(
-      formatHeaderLabel([row({ id: "a", status: "idle" }), row({ id: "b", status: "idle" })]),
-    ).toBe("2 background tasks");
+      formatHeaderLabel(
+        partitionBackgroundTaskRows([
+          row({ id: "a", status: "idle" }),
+          row({ id: "b", status: "idle" }),
+        ]),
+      ),
+    ).toBe("2 completed background tasks");
   });
 
-  it("appends the running count when at least one row is running", () => {
+  it("reports both groups, mirroring the list's own split", () => {
     expect(
-      formatHeaderLabel([
-        row({ id: "a", status: "running" }),
-        row({ id: "b", status: "idle" }),
-        row({ id: "c", status: "idle" }),
-      ]),
-    ).toBe("3 background tasks · 1 running");
+      formatHeaderLabel(
+        partitionBackgroundTaskRows([
+          row({ id: "a", status: "running" }),
+          row({ id: "b", status: "idle" }),
+          row({ id: "c", status: "idle" }),
+        ]),
+      ),
+    ).toBe("1 active background task · 2 completed background tasks");
+  });
+
+  it("counts an attention-flagged failure as active, not completed", () => {
+    expect(
+      formatHeaderLabel(
+        partitionBackgroundTaskRows([row({ id: "a", status: "error", requiresAttention: true })]),
+      ),
+    ).toBe("1 active background task");
   });
 });
 

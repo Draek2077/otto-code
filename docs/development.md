@@ -132,7 +132,7 @@ What this caught during the workspace tab investigation:
 - Some plausible fixes did not pay off: memoizing the tab row and composer draft
   object barely moved the profile, so they were removed.
 
-Existing scenario script: workspace agent/terminal tab switching. Start Expo on
+Existing scenario script: workspace chat/terminal tab switching. Start Expo on
 web, keep a daemon available, then run:
 
 ```bash
@@ -143,7 +143,7 @@ OTTO_PROFILE_AGENT_ID=<agent-id> \
 ```
 
 This script opens the app with `?renderProfile=1`, creates a temporary terminal
-tab, switches between a real agent and that terminal, prints aggregated React
+tab, switches between a real chat and that terminal, prints aggregated React
 Profiler timings, then removes the temporary terminal. It is an example of the
 workflow above, not the only way to use the profiler. Useful knobs:
 

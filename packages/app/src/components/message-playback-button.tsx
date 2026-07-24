@@ -16,6 +16,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { ActivityIndicator, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import {
+  clearMessagePlaybackActive,
+  setMessagePlaybackActive,
+} from "@/agent-stream/message-playback-activity";
 import { Stop, Volume2 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -73,6 +77,13 @@ interface MessagePlaybackButtonProps {
   getContent: () => string;
   /** Selects the speaking agent's personality voice; omitted uses host default. */
   agentId?: string;
+  /**
+   * Identifies this turn in the playback-activity registry, so the turn footer
+   * can stay visible while this button is speaking (see
+   * agent-stream/message-playback-activity.ts). Without one the button still
+   * works; its footer just keeps the default hover behavior.
+   */
+  turnKey?: string;
   testID?: string;
 }
 
@@ -95,6 +106,7 @@ export function MessagePlaybackButton({
   serverId,
   getContent,
   agentId,
+  turnKey,
   testID,
 }: MessagePlaybackButtonProps) {
   const client = useHostRuntimeClient(serverId);
@@ -126,7 +138,19 @@ export function MessagePlaybackButton({
     audioEngine?.clearQueue();
     void client?.cancelSpeakMessage().catch(() => undefined);
     setStatus("idle");
-  }, [audioEngine, client]);
+    if (turnKey) {
+      clearMessagePlaybackActive(turnKey);
+    }
+  }, [audioEngine, client, turnKey]);
+
+  // Release the claim if this turn unmounts (or its key changes) mid-playback,
+  // so a scrolled-away row can't pin someone else's footer open forever.
+  useEffect(() => {
+    if (!turnKey) {
+      return;
+    }
+    return () => clearMessagePlaybackActive(turnKey);
+  }, [turnKey]);
 
   const handlePress = useCallback(async () => {
     if (!client || !audioEngine) {
@@ -146,6 +170,11 @@ export function MessagePlaybackButton({
 
     const token = (requestRef.current += 1);
     setStatus("loading");
+    // Claim the footer from the first press, not from first audio: synthesis
+    // can take a moment, and the Stop button has to be reachable during it.
+    if (turnKey) {
+      setMessagePlaybackActive(turnKey);
+    }
 
     // Flush any prior message playback so a new one starts clean, and unlock the
     // playback AudioContext *inside* this click gesture — browsers only resume a
@@ -164,13 +193,19 @@ export function MessagePlaybackButton({
         console.warn("[MessagePlayback] host playback error:", result.error);
       }
       setStatus("idle");
+      if (turnKey) {
+        clearMessagePlaybackActive(turnKey);
+      }
     } catch (error) {
       if (token === requestRef.current) {
         console.error("[MessagePlayback] speak request failed:", error);
         setStatus("idle");
+        if (turnKey) {
+          clearMessagePlaybackActive(turnKey);
+        }
       }
     }
-  }, [audioEngine, client, getContent, status, stopPlayback, voice]);
+  }, [audioEngine, client, getContent, status, stopPlayback, turnKey, voice]);
 
   const triggerStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [

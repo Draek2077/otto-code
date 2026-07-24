@@ -29,7 +29,8 @@ describe("claudeModelRates", () => {
       cacheReadPerMTok: 0.1,
       cacheWritePerMTok: 1.25,
     });
-    expect(claudeModelRates("claude-opus-4-8")?.inputPerMTok).toBe(15);
+    expect(claudeModelRates("claude-opus-5")?.inputPerMTok).toBe(5);
+    expect(claudeModelRates("claude-opus-4-8")?.inputPerMTok).toBe(5);
     expect(claudeModelRates("claude-sonnet-5")?.inputPerMTok).toBe(3);
   });
 

@@ -42,6 +42,8 @@ describe("getClaudeModels", () => {
     const models = getClaudeModels();
     expect(models.map((m) => m.id)).toEqual([
       "claude-fable-5",
+      "claude-opus-5[1m]",
+      "claude-opus-5",
       "claude-opus-4-8[1m]",
       "claude-opus-4-8",
       "claude-sonnet-5",
@@ -59,7 +61,7 @@ describe("getClaudeModels", () => {
     const models = getClaudeModels();
     const defaults = models.filter((m) => m.isDefault);
     expect(defaults).toHaveLength(1);
-    expect(defaults[0].id).toBe("claude-opus-4-8");
+    expect(defaults[0].id).toBe("claude-opus-5");
   });
 
   it("defines context window sizes in the catalog", () => {
@@ -70,6 +72,8 @@ describe("getClaudeModels", () => {
     expect(contextWindows).toEqual(
       new Map([
         ["claude-fable-5", 1_000_000],
+        ["claude-opus-5[1m]", 1_000_000],
+        ["claude-opus-5", 200_000],
         ["claude-opus-4-8[1m]", 1_000_000],
         ["claude-opus-4-8", 200_000],
         ["claude-sonnet-5", 1_000_000],

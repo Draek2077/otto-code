@@ -1,13 +1,13 @@
 # Timeline sync
 
-Agent chat delivery has two paths:
+Chat delivery has two paths:
 
 1. **Live stream** — `agent_stream` WebSocket messages for immediacy. These may be delta-shaped lifecycle updates.
 2. **Authoritative history** — `fetch_agent_timeline_request` for correctness. This always returns full projected timeline items, never lifecycle deltas.
 
 The invariant is:
 
-> If the daemon has committed timeline rows for an agent, any connected client that opens or resumes that agent eventually displays every row through the daemon's current tail.
+> If the daemon has committed timeline rows for a chat, any connected client that opens or resumes that chat eventually displays every row through the daemon's current tail.
 
 ## Presence is not delivery
 
@@ -15,7 +15,7 @@ Client heartbeat reports presence:
 
 - device type
 - app visibility
-- focused agent
+- focused chat
 - last activity time
 
 Heartbeat is used for notification routing. It must not be used as a correctness gate for `agent_stream` delivery. A stale mobile focus heartbeat may affect whether the user gets notified; it must not make timeline rows disappear from the live stream.
@@ -30,7 +30,7 @@ When the app fetches `direction: "after"` and the daemon responds with `hasNewer
 
 Initialization timeouts guard lack of catch-up progress, not the full multi-page sync. A successful page that queues the next `after` page refreshes the watchdog.
 
-The first load of an agent without a local cursor is different: it fetches a bounded latest tail page. Older history remains user-driven by scrolling upward.
+The first load of a chat without a local cursor is different: it fetches a bounded latest tail page. Older history remains user-driven by scrolling upward.
 
 ## Resume behavior
 

@@ -101,7 +101,9 @@ export function BackgroundTasksTrack({
     return null;
   }
 
-  const headerLabel = formatHeaderLabel(rows);
+  // Summarize the same partition the list renders, so a pinned row is counted
+  // in the group it is actually shown in.
+  const headerLabel = formatHeaderLabel({ active, completed });
 
   return (
     <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.backgroundTasks}>
@@ -132,16 +134,23 @@ export function BackgroundTasksTrack({
                 nestedScrollEnabled
               >
                 {active.map((row) => (
+                  // Clear must target *this* row's id. An active row can be
+                  // terminal-but-attention-flagged (a failed command stays out
+                  // of the Completed group), so it owns a working X of its own —
+                  // routing it through the bulk "clear completed" handler would
+                  // pass a list that never contains this row, and the X would do
+                  // nothing.
                   <BackgroundTaskTrackRow
                     key={row.id}
                     row={row}
                     onStopTask={handleStopTask}
-                    onClearTask={handleClearCompleted}
+                    onClearTask={onClearCompleted}
                   />
                 ))}
                 {completed.length > 0 ? (
                   <CompletedBackgroundTasksGroup
                     rows={completed}
+                    flushTop={active.length === 0}
                     expanded={completedExpanded}
                     onToggle={toggleCompletedExpanded}
                     onClear={handleClearCompleted}
@@ -160,6 +169,8 @@ export function BackgroundTasksTrack({
 
 interface CompletedBackgroundTasksGroupProps {
   rows: BackgroundShellTaskRow[];
+  /** No active rows above — drop the separator gap so the group sits flush. */
+  flushTop: boolean;
   expanded: boolean;
   onToggle: () => void;
   onClear: () => void;
@@ -172,6 +183,7 @@ interface CompletedBackgroundTasksGroupProps {
 // bulk "Clear all". Mirrors subagents/track.tsx's CompletedSubagentsGroup.
 function CompletedBackgroundTasksGroup({
   rows,
+  flushTop,
   expanded,
   onToggle,
   onClear,
@@ -183,7 +195,10 @@ function CompletedBackgroundTasksGroup({
   const clearLabel = t("backgroundTasks.clearCompleted");
 
   return (
-    <View style={styles.completedGroup} testID="background-tasks-track-completed-group">
+    <View
+      style={flushTop ? styles.completedGroupFlush : styles.completedGroup}
+      testID="background-tasks-track-completed-group"
+    >
       <View style={styles.completedHeaderRow}>
         <Pressable
           accessibilityRole="button"
@@ -503,6 +518,8 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
+  // The separator only earns its space when active rows sit above the group.
+  completedGroupFlush: {},
   completedHeaderRow: {
     flexDirection: "row",
     alignItems: "center",

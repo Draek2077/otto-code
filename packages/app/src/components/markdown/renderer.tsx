@@ -1,4 +1,7 @@
 import React, {
+  Children,
+  cloneElement,
+  isValidElement,
   useCallback,
   useEffect,
   useMemo,
@@ -11,6 +14,7 @@ import {
   Pressable,
   Text,
   View,
+  type StyleProp,
   type TextProps,
   type TextStyle,
   type ViewStyle,
@@ -516,6 +520,35 @@ function getMarkdownLinkHref(node: ASTNode): string {
   return typeof href === "string" ? href : "";
 }
 
+/**
+ * Force a link's color onto its own rendered children.
+ *
+ * react-native-markdown-display builds each node's `inheritedStyles` from its
+ * ancestor node types, so the `text` inside a `link` *does* receive the link
+ * style — but our `text` rule then applies `styles.text`, which sets an explicit
+ * `color`, and in RN the innermost explicit color wins. The net effect was that
+ * link labels rendered in plain foreground: colored wrapper, uncolored text.
+ *
+ * Re-applying the color on the children after the fact is the one place the
+ * cascade can still be won. The assistant-message renderer has always done this;
+ * this helper is that fix, shared, so the file preview stops being the surface
+ * where links look like prose.
+ */
+export function withMarkdownLinkColor(children: ReactNode, color: unknown): ReactNode {
+  if (typeof color !== "string") {
+    return children;
+  }
+  return Children.map(children, (child) => {
+    if (!isValidElement(child)) {
+      return child;
+    }
+    const childProps = child.props as { style?: StyleProp<TextStyle> };
+    return cloneElement(child, {
+      style: [childProps.style, { color }],
+    } as Partial<{ style: StyleProp<TextStyle> }>);
+  });
+}
+
 export function createSharedMarkdownRules(): RenderRules {
   return {
     text: (
@@ -585,8 +618,13 @@ export function createSharedMarkdownRules(): RenderRules {
         {children}
       </MarkdownInheritedText>
     ),
+    // A hardbreak (two trailing spaces, or a backslash) is an explicit line
+    // break and stays one. A SOFTbreak is just a newline in the source, which
+    // markdown reflows as a space — rendering it as "\n" (which is both
+    // react-native-markdown-display's default and what we inherited) turned
+    // every hard-wrapped paragraph into a ragged column of short lines.
     hardbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
-    softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
+    softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}> </MarkdownTextSpan>,
     code_block: (
       node: ASTNode,
       _children: ReactNode[],
@@ -707,7 +745,7 @@ export function createSharedMarkdownRules(): RenderRules {
         linkStyle={styles.link}
         onLinkPress={onLinkPress}
       >
-        {children}
+        {withMarkdownLinkColor(children, styles.link.color)}
       </SharedMarkdownLink>
     ),
   };

@@ -51,6 +51,16 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Most powerful",
   },
   {
+    id: "claude-opus-5[1m]",
+    model: "Opus 5 1M",
+    descriptionFragment: "1M context window",
+  },
+  {
+    id: "claude-opus-5",
+    model: "Opus 5",
+    descriptionFragment: "Latest release",
+  },
+  {
     id: "claude-opus-4-8[1m]",
     model: "Opus 4.8 1M",
     descriptionFragment: "1M context window",
@@ -58,7 +68,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-opus-4-8",
     model: "Opus 4.8",
-    descriptionFragment: "Latest release",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-sonnet-5",
@@ -73,7 +83,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-opus-4-7",
     model: "Opus 4.7",
-    descriptionFragment: "Previous release",
+    descriptionFragment: "Earlier release",
   },
   {
     id: "claude-opus-4-6[1m]",

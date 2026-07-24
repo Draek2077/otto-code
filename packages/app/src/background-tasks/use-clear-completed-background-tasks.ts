@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
-import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
 import { requestClearCompletedBackgroundTasks } from "./clear-completed-background-tasks";
 
@@ -30,7 +29,6 @@ export function useClearCompletedBackgroundTasks(
       void requestClearCompletedBackgroundTasks(
         { parentAgentId, taskIds },
         {
-          confirm: confirmDialog,
           clearBackgroundShellTasks: (parent, ids) =>
             client
               ? client.clearBackgroundShellTasks(parent, ids)

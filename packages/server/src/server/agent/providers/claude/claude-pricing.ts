@@ -49,10 +49,12 @@ function rates(input: number, output: number): ClaudeModelRates {
 // Exact model id (lowercased) → rates. Only the models we can price with
 // confidence; everything else is deliberately absent (→ undefined).
 const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
-  // Opus 4.x — $15 in / $75 out.
-  "claude-opus-4-8": rates(15, 75),
-  "claude-opus-4-7": rates(15, 75),
-  "claude-opus-4-6": rates(15, 75),
+  // Opus 5 and Opus 4.6+ — $5 in / $25 out. (The $15/$75 card belonged to
+  // Opus 4.1 and earlier; every Opus we list here ships at the lower rate.)
+  "claude-opus-5": rates(5, 25),
+  "claude-opus-4-8": rates(5, 25),
+  "claude-opus-4-7": rates(5, 25),
+  "claude-opus-4-6": rates(5, 25),
   // Sonnet — $3 in / $15 out (standard, ≤200K context).
   "claude-sonnet-5": rates(3, 15),
   "claude-sonnet-4-6": rates(3, 15),

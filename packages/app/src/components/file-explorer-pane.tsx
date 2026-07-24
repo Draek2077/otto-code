@@ -95,6 +95,7 @@ interface TreeRowItemProps {
   loading: boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void;
+  onCopyRelativePath: (path: string) => void;
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
@@ -149,6 +150,7 @@ function TreeRowItem({
   loading,
   onEntryPress,
   onCopyPath,
+  onCopyRelativePath,
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
@@ -206,6 +208,9 @@ function TreeRowItem({
   const handleCopy = useCallback(() => {
     onCopyPath(entry.path);
   }, [onCopyPath, entry.path]);
+  const handleCopyRelative = useCallback(() => {
+    onCopyRelativePath(entry.path);
+  }, [onCopyRelativePath, entry.path]);
 
   const handleDownload = useCallback(() => {
     onDownloadEntry(entry);
@@ -321,6 +326,9 @@ function TreeRowItem({
               <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
                 {t("workspace.fileExplorer.context.copyPath")}
               </DropdownMenuItem>
+              <DropdownMenuItem leading={copyLeading} onSelect={handleCopyRelative}>
+                {t("workspace.fileExplorer.context.copyRelativePath")}
+              </DropdownMenuItem>
               {entry.kind === "file" ? (
                 <DropdownMenuItem leading={downloadLeading} onSelect={handleDownload}>
                   {t("workspace.fileExplorer.context.download")}
@@ -366,6 +374,7 @@ function EntryContextMenu({
   request,
   onOpenChange,
   onCopyPath,
+  onCopyRelativePath,
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
@@ -375,6 +384,7 @@ function EntryContextMenu({
   request: EntryContextMenuRequest | null;
   onOpenChange: (open: boolean) => void;
   onCopyPath: (path: string) => void;
+  onCopyRelativePath: (path: string) => void;
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
@@ -398,6 +408,9 @@ function EntryContextMenu({
   const handleCopy = useCallback(() => {
     if (entry) onCopyPath(entry.path);
   }, [entry, onCopyPath]);
+  const handleCopyRelative = useCallback(() => {
+    if (entry) onCopyRelativePath(entry.path);
+  }, [entry, onCopyRelativePath]);
   const handleDownload = useCallback(() => {
     if (entry) onDownloadEntry(entry);
   }, [entry, onDownloadEntry]);
@@ -461,6 +474,9 @@ function EntryContextMenu({
             ) : null}
             <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
               {t("workspace.fileExplorer.context.copyPath")}
+            </ContextMenuItem>
+            <ContextMenuItem leading={copyLeading} onSelect={handleCopyRelative}>
+              {t("workspace.fileExplorer.context.copyRelativePath")}
             </ContextMenuItem>
             {entry.kind === "file" ? (
               <ContextMenuItem leading={downloadLeading} onSelect={handleDownload}>
@@ -720,6 +736,13 @@ export function FileExplorerPane({
     [normalizedWorkspaceRoot],
   );
 
+  // `entry.path` is already workspace-relative — copy it as-is (forward slashes,
+  // repo-relative), the VS Code "Copy Relative Path" idiom. The absolute variant
+  // above joins it onto the workspace root.
+  const handleCopyRelativePath = useCallback(async (path: string) => {
+    await Clipboard.setStringAsync(path);
+  }, []);
+
   const startDownload = useDownloadStore((state) => state.startDownload);
   const handleDownloadEntry = useCallback(
     (entry: ExplorerEntry) =>
@@ -799,6 +822,7 @@ export function FileExplorerPane({
         isDirectoryLoading={isDirectoryLoading}
         onEntryPress={handleEntryPress}
         onCopyPath={handleCopyPath}
+        onCopyRelativePath={handleCopyRelativePath}
         onDownloadEntry={handleDownloadEntry}
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
@@ -812,6 +836,7 @@ export function FileExplorerPane({
       expandedPaths,
       handleEntryPress,
       handleCopyPath,
+      handleCopyRelativePath,
       handleDownloadEntry,
       handleEditEntry,
       handleToggleContextEntry,
@@ -975,6 +1000,7 @@ export function FileExplorerPane({
         request={contextMenuRequest}
         onOpenChange={handleContextMenuOpenChange}
         onCopyPath={handleCopyPath}
+        onCopyRelativePath={handleCopyRelativePath}
         onDownloadEntry={handleDownloadEntry}
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
@@ -1400,6 +1426,7 @@ function TreeRowDispatcher({
   isDirectoryLoading,
   onEntryPress,
   onCopyPath,
+  onCopyRelativePath,
   onDownloadEntry,
   onEditEntry,
   onToggleContextEntry,
@@ -1413,6 +1440,7 @@ function TreeRowDispatcher({
   isDirectoryLoading: (path: string) => boolean;
   onEntryPress: (entry: ExplorerEntry) => void;
   onCopyPath: (path: string) => void | Promise<void>;
+  onCopyRelativePath: (path: string) => void | Promise<void>;
   onDownloadEntry: (entry: ExplorerEntry) => void;
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
@@ -1436,6 +1464,7 @@ function TreeRowDispatcher({
       loading={loading}
       onEntryPress={onEntryPress}
       onCopyPath={onCopyPath}
+      onCopyRelativePath={onCopyRelativePath}
       onDownloadEntry={onDownloadEntry}
       onEditEntry={onEditEntry}
       onToggleContextEntry={onToggleContextEntry}

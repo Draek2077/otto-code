@@ -74,16 +74,30 @@ export function formatBackgroundTaskElapsed(row: BackgroundShellTaskRow): string
   return formatDuration(Math.max(0, ms));
 }
 
-export function formatHeaderLabel(rows: readonly BackgroundShellTaskRow[]): string {
-  let runningCount = 0;
-  for (const row of rows) {
-    if (row.status === "running") {
-      runningCount += 1;
-    }
+/**
+ * Header summary for the collapsed track. Mirrors the list's own
+ * active/completed split (the same wording subagents/track-presentation.ts
+ * uses) so the header reads as a summary of the two groups below it rather
+ * than a third framing — "3 background tasks · 1 running" said nothing about
+ * what the other two were.
+ *
+ * "active" rather than "running" on purpose: the active group also holds
+ * terminal-but-attention-flagged rows (a failed command stays out of the
+ * Completed group), so calling them running would be wrong.
+ */
+export function formatHeaderLabel({ active, completed }: PartitionedBackgroundTaskRows): string {
+  const parts: string[] = [];
+  if (active.length > 0) {
+    parts.push(
+      `${active.length} active ${active.length === 1 ? "background task" : "background tasks"}`,
+    );
   }
-  const parts = [`${rows.length} ${rows.length === 1 ? "background task" : "background tasks"}`];
-  if (runningCount > 0) {
-    parts.push(`${runningCount} running`);
+  if (completed.length > 0) {
+    parts.push(
+      `${completed.length} completed ${
+        completed.length === 1 ? "background task" : "background tasks"
+      }`,
+    );
   }
   return parts.join(" · ");
 }
