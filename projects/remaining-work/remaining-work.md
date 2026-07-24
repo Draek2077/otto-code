@@ -64,6 +64,16 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   Needs a decision, not just a fix.
 - 🔴 **Can't re-read your own file comments after sending** — batch-07-23.
   Reopening the comment tile should show its contents. Marked "not critical."
+- 🔵 **Changes-view base: auto-fetch decision + non-worktree override** — the rest of
+  `projects/diff-base/`. Phases 1 (fork-point base resolution) and 2 (per-worktree
+  base override, `features.worktreeDiffBase`) shipped 2026-07-24; semantics live in
+  `docs/changes-view.md`. Left: (a) **product decision** — does a read-only view get a
+  throttled background `git fetch` of the base? Without one, a base ref nobody updates
+  stays stale and merge-base math cannot help. (b) Plain (non-worktree) checkouts have
+  nowhere to store a base override — needs a second store keyed by workspace, and that
+  store would have to feed `resolveBaseRefForCwd` or the base stops being one source of
+  truth for merge/PR. (c) Phase 3 polish: suggest a detected stacked parent in the
+  picker; "base is N behind origin" hint chip (depends on (a)).
 
 ## Background tasks / Subagents
 
@@ -196,7 +206,7 @@ backlog, tracked one folder each:
 first-time-wizard · computer-use · dictation-refine · observed-subagents (rest) ·
 subagent-liveness · steer-queue · session-decomposition · mobile-daemon ·
 file-rendering · web-search-providers · site-demos · personality-memory ·
-diff-base · preview-file-tabs · total-token-accounting · workflow-decomposition ·
+preview-file-tabs · total-token-accounting · workflow-decomposition ·
 visualizer-node-richness (context ring) · history-management · context-management ·
 refine · visualizer-pip · upstream-subagent-convergence ·
 git-hosting-providers (GitLab+) ·

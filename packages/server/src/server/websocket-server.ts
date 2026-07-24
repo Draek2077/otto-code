@@ -1411,6 +1411,8 @@ export class VoiceAssistantWebSocketServer {
         worktreeArchiveBranchCleanup: true,
         // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         worktreeReattach: true,
+        // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        worktreeDiffBase: true,
         // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         hideMergeIntoBaseSetting: true,
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.

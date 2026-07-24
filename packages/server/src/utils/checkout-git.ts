@@ -21,7 +21,11 @@ import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand, type GitCommandResult } from "./run-git-command.js";
 import { isOttoOwnedWorktreeCwd, resolveOttoWorktreesBaseRoot } from "./worktree.js";
-import { readOttoWorktreeMetadata } from "./worktree-metadata.js";
+import {
+  normalizeAndValidateBaseRefName,
+  readOttoWorktreeMetadata,
+  setOttoWorktreeBaseRefName,
+} from "./worktree-metadata.js";
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
 } as const;
@@ -1404,6 +1408,29 @@ async function doesGitRefExist(
   return result.exitCode === 0;
 }
 
+async function isAncestorCommit(
+  cwd: string,
+  ancestor: string,
+  descendant: string,
+  context?: CheckoutContext,
+): Promise<boolean> {
+  const result = await runGitCommand(["merge-base", "--is-ancestor", ancestor, descendant], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1],
+    logger: context?.logger,
+  });
+  return result.exitCode === 0;
+}
+
+/**
+ * Every comparison consumer (diff, ahead/behind, shortstat) funnels through this so they all
+ * agree on which side of `<name>` / `origin/<name>` the Changes view is measured against.
+ *
+ * The two refs routinely disagree: local can be behind origin (nobody pulled) or ahead of it
+ * (nobody pushed), and on a long-lived repo they can outright diverge. Picking the wrong side
+ * drags the *base branch's own* commits into the view as if the user had written them.
+ */
 async function resolveBestComparisonBaseRef(
   cwd: string,
   baseRef: string,
@@ -1415,6 +1442,9 @@ async function resolveBestComparisonBaseRef(
     doesGitRefExist(cwd, `refs/remotes/origin/${normalized.localName}`, context),
   ]);
 
+  if (hasLocal && hasOrigin) {
+    return resolveLatestForkPointBaseRef(cwd, normalized, context);
+  }
   if (hasOrigin) {
     return normalized.originRef;
   }
@@ -1429,6 +1459,64 @@ async function resolveBestComparisonBaseRef(
   throw new Error(`Base branch not found locally or on origin: ${refName}`);
 }
 
+/**
+ * Choose between `<name>` and `origin/<name>` by asking which one HEAD actually forked from:
+ * the candidate whose merge-base with HEAD is the *later* commit. That merge-base is the real
+ * branch point, so nothing the branch didn't author can leak into the diff — which is the whole
+ * failure mode of diffing against a base ref that has drifted from where the work started.
+ *
+ * When both fork at the same commit the choice cannot change the diff, so fall through to the
+ * more-advanced ref, which keeps the ahead/behind counts honest.
+ */
+async function resolveLatestForkPointBaseRef(
+  cwd: string,
+  normalized: ComparisonBaseRefName,
+  context?: CheckoutContext,
+): Promise<string> {
+  const [localForkPoint, originForkPoint] = await Promise.all([
+    tryResolveMergeBase(cwd, normalized.localName),
+    tryResolveMergeBase(cwd, normalized.originRef),
+  ]);
+
+  if (localForkPoint && originForkPoint && localForkPoint !== originForkPoint) {
+    if (await isAncestorCommit(cwd, originForkPoint, localForkPoint, context)) {
+      return normalized.localName;
+    }
+    if (await isAncestorCommit(cwd, localForkPoint, originForkPoint, context)) {
+      return normalized.originRef;
+    }
+  }
+
+  return pickMoreAdvancedBaseRef(cwd, normalized.localName, context);
+}
+
+/** Prefers whichever of `<name>` / `origin/<name>` carries more commits the other lacks. */
+async function pickMoreAdvancedBaseRef(
+  cwd: string,
+  normalizedBaseRef: string,
+  context?: CheckoutContext,
+): Promise<string> {
+  const { stdout } = await runGitCommand(
+    ["rev-list", "--left-right", "--count", `${normalizedBaseRef}...origin/${normalizedBaseRef}`],
+    { cwd, envOverlay: READ_ONLY_GIT_ENV, logger: context?.logger },
+  );
+  const [localOnlyRaw, originOnlyRaw] = stdout.trim().split(/\s+/);
+  const localOnly = Number.parseInt(localOnlyRaw ?? "0", 10);
+  const originOnly = Number.parseInt(originOnlyRaw ?? "0", 10);
+  if (Number.isNaN(localOnly) || Number.isNaN(originOnly)) {
+    return normalizedBaseRef;
+  }
+  if (originOnly > localOnly) {
+    return `origin/${normalizedBaseRef}`;
+  }
+
+  return normalizedBaseRef;
+}
+
+/**
+ * Merge/pull targets want the freshest base ref, not the fork point — merging into a stale ref
+ * would silently drop the other side's commits. Keep this separate from the comparison resolver.
+ */
 async function resolveMostAheadBaseRef(cwd: string, normalizedBaseRef: string): Promise<string> {
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`),
@@ -1445,21 +1533,7 @@ async function resolveMostAheadBaseRef(cwd: string, normalizedBaseRef: string): 
     throw new Error(`Base branch not found locally or on origin: ${normalizedBaseRef}`);
   }
 
-  const { stdout } = await runGitCommand(
-    ["rev-list", "--left-right", "--count", `${normalizedBaseRef}...origin/${normalizedBaseRef}`],
-    { cwd, envOverlay: READ_ONLY_GIT_ENV },
-  );
-  const [localOnlyRaw, originOnlyRaw] = stdout.trim().split(/\s+/);
-  const localOnly = Number.parseInt(localOnlyRaw ?? "0", 10);
-  const originOnly = Number.parseInt(originOnlyRaw ?? "0", 10);
-  if (Number.isNaN(localOnly) || Number.isNaN(originOnly)) {
-    return normalizedBaseRef;
-  }
-  if (originOnly > localOnly) {
-    return `origin/${normalizedBaseRef}`;
-  }
-
-  return normalizedBaseRef;
+  return pickMoreAdvancedBaseRef(cwd, normalizedBaseRef);
 }
 
 async function getAheadBehind(
@@ -1899,6 +1973,58 @@ async function getUntrackedDiffText(
   };
 }
 
+export interface SetCheckoutBaseRefResult {
+  baseRef: string;
+  /** True when the write reset the worktree back to the repository default branch. */
+  isDefault: boolean;
+}
+
+/**
+ * Repoints an Otto worktree's stored base branch. `baseRef: null` resets to the repository
+ * default.
+ *
+ * "Diff against the default branch" is the wrong question for a stacked branch — the parent
+ * branch's commits are not the child's work, but they sit between the default branch and HEAD,
+ * so they show up in the child's Changes view. Pointing the base at the parent is what a forge
+ * PR does implicitly by carrying an explicit base, and it is what this makes local.
+ */
+export async function setCheckoutBaseRef(
+  cwd: string,
+  baseRef: string | null,
+  context?: CheckoutContext,
+): Promise<SetCheckoutBaseRefResult> {
+  const facts = await getCheckoutSnapshotFacts(cwd, context);
+  if (!facts.isGit) {
+    throw new NotGitRepoError(cwd);
+  }
+  if (!facts.ottoWorktree.isOttoOwnedWorktree) {
+    throw new Error("Only Otto worktrees can have a custom base branch");
+  }
+
+  const isDefault = baseRef === null;
+  let requested = baseRef;
+  if (requested === null) {
+    requested = await resolveRepositoryDefaultBranch(cwd);
+    if (!requested) {
+      throw new Error("Unable to determine the repository's default branch");
+    }
+  }
+
+  const normalized = normalizeAndValidateBaseRefName(requested);
+  if (normalized === facts.currentBranch) {
+    throw new Error("Base branch cannot be the branch you are on");
+  }
+  // Resolving proves the ref exists locally or on origin, and throws the same
+  // "not found" message the comparison path would have produced later.
+  await resolveBestComparisonBaseRef(cwd, normalized, context);
+
+  setOttoWorktreeBaseRefName(facts.ottoWorktree.worktreeRoot, normalized);
+  shortstatCache.delete(getShortstatCacheKey(cwd));
+  pullRequestStatusCache.clear();
+
+  return { baseRef: normalized, isDefault };
+}
+
 export async function getCheckoutStatus(
   cwd: string,
   context?: CheckoutContext,
@@ -2052,6 +2178,7 @@ async function getCheckoutShortstatUncached(
     currentBranch,
     localBaseRef,
     facts,
+    context,
   });
   if (!comparisonRef) {
     return null;
@@ -2094,8 +2221,9 @@ async function resolveShortstatComparisonRef(input: {
   currentBranch: string | null;
   localBaseRef: string | null;
   facts?: CheckoutSnapshotFacts | null;
+  context?: CheckoutContext;
 }): Promise<string | null> {
-  const { cwd, currentBranch, localBaseRef, facts } = input;
+  const { cwd, currentBranch, localBaseRef, facts, context } = input;
   if (!currentBranch) {
     return null;
   }
@@ -2104,13 +2232,13 @@ async function resolveShortstatComparisonRef(input: {
     try {
       return facts?.isGit && facts.resolvedBaseRef === localBaseRef && facts.comparisonBaseRef
         ? facts.comparisonBaseRef
-        : await resolveBestComparisonBaseRef(cwd, localBaseRef);
+        : await resolveBestComparisonBaseRef(cwd, localBaseRef, context);
     } catch {
       return null;
     }
   }
 
-  const hasOrigin = await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`);
+  const hasOrigin = await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`, context);
   return hasOrigin ? `origin/${currentBranch}` : null;
 }
 
@@ -2440,7 +2568,7 @@ async function resolveCheckoutDiffRefs(
   if (storedBaseRef && compare.baseRef && compare.baseRef !== storedBaseRef) {
     throw new Error(`Base ref mismatch: expected ${baseRef}, got ${compare.baseRef}`);
   }
-  const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef);
+  const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef, context);
   return {
     baseRef: (await tryResolveMergeBase(cwd, bestBaseRef)) ?? bestBaseRef,
     targetRef: "HEAD",

@@ -110,6 +110,7 @@ import { GitActionsSplitButton } from "@/git/actions-split-button";
 import { ChangesToolbar, type ChangesToolbarItem } from "@/git/changes-toolbar/toolbar";
 import { toggleChangesToolbarItem, type ChangesToolbarItemId } from "@/git/changes-toolbar/items";
 import { BranchSwitcher } from "@/components/branch-switcher";
+import { DiffBaseSwitcher } from "@/git/diff-base-switcher";
 import { useGitActions } from "@/git/use-actions";
 import {
   CheckoutGitCommitFailedError,
@@ -1656,6 +1657,7 @@ interface DerivedStatusState {
   hasUncommittedChanges: boolean;
   actionsDisabled: boolean;
   currentBranchName: string | null;
+  isOttoOwnedWorktree: boolean;
 }
 
 function deriveStatusState({
@@ -1684,6 +1686,7 @@ function deriveStatusState({
     hasUncommittedChanges,
     actionsDisabled,
     currentBranchName,
+    isOttoOwnedWorktree: gitStatus?.isOttoOwnedWorktree === true,
   };
 }
 
@@ -2363,8 +2366,15 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     error: statusError,
   } = useCheckoutStatusQuery({ serverId, cwd });
   const statusState = deriveStatusState({ status, isStatusLoading, isStatusError, statusError });
-  const { isGit, notGit, statusErrorMessage, baseRef, hasUncommittedChanges, currentBranchName } =
-    statusState;
+  const {
+    isGit,
+    notGit,
+    statusErrorMessage,
+    baseRef,
+    hasUncommittedChanges,
+    currentBranchName,
+    isOttoOwnedWorktree,
+  } = statusState;
 
   const reviewDraftScopeKey = useMemo(
     () =>
@@ -3286,37 +3296,51 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
             onPointerEnter={handleToolbarPointerEnter}
             onPointerLeave={handleToolbarPointerLeave}
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                style={diffModeTriggerStyle}
-                testID="changes-diff-status"
-                accessibilityRole="button"
-                accessibilityLabel={t("workspace.git.diff.diffMode")}
-              >
-                <Text style={styles.diffStatusText} numberOfLines={1}>
-                  {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
-                </Text>
-                <ThemedChevronDown size={iconSize.xs} uniProps={foregroundMutedIconColorMapping} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
-                <DropdownMenuItem
-                  testID="changes-diff-mode-uncommitted"
-                  selected={diffMode === "uncommitted"}
-                  onSelect={handleSelectUncommitted}
+            <View style={styles.diffStatusLeading}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  style={diffModeTriggerStyle}
+                  testID="changes-diff-status"
+                  accessibilityRole="button"
+                  accessibilityLabel={t("workspace.git.diff.diffMode")}
                 >
-                  {uncommittedLabel}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  testID="changes-diff-mode-committed"
-                  selected={diffMode === "base"}
-                  description={committedDiffDescription}
-                  onSelect={handleSelectBase}
-                >
-                  {committedLabel}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <Text style={styles.diffStatusText} numberOfLines={1}>
+                    {diffMode === "uncommitted" ? uncommittedLabel : committedLabel}
+                  </Text>
+                  <ThemedChevronDown
+                    size={iconSize.xs}
+                    uniProps={foregroundMutedIconColorMapping}
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" width={260} testID="changes-diff-status-menu">
+                  <DropdownMenuItem
+                    testID="changes-diff-mode-uncommitted"
+                    selected={diffMode === "uncommitted"}
+                    onSelect={handleSelectUncommitted}
+                  >
+                    {uncommittedLabel}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    testID="changes-diff-mode-committed"
+                    selected={diffMode === "base"}
+                    description={committedDiffDescription}
+                    onSelect={handleSelectBase}
+                  >
+                    {committedLabel}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DiffBaseSwitcher
+                visible={diffMode === "base"}
+                serverId={serverId}
+                workspaceId={workspaceId}
+                cwd={cwd}
+                baseRefLabel={baseRefLabel}
+                currentBranchName={currentBranchName}
+                isOttoOwnedWorktree={isOttoOwnedWorktree}
+              />
+            </View>
             <ChangesToolbar
               items={toolbarItems}
               pinnedItems={pinnedToolbarItems}
@@ -3436,6 +3460,15 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "space-between",
     paddingRight: theme.spacing[3],
+  },
+  // Groups the mode dropdown with the "vs <base>" chip so the row keeps its two
+  // corner-pinned ends (mode group left, toolbar right) at every breakpoint.
+  diffStatusLeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 1,
+    minWidth: 0,
   },
   diffModeTrigger: {
     flexDirection: "row",
