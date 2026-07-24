@@ -38,6 +38,7 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
 import { useSessionStore } from "@/stores/session-store";
+import { modelTierLabel } from "@/utils/model-tier-label";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { formatTimeAgo } from "@/utils/time";
 import { compareMatchScores, scoreTextFields } from "@/utils/score-match";
@@ -189,19 +190,6 @@ const MODEL_TIER_OPTIONS: SelectFieldOption<ModelTier | "unknown">[] = [
   { id: "fast", value: "fast", label: "Fast" },
   { id: "unknown", value: "unknown", label: "Unknown" },
 ];
-
-function modelTierLabel(tier: ModelTier | undefined): string {
-  switch (tier) {
-    case "deep":
-      return "Deep";
-    case "standard":
-      return "Standard";
-    case "fast":
-      return "Fast";
-    default:
-      return "Unknown";
-  }
-}
 
 // Compact per-model tier picker. `tier` is the daemon-stamped effective tier
 // (user override → catalog, else undefined = Unknown). Selecting a tier sets an

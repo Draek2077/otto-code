@@ -80,9 +80,13 @@ import {
   getFeatureHighlightColor,
   getFeatureTooltip,
   getAgentControlHintKey,
+  formatAgentModeLabel,
   formatThinkingOptionLabel,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
+import { resolveModeSelection } from "@/composer/agent-controls/mode";
+import { buildModelIdentity, type ModelIdentity } from "@/composer/agent-controls/model-identity";
+import { ModelIdentityCard } from "@/composer/agent-controls/model-identity-card";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -558,6 +562,12 @@ interface ControlledAgentControlsProps extends AgentControlsPersonalityProps {
    * whole controls row locks until the switch completes or times out.
    */
   isPersonalitySwitching?: boolean;
+  /**
+   * Identity card for the model trigger's hover tooltip (desktop only). Null ⇒
+   * the plain "Change model" hint, which is all there is to say before anything
+   * is selected.
+   */
+  modelIdentity?: ModelIdentity | null;
 }
 
 export interface DraftAgentControlsProps extends AgentControlsPersonalityProps {
@@ -819,7 +829,33 @@ type AgentControlsSlice = {
   personalityName: string | null;
   personalityId: string | null;
   personalitySpinner: { glowA: string; glowB: string } | null;
+  /** Active mode's display label, for the model picker's identity card. */
+  modeLabel: string | null;
 } | null;
+
+/**
+ * The active mode's label, resolved from the same helper the mode chip uses so
+ * the identity card can't name a different mode than the chip beside it. Kept in
+ * the selector (a string, not the mode array) so `availableModes` churn doesn't
+ * re-render the whole controls row.
+ */
+function resolveAgentModeLabel(input: {
+  provider: string;
+  modeOptions: readonly AgentMode[] | undefined;
+  currentModeId: string | null | undefined;
+}): string | null {
+  const modeOptions = input.modeOptions ?? [];
+  if (modeOptions.length === 0) {
+    return null;
+  }
+  const { selectedMode } = resolveModeSelection({
+    provider: input.provider,
+    modeOptions,
+    selectedModeId: input.currentModeId,
+    lockNonSelectable: false,
+  });
+  return selectedMode ? formatAgentModeLabel(selectedMode) : null;
+}
 
 function selectAgentControlsSlice(
   state: ReturnType<typeof useSessionStore.getState>,
@@ -840,6 +876,11 @@ function selectAgentControlsSlice(
     personalityName: currentAgent.personalityName ?? null,
     personalityId: currentAgent.personalityId ?? null,
     personalitySpinner: currentAgent.personalitySpinner ?? null,
+    modeLabel: resolveAgentModeLabel({
+      provider: currentAgent.provider,
+      modeOptions: currentAgent.availableModes,
+      currentModeId: currentAgent.currentModeId,
+    }),
   };
 }
 
@@ -872,6 +913,67 @@ function buildAgentProviderModels(
     map.set(agentProvider, models);
   }
   return map;
+}
+
+/**
+ * Hover-card facts for a running agent's model trigger. Effort only reads as a
+ * fact when the model actually has levels — a bound personality hides the effort
+ * chip, but the level it fixed at spawn is still what the agent runs at, so the
+ * card keeps stating it.
+ */
+function buildAgentModelIdentity(input: {
+  agent: AgentControlsSlice;
+  personalityName: string | null;
+  selection: ReturnType<typeof resolveAgentModelSelection>;
+  providerEntry: ProviderSnapshotEntry | null;
+  thinkingOptions: AgentControlOption[];
+}): ModelIdentity | null {
+  return buildModelIdentity({
+    personalityName: input.personalityName,
+    modelLabel: input.selection.displayModel,
+    providerLabel: input.providerEntry?.label ?? input.agent?.provider,
+    tier: input.selection.selectedModel?.tier,
+    effortLabel: input.thinkingOptions.length > 0 ? input.selection.displayThinking : null,
+    modeLabel: input.agent?.modeLabel,
+  });
+}
+
+/**
+ * The same hover-card facts for the draft (new chat) trigger, read off the
+ * form's own resolved values so the card can't drift from the chips beside it.
+ */
+function buildDraftModelIdentity(input: {
+  personalityName: string | null | undefined;
+  models: AgentModelDefinition[];
+  selectedModel: string;
+  selectedProvider: AgentProvider | null;
+  modelSelectorProviders: ProviderSelectorProvider[];
+  thinkingOptions: AgentControlOption[];
+  selectedThinkingOptionId: string | undefined;
+  modeOptions: AgentMode[];
+  selectedMode: string;
+}): ModelIdentity | null {
+  const model = input.models.find((candidate) => candidate.id === input.selectedModel) ?? null;
+  const provider =
+    input.modelSelectorProviders.find((entry) => entry.id === input.selectedProvider) ?? null;
+  const thinking =
+    input.thinkingOptions.find((option) => option.id === input.selectedThinkingOptionId) ?? null;
+  const mode = input.selectedProvider
+    ? resolveModeSelection({
+        provider: input.selectedProvider,
+        modeOptions: input.modeOptions,
+        selectedModeId: input.selectedMode,
+        lockNonSelectable: false,
+      }).selectedMode
+    : null;
+  return buildModelIdentity({
+    personalityName: input.personalityName,
+    modelLabel: model?.label ?? input.selectedModel,
+    providerLabel: provider?.label ?? input.selectedProvider,
+    tier: model?.tier,
+    effortLabel: thinking?.label ?? null,
+    modeLabel: mode ? formatAgentModeLabel(mode) : null,
+  });
 }
 
 function buildOpenChangeHandler(
@@ -915,6 +1017,7 @@ function ControlledAgentControls({
   isCompactLayout,
   isPersonalitySwitching = false,
   personality,
+  modelIdentity,
 }: ControlledAgentControlsProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1127,6 +1230,7 @@ function ControlledAgentControls({
           modelSelectorServerId={modelSelectorServerId}
           isPersonalitySwitching={isPersonalitySwitching}
           personality={personality}
+          modelIdentity={modelIdentity}
         />
       ) : (
         <SheetAgentControlsContent
@@ -1221,6 +1325,8 @@ interface DesktopAgentControlsContentProps {
    * handlers are wired (running chat agent / draft); null just labels the trigger.
    */
   personality?: RolePersonality | null;
+  /** Identity card for the model trigger's hover tooltip; null ⇒ plain hint. */
+  modelIdentity?: ModelIdentity | null;
 }
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
@@ -1272,6 +1378,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     modelSelectorServerId,
     isPersonalitySwitching = false,
     personality,
+    modelIdentity,
   } = props;
 
   return (
@@ -1330,8 +1437,15 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
               />
             </View>
           </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
+          <TooltipContent side="top" align="start" offset={8} maxWidth={260}>
+            {modelIdentity ? (
+              <ModelIdentityCard
+                identity={modelIdentity}
+                hint={t(getAgentControlHintKey("model"))}
+              />
+            ) : (
+              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
+            )}
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -2128,6 +2242,14 @@ export const AgentControls = memo(function AgentControls({
     thinkingOptions,
   );
 
+  const modelIdentity = buildAgentModelIdentity({
+    agent,
+    personalityName: chatPersonality.selectedName,
+    selection: modelSelection,
+    providerEntry: snapshotSelectedEntry,
+    thinkingOptions,
+  });
+
   if (!agent) {
     return null;
   }
@@ -2157,6 +2279,7 @@ export const AgentControls = memo(function AgentControls({
       isCompactLayout={isCompactLayout}
       isPersonalitySwitching={isSwitchingPersonality}
       personality={chatPersonality}
+      modelIdentity={modelIdentity}
     />
   );
 });
@@ -2189,6 +2312,7 @@ export function DraftAgentControls({
   isCompactLayout,
   personality,
 }: DraftAgentControlsProps) {
+  const { t } = useTranslation();
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
@@ -2235,6 +2359,18 @@ export function DraftAgentControls({
     [updatePreferences],
   );
 
+  const modelIdentity = buildDraftModelIdentity({
+    personalityName: personality?.selectedName,
+    models,
+    selectedModel,
+    selectedProvider,
+    modelSelectorProviders,
+    thinkingOptions: mappedThinkingOptions,
+    selectedThinkingOptionId: effectiveSelectedThinkingOption,
+    modeOptions,
+    selectedMode,
+  });
+
   const draftModeChip = useMemo(
     () => (
       <DraftAgentModeControl
@@ -2261,24 +2397,40 @@ export function DraftAgentControls({
   if (!isCompact) {
     return (
       <View style={styles.container}>
-        <RoleModelSelector
-          providers={modelSelectorProviders}
-          selectedProvider={selectedProvider ?? ""}
-          selectedModel={selectedModel}
-          onSelect={onSelectProviderAndModel}
-          favoriteKeys={favoriteKeys}
-          onToggleFavorite={handleToggleFavorite}
-          isLoading={isAllModelsLoading}
-          disabled={disabled}
-          onOpen={onModelSelectorOpen}
-          onClose={onDropdownClose}
-          onRetryProvider={onRetryModelProvider}
-          isRetryingProvider={isRetryingModelProvider}
-          serverId={modelSelectorServerId}
-          desktopPlacement="top-start"
-          desktopMinWidth={360}
-          personality={personality ?? null}
-        />
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild triggerRefProp="ref">
+            <View style={styles.tooltipAnchor}>
+              <RoleModelSelector
+                providers={modelSelectorProviders}
+                selectedProvider={selectedProvider ?? ""}
+                selectedModel={selectedModel}
+                onSelect={onSelectProviderAndModel}
+                favoriteKeys={favoriteKeys}
+                onToggleFavorite={handleToggleFavorite}
+                isLoading={isAllModelsLoading}
+                disabled={disabled}
+                onOpen={onModelSelectorOpen}
+                onClose={onDropdownClose}
+                onRetryProvider={onRetryModelProvider}
+                isRetryingProvider={isRetryingModelProvider}
+                serverId={modelSelectorServerId}
+                desktopPlacement="top-start"
+                desktopMinWidth={360}
+                personality={personality ?? null}
+              />
+            </View>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="start" offset={8} maxWidth={260}>
+            {modelIdentity ? (
+              <ModelIdentityCard
+                identity={modelIdentity}
+                hint={t(getAgentControlHintKey("model"))}
+              />
+            ) : (
+              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
+            )}
+          </TooltipContent>
+        </Tooltip>
         {selectedProvider ? (
           <ControlledAgentControls
             provider={selectedProvider}
@@ -2372,6 +2524,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.4,
+  },
+  // Wrapper the tooltip anchors to; stays shrinkable so the trigger truncates
+  // exactly as it did before it was wrapped.
+  tooltipAnchor: {
+    minWidth: 0,
+    flexShrink: 1,
   },
   prefsButton: {
     width: compactUp(28),
