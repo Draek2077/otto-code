@@ -1199,6 +1199,11 @@ export const en = {
       composerStateRequired: "Composer state is required",
       selectModel: "Select a model",
     },
+    occupiedDirectory: {
+      title: "This folder already has a workspace",
+      openExisting: "Open it",
+      createWorktree: "Create a worktree",
+    },
     refPicker: {
       startingRef: "Starting ref",
       chooseStart: "Choose where to start from",
@@ -1991,6 +1996,12 @@ export const en = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

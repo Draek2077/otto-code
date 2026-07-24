@@ -31,11 +31,15 @@ export function ConfirmDialogHost() {
   }, [activeId, activeCheckboxDefaultChecked]);
 
   const handleCancel = useCallback(() => {
-    resolveActive({ confirmed: false, checkboxChecked });
+    resolveActive({ confirmed: false, checkboxChecked, choice: "cancel" });
   }, [resolveActive, checkboxChecked]);
 
   const handleConfirm = useCallback(() => {
-    resolveActive({ confirmed: true, checkboxChecked });
+    resolveActive({ confirmed: true, checkboxChecked, choice: "confirm" });
+  }, [resolveActive, checkboxChecked]);
+
+  const handleAlternate = useCallback(() => {
+    resolveActive({ confirmed: false, checkboxChecked, choice: "alternate" });
   }, [resolveActive, checkboxChecked]);
 
   const toggleCheckbox = useCallback(() => setCheckboxChecked((prev) => !prev), []);
@@ -59,6 +63,7 @@ export function ConfirmDialogHost() {
   const confirmLabel =
     active?.confirmLabel ?? t(isAlert ? "common.actions.dismiss" : "common.actions.confirm");
   const cancelLabel = active?.cancelLabel ?? t("common.actions.cancel");
+  const alternateLabel = isAlert ? undefined : active?.alternateLabel;
 
   const footer = useMemo(
     () => (
@@ -74,6 +79,17 @@ export function ConfirmDialogHost() {
             {cancelLabel}
           </Button>
         )}
+        {alternateLabel ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            style={styles.footerButton}
+            onPress={handleAlternate}
+            testID="confirm-dialog-alternate"
+          >
+            {alternateLabel}
+          </Button>
+        ) : null}
         <Button
           variant={isDestructive ? "destructive" : "default"}
           size="sm"
@@ -85,7 +101,16 @@ export function ConfirmDialogHost() {
         </Button>
       </View>
     ),
-    [cancelLabel, confirmLabel, handleCancel, handleConfirm, isAlert, isDestructive],
+    [
+      alternateLabel,
+      cancelLabel,
+      confirmLabel,
+      handleAlternate,
+      handleCancel,
+      handleConfirm,
+      isAlert,
+      isDestructive,
+    ],
   );
 
   if (!active) {

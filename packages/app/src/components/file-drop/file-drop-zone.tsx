@@ -1,7 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import { View } from "react-native";
-import type { StyleProp, ViewStyle } from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSharedValue } from "react-native-reanimated";
 import { isWeb } from "@/constants/platform";
@@ -16,6 +16,8 @@ interface FileDropZoneProps {
   disabled?: boolean;
   /** Styles the drop area (defaults to filling its parent). The backdrop fills this area. */
   style?: StyleProp<ViewStyle>;
+  /** Measures the drop area, for callers that use it as their outermost container. */
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface FileDropZoneProps {
  * descendant calling `useFileDrop` — the drop area, the backdrop, and the consumer are
  * decoupled, so a consumer's layout can never collapse the backdrop.
  */
-export function FileDropZone({ children, disabled = false, style }: FileDropZoneProps) {
+export function FileDropZone({ children, disabled = false, style, onLayout }: FileDropZoneProps) {
   const isDragging = useSharedValue(false);
   const suppressed = useSharedValue(false);
   const hasSink = useSharedValue(false);
@@ -60,14 +62,20 @@ export function FileDropZone({ children, disabled = false, style }: FileDropZone
   if (!isWeb) {
     return (
       <FileDropContext.Provider value={ctx}>
-        <View style={targetStyle}>{children}</View>
+        <View style={targetStyle} onLayout={onLayout}>
+          {children}
+        </View>
       </FileDropContext.Provider>
     );
   }
 
   return (
     <FileDropContext.Provider value={ctx}>
-      <View ref={containerRef as unknown as RefObject<View>} style={targetStyle}>
+      <View
+        ref={containerRef as unknown as RefObject<View>}
+        style={targetStyle}
+        onLayout={onLayout}
+      >
         {children}
         <FileDropBackdrop />
       </View>

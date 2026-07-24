@@ -15,7 +15,15 @@ import { waitForSidebarHydration } from "./helpers/workspace-ui";
 //   - the deny-responder (agent-manager onStreamPermissionRequested) answers a
 //     gated tool immediately with deny, so the run completes instead of
 //     stalling, silently (no prompt, no revealed workspace, no listed agent);
-//   - promote-on-error reveals the hidden run workspace when the run fails.
+//   - promotion is gated on CONTENT: a run that fails before producing any
+//     transcript archives its hidden workspace rather than leaving an empty
+//     shell in the sidebar (docs/safe-unattended.md calls this
+//     "promote-on-error-with-content", and names "personality unavailable" as
+//     the archive case). The reveal half of that branch has no deterministic
+//     mock trigger yet — the mock provider cannot stream content and then fail
+//     — so it is covered structurally by the kept-success reveal in
+//     schedule-hidden-runs-promote.spec.ts, which exercises the same
+//     revealWorkspace path.
 const TOOL_PERMISSION_PROMPT = "Emit synthetic tool permission.";
 
 function sidebarWorkspaceRowTestId(workspaceId: string): string {
@@ -75,7 +83,9 @@ test.describe("Safe unattended deny responder", () => {
     }
   });
 
-  test("promote-on-error reveals the hidden run workspace when the run fails", async ({ page }) => {
+  test("archives the hidden run workspace when the run fails without producing content", async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
 
     const workspace = await seedWorkspace({ repoPrefix: "unattended-promote-" });
@@ -87,8 +97,9 @@ test.describe("Safe unattended deny responder", () => {
         prompt: TOOL_PERMISSION_PROMPT,
         archiveOnFinish: true,
         // A personality binding that cannot resolve fails the run AFTER the
-        // hidden run workspace exists (resolveSchedulePersonalityBrain), which
-        // is the deterministic promote-on-error path.
+        // hidden run workspace exists (resolveSchedulePersonalityBrain) but
+        // BEFORE the agent produces anything — the canonical content-less
+        // failure, which archives rather than promotes.
         personality: missingPersonality,
       });
       deleteSchedule = schedule.cleanup;
@@ -97,21 +108,24 @@ test.describe("Safe unattended deny responder", () => {
       expect(run.status).toBe("failed");
       expect(run.error ?? "").toContain(`Personality "${missingPersonality}" not found`);
 
-      // The failed run's workspace is revealed — it now shows up on the same
-      // client-visible surface the sidebar reads.
+      // The run produced nothing, so its hidden workspace is archived: it never
+      // reaches the client-visible surface the sidebar reads.
       const runWorkspaceId = run.workspaceId ?? null;
       expect(runWorkspaceId).not.toBeNull();
       const workspaces = await workspace.client.fetchWorkspaces({
         filter: { projectId: workspace.projectId },
       });
-      expect(workspaces.entries.map((entry) => entry.id)).toContain(runWorkspaceId);
+      expect(workspaces.entries.map((entry) => entry.id)).toEqual([workspace.workspaceId]);
 
-      // And it surfaces in the sidebar for the user to inspect.
+      // And no empty-shell row appears in the sidebar.
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await expect(page.getByTestId(sidebarWorkspaceRowTestId(runWorkspaceId ?? ""))).toBeVisible({
+      await expect(page.getByTestId(sidebarWorkspaceRowTestId(workspace.workspaceId))).toBeVisible({
         timeout: 30_000,
       });
+      await expect(page.getByTestId(sidebarWorkspaceRowTestId(runWorkspaceId ?? ""))).toHaveCount(
+        0,
+      );
     } finally {
       await deleteSchedule?.();
       await workspace.cleanup();

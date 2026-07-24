@@ -25,7 +25,9 @@ const SECOND_PROMPT = "Reply with exactly the word again and nothing else. Do no
 const FOLLOW_UP_PROMPT = "Reply with exactly the word done and nothing else. Do not use any tools.";
 
 test.describe("openai-compat manual compaction", () => {
-  test.setTimeout(600_000);
+  // `test.setTimeout()` in a describe body does not take effect (the project
+  // timeout wins); `describe.configure` is the form that does.
+  test.describe.configure({ timeout: 420_000 });
 
   test("/compact emits a compaction marker and the session keeps working", async ({ page }) => {
     const seeded = await seedLocalAiAgent({

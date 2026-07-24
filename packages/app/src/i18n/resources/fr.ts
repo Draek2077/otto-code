@@ -1217,6 +1217,11 @@ export const fr: TranslationResources = {
       composerStateRequired: "L'état du compositeur est requis",
       selectModel: "Sélectionnez un modèle",
     },
+    occupiedDirectory: {
+      title: "Ce dossier a déjà un espace de travail",
+      openExisting: "L'ouvrir",
+      createWorktree: "Créer un arbre de travail",
+    },
     refPicker: {
       startingRef: "Réf de départ",
       chooseStart: "Choisissez par où commencer",
@@ -2009,6 +2014,12 @@ export const fr: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

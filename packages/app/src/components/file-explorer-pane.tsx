@@ -47,7 +47,7 @@ import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-sto
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
-import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
+import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
 import { FileFinderOverlay } from "@/components/file-finder-overlay";
 import {
   useWorkspaceAttachments,
@@ -944,7 +944,10 @@ export function FileExplorerPane({
     [],
   );
 
-  const canIndexCode = useProjectSearchFeature(serverId);
+  // The fuzzy finder is `code.list_files`, so it rides the code-index gate —
+  // not the project-search one. Today's daemon ships both together; they are
+  // separate flags precisely so a future one need not.
+  const canIndexCode = useCodeIndexFeature(serverId);
   const [finderOpen, setFinderOpen] = useState(false);
   const openFinder = useCallback(() => setFinderOpen(true), []);
   const closeFinder = useCallback(() => setFinderOpen(false), []);

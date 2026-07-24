@@ -1,6 +1,6 @@
 # Orchestration Graphs
 
-**Status:** In build (started 2026-07-20)
+**Status:** BUILT and committed (started 2026-07-20; commit state verified against the tree 2026-07-24 — `packages/server/src/server/orchestration/`, 23 files)
 **Owner surface:** daemon orchestration runtime + Orchestrations page + a new graph-designer workspace tab
 
 **Companion doc:** [orchestration-design.md](orchestration-design.md) — what an orchestration IS, the gap list against real agentic practice, which LangGraph concepts to mirror, and the open-source landscape survey. This file describes what is built; that one describes what is missing and why.

@@ -6,6 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
+import { useContainerHeight } from "@/hooks/use-container-height";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import { ChatSeamFade } from "@/components/chat-seam-fade";
@@ -404,6 +405,10 @@ export function WorkspaceDraftAgentTab({
     COMPACT_FORM_FACTOR_WIDTH,
     { initialIsBelow: isCompactFormFactor },
   );
+  // The tab, not the window, is what the composer has to fit inside — measured
+  // on the outermost box, whose height its own parent owns, so a growing
+  // composer can never feed back into it.
+  const { onLayout: onTabLayout, height: tabHeight } = useContainerHeight();
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd: composerState.workingDir,
@@ -657,7 +662,7 @@ export function WorkspaceDraftAgentTab({
     ],
   );
   return (
-    <FileDropZone style={styles.container}>
+    <FileDropZone style={styles.container} onLayout={onTabLayout}>
       <View style={styles.contentContainer}>
         {isSubmitting && draftAgent ? (
           <View style={styles.streamContainer}>
@@ -716,6 +721,7 @@ export function WorkspaceDraftAgentTab({
           commandDraftConfig={composerState.commandDraftConfig}
           agentControls={composerAgentControls}
           isCompactLayout={isCompactComposerLayout}
+          viewportHeight={tabHeight}
         />
       </ReanimatedAnimated.View>
     </FileDropZone>

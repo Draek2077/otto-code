@@ -2,6 +2,13 @@
 
 _Charter, 2026-07-17._
 
+**Status: SHIPPED** (verified against the tree 2026-07-24 — `browser_focus_tab` and
+`browser_page_text` are live in `packages/server/src/server/browser-tools/tools.ts`).
+Per the closing note in this file, the remaining work is editorial: fold the mapping
+table's durable conclusions into [docs/preview.md](../../docs/preview.md), then delete
+this folder. The ranked **Deferred** list below survives that fold — re-home it before
+deleting.
+
 ## Reframe: Otto is not missing tabs
 
 Claude Desktop's browser pane recently promoted tabs to first-class citizens:

@@ -72,7 +72,8 @@ requestReveal(key) }` — monotonic token so repeat reveals of the same key stil
 
 ## Status
 
-- Increment 1: **implemented** (uncommitted), static-clean (typecheck + lint). Files:
+- Increment 1: **shipped and committed** (commit state verified against the tree 2026-07-24),
+  static-clean (typecheck + lint). Files:
   - `components/sidebar/sidebar-row-anchors.ts` — keyed measurable-node registry.
   - `components/sidebar/use-sidebar-row-anchor.ts` — ref-callback hook.
   - `stores/sidebar-reveal-store.ts` — `{request:{key,token}}` + `requestSidebarReveal`.

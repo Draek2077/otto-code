@@ -64,8 +64,12 @@ test.describe("Agent teams switcher", () => {
       teamPrompt: "Crew B works together.",
     });
     let teamAId: string | null = null;
+    // activeTeamId is shared daemon config; hand it back exactly as found so a
+    // later spec in the same invocation sees the host it would have seen.
+    let priorActiveTeamId: string | null = null;
 
     try {
+      priorActiveTeamId = await getActiveTeamId(client);
       await seedPersonalities(client, [memberA, memberB]);
       await seedTeams(client, [teamB]);
       // Precondition the host on "no active team" so the switcher's initial
@@ -75,7 +79,7 @@ test.describe("Agent teams switcher", () => {
       // ── Create team A through the settings editor ───────────────────────
       await gotoAppShell(page);
       await openSettings(page);
-      await openSettingsHostSection(page, serverId, "agents");
+      await openSettingsHostSection(page, serverId, "teams");
       await expect(page.getByTestId("agent-teams-section")).toBeVisible({ timeout: 30_000 });
 
       await page.getByTestId("agent-teams-add-button").click();
@@ -121,7 +125,7 @@ test.describe("Agent teams switcher", () => {
 
       // ── The settings list marks exactly the active team ─────────────────
       await openSettings(page);
-      await openSettingsHostSection(page, serverId, "agents");
+      await openSettingsHostSection(page, serverId, "teams");
       await expect(page.getByTestId(`agent-team-active-badge-${teamB.id}`)).toBeVisible({
         timeout: 30_000,
       });
@@ -140,6 +144,8 @@ test.describe("Agent teams switcher", () => {
       // Safety net for a UI save that landed under a different id than we read.
       await removeTeamsByName(client, [teamAName, teamB.name]).catch(() => undefined);
       await removePersonalitiesById(client, [memberA.id, memberB.id]).catch(() => undefined);
+      // Restore last: removeTeamsById can null activeTeamId as a side effect.
+      await setActiveTeam(client, priorActiveTeamId).catch(() => undefined);
       await client.close().catch(() => undefined);
     }
   });

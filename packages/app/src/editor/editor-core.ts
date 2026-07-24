@@ -38,6 +38,7 @@ import type {
   EditorScrollMetrics,
   EditorThemeSpec,
 } from "./editor-contract";
+import { findWordAtCursor } from "./word-at-cursor";
 
 // The CM6 assembly shared by the web host (direct DOM mount) and the native
 // webview entry. This module is bundled into the webview HTML — keep it free
@@ -55,6 +56,7 @@ export interface EditorCoreOptions {
   onSaveShortcut?: () => void;
   onFindShortcut?: () => void;
   onGoToLineShortcut?: () => void;
+  onGoToDefinitionShortcut?: () => void;
   /** Fires on every doc change without content; callers pull getDoc as needed. */
   onDocChanged?: () => void;
   // Split-view scroll sync; both fire only for user-initiated interactions
@@ -73,6 +75,7 @@ export interface EditorCoreSelection {
 export interface EditorCore {
   getDoc(): string;
   getSelection(): EditorCoreSelection;
+  getWordAtCursor(): string;
   setDoc(doc: string): void;
   markClean(): void;
   setFind(find: EditorFindState | null): void;
@@ -431,6 +434,22 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
             return true;
           },
         },
+        // Both bindings, because muscle memory splits: Mod-B is JetBrains, F12
+        // is VS Code. Neither is claimed by defaultKeymap.
+        {
+          key: "Mod-b",
+          run: () => {
+            options.onGoToDefinitionShortcut?.();
+            return true;
+          },
+        },
+        {
+          key: "F12",
+          run: () => {
+            options.onGoToDefinitionShortcut?.();
+            return true;
+          },
+        },
         ...defaultKeymap,
         ...historyKeymap,
         indentWithTab,
@@ -561,6 +580,13 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         lineEnd: view.state.doc.lineAt(range.to).number,
         isEmpty: range.empty,
       };
+    },
+    // Read from the selection HEAD, not `from`: after a shift-arrow selection
+    // the head is where the user thinks the caret is.
+    getWordAtCursor: () => {
+      const head = view.state.selection.main.head;
+      const line = view.state.doc.lineAt(head);
+      return findWordAtCursor(line.text, head - line.from + 1);
     },
     setDoc: (doc) => {
       view.dispatch({

@@ -7,6 +7,7 @@ import { expectWorkspaceHeader } from "./workspace-ui";
 
 type NewWorkspaceDaemonClient = Pick<
   InternalDaemonClient,
+  | "addProject"
   | "archiveOttoWorktree"
   | "archiveWorkspace"
   | "checkoutRefresh"
@@ -103,6 +104,35 @@ export async function openProjectViaDaemon(
     }),
   );
   return openedProjectFromWorkspace(workspace);
+}
+
+export interface RegisteredProject {
+  projectKey: string;
+  projectDisplayName: string;
+}
+
+/**
+ * Register a directory as a project WITHOUT creating a workspace for it (the
+ * `emptyProjects` case). `openProjectViaDaemon` also backs the directory with a
+ * "main" workspace, which makes the new-workspace composer refuse to create a
+ * second workspace on it ("This directory already backs the workspace …") — use
+ * this when the spec needs a composer-selectable, workspace-free target.
+ */
+export async function addProjectViaDaemon(
+  client: NewWorkspaceDaemonClient,
+  repoPath: string,
+): Promise<RegisteredProject> {
+  const payload = await client.addProject(repoPath);
+  if (payload.error) {
+    throw new Error(payload.error);
+  }
+  if (!payload.project) {
+    throw new Error("project.add returned no project.");
+  }
+  return {
+    projectKey: payload.project.projectId,
+    projectDisplayName: payload.project.projectDisplayName,
+  };
 }
 
 export async function archiveWorkspaceFromDaemon(

@@ -15,6 +15,5 @@ stay tracked in their own charters — they are not quick cleanups.
 | [agent-teams-themed-avatars.md](agent-teams-themed-avatars.md)               | agent-teams (Step 7)                 | M      | image assets + teams editor; schema already ready |
 | [vertical-tabs-rail-polish.md](vertical-tabs-rail-polish.md)                 | vertical-tabs (Step 8)               | S each | vertical tab rail styling/DnD/i18n                |
 | [unattended-denial-promote.md](unattended-denial-promote.md)                 | safe-unattended (Phase 3 finish)     | S      | daemon; closes a `TODO(...)` already in code      |
-| [editor-go-to-definition.md](editor-go-to-definition.md)                     | text-editor (deferred nav)           | M      | editor client bridge; daemon side already shipped |
 
 Convention reference: [CLAUDE.md](../../CLAUDE.md) → "Projects" and the protocol/compat rules.

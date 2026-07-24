@@ -48,6 +48,7 @@ import {
 import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
@@ -82,6 +83,12 @@ import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { isEmptyWorkspaceSubmission, runCreateEmptyWorkspace } from "./new-workspace-empty";
+import {
+  isWorkspaceDirectoryOccupiedError,
+  runOccupiedDirectorySteer,
+  WORKSPACE_DIRECTORY_OCCUPIED_CODE,
+  WorkspaceDirectoryOccupiedClientError,
+} from "./new-workspace-occupied-directory";
 import { resolveReadmeFileName, runViewDocumentation } from "./new-workspace-view-documentation";
 import {
   getWorkspaceNamingAttachments,
@@ -920,6 +927,12 @@ async function createMultiplicityWorkspace(input: {
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
   if (payload.error || !payload.workspace) {
+    // One directory = one live workspace. Keep this refusal distinguishable so
+    // the submit handler can offer "open it" / "make a worktree" instead of a
+    // dead-end toast.
+    if (payload.errorCode === WORKSPACE_DIRECTORY_OCCUPIED_CODE && payload.error) {
+      throw new WorkspaceDirectoryOccupiedClientError(payload.error, input.sourceDirectory);
+    }
     throw new Error(payload.error ?? input.createFailedMessage);
   }
   const normalizedWorkspace = normalizeWorkspaceDescriptor(payload.workspace);
@@ -2018,6 +2031,9 @@ export function NewWorkspaceScreen({
       prompt: string;
       attachments: AgentAttachment[];
       withInitialAgent: boolean;
+      // Set by the occupied-directory steer to retry as a worktree without the
+      // user having to go back and flip the isolation control themselves.
+      isolationOverride?: "local" | "worktree";
     }) => {
       if (createdWorkspace) {
         return createdWorkspace;
@@ -2031,7 +2047,7 @@ export function NewWorkspaceScreen({
       const normalizedWorkspace = supportsWorkspaceMultiplicity
         ? await createMultiplicityWorkspace({
             client: withConnectedClient(),
-            isolation: effectiveIsolation,
+            isolation: input.isolationOverride ?? effectiveIsolation,
             project: selectedProject,
             sourceDirectory: selectedSourceDirectory,
             selectedItem,
@@ -2069,45 +2085,80 @@ export function NewWorkspaceScreen({
     ],
   );
 
+  // The submission path itself, isolation-parameterised so the occupied-directory
+  // steer can replay the user's exact submission as a worktree.
+  const runSubmitNewWorkspace = useCallback(
+    async (payload: MessagePayload, isolationOverride?: "local" | "worktree") => {
+      const ensureWorkspaceForSubmit: typeof ensureWorkspace = (input) =>
+        ensureWorkspace(isolationOverride ? { ...input, isolationOverride } : input);
+      setErrorMessage(null);
+      await composerState?.persistFormPreferences();
+      if (isEmptyWorkspaceSubmission(payload)) {
+        setPendingAction("empty");
+        await runCreateEmptyWorkspace({
+          payload,
+          ensureWorkspace: ensureWorkspaceForSubmit,
+          serverId: selectedServerId,
+          navigate: (targetServerId, workspaceId) =>
+            navigateToWorkspace(targetServerId, workspaceId),
+        });
+        return;
+      }
+
+      setPendingAction("chat");
+      await runCreateChatAgent({
+        payload,
+        composerState,
+        forkDraftSetup,
+        ensureWorkspace: ensureWorkspaceForSubmit,
+        serverId: selectedServerId,
+        draftKey,
+        draftId,
+        labels: {
+          composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
+          selectModel: t("newWorkspace.errors.selectModel"),
+        },
+      });
+    },
+    [composerState, draftId, draftKey, ensureWorkspace, forkDraftSetup, selectedServerId, t],
+  );
+
   const handleSubmitNewWorkspace = useCallback(
     async (payload: MessagePayload) => {
       try {
-        setErrorMessage(null);
-        await composerState?.persistFormPreferences();
-        if (isEmptyWorkspaceSubmission(payload)) {
-          setPendingAction("empty");
-          await runCreateEmptyWorkspace({
-            payload,
-            ensureWorkspace,
-            serverId: selectedServerId,
-            navigate: (targetServerId, workspaceId) =>
-              navigateToWorkspace(targetServerId, workspaceId),
+        await runSubmitNewWorkspace(payload);
+      } catch (error) {
+        setPendingAction(null);
+        // The directory already has a live workspace. Don't dead-end on a toast:
+        // offer to open that workspace, or to make the worktree that actually
+        // gives an independent branch.
+        if (isWorkspaceDirectoryOccupiedError(error)) {
+          setErrorMessage(null);
+          await runOccupiedDirectorySteer({
+            error,
+            labels: {
+              title: t("newWorkspace.occupiedDirectory.title"),
+              openExisting: t("newWorkspace.occupiedDirectory.openExisting"),
+              createWorktree: t("newWorkspace.occupiedDirectory.createWorktree"),
+            },
+            findExistingWorkspaceId: (directory) =>
+              findWorkspaceIdForDirectory(selectedServerId, directory),
+            confirm: confirmDialogWithCheckbox,
+            openWorkspace: (workspaceId) => navigateToWorkspace(selectedServerId, workspaceId),
+            createWorktreeInstead: () => runSubmitNewWorkspace(payload, "worktree"),
+            onError: (message) => {
+              setErrorMessage(message);
+              toast.error(message);
+            },
           });
           return;
         }
-
-        setPendingAction("chat");
-        await runCreateChatAgent({
-          payload,
-          composerState,
-          forkDraftSetup,
-          ensureWorkspace,
-          serverId: selectedServerId,
-          draftKey,
-          draftId,
-          labels: {
-            composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
-            selectModel: t("newWorkspace.errors.selectModel"),
-          },
-        });
-      } catch (error) {
         const message = toErrorMessage(error);
-        setPendingAction(null);
         setErrorMessage(message);
         toast.error(message);
       }
     },
-    [composerState, draftId, draftKey, ensureWorkspace, forkDraftSetup, selectedServerId, t, toast],
+    [runSubmitNewWorkspace, selectedServerId, t, toast],
   );
 
   const handleViewDocumentation = useCallback(

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { expect, test } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 import { restartTestDaemon } from "./helpers/daemon-restart";
 import {
   buildLocalAiAgentRoute,
@@ -33,8 +33,35 @@ const PROMPT =
   `"${TARGET_CONTENT}" (without the quotes) and nothing else. Use your write_file tool. ` +
   `Do not run shell commands. Do not explain anything.`;
 
+/**
+ * Asserts the replayed turn renders a tool-call row.
+ *
+ * On a freshly loaded chat every action is settled, and `groupConsecutiveActionItems`
+ * folds a consecutive run of 2+ settled actions into one collapsed `action-group-badge`
+ * (see `agent-stream/action-grouping.ts`). A reasoning-model turn emits a thought
+ * plus the `write_file` call, so the tool row usually lives *inside* that group and
+ * `tool-call-badge` is not in the DOM until it is expanded. A turn that happens to
+ * emit only the tool call keeps a lone `tool-call-badge`. Both shapes are correct
+ * renders of the same replayed history, so accept either and expand when grouped.
+ */
+async function expectReplayedToolCallRow(page: Page): Promise<void> {
+  const toolBadge = page.getByTestId("tool-call-badge").first();
+  const groupBadge = page.getByTestId("action-group-badge").first();
+  // `.first()` after `.or()`, not on each side: a turn that produced both shapes
+  // would otherwise resolve to two elements and trip strict mode.
+  await expect(
+    page.getByTestId("tool-call-badge").or(page.getByTestId("action-group-badge")).first(),
+  ).toBeVisible({ timeout: 60_000 });
+  if (await groupBadge.isVisible()) {
+    await groupBadge.click();
+  }
+  await expect(toolBadge).toBeVisible({ timeout: 30_000 });
+}
+
 test.describe("openai-compat resume after daemon restart", () => {
-  test.setTimeout(420_000);
+  // `test.setTimeout()` in a describe body does not take effect (the project
+  // timeout wins); `describe.configure` is the form that does.
+  test.describe.configure({ timeout: 420_000 });
 
   test("timeline still shows the prompt and tool call after restart", async ({ page }) => {
     const seeded = await seedLocalAiAgent({
@@ -91,7 +118,7 @@ test.describe("openai-compat resume after daemon restart", () => {
       await expect(
         page.getByTestId("user-message").filter({ hasText: TARGET_FILE }).first(),
       ).toBeVisible({ timeout: 60_000 });
-      await expect(page.getByTestId("tool-call-badge").first()).toBeVisible({ timeout: 30_000 });
+      await expectReplayedToolCallRow(page);
     } finally {
       if (restartedClient) {
         // The seeded cleanup's client died with the old daemon; unregister the

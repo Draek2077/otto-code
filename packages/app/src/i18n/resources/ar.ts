@@ -1189,6 +1189,11 @@ export const ar: TranslationResources = {
       composerStateRequired: "حالة الملحن مطلوبة",
       selectModel: "اختر نموذجا",
     },
+    occupiedDirectory: {
+      title: "هذا المجلد يحتوي بالفعل على مساحة عمل",
+      openExisting: "افتحها",
+      createWorktree: "إنشاء شجرة عمل",
+    },
     refPicker: {
       startingRef: "بدء المرجع",
       chooseStart: "اختر من أين تبدأ",
@@ -1964,6 +1969,12 @@ export const ar: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

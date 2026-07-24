@@ -126,7 +126,16 @@ function spawnSupervisor(args: {
 
   // Detach our handles so the spawned supervisor outlives this spec process and
   // is reaped by globalSetup's cleanup (the original process tree), not us.
+  // `unref()` alone is not enough: the piped stdout/stderr sockets are separate
+  // libuv handles that keep the Playwright worker's event loop alive after the
+  // test ends, so the worker never exits and the run appears to hang in
+  // teardown. Unref the pipes too — the forwarders above still print while the
+  // worker is alive, they just stop holding it open.
+  // (Node types the pipes as plain `Readable`; at run time they are libuv
+  // sockets, which do carry `unref()`.)
   child.unref();
+  (child.stdout as unknown as { unref?: () => void } | null)?.unref?.();
+  (child.stderr as unknown as { unref?: () => void } | null)?.unref?.();
   return child;
 }
 

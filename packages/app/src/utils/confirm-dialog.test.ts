@@ -32,7 +32,9 @@ describe("confirmDialog", () => {
       destructive: true,
     });
 
-    useConfirmDialogStore.getState().resolveActive({ confirmed: true, checkboxChecked: false });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: true, checkboxChecked: false, choice: "confirm" });
 
     await expect(promise).resolves.toBe(true);
     expect(useConfirmDialogStore.getState().queue).toHaveLength(0);
@@ -41,7 +43,9 @@ describe("confirmDialog", () => {
   it("resolves false when the active request is cancelled", async () => {
     const promise = confirmDialog({ title: "Delete", message: "Are you sure?" });
 
-    useConfirmDialogStore.getState().resolveActive({ confirmed: false, checkboxChecked: false });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: false, checkboxChecked: false, choice: "cancel" });
 
     await expect(promise).resolves.toBe(false);
   });
@@ -53,9 +57,15 @@ describe("confirmDialog", () => {
       checkboxLabel: "Suppress this warning next time",
     });
 
-    useConfirmDialogStore.getState().resolveActive({ confirmed: true, checkboxChecked: true });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: true, checkboxChecked: true, choice: "confirm" });
 
-    await expect(promise).resolves.toEqual({ confirmed: true, checkboxChecked: true });
+    await expect(promise).resolves.toEqual({
+      confirmed: true,
+      checkboxChecked: true,
+      choice: "confirm",
+    });
   });
 
   it("enqueues an acknowledge-only request for alertDialog", async () => {
@@ -72,7 +82,9 @@ describe("confirmDialog", () => {
 
     // Dismissing resolves regardless of which action the host reports, since an
     // alert has nothing to decline.
-    useConfirmDialogStore.getState().resolveActive({ confirmed: false, checkboxChecked: false });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: false, checkboxChecked: false, choice: "cancel" });
 
     await expect(promise).resolves.toBeUndefined();
     expect(useConfirmDialogStore.getState().queue).toHaveLength(0);
@@ -87,14 +99,18 @@ describe("confirmDialog", () => {
       "Second",
     ]);
 
-    useConfirmDialogStore.getState().resolveActive({ confirmed: true, checkboxChecked: false });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: true, checkboxChecked: false, choice: "confirm" });
     await expect(first).resolves.toBe(true);
 
     expect(useConfirmDialogStore.getState().queue.map((request) => request.title)).toEqual([
       "Second",
     ]);
 
-    useConfirmDialogStore.getState().resolveActive({ confirmed: false, checkboxChecked: false });
+    useConfirmDialogStore
+      .getState()
+      .resolveActive({ confirmed: false, checkboxChecked: false, choice: "cancel" });
     await expect(second).resolves.toBe(false);
   });
 });

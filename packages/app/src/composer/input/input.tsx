@@ -71,6 +71,7 @@ import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useComposerHeightMirror } from "./height-mirror";
+import { MIN_INPUT_HEIGHT, resolveMaxInputHeight } from "./max-height";
 import {
   resolveSendTooltipLabel,
   resolveSubmitAccessibilityLabel,
@@ -153,6 +154,12 @@ export interface MessageInputProps {
   onSelectionChange?: (selection: { start: number; end: number }) => void;
   onFocusChange?: (focused: boolean) => void;
   onHeightChange?: (height: number) => void;
+  /**
+   * Height of the box the composer must fit inside, when the host measures one.
+   * The input's growth cap is a share of this. Falls back to the window height,
+   * which is wrong for a composer in a short split pane.
+   */
+  viewportHeight?: number;
   /** Extra styles merged onto the input wrapper (e.g. elevated background). */
   inputWrapperStyle?: import("react-native").ViewStyle;
   /** Content rendered inside the bordered input surface, above the text input (e.g. attachment pills). */
@@ -176,8 +183,6 @@ export interface MessageInputRef {
   getNativeElement?: () => HTMLElement | null;
 }
 
-const MIN_INPUT_HEIGHT = 32;
-const DEFAULT_MAX_INPUT_HEIGHT = 160;
 // Floor for the uniform toolbar shrink. Below this, buttons/icons get too small
 // to hit; the row is allowed to overflow-clip instead of scaling further.
 const MIN_TOOLBAR_SCALE = 0.7;
@@ -187,7 +192,6 @@ const MIN_TOOLBAR_SCALE = 0.7;
 // the narrowest size, rather than clipping right at the `MIN_TOOLBAR_SCALE` edge.
 const TOOLBAR_BUTTON_WIDTH = 28;
 const TOOLBAR_BUTTON_WIDTH_COMPACT = TOOLBAR_BUTTON_WIDTH * 2;
-const MAX_INPUT_VIEWPORT_RATIO = 0.5;
 const ATTACHMENT_SHEET_SNAP_POINTS = ["34%", "45%"];
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
@@ -1150,11 +1154,6 @@ function computeToolbarScale(input: {
   return Math.max(toolbarMinScale, toolbarRowWidth / toolbarNeededWidth);
 }
 
-function resolveMaxInputHeight(windowHeight: number): number {
-  if (!Number.isFinite(windowHeight) || windowHeight <= 0) return DEFAULT_MAX_INPUT_HEIGHT;
-  return Math.max(DEFAULT_MAX_INPUT_HEIGHT, Math.floor(windowHeight * MAX_INPUT_VIEWPORT_RATIO));
-}
-
 function computeTextInputHeightStyle(inputHeight: number, maxInputHeight: number) {
   if (isWeb) {
     return {
@@ -1247,6 +1246,7 @@ interface ResolvedMessageInputProps {
   onSelectionChangeCallback: ((selection: { start: number; end: number }) => void) | undefined;
   onFocusChange: ((focused: boolean) => void) | undefined;
   onHeightChange: ((height: number) => void) | undefined;
+  viewportHeight: number | undefined;
   inputWrapperStyle: import("react-native").ViewStyle | undefined;
   attachmentSlot: React.ReactNode;
 }
@@ -1289,6 +1289,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     onSelectionChangeCallback: props.onSelectionChange,
     onFocusChange: props.onFocusChange,
     onHeightChange: props.onHeightChange,
+    viewportHeight: props.viewportHeight,
     inputWrapperStyle: props.inputWrapperStyle,
     attachmentSlot: props.attachmentSlot,
   };
@@ -1339,13 +1340,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onSelectionChangeCallback,
       onFocusChange,
       onHeightChange,
+      viewportHeight,
       inputWrapperStyle,
       attachmentSlot,
     } = resolveMessageInputProps(props);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
     const { height: windowHeight } = useWindowDimensions();
-    const maxInputHeight = resolveMaxInputHeight(windowHeight);
+    // The window is the fallback, not the truth: a composer in a short split
+    // pane has far less room than the window suggests.
+    const maxInputHeight = resolveMaxInputHeight({
+      viewportHeight: viewportHeight && viewportHeight > 0 ? viewportHeight : windowHeight,
+      isCompact,
+    });
     const iconSize = useIconSize();
     const buttonIconSize = isWeb ? iconSize.md : iconSize.lg;
     const toast = useToast();

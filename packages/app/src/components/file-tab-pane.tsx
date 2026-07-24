@@ -16,6 +16,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  FileSymlink,
   History,
   List,
   Save,
@@ -47,11 +48,13 @@ import { buildEditorThemeSpec } from "@/editor/editor-theme";
 import type { EditorBufferState } from "@/editor/editor-buffer-state";
 import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
 import { useEditorBuffer } from "@/editor/use-editor-buffer";
+import { DefinitionPickerDialog } from "@/editor/definition-picker-dialog";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
 import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
-import { useProjectSearchFeature } from "@/editor/use-project-search-feature";
+import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
+import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to-definition";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
@@ -74,7 +77,9 @@ import {
 } from "@/components/file-split-sync";
 import { defaultFileViewMode } from "@/components/file-pane-render-mode";
 import { ResizeHandle } from "@/components/resize-handle";
+import { usePaneContext } from "@/panels/pane-context";
 import { useFileViewMode, useFileViewStore, type FileViewMode } from "@/stores/file-view-store";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { EditGate } from "@/projects/cross-project-open";
@@ -103,6 +108,7 @@ const warningIconColorMapping = (theme: Theme) => ({
 });
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
+const ThemedFileSymlink = withUnistyles(FileSymlink);
 const ThemedHistory = withUnistyles(History);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
@@ -990,16 +996,66 @@ function EditorModeView({
     void keepMyChanges();
   }, [keepMyChanges]);
 
-  const hasCodeIndex = useProjectSearchFeature(serverId);
+  // The outline and go-to-definition both ride on `code.*`, so they share the
+  // code-index gate. Absent capability hides both outright — no fallback path.
+  const hasCodeIndex = useCodeIndexFeature(serverId);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const openOutline = useCallback(() => setOutlineOpen(true), []);
   const closeOutline = useCallback(() => setOutlineOpen(false), []);
-  const handleOutlineLine = useCallback(
+  // Shared by the outline and by a definition that lands in this same file:
+  // both mean "move the caret", never "open a tab".
+  const jumpToLineInBuffer = useCallback(
     (line: number) => {
       controllerRef.current?.goToLine(line);
     },
     [controllerRef],
   );
+
+  const { workspaceId: paneWorkspaceId, openFileInWorkspace } = usePaneContext();
+  const paneWorkspaceRoot = useWorkspaceDirectory(serverId, paneWorkspaceId);
+  // "main", not "side": following a definition is continuing to read the same
+  // thread of code, so it belongs in the pane you are already reading in.
+  //
+  // The symbol index answers relative to the workspace it indexed, and
+  // `openFileInWorkspace` anchors a relative path to the PANE's workspace. Those
+  // are the same root for an ordinary tab, and different ones for a linked
+  // project's file (gated-multi-root), where a relative path would resolve
+  // against the wrong tree. Send an absolute path in that case and let the
+  // cross-project open gate re-derive the owning workspace.
+  const handleOpenDefinitionTarget = useCallback(
+    (target: GoToDefinitionTarget) => {
+      const targetPath =
+        paneWorkspaceRoot === workspaceRoot ? target.path : `${workspaceRoot}/${target.path}`;
+      openFileInWorkspace({
+        location: { path: targetPath, lineStart: target.line },
+        disposition: "main",
+      });
+    },
+    [openFileInWorkspace, paneWorkspaceRoot, workspaceRoot],
+  );
+  const {
+    running: definitionRunning,
+    pickerName: definitionPickerName,
+    candidates: definitionCandidates,
+    goToDefinition,
+    closePicker: closeDefinitionPicker,
+    selectCandidate: selectDefinitionCandidate,
+  } = useGoToDefinition({
+    serverId,
+    workspaceRoot,
+    path,
+    controllerRef,
+    onJumpInFile: jumpToLineInBuffer,
+    onOpenTarget: handleOpenDefinitionTarget,
+  });
+  // The keystroke reaches the editor even when the toolbar button is hidden, so
+  // the capability gate has to be re-applied here rather than only on the icon.
+  const handleGoToDefinition = useCallback(() => {
+    if (!hasCodeIndex) {
+      return;
+    }
+    void goToDefinition();
+  }, [goToDefinition, hasCodeIndex]);
 
   // Git investigation is selection-aware from the toolbar, not from a
   // right-click menu. Right-click inside the editor belongs to the platform's
@@ -1177,6 +1233,7 @@ function EditorModeView({
       onSaveShortcut={handleSavePress}
       onFindShortcut={openFind}
       onGoToLineShortcut={openGoToLine}
+      onGoToDefinitionShortcut={handleGoToDefinition}
       onScrolled={split ? handleEditorScrolled : undefined}
       onPointerSelect={split ? handleEditorPointerSelect : undefined}
       onReady={handleReady}
@@ -1212,12 +1269,21 @@ function EditorModeView({
         />
         <ToolbarSeparator />
         {hasCodeIndex ? (
-          <ToolbarIconButton
-            label={t("codeOutline.open")}
-            testID="editor-outline-toggle"
-            Icon={ThemedList}
-            onPress={openOutline}
-          />
+          <>
+            <ToolbarIconButton
+              label={t("goToDefinition.action")}
+              testID="editor-go-to-definition"
+              Icon={ThemedFileSymlink}
+              onPress={handleGoToDefinition}
+              loading={definitionRunning}
+            />
+            <ToolbarIconButton
+              label={t("codeOutline.open")}
+              testID="editor-outline-toggle"
+              Icon={ThemedList}
+              onPress={openOutline}
+            />
+          </>
         ) : null}
         <ToolbarIconButton
           label={t("editor.find.open")}
@@ -1282,14 +1348,22 @@ function EditorModeView({
       />
 
       {hasCodeIndex ? (
-        <EditorOutlineSheet
-          serverId={serverId}
-          workspaceRoot={workspaceRoot}
-          path={path}
-          visible={outlineOpen}
-          onClose={closeOutline}
-          onSelectLine={handleOutlineLine}
-        />
+        <>
+          <EditorOutlineSheet
+            serverId={serverId}
+            workspaceRoot={workspaceRoot}
+            path={path}
+            visible={outlineOpen}
+            onClose={closeOutline}
+            onSelectLine={jumpToLineInBuffer}
+          />
+          <DefinitionPickerDialog
+            name={definitionPickerName}
+            candidates={definitionCandidates}
+            onClose={closeDefinitionPicker}
+            onSelect={selectDefinitionCandidate}
+          />
+        </>
       ) : null}
 
       <GoToLineDialog

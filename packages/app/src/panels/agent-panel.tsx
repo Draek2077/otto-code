@@ -43,6 +43,7 @@ import {
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
+import { useContainerHeight } from "@/hooks/use-container-height";
 import {
   clearHistorySyncErrorAfterSuccessfulSync,
   reconcileMissingAgentStateWithPresentAgent,
@@ -1222,6 +1223,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   // once dismissed (or the feature is off) it settles back inline as history.
   const pinnedTaskList = usePinnedTaskList({ serverId, agentId });
   const pinnedTaskListId = pinnedTaskList.item?.id;
+  // The pane, not the window, is what the composer has to fit inside — measured
+  // on `root`, whose height its own parent owns, so a growing composer can never
+  // feed back into it.
+  const { onLayout: onPaneLayout, height: paneHeight } = useContainerHeight();
   const streamSection = (
     <RenderProfile id={`AgentStreamSection:${agentId}`}>
       <AgentStreamSection
@@ -1252,6 +1257,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
         onMessageSent={handleMessageSent}
+        viewportHeight={paneHeight}
       />
     </RenderProfile>
   );
@@ -1276,7 +1282,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 
   return (
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
-      <View style={styles.root}>
+      <View style={styles.root} onLayout={onPaneLayout}>
         <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
           {contentContainer}
 
@@ -1413,6 +1419,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  viewportHeight,
 }: {
   agentId?: string;
   serverId: string;
@@ -1426,6 +1433,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  viewportHeight: number;
 }) {
   const isObserved = useSessionStore((state) => {
     if (!agentId) {
@@ -1464,6 +1472,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
       onAttentionPromptSend={onAttentionPromptSend}
       onComposerHeightChange={onComposerHeightChange}
       onMessageSent={onMessageSent}
+      viewportHeight={viewportHeight}
     />
   );
 });
@@ -1479,6 +1488,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  viewportHeight,
 }: {
   agentId: string;
   serverId: string;
@@ -1490,6 +1500,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  viewportHeight: number;
 }) {
   const insets = useSafeAreaInsets();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -1726,6 +1737,7 @@ function ActiveAgentComposer({
           onMessageSent={onMessageSent}
           onClientSlashCommand={handleClientSlashCommand}
           isCompactLayout={isCompactComposerLayout}
+          viewportHeight={viewportHeight}
         />
       </View>
     </ReanimatedAnimated.View>

@@ -4,6 +4,7 @@ import {
   buildMockPersonality,
   buildTeam,
   connectPersonalitiesClient,
+  getActiveTeamId,
   readStoredAgentRecord,
   removePersonalitiesById,
   removeTeamsById,
@@ -40,8 +41,12 @@ test.describe("Agent teams prompt stacking", () => {
     });
     let workspace: Awaited<ReturnType<typeof seedWorkspace>> | null = null;
     let agentId: string | null = null;
+    // activeTeamId is shared daemon config; hand it back exactly as found so a
+    // later spec in the same invocation sees the host it would have seen.
+    let priorActiveTeamId: string | null = null;
 
     try {
+      priorActiveTeamId = await getActiveTeamId(client);
       await seedPersonalities(client, [personality]);
       await seedTeams(client, [team]);
       await setActiveTeam(client, team.id);
@@ -86,6 +91,8 @@ test.describe("Agent teams prompt stacking", () => {
       await setActiveTeam(client, null).catch(() => undefined);
       await removeTeamsById(client, [team.id]).catch(() => undefined);
       await removePersonalitiesById(client, [personality.id]).catch(() => undefined);
+      // Restore last: removeTeamsById can null activeTeamId as a side effect.
+      await setActiveTeam(client, priorActiveTeamId).catch(() => undefined);
       await workspace?.cleanup().catch(() => undefined);
       await client.close().catch(() => undefined);
     }

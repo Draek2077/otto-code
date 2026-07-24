@@ -1209,6 +1209,11 @@ export const ru: TranslationResources = {
       composerStateRequired: "Требуется состояние композитора.",
       selectModel: "Выберите модель",
     },
+    occupiedDirectory: {
+      title: "В этой папке уже есть рабочее пространство",
+      openExisting: "Открыть",
+      createWorktree: "Создать рабочее дерево",
+    },
     refPicker: {
       startingRef: "Начальная ссылка",
       chooseStart: "Выберите, с чего начать",
@@ -1996,6 +2001,12 @@ export const ru: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",
